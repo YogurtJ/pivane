@@ -1,0 +1,29 @@
+.pi-transfer-dialog {
+    width: min(580px, calc(100vw - 24px)); max-height: calc(100dvh - 32px);
+    box-sizing: border-box; margin: auto; padding: 20px; overflow: auto;
+    background: var(--surface-2); color: var(--text-main);
+    border: 1px solid var(--line-strong); border-radius: 16px;
+}
+.pi-transfer-dialog::backdrop { background: #0006; }
+.pi-transfer-dialog [hidden], #pi-import-session[hidden] { display: none !important; }
+.pi-transfer-dialog header, .pi-transfer-dialog footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pi-transfer-dialog h2 { flex: 1; min-width: 0; font-size: 20px; margin: 0; }
+.pi-transfer-dialog header button { flex: 0 0 auto; width: auto; }
+.pi-transfer-dialog footer button { width: auto; }
+.pi-transfer-body { display: grid; gap: 14px; margin: 18px 0; min-width: 0; }
+.pi-transfer-body p, .pi-transfer-status { margin: 0; line-height: 1.65; overflow-wrap: anywhere; font-size: 14px; }
+.pi-transfer-body label { display: grid; gap: 8px; min-width: 0; font-size: 14px; }
+.pi-transfer-body input, .pi-transfer-body select {
+    width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box;
+    padding: 10px; border: 1px solid var(--line-strong); border-radius: 8px;
+    background: var(--surface-1); color: inherit; font: inherit;
+}
+.pi-transfer-scope { padding: 12px; background: var(--surface-3); border-radius: 8px; }
+.pi-transfer-status { margin-bottom: 14px; }
+.pi-transfer-dialog footer { justify-content: flex-end; }
+#pi-import-session { margin: 0 22px 14px; width: calc(100% - 44px); }
+@media (max-width: 600px) {
+    .pi-transfer-dialog { padding: 16px; }
+    .pi-transfer-body input, .pi-transfer-body select { font-size: 16px; }
+    .pi-transfer-dialog footer button { width: 100%; }
+}

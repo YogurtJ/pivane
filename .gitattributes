@@ -1,0 +1,16 @@
+# Preserve byte-verified native sources/manifests on every Git checkout.
+# This is repository metadata; release tar archives retain their original bytes.
+* text=auto eol=lf
+*.node binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.mp4 binary
+*.wav binary
+*.mp3 binary
+*.woff binary
+*.woff2 binary
+*.ttf binary

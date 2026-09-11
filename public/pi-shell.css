@@ -1,0 +1,15 @@
+.pi-shell-live { min-width: 0; margin: 14px 0; border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: var(--surface-1); }
+.pi-shell-live header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pi-shell-live header strong { flex: 1; }
+.pi-shell-live button { padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-1); color: inherit; cursor: pointer; }
+.pi-shell-live button:disabled { opacity: .5; cursor: default; }
+.pi-shell-state, .pi-shell-detail, #pi-shell-hint { font-size: .82rem; color: var(--text-muted); overflow-wrap: anywhere; }
+.pi-shell-command { display: block; white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0; }
+.pi-shell-live pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; font-size: .82rem; margin: 8px 0 0; }
+.pi-shell-live[data-state="failed"] { border-color: var(--danger); }
+#pi-shell-hint { margin: 0 0 8px; padding: 8px 10px; border-left: 3px solid var(--blue); background: var(--surface-1); }
+#pi-queue-modes { margin: 12px 0; }
+#pi-queue-modes label { display: grid; grid-template-columns: minmax(0, 1fr) minmax(100px, 120px); gap: 8px; align-items: center; margin: 10px 0; }
+#pi-queue-modes select { width: 100%; min-width: 0; color: inherit; background: var(--surface-1); border: 1px solid var(--line); border-radius: 7px; padding: 7px; }
+.pi-bash-message .pi-shell-detail { padding: 0 12px; }
+@media (max-width: 680px) { #pi-queue-modes select { font-size: 16px; } .pi-shell-live { padding: 10px; } .pi-shell-live pre { max-height: 240px; } }

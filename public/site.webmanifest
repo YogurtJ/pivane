@@ -1,0 +1,14 @@
+{
+  "id": "/",
+  "name": "Pivane",
+  "short_name": "Pivane",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f9fc",
+  "theme_color": "#f7f9fc",
+  "icons": [
+    { "src": "brand/logo-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "brand/logo-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

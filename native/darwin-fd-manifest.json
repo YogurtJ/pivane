@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "napi": 8,
+  "minimumMacOS": "11.0",
+  "architectures": [
+    "arm64",
+    "x86_64"
+  ],
+  "sourceSha256": "5db41f4de62e1285958a508a57be3b27bd6fd2ad61121b4c0fbbeda6172c390d",
+  "binarySha256": "ed264c67e9dcaa6bc56dc12caf4d44b799267f15c1b8a33bb54cf48259748320",
+  "builtWithNode": "v22.23.2",
+  "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)",
+  "flags": [
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-std=c11",
+    "-DNAPI_VERSION=8",
+    "-arch",
+    "arm64",
+    "-arch",
+    "x86_64",
+    "-mmacosx-version-min=11.0",
+    "-bundle",
+    "-undefined",
+    "dynamic_lookup"
+  ]
+}

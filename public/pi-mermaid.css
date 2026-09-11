@@ -1,0 +1,10 @@
+.pi-mermaid { margin: 1em 0; max-width: 100%; min-width: 0; overflow: auto; border: 1px solid var(--border-color, #8898aa55); border-radius: 10px; padding: 12px; }
+.pi-mermaid-image { display: block; width: auto; max-width: 100%; height: auto; margin: 0 auto 8px; }
+.pi-mermaid-source { min-width: 0; font-size: .85rem; }
+.pi-mermaid-source summary { cursor: pointer; padding: 6px 0; opacity: .75; }
+.pi-mermaid-source pre { max-width: 100%; overflow: auto; }
+.pi-mermaid-copy { margin: 4px 0; padding: 6px 10px; font: inherit; color: inherit; background: transparent; border: 1px solid var(--border-color, #8898aa55); border-radius: 6px; cursor: pointer; }
+.pi-mermaid-status { font-size: .85rem; opacity: .75; overflow-wrap: anywhere; }
+.pi-mermaid-worker { position: fixed; left: -10000px; top: 0; width: 1200px; height: 900px; border: 0; pointer-events: none; }
+.pi-mermaid-clipboard { position: fixed; left: -10000px; font-size: 16px; }
+@media (max-width: 600px) { .pi-mermaid { padding: 8px; } .pi-mermaid-copy, .pi-mermaid-source summary { min-height: 36px; } }

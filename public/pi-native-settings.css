@@ -1,0 +1,116 @@
+#native-settings-nav[hidden], #native-skills[hidden], #settings-skills-legacy[hidden], #native-packages[hidden], #pi-loaded-resources[hidden], [data-settings-panel="packages"] > [hidden] { display: none !important; }
+#native-settings-panel, #native-skills, #native-packages { min-width: 0; max-width: 100%; color: var(--text-main); }
+:is(#native-settings-panel, #native-skills, #native-packages, #pi-project-trust-dialog, #pi-loaded-resources) p { color: var(--text-muted); line-height: 1.65; overflow-wrap: anywhere; }
+:is(#native-settings-panel, #native-skills, #native-packages, #pi-project-trust-dialog, #pi-loaded-resources) button { padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-1); color: var(--text-main); font: inherit; font-size: .82rem; cursor: pointer; min-height: 36px; }
+:is(#native-settings-panel, #native-skills, #native-packages, #pi-project-trust-dialog, #pi-loaded-resources) button:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-2); }
+:is(#native-settings-panel, #native-skills, #native-packages, #pi-project-trust-dialog, #pi-loaded-resources) button:disabled { opacity: .48; cursor: default; }
+:is(#native-settings-panel, #native-skills, #native-packages, #pi-project-trust-dialog, #pi-loaded-resources) :is(button, input, select, textarea, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+:is(#native-settings-panel, #native-skills, #native-packages) :is(input, select, textarea) { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-1); color: var(--text-main); font: inherit; font-size: .84rem; }
+.native-scope-row { display: flex; gap: 18px; align-items: center; margin: 20px 0 24px; padding: 16px; background: var(--surface-2); border-radius: 10px; }
+#native-settings-panel .settings-panel-header { flex-direction: row; align-items: flex-start; gap: 14px; }
+#native-refresh { flex: 0 0 auto; width: auto; }
+.native-scope-row > label { display: grid; gap: 8px; font-size: .78rem; flex: 0 0 180px; }
+.native-scope-hint { display: flex; gap: 6px; flex-direction: column; align-items: flex-start; color: var(--text-muted); font-size: .78rem; min-width: 0; overflow-wrap: anywhere; }
+.native-setting-group { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; background: var(--surface-1); overflow: hidden; }
+.native-setting-group > summary { display: flex; align-items: center; gap: 14px; padding: 17px 18px; cursor: pointer; list-style: none; }
+.native-setting-group > summary::-webkit-details-marker { display: none; }
+.native-setting-group > summary::after { content: '›'; color: var(--text-muted); font-size: 1.3rem; transition: transform .15s; }
+.native-setting-group[open] > summary::after { transform: rotate(90deg); }
+.native-setting-group > summary:hover { background: var(--surface-2); }
+.native-setting-group > summary > i { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 34px; border-radius: 9px; background: var(--green-soft); color: var(--accent); font-size: .9rem; }
+.native-group-caption { display: grid; gap: 5px; min-width: 0; flex: 1; }
+.native-group-caption strong { font-size: .87rem; font-weight: 600; }
+.native-group-caption small, .native-setting-count { color: var(--text-muted); font-size: .74rem; line-height: 1.5; }
+.native-setting-count { white-space: nowrap; }
+.native-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; padding: 20px 18px; border-top: 1px solid var(--line); min-width: 0; }
+.native-grid label, #native-packages > label { display: flex; flex-direction: column; gap: 8px; min-width: 0; font-size: .82rem; }
+.native-grid small { font-size: .73rem; color: var(--text-muted); line-height: 1.6; overflow-wrap: anywhere; }
+.native-grid textarea { resize: vertical; }
+.native-save-row { display: flex; gap: 12px; justify-content: space-between; align-items: center; margin-top: 22px; }
+.native-save-row small { color: var(--text-muted); font-size: .76rem; }
+#native-settings-save, #pi-project-trust-dialog .native-trust-primary { color: var(--surface-0); background: var(--accent); border-color: var(--accent); font-weight: 600; }
+#native-settings-save:hover:not(:disabled), #pi-project-trust-dialog .native-trust-primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
+#native-status, #native-resource-status, #native-skills-status, #pi-project-trust-status { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; line-height: 1.65; }
+#native-status:empty, #native-skills-status:empty, #pi-project-trust-status:empty { display: none; }
+.native-skills-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 130px auto; gap: 10px; margin: 20px 0 12px; }
+.native-help { font-size: .77rem; margin-bottom: 18px; }
+.native-skill-row { display: flex; align-items: flex-start; gap: 20px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+.native-skill-main { min-width: 0; flex: 1; }
+.native-skill-title { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.native-skill-title strong { font-size: .9rem; overflow-wrap: anywhere; }
+.native-skill-badge { font-size: .65rem; padding: 3px 7px; border-radius: 5px; color: var(--accent); background: var(--green-soft); white-space: nowrap; }
+.native-skill-row[data-enabled="false"] .native-skill-badge { background: var(--surface-2); color: var(--text-muted); }
+.native-skill-main > p { margin: 8px 0; font-size: .8rem; }
+.native-skill-source { margin-top: 9px; color: var(--text-muted); font-size: .72rem; }
+.native-skill-source summary { cursor: pointer; }
+.native-skill-source code, .native-skill-source p { display: block; overflow-wrap: anywhere; white-space: normal; margin-top: 8px; }
+.native-skill-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex: 0 0 auto; }
+.native-optional { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 16px; font-size: .8rem; color: var(--text-muted); }
+.native-optional > summary { cursor: pointer; margin-bottom: 14px; }
+.native-optional .settings-toggle-line { justify-content: space-between; }
+.native-optional p { margin: 10px 0 16px; font-size: .76rem; }
+.native-card { min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin: 14px 0; overflow-wrap: anywhere; }
+.native-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
+.native-actions input { flex: 1 1 220px; }
+.native-resource-row { display: grid; grid-template-columns: minmax(0, 1fr) 130px auto; gap: 9px; align-items: center; border-bottom: 1px solid var(--line); padding: 14px 0; }
+.native-resource-row > div { min-width: 0; }
+.native-resource-row small { display: block; font-size: .76rem; color: var(--text-muted); overflow-wrap: anywhere; }
+#pi-project-trust-dialog { position: fixed; inset: 0; margin: auto; width: min(480px, calc(100vw - 32px)); max-width: calc(100vw - 32px); max-height: calc(100dvh - 40px); padding: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-1); color: var(--text-main); box-shadow: 0 24px 80px #0003; overflow: auto; }
+#pi-project-trust-dialog::backdrop { background: #0007; backdrop-filter: blur(3px); }
+#pi-project-trust-dialog header { display: flex; align-items: flex-start; gap: 16px; justify-content: space-between; padding: 24px 24px 18px; border-bottom: 1px solid var(--line); }
+#pi-project-trust-dialog header > div { min-width: 0; }
+#pi-project-trust-title { font-size: 1.05rem; line-height: 1.5; margin: 0; }
+#pi-project-trust-name { margin: 5px 0 0; font-size: .8rem; overflow-wrap: anywhere; }
+#pi-project-trust-close { flex: 0 0 36px; padding: 6px !important; font-size: 20px !important; line-height: 1; }
+#pi-project-trust-body { padding: 20px 24px; font-size: .84rem; }
+#pi-project-trust-body > p { margin-bottom: 18px; }
+#pi-project-trust-body .native-trust-path { font-size: .73rem; margin: 0 0 14px; }
+.native-trust-badge { display: inline-block; padding: 4px 9px; border-radius: 6px; font-size: .75rem; background: var(--surface-3); color: var(--text-muted); margin-bottom: 12px; }
+.native-trust-badge[data-trusted="true"] { background: var(--green-soft); color: var(--accent); }
+.native-trust-actions { display: flex; gap: 10px; margin-top: 20px; }
+.native-trust-actions button { flex: 1; }
+.native-trust-details { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 16px; color: var(--text-muted); font-size: .76rem; }
+.native-trust-details summary { cursor: pointer; }
+.native-trust-details p { margin-top: 12px; }
+.native-trust-details button { margin-top: 12px; }
+.native-trust-notice { margin-top: 16px; }
+#pi-project-trust-status { margin: 0 24px 20px; }
+#pi-loaded-resources > summary { cursor: pointer; font-size: .8rem; color: var(--text-main); }
+.native-runtime-actions { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0; }
+#pi-loaded-resources .native-runtime-actions button { font-size: .73rem; padding: 7px 9px; }
+#pi-loaded-resources-body { min-width: 0; font-size: .75rem; }
+#pi-loaded-resources-body details { margin-top: 12px; }
+#pi-loaded-resources-body summary { cursor: pointer; }
+#pi-loaded-resources-body ul { padding: 10px 0 0 18px; max-height: 280px; overflow: auto; }
+#pi-loaded-resources-body li { overflow-wrap: anywhere; margin-bottom: 8px; color: var(--text-muted); }
+#pi-loaded-resources-body p { margin: 10px 0; }
+.native-tool-field, .native-setting-help { grid-column: 1 / -1; min-width: 0; }
+.native-tool-options { min-width: 0; margin: 16px 0 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.native-tool-options legend { font-size: .8rem; color: var(--text-muted); padding: 0 6px; }
+#native-settings-panel .native-tool-options label { flex-direction: row; align-items: center; gap: 10px; padding: 8px 4px; overflow-wrap: anywhere; cursor: pointer; }
+#native-settings-panel .native-tool-options input { flex: 0 0 18px; width: 18px; height: 18px; margin: 0; padding: 0; accent-color: var(--accent); }
+.native-tool-field > small { display: block; margin-top: 6px; }
+.native-tool-options:disabled { opacity: .6; }
+.native-setting-help { margin: 0; font-size: .78rem; }
+@media (max-width: 680px) {
+    .native-tool-options { grid-template-columns: minmax(0, 1fr); }
+    .workspace-settings-nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .native-grid { grid-template-columns: minmax(0, 1fr); padding: 18px 14px; }
+    .native-setting-group > summary { gap: 10px; padding: 15px 12px; }
+    .native-setting-count { font-size: .66rem; }
+    .native-scope-row { gap: 12px; flex-wrap: wrap; padding: 14px; }
+    .native-scope-row > label { flex: 1 1 130px; }
+    .native-skills-toolbar { grid-template-columns: minmax(0, 1fr) auto; }
+    .native-skills-toolbar > input { grid-column: 1 / -1; }
+    .native-skill-row { gap: 12px; }
+    .native-skill-actions { max-width: 80px; }
+    .native-resource-row { grid-template-columns: minmax(0, 1fr) auto; }
+    .native-resource-row > div { grid-column: 1 / -1; }
+    .native-save-row { align-items: flex-start; }
+    .native-save-row button { flex: 0 0 auto; }
+    :is(#native-settings-panel, #native-skills, #native-packages) :is(input, select, textarea) { font-size: 16px; }
+    #pi-project-trust-dialog { width: calc(100vw - 24px); max-width: calc(100vw - 24px); }
+    #pi-project-trust-dialog header { padding: 20px 18px 16px; }
+    #pi-project-trust-body { padding: 18px; }
+    #pi-project-trust-status { margin-inline: 18px; }
+}

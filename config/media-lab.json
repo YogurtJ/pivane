@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "image": { "identity": "", "negative": "", "defaultLora": "none", "defaultLoraStrength": 0, "presets": {} },
+  "models": [
+    {
+      "id": "z-image-turbo", "name": "Z-Image Turbo", "kind": "image", "adapter": "zimage",
+      "instructions": "Use a natural-language prompt. CFG is fixed at 1. This adapter requires an explicitly configured local GPU worker. A configured prompt prefix is shown during review. Negative prompts are recorded but not passed to this distilled worker.",
+      "parameters": {
+        "prompt": { "type": "textarea", "label": "提示词", "required": true, "maxLength": 3000 },
+        "width": { "type": "number", "label": "宽度", "min": 256, "max": 1536, "step": 16, "integer": true, "default": 480 },
+        "height": { "type": "number", "label": "高度", "min": 256, "max": 1536, "step": 16, "integer": true, "default": 832 },
+        "steps": { "type": "number", "label": "步数", "min": 4, "max": 60, "integer": true, "default": 28 },
+        "cfg": { "type": "number", "label": "CFG", "const": 1, "default": 1 },
+        "seed": { "type": "number", "label": "Seed", "min": -1, "max": 2147483647, "integer": true, "default": -1 },
+        "negative": { "type": "textarea", "label": "负面提示词（仅记录）", "maxLength": 3000, "default": "" }
+      }
+    },
+    {
+      "id": "flux-2-dev", "name": "Flux 2 Dev", "kind": "image", "adapter": "flux2",
+      "instructions": "Use natural-language prompts. This adapter uses Flux guidance, not classifier-free guidance, and does not support negative prompts or the local worker LoRA. Dimensions must be divisible by 64. ComfyUI nodes and weights are checked before execution.",
+      "documentationUrl": "https://docs.comfy.org/tutorials/flux/flux-2-dev",
+      "parameters": {
+        "prompt": { "type": "textarea", "label": "提示词", "required": true, "maxLength": 3000 },
+        "width": { "type": "number", "label": "宽度", "min": 256, "max": 2048, "step": 64, "integer": true, "default": 1024 },
+        "height": { "type": "number", "label": "高度", "min": 256, "max": 2048, "step": 64, "integer": true, "default": 1024 },
+        "steps": { "type": "number", "label": "步数", "min": 4, "max": 50, "integer": true, "default": 20 },
+        "cfg": { "type": "number", "label": "Flux Guidance", "min": 1, "max": 10, "step": 0.1, "default": 4 },
+        "seed": { "type": "number", "label": "Seed", "min": -1, "max": 9007199254740991, "integer": true, "default": -1 }
+      }
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+#pi-history[hidden], #pi-history-tab[hidden], #pi-history [hidden] { display: none !important; }
+.pi-inspector.show-history { overflow: hidden; }
+#pi-history { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; overflow: hidden; padding: 14px; overflow-wrap: anywhere; }
+#pi-history-status:empty, #pi-history-text-page:empty { display: none; }
+#pi-history-browse { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+#pi-history-status { flex-shrink: 0; }
+#pi-history h2 { margin: 0 0 8px; font-size: 1rem; }
+#pi-history h3 { min-width: 0; margin: 0; font-size: .85rem; }
+#pi-history label { font-size: .8rem; }
+#pi-history input:not([type=checkbox]), #pi-history select { width: 100%; min-width: 0; padding: 8px; margin: 5px 0 10px; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--surface-2); color: var(--text-main); font: inherit; }
+#pi-history button { min-width: 0; padding: 7px 9px; min-height: 34px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-2); color: var(--text-main); cursor: pointer; white-space: normal; overflow-wrap: anywhere; }
+#pi-history button:hover { background: var(--green-soft); }
+#pi-history button:disabled { opacity: .5; cursor: default; }
+#pi-history :focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+/* Full-width fields sit at the scroll area's edges: keep the focus ring inside. */
+#pi-history input:not([type=checkbox]):focus-visible, #pi-history select:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; border-color: var(--green); box-shadow: none; }
+.pi-history-filters { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.pi-history-actions { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin: 8px 0; }
+.pi-history-actions label { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; }
+.pi-history-help, #pi-history-status, #pi-history-bookmark-state { margin: 8px 0; font-size: .77rem; color: var(--text-muted); line-height: 1.6; }
+#pi-history-results { display: grid; gap: 7px; }
+#pi-history .pi-history-result { width: 100%; text-align: left; }
+.pi-history-result > * { display: block; min-width: 0; overflow-wrap: anywhere; }
+.pi-history-result small { color: var(--text-muted); font-size: .68rem; margin-bottom: 5px; }
+.pi-history-result strong { font-size: .8rem; color: var(--green); margin-bottom: 4px; }
+.pi-history-result span { font-size: .8rem; line-height: 1.6; white-space: pre-wrap; }
+#pi-history .pi-history-result[aria-current=true] { border-color: var(--green); }
+#pi-history mark { background: var(--green-soft); color: var(--text-main); border-bottom: 1px solid var(--green); }
+#pi-history-preview { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; }
+#pi-history-preview > * { flex-shrink: 0; }
+#pi-history #pi-history-text { flex: 1 1 auto; min-height: 160px; min-width: 0; overflow: auto; overscroll-behavior: contain; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-2); font: .85rem/1.7 ui-monospace,monospace; }
+#pi-history #pi-history-text.pi-markdown { white-space: normal; font-family: inherit; font-size: .92rem; }
+#pi-history-text.pi-markdown > :first-child { margin-top: 0; }
+#pi-history-text.pi-markdown > :last-child { margin-bottom: 0; }
+#pi-history-text pre { max-width: 100%; overflow: auto; }
+#pi-history-text img { max-width: 100%; }
+#pi-history details summary { padding: 8px 0; cursor: pointer; font-size: .8rem; color: var(--text-muted); }
+#pi-history button[aria-pressed=true], #pi-history [data-current=true] { border-color: var(--green); background: var(--green-soft); }
+.pi-tree-row { display: flex; align-items: flex-start; gap: 4px; margin: 7px 0 7px calc(var(--tree-depth) * 8px); padding-left: 4px; border-left: 2px solid var(--line-strong); min-width: 0; }
+#pi-history .pi-tree-fold { width: 24px; flex: 0 0 24px; padding: 5px 0; background: transparent; border-color: transparent; }
+#pi-history .pi-tree-fold:disabled { visibility: hidden; }
+.pi-tree-row .pi-history-result { flex: 1; }
+#pi-tree-status, #pi-tree-progress-text { font-size: .8rem; line-height: 1.6; color: var(--text-muted); }
+#pi-tree-progress { flex-shrink: 0; border-top: 1px solid var(--line); padding-top: 6px; }
+#pi-tree-continue { width: 100%; margin: 4px 0; }
+.pi-tree-summary-choice { display: flex; align-items: flex-start; gap: 8px; margin: 8px 0; }
+#pi-tree-summary-choice input, #pi-tree-summarize { flex: 0 0 auto; width: 16px; height: 16px; }
+#pi-history-bookmark-details { border-top: 1px solid var(--line); margin-top: 5px; }
+/* View selection is a segmented control; tree actions are a lighter toolbar. */
+#pi-history .pi-history-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; padding: 3px; margin: 0 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-3); }
+#pi-history .pi-history-modes button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--text-muted); font-size: .85rem; font-weight: 600; }
+#pi-history .pi-history-modes button[aria-pressed=true] { background: var(--surface-1); color: var(--green); border-color: var(--line); box-shadow: 0 1px 3px rgb(0 0 0 / 8%); }
+#pi-history .pi-history-modes button:hover { color: var(--text-main); }
+#pi-history .pi-history-modes button[aria-pressed=true]:hover { color: var(--green); }
+#pi-history .pi-history-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+#pi-history .pi-history-heading .pi-history-modes { flex: 1; min-width: 0; margin: 0; }
+#pi-history #pi-history-more { flex: 0 0 38px; width: 38px; height: 38px; padding: 0; margin-left: auto; border-color: transparent; background: transparent; color: var(--text-muted); border-radius: 8px; }
+#pi-history #pi-history-more:hover, #pi-history #pi-history-more[aria-expanded=true] { background: var(--surface-3); color: var(--text-main); }
+#pi-history .pi-history-heading:has(.pi-history-modes[hidden]):has(#pi-history-more[hidden]) { display: none; }
+.pi-tree-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+#pi-history .pi-tree-toolbar button { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; padding: 5px 9px; font-size: .78rem; color: var(--text-muted); background: transparent; border-color: transparent; border-radius: 6px; }
+#pi-history .pi-tree-toolbar button:hover:not(:disabled) { color: var(--text-main); background: var(--surface-3); border-color: var(--line); }
+.pi-tree-toolbar i, .pi-history-modes i { font-size: .8em; }
+#pi-history .pi-history-result[data-kind] { --tree-accent: var(--green); padding: 10px 11px; border-radius: 9px; border-inline-start: 3px solid color-mix(in srgb, var(--tree-accent) 40%, var(--line)); background: var(--surface-2); }
+#pi-history .pi-history-result[data-kind=user] { --tree-accent: var(--blue); background: color-mix(in srgb, var(--blue) 7%, var(--surface-1)); border-inline-start-color: var(--blue); }
+#pi-history .pi-history-result[data-reply-stage=final] { background: color-mix(in srgb, var(--green) 7%, var(--surface-1)); border-inline-start-color: var(--green); }
+#pi-history .pi-history-result:is([data-kind=summary], [data-kind=tool]) { --tree-accent: var(--text-muted); border-inline-start-style: dashed; }
+#pi-history .pi-history-result[data-kind]:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tree-accent) 35%, transparent); }
+#pi-history .pi-tree-row [data-current=true] { border-color: var(--green); box-shadow: 0 0 0 1px color-mix(in srgb, var(--green) 25%, transparent); }
+#pi-history .pi-tree-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 7px; margin-bottom: 7px; }
+#pi-history .pi-tree-role { display: inline-flex; align-items: center; gap: 6px; color: var(--tree-accent); font-size: .75rem; font-weight: 650; line-height: 1.5; white-space: nowrap; }
+.pi-tree-role i { font-size: .85em; }
+#pi-history .pi-tree-stage { padding: 1px 5px; border-radius: 4px; background: var(--surface-3); color: var(--text-muted); font-size: .67rem; line-height: 1.5; white-space: nowrap; }
+#pi-history [data-reply-stage=final] .pi-tree-stage { color: var(--green); background: var(--green-soft); font-weight: 600; }
+#pi-history .pi-tree-time { margin-inline-start: auto; font-size: .67rem; font-variant-numeric: tabular-nums; line-height: 1.5; white-space: nowrap; color: var(--text-muted); }
+#pi-history .pi-tree-snippet { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; font-size: .84rem; line-height: 1.65; }
+#pi-history [data-reply-stage=final] .pi-tree-snippet { font-weight: 500; }
+#pi-history .pi-tree-context { display: flex; flex-wrap: wrap; gap: 5px 9px; margin-top: 7px; }
+#pi-history .pi-tree-context span { color: var(--text-muted); font-size: .66rem; line-height: 1.5; }
+#pi-history .pi-tree-context .pi-tree-current-badge { color: var(--green); font-weight: 600; }
+.pi-tree-current-badge::before { content: '●'; font-size: .7em; margin-inline-end: 5px; }
+@media(max-width:900px) { #pi-history input:not([type=checkbox]), #pi-history select { font-size: 16px; } .pi-tree-toolbar { gap: 8px; } #pi-history .pi-tree-toolbar button, #pi-history .pi-history-modes button { min-height: 38px; } }

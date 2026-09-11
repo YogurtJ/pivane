@@ -1,0 +1,31 @@
+{
+  "platform": "win32",
+  "arch": "x64",
+  "napi": 8,
+  "nodeHeaders": "22.23.2",
+  "compiler": "Zig 0.14.1",
+  "compilerSha256": "f05af6e545f04b3b3183f1b16eab1155b8e9156e899255f7928d43b81fd8c426",
+  "flags": [
+    "cc",
+    "-target",
+    "x86_64-windows-gnu",
+    "-shared",
+    "-Os",
+    "-s",
+    "-DNAPI_VERSION=8",
+    "-DBUILDING_NODE_EXTENSION",
+    "-nostdlib",
+    "-Wl,--entry,DllMain",
+    "-lkernel32",
+    "-ladvapi32"
+  ],
+  "sourceSha256": "cf799b7460f35709ec15001f362ab54f802ac2d350ef357031d1c7a7cd904ee8",
+  "binarySha256": "486eb418fe00fe8580432ce4ab63d144608fcabf749d2eb54fe4772abcb27e84",
+  "nodeImportLibrarySha256": "ac15f1e9d7c8279353723a77f6319967f1a41c06026521094a8234c2e6fbe052",
+  "headers": {
+    "node_api.h": "2d4560831e525b47b060ec8a0864ab73993df9e20215ce9f0fe7b24cd31af32a",
+    "node_api_types.h": "088766b3cf1f0cd9b292c361ad30f7a04e7cc6db35a20ca52c572c1adf9635e7",
+    "js_native_api.h": "582e64ead4d5fdf663e2bd934f2fc97e8e155a7740d28995830393d19d089705",
+    "js_native_api_types.h": "05e3d86e24c814f94a8b52b6a70cec11d7e91c810008253553528637e3a15b2f"
+  }
+}

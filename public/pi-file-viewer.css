@@ -1,0 +1,46 @@
+#pi-file-tabs[hidden], #pi-file-viewer[hidden], #pi-changes-diffs[hidden], .pi-changes-picker[hidden], .pi-file-source-label[hidden], #pi-changes-files[hidden], #pi-changes-file-list[hidden], #pi-file-viewer button[hidden], #pi-file-notice[hidden] { display: none !important; }
+.pi-files-heading { position: relative; display: flex; align-items: center; gap: 10px; padding: 4px 10px; min-height: 42px; flex-shrink: 0; border-bottom: 1px solid var(--line); }
+#pi-changes-title { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .82rem; line-height: 1.5; font-weight: 600; }
+#pi-changes-file-list { flex-shrink: 0; }
+#pi-changes-file-list > summary { cursor: pointer; font-size: .72rem; color: var(--text-muted); padding: 6px 8px; list-style: none; border: 1px solid var(--line); border-radius: 5px; }
+#pi-changes-file-list > summary::-webkit-details-marker, #pi-file-info > summary::-webkit-details-marker { display: none; }
+#pi-changes-file-list[open] > summary, #pi-file-info[open] > summary { border-color: var(--green); color: var(--text-main); }
+.pi-file-picker-panel, .pi-file-info-panel { position: absolute; left: 8px; right: 8px; top: 100%; z-index: 30; max-height: min(360px, 50dvh); overflow: auto; background: var(--surface-1); color: var(--text-main); border: 1px solid var(--line-strong); border-radius: 8px; box-shadow: 0 8px 28px #0003; }
+.pi-file-info-panel { max-height: min(260px, 40dvh); padding: 12px; }
+.pi-file-mode-row { display: flex; align-items: center; gap: 10px; padding: 4px 10px; border-bottom: 1px solid var(--line); flex-shrink: 0; min-width: 0; }
+.pi-file-tabs { display: flex; flex-shrink: 0; gap: 3px; }
+.pi-file-tabs button, .pi-file-actions button { border: 1px solid var(--line); border-radius: 5px; background: var(--surface-1); color: var(--text-muted); padding: 5px 8px; min-height: 30px; font: inherit; font-size: .75rem; white-space: nowrap; cursor: pointer; transform: none; }
+.pi-file-tabs button[aria-selected="true"], .pi-file-actions button[aria-pressed="true"] { color: var(--text-main); border-color: var(--green); background: var(--surface-2); }
+.pi-file-tabs button:disabled, .pi-file-actions button:disabled { opacity: .5; cursor: default; }
+.pi-file-tabs button:hover, .pi-file-actions button:hover { transform: none; }
+#pi-file-viewer { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+#pi-file-path { display: block; font-size: .78rem; overflow-wrap: anywhere; font-weight: 500; }
+.pi-file-source-label { display: flex; flex: 1; min-width: 0; margin-left: auto; max-width: 220px; }
+#pi-file-source { width: 100%; min-width: 0; max-width: 100%; height: 30px; border: 1px solid var(--line); background: var(--surface-1); color: var(--text-main); border-radius: 5px; padding: 3px 6px; font: inherit; font-size: .75rem; text-overflow: ellipsis; }
+.pi-file-actions { position: relative; display: flex; align-items: center; gap: 5px; padding: 4px 10px; flex-shrink: 0; }
+#pi-file-info { margin-left: auto; }
+#pi-file-info > summary { display: grid; place-items: center; width: 30px; height: 30px; cursor: pointer; list-style: none; color: var(--text-muted); border: 1px solid var(--line); border-radius: 5px; font-size: 1rem; }
+#pi-file-status { padding: 0; margin: 8px 0 0; color: var(--text-muted); font-size: .74rem; line-height: 1.6; overflow-wrap: anywhere; }
+#pi-file-notice { margin: 0; padding: 4px 10px 8px; max-height: 90px; overflow: auto; flex-shrink: 0; color: var(--text-muted); font-size: .74rem; line-height: 1.5; overflow-wrap: anywhere; }
+#pi-file-status[data-error="true"], #pi-file-notice[data-error="true"] { color: var(--danger); }
+#pi-file-body { position: relative; flex: 1; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; background: var(--surface-1); border-top: 1px solid var(--line); }
+.pi-file-code { margin: 0; padding: 10px 0; width: max-content; min-width: 100%; color: var(--text-main); font: .78rem/1.7 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre; tab-size: 4; }
+.pi-file-code.wrap { white-space: pre-wrap; overflow-wrap: anywhere; width: auto; max-width: 100%; }
+.pi-file-line { display: grid; grid-template-columns: 4em minmax(0, 1fr); min-height: 1.7em; }
+.pi-file-line::before { content: attr(data-line); text-align: right; padding-right: 12px; color: var(--text-muted); user-select: none; opacity: .7; }
+.pi-file-line-text { padding-right: 12px; min-width: 0; }
+.pi-file-target-line { background: color-mix(in srgb, var(--amber) 16%, transparent); }
+.pi-file-code .hljs-comment, .pi-file-code .hljs-quote { color: var(--text-muted); font-style: italic; }
+.pi-file-code .hljs-keyword, .pi-file-code .hljs-selector-tag, .pi-file-code .hljs-type { color: var(--blue); }
+.pi-file-code .hljs-string, .pi-file-code .hljs-attr, .pi-file-code .hljs-addition { color: var(--green); }
+.pi-file-code .hljs-number, .pi-file-code .hljs-literal, .pi-file-code .hljs-built_in { color: var(--amber); }
+.pi-file-code .hljs-title, .pi-file-code .hljs-name, .pi-file-code .hljs-deletion { color: var(--danger); }
+.pi-file-markdown { padding: 14px; overflow-wrap: anywhere; min-width: 0; }
+.pi-file-markdown pre, .pi-file-markdown table { display: block; max-width: 100%; overflow: auto; }
+.pi-file-large-note { margin: 10px 12px 0; font-size: .72rem; color: var(--text-muted); }
+.pi-edit-count { white-space: normal; max-width: 45%; text-align: right; }
+@media (max-width: 900px) {
+    #pi-file-source { font-size: 16px; height: 36px; }
+    .pi-file-tabs button, .pi-file-actions button, #pi-changes-file-list > summary { min-height: 36px; }
+    #pi-file-info > summary { width: 36px; height: 36px; }
+}

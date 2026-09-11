@@ -1,0 +1,36 @@
+.pi-turn-edits { min-width: 0; max-width: 100%; margin: 0 0 24px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-1); overflow: hidden; }
+.pi-turn-edits-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 12px; padding: 12px; }
+.pi-turn-edits-heading strong { font-size: .82rem; font-weight: 600; }
+.pi-turn-edits-heading small { font-size: .7rem; color: var(--text-muted); }
+.pi-edit-file { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--text-main); padding: 10px 12px; font: inherit; font-size: .78rem; text-align: left; cursor: pointer; transform: none; }
+.pi-edit-file:hover, .pi-edit-file[aria-current="true"] { background: var(--surface-2); transform: none; }
+.pi-edit-file[aria-current="true"] { box-shadow: inset 3px 0 var(--green); }
+.pi-edit-file:focus-visible, .pi-edits-more > summary:focus-visible, .pi-edits-collapse:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+.pi-edit-path { flex: 1; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.pi-edit-count { flex-shrink: 0; color: var(--text-muted); font-size: .7rem; white-space: nowrap; }
+.pi-edit-added { color: var(--green); }
+.pi-edit-removed { color: var(--danger); }
+.pi-edits-more > summary, .pi-edits-collapse { padding: 10px 12px; font: inherit; font-size: .75rem; color: var(--text-muted); border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; cursor: pointer; }
+.pi-edits-more[open] > summary { display: none; }
+.pi-edits-collapse { display: block; width: 100%; text-align: left; transform: none; }
+.pi-edits-collapse:hover { background: var(--surface-2); transform: none; }
+#pi-changes[hidden], #pi-changes-content[hidden], #pi-changes-empty[hidden] { display: none !important; }
+.pi-inspector.show-changes { overflow: hidden; }
+.pi-inspector .inspector-heading > div { min-width: 0; }
+#pi-changes { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+#pi-changes-empty { margin: 0; padding: 14px 12px; color: var(--text-muted); font-size: .8rem; line-height: 1.6; overflow-wrap: anywhere; }
+#pi-changes-content { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.pi-changes-picker { display: flex; flex-direction: column; gap: 5px; padding: 12px; font-size: .72rem; color: var(--text-muted); }
+#pi-changes-round { width: 100%; min-width: 0; max-width: 100%; padding: 7px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-1); color: var(--text-main); font: inherit; text-overflow: ellipsis; }
+#pi-changes-files { min-width: 0; }
+#pi-changes-diffs { flex: 1; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; }
+.pi-edit-record { min-width: 0; max-width: 100%; border-bottom: 1px solid var(--line); }
+.pi-edit-record > summary { padding: 12px; color: var(--text-muted); font-size: .75rem; cursor: pointer; }
+#pi-changes .pi-diff-heading { padding-top: 0; font-size: .78rem; }
+#pi-changes .pi-diff-heading > strong { display: none; }
+#pi-changes .pi-diff-code { margin: 0; padding: 8px 0; max-width: 100%; white-space: pre; overflow: auto; color: var(--text-main); font: .75rem/1.7 ui-monospace, SFMono-Regular, Consolas, monospace; tab-size: 4; }
+@media (max-width: 900px) {
+    .pi-inspector.show-changes { width: calc(100vw - 12px); max-width: calc(100vw - 12px); }
+    .pi-edit-file, .pi-edits-more > summary, .pi-edits-collapse, .pi-edit-record > summary { min-height: 44px; }
+    #pi-changes-round { font-size: 16px; }
+}

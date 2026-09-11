@@ -1,0 +1,89 @@
+# 命令、原生模板与项目文件引用
+
+输入框命令与模板能力由 `/api/pi/status.composerTools=true` 标记，入口在输入联想、加号菜单和设置中。
+
+## 输入框入口
+
+输入 `/` 搜索命令名或说明，列表可滚轮/触摸滚动，不再截断到八项。↑↓ 改变选择，Tab 填入首项或选中项，Enter 在已选择候选时只填入；没有选择候选时，Enter 保持原来的发送行为。Esc 关闭，Shift+Enter 换行，输入法组合键不会触发选择/发送。
+
+输入框只保留一个加号入口，弹出小菜单中的“添加附件”和“延迟发送”，复用既有附件选择与预约表单。菜单支持方向键、Home/End、Esc、Tab、点击外部关闭；选中动作前先关闭菜单，让原生文件选择器或预约窗口接管焦点。断线/切线程会收起菜单，预约的可用性与草稿/附件读取状态沿用原工作流。
+
+2026-09-09 修复手机菜单中“延迟发送”被挤成竖排：移除旧工具栏针对该按钮的 30px 宽度/flex 规则，菜单统一分配图标和文字空间。回归必须检查两个按钮填满菜单、标题/说明行数及菜单无纵向裁切，不只检查菜单外框是否在视口内；静态刷新生效。
+
+命令、Skill、模板调用统一通过输入框 `/` 联想；文件通过 `@文件名` 模糊搜索。不再提供命令/项目文件对话框，也不接管 Ctrl/⌘ K。模板管理收在“设置 → Skills → 提示词模板（可选）”，只负责管理；调用时在聊天框直接填写 `/名称 参数`。迟到结果仍按输入、光标、线程和请求代次丢弃，不保存第二份历史。
+
+命令来自 Web 操作、与当前 Pi 0.85 对应的内置命令映射以及原生 `get_commands` 的扩展、Skill、模板。内部导航命令不向网页公开。模板/Skill 使用原生 prompt/steer/follow_up 展开；扩展命令即使运行中也走原生 prompt 命令分派，因为 steer/follow_up 不支持扩展命令。Web 不为这些命令伪造用户消息。
+
+## 内置命令的网页行为
+
+| 命令 | 网页操作 |
+|---|---|
+| `/settings`、`/login`、`/logout`、`/scoped-models` | 打开相应设置入口；不自动删除凭据，不声称已实现所有终端设置 |
+| `/model [provider/model]` | 从当前运行时目录验证并切换；省略参数聚焦模型选择器 |
+| `/thinking [level]` | 从当前运行时思考等级验证并切换；省略参数聚焦选择器 |
+| `/name [名称]` | 通过已有命名 REST 改名；活跃 session 仍由 worker 写入 |
+| `/session` | 打开当前会话详情 |
+| `/new`、`/resume` | 新建当前项目线程或打开现有线程选择入口 |
+| `/fork`、`/clone` | 打开已有历史问题分叉或当前分支复制窗口，仍需既有确认 |
+| `/compact [要求]` | 原生 compact RPC；收到手动 compaction_start 后清除匹配的命令草稿 |
+| `/copy`、`/quit` | 复制最近回复，或通过 quit_session 退出运行实例 |
+| `/reload` | 空闲互斥区中通过本项目扩展调用公开 ctx.reload() |
+| `/hotkeys` | 显示网页实际支持的快捷键 |
+| `/btw` | 保留原侧聊行为 |
+| `/templates` | 打开设置中的 Skills/提示词模板入口；不提供独立的命令与文件面板 |
+
+`/tree` 在 sessionTree 标记启用后打开右侧历史的会话树，无参数、不调用模型或直接导航；成功打开才清除匹配命令，临时/旧后端拒绝并保留草稿。完整交互见 [HISTORY.md](HISTORY.md)。`/share` 以及上游 `/changelog` 显示未接入/仅终端支持，不能发送给模型冒充执行成功。新后端 nativeSettings 启用 `/trust` 的独立项目信任窗口和 `/scoped-models` 的折叠配置分类直达；不接受 trust 参数、不自动保存决定。`/export` 和 `/import` 是本地窗口快捷入口，分别打开当前持久线程的导出窗口和默认当前项目的导入窗口；不接受参数，不向模型发送。成功打开仅清除匹配命令，拒绝保留输入；上传附件仍按既有本地命令规则拒绝，文件应在导入窗口中选择。受保护 REST 的格式范围见 [SESSION_TRANSFER.md](SESSION_TRANSFER.md)。未识别的单个斜杠命令同样保留草稿并提示；以 `/srv/path` 等绝对路径开头的普通正文不属于该命令模式。
+
+普通命令在收到接受确认后清除仍匹配的文字和附件，期间新输入的内容保留；本地操作失败、明确拒绝、发送超时/断线均保留尚未确认的原稿。压缩以原生开始事件为接受证据，不等摘要结束才清空。模型执行或扩展处理失败不等于命令未被接受：原生错误继续显示，已接受的命令不自动重放。
+
+## 模板管理
+
+Prompt Templates 是 Pi 原生的、按需调用的任务提示词。AGENTS.md 提供项目约定，README 主要说明项目；模板用于节省反复输入一次性任务的文字，不自动加入每轮对话，也不替代项目规则。网页管理界面由本项目提供，完全可以不配置模板。
+
+- 全局目录：`getAgentDir()/prompts/*.md`；默认 `~/.pi/agent/prompts/`。
+- 项目目录：当前规范 cwd 下 `.pi/prompts/*.md`。创建文件不写 trust，也不会自动批准项目。项目未被 Pi 信任时，模板可以管理但不会被描述为已加载。
+- 使用原生 Markdown、frontmatter、`$1`/`$2`、`$@`、`${1:-默认值}` 等语法。编辑器保留完整 Markdown 和未知 frontmatter，参数由 Pi 展开，Web 不复制展开实现。
+- 命令名为 1–80 个 ASCII 字母/数字/短横线/下划线，首字符必须为字母或数字，不能与 Web/内置命令重名。其他已有文件名仍可通过 Pi 原生目录使用，管理列表提示跳过。
+- 单文件最大 64 KiB，必须是普通 UTF-8 文件；目录和文件符号链接不能通过管理接口读写。每个范围最多展示 500 项并提示截断。
+- 保存/删除携带内容 SHA-256 修订；创建明确传 null。修订变化返回 409，保留编辑表单，不自动覆盖。
+- 保存使用同目录 0600 临时文件和 rename。覆盖/删除前在 `prompts/.web-backups/` 保留 0600 旧版本；原生非递归发现不会加载备份。没有自动清理用户备份。
+- 常用任务示例只填入编辑器，不自动创建私人模板。
+- 管理列表显示当前实际加载状态，不提供调用参数对话框；参数直接写在聊天输入框命令后。Packages/显式配置的其他模板仍可通过 `/` 联想使用，管理接口不修改任意路径。
+- 原生位置参数含空格时用引号，例如 `/explain-file "src/button click.js"`。原生 RPC 不返回 argument-hint，受管模板从目录 metadata 补齐后显示于联想项；参数展开与默认值继续由 Pi 处理。
+- 模板窗口关闭后焦点回到设置入口；Esc 只关闭最上层原生窗口，不连带关闭设置。项目或会话改变后，迟到编辑结果不覆盖新窗口。
+
+## 原生重载
+
+`reload_resources` 仅允许已认证的主连接。Supervisor 在 await 前预占 session operation，确认原生 streaming/compacting/queue 与待确认请求均为空；已有侧聊快照读取尚未结束时同样拒绝。侧连接不能调用此命令。
+
+通过已加载的本项目内部扩展命令传私有 token 调公开 `ctx.reload()`，不修改 Pi 包，不重开第二个持久 worker。重新加载扩展实例拥有新的描述标识；gateway 在私有 get_commands 中验证实例确已替换后广播去除内部命令的 `gateway_commands`。不会在 await reload 后调用旧 ctx/pi。旧实例不支持此协议时明确拒绝。
+
+重载可重新加载已配置扩展、Skill、模板、主题及项目指令，不自动发送用户任务。保存模板不会触发重载。超时后不会重试，会销毁仍可能操作资源的对应 worker 并要求重连，不把超时当成取消成功。当前 session JSONL、工作目录及其他会话保留；侧聊原背景继续冻结。
+
+## 项目文件
+
+`@query` 在光标处补全，普通 email 中的 @ 不触发。选中项插入 `@./relative/path`，含空格的路径加引号；不读取文件正文、不上传服务器原件、不生成附件副本。Pi 后续按任务通过自己的工具读取文件。手机/电脑的文件上传从加号的“添加附件”进入，保留既有附件校验。
+
+服务器通过 store.resolveProject 做 realpath/PI_PROJECT_ROOTS 检查，以无 shell 的 `rg --files --hidden --null` 搜索当前 cwd；尊重 Git 忽略规则，排除常见依赖、Git、备份、本项目生成媒体目录，以及 .env、auth.json、models-store.json 和常见私钥文件名。结果再次检查真实路径仍在当前项目内。此过滤不是凭据检测器或工具沙箱。
+
+最多两项搜索，单次 1.8 秒、8 MiB 输出、100000 个候选，返回最多 50 个路径；超限明确返回 truncated。只返回路径，不返回文件内容。ripgrep 不可用时明确报错，不回落到 shell 拼接。查询最大 200 字符，客户端 debounce 并检查输入、光标、线程与请求代次，迟到文件结果丢弃。
+
+## 接口
+
+所有 REST 复用 `/api/pi` 的 token/Origin 中间件，响应 no-store。
+
+| 方法 | 路径 | 输入与结果 |
+|---|---|---|
+| GET | `/composer/catalog?cwd=...` | `{cwd,builtins,templates,warnings}`，不启动 runtime |
+| GET | `/composer/template?cwd=...&scope=user\|project&name=...` | `{name,scope,content,revision}` |
+| PUT | `/composer/template` | `{cwd,scope,name,content,expectedRevision}`；返回 ok/requiresReload/revision |
+| DELETE | `/composer/template` | `{cwd,scope,name,expectedRevision}`；旧版本先备份 |
+| GET | `/composer/files?cwd=...&q=...` | `{cwd,files:[{path}],truncated}` |
+
+主 WS `reload_resources` 无额外 payload；成功 data 为 `{commands:[...]}`，向同一 worker 所有订阅者广播 `{type:'gateway_commands',commands:[...]}`。不扩展裸 RPC 白名单，不向侧聊开放新权限。
+
+## 验证
+
+`test/pi-composer.test.js` 用临时 Agent/项目、原生 Pi RPC 与 loopback SSE 验证模板目录/修订/备份、路径及凭据排除、权限中间件、真实原生重载和参数展开、运行中拒绝、原生队列展开，以及不写入额外历史和不重复开 worker。
+
+`test/browser/pi-composer-tools.cjs` 用受控 REST/WS 验证 1440/393/320px 和三主题的加号菜单/焦点、上传附件/打开预约、滚轮/键盘/IME 联想、设置中的模板创建/修订冲突/重载、原生参数文字投递、compact 开始清稿、新草稿保护、@file 输入/切线程竞争和无横向溢出/pageerror。原附件/滚动/工作流脚本使用新的加号入口，业务断言保留。测试不向生产会话发送消息、不调用真实付费模型。

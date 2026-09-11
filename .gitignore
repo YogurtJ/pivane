@@ -1,0 +1,24 @@
+.env
+.env.*
+!.env.example
+node_modules/
+backups/
+public/legacy-workspace/
+public/downloads/
+public/images/
+public/videos/
+public/audio/
+generation_history.json
+video_history.json
+tts_history.json
+prompts.json
+pi5-access.json*
+*.log
+*.bak*
+*.tmp
+.pi-web-*/
+.pi/
+dist/
+# Private maintainer context; public development contracts remain versioned.
+/AGENTS.local.md
+/docs/local/
