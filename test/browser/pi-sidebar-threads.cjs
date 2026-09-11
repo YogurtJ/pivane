@@ -21,7 +21,7 @@ const sessions = Array.from({ length: 9 }, (_, index) => session(9 - index));
 const activeSession = sessions[sessions.length - 1];
 
 async function run(browser, viewport) {
-    const context = await browser.newContext({ viewport, hasTouch: viewport.width < 900, isMobile: viewport.width < 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, hasTouch: viewport.width < 900, isMobile: viewport.width < 900 });
     const page = await context.newPage();
     const errors = [];
     const writes = [];

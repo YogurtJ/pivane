@@ -5,7 +5,7 @@ const { sessionTree, checkNavigation } = require('../../server/pi-session-tree')
 const { promptFromEntry } = require('../../server/pi-message-payload');
 const base = process.env.PI_TREE_TEST_URL || 'http://127.0.0.1:3134', cwd = '/srv/tree-fixture';
 async function run(browser, viewport, SessionManager) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
     const page = await context.newPage(), errors = [], commands = [], writes = [];
     page.on('pageerror', e => errors.push(e.message));
     const sm = SessionManager.inMemory(cwd), other = SessionManager.inMemory(cwd);

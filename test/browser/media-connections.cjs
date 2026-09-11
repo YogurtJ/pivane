@@ -5,7 +5,7 @@ const { renderTemplate } = require('../../server/media-http-protocol');
 const baseUrl = process.env.PI_CONNECTIONS_TEST_URL || 'http://127.0.0.1:3104';
 const schema = connectionSchema(), copy = value => JSON.parse(JSON.stringify(value));
 async function run(browser, viewport, theme) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
     const page = await context.newPage(); page.setDefaultTimeout(12000);
     const errors = [], writes = [], stored = new Map(); let providers = [], revision = 0, counter = 0, holdPlan, resolveStarted, rejectWrite = false, unsupported = false;
     const snapshot = () => ({ ...copy(schema), revision: String(revision), providers: providers.map(provider => ({ ...copy(provider), keyConfigured: stored.has(provider.id) && stored.get(provider.id).origin === new URL(provider.baseUrl).origin, keyNeedsRebind: stored.has(provider.id) && stored.get(provider.id).origin !== new URL(provider.baseUrl).origin })) });

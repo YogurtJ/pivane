@@ -1,4 +1,5 @@
 (() => {
+    const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
     const $ = id => document.getElementById(id);
     const textOf = message => typeof message.content === 'string' ? message.content : (Array.isArray(message.content) ? message.content.filter(b => b.type === 'text').map(b => b.text).join('\n') : '');
 
@@ -8,7 +9,7 @@
         let segment = null;
         messages.forEach((message, index) => {
             if (message.role === 'user') {
-                segment = { timestamp: message.timestamp, label: textOf(message).trim().slice(0, 100) || '附件问题', endIndex: index, calls: new Map(), results: new Map() };
+                segment = { timestamp: message.timestamp, label: textOf(message).trim().slice(0, 100) || translateUi("附件问题"), endIndex: index, calls: new Map(), results: new Map() };
                 segments.push(segment);
             } else if (['compactionSummary', 'branchSummary'].includes(message.role)) {
                 segment = null; // Never attach orphaned context to another question.
@@ -122,16 +123,16 @@
             const added = file.edits.reduce((sum, edit) => sum + (edit.counts?.added || 0), 0);
             const removed = file.edits.reduce((sum, edit) => sum + (edit.counts?.removed || 0), 0);
             if (file.edits.length) {
-                meta.append(`${file.edits.length} 次 · `);
+                meta.append(translateUi("{0} 次 · ", file.edits.length));
                 if (known) {
                     const plus = document.createElement('span'); plus.className = 'pi-edit-added'; plus.textContent = `+${added}`;
                     const minus = document.createElement('span'); minus.className = 'pi-edit-removed'; minus.textContent = `−${removed}`;
                     meta.append(plus, ' ', minus);
-                } else meta.append('行数未知');
+                } else meta.append(translateUi("行数未知"));
             }
-            if (file.writes.length) meta.append(`${file.edits.length ? ' · ' : ''}写入 ${file.writes.length} 次`);
-            meta.title = '编辑行数为累计；写入可能是新建，也可能覆盖已有文件';
-            button.setAttribute('aria-label', `查看 ${file.path} 的文件记录`);
+            if (file.writes.length) meta.append(translateUi("{0}写入 {1} 次", file.edits.length ? ' · ' : '', file.writes.length));
+            meta.title = translateUi("编辑行数为累计；写入可能是新建，也可能覆盖已有文件");
+            button.setAttribute('aria-label', translateUi("查看 {0} 的文件记录", file.path));
             if (selected) button.setAttribute('aria-current', 'true');
             button.append(name, meta); button.addEventListener('click', choose);
             return button;
@@ -139,10 +140,10 @@
         card(round) {
             const card = document.createElement('section'); card.className = 'pi-turn-edits';
             card.dataset.editRound = round.key; card.dataset.messageKey = round.key; card.dataset.readingKey = round.key;
-            card.setAttribute('aria-label', '本轮文件');
+            card.setAttribute('aria-label', translateUi("本轮文件"));
             const heading = document.createElement('div'); heading.className = 'pi-turn-edits-heading';
-            const title = document.createElement('strong'); title.textContent = `本轮文件 · ${round.files.length} 个文件`;
-            const note = document.createElement('small'); note.textContent = '成功编辑 / 写入 · 编辑行数为累计';
+            const title = document.createElement('strong'); title.textContent = translateUi("本轮文件 · {0} 个文件", round.files.length);
+            const note = document.createElement('small'); note.textContent = translateUi("成功编辑 / 写入 · 编辑行数为累计");
             heading.append(title, note); card.append(heading);
             const add = (host, file) => host.append(this.fileButton(file, () => {
                 this.external = null; this.returnLink = null;
@@ -153,10 +154,10 @@
             round.files.slice(0, 3).forEach(file => add(card, file));
             if (round.files.length > 3) {
                 const more = document.createElement('details'); more.className = 'pi-edits-more'; more.dataset.detailKey = `${round.key}:more`;
-                const summary = document.createElement('summary'); summary.textContent = `其余 ${round.files.length - 3} 个文件`; more.append(summary);
+                const summary = document.createElement('summary'); summary.textContent = translateUi("其余 {0} 个文件", round.files.length - 3); more.append(summary);
                 round.files.slice(3).forEach(file => add(more, file));
                 const collapse = document.createElement('button'); collapse.type = 'button'; collapse.className = 'pi-edits-collapse';
-                collapse.textContent = '▴ 收起文件'; collapse.setAttribute('aria-expanded', 'true');
+                collapse.textContent = translateUi("▴ 收起文件"); collapse.setAttribute('aria-expanded', 'true');
                 collapse.addEventListener('click', () => {
                     more.open = false; summary.focus({ preventScroll: true });
                     summary.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -188,7 +189,7 @@
             picker.closest('label').hidden = Boolean(this.external);
             $('pi-changes-files').hidden = Boolean(this.external);
             $('pi-changes-file-list').hidden = Boolean(this.external);
-            $('pi-changes-file-list').querySelector('summary').textContent = `切换文件 · ${round?.files.length || 0}`;
+            $('pi-changes-file-list').querySelector('summary').textContent = translateUi("切换文件 · {0}", round?.files.length || 0);
             if (this.external) {
                 $('pi-changes-diffs').replaceChildren(); this.renderedFile = null;
                 this.viewer.setFile({ ...this.external, identity: `link:${this.external.path}:${this.external.line}`, hasDiff: false });
@@ -197,7 +198,7 @@
             if (!round) {
                 this.closePickers(); this.viewer.clear();
                 $('pi-changes-files').replaceChildren(); $('pi-changes-diffs').replaceChildren(); this.renderedFile = null;
-                $('pi-changes-empty').textContent = this.rounds.size ? '点击回复下方的文件查看记录，或重新点击“文件”查看最近一轮。' : '暂无文件记录。成功编辑、写入的文件会在本轮结束后显示；也可点击回复中的文件链接。';
+                $('pi-changes-empty').textContent = this.rounds.size ? translateUi("点击回复下方的文件查看记录，或重新点击“文件”查看最近一轮。") : translateUi("暂无文件记录。成功编辑、写入的文件会在本轮结束后显示；也可点击回复中的文件链接。");
                 return;
             }
             picker.value = round.key;
@@ -218,7 +219,7 @@
             const diffs = $('pi-changes-diffs'); diffs.replaceChildren();
             for (const [index, edit] of file.edits.entries()) {
                 const details = document.createElement('details'); details.className = 'pi-edit-record';
-                const summary = document.createElement('summary'); summary.textContent = `第 ${index + 1} 次编辑${edit.counts ? '' : ' · 原始差异'}`;
+                const summary = document.createElement('summary'); summary.textContent = translateUi("第 {0} 次编辑{1}", index + 1, edit.counts ? '' : translateUi(" · 原始差异"));
                 details.append(summary);
                 let rendered = false;
                 const load = () => {

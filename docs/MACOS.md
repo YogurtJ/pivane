@@ -14,14 +14,14 @@
 先将发布包和同名.sha256下载到Downloads，并核对下载来源。以下为新实例示例，BASE必须尚不存在：
 
 ```sh
-ARCHIVE="$HOME/Downloads/pivane-1.0.0-rc.1.tar.gz"
+ARCHIVE="$HOME/Downloads/pivane-1.0.0-rc.2.tar.gz"
 (cd "$(dirname "$ARCHIVE")" && shasum -a 256 -c "$(basename "$ARCHIVE").sha256")
 BASE="$HOME/pivane"
 test ! -e "$BASE" || { echo "此目录已存在，请按更新流程操作或选择新的BASE"; exit 1; }
 umask 077
-mkdir -p "$BASE/releases/1.0.0-rc.1" "$BASE/data/agent" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
-tar -xzf "$ARCHIVE" -C "$BASE/releases/1.0.0-rc.1" --strip-components=1
-cd "$BASE/releases/1.0.0-rc.1"
+mkdir -p "$BASE/releases/1.0.0-rc.2" "$BASE/data/agent" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
+tar -xzf "$ARCHIVE" -C "$BASE/releases/1.0.0-rc.2" --strip-components=1
+cd "$BASE/releases/1.0.0-rc.2"
 node --version   # 验收基线为22.23.2
 rg --version
 npm ci

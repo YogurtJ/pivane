@@ -3749,6 +3749,14 @@ body.is-resizing * {
     align-items: end;
 }
 
+.workspace-language-card { align-items: center; }
+.workspace-language-card select {
+    box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; min-height: 44px;
+    padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+    color: var(--text-main); background: var(--surface-2); font: inherit; font-size: 16px;
+}
+.workspace-language-card p { grid-column: 1 / -1; margin: 0; color: var(--text-muted); font-size: 0.8rem; line-height: 1.6; overflow-wrap: anywhere; }
+
 .settings-feature-title {
     min-width: 0;
     display: flex;
@@ -4154,10 +4162,11 @@ body.is-resizing * {
         padding: 6px 8px;
         border-right: 0;
         border-bottom: 1px solid var(--line);
-        flex-direction: row;
-        overflow-x: auto;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        overflow-x: hidden;
     }
-    .workspace-settings-nav button { min-width: 120px; justify-content: center; }
+    .workspace-settings-nav button { min-width: 0; justify-content: center; overflow-wrap: anywhere; }
     .workspace-settings-nav button.active { box-shadow: inset 0 -2px 0 var(--green); }
     .workspace-settings-panel { padding: 16px; }
     .settings-row { align-items: start; }

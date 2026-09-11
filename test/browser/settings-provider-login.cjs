@@ -3,7 +3,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const baseUrl = process.env.PI_SETTINGS_TEST_URL || 'http://127.0.0.1:3110';
 const levels = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 async function run(browser, viewport, theme) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
     const page = await context.newPage(); const errors = [], writes = [];
     const catalog = { providerLogin: true, modelThinking: true, revision: 'fixture-revision', thinkingMapKeys: levels,
         preferences: { defaultProvider: 'openai', defaultModel: 'org/model:free', defaultThinkingLevel: 'medium', modelThinkingLevels: {}, mediaAgent: {} },

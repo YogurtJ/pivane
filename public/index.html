@@ -37,7 +37,7 @@
         <!-- Sidebar -->
         <aside id="workspace-sidebar" class="sidebar">
             <div class="logo">
-                <button id="workspace-sidebar-toggle" class="sidebar-toggle" type="button" title="折叠导航" aria-label="折叠导航" aria-expanded="true">
+                <button id="workspace-sidebar-toggle" class="sidebar-toggle" type="button" title="折叠导航" aria-label="折叠导航" aria-expanded="true" data-i18n-title="s1315" data-i18n-aria-label="s1315">
                     <img class="workspace-logo" src="brand/logo-64.png" width="28" height="28" alt="">
                 </button>
                 <div class="logo-brand">
@@ -45,37 +45,37 @@
                 </div>
             </div>
 
-            <nav class="nav-menu" aria-label="工作区">
+            <nav class="nav-menu" aria-label="工作区" data-i18n-aria-label="s1317">
                 <button class="nav-btn active" data-tab="chat" title="Pi Agent">
                     <img class="workspace-nav-logo" src="brand/logo-64.png" width="20" height="20" alt=""><span>Pi Agent</span>
                 </button>
-                <button class="nav-btn" data-tab="media" title="多媒体实验室">
-                    <i class="fa-solid fa-flask"></i><span>多媒体实验室</span>
+                <button class="nav-btn" data-tab="media" title="多媒体实验室" data-i18n-title="s1318">
+                    <i class="fa-solid fa-flask"></i><span><!--i18n:s1318-->多媒体实验室</span>
                 </button>
             </nav>
 
             <div class="sidebar-footer">
                 <div class="theme-picker">
-                    <button id="workspace-theme-toggle" class="sidebar-tool-button" type="button" title="选择主题" aria-label="选择主题" aria-haspopup="menu" aria-expanded="false">
-                        <i class="fa-solid fa-palette"></i><span>主题</span>
+                    <button id="workspace-theme-toggle" class="sidebar-tool-button" type="button" title="选择主题" aria-label="选择主题" aria-haspopup="menu" aria-expanded="false" data-i18n-title="s1319" data-i18n-aria-label="s1319">
+                        <i class="fa-solid fa-palette"></i><span><!--i18n:s1320-->主题</span>
                     </button>
-                    <div id="workspace-theme-menu" class="theme-menu hidden" role="menu" aria-label="主题颜色">
+                    <div id="workspace-theme-menu" class="theme-menu hidden" role="menu" aria-label="主题颜色" data-i18n-aria-label="s1321">
                         <button type="button" data-theme="system" role="menuitemradio" aria-checked="true">
-                            <span class="theme-swatch system"></span><span><strong>跟随系统</strong><small>自动切换明暗</small></span><i class="fa-solid fa-check"></i>
+                            <span class="theme-swatch system"></span><span><strong><!--i18n:s1322-->跟随系统</strong><small><!--i18n:s1323-->自动切换明暗</small></span><i class="fa-solid fa-check"></i>
                         </button>
                         <button type="button" data-theme="daylight" role="menuitemradio" aria-checked="false">
-                            <span class="theme-swatch daylight"></span><span><strong>晴空</strong><small>清爽明亮</small></span><i class="fa-solid fa-check"></i>
+                            <span class="theme-swatch daylight"></span><span><strong><!--i18n:s1324-->晴空</strong><small><!--i18n:s1325-->清爽明亮</small></span><i class="fa-solid fa-check"></i>
                         </button>
                         <button type="button" data-theme="mint" role="menuitemradio" aria-checked="false">
-                            <span class="theme-swatch mint"></span><span><strong>薄荷</strong><small>柔和自然</small></span><i class="fa-solid fa-check"></i>
+                            <span class="theme-swatch mint"></span><span><strong><!--i18n:s1326-->薄荷</strong><small><!--i18n:s1327-->柔和自然</small></span><i class="fa-solid fa-check"></i>
                         </button>
                         <button type="button" data-theme="dark" role="menuitemradio" aria-checked="false">
-                            <span class="theme-swatch dark"></span><span><strong>夜间</strong><small>低光环境</small></span><i class="fa-solid fa-check"></i>
+                            <span class="theme-swatch dark"></span><span><strong><!--i18n:s1328-->夜间</strong><small><!--i18n:s1329-->低光环境</small></span><i class="fa-solid fa-check"></i>
                         </button>
                     </div>
                 </div>
-                <button id="workspace-settings-toggle" class="sidebar-tool-button" type="button" title="工作台设置" aria-label="工作台设置">
-                    <i class="fa-solid fa-gear"></i><span>设置</span>
+                <button id="workspace-settings-toggle" class="sidebar-tool-button" type="button" title="工作台设置" aria-label="工作台设置" data-i18n-title="s1330" data-i18n-aria-label="s1330">
+                    <i class="fa-solid fa-gear"></i><span><!--i18n:s1331-->设置</span>
                 </button>
                 <div class="status-panel">
                     <h4><i class="fa-solid fa-server"></i><span>WORKSPACE</span></h4>
@@ -88,40 +88,40 @@
         <main class="content-area tab-content active pi-agent-page" id="chat-tab">
             <header class="pi-command-bar">
                 <div class="pi-command-left">
-                    <button id="pi-toggle-sessions" class="icon-btn pi-mobile-only" type="button" title="会话列表" aria-label="会话列表">
+                    <button id="pi-toggle-sessions" class="icon-btn pi-mobile-only" type="button" title="会话列表" aria-label="会话列表" data-i18n-title="s1332" data-i18n-aria-label="s1332">
                         <i class="fa-solid fa-bars"></i>
                     </button>
-                    <button id="pi-project-button" class="pi-project-button" type="button" title="切换项目目录">
+                    <button id="pi-project-button" class="pi-project-button" type="button" title="切换项目目录" data-i18n-title="s1333">
                         <span class="pi-project-mark"><i class="fa-solid fa-code-branch"></i></span>
                         <span class="pi-project-copy">
-                            <strong id="pi-project-name">选择项目</strong>
-                            <span id="pi-project-path">未连接</span>
+                            <strong id="pi-project-name"><!--i18n:s475-->选择项目</strong>
+                            <span id="pi-project-path"><!--i18n:s357-->未连接</span>
                         </span>
                         <i class="fa-solid fa-chevron-down"></i>
                     </button>
                 </div>
                 <div class="pi-runtime-controls">
                     <div class="pi-control-field pi-model-field">
-                        <label for="pi-model-select">模型</label>
+                        <label for="pi-model-select"><!--i18n:s1145-->模型</label>
                         <div class="pi-model-picker-row">
-                            <select id="pi-model-select" disabled><option>等待会话</option></select>
+                            <select id="pi-model-select" disabled><option><!--i18n:s356-->等待会话</option></select>
                         </div>
                     </div>
                     <label class="pi-control-field pi-thinking-field" for="pi-thinking-select">
-                        <span>思考</span>
+                        <span><!--i18n:s1334-->思考</span>
                         <select id="pi-thinking-select" disabled>
-                            <option value="off">关闭</option>
+                            <option value="off"><!--i18n:s1877-->不启用</option>
                         </select>
                     </label>
-                    <button id="pi-context-button" class="pi-context-button" type="button" title="会话统计">
+                    <button id="pi-context-button" class="pi-context-button" type="button" title="会话统计" data-i18n-title="s332">
                         <span class="pi-context-copy">
                             <strong id="pi-context-percent">--</strong>
-                            <small id="pi-context-tokens">上下文</small>
+                            <small id="pi-context-tokens"><!--i18n:s333-->上下文</small>
                         </span>
                         <span class="pi-context-track"><span id="pi-context-fill"></span></span>
                     </button>
-                    <button id="pi-toggle-side-chat" class="icon-btn" type="button" title="侧聊（BTW）" aria-label="侧聊（BTW）" hidden disabled><i class="fa-regular fa-comment-dots"></i></button>
-                    <button id="pi-toggle-inspector" class="icon-btn" type="button" title="会话详情" aria-label="会话详情">
+                    <button id="pi-toggle-side-chat" class="icon-btn" type="button" title="侧聊（BTW）" aria-label="侧聊（BTW）" hidden disabled data-i18n-title="s1335" data-i18n-aria-label="s1335"><i class="fa-regular fa-comment-dots"></i></button>
+                    <button id="pi-toggle-inspector" class="icon-btn" type="button" title="会话详情" aria-label="会话详情" data-i18n-title="s1336" data-i18n-aria-label="s1336">
                         <i class="fa-solid fa-circle-info"></i>
                     </button>
                 </div>
@@ -130,69 +130,69 @@
             <div class="pi-workbench">
                 <aside id="pi-session-pane" class="pi-session-pane">
                     <div class="pi-pane-heading pi-session-heading">
-                        <h3 id="pi-session-heading-title">项目与线程</h3>
+                        <h3 id="pi-session-heading-title"><!--i18n:s1337-->项目与线程</h3>
                         <label id="pi-session-search-field" class="pi-search-field" hidden>
                             <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                            <input id="pi-session-search" type="search" placeholder="搜索项目或线程" aria-label="搜索项目或线程" autocomplete="off">
+                            <input id="pi-session-search" type="search" placeholder="搜索项目或线程" aria-label="搜索项目或线程" autocomplete="off" data-i18n-placeholder="s413" data-i18n-aria-label="s413">
                         </label>
                         <div class="pi-pane-actions">
-                            <button id="pi-session-search-toggle" class="icon-btn subtle" type="button" title="搜索项目或线程" aria-label="搜索项目或线程" aria-expanded="false" aria-controls="pi-session-search-field">
+                            <button id="pi-session-search-toggle" class="icon-btn subtle" type="button" title="搜索项目或线程" aria-label="搜索项目或线程" aria-expanded="false" aria-controls="pi-session-search-field" data-i18n-title="s413" data-i18n-aria-label="s413">
                                 <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                             </button>
-                            <button id="pi-temp-session" class="icon-btn subtle" type="button" title="临时会话（不保存）" aria-label="临时会话">
+                            <button id="pi-temp-session" class="icon-btn subtle" type="button" title="临时会话（不保存）" aria-label="临时会话" data-i18n-title="s1338" data-i18n-aria-label="s412">
                                 <i class="fa-solid fa-bolt"></i>
                             </button>
-                            <button id="pi-new-session" class="icon-btn accent" type="button" title="新建会话" aria-label="新建会话">
+                            <button id="pi-new-session" class="icon-btn accent" type="button" title="新建会话" aria-label="新建会话" data-i18n-title="s1339" data-i18n-aria-label="s1339">
                                 <i class="fa-solid fa-plus"></i>
                             </button>
                         </div>
                     </div>
-                    <div id="pi-session-filters" class="pi-session-filters" role="group" aria-label="线程状态筛选">
-                        <button type="button" data-filter="all" aria-pressed="true">全部</button>
-                        <button type="button" data-filter="work" aria-pressed="false">工作中</button>
+                    <div id="pi-session-filters" class="pi-session-filters" role="group" aria-label="线程状态筛选" data-i18n-aria-label="s1340">
+                        <button type="button" data-filter="all" aria-pressed="true"><!--i18n:s1341-->全部</button>
+                        <button type="button" data-filter="work" aria-pressed="false"><!--i18n:s1342-->工作中</button>
                     </div>
                     <div id="pi-session-list" class="pi-session-list" aria-live="polite">
-                        <div class="pi-list-state"><span class="pi-spinner"></span>正在读取</div>
+                        <div class="pi-list-state"><span class="pi-spinner"></span><!--i18n:s126-->正在读取</div>
                     </div>
                     <div class="pi-pane-footer">
-                        <span id="pi-session-count">0 个项目</span>
-                        <button id="pi-search-conversations" class="icon-btn subtle" type="button" title="跨线程搜索对话正文" aria-label="跨线程搜索对话正文" hidden><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></button>
-                        <button id="pi-refresh-sessions" class="icon-btn subtle" type="button" title="刷新会话" aria-label="刷新会话">
+                        <span id="pi-session-count"><!--i18n:s1343-->0 个项目</span>
+                        <button id="pi-search-conversations" class="icon-btn subtle" type="button" title="跨线程搜索对话正文" aria-label="跨线程搜索对话正文" hidden data-i18n-title="s1344" data-i18n-aria-label="s1344"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></button>
+                        <button id="pi-refresh-sessions" class="icon-btn subtle" type="button" title="刷新会话" aria-label="刷新会话" data-i18n-title="s1345" data-i18n-aria-label="s1345">
                             <i class="fa-solid fa-rotate"></i>
                         </button>
                     </div>
                 </aside>
 
-                <div class="split-handle" data-split-handle data-split-key="agent-sessions" data-split-target="#pi-session-pane" data-default="278" data-min="232" data-max="440" role="separator" tabindex="0" aria-label="调整项目线程栏宽度" aria-orientation="vertical"></div>
+                <div class="split-handle" data-split-handle data-split-key="agent-sessions" data-split-target="#pi-session-pane" data-default="278" data-min="232" data-max="440" role="separator" tabindex="0" aria-label="调整项目线程栏宽度" aria-orientation="vertical" data-i18n-aria-label="s1346"></div>
 
                 <section class="pi-transcript-shell">
                     <div id="pi-connection-banner" class="pi-connection-banner">
                         <span class="pi-status-dot"></span>
-                        <span id="pi-connection-text">正在连接 Pi Agent</span>
-                        <button id="pi-current-thread-menu" type="button" title="当前线程操作" aria-label="当前线程操作" aria-haspopup="menu" aria-expanded="false" disabled><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>
-                        <div id="pi-transcript-modes" class="pi-transcript-modes" role="group" aria-label="消息视图">
-                            <button type="button" data-transcript-mode="reading" aria-pressed="true" aria-controls="pi-transcript-content" title="默认正文视图：连续工具调用和思考合并折叠，点击执行记录可展开">正文</button>
-                            <button type="button" data-transcript-mode="full" aria-pressed="false" aria-controls="pi-transcript-content" title="逐条显示工具调用和思考；切回正文可合并折叠">完整记录</button>
+                        <span id="pi-connection-text"><!--i18n:s477-->正在连接 Pi Agent</span>
+                        <button id="pi-current-thread-menu" type="button" title="当前线程操作" aria-label="当前线程操作" aria-haspopup="menu" aria-expanded="false" disabled data-i18n-title="s1347" data-i18n-aria-label="s1347"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>
+                        <div id="pi-transcript-modes" class="pi-transcript-modes" role="group" aria-label="消息视图" data-i18n-aria-label="s1348">
+                            <button type="button" data-transcript-mode="reading" aria-pressed="true" aria-controls="pi-transcript-content" title="默认正文视图：连续工具调用和思考合并折叠，点击执行记录可展开" data-i18n-title="s1349"><!--i18n:s1350-->正文</button>
+                            <button type="button" data-transcript-mode="full" aria-pressed="false" aria-controls="pi-transcript-content" title="逐条显示工具调用和思考；切回正文可合并折叠" data-i18n-title="s1351"><!--i18n:s1352-->完整记录</button>
                         </div>
                     </div>
                     <div id="pi-pending-ui-banner" class="pi-pending-ui-banner hidden">
                         <span><i class="fa-solid fa-hand" aria-hidden="true"></i> <span id="pi-pending-ui-count"></span></span>
-                        <button id="pi-review-pending-ui" type="button">处理确认</button>
+                        <button id="pi-review-pending-ui" type="button"><!--i18n:s1353-->处理确认</button>
                     </div>
                     <div class="pi-transcript-viewport">
-                        <div id="pi-transcript" class="pi-transcript" tabindex="0" role="region" aria-label="会话消息">
+                        <div id="pi-transcript" class="pi-transcript" tabindex="0" role="region" aria-label="会话消息" data-i18n-aria-label="s1354">
                             <div id="pi-transcript-content" class="pi-transcript-content" aria-live="polite">
                                 <div class="pi-empty-state">
                                     <div class="pi-empty-mark">π</div>
                                     <h2>Pi Coding Agent</h2>
-                                    <p>选择项目会话后开始工作</p>
+                                    <p><!--i18n:s359-->选择项目会话后开始工作</p>
                                 </div>
                             </div>
                         </div>
-                        <div id="pi-transcript-track" class="pi-transcript-track inactive" role="scrollbar" tabindex="-1" aria-label="消息滚动位置" aria-controls="pi-transcript" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+                        <div id="pi-transcript-track" class="pi-transcript-track inactive" role="scrollbar" tabindex="-1" aria-label="消息滚动位置" aria-controls="pi-transcript" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" data-i18n-aria-label="s1355">
                             <div id="pi-transcript-thumb" class="pi-transcript-thumb"></div>
                         </div>
-                        <button id="pi-jump-latest" class="pi-jump-latest" type="button" title="回到最新消息" aria-label="回到最新消息" aria-controls="pi-transcript" hidden>
+                        <button id="pi-jump-latest" class="pi-jump-latest" type="button" title="回到最新消息" aria-label="回到最新消息" aria-controls="pi-transcript" hidden data-i18n-title="s1356" data-i18n-aria-label="s1356">
                             <i class="fa-solid fa-arrow-down" aria-hidden="true"></i>
                         </button>
                     </div>
@@ -202,20 +202,20 @@
                         <div id="pi-model-guidance" class="pi-model-guidance" role="status" hidden>
                             <span id="pi-model-guidance-text"></span>
                             <div class="pi-model-guidance-actions">
-                                <button id="pi-model-refresh" type="button" title="重新读取当前会话的模型目录" disabled>刷新模型目录</button>
-                                <button id="pi-model-choose" type="button">选择模型</button>
-                                <button id="pi-model-setup" type="button">供应商与模型设置</button>
+                                <button id="pi-model-refresh" type="button" title="重新读取当前会话的模型目录" disabled data-i18n-title="s1357"><!--i18n:s1358-->刷新模型目录</button>
+                                <button id="pi-model-choose" type="button"><!--i18n:s1359-->选择模型</button>
+                                <button id="pi-model-setup" type="button"><!--i18n:s1360-->供应商与模型设置</button>
                             </div>
                         </div>
                         <div id="pi-reply-tts-bar" class="pi-reply-tts-bar" hidden>
                             <span id="pi-reply-tts-bar-state" role="status" aria-live="polite"></span>
                             <div class="pi-reply-tts-bar-actions">
-                                <button id="pi-reply-tts-retry" type="button" hidden>重新生成</button>
-                                <a id="pi-reply-tts-download" download hidden>下载</a>
-                                <button id="pi-reply-tts-bar-settings" type="button" aria-label="朗读设置">设置</button>
-                                <button id="pi-reply-tts-bar-close" type="button" aria-label="收起朗读播放器">×</button>
+                                <button id="pi-reply-tts-retry" type="button" hidden><!--i18n:s1361-->重新生成</button>
+                                <a id="pi-reply-tts-download" download hidden><!--i18n:s162-->下载</a>
+                                <button id="pi-reply-tts-bar-settings" type="button" aria-label="朗读设置" data-i18n-aria-label="s1362"><!--i18n:s1331-->设置</button>
+                                <button id="pi-reply-tts-bar-close" type="button" aria-label="收起朗读播放器" data-i18n-aria-label="s1363">×</button>
                             </div>
-                            <audio id="pi-reply-tts-audio" controls preload="metadata" aria-label="回复朗读播放器" hidden></audio>
+                            <audio id="pi-reply-tts-audio" controls preload="metadata" aria-label="回复朗读播放器" hidden data-i18n-aria-label="s1364"></audio>
                         </div>
                         <div id="pi-attachments" class="pi-attachments hidden"></div>
                         <p id="pi-shell-hint" hidden></p>
@@ -224,45 +224,45 @@
                         <div class="pi-composer">
                             <div class="pi-composer-actions pi-composer-add">
                                 <input id="pi-file-input" type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,text/*,.md,.json,.js,.ts,.tsx,.jsx,.py,.sh,.css,.html,.xml,.yaml,.yml,.toml,.ini,.csv" hidden>
-                                <button id="pi-composer-add-button" class="icon-btn subtle" type="button" title="添加附件或延迟发送" aria-label="添加操作" aria-haspopup="menu" aria-expanded="false" aria-controls="pi-composer-add-menu"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
-                                <div id="pi-composer-add-menu" class="pi-composer-add-menu" role="menu" aria-label="添加操作" hidden>
-                                    <button id="pi-attach-button" type="button" role="menuitem" tabindex="-1" title="从手机或电脑上传附件"><i class="fa-solid fa-paperclip" aria-hidden="true"></i><span>添加附件<small>上传图片、文本或代码文件</small></span></button>
-                                    <button id="pi-schedule-button" type="button" role="menuitem" tabindex="-1" title="延迟发送" hidden><i class="fa-regular fa-clock" aria-hidden="true"></i><span>延迟发送<small>指定时间发送消息</small></span></button>
+                                <button id="pi-composer-add-button" class="icon-btn subtle" type="button" title="添加附件或延迟发送" aria-label="添加操作" aria-haspopup="menu" aria-expanded="false" aria-controls="pi-composer-add-menu" data-i18n-title="s1365" data-i18n-aria-label="s1366"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+                                <div id="pi-composer-add-menu" class="pi-composer-add-menu" role="menu" aria-label="添加操作" hidden data-i18n-aria-label="s1366">
+                                    <button id="pi-attach-button" type="button" role="menuitem" tabindex="-1" title="从手机或电脑上传附件" data-i18n-title="s1367"><i class="fa-solid fa-paperclip" aria-hidden="true"></i><span><!--i18n:s1003-->添加附件<small><!--i18n:s1368-->上传图片、文本或代码文件</small></span></button>
+                                    <button id="pi-schedule-button" type="button" role="menuitem" tabindex="-1" title="延迟发送" hidden data-i18n-title="s992"><i class="fa-regular fa-clock" aria-hidden="true"></i><span><!--i18n:s992-->延迟发送<small><!--i18n:s1369-->指定时间发送消息</small></span></button>
                                 </div>
                             </div>
-                            <textarea id="pi-input" rows="1" placeholder="发送消息给 Pi" disabled></textarea>
+                            <textarea id="pi-input" rows="1" placeholder="发送消息给 Pi" disabled data-i18n-placeholder="s1370"></textarea>
                             <div class="pi-composer-actions right">
-                                <select id="pi-delivery-mode" title="运行中消息投递方式" aria-label="运行中消息投递方式">
-                                    <option value="steer">引导</option>
-                                    <option value="follow_up">后续</option>
+                                <select id="pi-delivery-mode" title="运行中消息投递方式" aria-label="运行中消息投递方式" data-i18n-title="s1371" data-i18n-aria-label="s1371">
+                                    <option value="steer"><!--i18n:s860-->引导</option>
+                                    <option value="follow_up"><!--i18n:s859-->后续</option>
                                 </select>
-                                <button id="pi-send-button" class="pi-send-button" type="button" title="发送" aria-label="发送" disabled>
+                                <button id="pi-send-button" class="pi-send-button" type="button" title="发送" aria-label="发送" disabled data-i18n-title="s255" data-i18n-aria-label="s255">
                                     <i class="fa-solid fa-arrow-up"></i>
                                 </button>
-                                <button id="pi-stop-button" class="pi-stop-button hidden" type="button" title="停止" aria-label="停止">
+                                <button id="pi-stop-button" class="pi-stop-button hidden" type="button" title="停止" aria-label="停止" data-i18n-title="s1372" data-i18n-aria-label="s1372">
                                     <i class="fa-solid fa-stop"></i>
                                 </button>
                             </div>
                         </div>
                         <div class="pi-composer-meta">
-                            <span id="pi-composer-status">未打开会话</span>
-                            <span id="pi-attachment-limit">最多 6 张图片，文本附件单个 1MB</span>
+                            <span id="pi-composer-status"><!--i18n:s321-->未打开会话</span>
+                            <span id="pi-attachment-limit"><!--i18n:s1373-->最多 6 张图片，文本附件单个 1MB</span>
                         </div>
                     </div>
                 </section>
 
-                <div id="pi-inspector-split" class="split-handle pi-inspector-split" data-split-handle data-split-key="agent-inspector" data-split-target="#pi-inspector" data-split-edge="right" data-default="372" data-min="280" data-max="800" role="separator" tabindex="0" aria-label="调整详情、侧聊和变更宽度" aria-controls="pi-inspector" aria-orientation="vertical" title="拖动调整右栏宽度，双击恢复默认"></div>
+                <div id="pi-inspector-split" class="split-handle pi-inspector-split" data-split-handle data-split-key="agent-inspector" data-split-target="#pi-inspector" data-split-edge="right" data-default="372" data-min="280" data-max="800" role="separator" tabindex="0" aria-label="调整详情、侧聊和变更宽度" aria-controls="pi-inspector" aria-orientation="vertical" title="拖动调整右栏宽度，双击恢复默认" data-i18n-aria-label="s1374" data-i18n-title="s1375"></div>
                 <aside id="pi-inspector" class="pi-inspector">
                     <div class="pi-pane-heading inspector-heading">
                         <div>
-                            <div id="pi-inspector-tabs" class="pi-inspector-tabs" role="tablist" aria-label="右侧面板">
-                                <button id="pi-details-tab" type="button" role="tab" aria-selected="true" aria-controls="pi-inspector-details">会话详情</button>
-                                <button id="pi-side-tab" type="button" role="tab" aria-selected="false" aria-controls="pi-side-chat" tabindex="-1" hidden>侧聊</button>
-                                <button id="pi-history-tab" type="button" role="tab" aria-selected="false" aria-controls="pi-history" tabindex="-1" hidden>历史</button>
-                                <button id="pi-changes-tab" type="button" role="tab" aria-selected="false" aria-controls="pi-changes" tabindex="-1">文件</button>
+                            <div id="pi-inspector-tabs" class="pi-inspector-tabs" role="tablist" aria-label="右侧面板" data-i18n-aria-label="s1376">
+                                <button id="pi-details-tab" type="button" role="tab" aria-selected="true" aria-controls="pi-inspector-details"><!--i18n:s1336-->会话详情</button>
+                                <button id="pi-side-tab" type="button" role="tab" aria-selected="false" aria-controls="pi-side-chat" tabindex="-1" hidden><!--i18n:s1097-->侧聊</button>
+                                <button id="pi-history-tab" type="button" role="tab" aria-selected="false" aria-controls="pi-history" tabindex="-1" hidden><!--i18n:s1377-->历史</button>
+                                <button id="pi-changes-tab" type="button" role="tab" aria-selected="false" aria-controls="pi-changes" tabindex="-1"><!--i18n:s1378-->文件</button>
                             </div>
                         </div>
-                        <button id="pi-close-inspector" class="icon-btn subtle" type="button" title="关闭右侧面板" aria-label="关闭右侧面板">
+                        <button id="pi-close-inspector" class="icon-btn subtle" type="button" title="关闭右侧面板" aria-label="关闭右侧面板" data-i18n-title="s1379" data-i18n-aria-label="s1379">
                             <i class="fa-solid fa-xmark"></i>
                         </button>
                     </div>
@@ -270,133 +270,133 @@
                     <div class="pi-inspector-section">
                         <div class="pi-runtime-state">
                             <span id="pi-agent-state-dot" class="pi-status-dot"></span>
-                            <div><strong id="pi-agent-state">未连接</strong><span id="pi-agent-detail">等待会话</span></div>
+                            <div><strong id="pi-agent-state"><!--i18n:s357-->未连接</strong><span id="pi-agent-detail"><!--i18n:s356-->等待会话</span></div>
                         </div>
                     </div>
                     <div class="pi-inspector-section">
-                        <div class="pi-section-title"><span>上下文占用</span><span id="pi-context-fraction">-- / --</span></div>
-                        <button id="pi-compact-button" class="pi-secondary-button" type="button" disabled><i class="fa-solid fa-compress"></i> 压缩上下文</button>
+                        <div class="pi-section-title"><span><!--i18n:s1380-->上下文占用</span><span id="pi-context-fraction">-- / --</span></div>
+                        <button id="pi-compact-button" class="pi-secondary-button" type="button" disabled><i class="fa-solid fa-compress"></i><!--i18n:s1381--> 压缩上下文</button>
                         <div id="pi-compaction-status" class="pi-compaction-status" role="status" aria-live="polite" hidden></div>
                     </div>
                     <div class="pi-inspector-section">
-                        <div class="pi-section-title"><span>会话累计用量</span></div>
+                        <div class="pi-section-title"><span><!--i18n:s1382-->会话累计用量</span></div>
                         <div class="pi-stat-grid">
-                            <div><span>输入</span><strong id="pi-stat-input">--</strong></div>
-                            <div><span>输出</span><strong id="pi-stat-output">--</strong></div>
-                            <div><span>缓存读取</span><strong id="pi-stat-cache">--</strong></div>
-                            <div><span>费用</span><strong id="pi-stat-cost">--</strong></div>
+                            <div><span><!--i18n:s1165-->输入</span><strong id="pi-stat-input">--</strong></div>
+                            <div><span><!--i18n:s1164-->输出</span><strong id="pi-stat-output">--</strong></div>
+                            <div><span><!--i18n:s1156-->缓存读取</span><strong id="pi-stat-cache">--</strong></div>
+                            <div><span><!--i18n:s1383-->费用</span><strong id="pi-stat-cost">--</strong></div>
                         </div>
                     </div>
                     <details id="pi-runtime-settings" class="pi-inspector-section pi-inspector-fold">
-                        <summary>运行设置</summary>
+                        <summary><!--i18n:s1384-->运行设置</summary>
                         <label class="pi-toggle-row">
-                            <span><strong>自动压缩</strong><small>接近上下文上限时执行</small></span>
+                            <span><strong><!--i18n:s239-->自动压缩</strong><small><!--i18n:s1385-->接近上下文上限时执行</small></span>
                             <input id="pi-auto-compact" type="checkbox" checked>
                         </label>
                         <label class="pi-toggle-row">
-                            <span><strong>自动重试</strong><small>处理限流和临时错误</small></span>
+                            <span><strong><!--i18n:s1386-->自动重试</strong><small><!--i18n:s1387-->处理限流和临时错误</small></span>
                             <input id="pi-auto-retry" type="checkbox" checked>
                         </label>
                         <div id="pi-queue-modes" hidden>
-                            <label>引导消息投递<select id="pi-steeringMode"><option value="one-at-a-time">逐条</option><option value="all">全部</option></select></label>
-                            <label>后续消息投递<select id="pi-followUpMode"><option value="one-at-a-time">逐条</option><option value="all">全部</option></select></label>
-                            <p class="pi-native-help">每次取出一条或全部待发消息。修改立即作用于当前运行实例，并保存 Pi 全局默认；项目覆盖仍有效，其他已启动实例不自动改变。</p>
+                            <label><!--i18n:s1388-->引导消息投递<select id="pi-steeringMode"><option value="one-at-a-time"><!--i18n:s1389-->逐条</option><option value="all"><!--i18n:s1341-->全部</option></select></label>
+                            <label><!--i18n:s1390-->后续消息投递<select id="pi-followUpMode"><option value="one-at-a-time"><!--i18n:s1389-->逐条</option><option value="all"><!--i18n:s1341-->全部</option></select></label>
+                            <p class="pi-native-help"><!--i18n:s1391-->每次取出一条或全部待发消息。修改立即作用于当前运行实例，并保存 Pi 全局默认；项目覆盖仍有效，其他已启动实例不自动改变。</p>
                             <p id="pi-queue-mode-status" class="pi-native-help" role="status"></p>
                         </div>
                     </details>
                     <details id="pi-session-information" class="pi-inspector-section pi-inspector-fold">
-                        <summary>会话信息</summary>
+                        <summary><!--i18n:s1392-->会话信息</summary>
                         <dl class="pi-session-meta">
-                            <div><dt>名称</dt><dd id="pi-meta-name">--</dd></div>
+                            <div><dt><!--i18n:s1393-->名称</dt><dd id="pi-meta-name">--</dd></div>
                             <div><dt>ID</dt><dd id="pi-meta-id">--</dd></div>
-                            <div><dt>消息</dt><dd id="pi-meta-messages">--</dd></div>
-                            <div><dt>文件</dt><dd id="pi-meta-file">--</dd></div>
+                            <div><dt><!--i18n:s1002-->消息</dt><dd id="pi-meta-messages">--</dd></div>
+                            <div><dt><!--i18n:s1378-->文件</dt><dd id="pi-meta-file">--</dd></div>
                         </dl>
                     </details>
                     <details id="pi-loaded-resources" class="pi-inspector-section" hidden>
-                        <summary>当前加载的资源</summary>
-                        <div class="native-runtime-actions"><button id="pi-loaded-resources-refresh" type="button">刷新清单</button><button id="pi-loaded-resources-reload" type="button">重新加载资源</button></div>
+                        <summary><!--i18n:s1394-->当前加载的资源</summary>
+                        <div class="native-runtime-actions"><button id="pi-loaded-resources-refresh" type="button"><!--i18n:s1395-->刷新清单</button><button id="pi-loaded-resources-reload" type="button"><!--i18n:s1396-->重新加载资源</button></div>
                         <div id="pi-loaded-resources-body"></div>
                     </details>
                     <details id="pi-extension-state" class="pi-inspector-section pi-extension-state" hidden>
-                        <summary>扩展状态</summary>
+                        <summary><!--i18n:s866-->扩展状态</summary>
                         <div id="pi-extension-body"></div>
                     </details>
                     </div>
                     <section id="pi-history" role="tabpanel" aria-labelledby="pi-history-tab" hidden>
                         <div id="pi-history-browse">
                         <div class="pi-history-heading">
-                        <nav id="pi-history-modes" class="pi-history-modes" aria-label="历史查看方式" hidden><button id="pi-history-search-mode" type="button" aria-pressed="true"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>搜索</button><button id="pi-history-tree-mode" type="button" aria-pressed="false"><i class="fa-solid fa-code-branch" aria-hidden="true"></i>会话树</button></nav>
-                        <button id="pi-history-more" class="icon-btn subtle" type="button" title="更多历史操作" aria-label="更多历史操作" aria-haspopup="menu" aria-expanded="false" hidden><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>
+                        <nav id="pi-history-modes" class="pi-history-modes" aria-label="历史查看方式" hidden data-i18n-aria-label="s1397"><button id="pi-history-search-mode" type="button" aria-pressed="true"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><!--i18n:s879-->搜索</button><button id="pi-history-tree-mode" type="button" aria-pressed="false"><i class="fa-solid fa-code-branch" aria-hidden="true"></i><!--i18n:s219-->会话树</button></nav>
+                        <button id="pi-history-more" class="icon-btn subtle" type="button" title="更多历史操作" aria-label="更多历史操作" aria-haspopup="menu" aria-expanded="false" hidden data-i18n-title="s1398" data-i18n-aria-label="s1398"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>
                         </div>
                         <div id="pi-history-search-pane">
-                        <p class="pi-history-help">优先查找问题、回复与摘要；工具参数和输出可切到“工具记录”。包含压缩前历史。</p>
-                        <label class="pi-history-query">关键词<input id="pi-history-query" type="search" maxlength="200" placeholder="查找决策、错误或文件名" autocomplete="off"></label>
+                        <p class="pi-history-help"><!--i18n:s1399-->优先查找问题、回复与摘要；工具参数和输出可切到“工具记录”。包含压缩前历史。</p>
+                        <label class="pi-history-query"><!--i18n:s1400-->关键词<input id="pi-history-query" type="search" maxlength="200" placeholder="查找决策、错误或文件名" autocomplete="off" data-i18n-placeholder="s1401"></label>
                         <div class="pi-history-filters">
-                            <label>范围<select id="pi-history-scope"><option value="branch">当前分支</option><option value="all">所有分支</option></select></label>
-                            <label>记录类型<select id="pi-history-filter"><option value="conversation">对话正文</option><option value="all">全部记录</option><option value="user">用户问题</option><option value="assistant">助手回复</option><option value="tool">工具记录</option><option value="summary">摘要</option></select></label>
+                            <label><!--i18n:s1402-->范围<select id="pi-history-scope"><option value="branch"><!--i18n:s1403-->当前分支</option><option value="all"><!--i18n:s1404-->所有分支</option></select></label>
+                            <label><!--i18n:s1405-->记录类型<select id="pi-history-filter"><option value="conversation"><!--i18n:s1406-->对话正文</option><option value="all"><!--i18n:s1407-->全部记录</option><option value="user"><!--i18n:s955-->用户问题</option><option value="assistant"><!--i18n:s1408-->助手回复</option><option value="tool"><!--i18n:s954-->工具记录</option><option value="summary"><!--i18n:s952-->摘要</option></select></label>
                         </div>
-                        <div class="pi-history-actions"><label><input id="pi-history-bookmarks" type="checkbox">仅书签</label><button id="pi-history-refresh" type="button">刷新记录</button></div>
-                        <p id="pi-history-changed" class="pi-history-help" hidden>书签有更新，可刷新列表查看。</p>
-                        <div id="pi-history-results" aria-label="历史搜索结果"></div>
-                        <div class="pi-history-actions"><button id="pi-history-prev" type="button" disabled>上一页</button><button id="pi-history-next" type="button" disabled>下一页</button></div>
+                        <div class="pi-history-actions"><label><input id="pi-history-bookmarks" type="checkbox"><!--i18n:s1409-->仅书签</label><button id="pi-history-refresh" type="button"><!--i18n:s1410-->刷新记录</button></div>
+                        <p id="pi-history-changed" class="pi-history-help" hidden><!--i18n:s1411-->书签有更新，可刷新列表查看。</p>
+                        <div id="pi-history-results" aria-label="历史搜索结果" data-i18n-aria-label="s1412"></div>
+                        <div class="pi-history-actions"><button id="pi-history-prev" type="button" disabled><!--i18n:s878-->上一页</button><button id="pi-history-next" type="button" disabled><!--i18n:s877-->下一页</button></div>
                         </div>
                         <div id="pi-history-tree-pane" hidden>
-                            <div class="pi-tree-toolbar" aria-label="会话树操作"><button id="pi-tree-current" type="button"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i>定位当前</button><button id="pi-tree-refresh" type="button" aria-label="刷新会话树" title="刷新会话树"><i class="fa-solid fa-arrow-rotate-right" aria-hidden="true"></i>刷新</button></div>
-                            <p class="pi-history-help">点击预览，再选择从哪里继续。连线表示不同路线，工具记录已收起。</p>
+                            <div class="pi-tree-toolbar" aria-label="会话树操作" data-i18n-aria-label="s1413"><button id="pi-tree-current" type="button"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i><!--i18n:s1414-->定位当前</button><button id="pi-tree-refresh" type="button" aria-label="刷新会话树" title="刷新会话树" data-i18n-aria-label="s1415" data-i18n-title="s1415"><i class="fa-solid fa-arrow-rotate-right" aria-hidden="true"></i><!--i18n:s718-->刷新</button></div>
+                            <p class="pi-history-help"><!--i18n:s1416-->点击预览，再选择从哪里继续。连线表示不同路线，工具记录已收起。</p>
                             <p id="pi-tree-status" role="status" aria-live="polite"></p>
-                            <div id="pi-tree-rows" aria-label="会话分支"></div>
-                            <div class="pi-history-actions"><button id="pi-tree-prev" type="button">上一页</button><button id="pi-tree-next" type="button">下一页</button></div>
+                            <div id="pi-tree-rows" aria-label="会话分支" data-i18n-aria-label="s1417"></div>
+                            <div class="pi-history-actions"><button id="pi-tree-prev" type="button"><!--i18n:s878-->上一页</button><button id="pi-tree-next" type="button"><!--i18n:s877-->下一页</button></div>
                         </div>
                         </div>
                         <p id="pi-history-status" role="status" aria-live="polite"></p>
                         <section id="pi-history-preview" hidden>
-                            <div class="pi-history-actions"><button id="pi-history-preview-close" type="button">← 返回列表</button><h3 id="pi-history-preview-title"></h3></div>
+                            <div class="pi-history-actions"><button id="pi-history-preview-close" type="button"><!--i18n:s1418-->← 返回列表</button><h3 id="pi-history-preview-title"></h3></div>
                             <div id="pi-history-text" tabindex="0"></div>
                             <p id="pi-history-text-page" class="pi-history-help"></p>
-                            <div class="pi-history-actions"><button id="pi-history-text-prev" type="button">上段正文</button><button id="pi-history-text-next" type="button">下段正文</button><button id="pi-history-copy" type="button">复制正文</button><button id="pi-history-record-toggle" type="button" hidden>查看工具参数</button></div>
+                            <div class="pi-history-actions"><button id="pi-history-text-prev" type="button"><!--i18n:s1419-->上段正文</button><button id="pi-history-text-next" type="button"><!--i18n:s1420-->下段正文</button><button id="pi-history-copy" type="button"><!--i18n:s589-->复制正文</button><button id="pi-history-record-toggle" type="button" hidden><!--i18n:s594-->查看工具参数</button></div>
                             <div id="pi-tree-navigation" hidden>
-                                <details id="pi-tree-options"><summary>继续方式</summary><p class="pi-history-help">只改变对话位置，文件仍是当前版本。同线程的其他页面也会同步，预约消息将暂停。</p><label class="pi-tree-summary-choice"><input id="pi-tree-summarize" type="checkbox">携带离开分支的摘要（调用模型）</label><label id="pi-tree-focus-label" hidden>摘要重点（可选）<input id="pi-tree-focus" maxlength="2000" placeholder="例如：保留失败原因和已验证结论"></label></details>
-                                <button id="pi-tree-continue" type="button">从这里继续</button>
+                                <details id="pi-tree-options"><summary><!--i18n:s1421-->继续方式</summary><p class="pi-history-help"><!--i18n:s1422-->只改变对话位置，文件仍是当前版本。同线程的其他页面也会同步，预约消息将暂停。</p><label class="pi-tree-summary-choice"><input id="pi-tree-summarize" type="checkbox"><!--i18n:s1423-->携带离开分支的摘要（调用模型）</label><label id="pi-tree-focus-label" hidden><!--i18n:s1424-->摘要重点（可选）<input id="pi-tree-focus" maxlength="2000" placeholder="例如：保留失败原因和已验证结论" data-i18n-placeholder="s1425"></label></details>
+                                <button id="pi-tree-continue" type="button"><!--i18n:s947-->从这里继续</button>
                             </div>
-                            <details id="pi-history-bookmark-details"><summary>书签与记录</summary>
+                            <details id="pi-history-bookmark-details"><summary><!--i18n:s1426-->书签与记录</summary>
                             <form id="pi-history-bookmark-form">
-                                <label>书签名称<input id="pi-history-label" maxlength="160" placeholder="例如：已验证方案" autocomplete="off"></label>
-                                <div class="pi-history-actions"><button id="pi-history-bookmark-save" type="submit">保存书签</button><button id="pi-history-bookmark-remove" type="button">移除书签</button><button id="pi-history-preview-reload" type="button">重新读取记录</button></div>
+                                <label><!--i18n:s1427-->书签名称<input id="pi-history-label" maxlength="160" placeholder="例如：已验证方案" autocomplete="off" data-i18n-placeholder="s1428"></label>
+                                <div class="pi-history-actions"><button id="pi-history-bookmark-save" type="submit"><!--i18n:s1429-->保存书签</button><button id="pi-history-bookmark-remove" type="button"><!--i18n:s1430-->移除书签</button><button id="pi-history-preview-reload" type="button"><!--i18n:s1431-->重新读取记录</button></div>
                             </form>
                             <p id="pi-history-bookmark-state" role="status" aria-live="polite"></p>
                             </details>
                         </section>
-                        <div id="pi-tree-progress" hidden><p id="pi-tree-progress-text" role="status" aria-live="polite"></p><button id="pi-tree-cancel" type="button" hidden>取消导航</button><button id="pi-tree-use-draft" type="button" hidden>将原问题追加到输入框</button></div>
+                        <div id="pi-tree-progress" hidden><p id="pi-tree-progress-text" role="status" aria-live="polite"></p><button id="pi-tree-cancel" type="button" hidden><!--i18n:s1432-->取消导航</button><button id="pi-tree-use-draft" type="button" hidden><!--i18n:s1433-->将原问题追加到输入框</button></div>
                     </section>
                     <section id="pi-changes" role="tabpanel" aria-labelledby="pi-changes-tab" hidden>
                         <p id="pi-changes-empty" role="status"></p>
                         <div id="pi-changes-content" hidden>
                             <div class="pi-files-heading">
-                                <h2 id="pi-changes-title" tabindex="-1">文件</h2>
-                                <details id="pi-changes-file-list"><summary aria-label="切换轮次与文件" title="切换轮次与文件">切换文件</summary>
+                                <h2 id="pi-changes-title" tabindex="-1"><!--i18n:s1378-->文件</h2>
+                                <details id="pi-changes-file-list"><summary aria-label="切换轮次与文件" title="切换轮次与文件" data-i18n-aria-label="s1434" data-i18n-title="s1434"><!--i18n:s1435-->切换文件</summary>
                                     <div class="pi-file-picker-panel">
-                                        <label class="pi-changes-picker">问题轮次<select id="pi-changes-round" aria-label="选择编辑记录轮次"></select></label>
-                                        <nav id="pi-changes-files" aria-label="本轮编辑文件"></nav>
+                                        <label class="pi-changes-picker"><!--i18n:s1436-->问题轮次<select id="pi-changes-round" aria-label="选择编辑记录轮次" data-i18n-aria-label="s1437"></select></label>
+                                        <nav id="pi-changes-files" aria-label="本轮编辑文件" data-i18n-aria-label="s1438"></nav>
                                     </div>
                                 </details>
                             </div>
                             <div class="pi-file-mode-row">
-                                <div id="pi-file-tabs" class="pi-file-tabs" role="tablist" aria-label="文件查看方式" hidden>
-                                    <button id="pi-file-diff-tab" type="button" role="tab" aria-selected="true" aria-controls="pi-changes-diffs">差异</button>
-                                    <button id="pi-file-full-tab" type="button" role="tab" aria-selected="false" aria-controls="pi-file-viewer" tabindex="-1">全文</button>
+                                <div id="pi-file-tabs" class="pi-file-tabs" role="tablist" aria-label="文件查看方式" hidden data-i18n-aria-label="s1439">
+                                    <button id="pi-file-diff-tab" type="button" role="tab" aria-selected="true" aria-controls="pi-changes-diffs"><!--i18n:s1440-->差异</button>
+                                    <button id="pi-file-full-tab" type="button" role="tab" aria-selected="false" aria-controls="pi-file-viewer" tabindex="-1"><!--i18n:s1441-->全文</button>
                                 </div>
-                                <label class="pi-file-source-label" hidden><select id="pi-file-source" aria-label="全文内容来源" title="全文内容来源"></select></label>
+                                <label class="pi-file-source-label" hidden><select id="pi-file-source" aria-label="全文内容来源" title="全文内容来源" data-i18n-aria-label="s1442" data-i18n-title="s1442"></select></label>
                             </div>
-                            <div id="pi-changes-diffs" tabindex="0" role="region" aria-label="文件编辑差异"></div>
+                            <div id="pi-changes-diffs" tabindex="0" role="region" aria-label="文件编辑差异" data-i18n-aria-label="s1443"></div>
                             <section id="pi-file-viewer" role="tabpanel" aria-labelledby="pi-file-full-tab" hidden>
                                 <div class="pi-file-actions">
-                                    <button id="pi-file-refresh" type="button" title="刷新当前文件" aria-label="刷新当前文件">刷新</button>
-                                    <button id="pi-file-preview" type="button" aria-pressed="false">预览</button>
-                                    <button id="pi-file-wrap" type="button" aria-pressed="false" title="自动换行" aria-label="自动换行">换行</button>
-                                    <button id="pi-file-copy" type="button" title="复制全文" aria-label="复制全文" disabled>复制</button>
+                                    <button id="pi-file-refresh" type="button" title="刷新当前文件" aria-label="刷新当前文件" data-i18n-title="s1444" data-i18n-aria-label="s1444"><!--i18n:s718-->刷新</button>
+                                    <button id="pi-file-preview" type="button" aria-pressed="false"><!--i18n:s571-->预览</button>
+                                    <button id="pi-file-wrap" type="button" aria-pressed="false" title="自动换行" aria-label="自动换行" data-i18n-title="s1445" data-i18n-aria-label="s1445"><!--i18n:s1446-->换行</button>
+                                    <button id="pi-file-copy" type="button" title="复制全文" aria-label="复制全文" disabled data-i18n-title="s1447" data-i18n-aria-label="s1447"><!--i18n:s212-->复制</button>
                                     <details id="pi-file-info">
-                                        <summary aria-label="文件信息" title="完整路径、内容来源与读取时间">ⓘ</summary>
+                                        <summary aria-label="文件信息" title="完整路径、内容来源与读取时间" data-i18n-aria-label="s1448" data-i18n-title="s1449">ⓘ</summary>
                                         <div class="pi-file-info-panel">
                                             <strong id="pi-file-path"></strong>
                                             <p id="pi-file-status"></p>
@@ -404,37 +404,37 @@
                                     </details>
                                 </div>
                                 <p id="pi-file-notice" role="status" aria-live="polite" hidden></p>
-                                <div id="pi-file-body" tabindex="0" role="region" aria-label="文件全文"></div>
+                                <div id="pi-file-body" tabindex="0" role="region" aria-label="文件全文" data-i18n-aria-label="s1450"></div>
                             </section>
                         </div>
                     </section>
                     <section id="pi-side-chat" role="tabpanel" aria-labelledby="pi-side-tab" hidden>
                         <div class="pi-side-heading">
-                            <button id="pi-side-parent-state" type="button" title="返回主会话"></button>
-                            <span class="pi-side-mode">无工具</span>
-                            <button id="pi-side-end" class="icon-btn subtle" type="button" title="结束并清空侧聊" aria-label="结束并清空侧聊" disabled><i class="fa-solid fa-power-off"></i></button>
+                            <button id="pi-side-parent-state" type="button" title="返回主会话" data-i18n-title="s1451"></button>
+                            <span class="pi-side-mode"><!--i18n:s1452-->无工具</span>
+                            <button id="pi-side-end" class="icon-btn subtle" type="button" title="结束并清空侧聊" aria-label="结束并清空侧聊" disabled data-i18n-title="s1453" data-i18n-aria-label="s1453"><i class="fa-solid fa-power-off"></i></button>
                         </div>
                         <details id="pi-side-reference" class="pi-side-reference">
-                            <summary title="展开或收起引用与设置"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i><span id="pi-side-reference-label">尚未引用上下文</span><span class="pi-side-reference-hint">设置</span></summary>
+                            <summary title="展开或收起引用与设置" data-i18n-title="s1454"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i><span id="pi-side-reference-label"><!--i18n:s1072-->尚未引用上下文</span><span class="pi-side-reference-hint"><!--i18n:s1331-->设置</span></summary>
                             <div class="pi-side-reference-body">
-                                <div class="pi-side-model-row"><span>侧聊模型</span><span id="pi-side-model">临时侧聊</span></div>
+                                <div class="pi-side-model-row"><span><!--i18n:s1455-->侧聊模型</span><span id="pi-side-model"><!--i18n:s1071-->临时侧聊</span></div>
                                 <div class="pi-side-source-controls">
-                                    <select id="pi-side-source" aria-label="侧聊引用范围" title="侧聊引用范围"><option value="context" hidden>接着当前任务聊</option><option value="recent-6">近期 6 条正文（旧版）</option><option value="recent-12">近期 12 条正文（旧版）</option><option value="blank">单独问个问题</option></select>
-                                    <button id="pi-side-refresh" class="icon-btn subtle" type="button" title="重新引用并开始新侧聊" aria-label="重新引用并开始新侧聊"><i class="fa-solid fa-rotate"></i></button>
+                                    <select id="pi-side-source" aria-label="侧聊引用范围" title="侧聊引用范围" data-i18n-aria-label="s1456" data-i18n-title="s1456"><option value="context" hidden><!--i18n:s1457-->接着当前任务聊</option><option value="recent-6"><!--i18n:s1458-->近期 6 条正文（旧版）</option><option value="recent-12"><!--i18n:s1459-->近期 12 条正文（旧版）</option><option value="blank"><!--i18n:s1460-->单独问个问题</option></select>
+                                    <button id="pi-side-refresh" class="icon-btn subtle" type="button" title="重新引用并开始新侧聊" aria-label="重新引用并开始新侧聊" data-i18n-title="s1461" data-i18n-aria-label="s1461"><i class="fa-solid fa-rotate"></i></button>
                                 </div>
                                 <div id="pi-side-reference-preview"></div>
                             </div>
                         </details>
                         <div class="pi-transcript-viewport pi-side-viewport">
-                            <div id="pi-side-transcript" class="pi-transcript pi-side-transcript" tabindex="0" role="region" aria-label="侧聊消息"><div id="pi-side-messages" aria-live="polite"></div></div>
-                            <div id="pi-side-track" class="pi-transcript-track inactive" role="scrollbar" tabindex="-1" aria-label="侧聊滚动位置" aria-controls="pi-side-transcript" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"><div id="pi-side-thumb" class="pi-transcript-thumb"></div></div>
-                            <button id="pi-side-latest" class="pi-jump-latest" type="button" title="回到最新侧聊" aria-label="回到最新侧聊" hidden><i class="fa-solid fa-arrow-down"></i></button>
+                            <div id="pi-side-transcript" class="pi-transcript pi-side-transcript" tabindex="0" role="region" aria-label="侧聊消息" data-i18n-aria-label="s1462"><div id="pi-side-messages" aria-live="polite"></div></div>
+                            <div id="pi-side-track" class="pi-transcript-track inactive" role="scrollbar" tabindex="-1" aria-label="侧聊滚动位置" aria-controls="pi-side-transcript" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" data-i18n-aria-label="s1463"><div id="pi-side-thumb" class="pi-transcript-thumb"></div></div>
+                            <button id="pi-side-latest" class="pi-jump-latest" type="button" title="回到最新侧聊" aria-label="回到最新侧聊" hidden data-i18n-title="s1464" data-i18n-aria-label="s1464"><i class="fa-solid fa-arrow-down"></i></button>
                         </div>
-                        <div id="pi-side-status" class="pi-side-status" role="status">尚未开始</div>
+                        <div id="pi-side-status" class="pi-side-status" role="status"><!--i18n:s1465-->尚未开始</div>
                         <form id="pi-side-form" class="pi-side-composer">
-                            <textarea id="pi-side-input" rows="2" placeholder="问一个旁路问题" aria-label="侧聊问题" disabled></textarea>
-                            <button id="pi-side-send" class="pi-send-button" type="submit" title="发送侧聊" aria-label="发送侧聊" disabled><i class="fa-solid fa-arrow-up"></i></button>
-                            <button id="pi-side-stop" class="pi-stop-button" type="button" title="停止侧聊回复" aria-label="停止侧聊回复" hidden><i class="fa-solid fa-stop"></i></button>
+                            <textarea id="pi-side-input" rows="2" placeholder="问一个旁路问题" aria-label="侧聊问题" disabled data-i18n-placeholder="s1466" data-i18n-aria-label="s1467"></textarea>
+                            <button id="pi-side-send" class="pi-send-button" type="submit" title="发送侧聊" aria-label="发送侧聊" disabled data-i18n-title="s1468" data-i18n-aria-label="s1468"><i class="fa-solid fa-arrow-up"></i></button>
+                            <button id="pi-side-stop" class="pi-stop-button" type="button" title="停止侧聊回复" aria-label="停止侧聊回复" hidden data-i18n-title="s1469" data-i18n-aria-label="s1469"><i class="fa-solid fa-stop"></i></button>
                         </form>
                         <div id="pi-side-usage" class="pi-side-usage"></div>
                     </section>
@@ -444,40 +444,40 @@
 
         <main class="content-area tab-content media-lab" id="media-tab">
             <header class="lab-header">
-                <h1><i class="fa-solid fa-flask" aria-hidden="true"></i> 多媒体实验室</h1>
-                <div class="lab-kind-tabs" role="tablist" aria-label="媒体类型">
-                    <button type="button" role="tab" data-lab-kind="image" aria-selected="true" aria-controls="lab-workspace"><i class="fa-regular fa-image"></i> 图像</button>
-                    <button type="button" role="tab" data-lab-kind="video" aria-selected="false" aria-controls="lab-workspace" tabindex="-1"><i class="fa-solid fa-film"></i> 视频</button>
-                    <button type="button" role="tab" data-lab-kind="tts" aria-selected="false" aria-controls="lab-workspace" tabindex="-1"><i class="fa-solid fa-volume-high"></i> 语音</button>
+                <h1><i class="fa-solid fa-flask" aria-hidden="true"></i><!--i18n:s1318--> 多媒体实验室</h1>
+                <div class="lab-kind-tabs" role="tablist" aria-label="媒体类型" data-i18n-aria-label="s51">
+                    <button type="button" role="tab" data-lab-kind="image" aria-selected="true" aria-controls="lab-workspace"><i class="fa-regular fa-image"></i><!--i18n:s109--> 图像</button>
+                    <button type="button" role="tab" data-lab-kind="video" aria-selected="false" aria-controls="lab-workspace" tabindex="-1"><i class="fa-solid fa-film"></i><!--i18n:s108--> 视频</button>
+                    <button type="button" role="tab" data-lab-kind="tts" aria-selected="false" aria-controls="lab-workspace" tabindex="-1"><i class="fa-solid fa-volume-high"></i><!--i18n:s107--> 语音</button>
                 </div>
-                <button id="lab-connect" class="icon-btn" type="button" title="接入模型" aria-label="接入模型"><i class="fa-solid fa-plug"></i></button>
+                <button id="lab-connect" class="icon-btn" type="button" title="接入模型" aria-label="接入模型" data-i18n-title="s133" data-i18n-aria-label="s133"><i class="fa-solid fa-plug"></i></button>
             </header>
             <div id="lab-workspace" class="lab-workspace" role="tabpanel">
-                <section class="lab-editor" aria-label="生成参数">
+                <section class="lab-editor" aria-label="生成参数" data-i18n-aria-label="s1470">
                     <div class="lab-editor-scroll">
-                        <div class="lab-section-head"><h2>模型</h2><button id="lab-refresh" class="icon-btn" type="button" title="刷新模型与历史" aria-label="刷新模型与历史"><i class="fa-solid fa-rotate"></i></button></div>
-                        <select id="lab-model" aria-label="媒体模型"><option value="">正在读取</option></select>
-                        <div class="lab-model-meta"><span id="lab-model-state" role="status">尚未连接</span><button id="lab-model-docs" class="icon-btn" type="button" title="模型参数要求" aria-label="模型参数要求"><i class="fa-solid fa-book-open"></i></button></div>
+                        <div class="lab-section-head"><h2><!--i18n:s1145-->模型</h2><button id="lab-refresh" class="icon-btn" type="button" title="刷新模型与历史" aria-label="刷新模型与历史" data-i18n-title="s1471" data-i18n-aria-label="s1471"><i class="fa-solid fa-rotate"></i></button></div>
+                        <select id="lab-model" aria-label="媒体模型" data-i18n-aria-label="s1472"><option value=""><!--i18n:s126-->正在读取</option></select>
+                        <div class="lab-model-meta"><span id="lab-model-state" role="status"><!--i18n:s1282-->尚未连接</span><button id="lab-model-docs" class="icon-btn" type="button" title="模型参数要求" aria-label="模型参数要求" data-i18n-title="s1473" data-i18n-aria-label="s1473"><i class="fa-solid fa-book-open"></i></button></div>
                         <div class="lab-planner">
-                            <label for="lab-instruction">创作要求</label>
-                            <textarea id="lab-instruction" rows="3" maxlength="6000" placeholder="描述想生成的内容，也可补充这次的参数要求"></textarea>
-                            <div class="lab-planner-actions"><span id="lab-plan-state" role="status"></span><button id="lab-plan" class="lab-secondary" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i> 生成方案</button></div>
+                            <label for="lab-instruction"><!--i18n:s1474-->创作要求</label>
+                            <textarea id="lab-instruction" rows="3" maxlength="6000" placeholder="描述想生成的内容，也可补充这次的参数要求" data-i18n-placeholder="s1475"></textarea>
+                            <div class="lab-planner-actions"><span id="lab-plan-state" role="status"></span><button id="lab-plan" class="lab-secondary" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i><!--i18n:s1476--> 生成方案</button></div>
                         </div>
                         <div id="lab-source" class="lab-source" hidden>
-                            <div class="lab-section-head"><h2>首帧</h2><button id="lab-source-clear" class="icon-btn" type="button" title="移除首帧" aria-label="移除首帧"><i class="fa-solid fa-xmark"></i></button></div>
-                            <label class="lab-file"><i class="fa-solid fa-paperclip"></i> 选择图片<input id="lab-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
-                            <button id="lab-source-gallery" class="lab-secondary" type="button"><i class="fa-regular fa-images"></i> 从图库选择</button>
-                            <img id="lab-source-image" alt="首帧预览" hidden>
+                            <div class="lab-section-head"><h2><!--i18n:s1477-->首帧</h2><button id="lab-source-clear" class="icon-btn" type="button" title="移除首帧" aria-label="移除首帧" data-i18n-title="s1478" data-i18n-aria-label="s1478"><i class="fa-solid fa-xmark"></i></button></div>
+                            <label class="lab-file"><i class="fa-solid fa-paperclip"></i><!--i18n:s1479--> 选择图片<input id="lab-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
+                            <button id="lab-source-gallery" class="lab-secondary" type="button"><i class="fa-regular fa-images"></i><!--i18n:s1480--> 从图库选择</button>
+                            <img id="lab-source-image" alt="首帧预览" hidden data-i18n-alt="s1481">
                         </div>
-                        <div class="lab-section-head"><h2>常用参数</h2><select id="lab-preset" aria-label="本地预设" hidden></select></div>
+                        <div class="lab-section-head"><h2><!--i18n:s1482-->常用参数</h2><select id="lab-preset" aria-label="本地预设" hidden data-i18n-aria-label="s1483"></select></div>
                         <form id="lab-parameters" class="lab-fields"></form>
                         <p id="lab-error" class="lab-error" role="alert" hidden></p>
                     </div>
-                    <footer class="lab-editor-footer"><button id="lab-export" class="icon-btn" type="button" title="导出参数清单" aria-label="导出参数清单"><i class="fa-solid fa-download"></i></button><button id="lab-review" class="lab-primary" type="button"><i class="fa-solid fa-list-check"></i> 检查提交清单</button></footer>
+                    <footer class="lab-editor-footer"><button id="lab-export" class="icon-btn" type="button" title="导出参数清单" aria-label="导出参数清单" data-i18n-title="s1484" data-i18n-aria-label="s1484"><i class="fa-solid fa-download"></i></button><button id="lab-review" class="lab-primary" type="button"><i class="fa-solid fa-list-check"></i><!--i18n:s1485--> 检查提交清单</button></footer>
                 </section>
-                <div class="split-handle" data-split-handle data-split-key="media-editor" data-split-target=".lab-editor" data-default="400" data-min="320" data-max="620" role="separator" tabindex="0" aria-label="调整媒体参数栏宽度" aria-orientation="vertical"></div>
-                <section class="lab-results" aria-label="生成结果与历史">
-                    <div class="lab-results-header"><h2>生成记录 <span id="lab-history-count"></span></h2><label class="lab-search"><i class="fa-solid fa-magnifying-glass"></i><input id="lab-search" type="search" placeholder="搜索记录" aria-label="搜索生成记录"></label></div>
+                <div class="split-handle" data-split-handle data-split-key="media-editor" data-split-target=".lab-editor" data-default="400" data-min="320" data-max="620" role="separator" tabindex="0" aria-label="调整媒体参数栏宽度" aria-orientation="vertical" data-i18n-aria-label="s1486"></div>
+                <section class="lab-results" aria-label="生成结果与历史" data-i18n-aria-label="s1487">
+                    <div class="lab-results-header"><h2><!--i18n:s1488-->生成记录 <span id="lab-history-count"></span></h2><label class="lab-search"><i class="fa-solid fa-magnifying-glass"></i><input id="lab-search" type="search" placeholder="搜索记录" aria-label="搜索生成记录" data-i18n-placeholder="s1489" data-i18n-aria-label="s1490"></label></div>
                     <div id="lab-running" class="lab-running" role="status" hidden></div>
                     <div id="lab-preview" class="lab-preview" hidden></div>
                     <div id="lab-history" class="lab-history"></div>
@@ -487,44 +487,44 @@
     </div>
 
     <dialog id="lab-review-dialog" class="lab-dialog" aria-labelledby="lab-review-title">
-        <header><div><small id="lab-review-model"></small><h2 id="lab-review-title">提交清单</h2></div><button id="lab-review-close" class="icon-btn" type="button" title="关闭清单" aria-label="关闭清单"><i class="fa-solid fa-xmark"></i></button></header>
-        <div class="lab-dialog-scroll"><div id="lab-review-source"></div><form id="lab-review-fields" class="lab-fields"></form><div id="lab-review-warnings" class="lab-warnings"></div><p id="lab-review-cost" class="lab-muted"></p><details><summary>请求参数 JSON</summary><pre id="lab-review-json"></pre></details><p id="lab-review-error" class="lab-error" role="alert" hidden></p></div>
-        <footer><span id="lab-review-state" role="status"></span><button id="lab-review-recheck" class="lab-secondary" type="button"><i class="fa-solid fa-check"></i> 检查修改</button><button id="lab-confirm" class="lab-primary" type="button" disabled><i class="fa-solid fa-play"></i> 确认生成</button></footer>
+        <header><div><small id="lab-review-model"></small><h2 id="lab-review-title"><!--i18n:s1491-->提交清单</h2></div><button id="lab-review-close" class="icon-btn" type="button" title="关闭清单" aria-label="关闭清单" data-i18n-title="s1492" data-i18n-aria-label="s1492"><i class="fa-solid fa-xmark"></i></button></header>
+        <div class="lab-dialog-scroll"><div id="lab-review-source"></div><form id="lab-review-fields" class="lab-fields"></form><div id="lab-review-warnings" class="lab-warnings"></div><p id="lab-review-cost" class="lab-muted"></p><details><summary><!--i18n:s1493-->请求参数 JSON</summary><pre id="lab-review-json"></pre></details><p id="lab-review-error" class="lab-error" role="alert" hidden></p></div>
+        <footer><span id="lab-review-state" role="status"></span><button id="lab-review-recheck" class="lab-secondary" type="button"><i class="fa-solid fa-check"></i><!--i18n:s1494--> 检查修改</button><button id="lab-confirm" class="lab-primary" type="button" disabled><i class="fa-solid fa-play"></i><!--i18n:s1495--> 确认生成</button></footer>
     </dialog>
     <dialog id="lab-connections-dialog" class="lab-dialog mc-dialog" aria-labelledby="mc-title">
-        <header><button id="mc-back" type="button" class="icon-btn" aria-label="返回服务列表" hidden>←</button><h2 id="mc-title">媒体服务与模型</h2><button id="mc-close" type="button" class="icon-btn" aria-label="关闭媒体服务">×</button></header>
+        <header><button id="mc-back" type="button" class="icon-btn" aria-label="返回服务列表" hidden data-i18n-aria-label="s1496">←</button><h2 id="mc-title"><!--i18n:s99-->媒体服务与模型</h2><button id="mc-close" type="button" class="icon-btn" aria-label="关闭媒体服务" data-i18n-aria-label="s1497">×</button></header>
         <div id="mc-content" class="lab-dialog-scroll"></div><footer id="mc-footer"></footer>
     </dialog>
     <dialog id="lab-info-dialog" class="lab-dialog" aria-labelledby="lab-info-title">
-        <header><h2 id="lab-info-title">模型要求</h2><button id="lab-info-close" class="icon-btn" type="button" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header><div id="lab-info-content" class="lab-dialog-scroll"></div>
+        <header><h2 id="lab-info-title"><!--i18n:s1498-->模型要求</h2><button id="lab-info-close" class="icon-btn" type="button" title="关闭" aria-label="关闭" data-i18n-title="s358" data-i18n-aria-label="s358"><i class="fa-solid fa-xmark"></i></button></header><div id="lab-info-content" class="lab-dialog-scroll"></div>
     </dialog>
 
     <div id="pi-project-dialog" class="pi-modal hidden" role="dialog" aria-modal="true" aria-labelledby="pi-project-dialog-title">
         <div class="pi-modal-dialog project-dialog">
             <div class="pi-modal-header">
-                <div><span class="pi-pane-kicker">WORKING DIRECTORY</span><h2 id="pi-project-dialog-title">打开项目</h2></div>
-                <button id="pi-project-dialog-close" class="icon-btn subtle" type="button" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button>
+                <div><span class="pi-pane-kicker">WORKING DIRECTORY</span><h2 id="pi-project-dialog-title"><!--i18n:s1499-->打开项目</h2></div>
+                <button id="pi-project-dialog-close" class="icon-btn subtle" type="button" title="关闭" aria-label="关闭" data-i18n-title="s358" data-i18n-aria-label="s358"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <form id="pi-project-form" class="pi-project-form">
-                <label for="pi-project-input">绝对路径</label>
+                <label for="pi-project-input"><!--i18n:s1500-->绝对路径</label>
                 <div class="pi-path-entry">
-                    <input id="pi-project-input" type="text" placeholder="输入服务器上的绝对路径" autocomplete="off" spellcheck="false">
-                    <button class="pi-primary-button" type="submit">打开</button>
+                    <input id="pi-project-input" type="text" placeholder="输入服务器上的绝对路径" autocomplete="off" spellcheck="false" data-i18n-placeholder="s1501">
+                    <button class="pi-primary-button" type="submit"><!--i18n:s1502-->打开</button>
                 </div>
                 <small id="pi-project-scope" class="pi-project-scope"></small>
             </form>
-            <button id="pi-import-session" class="pi-secondary-button" type="button" hidden>导入 Pi 会话</button>
+            <button id="pi-import-session" class="pi-secondary-button" type="button" hidden><!--i18n:s208-->导入 Pi 会话</button>
             <div class="pi-directory-browser">
                 <div class="pi-directory-head">
-                    <button id="pi-directory-up" class="icon-btn subtle" type="button" title="上级目录" aria-label="上级目录"><i class="fa-solid fa-arrow-up"></i></button>
-                    <span id="pi-directory-current">允许的项目根目录</span>
+                    <button id="pi-directory-up" class="icon-btn subtle" type="button" title="上级目录" aria-label="上级目录" data-i18n-title="s225" data-i18n-aria-label="s225"><i class="fa-solid fa-arrow-up"></i></button>
+                    <span id="pi-directory-current"><!--i18n:s1503-->允许的项目根目录</span>
                 </div>
                 <div id="pi-directory-list" class="pi-directory-list"></div>
             </div>
             <div class="pi-recent-projects">
                 <div class="pi-recent-projects-heading">
-                    <h3>最近项目</h3>
-                    <label><input id="pi-show-hidden-projects" type="checkbox"> 显示已移出</label>
+                    <h3><!--i18n:s1504-->最近项目</h3>
+                    <label><input id="pi-show-hidden-projects" type="checkbox"><!--i18n:s1505--> 显示已移出</label>
                 </div>
                 <div id="pi-project-list" class="pi-project-list"></div>
             </div>
@@ -536,157 +536,166 @@
             <header class="workspace-settings-header">
                 <div>
                     <span class="pi-pane-kicker">PI WORKSPACE</span>
-                    <h2 id="workspace-settings-title">设置</h2>
+                    <h2 id="workspace-settings-title"><!--i18n:s1331-->设置</h2>
                 </div>
-                <button id="workspace-settings-close" class="icon-btn subtle" type="button" title="关闭设置" aria-label="关闭设置">
+                <button id="workspace-settings-close" class="icon-btn subtle" type="button" title="关闭设置" aria-label="关闭设置" data-i18n-title="s1506" data-i18n-aria-label="s1506">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </header>
             <div class="workspace-settings-body">
-                <nav class="workspace-settings-nav" aria-label="设置分类">
-                    <button type="button" class="active" data-settings-tab="providers"><i class="fa-solid fa-key"></i><span>供应商与模型</span></button>
-                    <button type="button" data-settings-tab="media"><i class="fa-solid fa-photo-film"></i><span>媒体模型</span></button>
-                    <button type="button" data-settings-tab="models"><i class="fa-solid fa-sliders"></i><span>使用偏好</span></button>
-                    <button type="button" id="native-settings-nav" data-settings-tab="native" hidden><i class="fa-solid fa-gear"></i><span>Pi 配置</span></button>
-                    <button type="button" id="workspace-access-nav" data-settings-tab="access" hidden><i class="fa-solid fa-lock"></i><span>访问控制</span></button>
-                    <button type="button" data-settings-tab="usage"><i class="fa-solid fa-chart-column"></i><span>用量统计</span></button>
+                <nav class="workspace-settings-nav" aria-label="设置分类" data-i18n-aria-label="s1507">
+                    <button type="button" class="active" data-settings-tab="providers"><i class="fa-solid fa-key"></i><span><!--i18n:s1508-->供应商与模型</span></button>
+                    <button type="button" data-settings-tab="media"><i class="fa-solid fa-photo-film"></i><span><!--i18n:s1472-->媒体模型</span></button>
+                    <button type="button" data-settings-tab="models"><i class="fa-solid fa-sliders"></i><span><!--i18n:s1509-->使用偏好</span></button>
+                    <button type="button" id="native-settings-nav" data-settings-tab="native" hidden><i class="fa-solid fa-gear"></i><span><!--i18n:s726-->Pi 配置</span></button>
+                    <button type="button" id="workspace-access-nav" data-settings-tab="access" hidden><i class="fa-solid fa-lock"></i><span><!--i18n:s1510-->访问控制</span></button>
+                    <button type="button" data-settings-tab="usage"><i class="fa-solid fa-chart-column"></i><span><!--i18n:s1511-->用量统计</span></button>
                     <button type="button" data-settings-tab="packages"><i class="fa-solid fa-box-open"></i><span>Packages</span></button>
                     <button type="button" data-settings-tab="skills"><i class="fa-solid fa-wand-magic-sparkles"></i><span>Skills</span></button>
                 </nav>
                 <div class="workspace-settings-content">
                     <section class="workspace-settings-panel active" data-settings-panel="providers">
                         <div class="settings-panel-header">
-                            <div><h3>供应商与模型</h3><p>展开供应商，连接 Pi 内置服务或自定义服务，并管理其模型。测试会发送少量付费请求。</p></div>
-                            <button id="settings-add-provider" class="settings-primary-button" type="button"><i class="fa-solid fa-plus"></i> 自定义 Provider</button>
+                            <div><h3><!--i18n:s1508-->供应商与模型</h3><p><!--i18n:s1512-->展开供应商，连接 Pi 内置服务或自定义服务，并管理其模型。测试会发送少量付费请求。</p></div>
+                            <button id="settings-add-provider" class="settings-primary-button" type="button"><i class="fa-solid fa-plus"></i><!--i18n:s1513--> 自定义 Provider</button>
                         </div>
                         <div class="settings-toolbar">
-                            <label class="settings-search"><i class="fa-solid fa-magnifying-glass"></i><input id="settings-provider-search" type="search" placeholder="搜索 Provider"></label>
-                            <label class="settings-check"><input id="settings-provider-configured" type="checkbox"><span>仅已配置</span></label>
-                            <button id="settings-refresh-providers" class="icon-btn subtle" type="button" title="刷新 Provider"><i class="fa-solid fa-rotate"></i></button>
+                            <label class="settings-search"><i class="fa-solid fa-magnifying-glass"></i><input id="settings-provider-search" type="search" placeholder="搜索 Provider" data-i18n-placeholder="s1514"></label>
+                            <label class="settings-check"><input id="settings-provider-configured" type="checkbox"><span><!--i18n:s1515-->仅已配置</span></label>
+                            <button id="settings-refresh-providers" class="icon-btn subtle" type="button" title="刷新 Provider" data-i18n-title="s1516"><i class="fa-solid fa-rotate"></i></button>
                         </div>
                         <div id="settings-provider-list" class="settings-list" hidden></div>
                         <div id="settings-unified-catalog"></div>
                     </section>
 
                     <section class="workspace-settings-panel" data-settings-panel="media">
-                        <div class="settings-section-header"><div><h3>媒体模型</h3><p>接入自己的图像、视频和语音服务，模型 ID 由你选择。</p></div></div>
+                        <div class="settings-section-header"><div><h3><!--i18n:s1472-->媒体模型</h3><p><!--i18n:s1517-->接入自己的图像、视频和语音服务，模型 ID 由你选择。</p></div></div>
                         <div class="mc-settings-kinds">
-                            <button type="button" data-media-settings-kind="image"><i class="fa-regular fa-image"></i><strong>图像</strong><span>OpenAI、Gemini、Seedream</span></button>
-                            <button type="button" data-media-settings-kind="video"><i class="fa-solid fa-film"></i><strong>视频</strong><span>Seedance、自定义异步服务</span></button>
-                            <button type="button" data-media-settings-kind="tts"><i class="fa-solid fa-volume-high"></i><strong>语音</strong><span>OpenAI 兼容、Qwen 原生</span></button>
+                            <button type="button" data-media-settings-kind="image"><i class="fa-regular fa-image"></i><strong><!--i18n:s109-->图像</strong><span>OpenAI、Gemini、Seedream</span></button>
+                            <button type="button" data-media-settings-kind="video"><i class="fa-solid fa-film"></i><strong><!--i18n:s108-->视频</strong><span><!--i18n:s1518-->Seedance、自定义异步服务</span></button>
+                            <button type="button" data-media-settings-kind="tts"><i class="fa-solid fa-volume-high"></i><strong><!--i18n:s107-->语音</strong><span><!--i18n:s1519-->OpenAI 兼容、Qwen 原生</span></button>
                         </div>
-                        <p class="settings-help">选择常用服务，填写地址、Key 和模型 ID。高级参数可按需展开，也可让 Agent 根据 API 文档填写接入草稿。</p>
-                        <p class="settings-help">同一服务的模型共用 Key。保存接入后，在实验室检查清单并确认生成；回复朗读默认模型在“使用偏好”中选择。</p>
+                        <p class="settings-help"><!--i18n:s1520-->选择常用服务，填写地址、Key 和模型 ID。高级参数可按需展开，也可让 Agent 根据 API 文档填写接入草稿。</p>
+                        <p class="settings-help"><!--i18n:s1521-->同一服务的模型共用 Key。保存接入后，在实验室检查清单并确认生成；回复朗读默认模型在“使用偏好”中选择。</p>
                     </section>
                     <section class="workspace-settings-panel" data-settings-panel="models">
                         <div class="settings-panel-header">
-                            <div><h3>使用偏好</h3><p>配置模块 Agent、回复朗读和系统通知；聊天默认模型和思考等级在供应商的模型列表中设置。</p></div>
+                            <div><h3><!--i18n:s1509-->使用偏好</h3><p><!--i18n:s1522-->配置模块 Agent、回复朗读和系统通知；聊天默认模型和思考等级在供应商的模型列表中设置。</p></div>
                             <div class="settings-header-actions">
-                                <button id="settings-add-model" class="settings-secondary-button" type="button"><i class="fa-solid fa-plus"></i> 自定义模型</button>
-                                <button id="settings-refresh-models" class="settings-primary-button" type="button"><i class="fa-solid fa-arrows-rotate"></i> 刷新目录</button>
+                                <button id="settings-add-model" class="settings-secondary-button" type="button"><i class="fa-solid fa-plus"></i><!--i18n:s1523--> 自定义模型</button>
+                                <button id="settings-refresh-models" class="settings-primary-button" type="button"><i class="fa-solid fa-arrows-rotate"></i><!--i18n:s1524--> 刷新目录</button>
                             </div>
+                        </div>
+                        <div class="settings-feature-card workspace-language-card">
+                            <label for="workspace-language"><strong><!--i18n:s1612-->界面语言</strong><span id="workspace-language-hint" lang="en"> / Language</span></label>
+                            <select id="workspace-language" aria-describedby="workspace-language-status">
+                                <option value="system">跟随浏览器</option>
+                                <option value="zh-CN">简体中文</option>
+                                <option value="en">English</option>
+                            </select>
+                            <p id="workspace-language-status" role="status"></p>
                         </div>
                         <form id="settings-media-agent-form" class="settings-feature-card" aria-describedby="settings-media-agent-description">
                             <div class="settings-feature-title">
                                 <span class="settings-model-icon"><i class="fa-solid fa-sliders"></i></span>
-                                <div><h4>模块 Agent</h4><p id="settings-media-agent-description" class="settings-feature-description">为多媒体实验室的“生成方案”选择 AI 模型，将你的文字需求整理成图像、视频或语音的生成参数。保存后，下一次生成方案时生效。</p><p id="settings-media-agent-current">读取当前模型</p></div>
+                                <div><h4><!--i18n:s1525-->模块 Agent</h4><p id="settings-media-agent-description" class="settings-feature-description"><!--i18n:s1526-->为多媒体实验室的“生成方案”选择 AI 模型，将你的文字需求整理成图像、视频或语音的生成参数。保存后，下一次生成方案时生效。</p><p id="settings-media-agent-current"><!--i18n:s1527-->读取当前模型</p></div>
                             </div>
                             <div class="settings-feature-controls">
                                 <label><span>Provider</span><select id="settings-media-agent-provider" class="settings-select"></select></label>
-                                <label><span>模型</span><select id="settings-media-agent-model" class="settings-select"></select></label>
-                                <button id="settings-media-agent-test" class="settings-secondary-button" type="button"><i class="fa-solid fa-vial"></i> 测试</button>
-                                <button class="settings-primary-button" type="submit"><i class="fa-solid fa-floppy-disk"></i> 保存</button>
+                                <label><span><!--i18n:s1145-->模型</span><select id="settings-media-agent-model" class="settings-select"></select></label>
+                                <button id="settings-media-agent-test" class="settings-secondary-button" type="button"><i class="fa-solid fa-vial"></i><!--i18n:s1273--> 测试</button>
+                                <button class="settings-primary-button" type="submit"><i class="fa-solid fa-floppy-disk"></i><!--i18n:s680--> 保存</button>
                             </div>
                         </form>
                         <div class="settings-toolbar">
-                            <label class="settings-search"><i class="fa-solid fa-magnifying-glass"></i><input id="settings-model-search" type="search" placeholder="搜索模型或 Provider"></label>
-                            <select id="settings-model-provider" class="settings-select"><option value="">全部 Provider</option></select>
-                            <label class="settings-check"><input id="settings-model-available" type="checkbox"><span>仅可用</span></label>
+                            <label class="settings-search"><i class="fa-solid fa-magnifying-glass"></i><input id="settings-model-search" type="search" placeholder="搜索模型或 Provider" data-i18n-placeholder="s1528"></label>
+                            <select id="settings-model-provider" class="settings-select"><option value=""><!--i18n:s1281-->全部 Provider</option></select>
+                            <label class="settings-check"><input id="settings-model-available" type="checkbox"><span><!--i18n:s1529-->仅可用</span></label>
                         </div>
                         <div class="settings-feature-card">
                             <div class="settings-feature-title">
                                 <span class="settings-model-icon"><i class="fa-solid fa-volume-high"></i></span>
-                                <div><h4>回复朗读（TTS）</h4><p>选择默认语音模型、音色和专属参数；点击回复喇叭时使用。</p></div>
+                                <div><h4><!--i18n:s1530-->回复朗读（TTS）</h4><p><!--i18n:s1531-->选择默认语音模型、音色和专属参数；点击回复喇叭时使用。</p></div>
                             </div>
-                            <button id="settings-reply-tts" class="settings-secondary-button" type="button">配置回复朗读</button>
+                            <button id="settings-reply-tts" class="settings-secondary-button" type="button"><!--i18n:s1532-->配置回复朗读</button>
                         </div>
                         <section class="pi-notification-card" id="pi-notification-card" aria-labelledby="pi-notification-title">
-                            <header class="pi-notification-heading"><span class="settings-model-icon"><i class="fa-solid fa-bell" aria-hidden="true"></i></span><div><h4 id="pi-notification-title">通知与提醒</h4><p>任务完成、失败或等待确认时提醒你</p></div><span class="pi-notification-badge">当前浏览器</span></header>
-                            <div class="pi-notification-row"><div><strong>页面系统通知</strong><p>切到其他标签页或软件时，也能看到任务提醒</p></div><label class="pi-notification-switch"><input id="pi-page-notify" type="checkbox" aria-label="页面系统通知"><span aria-hidden="true"></span></label></div>
-                            <div class="pi-notification-row"><div><strong>提示音</strong><p>适用于 localhost 和局域网 HTTP；页面需保持运行</p></div><label class="pi-notification-switch"><input id="pi-page-sound" type="checkbox" aria-label="提示音"><span aria-hidden="true"></span></label></div>
-                            <div class="pi-notification-feedback"><p id="pi-page-status" role="status" aria-live="polite"></p><button id="pi-page-test" type="button" class="settings-secondary-button"><i class="fa-solid fa-play" aria-hidden="true"></i> 测试提醒</button></div>
-                            <details class="pi-notification-advanced"><summary><span>后台推送</span><small>可选 · 关闭页面后仍可接收</small></summary>
-                                <div class="pi-notification-advanced-body"><p id="pi-notification-status" role="status" aria-live="polite">展开后检查后台推送</p><div class="pi-notification-actions">
-                                    <button id="pi-notification-enable" class="settings-primary-button" type="button" disabled>启用推送</button>
-                                    <button id="pi-notification-disable" class="settings-secondary-button" type="button" disabled>关闭推送</button>
-                                    <button id="pi-notification-test" class="settings-secondary-button" type="button" disabled>测试推送</button>
-                                    <button id="pi-notification-refresh" class="settings-secondary-button" type="button">刷新状态</button>
-                                </div><p>需要可信 HTTPS 或 localhost，以及浏览器推送服务联网。iPhone / iPad 需 iOS 16.4+，并添加到主屏幕。启用后页面不重复提醒。</p></div>
+                            <header class="pi-notification-heading"><span class="settings-model-icon"><i class="fa-solid fa-bell" aria-hidden="true"></i></span><div><h4 id="pi-notification-title"><!--i18n:s1533-->通知与提醒</h4><p><!--i18n:s1534-->任务完成、失败或等待确认时提醒你</p></div><span class="pi-notification-badge"><!--i18n:s1535-->当前浏览器</span></header>
+                            <div class="pi-notification-row"><div><strong><!--i18n:s1536-->页面系统通知</strong><p><!--i18n:s1537-->切到其他标签页或软件时，也能看到任务提醒</p></div><label class="pi-notification-switch"><input id="pi-page-notify" type="checkbox" aria-label="页面系统通知" data-i18n-aria-label="s1536"><span aria-hidden="true"></span></label></div>
+                            <div class="pi-notification-row"><div><strong><!--i18n:s1538-->提示音</strong><p><!--i18n:s1539-->适用于 localhost 和局域网 HTTP；页面需保持运行</p></div><label class="pi-notification-switch"><input id="pi-page-sound" type="checkbox" aria-label="提示音" data-i18n-aria-label="s1538"><span aria-hidden="true"></span></label></div>
+                            <div class="pi-notification-feedback"><p id="pi-page-status" role="status" aria-live="polite"></p><button id="pi-page-test" type="button" class="settings-secondary-button"><i class="fa-solid fa-play" aria-hidden="true"></i><!--i18n:s1540--> 测试提醒</button></div>
+                            <details class="pi-notification-advanced"><summary><span><!--i18n:s1541-->后台推送</span><small><!--i18n:s1542-->可选 · 关闭页面后仍可接收</small></summary>
+                                <div class="pi-notification-advanced-body"><p id="pi-notification-status" role="status" aria-live="polite"><!--i18n:s1543-->展开后检查后台推送</p><div class="pi-notification-actions">
+                                    <button id="pi-notification-enable" class="settings-primary-button" type="button" disabled><!--i18n:s1544-->启用推送</button>
+                                    <button id="pi-notification-disable" class="settings-secondary-button" type="button" disabled><!--i18n:s1545-->关闭推送</button>
+                                    <button id="pi-notification-test" class="settings-secondary-button" type="button" disabled><!--i18n:s1546-->测试推送</button>
+                                    <button id="pi-notification-refresh" class="settings-secondary-button" type="button"><!--i18n:s1547-->刷新状态</button>
+                                </div><p><!--i18n:s1548-->需要可信 HTTPS 或 localhost，以及浏览器推送服务联网。iPhone / iPad 需 iOS 16.4+，并添加到主屏幕。启用后页面不重复提醒。</p></div>
                             </details>
-                            <details class="pi-notification-help"><summary>使用说明与支持范围</summary><p>本机使用请访问 http://localhost:端口。手机通过局域网 HTTP 访问时，只能使用站内提醒和页面提示音。页面休眠、锁屏、勿扰或省电模式可能阻止提醒；提示音在刷新后可能需要点击测试解锁。通知仅显示通用状态，不显示聊天正文。临时会话、侧聊和媒体生成暂不提醒。</p></details>
+                            <details class="pi-notification-help"><summary><!--i18n:s1549-->使用说明与支持范围</summary><p><!--i18n:s1550-->本机使用请访问 http://localhost:端口。手机通过局域网 HTTP 访问时，只能使用站内提醒和页面提示音。页面休眠、锁屏、勿扰或省电模式可能阻止提醒；提示音在刷新后可能需要点击测试解锁。通知仅显示通用状态，不显示聊天正文。临时会话、侧聊和媒体生成暂不提醒。</p></details>
                         </section>
                         <div id="settings-model-test-result" class="settings-result hidden"></div>
-                        <div id="settings-model-list" class="settings-list model-list"><div class="pi-list-state">打开页签后读取模型</div></div>
+                        <div id="settings-model-list" class="settings-list model-list"><div class="pi-list-state"><!--i18n:s1551-->打开页签后读取模型</div></div>
                     </section>
 
                     <section class="workspace-settings-panel" data-settings-panel="access" id="workspace-access-panel">
-                        <div class="settings-panel-header"><div><h3>访问控制</h3><p>管理这个工作台的登录与 API 访问</p></div><button id="workspace-access-refresh" type="button" class="settings-secondary-button">刷新状态</button></div>
+                        <div class="settings-panel-header"><div><h3><!--i18n:s1510-->访问控制</h3><p><!--i18n:s1552-->管理这个工作台的登录与 API 访问</p></div><button id="workspace-access-refresh" type="button" class="settings-secondary-button"><!--i18n:s1547-->刷新状态</button></div>
                         <form id="workspace-access-form" class="workspace-access-card">
-                            <label><input id="workspace-access-enabled" type="checkbox" disabled><strong>启用访问验证</strong></label>
-                            <p id="workspace-access-source" class="workspace-access-note">正在读取设置</p>
-                            <p class="workspace-access-note">关闭后，能够连接此服务的客户端均可使用工作台。请通过监听地址、防火墙或私有网络限制访问。开启后，网页登录一次即可访问，程序调用需携带 Token。</p>
-                            <fieldset id="workspace-access-token-fields" hidden><legend>设置或更换 Token</legend>
-                                <label class="workspace-access-field" for="workspace-access-token"><span>自行设置（16–256 位英文、数字或符号）</span><input id="workspace-access-token" type="password" autocomplete="new-password" maxlength="256" disabled></label>
-                                <label><input id="workspace-access-generate" type="checkbox"><span>自动生成随机 Token</span></label>
-                                <p class="workspace-access-note">不回显已保存的 Token。更换后原 Token 与所有旧登录失效；持久任务继续运行，临时会话和侧聊将结束。</p>
+                            <label><input id="workspace-access-enabled" type="checkbox" disabled><strong><!--i18n:s1553-->启用访问验证</strong></label>
+                            <p id="workspace-access-source" class="workspace-access-note"><!--i18n:s1554-->正在读取设置</p>
+                            <p class="workspace-access-note"><!--i18n:s1555-->关闭后，能够连接此服务的客户端均可使用工作台。请通过监听地址、防火墙或私有网络限制访问。开启后，网页登录一次即可访问，程序调用需携带 Token。</p>
+                            <fieldset id="workspace-access-token-fields" hidden><legend><!--i18n:s1556-->设置或更换 Token</legend>
+                                <label class="workspace-access-field" for="workspace-access-token"><span><!--i18n:s1557-->自行设置（16–256 位英文、数字或符号）</span><input id="workspace-access-token" type="password" autocomplete="new-password" maxlength="256" disabled></label>
+                                <label><input id="workspace-access-generate" type="checkbox"><span><!--i18n:s1558-->自动生成随机 Token</span></label>
+                                <p class="workspace-access-note"><!--i18n:s1559-->不回显已保存的 Token。更换后原 Token 与所有旧登录失效；持久任务继续运行，临时会话和侧聊将结束。</p>
                             </fieldset>
-                            <div class="workspace-access-actions"><button id="workspace-access-save" class="settings-primary-button" type="submit" disabled>保存设置</button><button id="workspace-access-logout" type="button" class="settings-secondary-button" disabled>退出当前登录</button><button id="workspace-access-revoke" type="button" class="settings-secondary-button" disabled>撤销所有登录</button></div>
+                            <div class="workspace-access-actions"><button id="workspace-access-save" class="settings-primary-button" type="submit" disabled><!--i18n:s1560-->保存设置</button><button id="workspace-access-logout" type="button" class="settings-secondary-button" disabled><!--i18n:s1561-->退出当前登录</button><button id="workspace-access-revoke" type="button" class="settings-secondary-button" disabled><!--i18n:s1562-->撤销所有登录</button></div>
                             <p id="workspace-access-error" role="alert" hidden></p><p id="workspace-access-result" role="status" hidden></p>
-                            <div id="workspace-access-generated" hidden><strong>新 Token 仅在这里展示一次，请保存</strong><input id="workspace-access-generated-token" type="text" readonly aria-label="新生成的 Token"><p class="workspace-access-note">离开此页面后不再展示；忘记时可设置新 Token。</p></div>
+                            <div id="workspace-access-generated" hidden><strong><!--i18n:s1563-->新 Token 仅在这里展示一次，请保存</strong><input id="workspace-access-generated-token" type="text" readonly aria-label="新生成的 Token" data-i18n-aria-label="s1564"><p class="workspace-access-note"><!--i18n:s1565-->离开此页面后不再展示；忘记时可设置新 Token。</p></div>
                         </form>
                     </section>
                     <section class="workspace-settings-panel" data-settings-panel="native" id="native-settings-panel"></section>
                     <section class="workspace-settings-panel" data-settings-panel="usage" id="settings-usage-panel">
-                        <div class="settings-panel-header"><div><h3>用量统计</h3><p>持久会话的 Token 用量与估算费用</p></div></div>
+                        <div class="settings-panel-header"><div><h3><!--i18n:s1511-->用量统计</h3><p><!--i18n:s1566-->持久会话的 Token 用量与估算费用</p></div></div>
                         <form id="settings-usage-filters" class="pi-usage-filters">
-                            <label class="pi-usage-range"><span>时间范围</span><select id="settings-usage-range"><option value="today">今天</option><option value="week">最近 7 天</option><option value="month" selected>本月</option><option value="custom">自定义</option></select></label>
-                            <label class="pi-usage-date pi-usage-from"><span>开始日期</span><input id="settings-usage-from" type="date" required></label>
-                            <label class="pi-usage-date pi-usage-to"><span>结束日期</span><input id="settings-usage-to" type="date" required></label>
-                            <button type="submit" class="settings-primary-button pi-usage-refresh"><i class="fa-solid fa-arrow-rotate-right" aria-hidden="true"></i><span>刷新统计</span></button>
+                            <label class="pi-usage-range"><span><!--i18n:s1567-->时间范围</span><select id="settings-usage-range"><option value="today"><!--i18n:s1568-->今天</option><option value="week"><!--i18n:s1569-->最近 7 天</option><option value="month" selected><!--i18n:s1570-->本月</option><option value="custom"><!--i18n:s622-->自定义</option></select></label>
+                            <label class="pi-usage-date pi-usage-from"><span><!--i18n:s1571-->开始日期</span><input id="settings-usage-from" type="date" required></label>
+                            <label class="pi-usage-date pi-usage-to"><span><!--i18n:s1572-->结束日期</span><input id="settings-usage-to" type="date" required></label>
+                            <button type="submit" class="settings-primary-button pi-usage-refresh"><i class="fa-solid fa-arrow-rotate-right" aria-hidden="true"></i><span><!--i18n:s1573-->刷新统计</span></button>
                         </form>
                         <p id="settings-usage-status" role="status" aria-live="polite"></p>
                         <div id="settings-usage-result"></div>
-                        <details class="pi-usage-scope"><summary>统计范围与费用说明</summary><p>统计当前允许项目下仍保留的 Pi 持久会话，包含所有分支、压缩前历史和有记录的工具／摘要用量。临时会话、BTW 侧聊、媒体规划、模型测试及已删除的记录不在此范围。</p><p>原生复制、分叉和导入中保持 ID、时间与内容相同的记录只计一次，归属最早创建的现存会话；手工改变这些字段的副本无法可靠识别。项目和会话明细显示去重后的归属用量。</p><p>费用来自记录当时的 Pi 价格配置，属于美元估算，不是供应商账单。零费用可能表示未配置价格或订阅计费。缺少上报的用量不会被当作零消耗；工具和摘要无法归属模型时单列。</p></details>
+                        <details class="pi-usage-scope"><summary><!--i18n:s1574-->统计范围与费用说明</summary><p><!--i18n:s1575-->统计当前允许项目下仍保留的 Pi 持久会话，包含所有分支、压缩前历史和有记录的工具／摘要用量。临时会话、BTW 侧聊、媒体规划、模型测试及已删除的记录不在此范围。</p><p><!--i18n:s1576-->原生复制、分叉和导入中保持 ID、时间与内容相同的记录只计一次，归属最早创建的现存会话；手工改变这些字段的副本无法可靠识别。项目和会话明细显示去重后的归属用量。</p><p><!--i18n:s1577-->费用来自记录当时的 Pi 价格配置，属于美元估算，不是供应商账单。零费用可能表示未配置价格或订阅计费。缺少上报的用量不会被当作零消耗；工具和摘要无法归属模型时单列。</p></details>
                     </section>
                     <section class="workspace-settings-panel" data-settings-panel="packages">
                         <div class="settings-panel-header">
-                            <div><h3>Pi Packages</h3><p>安装包可能执行任意代码；只安装已审查并信任的来源。</p></div>
-                            <button id="settings-refresh-resources" class="icon-btn subtle" type="button" title="刷新资源"><i class="fa-solid fa-rotate"></i></button>
+                            <div><h3>Pi Packages</h3><p><!--i18n:s1578-->安装包可能执行任意代码；只安装已审查并信任的来源。</p></div>
+                            <button id="settings-refresh-resources" class="icon-btn subtle" type="button" title="刷新资源" data-i18n-title="s1579"><i class="fa-solid fa-rotate"></i></button>
                         </div>
                         <form id="settings-package-form" class="settings-inline-form">
-                            <input id="settings-package-source" type="text" placeholder="npm:@scope/package@1.0.0 或 git:https://..."><button class="settings-primary-button" type="submit"><i class="fa-solid fa-download"></i> 安装</button>
+                            <input id="settings-package-source" type="text" placeholder="npm:@scope/package@1.0.0 或 git:https://..." data-i18n-placeholder="s1580"><button class="settings-primary-button" type="submit"><i class="fa-solid fa-download"></i><!--i18n:s695--> 安装</button>
                         </form>
                         <div id="settings-package-progress" class="settings-result hidden"></div>
-                        <div id="settings-package-list" class="settings-list"><div class="pi-list-state">打开页签后读取 Packages</div></div>
+                        <div id="settings-package-list" class="settings-list"><div class="pi-list-state"><!--i18n:s1581-->打开页签后读取 Packages</div></div>
                         <div id="settings-resource-summary" class="settings-resource-summary"></div>
                         <div id="native-packages" hidden></div>
                     </section>
 
                     <section class="workspace-settings-panel" data-settings-panel="skills">
                         <div class="settings-panel-header">
-                            <div><h3>Skills</h3><p>按需要启用或停用。想增加能力或修改指令，可以直接告诉 Agent。</p></div>
+                            <div><h3>Skills</h3><p><!--i18n:s1582-->按需要启用或停用。想增加能力或修改指令，可以直接告诉 Agent。</p></div>
                         </div>
                         <div id="native-skills" hidden></div>
                         <div id="settings-skills-legacy">
-                            <div class="settings-toolbar"><label class="settings-search"><i class="fa-solid fa-magnifying-glass"></i><input id="settings-skill-search" type="search" placeholder="搜索 Skill"></label></div>
-                            <div id="settings-skill-list" class="settings-list"><div class="pi-list-state">打开页签后读取 Skills</div></div>
+                            <div class="settings-toolbar"><label class="settings-search"><i class="fa-solid fa-magnifying-glass"></i><input id="settings-skill-search" type="search" placeholder="搜索 Skill" data-i18n-placeholder="s719"></label></div>
+                            <div id="settings-skill-list" class="settings-list"><div class="pi-list-state"><!--i18n:s1583-->打开页签后读取 Skills</div></div>
                             <div id="settings-skill-diagnostics" class="settings-diagnostics"></div>
                         </div>
                         <details id="settings-skills-options" class="native-optional">
-                            <summary>其他选项</summary>
-                            <label class="settings-toggle-line"><span>在输入框显示 /skill 命令</span><input id="settings-skill-commands" type="checkbox"></label>
-                            <p>命令显示不影响 Skill 的启用状态。</p>
-                            <button id="settings-manage-templates" class="settings-secondary-button" type="button">管理提示词模板</button>
+                            <summary><!--i18n:s775-->其他选项</summary>
+                            <label class="settings-toggle-line"><span><!--i18n:s1584-->在输入框显示 /skill 命令</span><input id="settings-skill-commands" type="checkbox"></label>
+                            <p><!--i18n:s1585-->命令显示不影响 Skill 的启用状态。</p>
+                            <button id="settings-manage-templates" class="settings-secondary-button" type="button"><!--i18n:s1586-->管理提示词模板</button>
                         </details>
                     </section>
                 </div>
@@ -697,8 +706,8 @@
     <div id="workspace-settings-editor" class="pi-modal hidden" role="dialog" aria-modal="true" aria-labelledby="workspace-settings-editor-title">
         <div class="settings-editor-dialog">
             <header class="workspace-settings-header">
-                <h2 id="workspace-settings-editor-title">编辑</h2>
-                <button id="workspace-settings-editor-close" class="icon-btn subtle" type="button" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button>
+                <h2 id="workspace-settings-editor-title"><!--i18n:s518-->编辑</h2>
+                <button id="workspace-settings-editor-close" class="icon-btn subtle" type="button" title="关闭" aria-label="关闭" data-i18n-title="s358" data-i18n-aria-label="s358"><i class="fa-solid fa-xmark"></i></button>
             </header>
             <div id="workspace-settings-editor-body" class="settings-editor-body"></div>
         </div>
@@ -707,44 +716,44 @@
     <div id="pi-token-dialog" class="pi-modal hidden" role="dialog" aria-modal="true" aria-labelledby="pi-token-title">
         <form id="pi-token-form" class="pi-modal-dialog token-dialog" aria-describedby="workspace-access-intro">
             <div class="workspace-login-brand"><img src="brand/logo-192.png" width="44" height="44" alt=""><span>Pivane</span></div>
-            <div class="workspace-login-heading"><h2 id="pi-token-title">登录工作台</h2><p id="workspace-access-intro">输入访问 Token，继续你的工作。</p></div>
+            <div class="workspace-login-heading"><h2 id="pi-token-title"><!--i18n:s1304-->登录工作台</h2><p id="workspace-access-intro"><!--i18n:s1587-->输入访问 Token，继续你的工作。</p></div>
             <div class="workspace-login-field">
-                <label for="pi-token-input">访问 Token</label>
+                <label for="pi-token-input"><!--i18n:s1588-->访问 Token</label>
                 <div class="workspace-login-input">
-                    <input id="pi-token-input" type="password" autocomplete="current-password" autocapitalize="none" spellcheck="false" placeholder="输入或粘贴 Token" maxlength="4096" aria-describedby="workspace-access-login-error" required>
-                    <button id="workspace-access-token-visibility" type="button" aria-label="显示 Token" aria-pressed="false" aria-controls="pi-token-input">显示</button>
+                    <input id="pi-token-input" type="password" autocomplete="current-password" autocapitalize="none" spellcheck="false" placeholder="输入或粘贴 Token" maxlength="4096" aria-describedby="workspace-access-login-error" required data-i18n-placeholder="s1589">
+                    <button id="workspace-access-token-visibility" type="button" aria-label="显示 Token" aria-pressed="false" aria-controls="pi-token-input" data-i18n-aria-label="s1306"><!--i18n:s1308-->显示</button>
                 </div>
             </div>
-            <label class="workspace-access-remember" hidden><input id="workspace-access-remember" type="checkbox"><span>记住此设备 <small>30 天</small></span></label>
+            <label class="workspace-access-remember" hidden><input id="workspace-access-remember" type="checkbox"><span><!--i18n:s1590-->记住此设备 <small><!--i18n:s1591-->30 天</small></span></label>
             <p id="workspace-access-login-error" role="alert" hidden></p>
-            <button class="pi-primary-button workspace-login-submit" type="submit"><span>登录工作台</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
-            <details class="workspace-login-help"><summary>找不到 Token？</summary><p>使用部署此工作台时设置的访问 Token。忘记时，可在服务器按部署文档重置；由他人部署时，请联系部署者获取。</p></details>
+            <button class="pi-primary-button workspace-login-submit" type="submit"><span><!--i18n:s1304-->登录工作台</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
+            <details class="workspace-login-help"><summary><!--i18n:s1592-->找不到 Token？</summary><p><!--i18n:s1593-->使用部署此工作台时设置的访问 Token。忘记时，可在服务器按部署文档重置；由他人部署时，请联系部署者获取。</p></details>
         </form>
     </div>
 
     <div id="tts-provider-doc-dialog" class="pi-modal hidden" role="dialog" aria-modal="true" aria-labelledby="tts-provider-doc-title">
         <div class="pi-modal-dialog tts-provider-doc-dialog">
             <div class="pi-modal-header">
-                <div><span class="pi-pane-kicker">TTS PROVIDER</span><h2 id="tts-provider-doc-title">Provider 文档</h2></div>
-                <button id="tts-provider-doc-close" class="icon-btn subtle" type="button" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button>
+                <div><span class="pi-pane-kicker">TTS PROVIDER</span><h2 id="tts-provider-doc-title"><!--i18n:s1594-->Provider 文档</h2></div>
+                <button id="tts-provider-doc-close" class="icon-btn subtle" type="button" title="关闭" aria-label="关闭" data-i18n-title="s358" data-i18n-aria-label="s358"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <article id="tts-provider-doc-content" class="pi-markdown tts-provider-doc-content"></article>
         </div>
     </div>
 
     <dialog id="pi-request-dialog" class="pi-request-dialog" aria-labelledby="pi-request-title">
-        <div class="pi-request-heading"><h3 id="pi-request-title">等待确认</h3><button id="pi-request-later" class="icon-btn subtle" type="button" aria-label="稍后处理" title="稍后处理"><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="pi-request-heading"><h3 id="pi-request-title"><!--i18n:s336-->等待确认</h3><button id="pi-request-later" class="icon-btn subtle" type="button" aria-label="稍后处理" title="稍后处理" data-i18n-aria-label="s1595" data-i18n-title="s1595"><i class="fa-solid fa-xmark"></i></button></div>
         <form id="pi-request-form">
             <div id="pi-request-fields"></div>
-            <div class="pi-request-actions"><button id="pi-request-cancel" class="pi-request-cancel" type="button">取消请求</button><button id="pi-request-submit" class="primary-btn" type="submit">确认</button></div>
+            <div class="pi-request-actions"><button id="pi-request-cancel" class="pi-request-cancel" type="button"><!--i18n:s1596-->取消请求</button><button id="pi-request-submit" class="primary-btn" type="submit"><!--i18n:s1006-->确认</button></div>
         </form>
     </dialog>
     <dialog id="pi-workflow-dialog" class="pi-workflow-dialog" aria-labelledby="pi-workflow-title">
-        <div class="pi-request-heading"><h3 id="pi-workflow-title"></h3><button id="pi-workflow-close" class="icon-btn subtle" type="button" aria-label="关闭" title="关闭"><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="pi-request-heading"><h3 id="pi-workflow-title"></h3><button id="pi-workflow-close" class="icon-btn subtle" type="button" aria-label="关闭" title="关闭" data-i18n-aria-label="s358" data-i18n-title="s358"><i class="fa-solid fa-xmark"></i></button></div>
         <form id="pi-workflow-form">
             <div id="pi-workflow-content"></div>
             <p id="pi-workflow-error" class="pi-workflow-error" role="alert" hidden></p>
-            <div id="pi-workflow-actions" class="pi-request-actions"><button id="pi-workflow-cancel" class="pi-request-cancel" type="button">取消</button><button id="pi-workflow-submit" class="primary-btn" type="submit">确认</button></div>
+            <div id="pi-workflow-actions" class="pi-request-actions"><button id="pi-workflow-cancel" class="pi-request-cancel" type="button"><!--i18n:s1210-->取消</button><button id="pi-workflow-submit" class="primary-btn" type="submit"><!--i18n:s1006-->确认</button></div>
         </form>
     </dialog>
     <div id="pi-toast-region" class="pi-toast-region" aria-live="polite"></div>
@@ -753,39 +762,41 @@
         <button id="close-lightbox-btn" type="button" class="gallery-lightbox-close">
             <i class="fa-solid fa-xmark"></i>
         </button>
-        <img id="gallery-lightbox-image" src="" alt="图片大图预览">
+        <img id="gallery-lightbox-image" src="" alt="图片大图预览" data-i18n-alt="s1597">
         <div id="gallery-lightbox-caption" class="gallery-lightbox-caption"></div>
     </div>
 
     <dialog id="pi-attachment-preview" class="pi-attachment-preview" aria-labelledby="pi-attachment-preview-name">
-        <header><strong id="pi-attachment-preview-name"></strong><a id="pi-attachment-original" target="_blank" rel="noopener" title="查看原图" aria-label="查看原图"><i class="fa-solid fa-arrow-up-right-from-square"></i></a><button id="pi-attachment-preview-close" class="icon-btn subtle" type="button" title="关闭预览" aria-label="关闭预览"><i class="fa-solid fa-xmark"></i></button></header>
+        <header><strong id="pi-attachment-preview-name"></strong><a id="pi-attachment-original" target="_blank" rel="noopener" title="查看原图" aria-label="查看原图" data-i18n-title="s1598" data-i18n-aria-label="s1598"><i class="fa-solid fa-arrow-up-right-from-square"></i></a><button id="pi-attachment-preview-close" class="icon-btn subtle" type="button" title="关闭预览" aria-label="关闭预览" data-i18n-title="s156" data-i18n-aria-label="s156"><i class="fa-solid fa-xmark"></i></button></header>
         <div id="pi-attachment-preview-content"></div>
     </dialog>
 
     <dialog id="pi-reply-tts-dialog" class="lab-dialog" aria-labelledby="pi-reply-tts-title">
-        <header><h2 id="pi-reply-tts-title">回复朗读默认配置</h2><button id="pi-reply-tts-close" class="icon-btn" type="button" aria-label="关闭朗读"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
+        <header><h2 id="pi-reply-tts-title"><!--i18n:s1599-->回复朗读默认配置</h2><button id="pi-reply-tts-close" class="icon-btn" type="button" aria-label="关闭朗读" data-i18n-aria-label="s1600"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
         <div class="lab-dialog-scroll">
-            <p id="pi-reply-tts-description" class="lab-muted">保存默认模型和参数后，点击回复喇叭即生成并尝试自动播放，费用由所选服务决定。未单独保存时使用现有语音目录中可执行的默认模型。生成期间可继续对话，音频保存在语音历史。</p>
+            <p id="pi-reply-tts-description" class="lab-muted"><!--i18n:s1601-->保存默认模型和参数后，点击回复喇叭即生成并尝试自动播放，费用由所选服务决定。未单独保存时使用现有语音目录中可执行的默认模型。生成期间可继续对话，音频保存在语音历史。</p>
             <div class="lab-fields">
-                <label class="lab-field wide"><span>语音模型</span><select id="pi-reply-tts-model" aria-label="朗读模型"></select></label>
-                <label id="pi-reply-tts-mapping" class="lab-field wide"><span>接收回复的文本字段</span><select id="pi-reply-tts-text-field" aria-label="接收回复的文本字段"></select></label>
+                <label class="lab-field wide"><span><!--i18n:s1602-->语音模型</span><select id="pi-reply-tts-model" aria-label="朗读模型" data-i18n-aria-label="s1603"></select></label>
+                <label id="pi-reply-tts-mapping" class="lab-field wide"><span><!--i18n:s1604-->接收回复的文本字段</span><select id="pi-reply-tts-text-field" aria-label="接收回复的文本字段" data-i18n-aria-label="s1604"></select></label>
             </div>
             <p id="pi-reply-tts-model-state" class="lab-muted"></p>
             <form id="pi-reply-tts-fields" class="lab-fields"></form>
             <p id="pi-reply-tts-error" class="lab-error" role="alert" hidden></p>
             <p id="pi-reply-tts-state" class="lab-muted" role="status" aria-live="polite"></p>
-            <button id="pi-reply-tts-connect" class="lab-secondary" type="button">管理语音服务与模型</button>
+            <button id="pi-reply-tts-connect" class="lab-secondary" type="button"><!--i18n:s1605-->管理语音服务与模型</button>
         </div>
         <footer>
-            <button id="pi-reply-tts-save" class="lab-secondary" type="button">保存默认配置</button>
+            <button id="pi-reply-tts-save" class="lab-secondary" type="button"><!--i18n:s1606-->保存默认配置</button>
         </footer>
     </dialog>
 
     <dialog id="pi-project-trust-dialog" aria-labelledby="pi-project-trust-title" aria-describedby="pi-project-trust-name">
-        <header><div><h2 id="pi-project-trust-title">项目信任</h2><p id="pi-project-trust-name"></p></div><button id="pi-project-trust-close" type="button" aria-label="关闭项目信任">×</button></header>
+        <header><div><h2 id="pi-project-trust-title"><!--i18n:s204-->项目信任</h2><p id="pi-project-trust-name"></p></div><button id="pi-project-trust-close" type="button" aria-label="关闭项目信任" data-i18n-aria-label="s1607">×</button></header>
         <div id="pi-project-trust-body"></div>
         <p id="pi-project-trust-status" role="status" aria-live="polite"></p>
     </dialog>
+    <script src="pi-i18n-catalog.js"></script>
+    <script src="pi-i18n.js"></script>
     <script src="/vendor/dompurify/purify.min.js"></script>
     <script src="/vendor/marked/marked.umd.js"></script>
     <script src="workspace-access.js"></script>
@@ -822,8 +833,8 @@
     <script src="pi-file-viewer.js"></script>
     <script src="pi-turn-edits.js"></script>
     <dialog id="pi-template-dialog" class="pi-template-dialog" aria-labelledby="pi-template-title">
-        <header><strong id="pi-template-title">提示词模板</strong><button id="pi-template-close" type="button" aria-label="关闭模板管理">×</button></header>
-        <input id="pi-template-search" type="search" placeholder="搜索已保存的模板" aria-label="搜索提示词模板" autocomplete="off">
+        <header><strong id="pi-template-title"><!--i18n:s1608-->提示词模板</strong><button id="pi-template-close" type="button" aria-label="关闭模板管理" data-i18n-aria-label="s1609">×</button></header>
+        <input id="pi-template-search" type="search" placeholder="搜索已保存的模板" aria-label="搜索提示词模板" autocomplete="off" data-i18n-placeholder="s1610" data-i18n-aria-label="s1611">
         <div id="pi-template-body"></div>
     </dialog>
     <script src="pi-composer-tools.js"></script>

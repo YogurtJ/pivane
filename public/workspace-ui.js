@@ -1,4 +1,5 @@
 (() => {
+    const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
     const THEME_KEY = 'pi.workspace.theme';
     const SIDEBAR_KEY = 'pi.workspace.sidebarCollapsed';
     const SPLIT_PREFIX = 'pi.workspace.split:';
@@ -59,7 +60,7 @@
             app?.classList.toggle('sidebar-collapsed', collapsed);
             sidebarToggle?.setAttribute('aria-expanded', String(!collapsed));
             if (sidebarToggle) {
-                sidebarToggle.title = collapsed ? '展开导航' : '折叠导航';
+                sidebarToggle.title = collapsed ? translateUi("展开导航") : translateUi("折叠导航");
                 sidebarToggle.setAttribute('aria-label', sidebarToggle.title);
             }
             localStorage.setItem(SIDEBAR_KEY, String(collapsed));

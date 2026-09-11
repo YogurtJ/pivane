@@ -14,7 +14,7 @@ const messages = [
 ];
 const empty = runtimeId => ({ runtimeId, revision: 1, queue: { steering: [], followUp: [] }, recoveries: [], stopping: false, extension: { title: '', statuses: [], widgets: [] } });
 async function run(browser, viewport) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900, permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900, permissions: ['clipboard-read', 'clipboard-write'] });
     const page = await context.newPage();
     const errors = [], commands = [], writes = [];
     let socket, active = session, pendingStop, pendingAck, rejectAck = false, holdStop = false, holdAck = false;

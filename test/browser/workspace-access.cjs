@@ -9,7 +9,7 @@ const token = 'browser-fixture-access-token-987654321';
     const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
     try {
         for (const width of [1440, 393, 320]) {
-            const context = await browser.newContext({ viewport: { width, height: width === 1440 ? 1000 : 852 } });
+            const context = await browser.newContext({ locale: 'zh-CN', viewport: { width, height: width === 1440 ? 1000 : 852 } });
             const page = await context.newPage(); const errors = [];
             page.on('pageerror', e => errors.push(e.message)); page.on('dialog', d => d.accept());
             await page.goto(base, { waitUntil: 'domcontentloaded' });
@@ -23,7 +23,7 @@ const token = 'browser-fixture-access-token-987654321';
             await page.locator('#workspace-access-save').click();
             await page.waitForFunction(() => document.querySelector('#workspace-access-result')?.textContent.includes('已保存'));
             assert.equal((await fetch(base + '/api/pi/status')).status, 401);
-            const freshContext = await browser.newContext({ viewport: { width, height: 852 } });
+            const freshContext = await browser.newContext({ locale: 'zh-CN', viewport: { width, height: 852 } });
             const fresh = await freshContext.newPage();
             fresh.on('pageerror', e => errors.push(e.message));
             await fresh.route(/^https:\/\/(fonts\.googleapis\.com|fonts\.gstatic\.com|cdnjs\.cloudflare\.com)\//, route => route.abort());

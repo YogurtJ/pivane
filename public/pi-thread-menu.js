@@ -1,11 +1,12 @@
 (() => {
+    const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
     class PiThreadMenu {
         constructor() {
             this.frames = [];
             this.element = document.createElement('div');
             this.element.className = 'pi-thread-menu hidden';
             this.element.setAttribute('role', 'menu');
-            this.element.setAttribute('aria-label', '项目与线程操作');
+            this.element.setAttribute('aria-label', translateUi("项目与线程操作"));
             document.body.appendChild(this.element);
             document.addEventListener('pointerdown', event => {
                 if (!this.element.contains(event.target)) this.close(false);
@@ -48,7 +49,7 @@
             this.close(false);
             this.anchor = anchor;
             this.point = point;
-            this.frames = [{ items, label: '项目与线程操作', focusIndex: 0 }];
+            this.frames = [{ items, label: translateUi("项目与线程操作"), focusIndex: 0 }];
             anchor?.setAttribute('aria-expanded', 'true');
             this.element.classList.remove('hidden');
             this.render();
@@ -65,7 +66,7 @@
             this.element.setAttribute('aria-label', frame.label);
             this.element.replaceChildren();
             const items = this.frames.length > 1
-                ? [{ label: '返回', icon: 'fa-arrow-left', back: true }, ...frame.items] : frame.items;
+                ? [{ label: translateUi("返回"), icon: 'fa-arrow-left', back: true }, ...frame.items] : frame.items;
             for (const [index, item] of items.entries()) {
                 const button = document.createElement('button');
                 button.type = 'button';

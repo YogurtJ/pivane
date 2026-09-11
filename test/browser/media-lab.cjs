@@ -21,7 +21,7 @@ const ttsModel = { id: 'fixture-tts', name: 'Speech Fixture', kind: 'tts', adapt
 const asset = (id, prompt) => ({ id, kind: 'image', model: 'fixture-image', labModelId: 'fixture-image', filename: `${id}.png`, url: `/images/${id}.png`, prompt, parameters: { prompt, quality: 'high', options: { colors: ['blue'] }, transparent: true, seed: 12 }, createdAt: '2026-09-01T10:00:00Z' });
 
 async function run(browser, size, theme) {
-    const context = await browser.newContext({ viewport: size, isMobile: size.width <= 900, hasTouch: size.width <= 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport: size, isMobile: size.width <= 900, hasTouch: size.width <= 900 });
     const page = await context.newPage();
     page.setDefaultTimeout(10000);
     const errors = [], requests = [];

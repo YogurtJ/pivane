@@ -15,7 +15,7 @@ const wav = Buffer.alloc(44 + 48000 * 10);
 wav.write('RIFF'); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16);
 wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(24000, 24); wav.writeUInt32LE(48000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(wav.length - 44, 40);
 async function run(browser, viewport, theme) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width <= 900, hasTouch: viewport.width <= 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width <= 900, hasTouch: viewport.width <= 900 });
     const page = await context.newPage(), errors = [], writes = [], commands = [];
     let defaults = { modelId: speech.id, textParameter: 'input', parameters: { voice: 'b', speed: 1.2, instruction: '自然', options: { seed: 42 } } };
     let revision = 1, holdExecute, holdReview, failExecute = false, empty = false, saved = true, legacy = false, executeCount = 0, reviewCount = 0;

@@ -35,7 +35,7 @@ function fixture() {
 }
 
 async function run(browser, size) {
-    const context = await browser.newContext({ viewport: size, isMobile: size.width < 900, hasTouch: size.width < 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport: size, isMobile: size.width < 900, hasTouch: size.width < 900 });
     const page = await context.newPage();
     const errors = [];
     const writes = [];

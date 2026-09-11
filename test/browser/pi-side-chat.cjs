@@ -9,7 +9,7 @@ const sourceTime = Date.parse('2026-09-07T10:00:00Z');
 const firstReply = '此前已经比较了 A/B 两个方案，目前继续验证方案 A。';
 
 async function run(browser, viewport, theme, fullContext = true, retention = fullContext) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width <= 900, hasTouch: viewport.width <= 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width <= 900, hasTouch: viewport.width <= 900 });
     const page = await context.newPage(); page.setDefaultNavigationTimeout(60000);
     const errors = [], writes = [], mainPrompts = [], sidePrompts = [], preparations = [], sockets = [];
     let mainSocket, activeSide, parentBusy = true, ticks = 0, ticketId = 0, sideCount = 0, closedSides = 0, sendMode = 'normal', holdOpen = false, acceptDialogs = true;

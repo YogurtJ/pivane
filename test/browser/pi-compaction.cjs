@@ -10,7 +10,7 @@ const initialMessages = () => [{ role: 'user', content: 'Fixture requirement', t
 const statsFor = tokens => ({ contextUsage: { tokens, percent: tokens === null ? null : tokens / 1280, contextWindow: 128000 }, tokens: { input: 200, output: 10 }, totalMessages: 2 });
 
 async function run(browser, viewport) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
     const page = await context.newPage();
     const errors = [], writes = [], commands = [];
     let socket, pendingCompact, delayedStats;

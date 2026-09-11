@@ -1,4 +1,5 @@
 (() => {
+    const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
     const access = { supported: false, authenticated: false, enabled: false, ready: null };
     window.WorkspaceAccess = access;
     let locked = false, statusEpoch = 0, settingsEpoch = 0, snapshot = null, active = false, busy = false;
@@ -8,8 +9,8 @@
     const message = (id, text) => { $(id).textContent = text; $(id).hidden = !text; };
     function hideToken() {
         $('pi-token-input').type = 'password';
-        $('workspace-access-token-visibility').textContent = '显示';
-        $('workspace-access-token-visibility').setAttribute('aria-label', '显示 Token');
+        $('workspace-access-token-visibility').textContent = translateUi("显示");
+        $('workspace-access-token-visibility').setAttribute('aria-label', translateUi("显示 Token"));
         $('workspace-access-token-visibility').setAttribute('aria-pressed', 'false');
     }
 
@@ -47,7 +48,7 @@
             body: body === undefined ? undefined : JSON.stringify(body) });
         const data = await response.json().catch(() => null);
         if (response.status === 401 && route !== '/login') access.requireLogin();
-        if (!response.ok) throw new Error(data?.error || `访问请求失败（${response.status}）`);
+        if (!response.ok) throw new Error(translateUi(data?.error || translateUi("访问请求失败（{0}）", response.status)));
         return data;
     }
 
@@ -57,7 +58,7 @@
             const response = await fetch('/api/access/status', { credentials: 'same-origin', cache: 'no-store' });
             if (response.status === 404) return;
             const data = await response.json();
-            if (!response.ok) throw new Error(data?.error || '无法确认访问状态，请稍后重试');
+            if (!response.ok) throw new Error(translateUi(data?.error || translateUi("无法确认访问状态，请稍后重试")));
             if (epoch !== statusEpoch) return;
             if (data.accessControl !== true) return false;
             access.supported = true; access.enabled = data.enabled;
@@ -74,7 +75,7 @@
             return true;
         } catch (error) {
             if (epoch !== statusEpoch) return;
-            if (access.supported && locked) message('workspace-access-login-error', error.message || '无法连接工作台，请稍后重试');
+            if (access.supported && locked) message('workspace-access-login-error', error.message || translateUi("无法连接工作台，请稍后重试"));
             return false;
         }
     }
@@ -115,7 +116,7 @@
             snapshot = data;
             $('workspace-access-enabled').checked = data.enabled;
             $('workspace-access-token').value = ''; $('workspace-access-generate').checked = false;
-            $('workspace-access-source').textContent = data.editable ? '由此工作台管理，可随时修改。' : '由服务器 PI_WEB_TOKEN 强制启用；请在部署配置中修改。';
+            $('workspace-access-source').textContent = data.editable ? translateUi("由此工作台管理，可随时修改。") : translateUi("由服务器 PI_WEB_TOKEN 强制启用；请在部署配置中修改。");
             controls();
         } catch (error) { if (active && epoch === settingsEpoch) message('workspace-access-error', error.message); }
     }
@@ -132,21 +133,21 @@
         $('workspace-access-token-visibility').addEventListener('click', event => {
             const visible = $('pi-token-input').type === 'password';
             $('pi-token-input').type = visible ? 'text' : 'password';
-            event.currentTarget.textContent = visible ? '隐藏' : '显示';
-            event.currentTarget.setAttribute('aria-label', visible ? '隐藏 Token' : '显示 Token');
+            event.currentTarget.textContent = visible ? translateUi("隐藏") : translateUi("显示");
+            event.currentTarget.setAttribute('aria-label', visible ? translateUi("隐藏 Token") : translateUi("显示 Token"));
             event.currentTarget.setAttribute('aria-pressed', String(visible));
         });
         $('pi-token-form').addEventListener('submit', async event => {
             if (!access.supported) return;
             event.preventDefault(); event.stopImmediatePropagation();
             const button = event.currentTarget.querySelector('button[type="submit"]'); if (button.disabled) return;
-            button.disabled = true; button.querySelector('span').textContent = '正在登录…';
+            button.disabled = true; button.querySelector('span').textContent = translateUi("正在登录…");
             $('pi-token-form').setAttribute('aria-busy', 'true'); message('workspace-access-login-error', '');
             try {
                 await request('/login', 'POST', { token: $('pi-token-input').value, remember: $('workspace-access-remember').checked });
                 statusEpoch++; unlock(); if (active) void loadSettings();
             } catch (error) { message('workspace-access-login-error', error.message); }
-            finally { button.disabled = false; button.querySelector('span').textContent = '登录工作台'; $('pi-token-form').removeAttribute('aria-busy'); }
+            finally { button.disabled = false; button.querySelector('span').textContent = translateUi("登录工作台"); $('pi-token-form').removeAttribute('aria-busy'); }
         });
         $('pi-token-dialog').addEventListener('keydown', event => {
             if (!locked) return;
@@ -162,8 +163,8 @@
         $('workspace-access-form').addEventListener('submit', async event => {
             event.preventDefault(); if (busy || !snapshot?.editable) return;
             const enabled = $('workspace-access-enabled').checked, generate = $('workspace-access-generate').checked;
-            if (!enabled && snapshot.enabled && !confirm('关闭访问验证后，能够连接此服务的客户端均可使用工作台。确认关闭？')) return;
-            if (enabled && snapshot.enabled && !confirm('更换 Token 将使原 Token 和所有已登录设备失效，并断开原网页连接。持久任务继续运行，临时会话和侧聊将结束。确认更换？')) return;
+            if (!enabled && snapshot.enabled && !confirm(translateUi("关闭访问验证后，能够连接此服务的客户端均可使用工作台。确认关闭？"))) return;
+            if (enabled && snapshot.enabled && !confirm(translateUi("更换 Token 将使原 Token 和所有已登录设备失效，并断开原网页连接。持久任务继续运行，临时会话和侧聊将结束。确认更换？"))) return;
             const epoch = settingsEpoch;
             const body = { enabled, expectedRevision: snapshot.revision, confirmed: true,
                 ...(enabled ? generate ? { generate: true } : { token: $('workspace-access-token').value } : {}) };
@@ -174,19 +175,19 @@
                 if (active && epoch === settingsEpoch) {
                     const { generatedToken, ...settings } = data;
                     snapshot = settings; $('workspace-access-token').value = ''; $('workspace-access-generate').checked = false;
-                    message('workspace-access-result', data.enabled ? '已保存，访问验证已开启。当前设备已登录。' : '已保存，访问验证已关闭。');
+                    message('workspace-access-result', data.enabled ? translateUi("已保存，访问验证已开启。当前设备已登录。") : translateUi("已保存，访问验证已关闭。"));
                     $('workspace-access-generated').hidden = !data.generatedToken;
                     $('workspace-access-generated-token').value = data.generatedToken || '';
                 }
-            } catch (error) { if (active && epoch === settingsEpoch) message('workspace-access-error', error.message + '；未自动重试。若连接中断，请先刷新状态核对。'); }
+            } catch (error) { if (active && epoch === settingsEpoch) message('workspace-access-error', error.message + translateUi("；未自动重试。若连接中断，请先刷新状态核对。")); }
             finally { busy = false; controls(); }
         });
         for (const [id, route] of [['workspace-access-logout', '/logout'], ['workspace-access-revoke', '/revoke']]) {
             $(id).addEventListener('click', async () => {
-                if (busy || !confirm(route === '/revoke' ? '撤销所有浏览器登录？持久任务继续运行；临时会话和侧聊将结束。' : '退出当前浏览器？持久任务继续运行；当前临时会话和侧聊将结束。')) return;
+                if (busy || !confirm(route === '/revoke' ? translateUi("撤销所有浏览器登录？持久任务继续运行；临时会话和侧聊将结束。") : translateUi("退出当前浏览器？持久任务继续运行；当前临时会话和侧聊将结束。"))) return;
                 busy = true; statusEpoch++; controls(); message('workspace-access-error', '');
                 try { await request(route, 'POST', {}); statusEpoch++; access.requireLogin(); }
-                catch (error) { message('workspace-access-error', error.message + '；请核对状态，未自动重试。'); }
+                catch (error) { message('workspace-access-error', error.message + translateUi("；请核对状态，未自动重试。")); }
                 finally { busy = false; controls(); }
             });
         }

@@ -6,7 +6,7 @@ const sessions = ['a', 'b', 'c'].map(id => ({ id, cwd, name: `会话 ${id}`, mes
 const model = { provider: 'fixture', id: 'fixture', name: 'Fixture', input: ['text', 'image'], contextWindow: 32000 };
 const controls = id => ({ runtimeId: id, revision: 1, stopping: false, queue: { steering: [], followUp: [] }, recoveries: [], extension: { title: '', statuses: [], widgets: [] } });
 async function run(browser, viewport, legacy = false) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
     const page = await context.newPage();
     const errors = [], writes = [], commands = [], sockets = [];
     const states = new Map(sessions.map(s => [s.id, { isStreaming: s.id !== 'c', isCompacting: false, model, thinkingLevel: 'off' }]));

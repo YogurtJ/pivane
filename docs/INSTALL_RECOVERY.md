@@ -14,10 +14,10 @@
 
 ## 2. 从源码发布包安装
 
-先下载`pivane-1.0.0-rc.1.tar.gz`及同名.sha256到Downloads，核对发布来源，然后检查哈希：
+先下载`pivane-1.0.0-rc.2.tar.gz`及同名.sha256到Downloads，核对发布来源，然后检查哈希：
 
 ```bash
-ARCHIVE="$HOME/Downloads/pivane-1.0.0-rc.1.tar.gz"
+ARCHIVE="$HOME/Downloads/pivane-1.0.0-rc.2.tar.gz"
 (cd "$(dirname "$ARCHIVE")" && sha256sum -c "$(basename "$ARCHIVE").sha256")
 ```
 
@@ -27,9 +27,9 @@ ARCHIVE="$HOME/Downloads/pivane-1.0.0-rc.1.tar.gz"
 BASE="$HOME/pivane"
 test ! -e "$BASE" || { echo "此目录已存在，请按更新流程操作或选择新的BASE"; exit 1; }
 umask 077
-mkdir -p "$BASE/releases/1.0.0-rc.1" "$BASE/data/agent" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
-tar -xzf "$ARCHIVE" -C "$BASE/releases/1.0.0-rc.1" --strip-components=1
-cd "$BASE/releases/1.0.0-rc.1"
+mkdir -p "$BASE/releases/1.0.0-rc.2" "$BASE/data/agent" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
+tar -xzf "$ARCHIVE" -C "$BASE/releases/1.0.0-rc.2" --strip-components=1
+cd "$BASE/releases/1.0.0-rc.2"
 npm ci
 ```
 
@@ -91,7 +91,7 @@ curl -fsS http://127.0.0.1:3001/api/pi/status
 
 | 类别 | 本指南布局 | 恢复含义 |
 |---|---|---|
-| 代码/依赖清单 | `releases/1.0.0-rc.1`、原发布包及哈希 | 重解压并 `npm ci`；不跨平台复制 node_modules |
+| 代码/依赖清单 | `releases/1.0.0-rc.2`、原发布包及哈希 | 重解压并 `npm ci`；不跨平台复制 node_modules |
 | Pi 会话 | `data/agent/sessions/` 原生 JSONL | 完整原生树与活动位置；网页当前分支导出不等于完整备份 |
 | Pi 凭据/模型/设置 | 整个 `data/agent/` 中的原生配置、存储与备份 | 含 auth、models、settings、trust 等；不要只挑 auth.json 或手工改写它 |
 | 工作台配置 | Agent 目录内 `pi5-workspace.json`、`pi5-access.json`、`pi5-notifications.json` | 偏好、访问校验/登录、通知订阅；均作为私人数据处理 |

@@ -1,5 +1,7 @@
 # Pivane
 
+简体中文 · [English](README.en.md)
+
 ![Pivane](public/brand/logo-192.png)
 
 **把自己的 AI 工作台带到每一块屏幕上。**
@@ -8,7 +10,7 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 
 **A self-hosted AI workspace powered by Pi Coding Agent. Code, manage files, and create images, video & audio from your desktop, tablet or phone. Bring your own models.**
 
-[下载首个 RC](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.1) · [开始使用](docs/USER_GUIDE.md) · [安装与恢复](docs/INSTALL_RECOVERY.md) · [Agent 操作指南](docs/AGENT_GUIDE.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues)
+[下载当前 RC](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.2) · [开始使用](docs/USER_GUIDE.md) · [安装与恢复](docs/INSTALL_RECOVERY.md) · [Agent 操作指南](docs/AGENT_GUIDE.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues)
 
 ## 为什么用 Pivane
 
@@ -50,9 +52,15 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 
 网页适配包含 320、393、1024、1440 等宽度的浏览器回归。手机后台通知等系统能力受 HTTPS、操作系统与浏览器条件限制，具体验收范围见[平台说明](docs/RELEASE_INSTALL_VALIDATION.md)与[通知文档](docs/NOTIFICATIONS.md)。
 
+## 界面语言
+
+当前源码提供简体中文与英文，首次按浏览器的首个受支持语言显示，没有匹配时回退英文。在“设置 → 使用偏好 → 界面语言”选择跟随浏览器、简体中文或 English；选择保存在当前浏览器，下次打开或刷新页面时生效。保存不会自动刷新，也不改变模型回复、聊天正文或朗读语言。详细范围见[界面语言说明](docs/I18N.md)。
+
+双语功能从 **1.0.0-rc.2** 提供；旧版1.0.0-rc.1的固定发布资产保持不变。
+
 ## 部署在你自己的机器上
 
-当前版本为 **1.0.0-rc.1**，使用包内锁定的 **Pi 0.85.0** 和 Node.js 22.x，验收基线为 Node 22.23.2。
+当前版本为 **1.0.0-rc.2**，使用包内锁定的 **Pi 0.85.0** 和 Node.js 22.x，验收基线为 Node 22.23.2。
 
 | 服务端平台 | 已验收范围 | 安装入口 |
 |---|---|---|
@@ -76,7 +84,7 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 - Windows 普通用户权限下另通过 **30 项检查**；Ubuntu x86_64 另完成同包安装、167 项测试和静态检查补验。
 - 各验收环境的生产依赖 audit 为 **0 漏洞**。测试使用独立身份与合成服务，不把这些结果称为所有真实媒体供应商或手机系统的验收。
 
-准确的平台、包 SHA256 和检查结果随 [RC Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.1) 的 `validation.json` 提供。RC 标签固定验收版本；主分支的项目介绍与文档可以继续完善。
+准确的首版平台、包 SHA256 和检查结果随 [RC1 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.1) 的 `validation.json` 提供。**RC2** 的变更和本包验证范围见[版本说明](docs/releases/1.0.0-rc.2.md)及[RC2 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.2)附件；首版跨平台结果不冒充新版实机验收。
 
 ## 文档与 Agent 入口
 

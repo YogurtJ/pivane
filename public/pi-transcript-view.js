@@ -1,4 +1,5 @@
 (() => {
+    const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
     const MODE_KEY = 'pi.web.transcriptMode';
     const PROCESS_SELECTOR = '.pi-thinking-block, .pi-tool-row, .pi-bash-message';
 
@@ -87,8 +88,8 @@
                     if (member.dataset.state === 'running') running++;
                     if (member.dataset.state === 'error' || member.matches('.pi-bash-message.error')) failed++;
                 }
-                const label = ['执行记录', tools ? `${tools} 次工具调用` : '', thinking ? `${thinking} 段思考` : ''].filter(Boolean).join(' · ');
-                const status = [running ? `${running} 执行中` : '', failed ? `${failed} 工具失败` : ''].filter(Boolean).join(' · ');
+                const label = [translateUi("执行记录"), tools ? translateUi("{0} 次工具调用", tools) : '', thinking ? translateUi("{0} 段思考", thinking) : ''].filter(Boolean).join(' · ');
+                const status = [running ? translateUi("{0} 执行中", running) : '', failed ? translateUi("{0} 工具失败", failed) : ''].filter(Boolean).join(' · ');
                 const labelNode = group.element.querySelector('.pi-process-label');
                 const statusNode = group.element.querySelector('.pi-process-status');
                 if (labelNode.textContent !== label) labelNode.textContent = label;

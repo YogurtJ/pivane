@@ -1,4 +1,5 @@
 (() => {
+    const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
     document.addEventListener('DOMContentLoaded', () => {
         const $ = suffix => document.getElementById('pi-reply-tts-' + suffix);
         const dialog = $('dialog'), fields = $('fields'), models = $('model'), mapping = $('text-field');
@@ -15,8 +16,8 @@
                 headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
                 body: body === undefined ? undefined : JSON.stringify(body) });
             const data = await response.json().catch(() => null);
-            if (!response.ok) throw new Error(data?.error || (response.status === 404 ? '回复朗读尚未启用。' : `HTTP ${response.status}`));
-            if (!data) throw new Error('未收到有效响应。');
+            if (!response.ok) throw new Error(data?.error || (response.status === 404 ? translateUi("回复朗读尚未启用。") : `HTTP ${response.status}`));
+            if (!data) throw new Error(translateUi("未收到有效响应。"));
             return data;
         }
         function plainText(markdown) {
@@ -43,27 +44,27 @@
         }
         function draw(values = {}) {
             const selected = model(); fields.replaceChildren();
-            if (!selected) { mapping.replaceChildren(); $('mapping').hidden = true; $('model-state').textContent = '请先选择语音模型，或接入自己的语音服务。'; controls(); return; }
+            if (!selected) { mapping.replaceChildren(); $('mapping').hidden = true; $('model-state').textContent = translateUi("请先选择语音模型，或接入自己的语音服务。"); controls(); return; }
             const previous = mapping.value;
             mapping.replaceChildren(...selected.textFields.map(key => new Option(selected.parameters[key].label || key, key)));
             mapping.value = selected.textFields.includes(view.textParameter) ? view.textParameter
                 : selected.textFields.includes(previous) ? previous : selected.textFields.includes('text') ? 'text' : selected.textFields[0];
             view.textParameter = mapping.value; $('mapping').hidden = selected.textFields.length === 1;
             render(fields, { parameters: Object.fromEntries(Object.entries(selected.parameters).filter(([key]) => key !== mapping.value)) }, values);
-            $('model-state').textContent = selected.executable ? '点击回复喇叭即使用这些参数生成并播放，音频保存到语音历史。' : '后端未配置，请先接入服务。';
+            $('model-state').textContent = selected.executable ? translateUi("点击回复喇叭即使用这些参数生成并播放，音频保存到语音历史。") : translateUi("后端未配置，请先接入服务。");
             controls();
         }
         function close() { view = null; if (dialog.open) dialog.close(); }
         async function open() {
             close(); const target = { catalog: [], busy: true }; view = target;
             models.replaceChildren(); mapping.replaceChildren(); fields.replaceChildren();
-            $('state').textContent = '正在读取语音配置'; $('model-state').textContent = ''; message('');
+            $('state').textContent = translateUi("正在读取语音配置"); $('model-state').textContent = ''; message('');
             controls(); dialog.showModal();
             try {
                 const snapshot = await api('settings/reply-tts');
                 if (!current(target)) return;
                 target.catalog = snapshot.models; target.preferenceRevision = snapshot.revision;
-                models.replaceChildren(new Option('选择语音模型', ''), ...target.catalog.map(item => new Option(item.name, item.id)));
+                models.replaceChildren(new Option(translateUi("选择语音模型"), ''), ...target.catalog.map(item => new Option(item.name, item.id)));
                 const selected = snapshot.defaults || (!snapshot.hasSavedDefaults && target.catalog.find(item => item.preferred && item.executable));
                 models.value = selected?.modelId || selected?.id || ''; target.textParameter = snapshot.defaults?.textParameter;
                 draw(snapshot.defaults?.parameters || {}); message(snapshot.warning || ''); $('state').textContent = '';
@@ -86,14 +87,14 @@
                 const parameters = collect(fields, true, mapping.value); target.busy = true; controls(); message('');
                 const saved = await api('settings/reply-tts', { modelId: models.value, textParameter: mapping.value, parameters, expectedRevision: target.preferenceRevision }, 'PUT');
                 if (!current(target)) return;
-                target.preferenceRevision = saved.revision; $('state').textContent = '默认配置已保存，下一次点击回复喇叭即使用。';
+                target.preferenceRevision = saved.revision; $('state').textContent = translateUi("默认配置已保存，下一次点击回复喇叭即使用。");
             } catch (error) { if (current(target)) message(error.message); }
             finally { if (current(target)) { target.busy = false; controls(); } }
         });
         function paintButton(button) {
             const job = jobs.get(button._speech?.key), busy = job?.state === 'pending';
             button.setAttribute('aria-busy', String(busy)); button.dataset.speechState = job?.state || 'idle';
-            button.title = busy ? '语音生成中，可继续对话' : job?.state === 'ready' ? '播放或暂停已生成语音' : '朗读回复（TTS）';
+            button.title = busy ? translateUi("语音生成中，可继续对话") : job?.state === 'ready' ? translateUi("播放或暂停已生成语音") : translateUi("朗读回复（TTS）");
             button.querySelector('i').className = busy ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-volume-high';
         }
         function paint() {
@@ -111,17 +112,17 @@
         async function play(job) {
             audio.pause(); active = job;
             if (audio.getAttribute('src') !== job.url) audio.src = job.url;
-            job.message = `${job.name} · 正在播放`; paint();
+            job.message = translateUi("{0} · 正在播放", job.name); paint();
             try { await audio.play(); }
-            catch { if (active === job) { job.message = '语音已就绪，浏览器限制了自动播放，请点播放器播放。'; paint(); } }
+            catch { if (active === job) { job.message = translateUi("语音已就绪，浏览器限制了自动播放，请点播放器播放。"); paint(); } }
         }
         audio.addEventListener('play', () => {
             document.querySelectorAll('audio').forEach(other => { if (other !== audio) other.pause(); });
-            if (active) { active.message = `${active.name} · 正在播放`; paint(); }
+            if (active) { active.message = translateUi("{0} · 正在播放", active.name); paint(); }
         });
-        audio.addEventListener('pause', () => { if (active?.state === 'ready' && !audio.ended) { active.message = '播放已暂停'; paint(); } });
-        audio.addEventListener('ended', () => { if (active) { active.message = '朗读结束，可再次播放'; paint(); } });
-        audio.addEventListener('error', () => { if (active?.state === 'ready') { active.message = '音频无法加载，请核对语音历史；不会重新生成。'; paint(); } });
+        audio.addEventListener('pause', () => { if (active?.state === 'ready' && !audio.ended) { active.message = translateUi("播放已暂停"); paint(); } });
+        audio.addEventListener('ended', () => { if (active) { active.message = translateUi("朗读结束，可再次播放"); paint(); } });
+        audio.addEventListener('error', () => { if (active?.state === 'ready') { active.message = translateUi("音频无法加载，请核对语音历史；不会重新生成。"); paint(); } });
         async function speak(request, retry = false) {
             const previous = jobs.get(request.key);
             if (previous?.state === 'ready' && !retry) {
@@ -130,9 +131,9 @@
             }
             if (pending) { active = pending; paint(); return; }
             if (previous?.state === 'error' && !retry) { active = previous; paint(); return; }
-            if (uncertain && !confirm('此前的语音提交结果不确定。请先核对语音历史或服务方任务，确认仍要发起新的生成？')) return;
+            if (uncertain && !confirm(translateUi("此前的语音提交结果不确定。请先核对语音历史或服务方任务，确认仍要发起新的生成？"))) return;
             uncertain = false;
-            const job = { ...request, state: 'pending', message: '正在准备语音，可继续输入下一条指令。' };
+            const job = { ...request, state: 'pending', message: translateUi("正在准备语音，可继续输入下一条指令。") };
             jobs.set(request.key, job); active = job; pending = job; audio.pause();
             const startedGeneration = generation; let submitted = false;
             paint();
@@ -146,28 +147,28 @@
                 }
                 if (!defaults) {
                     jobs.delete(request.key); active = null; bar.hidden = true;
-                    await open(); if (view) message(snapshot.warning || '请先保存默认语音模型和参数，再点击回复喇叭。'); return;
+                    await open(); if (view) message(snapshot.warning || translateUi("请先保存默认语音模型和参数，再点击回复喇叭。")); return;
                 }
                 const selected = snapshot.models.find(item => item.id === defaults.modelId);
-                if (!selected?.executable) throw new Error('默认语音服务尚未配置，请到朗读设置中选择可用模型。');
+                if (!selected?.executable) throw new Error(translateUi("默认语音服务尚未配置，请到朗读设置中选择可用模型。"));
                 const text = plainText(request.text), definition = selected.parameters[defaults.textParameter];
-                if (!text) throw new Error('这条回复没有可朗读的正文。');
-                if (text.length > (definition?.maxLength || 12000)) throw new Error(`正文 ${text.length} 字符，超过当前模型 ${definition?.maxLength || 12000} 字符限额。请换用支持更长文本的默认模型，或到语音实验室编辑文本。`);
+                if (!text) throw new Error(translateUi("这条回复没有可朗读的正文。"));
+                if (text.length > (definition?.maxLength || 12000)) throw new Error(translateUi("正文 {0} 字符，超过当前模型 {1} 字符限额。请换用支持更长文本的默认模型，或到语音实验室编辑文本。", text.length, definition?.maxLength || 12000));
                 const reviewed = await api('media/lab/review', { modelId: defaults.modelId, parameters: { ...defaults.parameters, [defaults.textParameter]: text } });
                 if (generation !== startedGeneration) { jobs.delete(request.key); return; }
-                if (reviewed.model.kind !== 'tts' || reviewed.model.id !== defaults.modelId || !reviewed.model.executable) throw new Error('语音模型已变化，请检查默认配置。');
-                job.name = reviewed.model.name; job.message = `${job.name} · 正在生成，可继续对话。`; paint();
+                if (reviewed.model.kind !== 'tts' || reviewed.model.id !== defaults.modelId || !reviewed.model.executable) throw new Error(translateUi("语音模型已变化，请检查默认配置。"));
+                job.name = reviewed.model.name; job.message = translateUi("{0} · 正在生成，可继续对话。", job.name); paint();
                 // The user's speaker click authorizes exactly this reply with their defaults.
                 submitted = true;
                 const response = await api('media/lab/execute', { ticket: reviewed.ticket, confirmed: true });
                 const item = response.result?.asset || response.result?.historyItem, url = item?.url || item?.audioUrl;
                 if (response.kind !== 'tts' || response.modelId !== reviewed.model.id || typeof url !== 'string' || !/^\/audio\/[^/\\?#]+$/.test(url)
-                    || decodeURIComponent(url).includes('..') || /[/\\]/.test(decodeURIComponent(url.slice(7)))) throw new Error('未收到有效音频，请核对语音历史。');
-                job.state = 'ready'; job.url = url; job.message = '语音已就绪，可播放';
+                    || decodeURIComponent(url).includes('..') || /[/\\]/.test(decodeURIComponent(url.slice(7)))) throw new Error(translateUi("未收到有效音频，请核对语音历史。"));
+                job.state = 'ready'; job.url = url; job.message = translateUi("语音已就绪，可播放");
                 if (pending === job) pending = null;
                 if (active === job && generation === startedGeneration) await play(job);
             } catch (error) {
-                job.state = 'error'; job.message = error.message + (submitted ? ' 提交结果可能不确定，请先核对语音历史；不会自动重试。' : '');
+                job.state = 'error'; job.message = error.message + (submitted ? translateUi(" 提交结果可能不确定，请先核对语音历史；不会自动重试。") : '');
                 if (submitted) uncertain = true;
             } finally {
                 if (pending === job) pending = null;

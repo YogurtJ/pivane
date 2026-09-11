@@ -10,7 +10,7 @@ const sessions = [make(cwdA, 'active', '2020-01-01T00:00:00Z'), make(cwdA, 'old-
     ...Array.from({ length: 15 }, (_, i) => make(i % 2 ? cwdB : cwdA, `recent-${String(i + 1).padStart(2, '0')}`, new Date(Date.UTC(2026, 8, 20, 0, 30 - i)).toISOString()))];
 
 async function run(browser, viewport) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
     const page = await context.newPage();
     const errors = [], writes = [], commands = [], loaded = [];
     let activityOk = true, ephemeralStreaming = false, ephemeralSocket;

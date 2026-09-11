@@ -7,7 +7,7 @@ let png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCA
 const model = { provider: 'fixture', id: 'fixture', name: 'Fixture', input: ['text', 'image'], contextWindow: 128000 };
 const sessions = ['a', 'b'].map(id => ({ id, cwd, name: `Attachment ${id}`, messageCount: 0 }));
 async function run(browser, viewport) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
     const page = await context.newPage();
     const errors = [], writes = [], prompts = [];
     let mode = 'accept', held, active = sessions[0];

@@ -7,7 +7,7 @@ const model = { provider: 'fixture', id: 'fixture', name: 'Fixture model', input
 const fields = 'input:not([type="hidden"]):not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),textarea,select,[contenteditable="true"],[contenteditable=""]';
 
 async function run(browser, size, mobile) {
-    const context = await browser.newContext({ viewport: size, isMobile: mobile, hasTouch: mobile });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport: size, isMobile: mobile, hasTouch: mobile });
     const page = await context.newPage();
     const errors = []; const writes = []; let socket;
     page.on('pageerror', error => errors.push(error.message));

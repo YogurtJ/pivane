@@ -12,7 +12,7 @@ const summary = ['上下文摘要：保留路径和原始换行。', '<read-file
     '</read-files>', '', `https://example.invalid/artifacts/${'longUnbrokenIdentifier'.repeat(35)}`, '<modified-files>', '/srv/example/public/workspace.css', '</modified-files>'].join('\n');
 const code = `const id = "${'unbroken_code_'.repeat(70)}";`;
 async function run(browser, viewport) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
     const page = await context.newPage(); const errors = [], writes = [];
     let socket, currentSummary = summary;
     const messages = () => [

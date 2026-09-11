@@ -1,4 +1,5 @@
 (() => {
+    const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
     const node = (tag, text) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; return e; };
     class PiEditorSuggestions {
         constructor(host) {
@@ -26,7 +27,7 @@
             try {
                 if (this.runtimeId) { const value = await this.host.ack(this.runtimeId, draft.id); if (epoch === this.epoch) this.apply(value); }
                 else { this.items = this.items.filter(d => d.id !== draft.id); this.render(); }
-            } catch (e) { if (epoch === this.epoch) this.host.toast('建议已填入空草稿，但确认失败；可在建议中核对处理。', 'info'); }
+            } catch (e) { if (epoch === this.epoch) this.host.toast(translateUi("建议已填入空草稿，但确认失败；可在建议中核对处理。"), 'info'); }
             finally { if (epoch === this.epoch) this.autofilling = false; }
         }
         legacy(event) {
@@ -37,20 +38,20 @@
         }
         render() {
             this.root.hidden = !this.items.length && !this.overflow;
-            this.title.textContent = `扩展提供了 ${this.items.length} 条草稿建议`;
+            this.title.textContent = translateUi("扩展提供了 {0} 条草稿建议", this.items.length);
             this.body.replaceChildren();
-            this.body.append(node('p', '建议仅保留在当前运行实例中，退出实例后不恢复。'));
-            if (this.overflow) this.body.append(node('p', '部分扩展建议超过恢复限额，请处理已有建议后重新调用扩展。'));
+            this.body.append(node('p', translateUi("建议仅保留在当前运行实例中，退出实例后不恢复。")));
+            if (this.overflow) this.body.append(node('p', translateUi("部分扩展建议超过恢复限额，请处理已有建议后重新调用扩展。")));
             for (const draft of this.items) {
                 const card = node('article'), pre = node('pre', draft.text), actions = node('div');
                 const appliedKey = `${this.runtimeId}:${draft.id}`;
-                for (const [label, mode] of [['追加到草稿', 'append'], ['替换文字', 'replace'], ['忽略', 'ignore']]) {
+                for (const [label, mode] of [[translateUi("追加到草稿"), 'append'], [translateUi("替换文字"), 'replace'], [translateUi("忽略"), 'ignore']]) {
                     const button = node('button', label); button.type = 'button';
                     button.addEventListener('click', async () => {
                         if (!this.host.connected()) return;
                         const epoch = this.epoch;
                         if (mode !== 'ignore' && !this.applied.has(appliedKey)) {
-                            if (mode === 'replace' && this.host.text() && !confirm('替换当前未发送的文字？已有附件会保留。')) return;
+                            if (mode === 'replace' && this.host.text() && !confirm(translateUi("替换当前未发送的文字？已有附件会保留。"))) return;
                             if (!this.host.accept(draft.text, mode)) return;
                             this.applied.add(appliedKey);
                             if (this.applied.size > 512) this.applied.delete(this.applied.values().next().value);
@@ -61,7 +62,7 @@
                                 const value = await this.host.ack(this.runtimeId, draft.id);
                                 if (epoch === this.epoch) this.apply(value);
                             } else { this.items = this.items.filter(d => d.id !== draft.id); this.render(); }
-                        } catch (e) { if (epoch === this.epoch) { button.disabled = false; this.host.toast('建议已处理，但确认失败；本页不会重复追加。' + e.message, 'error'); } }
+                        } catch (e) { if (epoch === this.epoch) { button.disabled = false; this.host.toast(translateUi("建议已处理，但确认失败；本页不会重复追加。") + e.message, 'error'); } }
                     });
                     actions.append(button);
                 }

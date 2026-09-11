@@ -11,7 +11,7 @@ const text = index => ({ role: index % 2 ? 'assistant' : 'user', timestamp: 1000
     content: [{ type: 'text', text: `Message ${index}\n\n${'A stable paragraph for transcript navigation. '.repeat(10)}` }] });
 
 async function run(browser, size) {
-    const context = await browser.newContext({ viewport: size, hasTouch: size.width < 900, isMobile: size.width < 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport: size, hasTouch: size.width < 900, isMobile: size.width < 900 });
     const page = await context.newPage();
     const errors = [];
     const writes = [];

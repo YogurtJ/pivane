@@ -19,7 +19,7 @@ function fixture() {
         customProviders: [{ id: personal, models: models.filter(item => item.provider === personal) }] };
 }
 async function run(browser, viewport) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
     const page = await context.newPage(); const errors = [], writes = [];
     const catalog = fixture();
     page.on('pageerror', error => errors.push(error.message));

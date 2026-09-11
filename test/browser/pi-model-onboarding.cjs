@@ -1,7 +1,7 @@
 const assert=require('node:assert/strict');const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 const base=process.env.PI_MODEL_ONBOARDING_TEST_URL||'http://127.0.0.1:3001',cwd='/tmp/model-onboarding-ui';
 (async()=>{const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true});try{for(const width of [1440,393,320]){
- const context=await browser.newContext({viewport:{width,height:1000}}),page=await context.newPage(),errors=[],calls=[];let available=[],chosen={provider:'unknown',id:'unknown'},authReject=false,hold,held;
+ const context=await browser.newContext({ locale: 'zh-CN',viewport:{width,height:1000}}),page=await context.newPage(),errors=[],calls=[];let available=[],chosen={provider:'unknown',id:'unknown'},authReject=false,hold,held;
  const model={provider:'fixture',id:'working-model',name:'已接入模型 · '+('Long label '.repeat(15)),input:['text'],contextWindow:32000};
  const session={id:'fixture-session',cwd,name:'模型接入验证',messageCount:0,modified:'2026-09-11T00:00:00Z'};
  page.on('pageerror',e=>errors.push(e.message));await page.addInitScript(({cwd})=>{localStorage.setItem('pi.web.cwd',cwd);localStorage.setItem('pi.web.session:'+cwd,'fixture-session');},{cwd});

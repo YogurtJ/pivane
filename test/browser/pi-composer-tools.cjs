@@ -9,7 +9,7 @@ const nextModel = { ...model, id: 'next', name: 'Next fixture' };
 const messages = [{ role: 'user', content: 'fixture question', timestamp: 1 }, { role: 'assistant', content: [{ type: 'text', text: 'Fixture reply' }], timestamp: 2 }];
 let debugPage;
 async function run(browser, viewport) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900, permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900, permissions: ['clipboard-read', 'clipboard-write'] });
     const page = await context.newPage(), errors = [], commands = [], mutations = [], pending = [];
     debugPage = page;
     let socket, compact, extensionPending, rejectExtension = false, holdExtension = false;

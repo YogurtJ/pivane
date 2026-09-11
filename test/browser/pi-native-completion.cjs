@@ -5,7 +5,7 @@ const model = {provider:'fixture',id:'fixture',name:'Fixture',input:['text','ima
 const cwd='/tmp/native-completion-browser', session={id:'fixture',cwd,name:'Fixture',messageCount:1};
 const controls = () => ({runtimeId:'runtime',revision:1,queue:{steering:[],followUp:[]},recoveries:[],drafts:[],stopping:false,extension:{title:'',statuses:[],widgets:[]}});
 async function run(browser, viewport) {
- const context = await browser.newContext({viewport,isMobile:viewport.width<900,hasTouch:viewport.width<900});
+ const context = await browser.newContext({ locale: 'zh-CN',viewport,isMobile:viewport.width<900,hasTouch:viewport.width<900});
  const page = await context.newPage(); let socket, control=controls(), partial='PREFIX ', seq=10, busy=true, configMatch=false, rejectAck=false, holdSearch, startupFailure=false;
  const requests=[],errors=[]; const runtime=()=>({model,thinkingLevel:'off',isStreaming:busy,isCompacting:false});
  const stats={tokens:{input:10,output:10},contextUsage:{tokens:20,percent:0.1,contextWindow:32000}};

@@ -6,7 +6,7 @@ const cwd = '/srv/transfer-fixture', target = '/srv/目标项目-' + 'long-path-
 const model = { provider: 'fixture', id: 'fixture', input: ['text', 'image'], name: 'Fixture' };
 const original = { id: 'original-thread', cwd, name: '原线程', firstMessage: 'original', messageCount: 2, modified: new Date().toISOString() };
 async function run(browser, viewport) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900, acceptDownloads: true });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900, acceptDownloads: true });
     const page = await context.newPage(), errors = [], writes = [], opens = [];
     let imported = [], failExport = false, failImport = false, holdImport = false, releaseImport, oldBackend = false, ephemeralMode = false, streaming = false;
     page.on('pageerror', error => errors.push(error.message));

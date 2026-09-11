@@ -18,7 +18,7 @@ function edit(id, file, source = patch, options = {}) {
     ];
 }
 async function run(browser, viewport) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width <= 900, hasTouch: viewport.width <= 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width <= 900, hasTouch: viewport.width <= 900 });
     const page = await context.newPage();
     const errors = [], writes = [], commands = [];
     let socket, sideSocket, busy = false, activeId = session.id, sideStarts = 0, sideCloses = 0, heldState = null, holdState = false;

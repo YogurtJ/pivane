@@ -29,7 +29,7 @@ async function get(url) { const response = await fetch(base + url); assert.equal
     const results = [];
     try {
         for (const width of [1440,393]) {
-            const context = await browser.newContext({viewport:{width,height:1000},isMobile:width<900,hasTouch:width<900});
+            const context = await browser.newContext({ locale: 'zh-CN',viewport:{width,height:1000},isMobile:width<900,hasTouch:width<900});
             const page = await context.newPage(); page.setDefaultTimeout(30000);
             const errors=[]; page.on('pageerror',e=>errors.push(e.message));
             // External decoration is irrelevant to this onboarding test; all application API/WS are real.

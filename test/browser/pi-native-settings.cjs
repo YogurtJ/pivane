@@ -11,7 +11,7 @@ async function widthCheck(page) {
     assert.ok(sizes.every(s => s.s <= s.w + 1), JSON.stringify(sizes));
 }
 async function settingsRun(browser, width) {
-    const ctx = await browser.newContext({ viewport: { width, height: 900 }, isMobile: width < 900, hasTouch: width < 900 });
+    const ctx = await browser.newContext({ locale: 'zh-CN', viewport: { width, height: 900 }, isMobile: width < 900, hasTouch: width < 900 });
     const page = await ctx.newPage(), errors = [], writes = [];
     let revision = 'v1', conflict = false, slowScope, releaseScope, failReadAfterWrite = false, failResourceRead = false, failNativeAfterWrite = false, failNativeRead = false;
     const trusts = new Map(), values = { global: {}, project: {} }, enabled = { skill: true, prompt: true }, overrides = {};
@@ -210,7 +210,7 @@ let legacy = false;
     assert.deepEqual(errors, []); console.log('PASS native settings ' + width); await ctx.close();
 }
 async function contextRun(browser, width) {
-    const ctx = await browser.newContext({ viewport: { width, height: 900 }, isMobile: width < 900, hasTouch: width < 900 });
+    const ctx = await browser.newContext({ locale: 'zh-CN', viewport: { width, height: 900 }, isMobile: width < 900, hasTouch: width < 900 });
     const page = await ctx.newPage(), errors = [], commands = [];
     const model = { provider: 'fixture', id: 'model', name: 'Fixture', input: ['text'], contextWindow: 32000 };
     const sessions = ['first', 'second'].map(id => ({ id, cwd, name: id, messageCount: 0 }));

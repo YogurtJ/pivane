@@ -17,7 +17,7 @@ function fixture(query) {
     const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', headless: true });
     try {
         for (const width of [1440, 393, 320]) {
-            const context = await browser.newContext({ viewport: { width, height: width === 1440 ? 1000 : 852 }, isMobile: width < 900, hasTouch: width < 900 });
+            const context = await browser.newContext({ locale: 'zh-CN', viewport: { width, height: width === 1440 ? 1000 : 852 }, isMobile: width < 900, hasTouch: width < 900 });
             const page = await context.newPage(), errors = [], writes = [], calls = [];
             let mode = 'normal', supported = true, release = null;
             page.on('pageerror', error => errors.push(error.message));

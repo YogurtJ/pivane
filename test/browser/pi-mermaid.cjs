@@ -8,7 +8,7 @@ const diagrams = ['flowchart LR\n A[网页] --> B[网关] --> C[Pi 会话]', 'se
     const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
     try {
         for (const width of [1440, 393, 320]) {
-            const context = await browser.newContext({ viewport: { width, height: 950 }, isMobile: width < 900, hasTouch: width < 900 });
+            const context = await browser.newContext({ locale: 'zh-CN', viewport: { width, height: 950 }, isMobile: width < 900, hasTouch: width < 900 });
             const page = await context.newPage(), errors = [], unexpected = [];
             let socket;
             let messages = [{ role: 'user', content: [{ type: 'text', text: '画图' }] }, { role: 'assistant', content: [{ type: 'text', text: diagrams.map(fence).join('\n\n') }], timestamp: 1234 }];

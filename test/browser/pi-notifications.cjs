@@ -5,7 +5,7 @@ const base = process.env.PI_NOTIFICATION_TEST_URL || 'http://127.0.0.1:3131';
     const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
     try {
         for (const width of [1440, 393, 320]) {
-            const context = await browser.newContext({ viewport: { width, height: 900 }, isMobile: width < 900, hasTouch: width < 900 });
+            const context = await browser.newContext({ locale: 'zh-CN', viewport: { width, height: 900 }, isMobile: width < 900, hasTouch: width < 900 });
             const page = await context.newPage(); const errors = []; let enabled = false; let tests = 0; let keys = 0; let notices = [];
             page.on('pageerror', e => errors.push(e.message));
             await page.addInitScript(() => {

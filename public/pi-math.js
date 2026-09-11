@@ -1,4 +1,5 @@
 (() => {
+    const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
     const MAX_SOURCE = 10000, MAX_FORMULAS = 128, MAX_CACHE = 128;
     const cache = new Map();
     let cacheBytes = 0;
@@ -41,7 +42,7 @@
                 FORBID_ATTR: ['href', 'xlink:href', 'src', 'id']
             });
         } catch {
-            html = `<span class="pi-math-fallback" title="公式未能渲染，保留 LaTeX 原文">${escape(token.raw)}</span>`;
+            html = `<span class="pi-math-fallback" title="${translateUi("公式未能渲染，保留 LaTeX 原文")}">${escape(token.raw)}</span>`;
         }
         html = `<span class="pi-math${token.display ? ' pi-math-display' : ''}">${html}</span>`;
         cache.set(key, html); cacheBytes += key.length + html.length;

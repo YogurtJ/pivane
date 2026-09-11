@@ -1,4 +1,5 @@
 (() => {
+    const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
     function describe(result) {
         const patch = typeof result?.details?.patch === 'string' ? result.details.patch : '';
         const source = patch || (typeof result?.details?.diff === 'string' ? result.details.diff : '');
@@ -26,18 +27,18 @@
     }
 
     function panel(info, path, copy, notify) {
-        const section = document.createElement('section'); section.className = 'pi-edit-diff'; section.setAttribute('aria-label', '代码修改');
+        const section = document.createElement('section'); section.className = 'pi-edit-diff'; section.setAttribute('aria-label', translateUi("代码修改"));
         const head = document.createElement('div'); head.className = 'pi-diff-heading';
-        const name = document.createElement('strong'); name.textContent = path || '文件修改'; head.append(name);
+        const name = document.createElement('strong'); name.textContent = path || translateUi("文件修改"); head.append(name);
         const count = document.createElement('span');
-        count.textContent = info.counts ? `+${info.counts.added} / −${info.counts.removed}` : '原始差异 · 行数未统计'; head.append(count);
+        count.textContent = info.counts ? `+${info.counts.added} / −${info.counts.removed}` : translateUi("原始差异 · 行数未统计"); head.append(count);
         if (info.patch) {
-            const button = document.createElement('button'); button.type = 'button'; button.textContent = '复制 patch';
-            button.addEventListener('click', () => copy(info.patch).then(() => notify('已复制 patch', 'success')).catch(error => notify(error.message, 'error')));
+            const button = document.createElement('button'); button.type = 'button'; button.textContent = translateUi("复制 patch");
+            button.addEventListener('click', () => copy(info.patch).then(() => notify(translateUi("已复制 patch"), 'success')).catch(error => notify(error.message, 'error')));
             head.append(button);
         }
         section.append(head);
-        const code = document.createElement('pre'); code.className = 'pi-diff-code'; code.tabIndex = 0; code.setAttribute('aria-label', '修改差异，可滚动');
+        const code = document.createElement('pre'); code.className = 'pi-diff-code'; code.tabIndex = 0; code.setAttribute('aria-label', translateUi("修改差异，可滚动"));
         // Keep the full text of large patches without creating thousands of line elements.
         if (info.source.length > 500000 || info.lines.length > 4000) code.textContent = info.source;
         else {
@@ -72,7 +73,7 @@
         if (!row.querySelector('.pi-tool-raw')) {
             const raw = document.createElement('details'); raw.className = 'pi-tool-raw';
             raw.dataset.detailKey = `${row.dataset.detailKey}:arguments`;
-            const summary = document.createElement('summary'); summary.textContent = '原始修改参数'; raw.append(summary);
+            const summary = document.createElement('summary'); summary.textContent = translateUi("原始修改参数"); raw.append(summary);
             const args = row.querySelector('.pi-tool-args'); args.before(raw); raw.append(args);
         }
     }

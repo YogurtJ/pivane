@@ -1,4 +1,5 @@
 (() => {
+    const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
     const selector = '.pi-markdown pre > code.language-mermaid';
     const records = new WeakMap();
     let frame, ready, pending, serial = 0, scanning = false, running = false;
@@ -57,10 +58,10 @@
     function create(code) {
         const pre = code.parentElement;
         const figure = document.createElement('figure'); figure.className = 'pi-mermaid';
-        const status = document.createElement('div'); status.className = 'pi-mermaid-status'; status.textContent = '正在绘制图表…';
+        const status = document.createElement('div'); status.className = 'pi-mermaid-status'; status.textContent = translateUi("正在绘制图表…");
         const details = document.createElement('details'); details.className = 'pi-mermaid-source';
-        const summary = document.createElement('summary'); summary.textContent = 'Mermaid 源码';
-        const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'pi-mermaid-copy'; copy.textContent = '复制源码';
+        const summary = document.createElement('summary'); summary.textContent = translateUi("Mermaid 源码");
+        const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'pi-mermaid-copy'; copy.textContent = translateUi("复制源码");
         copy.addEventListener('click', async () => {
             const text = code.textContent;
             try {
@@ -71,8 +72,8 @@
                     const ok = document.execCommand('copy'); input.remove(); copy.focus();
                     if (!ok) throw new Error('copy');
                 }
-                copy.textContent = '已复制';
-            } catch { copy.textContent = '请展开源码手动复制'; }
+                copy.textContent = translateUi("已复制");
+            } catch { copy.textContent = translateUi("请展开源码手动复制"); }
         });
         pre.before(figure); details.append(summary, copy, pre); figure.append(status, details);
         const record = { code, figure, status, details, theme: null, image: null };
@@ -97,7 +98,7 @@
                     const clean = DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true },
                         FORBID_TAGS: ['foreignObject', 'a', 'image', 'script', 'animate', 'set'], FORBID_ATTR: ['href', 'xlink:href'] });
                     const url = URL.createObjectURL(new Blob([clean], { type: 'image/svg+xml' }));
-                    const image = new Image(); image.alt = 'Mermaid 图表（文字说明见下方源码）'; image.className = 'pi-mermaid-image';
+                    const image = new Image(); image.alt = translateUi("Mermaid 图表（文字说明见下方源码）"); image.className = 'pi-mermaid-image';
                     const svgRoot = new DOMParser().parseFromString(clean, 'image/svg+xml').documentElement;
                     const viewBox = svgRoot.getAttribute('viewBox')?.trim().split(/[\s,]+/).map(Number);
                     if (viewBox?.length === 4 && viewBox.every(Number.isFinite) && viewBox[2] > 0 && viewBox[2] <= 10000) image.style.width = `${viewBox[2]}px`;
@@ -108,7 +109,7 @@
                     item.figure.dataset.state = 'ready'; item.figure.dataset.theme = theme ? 'dark' : 'light';
                 } catch {
                     if (!code.isConnected) continue;
-                    item.status.hidden = false; item.status.textContent = '图表未能显示，可查看或复制源码。';
+                    item.status.hidden = false; item.status.textContent = translateUi("图表未能显示，可查看或复制源码。");
                     item.details.open = true; item.figure.dataset.state = 'error';
                 }
                 if (code.isConnected && dark() !== theme) queue.add(code);

@@ -11,7 +11,7 @@ assert.match(project||'',/^\/tmp\/pi-onboarding-[^/]+\/project$/);
  const models=await get('/api/pi/settings/models');assert.ok(models.providers.every(p=>!p.configured));
  const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true});const results=[];
  try{for(const width of [1440,393,320]){
-  const context=await browser.newContext({viewport:{width,height:1000}});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const context=await browser.newContext({ locale: 'zh-CN',viewport:{width,height:1000}});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route(/https:\/\/(fonts\.googleapis\.com|fonts\.gstatic\.com)\//,r=>r.abort());
   await page.goto(base,{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>!document.querySelector('#pi-project-button').disabled);
   // Existing allowed server cwd may appear as a project, but no browser project is preselected in settings.

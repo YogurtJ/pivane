@@ -5,7 +5,7 @@ const cwd = '/tmp/pi-shell-browser-project';
 const model = { provider: 'fixture', id: 'fixture', name: 'Fixture', input: ['text', 'image'], contextWindow: 32000 };
 const sessions = ['a', 'b'].map(id => ({ id, cwd, name: `Shell ${id}`, messageCount: 1 }));
 async function run(browser, width, legacy = false) {
-    const context = await browser.newContext({ viewport: { width, height: width > 900 ? 1000 : 852 }, isMobile: width < 900, hasTouch: width < 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport: { width, height: width > 900 ? 1000 : 852 }, isMobile: width < 900, hasTouch: width < 900 });
     const page = await context.newPage(), errors = [], requests = [], writes = [], sockets = [];
     const shellStates = new Map(sessions.map(s => [s.id, { runtimeId: s.id, revision: 0, busy: false, job: null }]));
     const modes = new Map(sessions.map(s => [s.id, { runtimeId: s.id, revision: 0, steeringMode: 'one-at-a-time', followUpMode: 'one-at-a-time' }]));

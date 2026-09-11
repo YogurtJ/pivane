@@ -12,7 +12,7 @@ const png = { type: 'image', mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEU
 const text = message => typeof message.content === 'string' ? message.content : (message.content || []).filter(block => block.type === 'text').map(block => block.text).join('\n');
 
 async function run(browser, viewport, theme) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width <= 900, hasTouch: viewport.width <= 900, timezoneId: 'Asia/Shanghai' });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width <= 900, hasTouch: viewport.width <= 900, timezoneId: 'Asia/Shanghai' });
     const page = await context.newPage(), errors = [], writes = [], commands = [];
     const pendingRequests = new Set();
     page.setDefaultNavigationTimeout(60000);

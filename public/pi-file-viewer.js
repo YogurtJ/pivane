@@ -1,4 +1,5 @@
 (() => {
+    const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
     const $ = id => document.getElementById(id);
     const languages = { js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript', py: 'python', json: 'json', html: 'xml', htm: 'xml', xml: 'xml', svg: 'xml', css: 'css', sh: 'bash', bash: 'bash', yml: 'yaml', yaml: 'yaml', md: 'markdown', markdown: 'markdown', go: 'go', rs: 'rust', java: 'java', c: 'c', h: 'c', cpp: 'cpp', sql: 'sql', rb: 'ruby', php: 'php', ini: 'ini', toml: 'ini', diff: 'diff' };
     function linkTarget(href, base = '') {
@@ -55,7 +56,7 @@
             $('pi-file-wrap').addEventListener('click', () => { this.wrap = !this.wrap; this.renderContent(); });
             $('pi-file-copy').addEventListener('click', async () => {
                 if (!this.data) return;
-                try { await host.copy(this.data.content); host.notify('已复制全文', 'success'); } catch (e) { host.notify(e.message, 'error'); }
+                try { await host.copy(this.data.content); host.notify(translateUi("已复制全文"), 'success'); } catch (e) { host.notify(e.message, 'error'); }
             });
             $('pi-file-tabs').addEventListener('keydown', event => {
                 if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -79,8 +80,8 @@
             this.preview = /\.(?:md|markdown)$/i.test(file.path) && !file.line; this.wrap = false;
             this.source = file.writes.length ? `write:${file.writes.at(-1).id}` : 'current';
             const picker = $('pi-file-source'); picker.replaceChildren();
-            file.writes.forEach((w, i) => picker.append(new Option(`写入记录 ${i + 1}`, `write:${w.id}`)));
-            picker.append(new Option('当前文件', 'current')); picker.value = this.source;
+            file.writes.forEach((w, i) => picker.append(new Option(translateUi("写入记录 {0}", i + 1), `write:${w.id}`)));
+            picker.append(new Option(translateUi("当前文件"), 'current')); picker.value = this.source;
             $('pi-file-tabs').hidden = false; $('pi-file-diff-tab').disabled = !file.hasDiff;
             $('pi-file-path').textContent = file.path; $('pi-file-path').title = file.path;
             const prefix = this.host.context().cwd.replace(/\/$/, '') + '/';
@@ -110,9 +111,9 @@
             $('pi-file-refresh').hidden = this.source !== 'current'; $('pi-file-refresh').disabled = this.loading || !this.enabled;
             $('pi-file-copy').disabled = !this.data || this.data.content.length === 0;
             $('pi-file-preview').hidden = !/\.(?:md|markdown)$/i.test(this.file?.path || '');
-            $('pi-file-source').title = this.source === 'current' ? '当前磁盘文件快照，点击刷新更新' : '工具成功写入时的内容记录';
-            $('pi-file-preview').disabled = !this.data; $('pi-file-preview').textContent = this.preview ? '源码' : '预览';
-            $('pi-file-preview').title = this.preview ? '查看源码' : 'Markdown 排版预览';
+            $('pi-file-source').title = this.source === 'current' ? translateUi("当前磁盘文件快照，点击刷新更新") : translateUi("工具成功写入时的内容记录");
+            $('pi-file-preview').disabled = !this.data; $('pi-file-preview').textContent = this.preview ? translateUi("源码") : translateUi("预览");
+            $('pi-file-preview').title = this.preview ? translateUi("查看源码") : translateUi("Markdown 排版预览");
             $('pi-file-preview').setAttribute('aria-label', $('pi-file-preview').title);
             $('pi-file-preview').setAttribute('aria-pressed', String(Boolean(this.preview)));
             $('pi-file-wrap').hidden = Boolean(this.preview); $('pi-file-wrap').disabled = !this.data;
@@ -121,27 +122,27 @@
         async load() {
             if (!this.file || this.mode !== 'full') return;
             this.cancel(); this.data = null; $('pi-file-body').replaceChildren();
-            if (window.PiFilePolicy.restricted(this.file.path)) { this.status('此文件不提供网页预览', true); this.controls(); return; }
+            if (window.PiFilePolicy.restricted(this.file.path)) { this.status(translateUi("此文件不提供网页预览"), true); this.controls(); return; }
             if (this.source !== 'current') {
                 const write = this.file.writes.find(w => `write:${w.id}` === this.source);
-                if (!write || new TextEncoder().encode(write.content).length > window.PiFilePolicy.maxBytes) { this.status('写入内容超过 2 MiB，暂不支持全文展示', true); this.controls(); return; }
+                if (!write || new TextEncoder().encode(write.content).length > window.PiFilePolicy.maxBytes) { this.status(translateUi("写入内容超过 2 MiB，暂不支持全文展示"), true); this.controls(); return; }
                 this.data = { content: write.content };
-                this.status('本次成功写入的内容 · 不随磁盘后续修改而更新'); this.renderContent(); return;
+                this.status(translateUi("本次成功写入的内容 · 不随磁盘后续修改而更新")); this.renderContent(); return;
             }
-            if (!this.enabled) { this.status('当前后端尚未启用文件读取；写入记录仍可查看。', true); this.controls(); return; }
+            if (!this.enabled) { this.status(translateUi("当前后端尚未启用文件读取；写入记录仍可查看。"), true); this.controls(); return; }
             if (this.current) { this.applyCurrent(); return; }
             const context = this.host.context(), sequence = this.sequence;
-            this.controller = new AbortController(); this.loading = true; this.status('正在读取当前文件…', false, true); this.controls();
+            this.controller = new AbortController(); this.loading = true; this.status(translateUi("正在读取当前文件…"), false, true); this.controls();
             try {
                 const data = await this.host.api(`/api/pi/files/content?${new URLSearchParams({ cwd: context.cwd, path: this.file.path })}`, { signal: this.controller.signal });
                 if (sequence !== this.sequence || context.key !== this.host.context().key || context.generation !== this.host.context().generation) return;
-                if (typeof data.content !== 'string' || new TextEncoder().encode(data.content).length > window.PiFilePolicy.maxBytes) throw new Error('文件响应无效或超过大小限制');
+                if (typeof data.content !== 'string' || new TextEncoder().encode(data.content).length > window.PiFilePolicy.maxBytes) throw new Error(translateUi("文件响应无效或超过大小限制"));
                 this.current = data; this.applyCurrent();
-            } catch (error) { if (sequence === this.sequence && error.name !== 'AbortError') this.status(error.message || '文件读取失败', true); }
+            } catch (error) { if (sequence === this.sequence && error.name !== 'AbortError') this.status(error.message || translateUi("文件读取失败"), true); }
             finally {
                 if (sequence === this.sequence) {
                     this.loading = false; this.controller = null;
-                    if (context.key !== this.host.context().key || context.generation !== this.host.context().generation) this.status('会话连接已变化，请点击刷新重新读取', true);
+                    if (context.key !== this.host.context().key || context.generation !== this.host.context().generation) this.status(translateUi("会话连接已变化，请点击刷新重新读取"), true);
                     this.controls();
                 }
             }
@@ -149,7 +150,7 @@
         applyCurrent() {
             this.data = this.current;
             const readAt = new Date(this.data.readAt), modifiedAt = new Date(this.data.modifiedAt);
-            this.status(`当前文件快照${Number.isNaN(readAt.getTime()) ? '' : ` · 读取于 ${readAt.toLocaleTimeString()}`}，点击刷新更新${Number.isNaN(modifiedAt.getTime()) ? '' : ` · 文件修改于 ${modifiedAt.toLocaleString()}`}`);
+            this.status(translateUi("当前文件快照{0}，点击刷新更新{1}", Number.isNaN(readAt.getTime()) ? '' : translateUi(" · 读取于 {0}", readAt.toLocaleTimeString(globalThis.PiI18n?.locale)), Number.isNaN(modifiedAt.getTime()) ? '' : translateUi(" · 文件修改于 {0}", modifiedAt.toLocaleString(globalThis.PiI18n?.locale))));
             this.renderContent();
         }
         renderContent() {
@@ -158,7 +159,7 @@
             if (!this.data) return;
             const text = this.data.content;
             if (!text.length) {
-                const empty = document.createElement('p'); empty.className = 'pi-file-large-note'; empty.textContent = '空文件（0 字符）'; body.append(empty); return;
+                const empty = document.createElement('p'); empty.className = 'pi-file-large-note'; empty.textContent = translateUi("空文件（0 字符）"); body.append(empty); return;
             }
             if (this.preview) {
                 const article = document.createElement('article'); article.className = 'pi-markdown pi-file-markdown';
@@ -177,7 +178,7 @@
                 const lines = text.split('\n');
                 if (lines.length > 4000 || text.length > 500000) {
                     pre.textContent = text;
-                    const note = document.createElement('p'); note.className = 'pi-file-large-note'; note.textContent = '大文件使用完整纯文本展示，暂不逐行高亮。'; body.append(note, pre);
+                    const note = document.createElement('p'); note.className = 'pi-file-large-note'; note.textContent = translateUi("大文件使用完整纯文本展示，暂不逐行高亮。"); body.append(note, pre);
                 } else {
                     const extension = this.file.path.split('.').at(-1).toLowerCase(), language = languages[extension];
                     const fragment = document.createElement('div');

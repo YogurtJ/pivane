@@ -4,7 +4,7 @@ const { searchHistory, previewHistory, setHistoryBookmark } = require('../../ser
 const base = process.env.PI_HISTORY_TEST_URL || 'http://127.0.0.1:3001';
 const cwd = '/srv/history-fixture';
 async function run(browser, viewport, SessionManager) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900, permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900, permissions: ['clipboard-read', 'clipboard-write'] });
     const page = await context.newPage(), errors = [], writes = [], commands = [];
     const sm = SessionManager.inMemory(cwd), other = SessionManager.inMemory(cwd);
     const u = text => ({ role: 'user', content: text, timestamp: Date.now() });

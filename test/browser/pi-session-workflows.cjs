@@ -8,7 +8,7 @@ const image = { type: 'image', mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUh
 const initial = [{ role: 'user', content: '第一条问题', timestamp: 1 }, { role: 'assistant', content: '第一条回复', timestamp: 2 }, { role: 'user', content: [{ type: 'text', text: '上一条问题 <img src=x onerror=alert(1)>' }, image], timestamp: 3 }, { role: 'assistant', content: '旧的回复', timestamp: 4 }];
 
 async function run(browser, viewport, historyEnabled = true) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
     const page = await context.newPage();
     const errors = [], writes = [], rpc = [];
     let sessions = [original], messages = structuredClone(initial), leafId = 'leaf-original', stale = false, streaming = false;

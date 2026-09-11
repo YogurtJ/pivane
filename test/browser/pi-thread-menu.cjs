@@ -10,7 +10,7 @@ const sessions = [1, 2].map(index => ({ id: `thread-${index}`, cwd, name: `çº¿ç¨
 const messages = [{ role: 'assistant', timestamp: 1, content: [{ type: 'text', text: 'Fixture reply' }], stopReason: 'stop' }];
 
 async function run(browser, viewport) {
-    const context = await browser.newContext({ viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
     const errors = [], writes = [], rpc = [];
     let hidden = [], notices = [], serial = 0, oldBackend = false, failUnread = false;
     let holdActivity = false, heldActivity, holdProjects = false, heldProjects;
@@ -151,7 +151,7 @@ async function run(browser, viewport) {
     assert.equal(notices.length, 1, 'failed mutation leaves existing mark intact');
     failUnread = false;
 
-    const otherContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+    const otherContext = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 1000 } });
     const other = await otherContext.newPage();
     await mount(other, 'thread-2');
     await other.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
