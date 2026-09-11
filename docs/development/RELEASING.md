@@ -4,7 +4,7 @@
 
 package.json的应用版本、Pi依赖版本和快照时间戳是不同概念。npm run pack:release生成按应用版本命名的包，TRIAL_MANIFEST.json含appVersion/piVersion，保留原文件名与version=1格式。`/api/pi/status.version`表示加载的Pi版本；它不能单独证明网页和后端属于同一候选包。用压缩包SHA256及TRIAL_MANIFEST逐文件核对构建内容。
 
-首版当前处于候选发布准备，不能把本地pack成功称为已公开发布。Pivane改名不要求迁移环境变量、数据文件、服务名称或已有安装目录。
+版本下载与发布时间以[GitHub Releases](https://github.com/YogurtJ/pivane/releases)为准，不能把本地pack成功称为已公开发布。v1.0.0-rc.1标签固定已验收源码，主分支可继续更新项目介绍与文档；不要据主分支README的变化推断发行包被替换。Pivane改名不要求迁移环境变量、数据文件、服务名称或已有安装目录。
 
 ## 候选包
 

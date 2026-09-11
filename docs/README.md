@@ -2,6 +2,8 @@
 
 第一次使用从[用户指南](USER_GUIDE.md)开始；需要安装或恢复实例，从[安装与恢复](INSTALL_RECOVERY.md)开始。让自己的Agent协助时，把[用户Agent操作指南](AGENT_GUIDE.md)交给它。
 
+电脑、平板和手机使用同一套响应式浏览器界面；服务可部署在下述已验收的Linux、Apple Silicon macOS与Windows环境中。下载包、校验文件和精确验收摘要见[GitHub Releases](https://github.com/YogurtJ/pivane/releases)。
+
 ## 使用与管理
 
 | 任务 | 文档 |
