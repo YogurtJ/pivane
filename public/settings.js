@@ -79,7 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const response = await (window.WorkspaceAccess?.fetch || fetch)(url, { ...options, headers: apiHeaders(options.headers || {}) });
         let data = null;
         try { data = await response.json(); } catch {}
-        if (!response.ok) throw new Error(translateUi(data?.error || `HTTP ${response.status}`));
+        if (!response.ok) throw Object.assign(new Error(translateUi(data?.error || `HTTP ${response.status}`)), { status: response.status });
         return data;
     }
 
@@ -110,8 +110,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.addEventListener('workspace:access-ready', () => { state.modelSnapshot = null; state.resourceSnapshot = null; });
+    const auxiliaryModels = window.PiAuxiliaryModels?.create({ apiFetch, saved: snapshot => {
+        if (!state.modelSnapshot) return;
+        state.modelSnapshot.auxiliaryModels = snapshot;
+        for (const purpose of snapshot.purposes) {
+            const key = purpose.id === 'session-title' ? 'sessionTitles' : purpose.id === 'media-planner' ? 'mediaAgent' : null;
+            if (key) state.modelSnapshot.preferences[key] = purpose.settings;
+        }
+    } });
+    const titleSettings = window.PiTitleSettings?.create({ apiFetch, saved: settings => {
+        if (state.modelSnapshot) state.modelSnapshot.preferences.sessionTitles = settings;
+    } });
     const usagePanel = window.PiUsage.create({ apiFetch });
     const nativeSettings = window.PiNativeSettings.create({ apiFetch, currentCwd, toast });
+    const updatesPanel = window.PiUpdates.create({ apiFetch });
+    const systemPrompts = window.PiSystemPrompts.create({ apiFetch, currentCwd });
 
     function openSettings(tab = state.activeTab) {
         elements.dialog.classList.remove('hidden');
@@ -122,6 +135,8 @@ document.addEventListener('DOMContentLoaded', () => {
         window.WorkspaceAccess?.closeSettings();
         nativeSettings.close();
         usagePanel.close();
+        updatesPanel.close();
+        systemPrompts.close();
         closeEditor();
         elements.dialog.classList.add('hidden');
         window.dispatchEvent(new CustomEvent('workspace:settings-closed'));
@@ -132,11 +147,22 @@ document.addEventListener('DOMContentLoaded', () => {
         if (tab === 'access') window.WorkspaceAccess?.openSettings();
         else window.WorkspaceAccess?.closeSettings();
         void nativeSettings.open(tab);
+        if (tab === 'system-prompts') void systemPrompts.open();
+        else systemPrompts.close();
         if (tab === 'usage') usagePanel.open();
         else usagePanel.close();
+        if (tab === 'updates') updatesPanel.open();
+        else updatesPanel.close();
         elements.nav.querySelectorAll('[data-settings-tab]').forEach(button => button.classList.toggle('active', button.dataset.settingsTab === tab));
         elements.panels.forEach(panel => panel.classList.toggle('active', panel.dataset.settingsPanel === tab));
-        if (tab === 'providers' || tab === 'models') loadModels().catch(error => showPanelError(tab, error));
+        if (tab === 'providers' || tab === 'models') loadModels().then(snapshot => {
+            if (auxiliaryModels?.acceptSnapshot(snapshot)) {
+                if (tab === 'models') return auxiliaryModels.refresh();
+            } else {
+                titleSettings?.setSnapshot(snapshot);
+                if (tab === 'models') return titleSettings?.refresh();
+            }
+        }).catch(error => showPanelError(tab, error));
         if (tab === 'packages' || tab === 'skills') loadResources().catch(error => showPanelError(tab, error));
     }
 
@@ -230,8 +256,14 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.mediaAgentModel.disabled = !models.length;
     }
 
+    function populateSessionTitleControls() {
+        titleSettings?.setSnapshot(state.modelSnapshot);
+    }
+
     function populateMediaAgentControls() {
         if (!state.modelSnapshot) return;
+        if (auxiliaryModels?.acceptSnapshot(state.modelSnapshot)) return;
+        populateSessionTitleControls();
         const current = state.modelSnapshot.preferences.mediaAgent || { provider: '', modelId: '' };
         const providers = state.modelSnapshot.providers
             .filter(provider => state.modelSnapshot.models.some(model => model.available && model.provider === provider.id && !/:batch$/.test(model.id)))
@@ -810,6 +842,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('workspace:open-settings', event => {
         const detail = event.detail || {};
         if (detail.setting) nativeSettings.focusSetting(detail.setting);
+        if (detail.promptKind) systemPrompts.focus(detail.promptKind, detail.promptScope);
         if (detail.providerSearch !== undefined) {
             elements.providerSearch.value = String(detail.providerSearch);
             elements.modelSearch.value = String(detail.providerSearch);

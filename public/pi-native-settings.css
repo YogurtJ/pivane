@@ -92,6 +92,77 @@
 .native-tool-field > small { display: block; margin-top: 6px; }
 .native-tool-options:disabled { opacity: .6; }
 .native-setting-help { margin: 0; font-size: .78rem; }
+#native-packages { --package-radius: 12px; }
+#native-packages h3, #native-packages h4, #native-packages p { margin: 0; }
+#native-packages button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; max-width: 100%; overflow-wrap: anywhere; }
+.native-packages-header { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; align-items: start; gap: 12px; margin-bottom: 22px; }
+.native-packages-header > i { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; background: var(--green-soft); color: var(--accent); font-size: 19px; }
+#native-packages .native-packages-header h3 { font-size: 1rem; line-height: 1.5; }
+#native-packages .native-packages-header p { margin-top: 6px; font-size: .78rem; }
+.native-package-scope { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr); align-items: end; gap: 16px; margin-bottom: 18px; }
+.native-package-scope label { display: grid; gap: 7px; font-size: .76rem; color: var(--text-muted); min-width: 0; }
+#native-packages .native-package-scope p { padding-bottom: 8px; font-size: .75rem; }
+#native-packages :is(.native-package-scope, .native-resource-controls) select { width: 0; min-width: 100%; max-width: 100%; }
+.native-package-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 22px; }
+.native-package-summary > div { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; padding: 14px; background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--package-radius); }
+.native-package-summary i { grid-column: 2; grid-row: 1 / 3; color: var(--accent); font-size: 15px; align-self: center; }
+.native-package-summary strong { grid-column: 1; grid-row: 1; font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.native-package-summary span { grid-column: 1; font-size: .78rem; }
+.native-package-summary small { grid-column: 1 / -1; color: var(--text-muted); font-size: .7rem; }
+.native-package-install-card { padding: 18px; border: 1px solid var(--line); border-radius: var(--package-radius); background: var(--surface-1); }
+#native-packages h4 { font-size: .88rem; line-height: 1.6; }
+#native-packages .native-package-install-card > p { margin-top: 5px; font-size: .76rem; }
+.native-package-install-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; margin: 14px 0; }
+#native-packages .native-package-install-controls :is(input, button) { min-height: 44px; }
+#native-packages .native-package-install-controls button { background: var(--primary); border-color: var(--primary); color: var(--primary-contrast); padding-inline: 18px; }
+#native-packages .native-package-install-controls button:hover:not(:disabled) { background: var(--primary-hover); }
+.native-package-caution { display: flex; align-items: baseline; gap: 8px; }
+.native-package-caution i { color: var(--amber); flex-shrink: 0; }
+#native-packages .native-runtime-note { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: .75rem; color: var(--text-muted); }
+#native-packages .native-runtime-note summary { cursor: pointer; color: var(--text-main); }
+#native-packages .native-runtime-note p { margin-top: 10px; }
+#native-packages .native-package-section-title { display: flex; align-items: center; gap: 8px; margin: 24px 0 12px; }
+.native-package-section-title span { color: var(--text-muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 20px; padding: 0 8px; font-size: .72rem; font-weight: 400; }
+.native-package-list { display: grid; gap: 10px; }
+#native-packages .native-package-card { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 12px; margin: 0; padding: 16px; background: var(--surface-1); }
+.native-package-card > i { display: grid; place-items: center; width: 32px; height: 36px; color: var(--accent); background: var(--green-soft); border-radius: 8px; }
+.native-package-main { min-width: 0; }
+.native-package-main > strong { font-size: .83rem; font-weight: 600; overflow-wrap: anywhere; }
+.native-package-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; color: var(--text-muted); font-size: .72rem; }
+.native-package-badge { padding: 3px 7px; border-radius: 5px; background: var(--surface-2); }
+.native-package-badge[data-installed="true"] { background: var(--green-soft); color: var(--accent); }
+.native-package-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+#native-packages [data-package-action="remove"] { color: var(--danger); }
+.native-package-empty { display: grid; justify-items: center; gap: 10px; text-align: center; padding: 28px 18px; border: 1px dashed var(--line-strong); border-radius: var(--package-radius); color: var(--text-muted); font-size: .8rem; }
+.native-package-empty > i { font-size: 26px; color: var(--accent); }
+#native-packages .native-package-empty p { max-width: 420px; font-size: .76rem; }
+.native-package-search { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; margin-bottom: 8px; color: var(--text-muted); }
+#native-packages .native-resource-row { grid-template-columns: minmax(0, 1fr) 220px; gap: 18px; padding: 18px 0; }
+.native-resource-main > strong { display: block; overflow-wrap: anywhere; font-size: .83rem; }
+#native-packages .native-resource-row small { margin-top: 5px; font-size: .72rem; }
+.native-resource-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.native-resource-origin { margin-top: 9px; font-size: .72rem; color: var(--text-muted); }
+.native-resource-origin summary { cursor: pointer; }
+.native-resource-origin code { display: block; white-space: normal; overflow-wrap: anywhere; margin-top: 8px; font-size: .72rem; }
+.native-resource-empty { margin-top: 12px; }
+#native-packages .native-package-notice { padding: 14px; margin-bottom: 16px; background: var(--amber-soft, var(--surface-2)); border-left: 3px solid var(--amber); border-radius: 8px; font-size: .78rem; }
+#native-packages .native-package-notice button { margin-top: 10px; }
+#native-resource-status:not(:empty) { padding: 12px 14px; margin-top: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-1); }
+@media (max-width: 680px) {
+    .native-packages-header { grid-template-columns: 34px minmax(0, 1fr) auto; gap: 9px; }
+    .native-packages-header > i { width: 34px; height: 38px; font-size: 16px; }
+    .native-package-scope { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    .native-package-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .native-package-install-card { padding: 14px; }
+    #native-packages .native-package-card { grid-template-columns: 32px minmax(0, 1fr); padding: 14px; }
+    .native-package-actions { grid-column: 2; }
+    #native-packages .native-resource-row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    #native-packages .native-resource-controls :is(select, button) { min-height: 42px; }
+    #native-packages .native-packages-header p { grid-column: 1 / -1; }
+}
+@media (max-width: 380px) {
+    .native-package-install-controls { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 680px) {
     .native-tool-options { grid-template-columns: minmax(0, 1fr); }
     .workspace-settings-nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }

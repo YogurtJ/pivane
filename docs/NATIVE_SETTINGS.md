@@ -1,5 +1,31 @@
 # Pi 原生配置与扩展接入
 
+## 系统提示词查看与编辑
+
+当前源码以 `/api/pi/status.systemPrompts=true` 启用此功能。设置 → **系统提示词** 提供所有项目/当前项目范围，默认展示追加指令，基础替换折叠在高级区域。支持 Markdown 编辑、清理后的预览、修改区域差异及恢复默认/继承；未选项目时使用合法默认上下文，仅提供全局范围。草稿在本页内存中按项目与范围保留，切换设置分类不丢弃；刷新页面前会提示未保存修改，不保存到浏览器存储。
+
+文件沿用 Pi 原生位置：全局为实际 Agent 配置目录的 `APPEND_SYSTEM.md`/`SYSTEM.md`（默认 `~/.pi/agent`，可由 `PI_CODING_AGENT_DIR` 指定），项目为 `<cwd>/.pi/` 下同名文件。项目文件仅在有效信任下参与加载，项目追加文件优先于全局追加文件，二者不自动叠加。替换基础提示仍可能追加项目上下文和 Skills，工具权限由独立工具配置控制。没有新增会话提示词数据库或线程级覆盖。
+
+每次保存一个文件，文本非空、合法 UTF-8、无 NUL、最多 64 KiB。恢复按钮先形成可检查的移除草稿，点击保存后移除本层文件，原文保留在同目录 `.web-backups/*.txt` 私有备份中。读取已有空文件会保留其原生语义；保存新内容不能使用空白冒充恢复继承。写入使用私有临时文件、原子替换及 POSIX fsync/Windows 写透替换，备份不参与 Pi 资源发现。固定服务器路径经过项目 realpath/范围、普通文件、内核描述符路径、完整身份、预算和前后变化检查，拒绝链接目录/最终链接及无效编码；不会回传其他配置文件正文。
+
+GET 快照含 `cwd/revision/maxBytes/trust/files/selected`；`files` 为 global/project × append/base 的 `{path,content,revision}`，不存在时 content/revision 为 null。`selected` 仅为配置与信任推导，不代表某个运行实例已加载。整体 revision 覆盖四个文件的内容与身份，以及原生配置/trust/启动信任覆盖；保存需此 revision，409 保留草稿、不覆盖外部修改。显式“刷新并核对草稿”读取最新磁盘内容作为差异基线并保留编辑内容，检查后可再次保存。成功后读取失败或结果不确定时，需先刷新核对，不能直接重放保存。
+
+保存不会中断当前任务或自动重载。**重新加载并核对** 只在当前项目有已连接、空闲的主会话时可用，复用原生资源 reload，更新该会话的全部原生资源后重新读取提示快照；其他已打开会话需分别加载。新建运行实例会按当时文件和信任加载。信任状态仍可能需要重新打开运行实例应用，刷新网页不保证获得新 worker。重载完成但快照读取失败时明确区分两步结果，提示只刷新核对。
+
+会话详情 → 当前加载的资源 → **查看系统提示词** 提供来源/提示正文视图，显示读取时间、实际信任、基础/追加文本、加载时的上下文文件正文与 Skills/工具清单，支持正文搜索和复制。基础/追加编辑入口跳到对应范围设置；合成正文只读，不整体写回。资源清单原接口继续只返回元数据，正文仅在显式 `get_system_prompt` 时通过当前唯一 worker 的私有资源管道获取，单份快照最多 1 MiB，超限整体失败而非截断。查看不调用模型、不写 JSONL、不另开 worker；迟到/未知私有结果不会广播，切线程/断线清空快照。
+
+正文来自公开 `ctx.getSystemPrompt()`，基础组成来自 `ctx.getSystemPromptOptions()`。原生接口没有在该快照中给出 SYSTEM/APPEND 文件的确定来源，因此路径明确标为按当前文件与实际信任推导；内容比较不能识别相同文本的 CLI/扩展来源。`matchesSavedFiles` 仅比较基础与追加文本及配置推导信任，无法读取时为 null，不声称所有上下文文件、工具或最终请求都一致。扩展可逐轮改变提示，`before_provider_request` 的供应商 payload 改写不包含在视图中。
+
+| 方法 | 路径/命令 | 内容 |
+|---|---|---|
+| GET | `/api/pi/settings/system-prompts?cwd` | 原生提示文件、推导来源、整体修订、预算 |
+| PUT | `/api/pi/settings/system-prompts` | `{cwd,scope:'global'或'project',kind:'append'或'base',content:string或null,expectedRevision}`，拒绝未知字段；返回 `{ok:true,requiresReload:true}` |
+| WS | `get_system_prompt` | 当前主连接的提示正文、组成、来源核对、runtimeId/sessionId/capturedAt |
+
+REST 复用工作台身份、Pi token、Origin 和 no-store，以及配置/登录互斥；写入计入 `nativeSettingsBusy`。WS 使用同一主连接鉴权，正文不会进入通知广播、自动补全、持久历史或普通配置保存事件。旧后端隐藏编辑入口，旧 worker 缺少扩展 marker 时明确要求空闲后退出重开。
+
+`test/pi-system-prompts.test.js` 覆盖范围、信任、修订冲突、私有备份、恢复、编码/链接/预算、HTTP 身份/Origin/no-store，以及真实无模型调用的原生 worker 快照、重载和私有事件隔离。`test/browser/pi-system-prompts.cjs` 使用独立静态服务和合成 REST/WS，覆盖中英文 320/393/1440 宽度、Markdown 清理、实际子项宽度、冲突与跨分类草稿、读取失败、运行中编辑/重载互斥、正文搜索/复制、线程代次隔离与聊天附件保留。未进行本功能的 macOS/Windows 实机部署验收。
+
 2026-09-11 首次未选项目时，Pi配置、Packages和Skills仍可管理全局范围。页面使用status.defaultProject提供的合法上下文，不把空cwd发给原生服务，也不自动选择目录或启动线程；未选项目时隐藏项目范围。选定项目后恢复原有全局/项目覆盖、trust、修订和迟到结果保护。
 
 2026-09-10 新增配置生效核对、实际未信任项目提示和空闲持久线程显式重开。get_runtime_configuration 的 matchesSavedConfig 只比较settings/trust及启动覆盖，不冒充完整最终模型请求配置；资源文件内容变化仍需显式reload。restart_runtime校验runtimeId/revision并拒绝忙碌、队列/建议/侧聊，保留session和网页草稿；需runtimeConfiguration后端标记。Packages页补充RPC/TUI兼容范围，启动期阻塞交互明确失败。详细契约和验证见 [NATIVE_COMPLETION.md](NATIVE_COMPLETION.md)。
@@ -11,7 +37,7 @@
 - 设置 → **Pi 配置**：消息与模型、工具、项目信任、上下文、图片、连接与重试、隐私与诊断七个默认关闭的分类；项目信任默认策略只在全局范围展示。字段、取值和限制仍来自服务器；先选所有项目/当前项目，再按需展开，保存仅提交改动。
 - 项目菜单 → **项目信任**，或 `/trust`：独立居中的紧凑窗口；明确绑定菜单所选项目，可操作非当前项目，不切项目、不打开线程。继承和生效说明按需展开。
 - 会话详情 → **当前加载的资源**：默认折叠，首次展开才通过当前连接读取。可以刷新清单，或空闲时显式重新加载资源；切线程清空，迟到结果不能串入。
-- 设置 → **Packages**：全局/项目安装、更新、移除，以及单个 extension/skill/prompt/theme 的配置开关。默认逐批显示 40 项，搜索覆盖完整返回清单。
+- 设置 → **Packages**：全局/项目安装、更新、移除，以及单个 extension/skill/prompt/theme 的配置开关。顶部按类型显示配置启用数/总数，安装、包卡片和资源列表分区；来源路径按需展开，空列表保留安装与搜索引导。默认逐批显示 40 项，搜索覆盖完整返回清单。刷新为只读，读取失败后可以重新刷新；旧快照的修改按钮保持禁用直到成功读取。包操作仍有确认、scope/trust/revision 和迟到响应保护。
 - 设置 → **Skills**：按名称/来源搜索、所有项目/当前项目范围、启用/停用及项目覆盖恢复继承。停用项继续显示，文件保留。来源路径折叠；命令显示和提示词模板放在“其他选项”。需要创建或编辑 Skill 时可让 Agent 协助。
 - 模型高级 JSON、原生 Skill 全文编辑和旧“新建 Skill”网页编辑器已移除。相关受保护后端接口保留兼容，`modelAdvanced` 仍表示接口能力；模型目录原 Thinking、测试和默认模型操作继续保留。
 - `/scoped-models` 直达 Pi 配置并展开常用模型所在分类；`/trust` 不接收路径/操作参数，不直接授予信任。

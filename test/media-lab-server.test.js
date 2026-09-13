@@ -13,7 +13,7 @@ test('isolated server preserves private adapter defaults, executes mock GPU/Flux
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-lab-server-'));
     const source = path.join(__dirname, '..'), appDir = path.join(root, 'app'), configDir = path.join(root, 'profile'), dataDir = path.join(root, 'data');
     fs.mkdirSync(appDir); fs.mkdirSync(configDir); fs.mkdirSync(dataDir);
-    for (const name of ['server.js', 'server', 'config', 'native']) fs.cpSync(path.join(source, name), path.join(appDir, name), { recursive: true });
+    for (const name of ['package.json', 'server.js', 'server', 'config', 'native']) fs.cpSync(path.join(source, name), path.join(appDir, name), { recursive: true });
     fs.symlinkSync(path.join(source, 'node_modules'), path.join(appDir, 'node_modules'));
     fs.mkdirSync(path.join(appDir, 'public/images'), { recursive: true });
     // The file service shares its pure path policy with the browser; include this code dependency in the isolated app.

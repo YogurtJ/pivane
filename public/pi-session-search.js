@@ -17,15 +17,19 @@
             this.status = node('p'); this.status.setAttribute('role', 'status'); this.results = node('div'); this.results.className = 'pi-session-search-results';
             const nav = node('div'); nav.className = 'pi-search-pages'; nav.hidden = true; this.nav = nav; this.prev = node('button', translateUi("上一页")); this.next = node('button', translateUi("下一页")); nav.append(this.prev, this.next);
             const help = node('p', translateUi("查找用户问题和 AI 回复，打开结果可查看完整内容。")); help.className = 'pi-search-help'; this.status.className = 'pi-search-status';
-            body.append(this.form, help, this.status, this.results, nav);
+            this.archiveLabel = node('label'); this.archiveLabel.className = 'pi-archive-search'; this.archiveLabel.hidden = true;
+            this.archiveInput = node('input'); this.archiveInput.type = 'checkbox';
+            this.archiveLabel.append(this.archiveInput, document.createTextNode(translateUi('包含已归档')));
+            body.append(this.form, this.archiveLabel, help, this.status, this.results, nav);
             this.dialog.append(heading, body); document.body.append(this.dialog);
             this.button.onclick = () => { this.returnFocus = document.activeElement; this.cwd = host.cwd(); this.input.value = document.getElementById('pi-session-search').value; this.nav.hidden = true; this.dialog.showModal(); this.input.focus(); };
             this.dialog.addEventListener('close', () => { this.epoch++; this.abort?.abort(); this.results.replaceChildren(); this.status.textContent = ''; this.returnFocus?.focus({preventScroll:true}); });
             this.form.onsubmit = e => { e.preventDefault(); void this.search(0); };
-            this.input.oninput = this.scope.onchange = () => { this.epoch++; this.abort?.abort(); this.results.replaceChildren(); this.status.textContent = ''; this.nav.hidden = true; this.prev.disabled = this.next.disabled = true; };
+            this.input.oninput = this.scope.onchange = this.archiveInput.onchange = () => { this.epoch++; this.abort?.abort(); this.results.replaceChildren(); this.status.textContent = ''; this.nav.hidden = true; this.prev.disabled = this.next.disabled = true; };
             this.prev.onclick = () => this.search(this.offset - 20); this.next.onclick = () => this.search(this.offset + 20);
             this.prev.disabled = this.next.disabled = true;
         }
+        setArchivesEnabled(value) { this.archivesEnabled = value; this.archiveLabel.hidden = !value; }
         setEnabled(value) { this.enabled = value; this.button.hidden = !value; }
         async search(offset) {
             if (!this.enabled || !this.dialog.open) return;
@@ -34,6 +38,7 @@
             this.status.textContent = translateUi("正在搜索原生会话…"); this.prev.disabled = this.next.disabled = true;
             const query = new URLSearchParams({q, offset: String(Math.max(0, offset))});
             if (this.scope.value === 'project') query.set('cwd', this.cwd);
+            if (this.archivesEnabled && this.archiveInput.checked) query.set('includeArchived', 'true');
             if (offset) query.set('searchId', this.searchId);
             try {
                 const data = await this.host.api('/api/pi/sessions/search?' + query, {signal:this.abort.signal});
@@ -43,6 +48,7 @@
                 this.results.replaceChildren();
                 for (const row of data.results) {
                     const button = node('button'); button.type = 'button'; button.append(node('strong', row.name), node('small', translateUi("{0} · {1} 条匹配", row.cwd, row.matches)), node('span', row.snippet));
+                    if (row.archived) button.append(node('small', translateUi('已归档')));
                     button.onclick = async () => {
                         if (n !== this.epoch || !this.dialog.open) return;
                         button.disabled = true;

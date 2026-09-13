@@ -28,6 +28,39 @@
 
 纯静态更新，刷新页面生效。分叉位置、空闲互斥、确认和草稿保护仍按下文执行。
 
+## 自动标题与重新生成
+
+新后端以 `/status.auxiliaryModels=true` 提供统一[辅助模型](AUXILIARY_MODELS.md)卡片，标题模型与自动命名开关分别位于标题行和该行齿轮选项。已有设置直接沿用，下面的专用标题 API 继续兼容；缺少统一能力时保留原独立卡片。
+
+运行中 `/status.sessionTitles=true` 表示已启用标题接口；旧后端隐藏菜单/设置入口。`sessionTitleModels=true` 另标记可独立选择标题模型，只有旧开关能力时保留开关并隐藏模型选择。实例偏好 `pi5-workspace.json.sessionTitles` 保存 `enabled`（默认 true）、`provider/modelId`（默认均为空，跟随线程）与递增 `revision`，保留其他字段。专用模型供全部线程的自动/手动命名使用，与媒体规划及聊天默认值独立。配置保存不停止任务或供应商请求；关闭或更改设置后不应用尚在生成的自动结果，手动建议仍报告实际使用的冻结模型。
+
+只有在功能开启时通过 POST `/sessions` 新建的未命名持久线程写入 `pi5-web-title` 原生 custom metadata。自动命名等待成功最终回复及 `agent_settled`，跳过无标记的旧历史、有名称的线程和临时会话。标记绑定原生 session ID，复制/导入的标记不能使新身份自动命名。用户手动命名后即受保护，后续轮次不自动更新标题。
+
+私有桥接同步读取当前原生分支，摘取最近最多 6 条问题/完整终态回答，每条最多 2000 字符，总计 8000 字符。不包含工具调用/结果、思考、图片、Shell、系统提示或被放弃分支。常见寒暄不请求模型；模型判断尚无具体话题时可等待新正文再尝试，最多 3 次。明确失败、超时、无效输出或结果过期不自动重放，仍可由用户主动重新生成。
+
+生成使用独立 `ModelRuntime.completeSimple` 请求，请求开始时冻结标题模型设置；指定专用 provider/modelId 时仅使用该模型，未指定才跟随线程的 provider/model。最低支持的思考等级、最多 1024 输出 tokens、无工具/资源加载、无 SDK 自动重试保持不变。保存专用模型前通过公开 ModelRuntime 检查目录、文本输入与可用认证，排除 batch 模型；不生成测试请求。配置被移除、认证失效、请求失败或保存引用损坏时不能自动回退到线程模型。
+
+模型可见摘录只在请求内存中存在，生成的标题通过 `pi.setSessionName` 保存为原生 `session_info`；自动尝试状态在请求前写入 custom entry，不进入主模型上下文。没有新聊天日志或标题数据库。手动成功建议额外返回 `model:{provider,id,name}` 与 `usage:{input,output,cacheRead,cacheWrite,totalTokens}`；用量只允许非负安全整数，缺失/无效值为 null，无任何有效字段时整个 usage 为 null，不透传供应商额外字段。页面只显示本次结果，不写累计用量日志，此额外用量不在原生持久会话统计中。仅由扩展注册或依赖运行时请求钩子的模型不能保证可用。
+
+同线程一次、全服务最多 2 个生成请求，不排队批量执行；45 秒发出中止信号，底层未结束前仍占名额，不把超时当取消完成。标题请求不预占主聊天的 prompt 通道；原生元数据读取/条件写入在同步桥接中执行，提交前检查运行/导航状态。关页不影响已经触发的自动生成；worker 退出、删除和服务停机会中止相关请求。运维检查 `/activity.titleGenerations`，线程摘要另含 `titleGenerating`，生成期间不能空闲回收该 worker。
+
+手动“重新生成标题”先生成建议，不修改历史；窗口可编辑并显式保存，取消无写入。保存校验最新 `session_info` 的 entry ID 与当前分支正文/导航修订，即使名称改回原值也不能接受旧建议。自动结果同样受名称/上下文修订及尝试 ID 保护。窗口关闭或切线程后丢弃迟到建议，不改其他线程或主草稿。
+
+| Method | Path（前缀 `/api/pi`） | 契约 |
+|---|---|---|
+| GET | `/settings/session-titles` | 返回 `{enabled,provider,modelId,revision}`；默认 `true,"","",0` |
+| PUT | `/settings/session-titles` | 可提交 `enabled` 和／或成对的 `provider,modelId`，推荐携带 `expectedRevision`；双空字符串恢复跟随线程 |
+| POST | `/sessions/:id/title` | `{cwd}`，空闲时生成建议；返回 `{name,nameRevision,contextRevision,model,usage}`，不保存 |
+| PUT | `/sessions/:id/title` | `{cwd,name,nameRevision,contextRevision}`，保存编辑后的建议；修订冲突 409 |
+
+设置写入只允许表中字段，至少提交开关或模型引用；引用必须同时为空或均为有效字符串。旧客户端仅提交 `enabled` 时保留现有专用模型；省略 `expectedRevision` 时采用请求进入时的当前版本，仍在异步校验后重新比较。版本过期返回 409，所有保存递增 revision；校验期间另一页面更改开关会使旧模型保存冲突。选择控件保留未保存草稿和已移除模型，不静默换成首个可用选项。仅一个专用模型保存校验可同时进行，`/activity.nativeSettingsBusy` 包含此活动，服务停机等待它完成且禁止迟到保存。
+
+上述接口均复用工作台身份、Origin、项目 realpath/根范围和 session ID 检查，不接受文件路径。建议请求失败 HTTP 400，不回显供应商原始响应。标题按问题语言生成，中文建议 10～20 字，模型输出最多 80 个字符；手动编辑最多 120 个 UTF-16 单元，拒绝控制字符/多行。只接受 JSON 标题结果，不将模型 HTML 注入 DOM。
+
+成功自动命名、建议保存及网页重命名广播 `gateway_session_named {cwd,sessionId,name}`；全局 `/activity.titleRevision` 是进程随机代次与计数，供其他浏览器刷新已加载列表，不保存标题正文。私有 `pi5Title` 和资格通知在 Supervisor 截获，包括迟到/未知响应，不广播摘录。直接在外部 CLI 写同一活动文件仍不受支持。
+
+专项验证：`test/pi-session-titles.test.js` 覆盖模型选择/失效不回退、跨线程独立摘录、设置保存竞态、本次用量投影、摘录范围/预算、原生身份/重启、一次生成、寒暄/话题延迟、开关、并发、超时、迟到/改名冲突、无自动重放及真实 Pi RPC + 本地 SSE；`test/browser/pi-session-titles.cjs` 使用合成 REST/WS 验证中英文、桌面/手机、预览编辑、取消、冲突、旧后端、草稿/附件/工具及宽度。
+
 ## 不提供
 
 - 文件、Git、数据库、远端请求、部署、生成媒体等工具副作用的撤销。

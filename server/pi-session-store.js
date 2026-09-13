@@ -136,7 +136,7 @@ class PiSessionStore {
         return { ...session, path: fs.realpathSync.native(session.path) };
     }
 
-    async createSession(cwdInput, name = '') {
+    async createSession(cwdInput, name = '', { autoTitle = false } = {}) {
         const cwd = this.resolveProject(cwdInput);
         const { SessionManager } = await getSdk();
         const manager = SessionManager.create(cwd);
@@ -148,6 +148,7 @@ class PiSessionStore {
         const persisted = SessionManager.open(sessionPath, undefined, cwd);
         const cleanName = String(name || '').trim().slice(0, 120);
         if (cleanName) persisted.appendSessionInfo(cleanName);
+        else if (autoTitle) persisted.appendCustomEntry('pi5-web-title', { version: 1, sessionId: persisted.getSessionId(), status: 'pending' });
         return {
             id: persisted.getSessionId(),
             path: fs.realpathSync.native(sessionPath),

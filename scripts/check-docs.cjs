@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { lexer, walkTokens } = require('marked');
 
-const PRIVATE_PATH = /^(?:docs\/local(?:\/|$)|backups(?:\/|$)|AGENTS\.local\.md$|\.env(?:$|\.(?!example$))|\.pi(?:\/|$)|node_modules(?:\/|$)|dist(?:\/|$)|public\/(?:images|videos|audio|downloads|legacy-workspace)(?:\/|$)|(?:generation_history|video_history|tts_history|prompts)\.json$)/i;
+const PRIVATE_PATH = /^(?:docs\/local(?:\/|$)|backups(?:\/|$)|\.pivane-runtime(?:\/|$)|AGENTS\.local\.md$|\.env(?:$|\.(?!example$))|\.pi(?:\/|$)|node_modules(?:\/|$)|dist(?:\/|$)|public\/(?:images|videos|audio|downloads|legacy-workspace)(?:\/|$)|(?:generation_history|video_history|tts_history|prompts)\.json$)/i;
 function assertPublicPath(file) {
     if (typeof file !== 'string' || !file || file.includes('\\') || path.posix.isAbsolute(file)
         || file.split('/').some(part => !part || part === '.' || part === '..') || PRIVATE_PATH.test(file)) {

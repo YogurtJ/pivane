@@ -154,6 +154,7 @@ class PiSettingsService {
         const { SettingsManager, getAgentDir } = await getSdk();
         const settings = SettingsManager.create(this.cwdFallback, getAgentDir());
         return {
+            ...(this.auxiliaryModelsService ? { auxiliaryModels: this.auxiliaryModelsService.snapshot() } : {}),
             providerLogin: true,
             modelThinking: true,
             modelAdvanced: true,
@@ -167,6 +168,7 @@ class PiSettingsService {
                 enabledModels: settings.getEnabledModels() || [],
                 defaultThinkingLevel: settings.getGlobalSettings().defaultThinkingLevel || null,
                 modelThinkingLevels: settings.getGlobalSettings().modelThinkingLevels || {},
+                sessionTitles: this.workspacePreferencesService.getSessionTitles(),
                 mediaAgent: this.workspacePreferencesService.getMediaAgent()
             },
             customProviders: await this.listCustomProviders()
@@ -251,6 +253,7 @@ class PiSettingsService {
     }
 
     async setMediaAgentModel(input) {
+        const expectedRevision = this.workspacePreferencesService.getAuxiliaryModelsRevision();
         const provider = String(input.provider || '').trim();
         const modelId = String(input.modelId || '').trim();
         if (!provider || !modelId || provider.length > 300 || modelId.length > 300) {
@@ -260,7 +263,7 @@ class PiSettingsService {
         const available = await runtime.getAvailable(provider, { signal: AbortSignal.timeout(20000) });
         const model = available.find(item => item.provider === provider && item.id === modelId);
         if (!model) throw new Error('Media Agent model is not authenticated or available');
-        const preference = this.workspacePreferencesService.setMediaAgent({ provider, modelId });
+        const preference = this.workspacePreferencesService.setMediaAgent({ provider, modelId }, { expectedRevision });
         return { ok: true, mediaAgent: preference, requiresRuntimeRestart: false };
     }
 

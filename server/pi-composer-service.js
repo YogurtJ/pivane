@@ -24,7 +24,7 @@ const NAME = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/;
 const LIMIT = 64 * 1024;
 const revision = text => createHash('sha256').update(text).digest('hex');
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
-const excluded = relative => relative.split('/').some(part => ['.git', 'node_modules', '.web-backups', 'backups', '.venv', '__pycache__'].includes(part)
+const excluded = relative => relative.split('/').some(part => ['.git', 'node_modules', '.web-backups', 'backups', '.pivane-runtime', '.venv', '__pycache__'].includes(part)
     || /^\.env(?:\.|$)/i.test(part) || /^(?:auth|models-store)\.json$/i.test(part) || /\.(?:pem|key|p12|pfx)$/i.test(part));
 
 class PiComposerService {
@@ -129,7 +129,7 @@ class PiComposerService {
         this.searches++;
         try {
             return await new Promise((resolve, reject) => {
-                const child = spawn('rg', ['--files', '--hidden', '--null', '-g', '!.git/**', '-g', '!node_modules/**', '-g', '!backups/**', '-g', '!.venv/**', '-g', '!public/images/**', '-g', '!public/videos/**', '-g', '!public/audio/**'], { cwd, stdio: ['ignore', 'pipe', 'ignore'] });
+                const child = spawn('rg', ['--files', '--hidden', '--null', '-g', '!.git/**', '-g', '!node_modules/**', '-g', '!backups/**', '-g', '!.pivane-runtime/**', '-g', '!.venv/**', '-g', '!public/images/**', '-g', '!public/videos/**', '-g', '!public/audio/**'], { cwd, stdio: ['ignore', 'pipe', 'ignore'] });
                 let pending = Buffer.alloc(0), bytes = 0, seen = 0, truncated = false, failed = false;
                 const candidates = []; const needle = query.toLowerCase().replace(/^@?(?:\.\/)?/, '');
                 const letters = [...needle], started = Date.now();

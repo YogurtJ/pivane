@@ -547,11 +547,13 @@
                     <button type="button" class="active" data-settings-tab="providers"><i class="fa-solid fa-key"></i><span><!--i18n:s1508-->供应商与模型</span></button>
                     <button type="button" data-settings-tab="media"><i class="fa-solid fa-photo-film"></i><span><!--i18n:s1472-->媒体模型</span></button>
                     <button type="button" data-settings-tab="models"><i class="fa-solid fa-sliders"></i><span><!--i18n:s1509-->使用偏好</span></button>
+                    <button type="button" id="system-prompts-nav" data-settings-tab="system-prompts" hidden><i class="fa-solid fa-file-lines"></i><span data-system-prompts-label></span></button>
                     <button type="button" id="native-settings-nav" data-settings-tab="native" hidden><i class="fa-solid fa-gear"></i><span><!--i18n:s726-->Pi 配置</span></button>
                     <button type="button" id="workspace-access-nav" data-settings-tab="access" hidden><i class="fa-solid fa-lock"></i><span><!--i18n:s1510-->访问控制</span></button>
                     <button type="button" data-settings-tab="usage"><i class="fa-solid fa-chart-column"></i><span><!--i18n:s1511-->用量统计</span></button>
                     <button type="button" data-settings-tab="packages"><i class="fa-solid fa-box-open"></i><span>Packages</span></button>
                     <button type="button" data-settings-tab="skills"><i class="fa-solid fa-wand-magic-sparkles"></i><span>Skills</span></button>
+                    <button type="button" data-settings-tab="updates"><i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i><span><!--i18n:s1931-->版本与更新</span></button>
                 </nav>
                 <div class="workspace-settings-content">
                     <section class="workspace-settings-panel active" data-settings-panel="providers">
@@ -594,6 +596,13 @@
                                 <option value="en">English</option>
                             </select>
                             <p id="workspace-language-status" role="status"></p>
+                        </div>
+                        <section id="settings-auxiliary-models" class="pi-auxiliary-models" hidden></section>
+                        <div id="settings-session-titles" class="settings-feature-card" hidden>
+                            <label class="settings-toggle-line" for="settings-auto-title"><strong><!--i18n:s1971-->自动生成会话标题</strong><input id="settings-auto-title" type="checkbox" disabled></label>
+                            <p class="settings-feature-description"><!--i18n:s1972-->新线程在首轮有效问答结束后自动命名一次，会产生少量额外用量。手动名称不会被覆盖。设置对本实例所有设备生效。</p>
+                            <div id="settings-title-model-controls" hidden></div>
+                            <p id="settings-auto-title-status" role="status" aria-live="polite"></p>
                         </div>
                         <form id="settings-media-agent-form" class="settings-feature-card" aria-describedby="settings-media-agent-description">
                             <div class="settings-feature-title">
@@ -654,6 +663,8 @@
                             <div id="workspace-access-generated" hidden><strong><!--i18n:s1563-->新 Token 仅在这里展示一次，请保存</strong><input id="workspace-access-generated-token" type="text" readonly aria-label="新生成的 Token" data-i18n-aria-label="s1564"><p class="workspace-access-note"><!--i18n:s1565-->离开此页面后不再展示；忘记时可设置新 Token。</p></div>
                         </form>
                     </section>
+                    <section class="workspace-settings-panel" data-settings-panel="updates" id="settings-updates-panel"></section>
+                    <section class="workspace-settings-panel" data-settings-panel="system-prompts" id="system-prompts-panel"></section>
                     <section class="workspace-settings-panel" data-settings-panel="native" id="native-settings-panel"></section>
                     <section class="workspace-settings-panel" data-settings-panel="usage" id="settings-usage-panel">
                         <div class="settings-panel-header"><div><h3><!--i18n:s1511-->用量统计</h3><p><!--i18n:s1566-->持久会话的 Token 用量与估算费用</p></div></div>
@@ -665,7 +676,7 @@
                         </form>
                         <p id="settings-usage-status" role="status" aria-live="polite"></p>
                         <div id="settings-usage-result"></div>
-                        <details class="pi-usage-scope"><summary><!--i18n:s1574-->统计范围与费用说明</summary><p><!--i18n:s1575-->统计当前允许项目下仍保留的 Pi 持久会话，包含所有分支、压缩前历史和有记录的工具／摘要用量。临时会话、BTW 侧聊、媒体规划、模型测试及已删除的记录不在此范围。</p><p><!--i18n:s1576-->原生复制、分叉和导入中保持 ID、时间与内容相同的记录只计一次，归属最早创建的现存会话；手工改变这些字段的副本无法可靠识别。项目和会话明细显示去重后的归属用量。</p><p><!--i18n:s1577-->费用来自记录当时的 Pi 价格配置，属于美元估算，不是供应商账单。零费用可能表示未配置价格或订阅计费。缺少上报的用量不会被当作零消耗；工具和摘要无法归属模型时单列。</p></details>
+                        <details class="pi-usage-scope"><summary><!--i18n:s1574-->统计范围与费用说明</summary><p><!--i18n:s1575-->统计当前允许项目下仍保留的 Pi 持久会话，包含所有分支、压缩前历史和有记录的工具／摘要用量。临时会话、BTW 侧聊、标题生成、媒体规划、模型测试及已删除的记录不在此范围。</p><p><!--i18n:s1576-->原生复制、分叉和导入中保持 ID、时间与内容相同的记录只计一次，归属最早创建的现存会话；手工改变这些字段的副本无法可靠识别。项目和会话明细显示去重后的归属用量。</p><p><!--i18n:s1577-->费用来自记录当时的 Pi 价格配置，属于美元估算，不是供应商账单。零费用可能表示未配置价格或订阅计费。缺少上报的用量不会被当作零消耗；工具和摘要无法归属模型时单列。</p></details>
                     </section>
                     <section class="workspace-settings-panel" data-settings-panel="packages">
                         <div class="settings-panel-header">
@@ -803,9 +814,17 @@
     <script src="workspace-ui.js"></script>
     <script src="pi-usage.js"></script>
     <script src="pi-native-settings.js"></script>
+    <script src="pi-system-prompts.js"></script>
+    <link rel="stylesheet" href="pi-system-prompts.css">
     <script src="pi-editor-suggestions.js"></script>
     <script src="pi-native-context.js"></script>
     <link rel="stylesheet" href="pi-native-settings.css">
+    <script src="pi-maintenance.js"></script>
+    <script src="pi-updates.js"></script>
+    <link rel="stylesheet" href="pi-updates.css">
+    <script src="pi-auxiliary-models.js"></script>
+    <link rel="stylesheet" href="pi-auxiliary-models.css">
+    <script src="pi-title-settings.js"></script>
     <script src="settings.js"></script>
     <script src="media-fields.js"></script>
     <script src="media-lab.js"></script>
@@ -819,6 +838,7 @@
     <script src="pi-transcript-view.js"></script>
     <script src="pi-attachments.js"></script>
     <script src="pi-session-workflows.js"></script>
+    <script src="pi-session-titles.js"></script>
     <script src="pi-session-transfer.js"></script>
     <script src="pi-side-chat.js"></script>
     <script src="pi-runtime-controls.js"></script>

@@ -2,6 +2,11 @@ const privateFiles = require('./pi-private-files');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { createHash } = require('node:crypto');
+
+function auxiliaryRevision(document) {
+    return createHash('sha256').update(JSON.stringify([document.sessionTitles || {}, document.mediaAgent || {}, document.mediaAgentRevision || 0])).digest('hex');
+}
 
 const DEFAULT_MEDIA_AGENT = Object.freeze({
     provider: '',
@@ -14,6 +19,27 @@ function cleanReferencePart(value, label) {
         throw new Error(`${label} is invalid`);
     }
     return text;
+}
+
+function validateTitleSettings(input) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)
+        || Object.keys(input).some(key => !['enabled', 'provider', 'modelId', 'expectedRevision'].includes(key))) throw new Error('标题设置参数无效');
+    const patch = {};
+    if (Object.hasOwn(input, 'enabled')) {
+        if (typeof input.enabled !== 'boolean') throw new Error('自动标题设置需要 enabled 布尔值');
+        patch.enabled = input.enabled;
+    }
+    if (Object.hasOwn(input, 'provider') || Object.hasOwn(input, 'modelId')) {
+        if (typeof input.provider !== 'string' || typeof input.modelId !== 'string') throw new Error('标题模型需要同时指定供应商和模型');
+        patch.provider = input.provider.trim(); patch.modelId = input.modelId.trim();
+        if (Boolean(patch.provider) !== Boolean(patch.modelId)) throw new Error('标题模型需要同时指定供应商和模型');
+        if (patch.provider) {
+            cleanReferencePart(patch.provider, 'Provider ID'); cleanReferencePart(patch.modelId, 'Model ID');
+        }
+    }
+    if (!Object.keys(patch).length || input.expectedRevision !== undefined
+        && (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0)) throw new Error('标题设置参数无效');
+    return patch;
 }
 
 class WorkspacePreferencesService {
@@ -34,16 +60,46 @@ class WorkspacePreferencesService {
         }
     }
 
+    getSessionTitles() {
+        const current = this.readDocument().sessionTitles || {};
+        // Malformed dedicated references must never silently fall back to a thread's model.
+        const reference = validateTitleSettings({ provider: current.provider ?? '', modelId: current.modelId ?? '' });
+        return { enabled: current.enabled !== false, ...reference,
+            revision: Number.isSafeInteger(current.revision) && current.revision >= 0 ? current.revision : 0 };
+    }
+
+    setSessionTitles(input) {
+        const patch = validateTitleSettings(input);
+        const current = this.getSessionTitles();
+        if (input.expectedRevision !== undefined && input.expectedRevision !== current.revision) {
+            throw Object.assign(new Error('标题设置已变化，请刷新后再保存'), { statusCode: 409 });
+        }
+        const document = this.readDocument();
+        this.writeDocument({ ...document, sessionTitles: { ...document.sessionTitles, ...patch, revision: current.revision + 1 } });
+        return this.getSessionTitles();
+    }
+
     getMediaAgent() {
         const current = this.readDocument().mediaAgent || {};
-        try {
-            return {
-                provider: cleanReferencePart(current.provider || DEFAULT_MEDIA_AGENT.provider, 'Provider ID'),
-                modelId: cleanReferencePart(current.modelId || DEFAULT_MEDIA_AGENT.modelId, 'Model ID')
-            };
-        } catch {
-            return { ...DEFAULT_MEDIA_AGENT };
+        const reference = validateTitleSettings({ provider: current.provider ?? '', modelId: current.modelId ?? '' });
+        return { provider: reference.provider, modelId: reference.modelId };
+    }
+
+    getAuxiliaryModelsRevision() { return auxiliaryRevision(this.readDocument()); }
+
+    setAuxiliaryModels(changes, expectedRevision) {
+        const document = this.readDocument();
+        if (auxiliaryRevision(document) !== expectedRevision) throw Object.assign(new Error('辅助模型设置已变化，请刷新后再保存'), { statusCode: 409 });
+        if (changes.sessionTitles) {
+            const patch = validateTitleSettings(changes.sessionTitles);
+            document.sessionTitles = { ...document.sessionTitles, ...patch, revision: (document.sessionTitles?.revision || 0) + 1 };
         }
+        if (changes.mediaAgent) {
+            const reference = validateTitleSettings(changes.mediaAgent);
+            document.mediaAgent = { ...document.mediaAgent, provider: reference.provider, modelId: reference.modelId };
+            document.mediaAgentRevision = (document.mediaAgentRevision || 0) + 1;
+        }
+        this.writeDocument(document);
     }
 
     getPinnedProjects() {
@@ -78,6 +134,34 @@ class WorkspacePreferencesService {
         return projects;
     }
 
+    getArchives() {
+        const data = this.readDocument().archives || {};
+        const projects = Array.isArray(data.projects) ? [...new Set(data.projects.filter(cwd => typeof cwd === 'string' && path.isAbsolute(cwd)))] : [];
+        const sessions = Array.isArray(data.sessions) ? data.sessions.filter(item => item && typeof item.cwd === 'string'
+            && path.isAbsolute(item.cwd) && typeof item.sessionId === 'string' && item.sessionId.length > 0)
+            .map(({ cwd, sessionId }) => ({ cwd, sessionId })) : [];
+        return { revision: Number.isSafeInteger(data.revision) ? data.revision : 0, projects, sessions };
+    }
+
+    setArchived(cwd, sessionId, archived) {
+        if (typeof cwd !== 'string' || !path.isAbsolute(cwd) || typeof archived !== 'boolean'
+            || sessionId !== null && (typeof sessionId !== 'string' || !sessionId || sessionId.length > 300)) {
+            throw new Error('Project, session and boolean archived are required');
+        }
+        const data = this.getArchives();
+        if (sessionId === null) {
+            data.projects = data.projects.filter(item => item !== cwd);
+            if (archived) data.projects.push(cwd);
+        } else {
+            data.sessions = data.sessions.filter(item => item.cwd !== cwd || item.sessionId !== sessionId);
+            if (archived) data.sessions.push({ cwd, sessionId });
+        }
+        data.revision++;
+        const document = this.readDocument();
+        this.writeDocument({ ...document, archives: { ...document.archives, ...data } });
+        return data;
+    }
+
     getReplyNotices() {
         const notices = this.readDocument().replyNotices;
         if (!Array.isArray(notices)) return [];
@@ -103,16 +187,12 @@ class WorkspacePreferencesService {
         return next;
     }
 
-    setMediaAgent(input = {}) {
-        const mediaAgent = {
-            provider: cleanReferencePart(input.provider, 'Provider ID'),
-            modelId: cleanReferencePart(input.modelId, 'Model ID')
-        };
-        const document = {
-            ...this.readDocument(),
-            version: 1,
-            mediaAgent
-        };
+    setMediaAgent(input = {}, { expectedRevision } = {}) {
+        const reference = validateTitleSettings({ provider: input.provider, modelId: input.modelId });
+        const mediaAgent = { provider: reference.provider, modelId: reference.modelId };
+        const current = this.readDocument();
+        if (expectedRevision !== undefined && auxiliaryRevision(current) !== expectedRevision) throw Object.assign(new Error('辅助模型设置已变化，请刷新后再保存'), { statusCode: 409 });
+        const document = { ...current, version: 1, mediaAgent: { ...current.mediaAgent, ...mediaAgent }, mediaAgentRevision: (current.mediaAgentRevision || 0) + 1 };
         this.writeDocument(document);
         return { ...mediaAgent };
     }
@@ -128,5 +208,6 @@ class WorkspacePreferencesService {
 
 module.exports = {
     WorkspacePreferencesService,
+    validateTitleSettings,
     DEFAULT_MEDIA_AGENT
 };

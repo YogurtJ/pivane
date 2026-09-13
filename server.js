@@ -1,3 +1,5 @@
+if (require.main === module && require('./server/pi-server-entry').handoff(__dirname)) return;
+
 const express = require('express');
 const { WorkspaceAccessService } = require('./server/workspace-access-service');
 const { exec, execFile } = require('child_process');
@@ -19,27 +21,9 @@ const { connectionSchema, validateConnectionDraft } = require('./server/media-co
 const { saveExternalMedia, mediaHistory, deleteMedia } = require('./server/media-lab-storage');
 
 const app = express();
-function loadLocalEnv() {
-    if (process.env.PI_MEDIA_PROFILE === 'clean') return;
-    const envPath = path.join(__dirname, '.env');
-    if (!fs.existsSync(envPath)) return;
-
-    const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('#')) continue;
-        const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
-        if (!match) continue;
-        const key = match[1];
-        let value = match[2].trim();
-        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-            value = value.slice(1, -1);
-        }
-        if (!process.env[key]) process.env[key] = value;
-    }
-}
-
-loadLocalEnv();
+require('./server/pi-local-env').loadLocalEnv(path.join(__dirname, '.env'));
+const maintenance = new (require('./server/pi-maintenance-client').MaintenanceClient)();
+app.use((req, res, next) => maintenance.http(req, res, next));
 const PORT = process.env.PORT || 3000;
 const workspaceBaseUrlProvided = Boolean(process.env.PI_WORKSPACE_BASE_URL);
 process.env.PI_WORKSPACE_BASE_URL ||= `http://127.0.0.1:${PORT}`;
@@ -140,7 +124,7 @@ app.post('/api/media-agent/connection/validate', (req, res) => {
     catch (error) { res.status(error.statusCode || 400).json({ error: error.message }); }
 });
 
-const piAgentGateway = createPiAgentGateway({ mediaAgentService, workspacePreferencesService, mediaLabService, accessService: workspaceAccess });
+const piAgentGateway = createPiAgentGateway({ mediaAgentService, workspacePreferencesService, mediaLabService, accessService: workspaceAccess, maintenance });
 piAgentGateway.mount(app);
 
 // Ensure directories exist
@@ -968,11 +952,27 @@ const httpServer = app.listen(PORT, process.env.HOST, () => {
     process.env.PI_WORKSPACE_INTERNAL_ORIGIN = `http://${localHost.includes(':') ? `[${localHost}]` : localHost}:${address.port}`;
     if (!workspaceBaseUrlProvided) process.env.PI_WORKSPACE_BASE_URL = process.env.PI_WORKSPACE_INTERNAL_ORIGIN;
     console.log(`Pivane backend running at http://localhost:${httpServer.address().port}`);
+    if (maintenance.managed) {
+        const base = process.env.PI_MANAGED_BASE || __dirname;
+        const agent = path.resolve((process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), '.pi/agent')).replace(/^~(?=$|[\\/])/, os.homedir()));
+        const backupInputs = [agent, piAgentGateway.deferred.filePath, mediaProfile.directory, path.join(base, '.env'),
+            ...['generation_history.json', 'video_history.json', 'tts_history.json', 'prompts.json', 'public/images', 'public/videos', 'public/audio'].map(p => path.join(mediaDataRoot, p)),
+            ...(process.env.PI_CODING_AGENT_SESSION_DIR ? [path.resolve(process.env.PI_CODING_AGENT_SESSION_DIR)] : [])].filter(Boolean).map(p => path.resolve(p));
+        process.send({ type: 'maintenance-ready', nonce: maintenance.nonce, backupInputs, port: address.port });
+    }
 });
 piAgentGateway.attachWebSocket(httpServer);
 
-require('./server/pi-process-shutdown').registerProcessShutdown(async () => {
+const shutdown = require('./server/pi-process-shutdown').registerProcessShutdown(async () => {
     httpServer.close();
-    await piAgentGateway.dispose();
-    workspaceAccess.dispose();
+    try { await piAgentGateway.dispose(); }
+    finally { await require('./server/pi-rpc-client').shutdownRpcProcesses(); workspaceAccess.dispose(); }
 });
+if (maintenance.managed) {
+    process.on('message', message => {
+        if (message?.nonce !== maintenance.nonce) return;
+        maintenance.receive(message);
+        if (message.type === 'maintenance-shutdown') { maintenance.locked = true; void shutdown(); }
+    });
+    process.on('disconnect', () => { maintenance.locked = true; void shutdown(); });
+}

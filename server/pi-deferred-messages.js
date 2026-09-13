@@ -10,7 +10,8 @@ const ACTIVE = new Set(['scheduled', 'waiting', 'paused', 'expired', 'failed', '
 const READY = new Set(['scheduled', 'waiting']);
 
 class PiDeferredMessages {
-    constructor({ store, supervisor, filePath, now = Date.now, intervalMs = 1000 }) {
+    constructor({ store, supervisor, filePath, now = Date.now, intervalMs = 1000, isSuspended = () => false }) {
+        this.isSuspended = isSuspended;
         this.store = store;
         this.supervisor = supervisor;
         this.now = now;
@@ -141,6 +142,17 @@ class PiDeferredMessages {
         });
     }
 
+    pauseAll() {
+        this.assertHealthy();
+        if (this.running) throw new Error('预约正在处理，请稍后再试');
+        if (!this.jobs.some(job => READY.has(job.status))) return;
+        this.change(() => {
+            for (const job of this.jobs) if (READY.has(job.status)) {
+                job.status = 'paused'; job.reason = '实例维护，完成后请重新确认发送'; job.revision++;
+            }
+        });
+    }
+
     pauseSession(cwd, sessionId, reason = '会话已回退，请重新确认发送内容') {
         if (!this.jobs.some(job => job.cwd === cwd && job.sessionId === sessionId && READY.has(job.status))) return;
         this.change(() => {
@@ -169,7 +181,7 @@ class PiDeferredMessages {
     }
 
     async tick() {
-        if (this.running || this.disposed || this.error) return;
+        if (this.running || this.disposed || this.error || this.isSuspended()) return;
         this.running = this.dispatchDue();
         try { await this.running; } finally { this.running = null; }
     }

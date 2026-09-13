@@ -19,7 +19,7 @@ test('full service protects legacy routes and static media; cookie WS revocation
     fs.writeFileSync(path.join(dataDir, 'public/audio/fixture.wav'), Buffer.from('RIFF0000WAVEfixture-test-audio'));
     const reserve = net.createServer(); reserve.listen(0, '127.0.0.1'); await once(reserve, 'listening'); const port = reserve.address().port; await new Promise(r => reserve.close(r));
     const base = `http://127.0.0.1:${port}`;
-    const child = spawn(process.execPath, ['server.js'], { cwd: project, env: { PATH: process.env.PATH, PORT: String(port), HOST: '127.0.0.1', PI_MEDIA_PROFILE: 'clean', PI_OFFLINE: '1', PI_TELEMETRY: '0', PI_CODING_AGENT_DIR: path.join(root, 'agent'), PI_MEDIA_DATA_DIR: dataDir, PI_PROJECT_ROOTS: cwd, PI_WEB_DEFERRED_FILE: path.join(root, 'deferred.json'), PI_WORKSPACE_BASE_URL: base }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, ['server.js', '--direct'], { cwd: project, env: { PATH: process.env.PATH, PORT: String(port), HOST: '127.0.0.1', PI_MEDIA_PROFILE: 'clean', PI_OFFLINE: '1', PI_TELEMETRY: '0', PI_CODING_AGENT_DIR: path.join(root, 'agent'), PI_MEDIA_DATA_DIR: dataDir, PI_PROJECT_ROOTS: cwd, PI_WEB_DEFERRED_FILE: path.join(root, 'deferred.json'), PI_WORKSPACE_BASE_URL: base }, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = ''; child.stdout.on('data', b => output += b); child.stderr.on('data', b => output += b);
     let socket;
     t.after(async () => { socket?.terminate(); child.kill('SIGTERM'); await Promise.race([once(child, 'exit'), delay(5000)]); if (child.exitCode === null) child.kill('SIGKILL'); fs.rmSync(root, { recursive: true, force: true }); });

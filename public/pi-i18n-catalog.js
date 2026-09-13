@@ -6302,8 +6302,8 @@
         "Statistics scope and costs"
     ],
     [
-        "统计当前允许项目下仍保留的 Pi 持久会话，包含所有分支、压缩前历史和有记录的工具／摘要用量。临时会话、BTW 侧聊、媒体规划、模型测试及已删除的记录不在此范围。",
-        "Includes retained Pi persistent sessions in currently allowed projects: all branches, pre-compaction history, and recorded tool/summary usage. Excludes temporary sessions, BTW side chats, media planning, model tests and deleted records."
+        "统计当前允许项目下仍保留的 Pi 持久会话，包含所有分支、压缩前历史和有记录的工具／摘要用量。临时会话、BTW 侧聊、标题生成、媒体规划、模型测试及已删除的记录不在此范围。",
+        "Includes retained Pi persistent sessions in currently allowed projects: all branches, pre-compaction history, and recorded tool/summary usage. Excludes temporary sessions, BTW side chats, title generation, media planning, model tests and deleted records."
     ],
     [
         "原生复制、分叉和导入中保持 ID、时间与内容相同的记录只计一次，归属最早创建的现存会话；手工改变这些字段的副本无法可靠识别。项目和会话明细显示去重后的归属用量。",
@@ -7724,7 +7724,262 @@
     [
         "停止命令需要对应的 executionId",
         "Stopping a command requires its executionId"
-    ]
+    ],
+    ["版本与更新", "Versions and updates"],
+    ["如何更新 Pivane 和 Pi", "How to update Pivane and Pi"],
+    ["本页提供检查、下载和手动更新步骤。安装需要在部署机器上完成。", "This page provides version checks, downloads and manual update steps. Install updates on the machine hosting Pivane."],
+    ["阅读目标版本说明，下载发布包及 SHA-256 校验文件，按平台指南核对哈希。", "Read the release notes, download the archive and SHA-256 checksum, and verify the hash using your platform guide."],
+    ["保存草稿与附件，完成 Agent、Shell、侧聊、媒体、设置和导入导出操作，并暂停所有预约。", "Save drafts and attachments, finish Agent, Shell, side chat, media, settings and transfer operations, and pause all scheduled messages."],
+    ["停止服务及使用同一身份的 Pi CLI，等进程退出后备份配置、会话、项目和媒体数据。", "Stop the service and any Pi CLI using the same identity. Wait for the processes to exit, then back up configuration, sessions, projects and media."],
+    ["解压到新的空目录，运行 npm ci 安装配套依赖，沿用原数据路径和启动配置，然后启动新版本。", "Extract to a new empty directory, run npm ci to install the bundled dependencies, keep your data paths and startup configuration, then start the new version."],
+    ["核对版本与数据后再恢复预约；若更新失败，停止新服务，按平台指南恢复旧版本和配套备份。", "Verify versions and data before resuming scheduled messages. If the update fails, stop the new service and follow your platform guide to restore the old version and matching backup."],
+    ["{0} 更新指南", "{0} update guide"],
+    ["Pi 随 Pivane 发布包的锁定依赖一起安装。全局安装的 Pi CLI 与此工作台独立；在 Packages 中更新扩展也不会更新 Pi 内核。", "Pi is installed with the dependencies locked in the Pivane release. A globally installed Pi CLI is separate from this workspace. Updating extensions in Packages does not update Pi itself."],
+    ["尚未检查", "Not checked yet"],
+    ["有可用更新", "Update available"],
+    ["与可用版本一致", "Matches the available version"],
+    ["当前版本高于此渠道", "Installed version is ahead of this channel"],
+    ["无法比较版本", "Unable to compare versions"],
+    ["此渠道暂无发布", "No release in this channel"],
+    ["检查失败，请稍后重试或打开官方页面。", "Check failed. Try again later or open the official page."],
+    ["查看 Pivane 和 Pi Coding Agent 的版本与更新方式。", "View versions and update options for Pivane and Pi Coding Agent."],
+    ["Pivane 更新渠道", "Pivane update channel"],
+    ["正式版", "Stable releases"],
+    ["包含预发布版", "Include prereleases"],
+    ["正在检查更新…", "Checking for updates…"],
+    ["检查更新", "Check for updates"],
+    ["点击检查时由服务器访问 GitHub 和 npm，结果缓存 5 分钟。预发布版适合愿意参与测试的用户。", "Checking contacts GitHub and npm from the server. Results are cached for 5 minutes. Prereleases are for users willing to help test."],
+    ["当前运行版本：{0}", "Running version: {0}"],
+    ["上游最新正式版：{0}", "Latest upstream stable version: {0}"],
+    ["此渠道可用版本：{0}", "Available version in this channel: {0}"],
+    ["本版 Pivane 配套 Pi：{0}", "Pi bundled with this Pivane version: {0}"],
+    ["上游新版不代表已通过 Pivane 兼容验证。更新工作台使用的 Pi，请安装配套的新 Pivane 发布包。", "A new upstream version has not necessarily been tested with Pivane. To update the Pi used by this workspace, install a new Pivane release with its matching dependencies."],
+    ["实际 Pi 版本与发布包声明不一致，请按锁定依赖核对安装。", "The installed Pi version differs from the release declaration. Check the installation against the locked dependencies."],
+    ["Pi 官方页面", "Official Pi page"],
+    ["发布说明", "Release notes"],
+    ["下载发布包", "Download release archive"],
+    ["下载校验文件", "Download checksum"],
+    ["发布包或校验文件尚未齐备，请到发布页面核对。", "The release archive or checksum is missing. Check the release page."],
+    ["查看更新步骤", "View update steps"],
+    ["上次检查：{0}", "Last checked: {0}"],
+    ["打开此页不会自动联网检查。", "Opening this page does not automatically check online."],
+    ["正在读取版本信息…", "Loading version information…"],
+    ["无法读取更新信息。旧服务需在维护时加载新版后端；网络错误可稍后重试。", "Unable to load update information. Older services need the new backend loaded during maintenance. For network errors, try again later."]
+    ,
+    ["自动生成会话标题", "Automatically name conversations"],
+    ["新线程在首轮有效问答结束后自动命名一次，会产生少量额外用量。手动名称不会被覆盖。设置对本实例所有设备生效。", "Name new threads once after the first substantive exchange with a small amount of extra usage. Manual names are protected. This setting applies to all devices using this instance."],
+    ["重新生成标题", "Generate a new title"],
+    ["使用当前线程的模型生成建议，会产生少量额外用量。可以编辑后保存，关闭窗口保留原名称。", "Generate a suggestion using this thread’s model with a small amount of extra usage. Edit and save it, or close this window to keep the existing name."],
+    ["正在生成标题…", "Generating a title…"],
+    ["建议已生成，保存后应用。", "Suggestion ready. Save to apply it."],
+    ["自动标题设置已保存", "Automatic title preference saved"],
+    ["无法生成标题，请等待会话空闲并确认模型可用后重试", "Could not generate a title. Wait until the conversation is idle and check that its model is available before trying again."],
+    ["会话或标题已变化，请重新生成标题", "The conversation or title has changed. Generate a new suggestion."],
+    ["标题格式无效", "Invalid title format"],
+    ["标题保存需要生成时的版本", "Saving a title requires the revision used to generate it"],
+    ["自动标题设置需要 enabled 布尔值", "The automatic title preference requires a boolean enabled value"],
+    ["当前运行实例尚未加载标题接口，请在任务结束后退出并重新打开线程", "This runtime has not loaded title support. After the task finishes, quit and reopen the thread."],
+    ["未收到标题操作确认", "The title operation was not acknowledged"],
+    ["当前模型不支持独立标题生成，请手动命名或切换已配置的模型", "This model does not support independent title generation. Rename manually or select a configured model."],
+    ["标题生成失败，请稍后手动重试", "Title generation failed. Try again manually later."],
+    ["标题生成结果格式无效，请手动重试", "The generated title has an invalid format. Try again manually."],
+    ["标题生成结果过长，请手动重试", "The generated title is too long. Try again manually."],
+    ["标题生成不可用", "Title generation is unavailable"],
+    ["标题正在生成，请稍后重试", "A title is being generated. Try again later."],
+    ["还没有足够的问答内容，请继续对话后再生成标题", "There is not enough conversation content yet. Continue chatting before generating a title."],
+    ["还没有明确的话题，请继续对话后再生成标题", "There is no clear topic yet. Continue chatting before generating a title."],
+    ["自动标题已失效", "The automatic title is no longer valid"],
+    ["标题操作正在进行", "A title operation is in progress"],
+    ["追加指令", "Additional instructions"],
+    ["高级：替换基础提示词", "Advanced: replace the base prompt"],
+    ["保存后移除本层文件，恢复默认或继承。", "Saving removes this scope's file and restores the default or inherited content."],
+    ["保存后创建本层提示词文件。", "Saving creates a prompt file for this scope."],
+    ["以下显示本次替换的文本区域。", "The text region being replaced is shown below."],
+    ["复制失败，请手动选择文本", "Copy failed. Select the text manually."],
+    ["系统提示词", "System prompts"],
+    ["调整 Agent 的长期工作方式。通常只需追加指令。", "Customize how the Agent works. Additional instructions are usually enough."],
+    ["刷新并核对草稿", "Refresh and compare draft"],
+    ["已读取磁盘内容并保留草稿，请查看修改差异后保存。", "Disk content refreshed and draft retained. Review the changes before saving."],
+    ["项目文件优先于全局文件；项目追加指令不会与全局追加指令自动叠加。", "Project files take precedence over global files. Project and global additional instructions are not combined automatically."],
+    ["此项目未信任，项目提示词暂不加载；信任后可保存。", "This project is not trusted. Its prompt files are not loaded; trust it to enable saving."],
+    ["使用本层内容", "Use content for this scope"],
+    ["文件与继承来源", "File and inheritance"],
+    ["全局内容", "Global content"],
+    ["未设置，使用 Pi 默认。", "Not configured. Using Pi defaults."],
+    ["有未保存的修改", "Unsaved changes"],
+    ["已保存的文件内容；当前会话需单独核对加载状态。", "Saved file content. Check separately whether the current conversation has loaded it."],
+    ["修改差异", "Changes"],
+    ["恢复默认", "Restore default"],
+    ["保留 Pi 默认行为，补充回复偏好与工作习惯。", "Keep Pi's default behavior and add response preferences and working habits."],
+    ["替换 Pi 默认基础行为说明。项目上下文和 Skills 仍可能追加；工具权限由工具配置控制。", "Replace Pi's default base instructions. Project context and Skills may still be appended; tool access is controlled by tool settings."],
+    ["内容来源", "Content source"],
+    ["已保存。当前会话尚未核对；空闲时可重新加载并核对。", "Saved. The current conversation has not been checked; reload and verify when idle."],
+    ["已保存，但读取失败。请刷新核对，勿重复提交。", "Saved, but reading back failed. Refresh to verify; do not submit again."],
+    ["查看当前会话的系统提示词", "View this conversation's system prompt"],
+    ["重新加载并核对", "Reload and verify"],
+    ["保存不会中断任务。重新加载会更新当前会话的全部原生资源，其他已打开会话需分别加载。", "Saving does not interrupt tasks. Reloading updates all native resources in this conversation; other open conversations need their own reload."],
+    ["当前后端尚未启用系统提示词管理", "This backend does not support system prompt management yet"],
+    ["当前运行实例的系统提示", "Current runtime system prompt"],
+    ["查看系统提示词", "View system prompt"],
+    ["提示词文件已保存，请重新核对当前实例。", "Prompt files saved. Check the current runtime again."],
+    ["来源", "Sources"],
+    ["提示正文", "Prompt text"],
+    ["读取时间：{0}", "Captured: {0}"],
+    ["按文件与当前信任推导的来源：{0}", "Source inferred from files and current trust: {0}"],
+    ["文件来源暂时无法核对", "File sources could not be verified"],
+    ["来源路径为配置推导；内容相同不代表能识别启动参数或扩展的来源。", "Paths are inferred from configuration. Matching content does not identify sources supplied by startup arguments or extensions."],
+    ["使用 Pi 默认基础提示，完整内容见提示正文。", "Using Pi's default base prompt. See Prompt text for the complete content."],
+    ["没有追加指令", "No additional instructions"],
+    ["编辑提示词设置", "Edit prompt settings"],
+    ["项目上下文文件（{0}）", "Project context files ({0})"],
+    ["实际启用工具：{0}", "Active tools: {0}"],
+    ["搜索提示正文", "Search prompt text"],
+    ["匹配 {0} 处（最多标记 500 处）", "{0} matches (up to 500 highlighted)"],
+    ["此处为 Pi 当前提示快照。扩展可逐轮修改提示，供应商请求改写不包含在此视图中。", "This is Pi's current prompt snapshot. Extensions can change prompts for each turn. Provider payload rewrites are not included."],
+    ["正在读取系统提示词…", "Reading the system prompt…"],
+    ["已读取当前提示，但无法核对磁盘文件。", "Current prompt captured, but disk files could not be checked."],
+    ["当前基础与追加内容和已保存文件一致。", "The current base and additional content match the saved files."],
+    ["当前加载内容或信任与保存状态不同。请检查来源，必要时重新加载或重新打开运行实例。", "Loaded content or trust differs from the saved state. Check sources, then reload resources or reopen the runtime if needed."],
+    ["资源已重新加载，但提示词核对失败。请点击刷新核对。", "Resources reloaded, but prompt verification failed. Click Refresh to check again."],
+    ["提示词必须是至多 64 KiB 的普通 UTF-8 文件", "Prompts must be regular UTF-8 files of at most 64 KiB"],
+    ["提示词文件已变化，请重新读取", "The prompt file changed. Read it again."],
+    ["提示词不能包含空字符", "Prompts cannot contain null characters"],
+    ["无法安全读取提示词文件，请检查文件类型、权限和 UTF-8 编码", "Could not safely read the prompt file. Check its type, permissions and UTF-8 encoding."],
+    ["提示词范围、类型或修订无效", "Invalid prompt scope, kind or revision"],
+    ["请输入非空且至多 64 KiB 的提示词；恢复默认请使用恢复按钮", "Enter a nonempty prompt of at most 64 KiB. Use Restore to return to the default."],
+    ["提示词或配置已变化，请刷新核对；草稿已保留", "Prompt files or configuration changed. Refresh to compare; your draft is retained."],
+    ["请先信任项目，再保存项目提示词", "Trust the project before saving project prompts"],
+    ["提示词保存未确认，请刷新核对；未自动重试", "Prompt save is unconfirmed. Refresh to verify; it was not retried automatically."],
+    ["请先打开支持系统提示词查看的会话", "Open a conversation that supports system prompt inspection first"]
+    ,['已归档', 'Archived']
+    ,['已恢复', 'Restored']
+    ,['随项目归档', 'Project archived']
+    ,['归档线程', 'Archive thread']
+    ,['恢复线程', 'Restore thread']
+    ,['归档项目', 'Archive project']
+    ,['恢复项目', 'Restore project']
+    ,['历史与记录', 'History and records']
+    ,['包含已归档', 'Include archived']
+    ,['已归档项目（{0}）', 'Archived projects ({0})']
+    ,['已归档线程（{0}）', 'Archived threads ({0})']
+    ,['归档状态未确认，请刷新核对', 'Archive status is unconfirmed. Refresh to verify.']
+    ,['用 Packages 扩展 Pi 的工具、Skills、提示词与主题。', 'Extend Pi with tools, skills, prompts and themes from Packages.']
+    ,['保存配置后，在会话空闲时重新加载资源。', 'After saving, reload resources when the conversation is idle.']
+    ,['配置中的资源', 'Configured resources']
+    ,['已启用 / 共 {0} 项', 'Enabled / {0} total']
+    ,['安装 Package', 'Install a Package']
+    ,['支持 npm、Git 和部署机器上的本地路径。', 'Use npm, Git or a local path on the server.']
+    ,['安装或启用的扩展可执行代码，请先审查来源。', 'Installed or enabled extensions can execute code. Review their source first.']
+    ,['还没有配置 Package', 'No Packages configured yet']
+    ,['在上方填写可信来源开始安装；独立配置的资源仍会显示在下方。', 'Enter a trusted source above to install a Package. Independently configured resources still appear below.']
+    ,['资源配置', 'Resource configuration']
+    ,['查看来源', 'View source']
+    ,['标题生成模型', 'Title generation model']
+    ,['跟随当前线程', 'Follow the current thread']
+    ,['专用模型用于所有线程的自动命名与重新生成；不可用时保留原标题，不会改用其他模型。', 'The dedicated model names all threads, automatically or on request. If unavailable, existing titles are kept; no other model is used.']
+    ,['{0}（不可用）', '{0} (unavailable)']
+    ,['当前标题模型：{0}', 'Current title model: {0}']
+    ,['按标题模型设置生成建议，会产生少量额外用量。可以编辑后保存，关闭窗口保留原名称。', 'Generate a suggestion using your title model preference, with a small amount of extra usage. Edit and save it, or close this window to keep the existing name.']
+    ,['本次模型：{0}', 'Model used: {0}']
+    ,['本次 Token：输入 {0} · 输出 {1} · 缓存读取 {2} · 缓存写入 {3}', 'Tokens for this request: input {0} · output {1} · cache read {2} · cache write {3}']
+    ,['本次用量未上报', 'Usage was not reported for this request']
+    ,['标题设置参数无效', 'Invalid title preference parameters']
+    ,['标题模型需要同时指定供应商和模型', 'Specify both a provider and a model for title generation']
+    ,['标题设置已变化，请刷新后再保存', 'Title preferences have changed. Refresh before saving.']
+    ,['标题模型设置正在保存，请稍后再试', 'A title model preference is being saved. Try again later.']
+    ,['请选择已接入的文本模型用于生成标题', 'Select a configured text model for title generation']
+    ,['标题模型不可用，请检查模型与认证配置', 'The title model is unavailable. Check its model and authentication settings.']
+    ,['无法验证标题模型，请检查模型与认证配置', 'Could not validate the title model. Check its model and authentication settings.']
+    ,['指定的标题模型不可用，请检查设置；不会改用线程模型', 'The dedicated title model is unavailable. Check its settings; the thread model will not be used.']
+    ,['每次最多引用 8,000 字符问答正文，不发送完整会话，也不加入主聊天上下文。', 'Each request uses at most 8,000 characters of question and answer text. It neither sends the full conversation nor adds messages to the main chat.']
+    ,['正在准备维护…', 'Preparing maintenance…']
+    ,['正在安装独立的 Pi 依赖…', 'Installing Pi dependencies in a separate directory…']
+    ,['正在验证 SDK、RPC 和会话格式…', 'Checking SDK, RPC and session compatibility…']
+    ,['正在等待服务安全退出…', 'Waiting for the service to exit safely…']
+    ,['正在备份数据…', 'Backing up data…']
+    ,['正在启动服务…', 'Starting the service…']
+    ,['维护操作已完成', 'Maintenance completed']
+    ,['维护操作失败', 'Maintenance failed']
+    ,['维护操作中断，未自动重试', 'Maintenance was interrupted and was not retried']
+    ,['Pi 安装与实例维护', 'Pi installation and maintenance']
+    ,['更新会在新目录安装并验证 Pi，随后暂停预约、停机备份和切换版本。备份与重启也可单独执行。', 'Updates install and verify Pi in a new directory, then pause scheduled messages, stop the service, back up data and switch versions. You can also back up or restart separately.']
+    ,['更新 Pi', 'Update Pi']
+    ,['仅备份', 'Back up only']
+    ,['重启实例', 'Restart instance']
+    ,['当前启动方式不支持自动维护。请在停机后从安装目录使用 npm start，或 node scripts/start-managed.cjs 启动。', 'Automatic maintenance requires the managed launcher. After stopping the service, start from the installation directory with npm start or node scripts/start-managed.cjs.']
+    ,['备份目录：{0}', 'Backup directory: {0}']
+    ,['失败阶段：{0}。请核对状态后再决定，不会自动重新执行。', 'Failed stage: {0}. Check the state before deciding what to do next. The operation will not be repeated automatically.']
+    ,['请核对当前版本与会话；预约保持暂停，需要逐项恢复。', 'Verify the current version and conversations. Scheduled messages stay paused until you resume them individually.']
+    ,['维护启动器已连接', 'Maintenance launcher connected']
+    ,['Pi 更新需要 Node 22 和默认的本地 Pi 安装', 'Pi updates require Node 22 and the default local Pi installation']
+    ,['服务暂时不可达，正在等待重连；请勿重复提交。', 'The service is temporarily unavailable. Waiting to reconnect; do not submit again.']
+    ,['维护状态暂不可用，请稍后刷新。', 'Maintenance status is unavailable. Refresh later.']
+    ,['正在检查维护条件…', 'Checking maintenance requirements…']
+    ,['更新 Pi：{0} → {1}', 'Update Pi: {0} → {1}']
+    ,['确认备份并重启', 'Confirm backup and restart']
+    ,['确认重启实例', 'Confirm instance restart']
+    ,['操作会暂时断开所有设备连接，并暂停预约。请先完成任务，保存草稿、附件和临时对话。', 'This will temporarily disconnect all devices and pause scheduled messages. Finish tasks and save drafts, attachments and temporary conversations first.']
+    ,['备份包含 Pi 身份、会话、配置及媒体记录和文件；不包含项目源码、外置 Package 或符号链接指向的内容。备份保存在部署机器的私有目录。', 'The backup includes Pi identity, sessions, configuration, media history and files. Project source, external Packages and symlink targets are excluded. Backups stay in a private directory on the hosting machine.']
+    ,['备份位置：{0}', 'Backup location: {0}']
+    ,['自动验证只覆盖启动、SDK、RPC 和会话格式，第三方扩展与真实供应商仍需更新后核对。旧依赖目录会保留。', 'Automatic checks cover startup, SDK, RPC and session format. Verify third-party extensions and actual providers after updating. The old dependency directory is retained.']
+    ,['已保存草稿、附件和临时对话', 'I have saved drafts, attachments and temporary conversations']
+    ,['已停止使用同一数据的外部 Pi CLI 和其他写入进程', 'I have stopped external Pi CLI instances and other processes writing to the same data']
+    ,['确认并执行', 'Confirm and run']
+    ,['已提交维护操作，正在等待服务器状态。', 'Maintenance submitted. Waiting for server status.']
+    ,['提交结果尚未确认，请查看状态，不要重复执行。', 'Submission is not yet confirmed. Check status and do not repeat the operation.']
+    ,['实例正在维护，请等待完成', 'This instance is under maintenance. Wait for it to finish.']
+    ,['请通过 npm start 启用独立维护启动器', 'Use npm start to enable the independent maintenance launcher']
+    ,['实例仍有任务、侧聊、临时会话、配置或请求正在处理，请完成后再试', 'Tasks, side chats, temporary sessions, configuration or requests are still active. Finish them before trying again.']
+    ,['维护操作无效', 'Invalid maintenance action']
+    ,['待确认维护操作过多，请稍后再试', 'Too many pending maintenance confirmations. Try again later.']
+    ,['请确认已保存草稿并停止使用同一数据的外部 Pi 进程', 'Confirm that drafts are saved and external Pi processes using this data have stopped']
+    ,['维护确认已失效，请重新检查', 'Maintenance confirmation expired. Check again.']
+    ,['预约暂停失败，尚未提交维护操作', 'Could not pause scheduled messages. Maintenance was not submitted.']
+    ,['维护提交结果未知，请查看状态，不要重复提交', 'Maintenance submission is uncertain. Check status and do not resubmit.']
+    ,['没有高于当前版本的 Pi 正式版', 'No newer stable Pi version is available']
+    ,['无法核对 Pi 更新版本，请稍后再试', 'Could not verify the Pi update version. Try again later.']
+    ,['维护提交失败，请查看状态后再决定', 'Maintenance submission failed. Check status before proceeding.']
+    ,['Pi 可通过下方受管更新单独升级，也可随新的 Pivane 发布包安装。上游新版仍需核对第三方扩展兼容性。', 'Update Pi separately using managed updates below, or install it with a new Pivane release. Check third-party extension compatibility with upstream updates.']
+    ,['服务已重新启动，上次提交未被确认；请核对后手动决定，不会自动重试。', 'The service restarted without confirming the previous submission. Verify the state and decide manually; no automatic retry will be made.']
+    ,['以下为手动更新步骤，也适用于更新 Pivane 应用本身。', 'These manual update steps also apply to the Pivane application itself.']
+    ,['实例维护，完成后请重新确认发送', 'Instance maintenance; confirm scheduled sending again after it finishes']
+    ,['辅助模型', 'Auxiliary models']
+    ,['标题生成', 'Title generation']
+    ,['媒体规划', 'Media planning']
+    ,['为会话生成简短、易查找的标题', 'Short, recognizable conversation titles']
+    ,['图像、视频、语音参数与模型接入方案', 'Image, video, speech parameters and model connections']
+    ,['自动 · 当前线程模型', 'Auto · current thread model']
+    ,['自动 · 媒体规划默认', 'Auto · planner defaults']
+    ,['自动时按服务器媒体规划配置、Pi 默认模型及可用模型选择。只生成可编辑方案，媒体执行仍需单独确认。', 'Auto uses the server planner configuration, Pi defaults and available models. It creates editable plans; media execution still needs separate confirmation.']
+    ,['按用途选择辅助模型。“自动”采用各用途的默认规则。保存不会运行任务。', 'Choose a model for each auxiliary task. Auto uses that task’s defaults. Saving does not run a task.']
+    ,['全部设为自动', 'Set all to Auto']
+    ,['保存更改', 'Save changes']
+    ,['有未保存的修改，保存后用于后续任务。', 'Unsaved changes will apply to subsequent tasks after saving.']
+    ,['{0} · 供应商', '{0} · provider']
+    ,['{0} · 模型', '{0} · model']
+    ,['配置{0}', 'Configure {0}']
+    ,['指定模型不可用时不会自动换成其他模型。', 'An unavailable dedicated model is not replaced with another model.']
+    ,['已保存：{0}', 'Saved: {0}']
+    ,['自动命名已关闭，仍可手动生成', 'Automatic naming is off; manual generation remains available']
+    ,['辅助模型设置已保存', 'Auxiliary model preferences saved']
+    ,['辅助模型设置已变化，请刷新后再保存', 'Auxiliary model preferences have changed. Refresh before saving.']
+    ,['辅助模型设置正在保存或服务正在关闭', 'Auxiliary models are being saved or the service is shutting down']
+    ,['辅助模型设置参数无效', 'Invalid auxiliary model preference parameters']
+    ,['辅助模型用途或参数无效', 'Invalid auxiliary model purpose or parameters']
+    ,['无法验证辅助模型，请检查模型与认证配置', 'Could not validate auxiliary models. Check model and authentication settings.']
+    ,['请选择已接入且可用的文本模型', 'Choose a configured, available text model']
+    ,['服务正在关闭，辅助模型设置未保存', 'The service is shutting down. Auxiliary model preferences were not saved.']
+    ,['指定的媒体规划模型不可用，请检查辅助模型设置；不会自动更换模型', 'The dedicated media planner is unavailable. Check auxiliary model preferences; no other model will be used.']
+    ,['点击“更新 Pi”后，执行过程会显示在这里。', 'Click Update Pi to show the command output here.']
+    ,['更新命令输出', 'Update command output']
+    ,['更新 Pi Coding Agent', 'Update Pi Coding Agent']
+    ,['点击更新即可在服务器执行，命令输出和结果会显示在下方。', 'Run the update on the server and view its output and result below.']
+    ,['当前为开发直连模式或旧后端，更新功能暂不可用；普通启动方式加载新版后端后即可使用。', 'Updates are unavailable in direct development mode or on an older backend. Normal startup with the new backend enables this feature.']
+    ,['较早的输出已截断。', 'Earlier output has been truncated.']
+    ,['等待命令输出…', 'Waiting for command output…']
+    ,['Pi 版本：{0} → {1}', 'Pi version: {0} → {1}']
+    ,['退出码：{0}', 'Exit code: {0}']
+    ,['Pi 更新需要 Node 22 或 24 和默认的本地 Pi 安装', 'Pi updates require Node 22 or 24 and the default local Pi installation']
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

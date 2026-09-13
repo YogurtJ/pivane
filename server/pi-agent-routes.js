@@ -87,28 +87,50 @@ function createPiAgentGateway(options = {}) {
     const usage = new (require('./pi-usage-service').PiUsageService)(store);
     const sessionSearch = new (require('./pi-session-search').PiSessionSearch)(store, preferences);
     const settingsService = new PiSettingsService({ workspacePreferencesService: preferences });
+    const titles = new (require('./pi-session-title-service').PiSessionTitleService)({ preferences,
+        createModelRuntime: () => settingsService.createModelRuntime() });
+    const auxiliaryModels = new (require('./pi-auxiliary-models-service').PiAuxiliaryModelsService)({ preferences, titles,
+        createModelRuntime: () => settingsService.createModelRuntime() });
+    settingsService.auxiliaryModelsService = auxiliaryModels;
     const nativeService = new (require('./pi-native-service').PiNativeService)(store);
     const resourceService = new (require('./pi-resource-service').PiResourceService)(nativeService);
+    const systemPrompts = new (require('./pi-system-prompt-service').PiSystemPromptService)(nativeService);
     settingsService.nativeService = nativeService;
     const mediaAgentService = options.mediaAgentService || null;
     const router = express.Router();
-    const deferred = new PiDeferredMessages({ store, supervisor, filePath: options.deferredFilePath });
+    const maintenance = options.maintenance || new (require('./pi-maintenance-client').MaintenanceClient)({ managed: false });
+    const deferred = new PiDeferredMessages({ store, supervisor, filePath: options.deferredFilePath, isSuspended: () => maintenance.locked });
     const sideChat = new PiSideChatService({ store, supervisor });
     const notifications = new (require('./pi-notification-service').PiNotificationService)({ access, store });
     supervisor.on('attention', event => { void notifications.notify(event); });
-    supervisor.on('completion', notice => {
+    supervisor.on('completion', (notice, worker) => {
+        if (worker) void titles.auto(worker);
         void notifications.notify(notice);
         try { preferences.recordReplyNotice(notice); }
         catch { console.error('Pi reply notice could not be persisted'); }
     });
 
     router.use(access.middleware());
+    require('./pi-update-service').mountUpdateRoutes(router, undefined, {
+        maintenance,
+        idle: () => !settingsService.mutating && !settingsService.loginService.busy && !nativeService.busy && !sessionTransfer.running
+            && !titles.jobs.size && !titles.savingModel && !deferred.running && !sideChat.connections.size && !sideChat.tickets.size
+            && ![...sideChat.parents.values()].some(parent => parent.preparing) && !supervisor.ephemeralWorkers.size && !supervisor.starting.size
+            && !options.mediaLabService?.inFlight && !options.mediaLabService?.providerService?.busy && !options.mediaLabService?.providerService?.active
+            && [...supervisor.workers.values()].every(worker => !worker.disposed && !worker.restarting && !worker.activity.snapshot().busy && !worker.shell.busy && !worker.operation
+                && !worker.controlPending && !worker.contextCapture && !worker.promptPending && !worker.compactPending && !worker.historyPending && !worker.historyWriting
+                && !worker.titleGeneration && !worker.titleResults.size && !worker.resourceResults.size && !worker.pendingUi.size
+                && !worker.controls.recoveries.length && !worker.controls.drafts.length && !worker.controls.queue.steering.length && !worker.controls.queue.followUp.length),
+        pause: () => deferred.pauseAll()
+    });
     notifications.mount(router);
 
     router.get('/status', (req, res) => {
         res.json({
             ok: true,
             version: PI_VERSION,
+            appVersion: require('../package.json').version,
+            updateChecks: true,
             authRequired: access.configuration().enabled,
             browserNotifications: true,
             accessControl: true,
@@ -116,8 +138,12 @@ function createPiAgentGateway(options = {}) {
             defaultProject: store.defaultProject(),
             nativeResources: true,
             nativeSettings: true,
+            systemPrompts: true,
             projectTrust: true,
             modelAdvanced: true,
+            sessionTitles: true,
+            sessionTitleModels: true,
+            auxiliaryModels: true,
             sessionTransfer: true,
             runtimeConfiguration: true,
             sessionSearch: descriptorBackendAvailable(),
@@ -144,6 +170,7 @@ function createPiAgentGateway(options = {}) {
             sideChatContext: true,
             sideChatRetention: true,
             manualUnread: true,
+            archives: true,
             projectIdentity: true,
             replyTts: Boolean(options.mediaLabService),
             mediaLab: Boolean(options.mediaLabService),
@@ -161,6 +188,8 @@ function createPiAgentGateway(options = {}) {
             res.json(await action(req));
         } catch (error) { res.status(error.status || error.statusCode || 400).json({ error: error.message }); }
     };
+    router.get('/settings/system-prompts', nativeRoute(req => systemPrompts.snapshot(req.query.cwd)));
+    router.put('/settings/system-prompts', nativeRoute(req => systemPrompts.save(req.body), true));
     router.get('/settings/native', nativeRoute(req => nativeService.snapshot(req.query.cwd)));
     router.put('/settings/native', nativeRoute(req => nativeService.saveSettings(req.body), true));
     router.put('/settings/native/trust', nativeRoute(req => nativeService.saveTrust(req.body), true));
@@ -210,6 +239,29 @@ function createPiAgentGateway(options = {}) {
         });
     }
 
+    function archives() {
+        const data = preferences.getArchives();
+        const allowed = cwd => { try { return store.resolveProject(cwd) === cwd; } catch { return false; } };
+        return { ...data, projects: data.projects.filter(allowed), sessions: data.sessions.filter(item => allowed(item.cwd)) };
+    }
+
+    router.patch('/projects/archive', (req, res) => {
+        try {
+            const cwd = store.resolveProject(req.body.cwd);
+            preferences.setArchived(cwd, null, req.body.archived);
+            res.json({ cwd, archives: archives() });
+        } catch (error) { res.status(400).json({ error: error.message }); }
+    });
+
+    router.patch('/sessions/:id/archive', async (req, res) => {
+        try {
+            if (typeof req.body.archived !== 'boolean') throw new Error('Archived must be a boolean');
+            const session = await store.getSession(req.body.cwd, req.params.id);
+            preferences.setArchived(session.cwd, session.id, req.body.archived);
+            res.json({ cwd: session.cwd, sessionId: session.id, archives: archives() });
+        } catch (error) { res.status(400).json({ error: error.message }); }
+    });
+
     router.patch('/projects/visibility', async (req, res) => {
         try {
             const cwd = store.resolveProject(req.body.cwd);
@@ -256,7 +308,7 @@ function createPiAgentGateway(options = {}) {
 
     router.get('/activity', (req, res) => {
         res.set('Cache-Control', 'no-store');
-        res.json({ runtimes: supervisor.getActivity(), nativeSettingsBusy: nativeService.busy || settingsService.mutating, sessionTransfers: sessionTransfer.running, pinnedProjects: pinnedProjects(), hiddenProjects: hiddenProjects(), replyNotices: replyNotices(), deferred: deferred.summary() });
+        res.json({ archives: archives(), titleRevision: titles.revisionId, titleGenerations: titles.jobs.size, runtimes: supervisor.getActivity(), nativeSettingsBusy: nativeService.busy || settingsService.mutating || Boolean(titles.savingModel) || auxiliaryModels.busy, sessionTransfers: sessionTransfer.running, pinnedProjects: pinnedProjects(), hiddenProjects: hiddenProjects(), replyNotices: replyNotices(), deferred: deferred.summary() });
     });
 
     router.patch('/projects/pin', (req, res) => {
@@ -291,12 +343,13 @@ function createPiAgentGateway(options = {}) {
             const projects = await store.listProjects();
             const pins = pinnedProjects();
             const hidden = hiddenProjects();
-            for (const cwd of new Set([...pins, ...hidden])) {
+            const archiveState = archives();
+            for (const cwd of new Set([...pins, ...hidden, ...archiveState.projects])) {
                 if (!projects.some(project => project.cwd === cwd)) {
                     projects.push({ cwd, name: path.basename(cwd), sessionCount: 0, modified: null });
                 }
             }
-            res.json({ projects, roots: store.roots, pinnedProjects: pins, hiddenProjects: hidden, projectAliases });
+            res.json({ projects, roots: store.roots, pinnedProjects: pins, hiddenProjects: hidden, projectAliases, archives: archiveState });
         } catch (error) {
             res.status(500).json({ error: error.message });
         }
@@ -320,7 +373,7 @@ function createPiAgentGateway(options = {}) {
 
     router.post('/sessions', async (req, res) => {
         try {
-            const session = await store.createSession(req.body.cwd, req.body.name);
+            const session = await store.createSession(req.body.cwd, req.body.name, { autoTitle: preferences.getSessionTitles().enabled });
             if (preferences.getHiddenProjects().includes(session.cwd)) preferences.setProjectHidden(session.cwd, false);
             res.status(201).json(session);
         } catch (error) {
@@ -328,11 +381,30 @@ function createPiAgentGateway(options = {}) {
         }
     });
 
+    router.post('/sessions/:id/title', async (req, res) => {
+        res.set('Cache-Control', 'no-store');
+        try {
+            const session = await store.getSession(req.body.cwd, req.params.id);
+            const worker = await supervisor.getWorker({ cwd: session.cwd, sessionId: session.id, sessionPath: session.path });
+            res.json(await titles.run(worker));
+        } catch (error) { res.status(400).json({ error: error.publicTitleError ? error.message : '无法生成标题，请等待会话空闲并确认模型可用后重试' }); }
+    });
+    router.put('/sessions/:id/title', async (req, res) => {
+        res.set('Cache-Control', 'no-store');
+        try {
+            const session = await store.getSession(req.body.cwd, req.params.id);
+            const worker = await supervisor.getWorker({ cwd: session.cwd, sessionId: session.id, sessionPath: session.path });
+            res.json(await titles.apply(worker, req.body));
+        } catch (error) { res.status(409).json({ error: error.message }); }
+    });
+
     router.patch('/sessions/:id', async (req, res) => {
         try {
             const session = await store.getSession(req.body.cwd, req.params.id);
             const worker = supervisor.getActiveWorker(session.path);
-            res.json(await store.renameSession(req.body.cwd, req.params.id, req.body.name, worker));
+            const renamed = await store.renameSession(req.body.cwd, req.params.id, req.body.name, worker);
+            titles.changed(worker, renamed.name);
+            res.json(renamed);
         } catch (error) {
             res.status(400).json({ error: error.message });
         }
@@ -368,6 +440,10 @@ function createPiAgentGateway(options = {}) {
         try { res.json(await handler(req)); }
         catch (error) { res.status(error.statusCode || 400).json({ error: error.message }); }
     };
+    router.get('/settings/auxiliary-models', settingsAction(() => auxiliaryModels.snapshot()));
+    router.put('/settings/auxiliary-models', settingsAction(req => auxiliaryModels.save(req.body)));
+    router.get('/settings/session-titles', settingsAction(() => preferences.getSessionTitles()));
+    router.put('/settings/session-titles', settingsAction(req => titles.saveSettings(req.body)));
     router.get('/settings/usage', settingsAction(req => usage.report(req.query)));
     router.post('/settings/providers/:id/login', settingsAction(req => {
         if (settingsService.mutating || nativeService.busy) throw Object.assign(new Error('设置正在保存，请稍后再试'), { statusCode: 409 });
@@ -649,6 +725,10 @@ function createPiAgentGateway(options = {}) {
                     safeSend(socket, { type: 'response', success: false, error: 'Invalid gateway command' });
                     return;
                 }
+                let leave;
+                try { leave = maintenance.enter(); } catch (error) {
+                    safeSend(socket, { type: 'response', id: message.id, command: message.type, success: false, error: error.message }); return;
+                }
                 handleSocketMessage(message).catch(error => {
                     safeSend(socket, {
                         type: 'response',
@@ -658,7 +738,7 @@ function createPiAgentGateway(options = {}) {
                         error: error.message,
                         errorCode: error.code
                     });
-                });
+                }).finally(leave);
             });
 
             async function releaseCurrentWorker(stopPersistent = false) {
@@ -876,6 +956,13 @@ function createPiAgentGateway(options = {}) {
                     } finally { settingsService.mutating = false; }
                     return;
                 }
+                if (message.type === 'get_system_prompt') {
+                    const source = worker;
+                    const data = await systemPrompts.inspect(await source.getNativeResources(true));
+                    if (worker !== source || socketClosed) return;
+                    safeSend(socket, { type: 'response', id: message.id, command: message.type, success: true, data: { ...data, runtimeId: source.shell.runtimeId } });
+                    return;
+                }
                 if (message.type === 'get_native_resources') {
                     const data = await worker.getNativeResources();
                     safeSend(socket, { type: 'response', id: message.id, command: message.type, success: true, data });
@@ -958,11 +1045,13 @@ function createPiAgentGateway(options = {}) {
         sessionSearch.dispose();
         if (!options.accessService) access.dispose();
         await settingsService.loginService.dispose();
+        const stoppingAuxiliaryModels = auxiliaryModels.dispose();
+        const stoppingTitles = titles.dispose();
         const stoppingDeferred = deferred.dispose();
         const stoppingSide = sideChat.dispose();
         await supervisor.dispose();
-        await Promise.all([stoppingDeferred, stoppingSide]);
-    }, store, supervisor, deferred, sideChat };
+        await Promise.all([stoppingDeferred, stoppingSide, stoppingTitles, stoppingAuxiliaryModels]);
+    }, store, supervisor, deferred, sideChat, titles, auxiliaryModels };
 }
 
 module.exports = { createPiAgentGateway };

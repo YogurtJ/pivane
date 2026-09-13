@@ -54,9 +54,11 @@ TTS 的字段来自 `TtsProviderService.getPublicConfig()`；已配置模型复�
 
 ## Planner 模型
 
-候选顺序：显式 request provider/modelId、设置中心的模块 Agent 偏好、`PI_MEDIA_PLANNER_MODEL`、Pi 默认模型；没有匹配项时选第一个可用非 batch 模型。候选必须来自 `ModelRuntime.getAvailable()`，最多尝试三个。不再内置个人 Provider/模型名称。
+设置 → 使用偏好 → [辅助模型](AUXILIARY_MODELS.md)的“媒体规划”行管理原来的模块 Agent 选择，已有值直接保留。显式 request provider/modelId 优先于偏好；明确选择的模型必须可用且支持文本，无法使用或规划失败时仅报告失败，不自动换成其他模型。
 
-偏好保存于选定 Pi Agent 目录下的 `pi5-workspace.json`，不改变 Pi 对话默认模型。保存后下一次 plan 生效，response 返回实际 `plannerModel`、`fallbackUsed` 和截断的失败尝试。仅在方案缺失/失败时更换 planner，不重试媒体执行。
+没有显式或已保存模型时采用“自动”：`PI_MEDIA_PLANNER_MODEL`、Pi 默认模型形成候选；没有匹配项时选第一个可用非 batch 模型。候选来自 `ModelRuntime.getAvailable()`，保留既有默认候选尝试及结果报告，不内置个人 Provider/模型名称。
+
+偏好仍保存于选定 Pi Agent 目录下的 `pi5-workspace.json.mediaAgent`，不改变 Pi 对话默认模型。保存后下一次 plan 生效，response 返回实际 `plannerModel`、`fallbackUsed` 和截断的失败尝试；只有自动默认候选可在失败后切换，不重试媒体执行。
 
 ## API 和连接
 

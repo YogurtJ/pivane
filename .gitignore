@@ -3,6 +3,7 @@
 !.env.example
 node_modules/
 backups/
+.pivane-runtime/
 public/legacy-workspace/
 public/downloads/
 public/images/

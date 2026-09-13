@@ -5,9 +5,12 @@ const { descriptorPathSync, assertDescriptorBackend } = require('./pi-file-descr
 const { parentPort, workerData } = require('node:worker_threads');
 const within = (root, file) => file === root || file.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
 const LIMITS = { files: 1000, bytes: 256 * 1024 * 1024, fileBytes: 64 * 1024 * 1024, lineBytes: 8 * 1024 * 1024, entries: 200000, milliseconds: 10000, results: 200 };
-function searchSessions({ root, roots, q, cwd: selectedCwd, hidden = [] }, limits = LIMITS) {
+function searchSessions({ root, roots, q, cwd: selectedCwd, hidden = [], archives = { projects: [], sessions: [] }, includeArchived = false }, limits = LIMITS) {
     assertDescriptorBackend();
     const coverage = { scannedFiles: 0, skippedFiles: 0, limited: false }, results = [], files = [];
+    const archivedProjects = new Set(archives.projects);
+    const archivedSessions = new Set(archives.sessions.map(item => JSON.stringify([item.cwd, item.sessionId])));
+    const isArchived = (cwd, id) => archivedProjects.has(cwd) || archivedSessions.has(JSON.stringify([cwd, id]));
     const start = Date.now(), needle = q.toLowerCase(); let bytes = 0, entries = 0;
     const check = () => { if (Date.now() - start > limits.milliseconds || bytes > limits.bytes || entries > limits.entries) { coverage.limited = true; throw new Error('budget'); } };
     if (!fs.existsSync(root)) return { results, coverage };
@@ -39,6 +42,7 @@ function searchSessions({ root, roots, q, cwd: selectedCwd, hidden = [] }, limit
                     if (entry?.type !== 'session' || ![2, 3].includes(entry.version) || !/^[a-zA-Z0-9_-]{1,128}$/.test(entry.id) || typeof entry.cwd !== 'string' || !path.isAbsolute(entry.cwd)) throw new Error('header');
                     cwd = fs.realpathSync.native(entry.cwd);
                     if (!fs.statSync(cwd).isDirectory() || !roots.some(r => within(r, cwd)) || hidden.includes(cwd) || selectedCwd && cwd !== selectedCwd) throw new Error('excluded');
+                    if (!includeArchived && isArchived(cwd, entry.id)) throw new Error('excluded');
                     header = entry; return;
                 }
                 if (entry.type === 'session_info' && typeof entry.name === 'string') name = entry.name.slice(0, 160);
@@ -65,7 +69,7 @@ function searchSessions({ root, roots, q, cwd: selectedCwd, hidden = [] }, limit
             if (!fileIo.sameIdentityAtPath(filename, identity) || !header || !current.isFile() || current.ino !== stat.ino || current.dev !== stat.dev || stat.size !== after.size || stat.mtimeMs !== after.mtimeMs || stat.ctimeMs !== after.ctimeMs || stat.mtimeNs !== after.mtimeNs || stat.ctimeNs !== after.ctimeNs
                 || fs.realpathSync.native(header.cwd) !== cwd || fs.realpathSync.native(filename) !== actual || descriptorPathSync(fd) !== actual) throw new Error('changed');
             coverage.scannedFiles++;
-            if (hit) results.push({ sessionId: header.id, cwd, name: name || first || '未命名线程', modified: new Date(modified).toISOString(), matches, ...hit });
+            if (hit) results.push({ ...(isArchived(cwd, header.id) ? { archived: true } : {}), sessionId: header.id, cwd, name: name || first || '未命名线程', modified: new Date(modified).toISOString(), matches, ...hit });
             if (results.length >= limits.results) { coverage.limited = true; break; }
         } catch (e) { if (e.message !== 'excluded') coverage.skippedFiles++; if (e.message === 'budget') break; }
         finally { if (fd !== undefined) fs.closeSync(fd); }

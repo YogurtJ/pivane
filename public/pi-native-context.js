@@ -141,6 +141,7 @@
         });
         section.addEventListener('toggle', () => { if (section.open && !content.childElementCount) void inventory(); });
         function sync() {
+            window.PiSystemPromptRuntime?.sync();
             const c = context(), next = key(); section.hidden = !c.supported || !c.connected;
             if (next !== identity || !c.connected) {
                 readEpoch++; reading = false; content.replaceChildren(); section.open = false; identity = next;

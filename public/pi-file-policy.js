@@ -3,7 +3,7 @@
     if (typeof module === 'object' && module.exports) module.exports = policy;
     else root.PiFilePolicy = policy;
 })(typeof window === 'object' ? window : globalThis, () => {
-    const privateDirs = new Set(['.pi', '.ssh', '.aws', '.azure', '.gnupg', '.config', '.git', 'backups', '.web-backups']);
+    const privateDirs = new Set(['.pi', '.ssh', '.aws', '.azure', '.gnupg', '.config', '.git', 'backups', '.web-backups', '.pivane-runtime']);
     function restricted(value) {
         return String(value).replace(/\\/g, '/').split('/').some(part => {
             part = part.toLowerCase();

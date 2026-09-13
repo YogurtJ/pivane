@@ -125,6 +125,14 @@ document.addEventListener('DOMContentLoaded', () => {
         projects: [],
         pinnedProjects: [],
         hiddenProjects: [],
+        archiveEnabled: false,
+        archiveRevision: -1,
+        archivedProjects: new Set(),
+        archivedSessions: new Set(),
+        archiveRequests: new Set(),
+        archiveProjectsOpen: false,
+        archiveThreadsOpen: new Set(),
+        includeArchived: false,
         visibilityRequests: new Set(),
         projectAliases: new Map(),
         projectIdentity: false,
@@ -209,6 +217,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    let titleUiRevision = 0;
+    let titleServerRevision = null;
+    function sessionNamed(session, cwd, name) {
+        titleUiRevision++;
+        session.name = name;
+        const listed = (state.projectSessions.get(cwd) || []).find(item => item.id === session.id);
+        if (listed) listed.name = name;
+        if (state.cwd === cwd && state.session?.id === session.id) {
+            state.session.name = name; updateSessionMeta();
+        }
+        renderSessions();
+    }
+    const titleEditor = window.PiSessionTitles ? new window.PiSessionTitles({ apiFetch, saved: sessionNamed }) : null;
     const transfer = new window.PiSessionTransfer({
         apiFetch, toast, headers: () => apiHeaders(), projects: () => state.projects,
         refresh: async cwd => { state.projectPreferenceRevision++; await loadProjects(); await loadSessions(cwd); },
@@ -468,6 +489,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.extensionDrafts = status.extensionDrafts === true;
             state.userShell = status.userShell === true;
             state.queueModes = status.queueModes === true;
+            if (titleEditor) { titleEditor.enabled = status.sessionTitles === true; titleEditor.modelSelection = status.sessionTitleModels === true; }
             transfer.setEnabled(status.sessionTransfer === true);
             historyView.setEnabled(status.historySearch === true);
             historyView.setCapabilities(status);
@@ -476,11 +498,14 @@ document.addEventListener('DOMContentLoaded', () => {
             state.composerTools = status.composerTools === true;
             state.nativeSettings = status.nativeSettings === true;
             state.nativeResources = status.nativeResources === true;
+            state.systemPrompts = status.systemPrompts === true;
             nativeContext.sync();
             state.roots = status.projectRoots || [];
             state.defaultProject = status.defaultProject || state.roots[0] || null;
             state.projectIdentity = status.projectIdentity === true;
             state.manualUnread = status.manualUnread === true;
+            state.archiveEnabled = status.archives === true;
+            conversationSearch.setArchivesEnabled(state.archiveEnabled);
             workflows.setEnabled(status.sessionWorkflows === true);
             sideChat.setEnabled(status.sideChat === true, status.sideChatContext === true, status.sideChatRetention === true);
             window.PiReplyTts.setEnabled(status.replyTts === true);
@@ -525,6 +550,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const serverProjects = data.projects || [];
         state.pinnedProjects = data.pinnedProjects || [];
         applyHiddenProjects(data.hiddenProjects || []);
+        applyArchives(data.archives);
         const projectsByCwd = new Map(serverProjects.map(project => [project.cwd, project]));
         const orderedCwds = [...new Set([
             ...state.projects.map(project => canonical(project.cwd)),
@@ -576,6 +602,41 @@ document.addEventListener('DOMContentLoaded', () => {
         const pins = new Map(state.pinnedProjects.map((cwd, index) => [cwd, index]));
         return state.projects.filter(project => includeHidden || !state.hiddenProjects.includes(state.projectAliases.get(project.cwd) || project.cwd))
             .sort((a, b) => (pins.get(a.cwd) ?? pins.size) - (pins.get(b.cwd) ?? pins.size));
+    }
+
+    function isThreadArchived(cwd, id) {
+        return state.archivedProjects.has(cwd) || state.archivedSessions.has(activityKey(cwd, id));
+    }
+
+    function applyArchives(data) {
+        if (!data || !Number.isSafeInteger(data.revision) || data.revision <= state.archiveRevision) return false;
+        state.archiveRevision = data.revision;
+        state.archivedProjects = new Set(data.projects || []);
+        state.archivedSessions = new Set((data.sessions || []).map(item => activityKey(item.cwd, item.sessionId)));
+        for (const cwd of state.archivedProjects) {
+            if (!state.projects.some(project => project.cwd === cwd)) state.projects.push({ cwd, name: getProjectName(cwd), sessionCount: 0 });
+        }
+        return true;
+    }
+
+    async function setArchive(cwd, session, archived) {
+        const key = activityKey(cwd, session?.id || '');
+        if (!state.archiveEnabled || session?.ephemeral || state.archiveRequests.has(key)) return;
+        state.archiveRequests.add(key);
+        try {
+            const url = session ? `/api/pi/sessions/${encodeURIComponent(session.id)}/archive` : '/api/pi/projects/archive';
+            const data = await apiFetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd, archived }) });
+            if (!data.archives || !Number.isSafeInteger(data.archives.revision)) throw new Error(translateUi('归档状态未确认，请刷新核对'));
+            applyArchives(data.archives);
+            renderProjects();
+            renderSessions();
+            const effective = session ? state.archivedSessions.has(activityKey(cwd, session.id)) : state.archivedProjects.has(cwd);
+            toast(effective ? translateUi('已归档') : translateUi('已恢复'), 'success');
+            const summary = session
+                ? elements.sessionList.querySelector(`[data-archive-kind="threads"][data-cwd="${CSS.escape(cwd)}"] > summary`)
+                : elements.sessionList.querySelector('[data-archive-kind="projects"] > summary');
+            if (effective) summary?.focus({ preventScroll: true });
+        } finally { state.archiveRequests.delete(key); }
     }
 
     function applyHiddenProjects(hidden) {
@@ -719,7 +780,8 @@ document.addEventListener('DOMContentLoaded', () => {
             ['attention', translateUi("需处理"), rows.filter(row => row.dataset.workStage === 'attention')],
             ['running', translateUi("处理中"), rows.filter(row => row.dataset.workStage === 'running')],
             ['unknown', translateUi("状态待更新"), rows.filter(row => row.dataset.workStage === 'unknown')],
-            ['recent', translateUi("最近会话"), recent.slice(0, recentLimit).map(item => item.row)]
+            ['recent', translateUi("最近会话"), recent.slice(0, recentLimit).map(item => item.row)],
+            ['archive', translateUi('已归档'), rows.filter(row => row.dataset.workStage === 'archive')]
         ];
         let count = 0;
         for (const [kind, label, items] of sections) {
@@ -778,7 +840,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const attention = unread || deferred?.attention || ['waiting', 'error'].includes(phase);
             const busy = Boolean(activity?.busy) || ['running', 'tool', 'compacting', 'retrying'].includes(phase);
             row.dataset.workStage = attention ? 'attention' : busy ? 'running' : phase === 'unknown' ? 'unknown'
-                : !row.classList.contains('ephemeral') ? 'recent' : '';
+                : !row.classList.contains('ephemeral') && !isThreadArchived(row.dataset.cwd, row.dataset.sessionId) ? 'recent'
+                    : state.includeArchived && elements.sessionSearch.value.trim() && !row.classList.contains('ephemeral') ? 'archive' : '';
             row.hidden = state.sessionFilter === 'work' && state.activityFresh;
         });
         elements.sessionList.querySelectorAll('[data-project-cwd]').forEach(group => {
@@ -819,6 +882,16 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const data = await apiFetch('/api/pi/activity', { signal: AbortSignal.timeout(8000) });
             if (document.hidden) return;
+            if (data.titleRevision && data.titleRevision !== titleServerRevision) {
+                const revision = titleUiRevision;
+                const results = await Promise.allSettled([...state.projectSessions.keys()].map(cwd => loadSessions(cwd)));
+                if (revision === titleUiRevision && results.every(result => result.status === 'fulfilled')) {
+                    titleServerRevision = data.titleRevision;
+                    const current = (state.projectSessions.get(state.cwd) || []).find(item => item.id === state.session?.id);
+                    if (current && state.session) { state.session.name = current.name; updateSessionMeta(); }
+                }
+            }
+            const archivesChanged = applyArchives(data.archives);
             state.activity = new Map((data.runtimes || []).map(item => [activityKey(item.cwd, item.sessionId), item]));
             state.activityFresh = true;
             void workflows.refresh().catch(() => {});
@@ -843,7 +916,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     addedProject = true;
                 }
             }
-            if (addedProject) renderSessions();
+            if (addedProject || archivesChanged) { renderProjects(); renderSessions(); }
             if (currentPreferences && JSON.stringify(data.pinnedProjects) !== JSON.stringify(state.pinnedProjects)) {
                 state.pinnedProjects = data.pinnedProjects || [];
                 for (const cwd of state.pinnedProjects) {
@@ -873,7 +946,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <button type="button" class="pi-project-row" data-cwd="${escapeHtml(project.cwd)}">
                 <span class="pi-project-row-icon"><i class="fa-solid ${state.pinnedProjects.includes(project.cwd) ? 'fa-thumbtack' : 'fa-folder'}"></i></span>
                 <span><strong>${escapeHtml(project.name || getProjectName(project.cwd))}</strong><small>${escapeHtml(project.cwd)}</small></span>
-                <em>${state.hiddenProjects.includes(state.projectAliases.get(project.cwd) || project.cwd) ? translateUi("已移出") : project.sessionCount || 0}</em>
+                <em>${state.hiddenProjects.includes(state.projectAliases.get(project.cwd) || project.cwd) ? translateUi("已移出") : state.archivedProjects.has(project.cwd) ? translateUi('已归档') : project.sessionCount || 0}</em>
             </button>
         `).join('');
     }
@@ -936,11 +1009,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadSessions(cwd = state.cwd, options = {}) {
         if (!cwd) return [];
+        const titleRevision = titleUiRevision;
         state.loadingProjects.add(cwd);
         if (options.render !== false) renderSessions();
         try {
             const data = await apiFetch(`/api/pi/sessions?cwd=${encodeURIComponent(cwd)}`);
             const sessions = data.sessions || [];
+            if (titleRevision !== titleUiRevision) {
+                for (const session of sessions) {
+                    const current = (state.projectSessions.get(cwd) || []).find(item => item.id === session.id);
+                    if (current) session.name = current.name;
+                }
+            }
             state.projectSessions.set(cwd, sessions);
             if (cwd === state.cwd) state.sessions = sessions;
             const project = state.projects.find(item => item.cwd === cwd);
@@ -1009,6 +1089,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="pi-session-project" title="${escapeHtml(cwd)}">${escapeHtml(state.projects.find(project => project.cwd === cwd)?.name || getProjectName(cwd))}</span>
                     <span class="pi-session-title">${escapeHtml(getSessionTitle(session))}${session.ephemeral ? `<em>${translateUi("不保存")}</em>` : ''}</span>
                     <span class="pi-session-preview">${session.ephemeral ? translateUi("退出或断开后立即销毁") : escapeHtml(truncate(session.firstMessage === '(no messages)' ? '' : session.firstMessage, 62) || translateUi("空会话"))}</span>
+                    ${!session.ephemeral && isThreadArchived(cwd, session.id) ? `<span class="pi-session-archive-label">${state.archivedSessions.has(activityKey(cwd, session.id)) ? translateUi('已归档') : translateUi('随项目归档')}</span>` : ''}
                     <span class="pi-session-deferred" hidden></span>
                     <span class="pi-session-unread" hidden><i class="fa-solid fa-circle" aria-hidden="true"></i> ${translateUi("新回复")}</span>
                     <span class="pi-session-foot"><span class="pi-session-activity"></span><span>${session.ephemeral ? translateUi("临时") : translateUi("{0} · {1} 条", formatDate(session.modified), session.messageCount)}</span></span>
@@ -1030,9 +1111,12 @@ document.addEventListener('DOMContentLoaded', () => {
             : focused?.dataset.projectAction ? `[data-project-action="${CSS.escape(focused.dataset.projectAction)}"]`
             : focused?.dataset.action ? `[data-action="${CSS.escape(focused.dataset.action)}"]` : '.pi-session-main';
         const query = elements.sessionSearch.value.trim().toLowerCase();
+        let archivedGroups = '', archivedCount = 0;
         const groups = orderedProjects().map(project => {
             const cwd = project.cwd;
             const isCurrent = cwd === state.cwd;
+            const projectArchived = state.archivedProjects.has(cwd);
+            if (query && projectArchived && !state.includeArchived) return '';
             const expanded = state.expandedProjects.has(cwd) || Boolean(query) || state.sessionFilter !== 'all';
             const storedSessions = state.projectSessions.get(cwd) || (isCurrent ? state.sessions : []);
             const source = isCurrent && state.session?.ephemeral
@@ -1040,6 +1124,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 : storedSessions;
             const projectMatches = `${project.name || ''} ${cwd}`.toLowerCase().includes(query);
             const sessions = source.filter(session => {
+                if (query && !state.includeArchived && isThreadArchived(cwd, session.id)) return false;
                 const haystack = `${session.name || ''} ${session.firstMessage || ''} ${session.id}`.toLowerCase();
                 return !query || projectMatches || haystack.includes(query);
             });
@@ -1050,14 +1135,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if (loading && !source.length) {
                 threadContent = `<div class="pi-project-loading"><span class="pi-spinner"></span>${translateUi("正在读取线程")}</div>`;
             } else if (expanded && sessions.length) {
-                const { visible, hidden } = visibleThreads(cwd, sessions, query);
+                const archived = state.sessionFilter === 'all' ? sessions.filter(session => state.archivedSessions.has(activityKey(cwd, session.id))) : [];
+                const regular = sessions.filter(session => state.sessionFilter !== 'all' || !state.archivedSessions.has(activityKey(cwd, session.id)));
+                const { visible, hidden } = visibleThreads(cwd, regular, query);
                 threadContent = visible.map(session => renderSessionItem(session, cwd)).join('')
-                    + (!query && state.sessionFilter === 'all' ? threadOverflowControl(cwd, hidden, sessions.length) : '');
+                    + (!query && state.sessionFilter === 'all' ? threadOverflowControl(cwd, hidden, regular.length) : '')
+                    + (archived.length ? `<details class="pi-archive-group" data-archive-kind="threads" data-cwd="${escapeHtml(cwd)}" ${state.archiveThreadsOpen.has(cwd) || query ? 'open' : ''}><summary>${translateUi('已归档线程（{0}）', archived.length)}</summary>${archived.map(session => renderSessionItem(session, cwd)).join('')}</details>` : '');
             } else if (expanded) {
                 threadContent = `<div class="pi-project-empty">${translateUi("暂无线程")}</div>`;
             }
 
-            return `
+            const groupHtml = `
                 <section class="pi-project-group ${state.pinnedProjects.includes(cwd) ? 'pinned' : ''} ${isCurrent ? 'current' : ''} ${expanded ? 'expanded' : ''}" data-project-cwd="${escapeHtml(cwd)}">
                     <div class="pi-project-group-heading">
                         <button class="pi-project-disclosure" type="button" data-project-action="toggle" title="${expanded ? translateUi("折叠线程") : translateUi("展开线程")}" aria-label="${translateUi("{0} {1} 的线程", expanded ? translateUi("折叠") : translateUi("展开"), escapeHtml(project.name || getProjectName(cwd)))}" aria-expanded="${expanded}">
@@ -1074,10 +1162,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="pi-project-threads ${expanded ? '' : 'hidden'}">${threadContent}</div>
                 </section>
             `;
+            if (projectArchived && state.sessionFilter === 'all') { archivedGroups += groupHtml; archivedCount++; return ''; }
+            return groupHtml;
         }).join('');
+        const archiveSection = archivedCount ? `<details class="pi-archive-group pi-archived-projects" data-archive-kind="projects" ${state.archiveProjectsOpen || query ? 'open' : ''}><summary>${translateUi('已归档项目（{0}）', archivedCount)}</summary>${archivedGroups}</details>` : '';
 
         elements.sessionCount.textContent = translateUi("{0} 个项目 · {1} 个当前线程", orderedProjects().length, state.sessions.length);
-        elements.sessionList.innerHTML = groups || (state.sessionFilter === 'work' ? '' : `<div class="pi-list-state">${query ? translateUi("没有匹配的项目或线程") : translateUi("还没有 Pi 项目")}</div>`);
+        elements.sessionList.innerHTML = groups + archiveSection || (state.sessionFilter === 'work' ? '' : `<div class="pi-list-state">${query ? translateUi("没有匹配的项目或线程") : translateUi("还没有 Pi 项目")}</div>`);
         renderActivityBadges();
         elements.sessionList.scrollTop = scrollTop;
         if (focusedWorkAction) elements.sessionList.querySelector(`[data-work-action="${CSS.escape(focusedWorkAction)}"]`)?.focus({ preventScroll: true });
@@ -1177,6 +1268,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function setSessionSearchOpen(open) {
         elements.sessionSearchField.hidden = !open;
+        archiveSearchLabel.hidden = !open || !state.archiveEnabled;
         elements.sessionHeadingTitle.hidden = open;
         elements.tempSession.hidden = open;
         elements.sessionSearchToggle.setAttribute('aria-expanded', String(open));
@@ -1259,14 +1351,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const name = window.prompt(translateUi("会话名称"), current);
         if (!name || name.trim() === current) return;
         try {
-            await apiFetch(`/api/pi/sessions/${encodeURIComponent(session.id)}`, {
+            const renamed = await apiFetch(`/api/pi/sessions/${encodeURIComponent(session.id)}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ cwd, name: name.trim() })
             });
-            session.name = name.trim();
-            if (state.cwd === cwd && state.session?.id === session.id) updateSessionMeta();
-            renderSessions();
+            sessionNamed(session, cwd, renamed.name);
             toast(translateUi("会话已重命名"), 'success');
         } catch (error) {
             toast(error.message, 'error');
@@ -1423,6 +1513,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function disconnectSocket(intentional = false) {
+        titleEditor?.close();
         threadMenu.close(false);
         state.socketGeneration++;
         state.bootstrapEvents = [];
@@ -1976,6 +2067,9 @@ document.addEventListener('DOMContentLoaded', () => {
             void refreshActivity();
         }
         switch (event.type) {
+            case 'gateway_session_named':
+                if (event.cwd === state.cwd && event.sessionId === state.session?.id && typeof event.name === 'string') sessionNamed(state.session, event.cwd, event.name);
+                break;
             case 'gateway_shell': {
                 const changed = shell.value?.job?.id !== event.shell.job?.id || shell.value?.job?.status !== event.shell.job?.status;
                 shell.apply(event.shell);
@@ -3025,7 +3119,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const session = current ? state.session : state.session?.ephemeral && state.session.id === row.dataset.sessionId ? state.session
                 : (state.projectSessions.get(cwd) || []).find(item => item.id === row.dataset.sessionId);
             if (!session) return;
-            items = [
+            const archived = state.archivedSessions.has(activityKey(cwd, session.id));
+            const historyItems = [
                 ...(historyView.tree.enabled ? [command(translateUi("会话树"), 'fa-code-branch', async () => {
                     if (cwd !== state.cwd) await selectProject(cwd);
                     if (state.session?.id !== session.id || !state.connected) await openSession(session);
@@ -3037,7 +3132,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     historyView.open();
                 }, { disabled: session.ephemeral })] : []),
                 ...(transfer.enabled ? [command(translateUi("导出记录"), 'fa-download', () => transfer.openExport(session, cwd), { disabled: session.ephemeral })] : []),
+                ...(current && workflows.enabled && !historyView.enabled ? historyWorkflowItems() : []),
+            ];
+            items = [
+                ...(historyItems.length ? [{ label: translateUi('历史与记录'), icon: 'fa-clock-rotate-left', children: historyItems }] : []),
                 command(translateUi("重命名"), 'fa-pen', () => renameCurrent(session, cwd), { disabled: session.ephemeral }),
+                ...(titleEditor?.enabled ? [command(translateUi('重新生成标题'), 'fa-wand-magic-sparkles', () => titleEditor.open(session, cwd), { disabled: session.ephemeral })] : []),
                 ...(workflows.enabled ? [command(translateUi("复制为新线程"), 'fa-code-branch', async () => {
                     if (cwd !== state.cwd) await selectProject(cwd);
                     if (state.session?.id !== session.id || !state.connected) await openSession(session);
@@ -3047,16 +3147,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (state.session?.id !== session.id || !state.connected) await openSession(session);
                     await workflows.openList('deferred');
                 }, { disabled: session.ephemeral })] : []),
-                ...(current && workflows.enabled && !historyView.enabled ? historyWorkflowItems() : []),
                 ...(state.manualUnread ? [command(translateUi("标记为未读"), 'fa-envelope', () => markThreadUnread(session, cwd),
                     { disabled: session.ephemeral || state.unreadRequests.has(activityKey(cwd, session.id)) })] : []),
                 { label: translateUi("复制"), icon: 'fa-copy', children: [
                     command(translateUi("线程名称"), 'fa-font', () => copyTextToClipboard(getSessionTitle(session))),
                     command(translateUi("会话 ID"), 'fa-fingerprint', () => copyTextToClipboard(session.id))
                 ] },
+                ...(state.archiveEnabled ? [command(archived ? translateUi('恢复线程') : translateUi('归档线程'),
+                    'fa-box-archive', () => setArchive(cwd, session, !archived),
+                    { disabled: session.ephemeral || state.archiveRequests.has(activityKey(cwd, session.id)) })] : []),
                 command(translateUi("删除线程"), 'fa-trash', () => deleteOneSession(session, cwd), { disabled: session.ephemeral, danger: true })
             ];
         } else {
+            const archived = state.archivedProjects.has(cwd);
             items = [
                 ...(transfer.enabled ? [command(translateUi("导入 Pi 会话"), 'fa-file-import', () => transfer.openImport(cwd))] : []),
                 command(translateUi("新建线程"), 'fa-plus', async () => { if (cwd !== state.cwd) await selectProject(cwd); await createSession(); }),
@@ -3064,6 +3167,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 ...(state.nativeSettings ? [command(translateUi("项目信任"), 'fa-shield-halved', () => nativeContext.openTrust(cwd))] : []),
                 command(translateUi("复制项目路径"), 'fa-copy', () => copyTextToClipboard(cwd)),
                 command(translateUi("刷新线程"), 'fa-rotate', () => loadSessions(cwd)),
+                ...(state.archiveEnabled ? [command(archived ? translateUi('恢复项目') : translateUi('归档项目'),
+                    'fa-box-archive', () => setArchive(cwd, null, !archived), { disabled: state.archiveRequests.has(activityKey(cwd, '')) })] : []),
                 command(translateUi("从列表移除"), 'fa-folder-minus', () => removeEmptyProject(cwd), {
                     disabled: state.visibilityRequests.has(cwd) || (state.projectSessions.get(cwd)?.length
                         ?? state.projects.find(project => project.cwd === cwd)?.sessionCount ?? 0) > 0
@@ -3073,6 +3178,29 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         threadMenu.open(anchor, items, point);
     }
+
+    const archiveSearchLabel = document.createElement('label');
+    archiveSearchLabel.className = 'pi-archive-search';
+    archiveSearchLabel.hidden = true;
+    const archiveSearchInput = document.createElement('input');
+    archiveSearchInput.type = 'checkbox';
+    archiveSearchInput.id = 'pi-include-archived';
+    archiveSearchLabel.append(archiveSearchInput, document.createTextNode(translateUi('包含已归档')));
+    elements.sessionFilters.after(archiveSearchLabel);
+    archiveSearchInput.addEventListener('change', () => {
+        state.includeArchived = archiveSearchInput.checked;
+        renderSessions();
+        void handleSessionSearch().catch(error => toast(error.message, 'error'));
+    });
+    elements.sessionList.addEventListener('click', event => {
+        const summary = event.target.closest('summary');
+        const details = summary?.parentElement;
+        if (!details?.matches('details[data-archive-kind]')) return;
+        const opening = !details.open;
+        if (details.dataset.archiveKind === 'projects') state.archiveProjectsOpen = opening;
+        else if (opening) state.archiveThreadsOpen.add(details.dataset.cwd);
+        else state.archiveThreadsOpen.delete(details.dataset.cwd);
+    });
 
     elements.sessionFilters.addEventListener('click', event => {
         const filter = event.target.closest('[data-filter]')?.dataset.filter;
@@ -3322,7 +3450,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     window.PiNativeRuntime = {
-        context: () => ({ cwd: state.cwd, sessionId: state.session?.id, connected: state.connected, supported: state.nativeResources }),
+        context: () => ({ cwd: state.cwd, sessionId: state.session?.id, generation: state.socketGeneration, connected: state.connected, supported: state.nativeResources,
+            systemPrompts: state.systemPrompts, busy: state.treeBusy || state.shellBusy || state.streaming || state.compacting || state.compactRequested || state.controlRequested || state.resourceRequested || state.pendingUi.size > 0 }),
+        systemPrompt: async () => {
+            if (!state.systemPrompts || !state.connected) throw new Error(translateUi("请先打开支持系统提示词查看的会话"));
+            const generation = state.socketGeneration;
+            const result = await requestRpc('get_system_prompt');
+            if (generation !== state.socketGeneration) throw new Error(translateUi("线程已切换，请重新读取资源"));
+            return result;
+        },
         resources: async () => {
             if (!state.nativeResources || !state.connected) throw new Error(translateUi("当前会话不支持资源查看"));
             const generation = state.socketGeneration;

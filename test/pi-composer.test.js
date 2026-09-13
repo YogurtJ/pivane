@@ -75,6 +75,8 @@ test('actual Pi RPC reloads templates without session navigation; expands native
     fs.writeFileSync(path.join(root, 'agent/settings.json'), JSON.stringify({ defaultProvider: 'fixture', defaultModel: 'fixture', compaction: { enabled: false } }));
     const { createPiAgentGateway } = require('../server/pi-agent-routes');
     const gateway = createPiAgentGateway({ deferredFilePath: process.env.PI_WEB_DEFERRED_FILE });
+    // This fixture exercises composer requests without background title model calls.
+    gateway.titles.saveSettings({ enabled: false });
     const app = require('express')(); app.use(require('express').json()); gateway.mount(app);
     const server = http.createServer(app); gateway.attachWebSocket(server); server.listen(0, '127.0.0.1'); await once(server, 'listening');
     let socket;

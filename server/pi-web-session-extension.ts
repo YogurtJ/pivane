@@ -1,3 +1,4 @@
+import { handleTitleRequest } from './pi-session-title-state.js';
 import { randomUUID } from 'node:crypto';
 import { searchHistory, previewHistory, setHistoryBookmark } from './pi-history-model.js';
 import { sessionTree, checkNavigation } from './pi-session-tree.js';
@@ -7,6 +8,15 @@ import { buildSessionContext, type ExtensionAPI } from '@earendil-works/pi-codin
 export default function (pi: ExtensionAPI) {
     // A managed process is bound to one file. Native replacement must not bypass Supervisor.
     const managed = () => Boolean(process.env.PI_WEB_NAVIGATION_TOKEN);
+    const reportTitleEligibility = (_event: unknown, ctx: any) => {
+        if (ctx.mode !== 'rpc' || !managed()) return;
+        const entries = ctx.sessionManager.getEntries(), sessionId = ctx.sessionManager.getSessionId();
+        const state = entries.findLast((entry: any) => entry.type === 'custom' && entry.customType === 'pi5-web-title' && entry.data?.sessionId === sessionId)?.data;
+        const eligible = !entries.some((entry: any) => entry.type === 'session_info') && state?.status === 'pending';
+        ctx.ui.notify(JSON.stringify({ pi5TitleEligibility: Boolean(eligible) }));
+    };
+    pi.on('session_start', reportTitleEligibility);
+    pi.on('session_info_changed', reportTitleEligibility);
     const refuseReplacement = (_event: unknown, ctx: any) => {
         if (ctx.mode !== 'rpc' || !managed()) return;
         ctx.ui.notify('请使用网页的新建、切换或分叉入口；扩展不能替换受管会话。', 'warning');
@@ -22,11 +32,20 @@ export default function (pi: ExtensionAPI) {
         }
     });
     pi.registerCommand('pi5-web-navigate', {
-        description: `Pivane internal session navigation and context snapshot; managed-v1; model-catalog-v1; resources-v1; history-v1; tree-v1; tree-presentation-v1; history-presentation-v1; history-body-v1; reload-v1:${randomUUID()}`,
+        description: `Pivane internal session navigation and context snapshot; managed-v1; title-v1; model-catalog-v1; resources-v1; history-v1; tree-v1; tree-presentation-v1; history-presentation-v1; history-body-v1; system-prompt-v1; reload-v1:${randomUUID()}`,
         handler: async (args, ctx) => {
             const request = JSON.parse(args);
             if (ctx.mode !== 'rpc' || request.token !== process.env.PI_WEB_NAVIGATION_TOKEN) throw new Error('Invalid navigation request');
             const notify = (data: object) => ctx.ui.notify(JSON.stringify({ pi5Navigation: request.id, ...data }));
+            if (request.mode === 'title') {
+                try {
+                    const data = handleTitleRequest(pi, ctx, request.input);
+                    ctx.ui.notify(JSON.stringify({ pi5Title: request.id, success: true, data }));
+                } catch (error) {
+                    ctx.ui.notify(JSON.stringify({ pi5Title: request.id, success: false, error: error instanceof Error ? error.message : '标题操作失败' }));
+                }
+                return;
+            }
             if (request.mode === 'models') {
                 try {
                     if (!ctx.isIdle() || ctx.hasPendingMessages()) throw new Error('busy');
@@ -52,6 +71,19 @@ export default function (pi: ExtensionAPI) {
                     const skills = options.skills || [];
                     const files = options.contextFiles || [];
                     if (commands.length + tools.length + skills.length + files.length > 3000) throw new Error('资源数量超过 3000 项');
+                    if (request.systemPrompt === true) {
+                        const snapshot = {
+                            cwd: ctx.cwd, sessionId: ctx.sessionManager.getSessionId(), projectTrusted: ctx.isProjectTrusted(),
+                            capturedAt: new Date().toISOString(), body: ctx.getSystemPrompt(),
+                            customPrompt: options.customPrompt ?? null, appendSystemPrompt: options.appendSystemPrompt ?? null,
+                            contextFiles: files.map(f => ({ path: f.path, content: f.content })),
+                            skills: skills.map(s => ({ name: s.name, path: s.filePath })),
+                            activeTools: [...active]
+                        };
+                        if (Buffer.byteLength(JSON.stringify(snapshot)) > 1024 * 1024) throw new Error('prompt-budget');
+                        ctx.ui.notify(JSON.stringify({ pi5Resources: request.id, success: true, data: snapshot }));
+                        return;
+                    }
                     const data = {
                         cwd: ctx.cwd, sessionId: ctx.sessionManager.getSessionId(), projectTrusted: ctx.isProjectTrusted(),
                         contextFiles: files.map(f => ({ path: f.path })),

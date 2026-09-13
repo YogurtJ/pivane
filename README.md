@@ -10,7 +10,9 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 
 **A self-hosted AI workspace powered by Pi Coding Agent. Code, manage files, and create images, video & audio from your desktop, tablet or phone. Bring your own models.**
 
-[下载当前 RC](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.2) · [开始使用](docs/USER_GUIDE.md) · [安装与恢复](docs/INSTALL_RECOVERY.md) · [Agent 操作指南](docs/AGENT_GUIDE.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues)
+[下载当前 RC](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.3) · [开始使用](docs/USER_GUIDE.md) · [安装与恢复](docs/INSTALL_RECOVERY.md) · [Agent 操作指南](docs/AGENT_GUIDE.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues)
+
+RC3 新增 AI 会话标题、项目与会话归档、系统提示词查看与编辑、辅助模型统一设置，以及 Pi 受管更新和命令输出反馈。[查看本版变化](docs/releases/1.0.0-rc.3.md)。
 
 ## 为什么用 Pivane
 
@@ -60,7 +62,7 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 
 ## 部署在你自己的机器上
 
-当前版本为 **1.0.0-rc.2**，使用包内锁定的 **Pi 0.85.0** 和 Node.js 22.x，验收基线为 Node 22.23.2。
+当前版本为 **1.0.0-rc.3**，使用包内锁定的 **Pi 0.85.1** 和 Node.js 22.x，验收基线为 Node 22.23.2。
 
 | 服务端平台 | 已验收范围 | 安装入口 |
 |---|---|---|
@@ -84,7 +86,7 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 - Windows 普通用户权限下另通过 **30 项检查**；Ubuntu x86_64 另完成同包安装、167 项测试和静态检查补验。
 - 各验收环境的生产依赖 audit 为 **0 漏洞**。测试使用独立身份与合成服务，不把这些结果称为所有真实媒体供应商或手机系统的验收。
 
-准确的首版平台、包 SHA256 和检查结果随 [RC1 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.1) 的 `validation.json` 提供。**RC2** 的变更和本包验证范围见[版本说明](docs/releases/1.0.0-rc.2.md)及[RC2 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.2)附件；首版跨平台结果不冒充新版实机验收。
+准确的首版平台、包 SHA256 和检查结果随 [RC1 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.1) 的 `validation.json` 提供。**RC3** 的变更和本包验证范围见[版本说明](docs/releases/1.0.0-rc.3.md)及[RC3 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.3)附件；首版跨平台结果不冒充新版实机验收。
 
 ## 文档与 Agent 入口
 
@@ -105,7 +107,7 @@ Pivane 面向个人独立部署，不提供多人共用同一实例的账户隔�
 
 Pi 原生会话是对话的唯一事实来源。不要让网页与外部 CLI 同时写同一会话；历史导航不会撤销文件或外部请求的副作用。媒体规划不会直接执行生成，失败或结果不确定的请求不会自动重放。
 
-升级前请结束任务、暂停预约、停机并整批备份。沿用现有 `PI_*` 配置、`pi5-*` 数据文件、API/RPC 和浏览器偏好键，改名不要求迁移已有身份或目录。当前不包含自动更新安装器或离线模式。
+升级前请结束任务、暂停预约、停机并整批备份。沿用现有 `PI_*` 配置、`pi5-*` 数据文件、API/RPC 和浏览器偏好键，改名不要求迁移已有身份或目录。当前源码在设置提供[版本检查、Pi 受管更新、停机备份与重启](docs/UPDATES.md)。`node server.js` 和 `npm start` 都自动支持网页执行与命令输出反馈，无需更改服务启动命令；Pivane 应用本身仍按发布包手动更新。当前不包含离线模式。
 
 ## 开发与许可
 

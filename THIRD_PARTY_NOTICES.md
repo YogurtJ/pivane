@@ -23,6 +23,7 @@ Pivane自身的代码使用[ISC许可证](LICENSE)。第三方软件、字体、
 | cors | 2.8.6 | MIT |
 | dompurify | 3.4.14 | MPL-2.0 OR Apache-2.0 |
 | express | 5.2.1 | MIT |
+| https-proxy-agent | 7.0.6 | MIT |
 | marked | 18.0.11 | MIT |
 | node-fetch | 2.7.0 | MIT |
 | web-push | 3.6.7 | MPL-2.0 |

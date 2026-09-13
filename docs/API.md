@@ -59,6 +59,8 @@
 
 `nativeSettings`、`nativeResources`、`projectTrust`、`modelAdvanced` 标记原生配置增强。设置 `/settings/native`、`/settings/native/trust`、`/settings/native/resources`、`/settings/native/packages`、`/settings/native/skill` 和 `/settings/models/advanced` 的方法、修订、范围和限额见 [NATIVE_SETTINGS.md](NATIVE_SETTINGS.md)。主连接新增 `get_native_resources` 返回当前 worker 的实际 trust/资源来源，不返回系统提示正文或工具 schema；最多3000项/512KiB，不扩展裸 RPC 白名单。`/activity.nativeSettingsBusy` 供空闲部署检查。受管扩展原生换会话或直接导航被取消，网页入口保持。
 
+`systemPrompts=true` 标记系统提示词管理：GET `/settings/system-prompts?cwd` 返回 global/project × append/base 原生文件正文、推导来源、整体 revision 和 64 KiB 单文件预算；PUT 接受 `{cwd,scope,kind,content,expectedRevision}`，content=null 恢复默认/继承，成功返回 `{ok:true,requiresReload:true}`。修订覆盖四文件内容/身份和原生配置/trust，冲突409不覆盖，保存不重载或中断 worker。主连接 `get_system_prompt` 通过当前 worker 私有资源管道读取正文、基础/追加输入、上下文文件、Skills、实际工具、时间与运行身份，1 MiB 超限整体失败；`configured` 为当前文件与实际信任推导来源，`matchesSavedFiles` 仅比较基础/追加与信任，无法核对为 null，不表示最终供应商请求一致。原 `get_native_resources` 继续不返回正文；读取不调用模型、不写历史、不广播私有结果。完整失败、草稿与生效语义见 [NATIVE_SETTINGS.md](NATIVE_SETTINGS.md#系统提示词查看与编辑)。
+
 `sessionTransfer=true` 标记原生会话导出和 Pi JSONL 新线程导入接口已启用，完整范围见 [SESSION_TRANSFER.md](SESSION_TRANSFER.md)。`POST /sessions/:id/export` 接受 `{cwd,format:'html'|'jsonl'}` 并返回 attachment/no-store 文件；不接受客户端源/输出路径。HTML 含会话树历史及原生系统提示/工具定义，JSONL 只含当前分支，空闲互斥、源和输出各64MiB上限。`POST /sessions/import` 接受 `{cwd,content,requestId}`，v2/v3 JSONL限16MiB/单条8MiB/50000条/64层，原生迁移后创建新ID线程，201返回`{session}`，不启动/切换当前worker。运行数由 `/activity.sessionTransfers` 返回，供部署空闲检查。重复成功请求只在本进程30分钟内复用结果，不是持久幂等；不确定提交不自动重放。
 
 `historyPresentation=true` 表示search_history结果和get_history_entry增加replyStage（assistant）及summaryType（摘要），与会话树共用完整原生记录的阶段判定；先判定再做关键词/类型/书签/分页过滤，当前尾段只有原生空闲且无pending messages才可判final。旧响应缺字段时保持通用AI回复，原查询参数与正文投影不变。界面角色/时间/阶段共用，焦点轮廓改为内侧显示，不增加写入、导航或模型调用。
@@ -76,6 +78,14 @@
 `runtimeControls=true` 标记主 WS 已支持 stop_and_recover/take_queue/ack_recovery、get_state.webControls 与 gateway_controls；`extensionStatus=true` 标记扩展文字状态的内存快照。完整契约见 [NATIVE_CONTROLS.md](NATIVE_CONTROLS.md)。
 
 `manualUnread=true` 标记已启用持久线程的手动未读接口；`projectIdentity=true` 标记项目路径 resolve 和 recent 别名归一化契约。需新后端启用，旧后端前端隐藏未读操作并保留原路径行为。
+
+### 版本检查与 Pi 受管维护
+
+`/status` 的 `appVersion` 表示 Pivane，原 `version` 继续表示实际 Pi 包版本。`GET /settings/updates?channel=stable或preview`只读当前版本与内存缓存；`POST /settings/updates/check`接受 JSON `{channel?}`，显式查询 GitHub/npm 并缓存 5 分钟，查询本身不安装。
+
+`GET /settings/updates/maintenance`返回启动器能力、generation、busy、版本指针和最近维护结果；`POST /settings/updates/review`只接受 `{action:"update"或"backup"或"restart"}`，返回绑定服务端目标版本和进程代次的 10 分钟票据。`POST /settings/updates/execute`只接受 `{ticket,confirmed:true,draftsSaved:true,externalWritersStopped:true}`，再次检查空闲并暂停预约，接受返回 202。票据一次有效，不接受命令、URL、路径或版本覆盖；忙碌/过期/重复为 409，格式错误 400，不支持或交接失败 503。交接不确定不自动解锁或重试。
+
+所有接口复用身份/Origin、响应 no-store。`maintenance.job`增加脱敏 `output`、`outputTruncated`、`exitCode`、`fromVersion`与`installedVersion`；输出按行回传并保留有界尾部，只有实际退出后才返回退出码，成功后刷新版本卡片。普通`node server.js`与`npm start`自动支持，无需改服务启动命令；`--direct`为不含自动维护的开发入口。维护期间拒绝普通 API/WS 新工作；关闭页面不取消已接受操作。Pi 精确依赖在独立快照中安装并验证，然后停机备份和启动；Pivane 发布包仍手动更新，兼容字段 `installMode:"manual"`不表示 Pi 维护不可用。字段、文件权限、预算、失败处理及恢复边界见[版本与更新](UPDATES.md)。
 
 ### `GET /projects`
 
@@ -114,6 +124,20 @@
 页面可见时每 3 秒读取；失败显示未知。临时会话使用当前 WebSocket 本地状态。
 
 前端默认“全部”保留项目管理/完整列表；“工作中”按需处理、处理中、最近会话分组，同一线程按此优先级只出现一次。最近默认6条可展开至12条，保留选中线程并高亮，前两组不截断。工作中一次浏览期间保留已有候选的排序快照，避免点击后重排，再次进入时更新；状态变化仍可换组。分组、展开及排序仅为页面状态，不改变本接口、任务执行或未读标记；刷新恢复全部与6条，后台元数据补读仍使用现有 GET sessions。
+
+### 项目与线程归档
+
+`/status.archives=true` 表示归档接口已启用，旧后端不显示归档/恢复和包含归档搜索入口。
+
+- `PATCH /projects/archive`：JSON `{cwd, archived:boolean}`，cwd经系统native realpath与项目根检查，可以归档非空或运行中的项目。
+- `PATCH /sessions/:id/archive`：JSON `{cwd, archived:boolean}`，先解析真实持久会话；临时、不存在、越界会话或非boolean参数返回400。
+- 两接口复用认证/Origin；成功返回规范`cwd`和`archives`，线程接口另返回`sessionId`。只写工作台归档偏好，不启动或停止worker，不改目录、Pi JSONL、未读、置顶或hiddenProjects。
+
+`archives`结构为`{revision,projects:[cwd],sessions:[{cwd,sessionId}]}`，随GET `/projects`、`/activity`和归档响应返回；仅返回仍在允许范围内的规范路径。修订随写入递增并持久化，浏览器丢弃旧修订响应。恢复项目不逐条恢复线程，恢复线程不改变项目归档。后端偏好原子写入，保留其他未知字段，前端不乐观删除列表项，不自动重放失败/不确定请求。
+
+归档不是删除或访问限制。GET `/projects`仍列出归档项目（含空项目），GET `/sessions`仍列出归档线程，直接打开/导出沿用原生接口。界面默认折叠归档区、允许直接查看；运行/未读/失败/待确认继续进入工作中且标注归档，最近会话排除归档。搜索默认排除，显式包含见下段。
+
+跨线程正文搜索GET `/sessions/search`新增`includeArchived=true|false`（默认false），结果中的归档项含`archived:true`。后台在读到原生会话头后应用归档筛选，原文件身份/类型/预算/前后变化检查保持；缓存键包含归档修订和包含选项，搜索期间归档变化或旧分页请求返回409并要求重新搜索。归档条目不改变hiddenProjects的排除规则。
 
 ### `PATCH /projects/visibility`
 
@@ -195,6 +219,20 @@ Body：
 ```
 
 活跃 session 通过 worker `set_session_name`；非活跃 session 用 `SessionManager.open().appendSessionInfo()`。
+
+### 辅助模型
+
+`/status.auxiliaryModels=true` 表示已启用按用途管理的辅助模型设置。GET `/settings/auxiliary-models` 返回 `{version:1,revision,purposes}`；GET `/settings/models` 同时返回此快照，保留旧 preferences 字段。当前用途为 `session-title`（标题）和 `media-planner`（媒体方案及接入规划）。每项含显示标签、自动规则、说明和当前 settings。
+
+PUT `/settings/auxiliary-models` 接受 `{expectedRevision,changes}`，changes 按用途 ID 提交成对的 provider/modelId，双空字符串恢复自动；标题额外支持 enabled。只允许已实现用途/字段，不接受任意插件名。一次校验并原子保存所有改动，修订冲突 409；旧标题/媒体设置变化同样会使修订失效。已选专用模型失效不自动回退，标题“自动”与媒体“自动”的规则不同。保存不执行模型任务，校验纳入 nativeSettingsBusy/停机边界。完整参数、存储、兼容与后续接入要求见[辅助模型](AUXILIARY_MODELS.md)。
+
+### 会话标题
+
+`/status.sessionTitles=true` 标记自动标题与建议接口；`sessionTitleModels=true` 标记独立标题模型选择。GET `/settings/session-titles` 与模型设置快照的 `preferences.sessionTitles` 返回 `{enabled,provider,modelId,revision}`，默认 `true,"","",0`。PUT 支持 `enabled` 和／或成对的 `provider,modelId`，双空字符串恢复跟随线程，可带 `expectedRevision` 防止并发覆盖；过期返回 409。旧客户端只更新 enabled 时保留模型引用；服务在异步核对专用模型/认证后再次检查版本。保存不执行生成。开启后 POST `/sessions` 新建的未命名持久线程可在首轮有效问答完成后自动命名；已有历史不自动迁移。
+
+POST `/sessions/:id/title` 接受 `{cwd}`，使用请求开始时冻结的标题模型选择生成建议；未指定专用模型时跟随当前线程，指定模型失效不回退。返回 `{name,nameRevision,contextRevision,model,usage}`，其中 model 为实际使用的 `{provider,id,name}`，usage 仅含非负安全整数或 null 的 input/output/cacheRead/cacheWrite/totalTokens，无有效数据时为 null。此临时请求不修改名称或主上下文。PUT 同路径接受 `{cwd,name,nameRevision,contextRevision}`，显式保存；名称或分支版本变化返回 409。生成失败 400，不回显供应商原文。两接口复用身份/Origin、项目规范路径与原生 session ID 查找，仅通过 Supervisor 的唯一 worker 获取上下文/写原生名称。
+
+`/activity` 另返回 `titleGenerations`（全服务未结束请求数）、`titleRevision`（进程代次与变更计数），`runtimes[].titleGenerating` 表示标题请求。标题生成不表示主任务 busy，但部署与回收必须考虑此活动。成功保存广播 `gateway_session_named {cwd,sessionId,name}`；其他页面据全局修订刷新线程列表。摘录、预算、延迟/失败、手动保护与持久化详见[会话工作流](SESSION_WORKFLOWS.md#自动标题与重新生成)。
 
 ### `DELETE /sessions/:id?cwd=<absolute-path>`
 
@@ -653,7 +691,7 @@ Plan request：
 }
 ```
 
-可选 `provider`/`modelId` 显式指定已认证 planner。默认依次读取设置中心模块 Agent preference、`PI_MEDIA_PLANNER_MODEL`、Pi default 和 fallback；没有内置个人 Provider。
+可选 `provider`/`modelId` 显式指定已认证 planner，优先于已保存的媒体规划辅助模型。显式或已保存的专用模型不可用/失败时不换模型。两者均未指定时，按 `PI_MEDIA_PLANNER_MODEL`、Pi default 和可用模型采用原有自动候选规则；没有内置个人 Provider。
 
 成功 response：
 

@@ -36,6 +36,9 @@ class AgentWorker extends EventEmitter {
         this.contextResults = new Map();
         this.modelCatalog = new (require('./pi-model-catalog').PiModelCatalog)(this);
         this.resourceResults = new Map();
+        this.autoTitleEligible = false;
+        this.titleResults = new Map();
+        this.titleGeneration = false;
         this.historyResults = new Map();
         this.navigation = new (require('./pi-history-navigation').PiHistoryNavigation)(this);
         this.historyPending = 0;
@@ -229,6 +232,33 @@ class AgentWorker extends EventEmitter {
         }
     }
 
+    async titleRequest(input, { idle = true } = {}) {
+        if (this.noSession) throw new Error('临时会话不支持标题生成');
+        const available = () => {
+            if (this.disposed || this.operation || this.controlPending || this.shell.busy || this.compactPending || this.historyWriting
+                || idle && (this.promptPending || this.activity.snapshot().busy)) throw new Error('请等待当前任务和队列结束');
+        };
+        available();
+        if (this.titleResults.size) throw new Error('标题操作正在进行');
+        const id = randomUUID();
+        this.titleResults.set(id, null); // Reserve the private bridge before awaiting readiness.
+        try {
+            await this.ensureReady();
+            const raw = await this.client.request('get_commands');
+            const command = raw.commands.find(c => c.source === 'extension'
+                && (c.sourceInfo?.path || c.path) === path.join(__dirname, 'pi-web-session-extension.ts')
+                && new RegExp(`^${INTERNAL_COMMAND}(?::[0-9]+)?$`).test(c.name) && c.description?.includes('title-v1'));
+            if (!command) throw new Error('当前运行实例尚未加载标题接口，请在任务结束后退出并重新打开线程');
+            available();
+            // Synchronous bridge reads/CAS do not reserve the main prompt pipeline. Keep
+            // this request slot until acknowledgement or process exit, never a timeout.
+            await this.client.request('prompt', { message: `/${command.name} ${JSON.stringify({ mode: 'title', input, id, token: this.navigationToken })}` }, null);
+            const result = this.titleResults.get(id);
+            if (!result?.success) throw new Error(result?.error || '未收到标题操作确认');
+            return result.data;
+        } finally { this.titleResults.delete(id); }
+    }
+
     async historyRequest(kind, raw) {
         const input = require('./pi-history-model').validateHistoryRequest(kind, raw);
         if (this.noSession) throw new Error('临时会话不提供持久历史和书签');
@@ -268,7 +298,7 @@ class AgentWorker extends EventEmitter {
         }
     }
 
-    async getNativeResources() {
+    async getNativeResources(systemPrompt = false) {
         if (this.disposed || this.operation || this.resourceResults.size) throw new Error('资源读取或会话操作正在进行');
         const id = randomUUID();
         this.resourceResults.set(id, null);
@@ -277,9 +307,12 @@ class AgentWorker extends EventEmitter {
             const raw = await this.client.request('get_commands');
             const command = raw.commands.find(c => c.source === 'extension'
                 && (c.sourceInfo?.path || c.path) === path.join(__dirname, 'pi-web-session-extension.ts')
-                && new RegExp(`^${INTERNAL_COMMAND}(?::[0-9]+)?$`).test(c.name) && c.description?.includes('resources-v1'));
+                && new RegExp(`^${INTERNAL_COMMAND}(?::[0-9]+)?$`).test(c.name) && c.description?.includes(systemPrompt ? 'system-prompt-v1' : 'resources-v1'));
             if (!command) throw new Error('当前实例尚未加载资源查看接口，请在任务结束后退出并重新打开线程');
-            await this.client.request('prompt', { message: `/${command.name} ${JSON.stringify({ mode: 'resources', id, token: this.navigationToken })}` });
+            if (this.disposed || this.operation) throw new Error('资源读取或会话操作正在进行');
+            // Keep the private slot until acknowledgement or process exit, even if the
+            // browser stops waiting. A timeout must not allow another read/reload.
+            await this.client.request('prompt', { message: `/${command.name} ${JSON.stringify({ mode: 'resources', systemPrompt, id, token: this.navigationToken })}` }, null);
             const result = this.resourceResults.get(id);
             if (!result?.success) throw new Error(result?.error || '未收到资源快照');
             return result.data;
@@ -418,6 +451,14 @@ class AgentWorker extends EventEmitter {
                     if (this.resourceResults.has(result.pi5Resources)) this.resourceResults.set(result.pi5Resources, result);
                     return; // Including late/unknown private replies.
                 }
+                if (typeof result.pi5TitleEligibility === 'boolean') {
+                    this.autoTitleEligible = result.pi5TitleEligibility;
+                    return;
+                }
+                if (typeof result.pi5Title === 'string') {
+                    if (this.titleResults.has(result.pi5Title)) this.titleResults.set(result.pi5Title, result);
+                    return; // Never broadcast private excerpts, including late/unknown replies.
+                }
                 if (typeof result.pi5History === 'string') {
                     const slot = this.historyResults.get(result.pi5History);
                     if (slot) {
@@ -505,7 +546,7 @@ class AgentWorker extends EventEmitter {
     }
 
     canEvict(now, idleMs) {
-        return !this.shell.busy && !this.resourceResults.size && !this.historyPending && !this.historyWriting && !this.controlPending && !this.controls.recoveries.length && !this.controls.drafts.length && !this.contextCapture && !this.operation && !this.compactPending && this.promptPending === 0 && !this.activity.snapshot().busy && this.subscribers.size === 0 && now - this.lastUsedAt >= idleMs;
+        return !this.titleResults.size && !this.titleGeneration && !this.shell.busy && !this.resourceResults.size && !this.historyPending && !this.historyWriting && !this.controlPending && !this.controls.recoveries.length && !this.controls.drafts.length && !this.contextCapture && !this.operation && !this.compactPending && this.promptPending === 0 && !this.activity.snapshot().busy && this.subscribers.size === 0 && now - this.lastUsedAt >= idleMs;
     }
 
     async dispose() {
@@ -540,7 +581,7 @@ class PiAgentSupervisor extends EventEmitter {
 
         const starting = (async () => {
             const worker = new AgentWorker({ cwd, sessionPath, sessionId });
-            worker.on('completion', notice => this.emit('completion', notice));
+            worker.on('completion', notice => this.emit('completion', notice, worker));
             worker.on('attention', event => this.emit('attention', event));
             worker.on('exit', () => {
                 if (this.workers.get(sessionPath) === worker) this.workers.delete(sessionPath);
@@ -608,9 +649,9 @@ class PiAgentSupervisor extends EventEmitter {
             .filter(worker => !worker.disposed && worker.sessionId)
             .map(worker => {
                 const activity = worker.activity.snapshot();
-                return { cwd: worker.cwd, sessionId: worker.sessionId, ...activity,
-                    busy: activity.busy || worker.navigation.busy || worker.shell.busy || worker.controlPending || Boolean(worker.resourceResults.size || worker.historyPending || worker.historyWriting),
-                    phase: (worker.navigation.busy || worker.shell.busy || worker.controlPending || worker.resourceResults.size || worker.historyPending || worker.historyWriting) && !activity.busy ? 'running' : activity.phase };
+                return { cwd: worker.cwd, sessionId: worker.sessionId, titleGenerating: worker.titleGeneration, ...activity,
+                    busy: activity.busy || worker.navigation.busy || worker.shell.busy || worker.controlPending || Boolean(worker.titleResults.size || worker.resourceResults.size || worker.historyPending || worker.historyWriting),
+                    phase: (worker.navigation.busy || worker.shell.busy || worker.controlPending || worker.titleResults.size || worker.resourceResults.size || worker.historyPending || worker.historyWriting) && !activity.busy ? 'running' : activity.phase };
             });
     }
 

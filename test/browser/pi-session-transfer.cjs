@@ -92,6 +92,7 @@ async function run(browser, viewport) {
     const menu = page.locator('.pi-thread-menu:not(.hidden)'), dialog = page.locator('#pi-transfer-dialog');
     const exportMenu = async () => {
         await drawer(); await page.locator('[data-session-id="original-thread"] [data-action="menu"]').click();
+        await menu.getByRole('menuitem', { name: '历史与记录', exact: true }).click();
         await menu.getByRole('menuitem', { name: '导出记录', exact: true }).click(); await dialog.waitFor();
     };
     const importMenu = async () => {

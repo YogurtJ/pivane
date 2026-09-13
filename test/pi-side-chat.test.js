@@ -147,6 +147,8 @@ test('real side RPC is tool-free, ephemeral, parallel, auth-protected and isolat
     fs.writeFileSync(settingsPath, JSON.stringify({ defaultProvider: 'fixture', defaultModel: 'fixture', compaction: { enabled: false } }));
     const settings = fs.readFileSync(settingsPath);
     const gateway = createPiAgentGateway();
+    // Keep the synthetic provider traffic scoped to main/side conversation behavior.
+    gateway.titles.saveSettings({ enabled: false });
     const app = express(); app.use(express.json()); gateway.mount(app);
     const server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
     const wss = gateway.attachWebSocket(server);
@@ -236,7 +238,8 @@ test('real side RPC is tool-free, ephemeral, parallel, auth-protected and isolat
     assert.equal((await temp.call('open_ephemeral', { ...auth, cwd: root })).success, true);
     const tempPrepared = await temp.call('prepare_side_chat', { mode: 'context' });
     const tempSide = await connect(url);
-    assert.equal((await tempSide.call('open_side_chat', { ...auth, ticket: tempPrepared.data.ticket })).success, true);
+    const tempOpened = await tempSide.call('open_side_chat', { ...auth, ticket: tempPrepared.data.ticket });
+    assert.equal(tempOpened.success, true, JSON.stringify(tempOpened));
     assert.equal(gateway.supervisor.ephemeralWorkers.size, 2);
     temp.close();
     await waitFor(() => gateway.supervisor.ephemeralWorkers.size === 0);

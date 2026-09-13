@@ -1643,7 +1643,7 @@ select:focus-visible {
 .pi-recent-projects-heading label { display: flex; align-items: center; gap: 6px; min-height: 32px; color: var(--text-muted); font-size: 0.75rem; cursor: pointer; }
 .pi-recent-projects-heading input { width: 16px; height: 16px; accent-color: var(--green); }
 .pi-project-list { max-height: 178px; overflow-y: auto; }
-.pi-project-row { width: 100%; min-height: 48px; padding: 5px 8px; display: grid; grid-template-columns: 32px minmax(0, 1fr) 28px; align-items: center; gap: 9px; }
+.pi-project-row { width: 100%; min-height: 48px; padding: 5px 8px; display: grid; grid-template-columns: 32px minmax(0, 1fr) max-content; align-items: center; gap: 9px; }
 .pi-project-row-icon { width: 30px; height: 30px; border-radius: 5px; background: #202722; color: var(--green); display: grid; place-items: center; }
 .pi-project-row span strong,
 .pi-project-row span small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2771,6 +2771,14 @@ body.is-resizing * {
     font-size: 0.75rem;
     font-weight: 600;
 }
+.pi-archive-group { min-width: 0; margin-top: 8px; }
+.pi-archive-group > summary { padding: 10px 8px; color: var(--text-muted); cursor: pointer; font-size: 0.75rem; overflow-wrap: anywhere; }
+.pi-archive-group > summary:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; border-radius: 4px; }
+.pi-archived-projects { border-top: 1px solid var(--line); }
+.pi-session-archive-label { color: var(--text-muted); font-size: 0.65rem; }
+.pi-archive-search { display: flex; align-items: center; gap: 7px; margin: 5px 12px 9px; font-size: 0.75rem; color: var(--text-muted); }
+.pi-archive-search[hidden] { display: none; }
+.pi-archive-search input { width: 16px; height: 16px; min-height: 16px; flex: 0 0 16px; accent-color: var(--green); }
 .pi-work-session-count { font-size: 0.65rem; font-weight: 400; }
 .pi-work-sessions[hidden], .pi-work-sessions [hidden] { display: none; }
 .pi-filter-empty.pi-work-notice { min-height: 38px; padding: 8px; line-height: 1.5; overflow-wrap: anywhere; }
@@ -3669,6 +3677,9 @@ body.is-resizing * {
 }
 
 .workspace-settings-panel.active { display: block; }
+@media (max-width: 900px), (pointer: coarse) {
+    .workspace-settings-panel[data-settings-panel="models"] { touch-action: pan-y pinch-zoom; }
+}
 
 .settings-panel-header {
     min-height: 58px;
@@ -3749,9 +3760,29 @@ body.is-resizing * {
     align-items: end;
 }
 
+#settings-session-titles { display: block; }
+#settings-session-titles[hidden] { display: none !important; }
+#settings-session-titles .settings-toggle-line { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0; padding: 0; }
+#settings-session-titles strong { min-width: 0; color: var(--text-main); font-size: 0.88rem; line-height: 1.5; }
+#settings-session-titles input { flex-shrink: 0; }
+#settings-session-titles p { margin: 8px 0 0; color: var(--text-muted); font-size: 0.8rem; line-height: 1.65; overflow-wrap: anywhere; }
+#settings-auto-title-status:empty { display: none; }
+#settings-title-model-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: 12px; align-items: end; margin-top: 14px; min-width: 0; }
+#settings-title-model-controls[hidden] { display: none !important; }
+#settings-title-model-controls label { display: grid; gap: 6px; min-width: 0; color: var(--text-muted); font-size: 0.8rem; }
+#settings-title-model-controls select { box-sizing: border-box; width: 0; min-width: 100%; max-width: 100%; min-height: 40px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--text-main); background: var(--surface-2); font: inherit; }
+#settings-title-model-controls p { grid-column: 1 / -1; margin: 0; }
+@media (max-width: 600px) {
+    #settings-title-model-controls { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+    #settings-title-model-controls select { font-size: 16px; }
+}
+
+.settings-feature-card > * { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.workspace-settings-panel[data-settings-panel="models"] .settings-toggle-line { white-space: normal; }
+.workspace-settings-panel[data-settings-panel="models"] :is(.settings-primary-button, .settings-secondary-button) { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .workspace-language-card { align-items: center; }
 .workspace-language-card select {
-    box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; min-height: 44px;
+    box-sizing: border-box; width: 0; min-width: 100%; max-width: 100%; min-height: 44px;
     padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
     color: var(--text-main); background: var(--surface-2); font: inherit; font-size: 16px;
 }

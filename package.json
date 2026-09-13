@@ -1,11 +1,12 @@
 {
   "name": "pivane",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0-rc.3",
   "description": "Pivane: a personal AI workspace powered by Pi Coding Agent with a media laboratory",
   "main": "server.js",
   "private": true,
   "scripts": {
-    "start": "node server.js",
+    "start": "node scripts/start-managed.cjs",
+    "start:direct": "node server.js --direct",
     "test": "node scripts/run-tests.cjs",
     "check": "node scripts/check-syntax.cjs",
     "check:docs": "node scripts/check-docs.cjs",
@@ -15,11 +16,11 @@
   },
   "overrides": {
     "@earendil-works/pi-server": {
-      "@earendil-works/chord": "0.85.0",
-      "@earendil-works/pi-agent-core": "0.85.0",
-      "@earendil-works/pi-protocol": "0.85.0",
-      "@earendil-works/pi-ai": "0.85.0",
-      "@earendil-works/pi-telemetry": "0.85.0"
+      "@earendil-works/chord": "0.85.1",
+      "@earendil-works/pi-agent-core": "0.85.1",
+      "@earendil-works/pi-protocol": "0.85.1",
+      "@earendil-works/pi-ai": "0.85.1",
+      "@earendil-works/pi-telemetry": "0.85.1"
     }
   },
   "keywords": [],
@@ -27,13 +28,14 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@earendil-works/pi-ai": "0.85.0",
-    "@earendil-works/pi-coding-agent": "0.85.0",
-    "@earendil-works/pi-server": "0.85.0",
+    "@earendil-works/pi-ai": "0.85.1",
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@earendil-works/pi-server": "0.85.1",
     "@highlightjs/cdn-assets": "11.11.1",
     "cors": "^2.8.6",
     "dompurify": "3.4.14",
     "express": "^5.2.1",
+    "https-proxy-agent": "7.0.6",
     "marked": "18.0.11",
     "node-fetch": "^2.7.0",
     "web-push": "3.6.7",

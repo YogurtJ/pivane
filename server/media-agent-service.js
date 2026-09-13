@@ -290,9 +290,14 @@ class MediaAgentService {
             if (slash > 0) add(raw.slice(0, slash), raw.slice(slash + 1));
         };
 
-        if (input.provider && input.modelId) add(input.provider, input.modelId);
         const mediaAgentPreference = this.workspacePreferencesService?.getMediaAgent();
-        if (mediaAgentPreference) add(mediaAgentPreference.provider, mediaAgentPreference.modelId);
+        const selected = input.provider || input.modelId ? { provider: input.provider, modelId: input.modelId } : mediaAgentPreference;
+        if (selected?.provider || selected?.modelId) {
+            const model = byKey.get(`${selected.provider}\u0000${selected.modelId}`);
+            if (!model || !model.input?.includes('text') || /:batch$/.test(model.id)) throw planError('指定的媒体规划模型不可用，请检查辅助模型设置；不会自动更换模型', 503);
+            add(selected.provider, selected.modelId);
+            return candidates;
+        }
         addReference(process.env.PI_MEDIA_PLANNER_MODEL);
         const settings = SettingsManager.create(this.rootDir, getAgentDir());
         add(settings.getDefaultProvider(), settings.getDefaultModel());

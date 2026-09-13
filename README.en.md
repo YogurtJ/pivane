@@ -34,7 +34,7 @@ Run the server on Linux, macOS or Windows, then access it through a browser. Des
 
 The current source supports **Simplified Chinese and English**. It follows the browser's preferred supported language on first use; other languages fall back to English. Choose a language under **Settings → Preferences → Interface language**. The choice is saved for this browser and applies on the next page load, without automatically refreshing or interrupting your current work. Model replies, user content and speech language are independent.
 
-The bilingual interface is included starting with **1.0.0-rc.2**. The older **1.0.0-rc.1** archive is unchanged. See the [RC2 notes](docs/releases/1.0.0-rc.2.md) and its Release validation attachment for this artifact's exact verification scope.
+The bilingual interface is included starting with **1.0.0-rc.2**. The older **1.0.0-rc.1** archive is unchanged. The current release is **1.0.0-rc.3**, with **Pi 0.85.1**, AI session titles, archives, system prompt editing and managed Pi updates. See the [RC3 notes](docs/releases/1.0.0-rc.3.md) and its validation attachment for this artifact's exact verification scope.
 
 ## Install
 
@@ -57,6 +57,8 @@ Pivane is intended for individually deployed personal instances. It does not pro
 Use trusted HTTPS or a private trusted network for remote access, and configure access authentication before exposing the workspace. `localhost` refers to the device running the browser.
 
 Persistent sessions live on the server. Unsent drafts, attachments and temporary side chats are not disk backups. Before updating or backing up, pause scheduled messages, finish tasks, preserve unsaved content and stop the service. Keep the complete Agent, media, project and instance configuration directories together. See [installation and recovery](docs/en/INSTALL.md).
+
+The current source includes **Settings → Versions and updates** for version checks and official downloads, plus managed Pi updates, data backups and instance restarts. Both `node server.js` and `npm start` support these actions without changing service startup commands. The page displays the actual command output, exit code and final version. Pi is installed and checked in a separate directory before the service stops for backup and activation. Pivane application updates still use release archives. See [the user guide](docs/en/USER_GUIDE.md#versions-and-updates).
 
 ## Documentation and contribution
 

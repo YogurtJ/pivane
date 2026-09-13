@@ -1,0 +1,46 @@
+#system-prompts-nav[hidden], #pi-system-prompt-view[hidden], #system-prompts-panel [hidden], #system-prompt-dialog [hidden] { display: none !important; }
+#system-prompts-panel, #system-prompt-dialog { color: var(--text-main); min-width: 0; }
+:is(#system-prompts-panel, #system-prompt-dialog) :is(p, code, summary) { overflow-wrap: anywhere; }
+:is(#system-prompts-panel, #system-prompt-dialog) p { color: var(--text-muted); font-size: .82rem; line-height: 1.65; }
+:is(#system-prompts-panel, #system-prompt-dialog) button { font: inherit; font-size: .82rem; padding: 8px 12px; min-height: 38px; border: 1px solid var(--line); background: var(--surface-1); color: var(--text-main); border-radius: 8px; cursor: pointer; }
+:is(#system-prompts-panel, #system-prompt-dialog) button:hover:not(:disabled), :is(#system-prompts-panel, #system-prompt-dialog) button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+:is(#system-prompts-panel, #system-prompt-dialog) button:disabled { opacity: .48; cursor: default; }
+:is(#system-prompts-panel, #system-prompt-dialog) :is(input, select, textarea) { box-sizing: border-box; min-width: 0; max-width: 100%; width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-1); color: var(--text-main); padding: 10px 12px; font: inherit; }
+:is(#system-prompts-panel, #system-prompt-dialog) :is(button, input, textarea, select, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#system-prompts-panel .settings-panel-header { flex-direction: row; gap: 12px; align-items: flex-start; }
+#system-prompts-refresh { flex: 0 0 auto; }
+.system-prompt-card { border: 1px solid var(--line); border-radius: 12px; margin-top: 18px; min-width: 0; overflow: hidden; }
+.system-prompt-card > h4, .system-prompt-card > summary { padding: 18px; margin: 0; font-size: .93rem; }
+.system-prompt-card > summary { cursor: pointer; }
+.system-prompt-card > form { border-top: 1px solid var(--line); padding: 0 18px 18px; min-width: 0; }
+.system-prompt-card label { display: grid; gap: 8px; font-size: .82rem; }
+.system-prompt-card textarea { resize: vertical; min-height: 200px; max-height: 65dvh; line-height: 1.6; font-family: ui-monospace, monospace !important; }
+.system-prompt-card textarea:disabled { opacity: .6; }
+.system-prompt-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; align-items: center; }
+#system-prompts-panel .system-prompt-primary { background: var(--accent); color: var(--surface-0); }
+.system-prompt-source { font-size: .76rem; margin: 14px 0; }
+.system-prompt-source summary { cursor: pointer; margin-bottom: 10px; }
+:is(#system-prompts-panel, #system-prompt-dialog) pre { box-sizing: border-box; max-width: 100%; min-width: 0; margin: 12px 0; padding: 12px; background: var(--surface-2); border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; max-height: 48dvh; overflow: auto; font-size: .8rem; line-height: 1.6; }
+.system-prompt-preview { min-width: 0; max-width: 100%; max-height: 48dvh; overflow: auto; overflow-wrap: anywhere; }
+.system-prompt-preview table { display: block; overflow: auto; max-width: 100%; }
+.system-prompt-preview a { color: var(--accent); }
+.system-prompt-preview code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.system-prompt-diff span { display: block; }
+.prompt-removed { background: #e8565620; }
+.prompt-added { background: #46b67a20; }
+#system-prompt-dialog { position: fixed; inset: 0; margin: auto; box-sizing: border-box; width: min(880px, calc(100vw - 32px)); max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); padding: 22px; background: var(--surface-1); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 24px 80px #0003; overflow: auto; }
+#system-prompt-dialog::backdrop { background: #0007; backdrop-filter: blur(3px); }
+#system-prompt-dialog header { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
+#system-prompt-dialog h3 { font-size: 1rem; margin: 6px 0; }
+#system-prompt-dialog-close { flex-shrink: 0; }
+.system-prompt-runtime-sources details { margin-top: 14px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+.system-prompt-runtime-sources summary { cursor: pointer; font-size: .85rem; }
+#system-prompt-dialog .system-prompt-full { max-height: 52dvh; }
+#system-prompt-dialog mark { background: #ffdc7e; color: #29251b; }
+.system-prompt-copy-buffer { position: fixed; left: 0; top: 0; opacity: 0; pointer-events: none; }
+@media (max-width: 680px) {
+    #system-prompts-panel .settings-panel-header { flex-wrap: wrap; }
+    :is(#system-prompts-panel, #system-prompt-dialog) :is(input, select, textarea) { font-size: 16px; }
+    .system-prompt-card > form { padding: 0 12px 12px; }
+    #system-prompt-dialog { padding: 16px; width: calc(100vw - 20px); max-width: calc(100vw - 20px); }
+}

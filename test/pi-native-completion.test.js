@@ -112,6 +112,21 @@ test('cross-session search excludes hidden, thinking, tools, symlinks, and out-o
  assert.equal(searchSessions({...input,q:'VISIBLE_NEEDLE',roots:[path.join(root,'different')]}).results.length,0);
  fs.symlinkSync(sm.getSessionFile(),path.join(path.dirname(sm.getSessionFile()),'alias.jsonl'));
  assert.equal(searchSessions({...input,q:'VISIBLE_NEEDLE'}).results.length,1);
+ const archives = { projects: [], sessions: [{ cwd, sessionId: sm.getSessionId() }] };
+ assert.equal(searchSessions({...input,q:'VISIBLE_NEEDLE',archives}).results.length,0);
+ assert.equal(searchSessions({...input,q:'VISIBLE_NEEDLE',archives,includeArchived:true}).results[0].archived,true);
+ assert.equal(searchSessions({...input,q:'VISIBLE_NEEDLE',archives:{projects:[cwd],sessions:[]}}).results.length,0);
+ const preferences = new (require('../server/workspace-preferences-service').WorkspacePreferencesService)({filePath:path.join(root,'archive-search-preferences.json')});
+ const searchService = new (require('../server/pi-session-search').PiSessionSearch)(new (require('../server/pi-session-store').PiSessionStore)(),preferences);
+ try {
+  preferences.setArchived(cwd,sm.getSessionId(),true);
+  const signal = new AbortController().signal;
+  assert.equal((await searchService.search({q:'VISIBLE_NEEDLE'},signal)).total,0);
+  const included = await searchService.search({q:'VISIBLE_NEEDLE',includeArchived:'true'},signal);
+  assert.equal(included.total,1); assert.equal(included.results[0].archived,true);
+  preferences.setArchived(cwd,sm.getSessionId(),false);
+  await assert.rejects(searchService.search({q:'VISIBLE_NEEDLE',includeArchived:'true',offset:'20',searchId:included.searchId},signal),{status:409});
+ } finally {searchService.dispose();}
  const limited = searchSessions({...input,q:'VISIBLE_NEEDLE'}, {...require('../server/pi-session-search-worker').LIMITS,bytes:1}); assert.equal(limited.coverage.limited,true);
 });
 
