@@ -83,6 +83,35 @@ test('filesystem root permits descendants, nested roots permit their allowed par
     store.roots = []; assert.equal(store.defaultProject(), null);
 });
 
+test('unset and empty project roots allow filesystem roots while explicit roots remain authoritative', () => {
+    const previous = process.env.PI_PROJECT_ROOTS;
+    try {
+        for (const value of [undefined, '']) {
+            if (value === undefined) delete process.env.PI_PROJECT_ROOTS;
+            else process.env.PI_PROJECT_ROOTS = value;
+            const store = new PiSessionStore();
+            if (process.platform === 'win32') {
+                assert.ok(store.roots.includes(fs.realpathSync.native(path.parse(testRoot).root)));
+                assert.ok(store.roots.every(root => path.dirname(root) === root));
+            } else {
+                assert.deepEqual(store.roots, ['/']);
+            }
+            assert.equal(store.resolveProject(testRoot), testRoot);
+            assert.equal(store.resolveProject(agentDir), agentDir);
+            assert.equal(store.defaultProject(), fs.realpathSync.native(os.homedir()));
+        }
+        process.env.PI_PROJECT_ROOTS = testRoot;
+        const restricted = new PiSessionStore();
+        assert.deepEqual(restricted.roots, [testRoot]);
+        assert.throws(() => restricted.resolveProject(agentDir), /outside allowed roots/);
+        process.env.PI_PROJECT_ROOTS = path.join(testRoot, 'missing');
+        assert.deepEqual(new PiSessionStore().roots, []);
+    } finally {
+        if (previous === undefined) delete process.env.PI_PROJECT_ROOTS;
+        else process.env.PI_PROJECT_ROOTS = previous;
+    }
+});
+
 test('rejects projects outside configured roots', () => {
     const store = new PiSessionStore();
     assert.throws(() => store.resolveProject(os.tmpdir()), /outside allowed roots/);

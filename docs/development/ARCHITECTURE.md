@@ -18,7 +18,9 @@ flowchart TD
 
 ## 进程与身份
 
-server.js加载实例环境、创建访问验证服务、Pi网关、媒体管理及静态服务，再监听HTTP/WS。PORT默认3000，HOST由部署配置决定；公开示例采用loopback。身份、数据、项目根和预约路径必须同时隔离，端口不决定媒体后端。
+server.js加载实例环境、创建访问验证服务、Pi网关、媒体管理及静态服务，再监听HTTP/WS。PORT默认3000，HOST由部署配置决定；公开示例采用loopback。身份、媒体数据与预约路径按实例独立配置，端口不决定媒体后端。普通安装的项目范围默认开放系统用户可访问的目录；隔离验收才使用专用测试项目根。
+
+PiSessionStore 未配置或空 `PI_PROJECT_ROOTS` 时，POSIX 使用 `/`，Windows 在启动时枚举并规范化存在的 A:–Z: 盘符根；显式非空配置完整覆盖默认范围，失效根不触发扩大回退。默认浏览位置仍优先用户主目录，realpath、目录类型与系统权限检查继续生效。
 
 主连接先认证并通过cwd/sessionId解析原生会话，获得state/messages/stats/models/thinking/commands快照。持久worker由规范sessionPath唯一索引，多浏览器订阅同一个worker；临时no-session绑定连接，断开清理。外部CLI不能同时写同一会话。
 

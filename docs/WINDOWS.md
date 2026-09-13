@@ -32,6 +32,7 @@ if ($LASTEXITCODE -ne 0) { throw '依赖安装失败' }
 
 ```powershell
 $dataRoot = $base.Replace('\', '/')
+$projectRoots = ([IO.Directory]::GetLogicalDrives() -join ';').Replace('\', '/')
 $config = @"
 HOST=127.0.0.1
 PORT=3001
@@ -40,7 +41,7 @@ PI_CODING_AGENT_DIR=$dataRoot/data/agent
 PI_MEDIA_CONFIG_DIR=$dataRoot/data/agent/media-lab
 PI_MEDIA_DATA_DIR=$dataRoot/data/media
 PI_WEB_DEFERRED_FILE=$dataRoot/data/agent/pi5-deferred-messages.json
-PI_PROJECT_ROOTS=$dataRoot/projects
+PI_PROJECT_ROOTS=$projectRoots
 "@
 [IO.File]::WriteAllText((Join-Path $base 'instance.env'), $config, [Text.UTF8Encoding]::new($false))
 Copy-Item -LiteralPath (Join-Path $base 'instance.env') -Destination (Join-Path $app '.env')
@@ -49,7 +50,7 @@ npm.cmd start
 
 打开http://127.0.0.1:3001。以后只需进入该release目录再运行npm.cmd start；首次安装成功后不用每次重装依赖。运行进程已有环境变量优先于.env，启动前核对并清除本进程不需要的旧PI_*、Provider Key及NODE_OPTIONS，不输出其秘密值，也不修改其他应用的系统环境。
 
-项目根在Windows使用分号分隔，例如`C:/Projects;D:/Work`；实际目录必须存在，仍经过系统realpath、目录与权限检查。按需要修改instance.env并同步复制到当前代码目录，端口变更需同时修改PORT和PI_WORKSPACE_BASE_URL。上例只监听本机；开放远程访问需要相应监听地址、防火墙及访问验证配置。运行窗口保持打开，先在网页结束任务；需要备份时暂停预约，再在启动窗口按 Ctrl+C 停机。普通关闭与远端/脱离进程不是事务性撤销。
+上例默认开放安装时 Windows 可见的各盘符根目录（例如`C:/;D:/`），系统文件权限继续生效；新增盘符时更新此配置并空闲重启。只有用户明确要求缩小范围时才设置`C:/Projects;D:/Work`等指定目录，使用分号分隔。实际目录必须存在，仍经过系统realpath、目录与权限检查。按需要修改instance.env并同步复制到当前代码目录，端口变更需同时修改PORT和PI_WORKSPACE_BASE_URL。上例只监听本机；开放远程访问需要相应监听地址、防火墙及访问验证配置。运行窗口保持打开，先在网页结束任务；需要备份时暂停预约，再在启动窗口按 Ctrl+C 停机。普通关闭与远端/脱离进程不是事务性撤销。
 
 ## 更新、备份与恢复
 

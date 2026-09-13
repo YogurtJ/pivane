@@ -40,6 +40,8 @@
 
 `fileViewer`、`usageStats`、`sessionSearch`以安全描述符后端为前提：Linux/proc、macOS F_GETPATH或Windows HANDLE组件。缺失/哈希不一致不回退为请求路径，Windows组件也用于私密写入，损坏可能导致配置初始化失败。系统native realpath规范文件身份，同一文件别名共享唯一受管worker；实际平台范围见WINDOWS.md和MACOS.md。
 
+`projectRoots` 返回实际规范根目录。未设置或留空 `PI_PROJECT_ROOTS` 时，Linux/macOS 默认 `/`，Windows 在服务启动时枚举 A:–Z: 中存在的盘符根目录；新盘符需重启发现，UNC 共享须显式配置。非空配置仍作为完整覆盖，POSIX 使用冒号、Windows 使用分号分隔；配置的根全部失效时返回空范围，不自动扩大。此默认行为从 RC3 安装修订包提供，修订前的 RC3 实例以实际状态为准。
+
 `defaultProject` 返回允许根内可读/可进入的规范默认目录，优先运行用户主目录，其次服务cwd与可用根；没有可用目录时为null。只供首次目录浏览和未选项目的全局设置上下文，不创建或打开项目/会话。项目列表不再为零会话身份注入WebUI源码cwd。显式项目根 `/` 可包含子目录，根校验和系统权限继续生效。
 
 返回 gateway 状态；`version` 读取服务加载时实际安装的 Pi package metadata，不写死。`mediaLab=true` 表示当前进程已挂载新实验室接口；更新静态文件不会自动启用旧进程缺少的 API。

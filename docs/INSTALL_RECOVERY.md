@@ -12,6 +12,18 @@
 
 建议用独立 Linux 用户运行实例，不使用 root。独立目录防止误用旧数据，并不隔离同一系统用户的工具权限。全新机器/用户不继承其他安装的 Pi 身份。并排演练还应清除继承的模型 Key、代理、GPU、`NODE_OPTIONS` 和 `PI_*` 等进程变量；`PI_MEDIA_PROFILE=clean` 只是只读预览模式，**不要用于需要保存配置的正式安装**。
 
+## 选择项目范围
+
+独立数据目录用于避免混用身份；`PI_PROJECT_ROOTS` 决定网页可以选择哪些服务器项目，两者分别配置。普通安装默认开放电脑上系统用户可访问的目录，Linux/macOS 使用 `/`，Windows 使用各盘符根目录。无需让用户先选择最小范围，也不要自行限制到 Documents 或 demo 目录；用户明确要求缩小时再配置：
+
+| 使用范围 | Linux/macOS 配置示例 |
+|---|---|
+| 个人电脑上所有系统用户可访问的目录，包括已挂载外置磁盘 | `PI_PROJECT_ROOTS=/` |
+| 仅当前用户主目录 | `PI_PROJECT_ROOTS=/absolute/path/to/home` |
+| 多个指定目录 | `PI_PROJECT_ROOTS=/absolute/projects:/absolute/other-projects` |
+
+以下 Linux 和 macOS 安装示例统一采用 `/`。路径必须存在并使用真实绝对路径，`.env` 不展开 `~` 或 `$HOME`。Windows 使用分号分隔的盘符路径，见[Windows指南](WINDOWS.md)。系统权限继续生效；目录范围不是工具沙箱。
+
 ## 2. 从源码发布包安装
 
 先下载`pivane-1.0.0-rc.3.tar.gz`及同名.sha256到Downloads，核对发布来源，然后检查哈希：
@@ -33,6 +45,8 @@ cd "$BASE/releases/1.0.0-rc.3"
 npm ci
 ```
 
+只在所有前置检查成功后安装依赖。使用 nvm 等版本管理器时，版本切换与安装用 `&&` 连接，切换失败不要继续；用 `node -p 'process.execPath'` 核对实际 Node 路径。上述流程使用 Release 发布包；如果用户明确选择 Git checkout，记录 commit 并保留包内原生组件，同样配置独立数据与项目范围，不因源码安装自动运行开发验收。
+
 不要省略 optional dependencies 或复用其他 CPU/操作系统的 `node_modules`。不要执行 `npm audit fix --force` 来改变发布包依赖。部分 npm 镜像不提供 audit 接口，404 不表示存在漏洞或审计通过；可以单次运行 `npm audit --omit=dev --registry=https://registry.npmjs.org`，不改全局 registry。官方接口也失败时保留失败结果，不把它算作0漏洞。
 
 创建本实例配置，路径使用绝对路径。应用的 `.env` 读取器不会展开 `$HOME`、`${变量}` 或 `~`；下面的 Bash heredoc 在写文件前展开 BASE，因此得到正确的绝对路径：
@@ -44,7 +58,7 @@ HOST=127.0.0.1
 PI_CODING_AGENT_DIR=$BASE/data/agent
 PI_MEDIA_CONFIG_DIR=$BASE/data/agent/media-lab
 PI_MEDIA_DATA_DIR=$BASE/data/media
-PI_PROJECT_ROOTS=$BASE/projects
+PI_PROJECT_ROOTS=/
 PI_WEB_DEFERRED_FILE=$BASE/data/agent/pi5-deferred-messages.json
 PI_WORKSPACE_BASE_URL=http://127.0.0.1:3001
 EOF
@@ -66,7 +80,7 @@ Node/npm 必须可由 PATH 找到；使用版本管理器时保留其 Node 所�
 curl -fsS http://127.0.0.1:3001/api/pi/status
 ```
 
-预期 `ok=true`，`projectRoots` 只有本次项目根，实际 Pi `version` 对应发布包依赖。浏览器打开 `http://127.0.0.1:3001`。从其他设备访问需要修改 HOST、重启并配置自己的地址/防火墙/访问验证；localhost 指浏览器所在机器。远程管理凭据请使用可信 HTTPS 或受信网络。
+预期 `ok=true`，`projectRoots` 为本次配置的 `/`，实际 Pi `version` 对应发布包依赖。浏览器打开 `http://127.0.0.1:3001`。从其他设备访问需要修改 HOST、重启并配置自己的地址/防火墙/访问验证；localhost 指浏览器所在机器。远程管理凭据请使用可信 HTTPS 或受信网络。
 
 ## 3. 首次网页使用
 
@@ -77,7 +91,7 @@ curl -fsS http://127.0.0.1:3001/api/pi/status
 5. 点击新建线程，确认连接完成、模型正确，发送“只回复 OK”。刷新网页，确认该线程与回复仍在；可将线程命名为“安装验收”。
 6. 在项目中放一个普通 UTF-8 文本，输入 `@` 搜索文件，再让 Agent 读取测试文件；不使用私人项目作为首次验收。
 
-如果希望选择其他现有目录，在本实例的启动配置中扩大 `PI_PROJECT_ROOTS` 并空闲重启；例如设置为用户主目录可浏览其下全部项目。个人Linux实例也可以明确设置 `PI_PROJECT_ROOTS=/`，从用户主目录向上浏览整棵服务器目录树；系统用户的读/进入权限仍生效，目录范围不是工具沙箱。多个根使用冒号分隔。不要把只用于隔离测试的狭窄项目根当作所有使用者的固定部署范围。
+本例默认 `PI_PROJECT_ROOTS=/`，可从用户主目录向上浏览服务器目录树，无需为 Documents 之外的项目另改配置。只有用户希望缩小范围时才改为主目录或多个冒号分隔的指定目录，并空闲重启；系统用户的读/进入权限仍生效，目录范围不是工具沙箱。
 
 如果项目或会话为空，先确认绝对路径存在、在 `PI_PROJECT_ROOTS` 内，且启动读取的是本实例配置。模型保存后已有 runtime 不自动重载，空闲时 `/quit` 再打开线程。项目资源是否信任由项目菜单 `/trust` 管理；未信任并不等于工具沙箱。
 
@@ -86,6 +100,15 @@ curl -fsS http://127.0.0.1:3001/api/pi/status
 实验室内的“生成方案”显式加载发布包内 `pi-packages/media-workbench/extensions/media-tools.ts`，**不依赖预先全局安装 Package**。它仍需要一个已配置的聊天模型。普通 Pi Agent 中如需这些规划工具，才在设置 → Packages 安装本发布目录下的 `pi-packages/media-workbench`，阅读并确认 Package 风险。使用版本目录更新后，要把这个本地 source 改到新版本，或将 Package 单独保留在固定路径并自行更新。
 
 无媒体服务时图像/视频可显示未配置，TTS 为空，这是正常首次状态。托管 HTTP 媒体可在实验室管理页配置；GPU bridge、Z-Image worker 文件/LoRA、ComfyUI 权重、Breeze/Qwen 远端脚本以及 curl/Python/SSH 等是所选 adapter 的额外前提，未附带在发布包中。详见 [媒体接入](MEDIA_CONNECTIONS.md)、[Flux](FLUX2_DEV.md) 与 [TTS](tts-providers/README.md)。不要复制维护者的本机路径或配方来“修复”空目录。
+
+## 项目选择器找不到目录
+
+当前网页不能修改实例的 `PI_PROJECT_ROOTS`。目标目录存在却不在可选范围时，先检查 `/api/pi/status` 返回的 `projectRoots`，再核对实例启动配置。这个问题不能通过创建线程、刷新网页或修改 Pi 项目信任解决。
+
+1. 在服务器实际加载的 `.env` 或服务环境中修改 `PI_PROJECT_ROOTS`；如按本指南保留了 `instance.env`，同步修改该配置源和当前 release 的 `.env`，避免下次升级恢复旧范围。非空进程环境优先于 `.env`，服务管理器中的旧值也要同步。
+2. 例如个人 macOS 实例可改为 `PI_PROJECT_ROOTS=/`；仅开放主目录则填真实绝对路径，不能写 `~/Documents` 或 `$HOME`。无需移动项目、会话或数据目录。
+3. 保存草稿、暂停预约、等待 Agent/Shell/侧聊/媒体/配置与导入导出操作空闲，再按实例原有方式重启。不能从承载当前操作会话的服务内部停掉自身，应使用独立管理终端或通道。
+4. 重新检查 `projectRoots` 并打开目标目录。范围已包含目标但仍无法进入时，再检查目录是否存在、系统读/进入权限与 macOS 隐私控制；扩大根范围不会绕过这些权限。
 
 ## 4. 备份范围与一致性
 

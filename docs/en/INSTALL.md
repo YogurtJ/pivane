@@ -17,6 +17,14 @@ No global Pi installation, frontend build, GPU or installation-time native compi
 
 Use a personal non-root operating-system user and independent instance directories. These directories prevent accidental reuse of another instance's identity; they do not sandbox tools running as the same system user. Additional project tools, such as Git, compilers or Python, are installed separately as needed.
 
+## Installation scope
+
+For an ordinary deployment, check prerequisites, choose independent data directories and the intended project roots, run `npm ci` once, start the server, and verify read-only status and that the page opens. Full test suites, desktop/mobile regression, packaging and recovery drills belong to development validation. Persistent background service setup is an optional follow-up. Report time to first usable page separately from later validation or troubleshooting.
+
+When given only the GitHub repository URL, prefer the Release archive and checksum. If the user explicitly chooses a Git checkout, record its commit and follow the same instance setup; a source checkout does not require development tests. After switching Node versions, check `node --version` and `node -p 'process.execPath'`. Chain the switch and installation with `&&` so a failed switch cannot silently run installation under the previous Node. Node 22 is the installation baseline, not proof that every other major version is incompatible.
+
+Project roots are separate from data isolation. Ordinary installations default to `/` on Linux/macOS and the available drive roots on Windows, so projects can live anywhere accessible to the server user. Do not add a scope-selection step or silently restrict projects to Documents or the demo directory. Configure a narrower scope only when the user requests it.
+
 ## Linux and macOS
 
 Download the archive and its `.sha256` file from [Releases](https://github.com/YogurtJ/pivane/releases) to Downloads and verify the source. In Bash or your macOS terminal:
@@ -54,7 +62,7 @@ PI_CODING_AGENT_DIR=$BASE/data/agent
 PI_MEDIA_CONFIG_DIR=$BASE/data/agent/media-lab
 PI_MEDIA_DATA_DIR=$BASE/data/media
 PI_WEB_DEFERRED_FILE=$BASE/data/agent/pi5-deferred-messages.json
-PI_PROJECT_ROOTS=$BASE/projects
+PI_PROJECT_ROOTS=/
 EOF
 chmod 600 "$BASE/instance.env"
 cp "$BASE/instance.env" .env
@@ -92,6 +100,7 @@ Save absolute paths with forward slashes:
 
 ```powershell
 $dataRoot = $base.Replace('\', '/')
+$projectRoots = ([IO.Directory]::GetLogicalDrives() -join ';').Replace('\', '/')
 $config = @"
 HOST=127.0.0.1
 PORT=3001
@@ -100,7 +109,7 @@ PI_CODING_AGENT_DIR=$dataRoot/data/agent
 PI_MEDIA_CONFIG_DIR=$dataRoot/data/agent/media-lab
 PI_MEDIA_DATA_DIR=$dataRoot/data/media
 PI_WEB_DEFERRED_FILE=$dataRoot/data/agent/pi5-deferred-messages.json
-PI_PROJECT_ROOTS=$dataRoot/projects
+PI_PROJECT_ROOTS=$projectRoots
 "@
 [IO.File]::WriteAllText((Join-Path $base 'instance.env'), $config, [Text.UTF8Encoding]::new($false))
 Copy-Item -LiteralPath (Join-Path $base 'instance.env') -Destination (Join-Path $app '.env')
@@ -109,7 +118,7 @@ npm.cmd start
 
 Open **http://127.0.0.1:3001** and keep the window running. Later, enter the release directory and run `npm.cmd start`. Existing process environment variables override `.env`; clear this process's unneeded inherited provider keys, `PI_*` and `NODE_OPTIONS` before starting, without printing secrets or modifying other applications' system settings.
 
-Windows project roots use **semicolons**, for example `C:/Projects;D:/Work`. The directories must exist. Use NTFS-aware backups and verify the restored Agent directory's protected DACL. See the detailed [Windows guide](../WINDOWS.md) for filesystem and platform limits.
+The Windows example includes all drive roots visible at installation, such as `C:/;D:/`. Update the configuration and restart when adding drives. To restrict the scope on request, use **semicolon-separated** paths such as `C:/Projects;D:/Work`. The directories must exist. Use NTFS-aware backups and verify the restored Agent directory's protected DACL. See the detailed [Windows guide](../WINDOWS.md) for filesystem and platform limits.
 
 ## First use and remote access
 
@@ -117,7 +126,7 @@ Open Settings → Providers and models and configure your provider. Tests send s
 
 The examples listen only on loopback. `localhost` on a phone means the phone, not the server. To connect from another device, configure the server's listen address, firewall, reachable workspace URL and access authentication. Use trusted HTTPS or a trusted private network for credentials. Change both `PORT` and `PI_WORKSPACE_BASE_URL` if you change the port.
 
-Adjust `PI_PROJECT_ROOTS` if you need other existing directories. POSIX roots are colon-separated; Windows roots are semicolon-separated. Server filesystem permissions continue to apply. Project roots are **not a tool sandbox**. For project resources, manage Pi trust through the project menu or `/trust`.
+The UI currently cannot change `PI_PROJECT_ROOTS`. If a directory is outside the configured roots, edit the server's actual `.env` or service environment; keep the fixed `instance.env` in sync if you use it. Nonempty process environment values override `.env`. Use absolute paths, not `~` or `$HOME`. Preserve drafts, pause scheduled messages, wait for active operations to finish, and restart through the existing independent management channel. Check the effective `projectRoots` in `/api/pi/status` after authentication. Moving projects or sessions is unnecessary. POSIX roots are colon-separated; Windows roots are semicolon-separated. Server filesystem permissions and macOS privacy controls continue to apply. Project roots are **not a tool sandbox**. For project resources, manage Pi trust through the project menu or `/trust`.
 
 A fresh installation has no executable media service. Configure your own image, video or speech service separately. The lab's planning extension is included in the package and does not require global Package installation; it does require a configured chat model. For planning tools in ordinary Agent conversations, install the bundled `pi-packages/media-workbench` Package explicitly after reviewing its permissions. GPU adapters have additional service-specific prerequisites.
 

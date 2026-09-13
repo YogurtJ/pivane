@@ -9,6 +9,19 @@
 - 本轮实测使用独立Node22官方Darwin ARM64归档，并用官方SHASUMS256核对；没有替换原全局Node。也可通过自己的Node版本管理器或Homebrew提供Node22，启动前用`node --version`核对。
 - 若缺少rg，可用`brew install ripgrep`；不要因系统已装Node25而认为该版本已在本项目验收。
 
+## 安装前先核对当前 Node
+
+在将要安装和启动的同一终端运行：
+
+```sh
+node --version
+node -p 'process.execPath'
+npm --version
+rg --version
+```
+
+若使用已安装并加载的 nvm，可执行 `nvm install 22 && nvm use 22`，成功后重新核对上述结果。切换失败先处理错误，不继续安装；无需修改系统默认 Node。下面的安装命令链会在 Node 不为22.x或任一步失败时停止，防止切换失败后仍用旧 Node 安装。这是按推荐基线安装的检查，不代表所有其他版本均不兼容。
+
 ## 独立实例示例
 
 先将发布包和同名.sha256下载到Downloads，并核对下载来源。以下为新实例示例，BASE必须尚不存在：
@@ -20,12 +33,15 @@ BASE="$HOME/pivane"
 test ! -e "$BASE" || { echo "此目录已存在，请按更新流程操作或选择新的BASE"; exit 1; }
 umask 077
 mkdir -p "$BASE/releases/1.0.0-rc.3" "$BASE/data/agent" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
-tar -xzf "$ARCHIVE" -C "$BASE/releases/1.0.0-rc.3" --strip-components=1
-cd "$BASE/releases/1.0.0-rc.3"
-node --version   # 验收基线为22.23.2
-rg --version
+tar -xzf "$ARCHIVE" -C "$BASE/releases/1.0.0-rc.3" --strip-components=1 &&
+cd "$BASE/releases/1.0.0-rc.3" &&
+node -e 'if (process.versions.node.split(".")[0] !== "22") { console.error("请先切换到 Node 22.x；当前 " + process.version); process.exit(1); } console.log(process.version, process.execPath)' &&
+npm --version &&
+rg --version &&
 npm ci
 ```
+
+先确认校验结果成功，再解包；`npm ci` 成功后才继续创建配置。
 
 创建固定的实例配置。这里使用终端heredoc展开BASE，写入的是真实绝对路径；.env读取器本身不展开变量：
 
@@ -48,6 +64,10 @@ env -i PATH="$PATH" HOME="$HOME" USER="$USER" LANG=en_US.UTF-8 npm start
 最小启动环境避免继承其他实例的Provider Key、PI_*或NODE_OPTIONS；如需代理等额外环境，显式加入本实例所需的配置。以后在同一release目录使用相同启动方式，关闭终端后再启动不需要重复npm ci。
 
 打开`http://127.0.0.1:3001`。保持终端运行；Ctrl+C停机。启动目录必须是对应release目录。端口已被占用时同时修改PORT和PI_WORKSPACE_BASE_URL。
+
+另一个终端先用 `curl -fsS http://127.0.0.1:3001/api/access/status` 核对访问状态；需要认证时先在浏览器完成认证，再检查 Pi 状态。没有访问验证阻挡时，可用 `curl -fsS http://127.0.0.1:3001/api/pi/status` 检查 `ok=true`、Pi 版本与实际 `projectRoots`。网页可打开、只读状态正常即完成基础启动；普通安装无需运行全量测试、浏览器回归或打包。模型登录与真实请求另行验证。
+
+关闭终端后继续运行属于可选常驻配置，当前指南没有提供已验收的 LaunchAgent 安装器。自行配置时使用 Node 绝对路径执行 `scripts/start-managed.cjs`，显式设置 PATH、HOME 和 WorkingDirectory，等待 HTTP 就绪，并记录日志与停止/卸载方式；不依赖交互终端的 nvm 初始化，也不以 launchd 的 running 状态代替健康检查。
 
 初次没有身份或项目时先在网页配置自己的供应商；Pi配置、Packages、Skills可先管理全局范围。默认浏览位置优先用户主目录，不预填开发者目录。`PI_PROJECT_ROOTS=/`允许选择该系统用户可访问的服务器目录；也可改为主目录或多个冒号分隔的范围。系统权限与macOS隐私控制继续生效，目录白名单不是工具沙箱。
 

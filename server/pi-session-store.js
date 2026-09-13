@@ -26,7 +26,10 @@ function isWithin(root, candidate) {
 
 class PiSessionStore {
     constructor() {
-        const configured = String(process.env.PI_PROJECT_ROOTS || [process.cwd(), require('os').homedir()].join(path.delimiter))
+        const defaults = process.platform === 'win32'
+            ? Array.from({ length: 26 }, (_, index) => `${String.fromCharCode(65 + index)}:\\`)
+            : ['/'];
+        const configured = String(process.env.PI_PROJECT_ROOTS || defaults.join(path.delimiter))
             .split(path.delimiter)
             .map(value => value.trim())
             .filter(Boolean);
