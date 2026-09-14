@@ -15,15 +15,25 @@ The examples below install **1.0.0-rc.3**, which includes AI session titles, arc
 
 No global Pi installation, frontend build, GPU or installation-time native compilation is required. Keep packaged native source, binaries and manifests together. Do not reuse another OS/CPU's `node_modules`, omit optional dependencies, or use `npm audit fix --force` to change locked dependencies.
 
-Use a personal non-root operating-system user and independent instance directories. These directories prevent accidental reuse of another instance's identity; they do not sandbox tools running as the same system user. Additional project tools, such as Git, compilers or Python, are installed separately as needed.
+Use the same ordinary operating-system user as your existing Pi CLI. Pivane normally reuses that user's native Pi identity; media and scheduled messages use instance-specific paths. Use a separate identity only for an explicitly independent instance or isolated testing. Additional project tools, such as Git, compilers or Python, are installed separately as needed.
 
 ## Installation scope
 
-For an ordinary deployment, check prerequisites, choose independent data directories and the intended project roots, run `npm ci` once, start the server, and verify read-only status and that the page opens. Full test suites, desktop/mobile regression, packaging and recovery drills belong to development validation. Persistent background service setup is an optional follow-up. Report time to first usable page separately from later validation or troubleshooting.
+For an ordinary deployment, check prerequisites, reuse the intended Pi identity, choose instance media/schedule paths and project roots, run `npm ci` once, start the server, and verify read-only status and that the page opens. Full test suites, desktop/mobile regression, packaging and recovery drills belong to development validation. Persistent background service setup is an optional follow-up. Report time to first usable page separately from later validation or troubleshooting.
 
 When given only the GitHub repository URL, prefer the Release archive and checksum. If the user explicitly chooses a Git checkout, record its commit and follow the same instance setup; a source checkout does not require development tests. After switching Node versions, check `node --version` and `node -p 'process.execPath'`. Chain the switch and installation with `&&` so a failed switch cannot silently run installation under the previous Node. Node 22 is the installation baseline, not proof that every other major version is incompatible.
 
 Project roots are separate from data isolation. Ordinary installations default to `/` on Linux/macOS and the available drive roots on Windows, so projects can live anywhere accessible to the server user. Do not add a scope-selection step or silently restrict projects to Documents or the demo directory. Configure a narrower scope only when the user requests it.
+
+## Existing Pi CLI users
+
+Pi uses Node's OS home directory plus `.pi/agent`: usually `/Users/<user>/.pi/agent` on macOS, `/home/<user>/.pi/agent` on Linux, and `C:\Users\<user>\.pi\agent` on native Windows. Windows does not default to AppData. A nonempty `PI_CODING_AGENT_DIR` overrides this. Git Bash's `~`, PowerShell's home and native Node's home may differ; WSL Pi is a separate Linux environment.
+
+After `npm ci`, the commands below use `node scripts/pi-agent-dir.cjs` to obtain the path through Pi's public resolver. Run them as the normal CLI user with its actual configuration environment, including overrides supplied by a CLI alias or wrapper. The helper only reports a path; it does not read credentials, create directories or send model requests. Existing identities are reused, and missing ones are initialized by Pi on normal startup. Pivane still uses its bundled Pi version, not the globally installed executable.
+
+Sharing an identity also shares native settings, standard sessions and global resources. Do not let the CLI and Web UI write the same session concurrently. For an existing Pivane installation, stop it when idle through its original management channel, retain both identity directories, and change the actual `PI_CODING_AGENT_DIR` in its startup configuration. Do not copy or merge authentication files. Media and schedule paths should retain their existing values. After startup, the authenticated `/api/pi/settings/native` response reports `agentDir`; check configured providers in Settings before logging in again.
+
+Environment-only keys, proxy settings and external credential commands must also be available to Pivane. Service managers and `env -i` do not copy your interactive shell environment. Extension-only providers may not appear in provider settings. Custom CLI session directories are not automatically migrated by sharing an identity. See the detailed [Pi CLI integration guide](../PI_CLI.md).
 
 ## Linux and macOS
 
@@ -43,7 +53,7 @@ Continue only if verification succeeds. For a new instance, the base directory m
 BASE="$HOME/pivane"
 test ! -e "$BASE" || { echo "Directory exists; use the update procedure or another BASE"; exit 1; }
 umask 077
-mkdir -p "$BASE/releases/1.0.0-rc.3" "$BASE/data/agent" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
+mkdir -p "$BASE/releases/1.0.0-rc.3" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
 tar -xzf "$ARCHIVE" -C "$BASE/releases/1.0.0-rc.3" --strip-components=1
 cd "$BASE/releases/1.0.0-rc.3"
 node --version
@@ -51,17 +61,24 @@ rg --version
 npm ci
 ```
 
-Create a fixed instance configuration. The shell expands `BASE` before writing; Pivane's `.env` reader itself does **not** expand variables or `~`.
+Resolve the native Pi identity after dependency installation:
+
+```bash
+AGENT_DIR=$(node scripts/pi-agent-dir.cjs) || exit 1
+printf 'Pi identity: %s\n' "$AGENT_DIR"
+```
+
+Only for an explicitly isolated identity, replace this with `AGENT_DIR="$BASE/data/agent"`. Create a fixed instance configuration. The shell expands `BASE` before writing; Pivane's `.env` reader itself does **not** expand variables or `~`.
 
 ```bash
 cat > "$BASE/instance.env" <<EOF
 HOST=127.0.0.1
 PORT=3001
 PI_WORKSPACE_BASE_URL=http://127.0.0.1:3001
-PI_CODING_AGENT_DIR=$BASE/data/agent
-PI_MEDIA_CONFIG_DIR=$BASE/data/agent/media-lab
+PI_CODING_AGENT_DIR=$AGENT_DIR
+PI_MEDIA_CONFIG_DIR=$BASE/data/media-lab
 PI_MEDIA_DATA_DIR=$BASE/data/media
-PI_WEB_DEFERRED_FILE=$BASE/data/agent/pi5-deferred-messages.json
+PI_WEB_DEFERRED_FILE=$BASE/data/pi5-deferred-messages.json
 PI_PROJECT_ROOTS=/
 EOF
 chmod 600 "$BASE/instance.env"
@@ -69,7 +86,7 @@ cp "$BASE/instance.env" .env
 env -i PATH="$PATH" HOME="$HOME" USER="$USER" LANG=en_US.UTF-8 npm start
 ```
 
-The minimal environment avoids inheriting another instance's provider keys and `PI_*` settings. Preserve your own HOME. If your network requires a proxy, explicitly add the required proxy configuration for this instance. With a Node version manager, ensure the chosen Node 22 is actually in PATH; noninteractive SSH and service managers may not load shell startup scripts.
+The minimal environment retains the identity explicitly selected in the configuration but does not inherit shell provider keys or proxy variables. Preserve your own HOME. If authentication uses environment values or external commands, provide those dependencies to this instance, or save credentials through the native Web login. If your network requires a proxy, explicitly add the required proxy configuration for this instance. With a Node version manager, ensure the chosen Node 22 is actually in PATH; noninteractive SSH and service managers may not load shell startup scripts.
 
 Open **http://127.0.0.1:3001**. Keep the terminal running; Ctrl+C stops the service. On later starts, enter the same release directory and use the same startup environment; `npm ci` is not required every time.
 
@@ -86,7 +103,7 @@ if ($expected -notmatch '^[a-fA-F0-9]{64}$' -or (Get-FileHash -LiteralPath $arch
 $base = Join-Path $env:USERPROFILE 'Pivane'
 if (Test-Path -LiteralPath $base) { throw 'Directory exists; use the update procedure or another base' }
 $app = Join-Path $base 'releases\1.0.0-rc.3'
-@($app, "$base\data\agent", "$base\data\media", "$base\projects\demo", "$base\backups") | ForEach-Object { New-Item -ItemType Directory -Path $_ -Force | Out-Null }
+@($app, "$base\data\media", "$base\projects\demo", "$base\backups") | ForEach-Object { New-Item -ItemType Directory -Path $_ -Force | Out-Null }
 tar.exe -xzf $archive -C $app --strip-components=1
 if ($LASTEXITCODE -ne 0) { throw 'Extraction failed' }
 Set-Location -LiteralPath $app
@@ -96,19 +113,23 @@ npm.cmd ci
 if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
 ```
 
-Save absolute paths with forward slashes:
+Resolve the Pi identity through the same public API, then save absolute paths with forward slashes:
 
 ```powershell
+$agentDir = & node.exe scripts/pi-agent-dir.cjs
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($agentDir)) { throw 'Cannot resolve the Pi identity; check the CLI startup environment' }
+Write-Output "Pi identity: $agentDir"
 $dataRoot = $base.Replace('\', '/')
+$piIdentity = $agentDir.Replace('\', '/')
 $projectRoots = ([IO.Directory]::GetLogicalDrives() -join ';').Replace('\', '/')
 $config = @"
 HOST=127.0.0.1
 PORT=3001
 PI_WORKSPACE_BASE_URL=http://127.0.0.1:3001
-PI_CODING_AGENT_DIR=$dataRoot/data/agent
-PI_MEDIA_CONFIG_DIR=$dataRoot/data/agent/media-lab
+PI_CODING_AGENT_DIR=$piIdentity
+PI_MEDIA_CONFIG_DIR=$dataRoot/data/media-lab
 PI_MEDIA_DATA_DIR=$dataRoot/data/media
-PI_WEB_DEFERRED_FILE=$dataRoot/data/agent/pi5-deferred-messages.json
+PI_WEB_DEFERRED_FILE=$dataRoot/data/pi5-deferred-messages.json
 PI_PROJECT_ROOTS=$projectRoots
 "@
 [IO.File]::WriteAllText((Join-Path $base 'instance.env'), $config, [Text.UTF8Encoding]::new($false))
@@ -116,13 +137,13 @@ Copy-Item -LiteralPath (Join-Path $base 'instance.env') -Destination (Join-Path 
 npm.cmd start
 ```
 
-Open **http://127.0.0.1:3001** and keep the window running. Later, enter the release directory and run `npm.cmd start`. Existing process environment variables override `.env`; clear this process's unneeded inherited provider keys, `PI_*` and `NODE_OPTIONS` before starting, without printing secrets or modifying other applications' system settings.
+Open **http://127.0.0.1:3001** and keep the window running. Later, enter the release directory and run `npm.cmd start`. Existing process environment variables override `.env`; retain the intended CLI identity and its required credential/proxy/command environment, and clear unrelated instance overrides without printing secrets or changing other applications' system settings. For an explicitly isolated identity, set `$agentDir = Join-Path $base 'data\agent'` before calculating `$piIdentity`.
 
 The Windows example includes all drive roots visible at installation, such as `C:/;D:/`. Update the configuration and restart when adding drives. To restrict the scope on request, use **semicolon-separated** paths such as `C:/Projects;D:/Work`. The directories must exist. Use NTFS-aware backups and verify the restored Agent directory's protected DACL. See the detailed [Windows guide](../WINDOWS.md) for filesystem and platform limits.
 
 ## First use and remote access
 
-Open Settings → Providers and models and configure your provider. Tests send small billable requests; saving configuration alone does not test a model. Select an existing project directory, create a thread and choose its model. Send a simple question, then reopen the persistent thread to verify it was saved. Start with a synthetic project, not private production files.
+Open Settings → Providers and models and check the existing native configuration. Log in only if usable credentials are missing. Tests send small billable requests; saving configuration alone does not test a model. Select an existing project directory, create a thread and choose its model. Send a simple question, then reopen the persistent thread to verify it was saved. Start with a synthetic project, not private production files.
 
 The examples listen only on loopback. `localhost` on a phone means the phone, not the server. To connect from another device, configure the server's listen address, firewall, reachable workspace URL and access authentication. Use trusted HTTPS or a trusted private network for credentials. Change both `PORT` and `PI_WORKSPACE_BASE_URL` if you change the port.
 
@@ -136,14 +157,14 @@ Preserve these together:
 
 | Data | Example location |
 |---|---|
-| Native sessions, model credentials, settings and private backups | Entire `data/agent/` |
-| Media connections and keys | `data/agent/media-lab/` plus the Agent credential store |
+| Native sessions, model credentials, settings and private backups | Entire actual Pi identity directory, usually outside BASE |
+| Media connections and keys | `data/media-lab/` plus the Pi credential store |
 | Media history, prompts and generated files | Entire `data/media/` |
 | Project files, uncommitted work and `.pi` resources | `projects/` and any other configured project roots |
 | Startup environment and actual service configuration | `instance.env` and your service-manager configuration |
 | Matching application and checksum | Original release archive and checksum |
 
-External Package sources, symlink targets, external credential commands, certificates and remote service tasks may need separate backups. Browser drafts, unsent attachments, temporary sessions, side chats and pending in-memory tickets are not included in a disk backup.
+External Package sources, symlink targets, external credential commands, certificates and remote service tasks may need separate backups. The BASE archive below does not include an external shared Pi identity. While both Pivane and the CLI are stopped, separately back up that entire directory with private permissions and a checksum, and record its original absolute path. Restore it alongside the matching BASE archive before starting either application; on Windows preserve the actual DACL. The [full backup procedure](../INSTALL_RECOVERY.md#4-备份范围与一致性) includes the separate identity archive. Browser drafts, unsent attachments, temporary sessions, side chats and pending in-memory tickets are not included in a disk backup.
 
 1. Stop submitting new work. Finish Agent, Shell, side-chat, media, settings and import/export tasks. **Pause all scheduled messages in the UI.** Preserve unsent content.
 2. Stop the service and any external CLI using the same Pi identity. Wait for exit before copying data. An HTTP activity check cannot prove an external CLI or remote provider task has stopped.

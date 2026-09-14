@@ -7,7 +7,7 @@ Pivane runs on your computer or server. You can open it from another device's br
 ## Start your first session
 
 1. Follow the [installation guide](INSTALL.md), start your instance and open its URL.
-2. Open **Settings → Providers and models**, expand your provider and sign in with an API key or OAuth. Enter credentials in settings, not in chat. For remote OAuth, a localhost callback refers to the server; use a device code or manual callback if the provider offers one.
+2. Open **Settings → Providers and models** and check the configuration shared with Pi CLI. Sign in with an API key or OAuth only if usable credentials are missing. If the CLI has models but Pivane does not, check the identity and startup environment using [existing Pi users](INSTALL.md#existing-pi-cli-users). Enter credentials in settings, not in chat. For remote OAuth, a localhost callback refers to the server; use a device code or manual callback if the provider offers one.
 3. Close settings, select an existing server project directory and create a thread. Select its model and thinking level. Open threads refresh the model catalog when idle; if no model is available, follow the settings link in the composer.
 4. Send a simple question. Refresh and reopen the persistent thread to verify that the reply is retained. This request uses your own provider account.
 

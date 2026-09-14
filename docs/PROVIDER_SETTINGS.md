@@ -1,5 +1,9 @@
 # 供应商登录与模型 Thinking
 
+## 已有 Pi CLI 配置
+
+普通安装使用与 CLI 相同的 Pi 身份目录，从原生模型配置和认证库读取供应商；没有额外的模型导入或认证复制层。`PI_CODING_AGENT_DIR` 非空时覆盖平台默认主目录。CLI 已配置而网页为空时，先核对身份路径、供应商环境变量/外部命令依赖及筛选状态，不直接要求重新登录。平台目录解析、现有空身份切换与共享限制见[已有 Pi 接入](PI_CLI.md)。
+
 ## 首次接入与会话模型目录（2026-09-11）
 
 设置页模型测试与当前会话是不同运行实例。先打开无认证会话、再登录时，原生RPC的get_available_models只返回该worker缓存的目录；网页刷新也会复用同一worker，可能仍是空目录/unknown模型。modelCatalog标记补齐主连接refresh_models：只在空闲时通过私有扩展调用公开ModelRegistry.refresh({allowNetwork:false,signal})，重新读取模型和认证状态，不重载资源、不新开worker、不自动切换模型或发送草稿。

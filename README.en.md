@@ -46,9 +46,11 @@ Use **Node.js 22.x** and the locked dependencies. The RC baseline was validated 
 | macOS | Apple Silicon M2, macOS 26.5.1 |
 | Windows | Windows 11 x64 on NTFS, running natively without WSL |
 
-Follow the [English installation guide](docs/en/INSTALL.md) to verify the package, create independent data directories, install dependencies and start the server. The [platform validation document](docs/RELEASE_INSTALL_VALIDATION.md) records additional limits; the RC baseline does not certify every platform or later source change.
+Follow the [English installation guide](docs/en/INSTALL.md) to verify the package, reuse your native Pi identity, create instance media/schedule directories, install dependencies and start the server. The [platform validation document](docs/RELEASE_INSTALL_VALIDATION.md) records additional limits; the RC baseline does not certify every platform or later source change.
 
-Open **Settings → Providers and models**, connect your provider, choose a server project directory and create a thread. Media services are configured separately; a fresh installation has no executable media service by default.
+Already using Pi CLI? The installer instructions resolve your actual Pi identity through Pi's public API, respecting `PI_CODING_AGENT_DIR` and native Windows/macOS/Linux home paths. Existing model configuration is shared without copying credentials; see [existing Pi users](docs/en/INSTALL.md#existing-pi-cli-users).
+
+Open **Settings → Providers and models**, check existing configuration or log in if credentials are missing, choose a server project directory and create a thread. Media services are configured separately; a fresh installation has no executable media service by default.
 
 ## Data and access
 

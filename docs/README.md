@@ -10,6 +10,7 @@ English: [project overview](../README.en.md) · [installation](en/INSTALL.md) ·
 
 | 任务 | 文档 |
 |---|---|
+| 给已有 Pi CLI 接入网页，共用模型与身份 | [已有 Pi 接入](PI_CLI.md) |
 | 部署、升级、备份和恢复 | [安装与恢复](INSTALL_RECOVERY.md) · [macOS](MACOS.md) · [Windows](WINDOWS.md) |
 | 检查版本、更新 Pi、备份与重启 | [版本与更新](UPDATES.md) |
 | 版本与系统范围 | [1.0.0-rc.3说明](releases/1.0.0-rc.3.md) · [RC2](releases/1.0.0-rc.2.md) · [首版RC1](releases/1.0.0-rc.1.md) · [平台验证范围](RELEASE_INSTALL_VALIDATION.md) |

@@ -6,7 +6,7 @@
 
 - Node 22.x x64、npm、Git for Windows（含 Git Bash）、ripgrep 在运行进程 PATH 中可用。Pi 使用项目锁定依赖，不需要全局安装。
 - 普通安装使用随包的 Node-API 8 组件，无需 Visual Studio、编译器或安装时下载原生库。仅维护者重建组件时需要指定编译工具和已核对的 Node 输入文件，见 native/README.md。
-- 每个实例使用独立、绝对路径的 Pi 数据目录、媒体目录与预约文件。不要将 Pi 数据目录指向驱动器根目录或整个用户主目录。
+- 普通安装复用当前用户的 Pi CLI 身份，Windows 原生默认通常是 `C:\Users\<用户>\.pi\agent`，不是 AppData；非空 `PI_CODING_AGENT_DIR` 优先。媒体和预约使用实例独立路径。只有需要隔离身份时才另建专用 Pi 目录，不把身份指向驱动器根目录或整个主目录。
 - Git Bash 用于内置 Bash 和手动 `!`/`!!`。Pi 的可选 PowerShell 工具沿用原生设置。创建文件符号链接仍受 Windows 的开发者模式/权限限制；本项目不自动开启开发者模式。
 
 下面使用普通用户目录中的新实例。先将发布包和同名.sha256下载到Downloads；PowerShell执行：
@@ -18,7 +18,7 @@ if ($expected -notmatch '^[a-fA-F0-9]{64}$' -or (Get-FileHash -LiteralPath $arch
 $base = Join-Path $env:USERPROFILE 'Pivane'
 if (Test-Path -LiteralPath $base) { throw '此目录已存在，请按更新流程操作或选择新的base' }
 $app = Join-Path $base 'releases\1.0.0-rc.3'
-@($app, "$base\data\agent", "$base\data\media", "$base\projects\demo", "$base\backups") | ForEach-Object { New-Item -ItemType Directory -Path $_ -Force | Out-Null }
+@($app, "$base\data\media", "$base\projects\demo", "$base\backups") | ForEach-Object { New-Item -ItemType Directory -Path $_ -Force | Out-Null }
 tar.exe -xzf $archive -C $app --strip-components=1
 if ($LASTEXITCODE -ne 0) { throw '解包失败' }
 Set-Location -LiteralPath $app
@@ -28,19 +28,28 @@ npm.cmd ci
 if ($LASTEXITCODE -ne 0) { throw '依赖安装失败' }
 ```
 
-保存实例启动配置，使用正斜杠绝对路径，避免手动替换用户名。这里的PowerShell字符串会展开变量，.env读取器本身不展开变量：
+在原 Pi CLI 的系统用户和配置环境中取得实际身份目录。通过 Pi 公开接口解析，无需猜测用户盘符、PowerShell `$HOME` 或 Git Bash `~`；WSL 中的 Pi 是另一套环境，见[已有 Pi 接入](PI_CLI.md)。命令仅报告路径，不读取认证正文。
+
+```powershell
+$agentDir = & node.exe scripts/pi-agent-dir.cjs
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($agentDir)) { throw '无法确定 Pi 身份目录，请检查 CLI 启动环境' }
+Write-Output "Pi identity: $agentDir"
+```
+
+普通安装复用这个目录；不存在时由 Pi 启动初始化。只有需要独立身份时才将 `$agentDir` 改为 `Join-Path $base 'data\agent'`。保存实例启动配置，使用正斜杠绝对路径，避免手动替换用户名。这里的PowerShell字符串会展开变量，.env读取器本身不展开变量：
 
 ```powershell
 $dataRoot = $base.Replace('\', '/')
+$piIdentity = $agentDir.Replace('\', '/')
 $projectRoots = ([IO.Directory]::GetLogicalDrives() -join ';').Replace('\', '/')
 $config = @"
 HOST=127.0.0.1
 PORT=3001
 PI_WORKSPACE_BASE_URL=http://127.0.0.1:3001
-PI_CODING_AGENT_DIR=$dataRoot/data/agent
-PI_MEDIA_CONFIG_DIR=$dataRoot/data/agent/media-lab
+PI_CODING_AGENT_DIR=$piIdentity
+PI_MEDIA_CONFIG_DIR=$dataRoot/data/media-lab
 PI_MEDIA_DATA_DIR=$dataRoot/data/media
-PI_WEB_DEFERRED_FILE=$dataRoot/data/agent/pi5-deferred-messages.json
+PI_WEB_DEFERRED_FILE=$dataRoot/data/pi5-deferred-messages.json
 PI_PROJECT_ROOTS=$projectRoots
 "@
 [IO.File]::WriteAllText((Join-Path $base 'instance.env'), $config, [Text.UTF8Encoding]::new($false))
@@ -48,17 +57,17 @@ Copy-Item -LiteralPath (Join-Path $base 'instance.env') -Destination (Join-Path 
 npm.cmd start
 ```
 
-打开http://127.0.0.1:3001。以后只需进入该release目录再运行npm.cmd start；首次安装成功后不用每次重装依赖。运行进程已有环境变量优先于.env，启动前核对并清除本进程不需要的旧PI_*、Provider Key及NODE_OPTIONS，不输出其秘密值，也不修改其他应用的系统环境。
+打开http://127.0.0.1:3001。以后只需进入该release目录再运行npm.cmd start；首次安装成功后不用每次重装依赖。运行进程已有环境变量优先于.env，启动前核对实际身份和认证依赖；保留原 Pi 需要的 Provider 环境变量、代理和命令 PATH，清除其他实例的无关覆盖，不输出秘密值，也不修改其他应用的系统环境。打开“供应商与模型”检查复用的配置，缺少可用认证时才登录。
 
 上例默认开放安装时 Windows 可见的各盘符根目录（例如`C:/;D:/`），系统文件权限继续生效；新增盘符时更新此配置并空闲重启。只有用户明确要求缩小范围时才设置`C:/Projects;D:/Work`等指定目录，使用分号分隔。实际目录必须存在，仍经过系统realpath、目录与权限检查。按需要修改instance.env并同步复制到当前代码目录，端口变更需同时修改PORT和PI_WORKSPACE_BASE_URL。上例只监听本机；开放远程访问需要相应监听地址、防火墙及访问验证配置。运行窗口保持打开，先在网页结束任务；需要备份时暂停预约，再在启动窗口按 Ctrl+C 停机。普通关闭与远端/脱离进程不是事务性撤销。
 
 ## 更新、备份与恢复
 
-备份前暂停预约、处理未保存草稿并等所有任务结束，Ctrl+C后确认本实例进程退出。用用户自己的备份工具整批保存data、projects、instance.env、实际服务配置及发布包/校验文件；不要只备份会话JSONL，也不要把备份放进公开下载目录。使用支持NTFS权限的备份方式；恢复后核对Agent目录的受保护DACL。
+备份前暂停预约、处理未保存草稿并等所有任务结束，Ctrl+C后确认本实例进程退出。用用户自己的备份工具整批保存实际 Pi 身份目录、data、projects、instance.env、实际服务配置及发布包/校验文件；共享身份通常在安装目录之外，必须同时停止使用该身份的 CLI 并保存该目录，不能仅备份 BASE/data。不要只备份会话JSONL，也不要把备份放进公开下载目录。使用支持NTFS权限的备份方式；恢复后核对Agent目录的受保护DACL。
 
 升级时把新版本解压到另一个releases子目录，进入新目录执行npm.cmd ci，复制固定的instance.env为.env，再启动新版本。旧版本必须已经停止，新旧版本不能同时打开同一身份或预约文件。数据绝对路径保持不变；不要复制旧node_modules或重建空身份。
 
-恢复时先停机，将data、projects和启动配置整批恢复到原绝对路径，启动前比较文件SHA256，启动后核对会话、模型、搜索、用量与暂停预约。备份时不能确认预约已暂停的，首次恢复须隔离出站网络后先核对队列。详细数据清单和回退要求见[安装与恢复](INSTALL_RECOVERY.md)，其中Bash命令需使用本页的Windows原生等价操作。
+恢复时先停机，将实际 Pi 身份目录、data、projects和启动配置整批恢复到原绝对路径，启动前比较文件SHA256，启动后核对会话、模型、搜索、用量与暂停预约。备份时不能确认预约已暂停的，首次恢复须隔离出站网络后先核对队列。详细数据清单和回退要求见[安装与恢复](INSTALL_RECOVERY.md)，其中Bash命令需使用本页的Windows原生等价操作。
 
 ## 实现边界
 
