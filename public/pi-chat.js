@@ -2129,6 +2129,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <p>${state.session?.assistant?.kind === 'extensions' ? escapeHtml(translateUi('描述你想完成的任务，或粘贴技能、扩展包的链接。我会先检查已有能力，再查找适合的方案。')) : state.session ? escapeHtml(state.cwd) : translateUi("选择项目会话后开始工作")}</p>
             </div>
         `;
+        if (state.session?.assistant?.kind !== 'extensions') window.PiExtensions?.mountExplore(elements.transcript.querySelector('.pi-empty-state'));
         transcriptView.refresh();
     }
 

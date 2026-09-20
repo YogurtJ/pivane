@@ -21,8 +21,7 @@
             needLabel.append(need);
             const examples = node('div', null, { class: 'pi-extension-examples', 'aria-label': t('需求示例') });
             for (const [title, prompt] of [
-                [t('办公文档'), t('帮我查找适合处理中文 Word 和 PDF 的技能，先检查本机已有能力，并比较来源、许可和配置要求。')],
-                [t('制作 PPT'), t('我经常制作中文汇报 PPT，希望支持公司模板和可编辑图表。请先查找合适技能并给出安装方案。')],
+                [t('办公文档'), t('帮我查找适合处理 Word 和 PDF 的技能，先检查本机已有能力，并比较来源和配置要求。检查兼容性后给出安装方案')],
                 [t('分析 Excel'), t('帮我查找整理 Excel 数据、汇总分析和制作图表的技能，先检查兼容性并给出安装方案。')],
                 [t('排查扩展'), t('帮我检查已安装的 Packages 和 Skills，找出缺失依赖或加载问题，先说明发现的问题和修复方案。')]
             ]) examples.append(button(title, () => { need.value = prompt; need.focus(); }));
@@ -75,7 +74,7 @@
             });
             window.addEventListener('pi:extension-assistant', event => open(event.detail));
             return {
-                setEnabled(value) { enabled = value; menu.hidden = !value; },
+                setEnabled(value) { enabled = value; menu.hidden = !value; window.PiExtensions?.setAssistantEnabled(value); },
                 update(session) {
                     const profile = session?.assistant;
                     banner.hidden = profile?.kind !== 'extensions';

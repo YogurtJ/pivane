@@ -12,7 +12,7 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 
 [下载当前 RC](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.4) · [开始使用](docs/USER_GUIDE.md) · [安装与恢复](docs/INSTALL_RECOVERY.md) · [Agent 操作指南](docs/AGENT_GUIDE.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues)
 
-RC4 绑定 Pi 0.86.0，包含原生 system transcript 兼容、会话导入导出修复、AI 会话标题、项目与会话归档、系统提示词查看与编辑、辅助模型统一设置，以及 Pi 受管更新。[查看本版变化](docs/releases/1.0.0-rc.4.md)。
+RC4 绑定 Pi 0.86.1，包含原生 system transcript 兼容、会话导入导出修复、AI 会话标题、项目与会话归档、系统提示词查看与编辑、辅助模型统一设置，以及 Pi 受管更新。[查看本版变化](docs/releases/1.0.0-rc.4.md)。
 
 ## 为什么用 Pivane
 
@@ -62,7 +62,7 @@ RC4 绑定 Pi 0.86.0，包含原生 system transcript 兼容、会话导入导�
 
 ## 部署在你自己的机器上
 
-当前 RC4 已适配并锁定 **Pi 0.86.0** 和 Node.js 22.x；RC3 仍作为历史资产保留，不会被源码修改。RC4 的精确包 SHA256、验收范围和限制见[版本说明](docs/releases/1.0.0-rc.4.md)及 Release 附件。
+当前 RC4 已适配并锁定 **Pi 0.86.1** 和 Node.js 22.x；RC3 仍作为历史资产保留，不会被源码修改。RC4 的精确包 SHA256、验收范围和限制见[版本说明](docs/releases/1.0.0-rc.4.md)及 Release 附件。
 
 | 服务端平台 | 已验收范围 | 安装入口 |
 |---|---|---|
@@ -73,12 +73,12 @@ RC4 绑定 Pi 0.86.0，包含原生 system transcript 兼容、会话导入导�
 需要 Node、npm 和对应平台的 Bash/ripgrep 等基础工具。**无需全局安装 Pi，没有前端构建步骤，普通安装无需现场编译原生组件。** 其他系统版本、Intel Mac 硬件及特殊文件系统的状态详见[验证范围](docs/RELEASE_INSTALL_VALIDATION.md)。
 
 1. 从 [Releases](https://github.com/YogurtJ/pivane/releases) 下载发布包与校验文件，按平台指南准备独立数据目录和启动配置。
-2. 在解压后的代码目录运行 `npm ci`，然后 `npm start`。
+2. 在解压后的代码目录运行 `npm ci`，配置实例后运行 `node scripts/install-service.cjs` 安装[后台常驻与桌面入口](docs/BACKGROUND_SERVICE.md)。前台 `npm start` 仅用于试用或排障。
 3. 打开工作台，在“设置 → 供应商与模型”核对已有 Pi 配置；没有可用认证时再完成 API Key 或 OAuth 登录，选择项目并新建线程。
 
 **已经在用 Pi CLI？** 普通安装会通过 Pi 原生接口取得当前用户的身份目录，直接复用模型、认证和设置。macOS/Linux 与 Windows 使用各自的系统主目录，`PI_CODING_AGENT_DIR` 覆盖优先；无需复制认证文件。具体步骤、Windows/WSL 差异和已装成空身份的切换方法见[已有 Pi 接入](docs/PI_CLI.md)。
 
-普通安装以网页可打开、只读健康检查通过为基础交付，不需要运行开发测试或打包；模型认证和真实请求单独验证，后台常驻按需配置。数据目录独立不代表项目必须放进指定子目录：普通安装默认开放系统用户可访问的目录，Linux/macOS 使用 `/`，Windows 使用各盘符根目录；用户明确需要时才缩小范围。当前网页不能扩大项目范围，配置方法见[目录范围排障](docs/INSTALL_RECOVERY.md#项目选择器找不到目录)。
+普通安装以后台常驻、网页可打开和只读健康检查通过为基础交付，不需要运行开发测试或打包；模型认证和真实请求单独验证。数据目录独立不代表项目必须放进指定子目录：普通安装默认开放系统用户可访问的目录，Linux/macOS 使用 `/`，Windows 使用各盘符根目录；用户明确需要时才缩小范围。当前网页不能扩大项目范围，配置方法见[目录范围排障](docs/INSTALL_RECOVERY.md#项目选择器找不到目录)。
 
 首次安装需要下载锁定依赖；`npm ci` 还会尝试安装可选的 pi-subagents 0.69.0，失败不影响 Pivane 使用，可在“设置 → 模型与能力 → 子 Agent”确认补装。已有版本保留，默认安装不自动启动子任务；跳过与独立身份说明见[默认可选能力](docs/INSTALL_RECOVERY.md#默认可选能力)。图标、代码高亮、公式与图表所需资源随包或随依赖提供。聊天模型与媒体服务需要使用者自行配置，其服务费用由使用者承担。没有默认可执行的媒体服务。
 
@@ -111,7 +111,7 @@ Pivane 面向个人独立部署，不提供多人共用同一实例的账户隔�
 
 Pi 原生会话是对话的唯一事实来源。不要让网页与外部 CLI 同时写同一会话；历史导航不会撤销文件或外部请求的副作用。媒体规划不会直接执行生成，失败或结果不确定的请求不会自动重放。
 
-升级前请结束任务、暂停预约、停机并整批备份。沿用现有 `PI_*` 配置、`pi5-*` 数据文件、API/RPC 和浏览器偏好键，改名不要求迁移已有身份或目录。当前源码在设置提供[版本检查、Pi 受管更新、停机备份与重启](docs/UPDATES.md)。`node server.js` 和 `npm start` 都自动支持网页执行与命令输出反馈，无需更改服务启动命令；Pivane 应用本身仍按发布包手动更新。当前不包含离线模式。
+升级前请结束任务、暂停预约、停机并整批备份。沿用现有 `PI_*` 配置、`pi5-*` 数据文件、API/RPC 和浏览器偏好键，改名不要求迁移已有身份或目录。当前源码在设置提供[版本检查、Pi 受管更新、停机备份与重启](docs/UPDATES.md)。`node server.js` 和 `npm start` 都自动支持网页执行与命令输出反馈，无需更改服务启动命令；Pivane 应用可从版本卡片安装新发布包，自动校验、安装锁定依赖并停机备份后切换；首次启用需加载支持应用更新的启动器。当前不包含离线模式。
 
 ## 开发与许可
 

@@ -124,14 +124,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.modelSnapshot) state.modelSnapshot.preferences.sessionTitles = settings;
     } });
     const usagePanel = window.PiUsage.create({ apiFetch });
+    window.PiExtensions?.connect?.({ apiFetch, currentCwd });
     const nativeSettings = window.PiNativeSettings.create({ apiFetch, currentCwd, toast });
     const updatesPanel = window.PiUpdates.create({ apiFetch });
     const subagentSettings = window.PiSubagentSettings.create({ apiFetch, currentCwd });
     const systemPrompts = window.PiSystemPrompts.create({ apiFetch, currentCwd });
 
+    let settingsOpener;
     function openSettings(tab = state.activeTab) {
+        if (elements.dialog.classList.contains('hidden')) settingsOpener = document.activeElement;
         elements.dialog.classList.remove('hidden');
         switchTab(tab);
+        elements.close.focus({ preventScroll: true });
     }
 
     function closeSettings() {
@@ -143,10 +147,12 @@ document.addEventListener('DOMContentLoaded', () => {
         subagentSettings.close();
         closeEditor();
         elements.dialog.classList.add('hidden');
+        if (settingsOpener?.isConnected && settingsOpener.getClientRects().length) settingsOpener.focus({ preventScroll: true });
         window.dispatchEvent(new CustomEvent('workspace:settings-closed'));
     }
 
     function switchTab(tab) {
+        window.PiExtensions?.setView(tab);
         state.activeTab = tab;
         if (tab === 'media') void subagentSettings.open();
         else subagentSettings.close();
@@ -844,7 +850,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.editorReturnFocus = null;
     }
 
-    elements.toggle.addEventListener('click', () => openSettings());
+    elements.toggle.addEventListener('click', () => openSettings(['extensions', 'packages', 'skills'].includes(state.activeTab) ? 'providers' : state.activeTab));
     window.addEventListener('workspace:open-settings', event => {
         const detail = event.detail || {};
         if (detail.setting) nativeSettings.focusSetting(detail.setting);
@@ -873,6 +879,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const first = controls[0], last = controls.at(-1);
             if (event.shiftKey && (document.activeElement === first || !elements.editor.contains(document.activeElement))) { event.preventDefault(); last?.focus(); }
             else if (!event.shiftKey && (document.activeElement === last || !elements.editor.contains(document.activeElement))) { event.preventDefault(); first?.focus(); }
+        }
+        if (event.key === 'Tab' && elements.editor.classList.contains('hidden') && !elements.dialog.classList.contains('hidden')) {
+            const controls = [...elements.dialog.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], summary')].filter(node => node.getClientRects().length);
+            const first = controls[0], last = controls.at(-1);
+            if (event.shiftKey && (document.activeElement === first || !elements.dialog.contains(document.activeElement))) { event.preventDefault(); last?.focus(); }
+            else if (!event.shiftKey && (document.activeElement === last || !elements.dialog.contains(document.activeElement))) { event.preventDefault(); first?.focus(); }
         }
         if (event.key !== 'Escape') return;
         if (!elements.editor.classList.contains('hidden')) closeEditor();

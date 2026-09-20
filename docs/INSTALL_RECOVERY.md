@@ -76,10 +76,10 @@ cp "$BASE/instance.env" .env
 首次启动使用最小环境，保留当前用户自己的 HOME（没有把 HOME 改成别人的目录）：
 
 ```bash
-env -i PATH="$PATH" HOME="$HOME" USER="$USER" LANG=C.UTF-8 npm start
+node scripts/install-service.cjs
 ```
 
-Node/npm 必须可由 PATH 找到；使用版本管理器时保留其 Node 所在路径。非交互 SSH 和 systemd 通常不加载 nvm 的交互初始化，应在服务中明确 Node 的绝对路径和 PATH；不要因 `node: command not found` 就覆盖机器上已有的 Node。最小环境不会带入原 shell 的 API Key、代理或 GPU 配置；已保存在 Pi 身份中的认证仍可读取，依赖环境变量或外部命令的认证需为此实例提供相同依赖。如网络必须走代理，请明确添加本实例所需代理。之后也应使用同样的启动方式或专用服务用户/环境，非空进程变量优先于 `.env`。前台运行时 Ctrl+C 退出，等命令返回再复制数据；systemd 是可选的后续运维方式。
+Node/npm 必须可由 PATH 找到；使用版本管理器时保留其 Node 所在路径。非交互 SSH 和 systemd 通常不加载 nvm 的交互初始化，应在服务中明确 Node 的绝对路径和 PATH；不要因 `node: command not found` 就覆盖机器上已有的 Node。常驻服务不会自动继承安装终端的 API Key、代理或 GPU 配置；已保存在 Pi 身份中的认证仍可读取，依赖环境变量或外部命令的认证需为此实例提供相同依赖。如网络必须走代理，请明确添加本实例所需代理。之后也应使用同样的启动方式或专用服务用户/环境，非空进程变量优先于 `.env`。前台 `npm start` 仅用于试用和排障。正式安装默认配置[后台常驻](BACKGROUND_SERVICE.md)，Linux 服务器须核对用户服务的 linger 或等价系统服务，确保注销和重启后仍可启动。
 
 另一个终端检查：
 

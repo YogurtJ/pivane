@@ -34,11 +34,11 @@ Run the server on Linux, macOS or Windows, then access it through a browser. Des
 
 The current source supports **Simplified Chinese and English**. It follows the browser's preferred supported language on first use; other languages fall back to English. Choose a language under **Settings → Preferences → Interface language**. The choice is saved for this browser and applies on the next page load, without automatically refreshing or interrupting your current work. Model replies, user content and speech language are independent.
 
-The bilingual interface is included starting with **1.0.0-rc.2**. The older RC archives remain unchanged. **1.0.0-rc.4** is the current release candidate and is pinned to **Pi 0.86.0**; RC3 remains a historical artifact with Pi 0.85.1. See the [RC4 notes](docs/releases/1.0.0-rc.4.md) for the current release scope.
+The bilingual interface is included starting with **1.0.0-rc.2**. The older RC archives remain unchanged. **1.0.0-rc.4** is the current release candidate and is pinned to **Pi 0.86.1**; RC3 remains a historical artifact with Pi 0.85.1. See the [RC4 notes](docs/releases/1.0.0-rc.4.md) for the current release scope.
 
 ## Install
 
-Use **Node.js 22.x** and the locked dependencies. RC4 is pinned to Pi 0.86.0 and is validated against the exact archive and its isolated acceptance report. You do not need a global Pi installation, a frontend build, or a compiler for the packaged native components.
+Use **Node.js 22.x** and the locked dependencies. RC4 is pinned to Pi 0.86.1 and is validated against the exact archive and its isolated acceptance report. You do not need a global Pi installation, a frontend build, or a compiler for the packaged native components.
 
 | Server platform | Validated RC baseline |
 |---|---|
@@ -59,6 +59,8 @@ Pivane is intended for individually deployed personal instances. It does not pro
 Use trusted HTTPS or a private trusted network for remote access, and configure access authentication before exposing the workspace. `localhost` refers to the device running the browser.
 
 Persistent sessions live on the server. Unsent drafts, attachments and temporary side chats are not disk backups. Before updating or backing up, pause scheduled messages, finish tasks, preserve unsaved content and stop the service. Keep the complete Agent, media, project and instance configuration directories together. See [installation and recovery](docs/en/INSTALL.md).
+
+The default installation runs in the background. After configuring the instance, run `node scripts/install-service.cjs`: Linux uses a user systemd service, macOS a LaunchAgent, and Windows a login task. macOS and Windows also receive a desktop browser shortcut. Linux servers need linger or an equivalent system service for startup before login. See [service management and validation limits](docs/BACKGROUND_SERVICE.md). Foreground `npm start` is for trials and troubleshooting.
 
 The current source includes **Settings → Versions and updates** for version checks and official downloads, plus managed Pi updates, data backups and instance restarts. Both `node server.js` and `npm start` support these actions without changing service startup commands. The page displays the actual command output, exit code and final version. Pi is installed and checked in a separate directory before the service stops for backup and activation. Pivane application updates still use release archives. See [the user guide](docs/en/USER_GUIDE.md#versions-and-updates).
 

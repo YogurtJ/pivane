@@ -4,7 +4,7 @@
 
 Use **Node.js 22.x** with npm. The published RC1 baseline was tested with Node 22.23.2 and Pi 0.85.0 on Debian ARM64, Ubuntu 24.04 x86_64, Apple Silicon M2 macOS and Windows 11 x64/NTFS. See [platform validation](../RELEASE_INSTALL_VALIDATION.md) for exact limits. A browser at phone width does not constitute native iPhone/Safari validation.
 
-The examples below install **1.0.0-rc.4**, which includes the Pi 0.86.0 transcript compatibility updates, AI session titles, archives, system prompt editing and managed Pi updates. Use matching archives, checksums and version directories together. The platform table above describes historical baselines; consult the [RC4 release notes](../releases/1.0.0-rc.4.md) and its validation attachment for checks performed on this artifact.
+The examples below install **1.0.0-rc.4**, which includes the Pi 0.86.1 transcript compatibility updates, AI session titles, archives, system prompt editing and managed Pi updates. Use matching archives, checksums and version directories together. The platform table above describes historical baselines; consult the [RC4 release notes](../releases/1.0.0-rc.4.md) and its validation attachment for checks performed on this artifact.
 
 ## Prerequisites
 
@@ -89,12 +89,12 @@ PI_PROJECT_ROOTS=/
 EOF
 chmod 600 "$BASE/instance.env"
 cp "$BASE/instance.env" .env
-env -i PATH="$PATH" HOME="$HOME" USER="$USER" LANG=en_US.UTF-8 npm start
+node scripts/install-service.cjs
 ```
 
 The minimal environment retains the identity explicitly selected in the configuration but does not inherit shell provider keys or proxy variables. Preserve your own HOME. If authentication uses environment values or external commands, provide those dependencies to this instance, or save credentials through the native Web login. If your network requires a proxy, explicitly add the required proxy configuration for this instance. With a Node version manager, ensure the chosen Node 22 is actually in PATH; noninteractive SSH and service managers may not load shell startup scripts.
 
-Open **http://127.0.0.1:3001**. Keep the terminal running; Ctrl+C stops the service. On later starts, enter the same release directory and use the same startup environment; `npm ci` is not required every time.
+Open **http://127.0.0.1:3001**. The installation terminal can close. A user service starts Pivane at login; on Linux servers, configure user linger or an equivalent system service for boot-time startup. macOS also gets a desktop browser shortcut. See [background service management](../BACKGROUND_SERVICE.md). Foreground `npm start` is reserved for trials and troubleshooting.
 
 macOS's privacy controls and filesystem permissions still apply. `/tmp` resolving to `/private/tmp` is normal. Finder Trash is not integrated: session deletion tries `gio trash`, then permanently deletes if unavailable. The confirmation and result explain which behavior applies.
 
@@ -140,10 +140,10 @@ PI_PROJECT_ROOTS=$projectRoots
 "@
 [IO.File]::WriteAllText((Join-Path $base 'instance.env'), $config, [Text.UTF8Encoding]::new($false))
 Copy-Item -LiteralPath (Join-Path $base 'instance.env') -Destination (Join-Path $app '.env')
-npm.cmd start
+node.exe scripts/install-service.cjs
 ```
 
-Open **http://127.0.0.1:3001** and keep the window running. Later, enter the release directory and run `npm.cmd start`. Existing process environment variables override `.env`; retain the intended CLI identity and its required credential/proxy/command environment, and clear unrelated instance overrides without printing secrets or changing other applications' system settings. For an explicitly isolated identity, set `$agentDir = Join-Path $base 'data\agent'` before calculating `$piIdentity`.
+Open **http://127.0.0.1:3001** or the Pivane desktop shortcut. The installation terminal can close; a current-user scheduled task starts Pivane at login. See [service lifecycle and platform limitations](../BACKGROUND_SERVICE.md). Existing process environment variables override `.env`; retain the intended CLI identity and its required credential/proxy/command environment, and clear unrelated instance overrides without printing secrets or changing other applications' system settings. For an explicitly isolated identity, set `$agentDir = Join-Path $base 'data\agent'` before calculating `$piIdentity`.
 
 The Windows example includes all drive roots visible at installation, such as `C:/;D:/`. Update the configuration and restart when adding drives. To restrict the scope on request, use **semicolon-separated** paths such as `C:/Projects;D:/Work`. The directories must exist. Use NTFS-aware backups and verify the restored Agent directory's protected DACL. See the detailed [Windows guide](../WINDOWS.md) for filesystem and platform limits.
 

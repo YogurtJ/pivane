@@ -6,16 +6,17 @@ const { fork } = require('node:child_process');
 const { randomUUID, createHash } = require('node:crypto');
 const { privateDir, atomicJson, readSafe, backupRoots, recordInstallation, inside } = require('./pi-maintenance-files');
 const { stagePi, exactVersion } = require('./pi-update-installer');
+const { stageApplication, validRelease } = require('./pi-application-installer');
 const { outputRedactor, appendOutput } = require('./pi-update-output');
 
 class ManagedLauncher {
-    constructor({ root, env = process.env, stage = stagePi, backup = backupRoots, forkServer = fork } = {}) {
+    constructor({ root, env = process.env, stage = stagePi, stageApp = stageApplication, backup = backupRoots, forkServer = fork } = {}) {
         this.root = fs.realpathSync.native(root);
         this.directory = privateDir(path.join(this.root, '.pivane-runtime'));
         this.stateFile = path.join(this.directory, 'state.json');
         this.env = { ...env };
         this.redact = outputRedactor(this.env);
-        this.stage = stage; this.backup = backup; this.forkServer = forkServer;
+        this.stage = stage; this.stageApp = stageApp; this.backup = backup; this.forkServer = forkServer;
         this.child = null; this.operation = null; this.closed = false;
         this.nonce = randomUUID();
         this.state = { version: 1, active: null, previous: null, job: null };
@@ -47,6 +48,7 @@ class ManagedLauncher {
     save() { atomicJson(this.stateFile, this.state); this.send({ type: 'maintenance-status', status: this.status() }); }
     status() {
         return { supported: true, updateSupported: ['22', '24'].includes(process.versions.node.split('.')[0]) && !this.env.PI_WEB_CLI && !this.env.PI_PACKAGE_DIR,
+            appUpdateSupported: ['22', '24'].includes(process.versions.node.split('.')[0]) && !this.env.PI_WEB_CLI && !this.env.PI_PACKAGE_DIR,
             activeRelease: this.state.active, previousRelease: this.state.previous, busy: Boolean(this.operation), job: this.state.job,
             storage: this.directory, backupScope: 'agent-sessions-media-config-history', nodeVersion: process.versions.node };
     }
@@ -105,7 +107,7 @@ class ManagedLauncher {
     }
     execute(message) {
         if (this.operation || this.closed) { this.send({ type: 'maintenance-rejected', id: message.id }); return Promise.resolve(); }
-        if (!['update', 'backup', 'restart'].includes(message.action) || !/^[a-f0-9-]{36}$/.test(message.id || '') || message.action === 'update' && (!exactVersion(message.version) || !this.status().updateSupported)) {
+        if (!['update', 'application', 'backup', 'restart'].includes(message.action) || message.action === 'application' && (!validRelease(message.release) || !this.status().appUpdateSupported) || !/^[a-f0-9-]{36}$/.test(message.id || '') || message.action === 'update' && (!exactVersion(message.version) || !this.status().updateSupported)) {
             this.send({ type: 'maintenance-rejected', id: message.id }); return Promise.resolve();
         }
         const controller = new AbortController(); this.controller = controller;
@@ -115,16 +117,16 @@ class ManagedLauncher {
         this.state.job = job;
         // Reserve before awaiting installation, shutdown or backup work.
         this.operation = Promise.resolve().then(async () => {
-            job.fromVersion = JSON.parse(readSafe(require('node:fs').realpathSync.native(path.join(this.releasePath(previous), 'node_modules/@earendil-works/pi-coding-agent/package.json')))).version;
+            job.fromVersion = message.action === 'application' ? JSON.parse(readSafe(path.join(this.releasePath(previous), 'package.json'))).version : JSON.parse(readSafe(require('node:fs').realpathSync.native(path.join(this.releasePath(previous), 'node_modules/@earendil-works/pi-coding-agent/package.json')))).version;
             this.log(job, 'system', message.action === 'update' ? `Updating Pivane's Pi: ${job.fromVersion} -> ${message.version}` : `Pivane operation: ${message.action}`);
             this.save(); this.send({ type: 'maintenance-accepted', id: message.id });
             let next = previous;
-            if (message.action === 'update') {
+            if (message.action === 'update' || message.action === 'application') {
                 job.phase = 'installing'; this.save();
                 const releases = privateDir(path.join(this.directory, 'releases'));
                 const destination = path.join(releases, message.id);
                 if (fs.existsSync(destination)) throw new Error('Release directory already exists');
-                await this.stage({ root: this.releasePath(previous), directory: destination, version: message.version, env: this.env, signal: controller.signal,
+                await (message.action === 'application' ? this.stageApp : this.stage)({ root: this.releasePath(previous), directory: destination, version: message.version, release: message.release, env: this.env, signal: controller.signal,
                     progress: phase => { job.phase = phase; this.save(); },
                     onOutput: (stream, text) => this.log(job, stream, text) });
                 next = message.id;
@@ -149,8 +151,8 @@ class ManagedLauncher {
             this.state.previous = next === previous ? this.state.previous : previous;
             this.state.active = next;
             job.phase = 'succeeded'; job.finishedAt = new Date().toISOString(); job.exitCode = 0;
-            job.installedVersion = message.action === 'update' ? message.version : job.fromVersion;
-            this.log(job, 'system', `Completed. Running Pi ${job.installedVersion}.`); this.save();
+            job.installedVersion = message.action === 'application' ? message.release.version : message.action === 'update' ? message.version : job.fromVersion;
+            this.log(job, 'system', `Completed. Running ${message.action === 'application' ? 'Pivane' : 'Pi'} ${job.installedVersion}.`); this.save();
         }).catch(async error => {
             const failedPhase = job.phase;
             job.exitCode = Number.isInteger(error?.exitCode) ? error.exitCode : null;

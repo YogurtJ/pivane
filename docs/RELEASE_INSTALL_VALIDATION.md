@@ -4,7 +4,7 @@
 
 ## 当前 RC4
 
-[1.0.0-rc.4](releases/1.0.0-rc.4.md) 锁定 Pi 0.86.0。发布验收以该版本的精确归档 SHA256 和 validation.json 为准；Linux ARM64、Node 22.23.2 的隔离安装与浏览器/原生恢复结果不得沿用 RC3 的历史结论。macOS、Windows 和 Linux x86_64 若未在 RC4 包重跑，仍只标为历史基线。
+[1.0.0-rc.4](releases/1.0.0-rc.4.md) 锁定 Pi 0.86.1。发布验收以该版本的精确归档 SHA256 和 validation.json 为准；Linux ARM64、Node 22.23.2 的隔离安装与浏览器/原生恢复结果不得沿用 RC3 的历史结论。macOS、Windows 和 Linux x86_64 若未在 RC4 包重跑，仍只标为历史基线。
 
 ## 已验证基线
 
@@ -18,7 +18,7 @@
 
 Node全量无跳过。恢复文件逐项哈希比较；浏览器覆盖桌面与手机宽度、pageerror和实际子项宽度。测试使用独立身份和合成服务，不继承维护者的私人配置。使用者反馈的真实聊天可用性不代表所有供应商已测试。
 
-上述三端全量之后的Windows文件链接展示小调整已通过专项浏览器与恢复后运行检查。RC4 的 Pi 0.86.0 协议兼容、会话 system transcript 导入导出和完整隔离验收必须绑定 RC4 的 artifactSha256，不能复用 RC3 或 RC1 结论。可复跑的隔离入口见[发布流程](development/RELEASING.md)。
+上述三端全量之后的Windows文件链接展示小调整已通过专项浏览器与恢复后运行检查。RC4 的 Pi 0.86.1 协议兼容、会话 system transcript 导入导出和完整隔离验收必须绑定 RC4 的 artifactSha256，不能复用 RC3 或 RC1 结论。可复跑的隔离入口见[发布流程](development/RELEASING.md)。
 
 ## 尚未验收
 

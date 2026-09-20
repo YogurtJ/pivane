@@ -18,7 +18,7 @@ async function run(browser, base, width, language) {
     const page = await context.newPage(); page.setDefaultTimeout(10000);
     const errors = [], writes = [], rpc = [];
     let mode = 'success', hold = null, releaseResponse, arrivals = 0;
-    let maintenanceState = { supported: true, updateSupported: true, busy: false, generation: 'fixture-before', storage: '/fixture/private-maintenance', job: null };
+    let maintenanceState = { supported: true, appUpdateSupported: true, updateSupported: true, busy: false, generation: 'fixture-before', storage: '/fixture/private-maintenance', job: null };
     let ticketCounter = 0, lastTicket, maintenanceHold, releaseMaintenance, uncertainExecution = false;
     const executed = [];
     let noticeState = { enabled: false, available: false, eligible: false, idle: true, currentVersion: '0.85.0', version: '0.86.0', nextCheckAt: Date.now() + 86400000 };
@@ -103,7 +103,13 @@ async function run(browser, base, width, language) {
     await page.locator('#updates-pivane [data-state="available"]').waitFor();
     assert.equal(await page.locator('#updates-pivane a[href$=".tar.gz"]').count(), 1);
     assert.ok((await page.locator('#updates-pi').innerText()).includes(english ? 'managed updates' : '受管更新'));
-    await page.locator('#updates-pivane button').click();
+    await page.locator('#updates-install-pivane').click();
+    await page.locator('#maintenance-dialog[open]').waitFor();
+    assert.equal(lastTicket.action, 'application');
+    assert.ok((await page.locator('#maintenance-dialog-title').textContent()).includes('Pivane'));
+    await page.locator('#maintenance-dialog .updates-links button').first().click();
+    assert.equal(executed.length, 0);
+    await page.locator('#updates-pivane button').last().click();
     assert.equal(await page.locator('#updates-guide').evaluate(e => e.open), true);
     const overflow = async () => {
         const metrics = await page.evaluate(() => [...document.querySelectorAll('.workspace-settings-dialog, .workspace-settings-body, .workspace-settings-content, .workspace-settings-nav, #settings-updates-panel, #settings-updates-panel *')].filter(e => e.clientWidth).map(e => ({

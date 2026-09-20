@@ -193,6 +193,8 @@ let legacy = false;
     await row.getByRole('button', { name: '恢复继承' }).click();
     await row.getByRole('button', { name: '停用 review', exact: true }).waitFor();
     await widthCheck(page); await page.screenshot({ path: `/tmp/pi-native-skills-${width}.png` });
+    await page.locator('#workspace-settings-close').click();
+    await page.locator('#workspace-settings-toggle').click();
     await page.locator('[data-settings-tab="providers"]').click();
     await page.locator('.settings-model-group > summary').click();
     assert.equal(await page.locator('[data-action="advanced"]').count(), 0);

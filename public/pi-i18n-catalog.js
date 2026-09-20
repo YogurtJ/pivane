@@ -7991,7 +7991,7 @@
     ,['制作 PPT', 'Presentations']
     ,['分析 Excel', 'Spreadsheets']
     ,['排查扩展', 'Troubleshoot']
-    ,['帮我查找适合处理中文 Word 和 PDF 的技能，先检查本机已有能力，并比较来源、许可和配置要求。', 'Find skills for working with Word and PDF documents, including Chinese text. Check existing capabilities first and compare sources, licenses and setup requirements.']
+    ,['帮我查找适合处理 Word 和 PDF 的技能，先检查本机已有能力，并比较来源和配置要求。检查兼容性后给出安装方案', 'Find skills for working with Word and PDF documents. Check existing capabilities on this machine first, and compare sources and setup requirements. Check compatibility, then propose an installation plan.']
     ,['我经常制作中文汇报 PPT，希望支持公司模板和可编辑图表。请先查找合适技能并给出安装方案。', 'I often create presentations with Chinese text and need company templates and editable charts. Find suitable skills and propose an installation plan first.']
     ,['帮我查找整理 Excel 数据、汇总分析和制作图表的技能，先检查兼容性并给出安装方案。', 'Find skills for organizing Excel data, analyzing summaries and creating charts. Check compatibility and propose an installation plan first.']
     ,['帮我检查已安装的 Packages 和 Skills，找出缺失依赖或加载问题，先说明发现的问题和修复方案。', 'Check installed packages and skills for missing dependencies or loading problems. Explain your findings and proposed fixes first.']
@@ -8176,6 +8176,14 @@
     ,['关闭提醒', 'Dismiss reminder']
     ,['提醒设置保存失败，请重试。', 'Could not save update reminder settings. Please retry.']
     ,['尚未手动检查。自动检查仅查询 Pi 正式版。', 'No manual check yet. Automatic checks only query stable Pi releases.']
+    ,['更新 Pivane', 'Update Pivane']
+    ,['更新 Pivane：{0} → {1}', 'Update Pivane: {0} → {1}']
+    ,['Pivane 版本：{0} → {1}', 'Pivane version: {0} → {1}']
+    ,['安装与维护', 'Installation and maintenance']
+    ,['正在下载并校验 Pivane…', 'Downloading and verifying Pivane…']
+    ,['手动更新与故障帮助', 'Manual update and troubleshooting']
+    ,['自动下载、校验和备份后安装，失败时尝试启动旧版。', 'Download, verify, back up and install automatically. If startup fails, try starting the previous version.']
+    ,['当前启动器不支持 Pivane 应用更新，请先加载新版启动器', 'This launcher does not support application updates. Load the new launcher first.']
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

@@ -41,14 +41,15 @@ class MaintenanceClient {
     assertAvailable(action, idle) {
         if (!this.managed || !this.state.supported) throw fail('请通过 npm start 启用独立维护启动器', 503);
         if (this.locked || this.state.busy || this.active || !idle()) throw fail('实例仍有任务、侧聊、临时会话、配置或请求正在处理，请完成后再试');
+        if (action === 'application' && !this.state.appUpdateSupported) throw fail('当前启动器不支持 Pivane 应用更新，请先加载新版启动器');
         if (action === 'update' && !this.state.updateSupported) throw fail('Pi 更新需要 Node 22 或 24 和默认的本地 Pi 安装');
     }
-    review({ action, version }, idle) {
-        if (!['update', 'backup', 'restart'].includes(action)) throw fail('维护操作无效', 400);
+    review({ action, version, release }, idle) {
+        if (!['update', 'application', 'backup', 'restart'].includes(action)) throw fail('维护操作无效', 400);
         this.assertAvailable(action, idle);
         for (const [id, ticket] of this.tickets) if (ticket.expiresAt <= Date.now()) this.tickets.delete(id);
         if (this.tickets.size >= 16) throw fail('待确认维护操作过多，请稍后再试', 429);
-        const ticket = { id: randomUUID(), action, version: version || null, generation: this.generation, expiresAt: Date.now() + 10 * 60 * 1000 };
+        const ticket = { id: randomUUID(), action, version: version || null, ...(release ? { release: { ...release } } : {}), generation: this.generation, expiresAt: Date.now() + 10 * 60 * 1000 };
         this.tickets.set(ticket.id, ticket); return { ...ticket, storage: this.state.storage, backupScope: this.state.backupScope };
     }
     execute(input, { idle, pause }) {
@@ -60,7 +61,7 @@ class MaintenanceClient {
         try { pause(); } catch { this.locked = false; throw fail('预约暂停失败，尚未提交维护操作'); }
         const id = ticket.id; this.pendingId = id;
         this.state = { ...this.state, busy: true, job: { id, action: ticket.action, targetVersion: ticket.version, phase: 'preparing' } };
-        try { this.send({ type: 'maintenance-request', id, action: ticket.action, version: ticket.version }); }
+        try { this.send({ type: 'maintenance-request', id, action: ticket.action, version: ticket.version, ...(ticket.release ? { release: ticket.release } : {}) }); }
         catch { throw fail('维护提交结果未知，请查看状态，不要重复提交', 503); }
         return { id, accepted: true };
     }

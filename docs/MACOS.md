@@ -67,16 +67,16 @@ PI_PROJECT_ROOTS=/
 EOF
 chmod 600 "$BASE/instance.env"
 cp "$BASE/instance.env" .env
-env -i PATH="$PATH" HOME="$HOME" USER="$USER" LANG=en_US.UTF-8 npm start
+node scripts/install-service.cjs
 ```
 
-最小启动环境保留配置中明确选定的 Pi 身份，但不会继承终端中的 Provider Key、代理或 NODE_OPTIONS。若认证依赖环境变量或外部命令，需向本实例显式提供相同依赖，或通过网页原生登录保存认证；不要输出 Key。以后在同一release目录使用相同启动方式，关闭终端后再启动不需要重复npm ci。
+常驻服务不会自动继承安装终端中的 Provider Key、代理或 NODE_OPTIONS。若认证依赖环境变量或外部命令，需向本实例显式提供相同依赖，或通过网页原生登录保存认证；不要输出 Key。以后登录后自动启动，不需要重复 npm ci。
 
-打开`http://127.0.0.1:3001`。保持终端运行；Ctrl+C停机。启动目录必须是对应release目录。端口已被占用时同时修改PORT和PI_WORKSPACE_BASE_URL。
+打开`http://127.0.0.1:3001`或桌面 Pivane 入口，安装终端可以关闭；以后登录时自动启动。端口已被占用时先核对现有服务，不重复启动。
 
 另一个终端先用 `curl -fsS http://127.0.0.1:3001/api/access/status` 核对访问状态；需要认证时先在浏览器完成认证，再检查 Pi 状态。没有访问验证阻挡时，可用 `curl -fsS http://127.0.0.1:3001/api/pi/status` 检查 `ok=true`、Pi 版本与实际 `projectRoots`。网页可打开、只读状态正常即完成基础启动；普通安装无需运行全量测试、浏览器回归或打包。模型登录与真实请求另行验证。
 
-关闭终端后继续运行属于可选常驻配置，当前指南没有提供已验收的 LaunchAgent 安装器。自行配置时使用 Node 绝对路径执行 `scripts/start-managed.cjs`，显式设置 PATH、HOME 和 WorkingDirectory，等待 HTTP 就绪，并记录日志与停止/卸载方式；不依赖交互终端的 nvm 初始化，也不以 launchd 的 running 状态代替健康检查。
+普通安装默认生成当前用户的 LaunchAgent 和桌面 `.webloc`。具体启动、停止、卸载和本次原生验收限制见[后台常驻](BACKGROUND_SERVICE.md)。前台运行只用于明确选择的试用和排障；不以 launchd 的 running 状态代替 HTTP 健康检查。
 
 已有 Pi 身份时先核对“供应商与模型”中的原生配置；只有缺少可用认证时才需要登录。Pi配置、Packages、Skills可先管理全局范围。默认浏览位置优先用户主目录，不预填开发者目录。`PI_PROJECT_ROOTS=/`允许选择该系统用户可访问的服务器目录；也可改为主目录或多个冒号分隔的范围。系统权限与macOS隐私控制继续生效，目录白名单不是工具沙箱。
 
@@ -86,7 +86,7 @@ env -i PATH="$PATH" HOME="$HOME" USER="$USER" LANG=en_US.UTF-8 npm start
 
 ## 更新、备份、恢复
 
-通用数据范围与同路径恢复流程见[INSTALL_RECOVERY.md](INSTALL_RECOVERY.md)。macOS默认不安装systemd或launchd服务：先暂停预约，等待线程/工具/设置/媒体操作空闲，再在启动终端Ctrl+C；确认本实例停止后整批保存Agent目录、媒体配置/文件/历史、项目和启动配置。用`tar -czf`保存完整目录，保留原路径恢复；默认共享的 Pi 目录通常在 BASE 之外，必须按[共享身份备份](PI_CLI.md#备份和恢复共享身份)另存完整身份，并同时停止使用该身份的 CLI，不能只保存实例 data。跨路径恢复不能批量替换JSONL字符串冒充完整迁移。
+通用数据范围与同路径恢复流程见[INSTALL_RECOVERY.md](INSTALL_RECOVERY.md)。常驻实例按[后台常驻](BACKGROUND_SERVICE.md)停止 LaunchAgent：先暂停预约，等待线程/工具/设置/媒体操作空闲，再从独立终端正常停机；确认本实例停止后整批保存Agent目录、媒体配置/文件/历史、项目和启动配置。用`tar -czf`保存完整目录，保留原路径恢复；默认共享的 Pi 目录通常在 BASE 之外，必须按[共享身份备份](PI_CLI.md#备份和恢复共享身份)另存完整身份，并同时停止使用该身份的 CLI，不能只保存实例 data。跨路径恢复不能批量替换JSONL字符串冒充完整迁移。
 
 更新时解压到新的release目录，`npm ci`，复制本实例的启动配置，并继续指向同一数据与项目目录。保持native源码、二进制、manifest一起更新；旧代码目录可留作回退。不要清空身份或把测试合成Provider复制进正式身份。重启后核对模型认证、原生会话、文件全文、跨线程搜索、用量以及预约状态；结果不确定的生成任务不要自动重试。
 

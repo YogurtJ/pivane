@@ -30,6 +30,10 @@ PiRpcClient使用StringDecoder和严格LF分帧，不能使用readline分割U+20
 
 进程退出由pi-process-shutdown保持SIGINT/SIGTERM监听并去重异步清理，避免Pi依赖的signal-exit提前重发信号；清理失败不返回成功退出码。复合操作await前预占互斥，超时不等于终止；模型刷新、导航、Shell、停止、压缩、资源重载、队列、预约、配置和导出都计入各自活动与回收边界。部署不得停止承载当前维护会话的进程。
 
+## 默认常驻安装
+
+`scripts/install-service.cjs` 显式注册当前用户的 systemd unit、LaunchAgent 或登录计划任务，固定原安装路径、Node 与 PATH，并生成 macOS/Windows 网页快捷入口。它不捕获整个终端环境，不修改真实身份或网络设置，不替换已有服务。生成的 runner 使用原 managed launcher；Windows 通过私有目录 stop-request 文件调用统一异步停机，不使用 taskkill。安装收据区分注册与 HTTP 就绪；跨平台模板测试不等同原生验收。生命周期见[后台常驻](../BACKGROUND_SERVICE.md)。
+
 ## 原生会话与工作流
 
 PiSessionStore通过公开SessionManager列举、新建、命名与删除。空会话先独占创建文件，再SessionManager.open写有效header，避免原生延迟落盘导致不可见。
@@ -89,6 +93,8 @@ Markdown经marked与DOMPurify。公式由本地KaTeX的独立清理输出生成�
 中英文显示由pi-i18n及成对文案词典管理，静态HTML只翻译显式绑定节点，动态文案在源码展示位置调用。页面打开时确定语言，保存选择在下一次页面打开时生效，不自动刷新或重建编辑中的界面；不扫描翻译聊天、文件或模型参数。已知服务端标签只在显示边界翻译，REST/RPC和原生存储保持原文。详细范围见[界面语言](../I18N.md)。
 
 ## 版本查询与受管维护
+
+Pivane 应用更新复用维护 IPC 和一次性票据，以 application 动作绑定服务器选择的版本及 SHA256。pi-application-installer 从固定 GitHub 来源下载有界归档，严格解析普通 tar 文件/目录并核对内部清单，再在新目录执行 npm ci 和隔离探针。启动器沿用既有停机、备份、启动及失败回退流程；当前不替换原安装目录的 launcher，不自动恢复数据，不提供安装排队。应用包信任来自官方 HTTPS 与校验和，未实现独立签名。
 
 pi-update-service按需查询固定 GitHub/npm 来源，5 分钟内存缓存独立于执行。pi-update-notifications将Pi正式版自动检查的24小时成功期限、1–24小时失败退避和提醒选择放入现有实例偏好，原子读改写保留无关字段；只在可见网页请求时检查，不增加服务端定时任务。await前预占并发请求及持久退避期限；提醒领取同步检查版本和维护空闲条件，同版本仅一次，可延后3天或忽略，迟到查询不覆盖用户开关。前端提醒与设置按钮只进入现有确认流程，不能自动提交维护。受管维护由 start-managed 启动器持有服务进程和安装目录锁，通过私有 IPC/启动 nonce 接受服务端已确认的动作；维护票据绑定动作、Pi 精确版本与服务代次，await 前预占互斥。普通 node server.js 与 npm start 通过同一启动入口自动接入，显式 --direct 仅用于开发。命令 stdout/stderr 按完整行去控制码与凭据后，经 IPC 回传有界日志尾部；阶段及终态保存输出和退出码，网页使用纯文本展示并在完成后刷新版本。
 

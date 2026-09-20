@@ -5,7 +5,7 @@
         for (const [key, value] of Object.entries(attrs)) e.setAttribute(key, value);
         return e;
     };
-    const phases = { preparing: '正在准备维护…', installing: '正在安装独立的 Pi 依赖…', verifying: '正在验证 SDK、RPC 和会话格式…',
+    const phases = { downloading: '正在下载并校验 Pivane…', preparing: '正在准备维护…', installing: '正在安装独立的 Pi 依赖…', verifying: '正在验证 SDK、RPC 和会话格式…',
         stopping: '正在等待服务安全退出…', 'backing-up': '正在备份数据…', starting: '正在启动服务…', succeeded: '维护操作已完成', failed: '维护操作失败', interrupted: '维护操作中断，未自动重试' };
     function create({ apiFetch }) {
         const element = node('section', undefined, { class: 'updates-maintenance', id: 'updates-maintenance' });
@@ -20,9 +20,9 @@
         const buttons = [];
         let lastFinished;
         let opened = false, epoch = 0, request = 0, timer, state, reviewing = false, pendingId = null, pendingGeneration;
-        element.append(node('h4', t('更新 Pi Coding Agent')), node('p', t('点击更新即可在服务器执行，命令输出和结果会显示在下方。')), actions, status, result, consoleBox, feedback, dialog);
+        element.append(node('h4', t('安装与维护')), node('p', t('点击更新即可在服务器执行，命令输出和结果会显示在下方。')), actions, status, result, consoleBox, feedback, dialog);
         const ready = () => opened && element.isConnected;
-        const updateButtons = () => buttons.forEach(([button, action]) => { button.disabled = reviewing || Boolean(pendingId) || !state?.supported || state.busy || action === 'update' && !state.updateSupported; });
+        const updateButtons = () => buttons.forEach(([button, action]) => { button.disabled = reviewing || Boolean(pendingId) || !state?.supported || state.busy || action === 'application' && !state.appUpdateSupported || action === 'update' && !state.updateSupported; });
         for (const [action, text] of [['update', '更新 Pi'], ['backup', '仅备份'], ['restart', '重启实例']]) {
             const button = node('button', t(text), { type: 'button', class: action === 'update' ? 'settings-primary-button' : 'settings-secondary-button', id: 'maintenance-' + action });
             button.disabled = true; button.addEventListener('click', () => void review(action)); actions.append(button); buttons.push([button, action]);
@@ -47,7 +47,7 @@
                     const text = (data.job.outputTruncated ? t('较早的输出已截断。') + '\n' : '') + (data.job.output || t('等待命令输出…'));
                     if (output.textContent !== text) { output.textContent = text; if (follow) output.scrollTop = output.scrollHeight; }
                     const parts = [];
-                    if (data.job.fromVersion && data.job.installedVersion) parts.push(t('Pi 版本：{0} → {1}', data.job.fromVersion, data.job.installedVersion));
+                    if (data.job.fromVersion && data.job.installedVersion) parts.push(t(data.job.action === 'application' ? 'Pivane 版本：{0} → {1}' : 'Pi 版本：{0} → {1}', data.job.fromVersion, data.job.installedVersion));
                     if (Number.isInteger(data.job.exitCode)) parts.push(t('退出码：{0}', data.job.exitCode));
                     result.textContent = parts.join(' · ');
                     if (!data.busy && ['succeeded', 'failed', 'interrupted'].includes(data.job.phase) && lastFinished !== data.job.id) {
@@ -67,15 +67,15 @@
                 if (ready() && n === epoch && r === request) { clearTimeout(timer); timer = setTimeout(() => void read(), pendingId || state?.busy ? 1500 : 5000); }
             }
         }
-        async function review(action) {
+        async function review(action, channel) {
             if (reviewing || pendingId) return;
             reviewing = true; updateButtons(); const n = epoch;
             feedback.textContent = t('正在检查维护条件…');
             try {
-                const ticket = await apiFetch('/api/pi/settings/updates/review', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) });
+                const ticket = await apiFetch('/api/pi/settings/updates/review', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...(channel ? { channel } : {}) }) });
                 if (!ready() || n !== epoch) return;
                 feedback.textContent = '';
-                dialog.replaceChildren(node('h3', action === 'update' ? t('更新 Pi：{0} → {1}', ticket.currentVersion, ticket.version) : t(action === 'backup' ? '确认备份并重启' : '确认重启实例'), { id: 'maintenance-dialog-title' }));
+                dialog.replaceChildren(node('h3', action === 'application' ? t('更新 Pivane：{0} → {1}', ticket.currentVersion, ticket.version) : action === 'update' ? t('更新 Pi：{0} → {1}', ticket.currentVersion, ticket.version) : t(action === 'backup' ? '确认备份并重启' : '确认重启实例'), { id: 'maintenance-dialog-title' }));
                 dialog.append(node('p', t('操作会暂时断开所有设备连接，并暂停预约。请先完成任务，保存草稿、附件和临时对话。')));
                 if (action !== 'restart') dialog.append(node('p', t('备份包含 Pi 身份、会话、配置及媒体记录和文件；不包含项目源码、外置 Package 或符号链接指向的内容。备份保存在部署机器的私有目录。')), node('p', t('备份位置：{0}', ticket.storage)));
                 if (action === 'update') dialog.append(node('p', t('自动验证只覆盖启动、SDK、RPC 和会话格式，第三方扩展与真实供应商仍需更新后核对。旧依赖目录会保留。')));
@@ -108,6 +108,7 @@
         }
         return { element,
             open() { if (opened) return; opened = true; epoch++; void read(); },
+            async reviewApplication(channel) { await read(); if (ready()) { if (!state?.appUpdateSupported) { feedback.textContent = t('当前启动器不支持 Pivane 应用更新，请先加载新版启动器'); return; } await review('application', channel); } },
             async reviewUpdate() { await read(); if (ready() && state?.supported && state.updateSupported && !state.busy) await review('update'); },
             close() { opened = false; epoch++; reviewing = false; clearTimeout(timer); if (dialog.open) dialog.close(); }
         };

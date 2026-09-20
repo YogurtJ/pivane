@@ -27,7 +27,7 @@
         const active = n => n === epoch && panel.classList.contains('active') && !document.getElementById('workspace-settings-dialog').classList.contains('hidden');
         function guide(data) {
             const details = node('details', undefined, { class: 'updates-guide', id: 'updates-guide' });
-            details.append(node('summary', translateUi('如何更新 Pivane 和 Pi')));
+            details.append(node('summary', translateUi('手动更新与故障帮助')));
             details.append(node('p', translateUi('以下为手动更新步骤，也适用于更新 Pivane 应用本身。')));
             const steps = node('ol');
             for (const text of [
@@ -81,6 +81,13 @@
                     if (!data.dependencyMatches) card.append(node('p', translateUi('实际 Pi 版本与发布包声明不一致，请按锁定依赖核对安装。'), { class: 'updates-mismatch' }));
                 }
                 const links = node('div', undefined, { class: 'updates-links' });
+                if (key === 'pivane' && info.status === 'available' && info.downloadUrl && info.checksumUrl) {
+                    const install = node('button', translateUi('更新 Pivane'), { type: 'button', id: 'updates-install-pivane', class: 'settings-primary-button' });
+                    install.disabled = busy;
+                    install.addEventListener('click', () => void maintenance.reviewApplication(data.channel));
+                    links.append(install);
+                    card.append(node('p', translateUi('自动下载、校验和备份后安装，失败时尝试启动旧版。'), { class: 'settings-help' }));
+                }
                 links.append(link(translateUi(key === 'pi' ? 'Pi 官方页面' : '发布说明'), info.releasesUrl));
                 if (key === 'pivane' && info.downloadUrl && info.checksumUrl) {
                     links.append(link(translateUi('下载发布包'), info.downloadUrl), link(translateUi('下载校验文件'), info.checksumUrl));

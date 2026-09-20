@@ -7,14 +7,15 @@ const cwd = '/tmp/extension-assistant-fixture';
 const model = { provider: 'fixture', id: 'fixture', name: 'Fixture', input: ['text', 'image'], contextWindow: 32000 };
 async function run(browser, base, width, locale, noProject = false) {
     const ctx = await browser.newContext({ locale, viewport: { width, height: 900 }, isMobile: width < 900, hasTouch: width < 900 });
-    const page = await ctx.newPage(), errors = [], sent = [], writes = [];
-    let hold = false, release, enabled = true, failResources = false, inspected = false;
+    const page = await ctx.newPage(), errors = [], sent = [], writes = [], mutations = [];
+    let hold = false, release, enabled = true, failResources = false, inspected = false, holdInventory = false, releaseInventory, projectTrusted = false;
     const sessions = [{ id: 'original', cwd, name: 'Original', messageCount: 2 }];
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(width => localStorage.setItem('pi.workspace.theme', width === 1440 ? 'light' : width === 393 ? 'mint' : 'dark'), width);
     if (!noProject) await page.addInitScript(cwd => { if (!localStorage.getItem('pi.web.cwd')) { localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem(`pi.web.session:${cwd}`, 'original'); } }, cwd);
     await page.route('**/api/**', async route => {
         const req = route.request(), url = new URL(req.url()), p = url.pathname;
+        if (req.method() !== 'GET') mutations.push(p);
         if (p === '/api/pi/status') return route.fulfill({ json: { ok: true, extensionAssistant: enabled, nativeResources: true, nativeSettings: true, defaultProject: cwd, projectRoots: ['/tmp'] } });
         if (p === '/api/pi/projects') return route.fulfill({ json: { projects: noProject ? [] : [{ cwd, name: 'Fixture', sessionCount: sessions.length }], roots: ['/tmp'] } });
         if (p === '/api/pi/sessions') return route.fulfill({ json: { sessions } });
@@ -27,8 +28,18 @@ async function run(browser, base, width, locale, noProject = false) {
             sessions.push(session); return route.fulfill({ status: 201, json: session });
         }
         if (p === '/api/pi/settings/native/resources' && failResources) return route.fulfill({ status: 503, json: { error: 'Synthetic inventory failure' } });
-        if (p === '/api/pi/settings/native/resources') return route.fulfill({ json: { cwd, revision: 'r1', scope: url.searchParams.get('scope'), trust: { effective: false },
-            packages: [{ source: 'npm:fixture', scope: 'user', installed: true }, { source: 'npm:@example/document-tools@1.2.3', scope: 'user', installed: true }], resources: [
+        if (p === '/api/pi/settings/native/resources' && holdInventory) {
+            holdInventory = false;
+            await new Promise(resolve => { releaseInventory = resolve; });
+        }
+        if (p === '/api/pi/settings/native/resources') return route.fulfill({ json: { cwd, revision: 'r1', scope: url.searchParams.get('scope'), trust: { effective: projectTrusted },
+            packages: [{ source: 'npm:fixture', scope: 'user', installed: true }, { source: 'npm:@example/document-tools@1.2.3', scope: 'user', installed: true },
+                { source: 'npm:pi-subagents@0.69.0', scope: 'user', installed: true },
+                { source: 'git:github.com/nicobailon/pi-web-access@v1.0', scope: 'user', installed: true },
+                { source: 'npm:pi-hermes-memory', scope: 'user', installed: false },
+                { source: 'npm:@other/pi-computer-use', scope: 'user', installed: true },
+                ...(url.searchParams.get('scope') === 'project' && projectTrusted ? [{ source: 'npm:pi-mcp-adapter@2.0.0', scope: 'project', installed: true }] : [])
+            ], resources: [
                 { id: 'fixture', type: 'skills', path: '/tmp/fixture/SKILL.md', source: 'npm:fixture', enabled: true, scope: 'user', override: 'inherit' },
                 { id: 'second', type: 'skills', path: 'C:\\Skills\\spreadsheet-helper\\SKILL.md', source: 'local', enabled: false, scope: 'user', override: 'inherit' },
                 { id: 'extension', type: 'extensions', path: '/tmp/packages/document-tools/extensions/index.ts', source: 'npm:@example/document-tools@1.2.3', enabled: true, scope: 'user', override: 'inherit' }
@@ -55,6 +66,86 @@ async function run(browser, base, width, locale, noProject = false) {
     if (!noProject) await page.waitForFunction(() => !document.getElementById('pi-input').disabled);
     else { await page.locator('#pi-project-dialog').waitFor({ state: 'visible' }); await page.locator('#pi-project-dialog-close').click(); }
     await page.locator('#pi-extension-assistant-add').waitFor({ state: 'attached' });
+    // Discovery never installs, creates a session, sends a prompt, or loses the composer.
+    await page.locator('.extensions-explore').waitFor({ state: 'visible' });
+    await page.screenshot({ path: `/tmp/pivane-explore-${locale}-${width}.png` });
+    if (!noProject) await page.locator('#pi-input').fill('Discovery draft');
+    if (width < 900) {
+        assert.equal(await page.locator('#workspace-extensions-toggle').isVisible(), false);
+        await page.locator('#pi-toggle-sessions').click();
+        await page.waitForFunction(() => document.getElementById('pi-session-pane').getBoundingClientRect().left >= 0);
+        await page.screenshot({ path: `/tmp/pivane-extensions-drawer-${locale}-${width}.png` });
+        await page.locator('#pi-drawer-extensions').click();
+    } else await page.locator('#workspace-extensions-toggle').click();
+    await page.locator('.extensions-view').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('.extensions-card').count(), 6);
+    await page.locator('#extension-pi-subagents [data-installation="installed"]').waitFor();
+    assert.equal(await page.locator('#extension-pi-web-access [data-installation="installed"]').count(), 1);
+    assert.equal(await page.locator('#extension-pi-hermes-memory [data-installation="configured"]').count(), 1);
+    assert.equal(await page.locator('#extension-pi-computer-use [data-installation="missing"]').count(), 1);
+    assert.equal(await page.locator('#extension-ppt-master [data-installation="unknown"]').count(), 1);
+    failResources = true; await page.locator('#extensions-refresh').click();
+    await page.waitForFunction(() => document.getElementById('extensions-inventory-status').textContent.includes('Synthetic inventory failure'));
+    assert.equal(await page.locator('[data-installation="installed"]').count(), 0, 'failed refresh must not retain stale installed labels');
+    failResources = false; await page.locator('#extensions-refresh').click();
+    await page.locator('#extension-pi-subagents [data-installation="installed"]').waitFor();
+    if (!noProject) {
+        await page.locator('#extensions-scope').selectOption('project');
+        await page.locator('#extension-pi-computer-use [data-installation="unknown"]').waitFor();
+        projectTrusted = true;
+        await page.locator('#extensions-refresh').click();
+        await page.locator('#extension-pi-mcp-adapter [data-installation="installed"]').waitFor();
+        holdInventory = true; await page.locator('#extensions-refresh').click();
+        for (let i = 0; !releaseInventory && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 10));
+        assert.ok(releaseInventory);
+        await page.locator('#extensions-scope').selectOption('global');
+        await page.locator('#extension-pi-mcp-adapter [data-installation="missing"]').waitFor();
+        releaseInventory(); await new Promise(resolve => setTimeout(resolve, 100));
+        assert.equal(await page.locator('#extension-pi-mcp-adapter [data-installation="missing"]').count(), 1, 'late project inventory cannot replace global status');
+        projectTrusted = false;
+    }
+    assert.equal(await page.locator('.workspace-settings-nav button:visible').count(), 3);
+    await page.locator('#extensions-search').fill('injaneity');
+    assert.equal(await page.locator('.extensions-card').count(), 1);
+    await page.locator('.extensions-card summary').click();
+    assert.match(await page.locator('.extensions-card').innerText(), /Linux\/Wayland/);
+    await page.locator('.extensions-card [data-extension-configure]').click();
+    await page.locator('#pi-extension-assistant-dialog').waitFor({ state: 'visible' });
+    assert.match(await page.locator('#pi-extension-assistant-need').inputValue(), /npm:@injaneity\/pi-computer-use/);
+    assert.equal(await page.locator('.pi-extension-examples button').count(), 3);
+    await page.locator('.pi-extension-examples button').first().click();
+    assert.equal(await page.locator('#pi-extension-assistant-need').inputValue(), locale === 'en'
+        ? 'Find skills for working with Word and PDF documents. Check existing capabilities on this machine first, and compare sources and setup requirements. Check compatibility, then propose an installation plan.'
+        : '帮我查找适合处理 Word 和 PDF 的技能，先检查本机已有能力，并比较来源和配置要求。检查兼容性后给出安装方案');
+    assert.equal(writes.length, 0);
+    await page.keyboard.press('Escape');
+    await page.locator('#extensions-search').fill('nothing-matches-fixture');
+    assert.equal(await page.locator('.extensions-card').count(), 0);
+    await page.locator('#extensions-search').fill('');
+    await page.locator('.extensions-card summary').first().click();
+    const discoveryOverflow = await page.evaluate(() => [...document.querySelectorAll('.extensions-view .workspace-settings-dialog, .extensions-view .workspace-settings-panel.active, .extensions-grid, .extensions-card, #extensions-search, .extensions-card-actions, .extensions-explore')].filter(e => e.getClientRects().length && e.clientWidth).filter(e => e.scrollWidth > e.clientWidth + 1).map(e => e.className || e.id));
+    assert.deepEqual(discoveryOverflow, []);
+    await page.screenshot({ path: `/tmp/pivane-extensions-${locale}-${width}.png` });
+    if (width < 900) {
+        await page.setViewportSize({ width, height: 480 });
+        await page.locator('#extension-pi-computer-use').scrollIntoViewIfNeeded();
+        const closeBox = await page.locator('#workspace-settings-close').boundingBox();
+        assert.ok(closeBox && closeBox.y >= 0 && closeBox.y + closeBox.height <= 480);
+        assert.equal(await page.locator('#extensions-search').evaluate(el => getComputedStyle(el).fontSize), '16px');
+        await page.setViewportSize({ width, height: 900 });
+    }
+    await page.locator('#extensions-search').fill('stale-search-fixture');
+    await page.locator('#workspace-settings-close').click();
+    if (width < 900) await page.locator('#pi-toggle-sessions').click();
+    if (!noProject) assert.equal(await page.locator('#pi-input').inputValue(), 'Discovery draft');
+    await page.locator('.extensions-explore-choices button').first().click();
+    assert.equal(await page.locator('.extensions-card').count(), 6, 'home shortcuts clear stale search');
+    await page.locator('[data-settings-tab="skills"]').click();
+    await page.locator('#native-skills .native-assistant-entry').waitFor({ state: 'visible' });
+    await page.locator('#workspace-settings-close').click();
+    assert.equal(writes.length, 0);
+    assert.deepEqual(mutations, [], 'discovery must be read-only');
+    assert.equal(sent.some(c => ['prompt', 'steer', 'follow_up'].includes(c.type)), false);
     const widths = async () => {
         const found = await page.evaluate(() => [...document.querySelectorAll('body,#pi-extension-assistant-dialog[open],#pi-extension-assistant-dialog[open] form,#pi-extension-assistant-dialog[open] textarea,#pi-extension-assistant-banner,.native-assistant-entry,.pi-composer-add-menu:not([hidden])')]
             .filter(e => e.getClientRects().length).map(e => ({ id: e.id || e.className, width: e.clientWidth, scroll: e.scrollWidth })));
@@ -184,6 +275,11 @@ async function run(browser, base, width, locale, noProject = false) {
     enabled = false;
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.getElementById('pi-extension-assistant-add')?.hidden === true);
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('workspace:open-settings', { detail: { tab: 'extensions' } })));
+    assert.equal(await page.locator('.extensions-card').count(), 6);
+    assert.equal(await page.locator('[data-extension-configure]:enabled').count(), 0);
+    assert.equal(await page.locator('#extensions-assistant-unavailable').isVisible(), true);
+    assert.deepEqual(errors, []);
     await ctx.close();
 }
 (async () => {

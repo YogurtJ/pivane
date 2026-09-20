@@ -168,16 +168,27 @@ function mountUpdateRoutes(router, service = new UpdateService(), hooks = {}) {
     router.post('/settings/updates/review', async (req, res) => {
         res.set('Cache-Control', 'no-store');
         try {
-            if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body) || Object.keys(req.body).some(key => key !== 'action')) throw Object.assign(new Error('维护操作无效'), { status: 400 });
+            if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body) || Object.keys(req.body).some(key => !['action', 'channel'].includes(key))) throw Object.assign(new Error('维护操作无效'), { status: 400 });
             const action = req.body.action;
-            if (!['update', 'backup', 'restart'].includes(action)) throw Object.assign(new Error('维护操作无效'), { status: 400 });
+            if (req.body.channel !== undefined && (action !== 'application' || !['stable', 'preview'].includes(req.body.channel))) throw Object.assign(new Error('Invalid update channel'), { status: 400 });
+            if (!['update', 'application', 'backup', 'restart'].includes(action)) throw Object.assign(new Error('维护操作无效'), { status: 400 });
             maintenance.assertAvailable(action, idle);
-            let version;
+            let version, release;
+            if (action === 'application') {
+                const channel = req.body.channel || (service.appVersion.includes('-') ? 'preview' : 'stable');
+                service.snapshot(channel);
+                const candidate = await service.pivane(channel);
+                if (candidate.status !== 'available' || !candidate.downloadUrl || !candidate.checksumUrl) throw Object.assign(new Error('此渠道没有可安装的 Pivane 新版本'), { status: 409 });
+                const bytes = await require('./pi-application-installer').download(candidate.checksumUrl, { env: service.env, maxBytes: 1024 });
+                const match = /^([a-f0-9]{64})  (pivane-[^\r\n]+\.tar\.gz)\r?\n?$/.exec(bytes.toString());
+                if (!match || match[2] !== `pivane-${candidate.version}.tar.gz`) throw Error('Invalid release checksum');
+                version = candidate.version; release = { version, sha256: match[1] };
+            }
             if (action === 'update') {
                 const upstream = await service.pi(); version = upstream.version;
                 if (compareVersions(service.piVersion, version) !== -1) throw Object.assign(new Error('没有高于当前版本的 Pi 正式版'), { status: 409 });
             }
-            res.json({ ...maintenance.review({ action, version }, idle), currentVersion: service.piVersion });
+            res.json({ ...maintenance.review({ action, version, release }, idle), currentVersion: action === 'application' ? service.appVersion : service.piVersion });
         } catch (error) { res.status(error.status || 503).json({ error: error.status ? error.message : '无法核对 Pi 更新版本，请稍后再试' }); }
     });
     router.post('/settings/updates/execute', (req, res) => {

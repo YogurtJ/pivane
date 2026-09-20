@@ -184,6 +184,28 @@ test('installation and backup failures retain the original release and never rep
     }
 });
 
+test('application startup failure waits for candidate exit and boots retained release', async t => {
+    const root = fixture(t); packageFixture(root);
+    const events = [], launcher = new ManagedLauncher({ root, stageApp: async () => { events.push('stage'); } });
+    launcher.send = () => {}; launcher.child = {};
+    launcher.backupInputs = [path.join(root, 'package.json')];
+    launcher.stopChild = async () => { events.push('exit'); launcher.child = null; };
+    launcher.boot = async id => { events.push(id ? 'candidate' : 'previous'); launcher.child = {}; if (id) throw Error('synthetic startup failure'); };
+    await launcher.execute({ id: randomUUID(), action: 'application', version: '1.2.3', release: { version: '1.2.3', sha256: 'a'.repeat(64) } });
+    assert.deepEqual(events, ['stage', 'exit', 'candidate', 'exit', 'previous']);
+    assert.equal(launcher.state.active, null); assert.equal(launcher.state.job.phase, 'failed'); assert.ok(launcher.state.job.backup);
+});
+
+test('application tickets preserve reviewed hash and reject browser overrides', () => {
+    const { value, sent } = client(); value.state.appUpdateSupported = true;
+    const release = { version: '1.2.3', sha256: 'a'.repeat(64) };
+    const ticket = value.review({ action: 'application', version: release.version, release }, () => true);
+    release.sha256 = 'b'.repeat(64);
+    assert.throws(() => value.execute({ ...confirmed(ticket.id), release }, { idle: () => true, pause() {} }), /确认/);
+    value.execute(confirmed(ticket.id), { idle: () => true, pause() {} });
+    assert.equal(sent[0].release.sha256, 'a'.repeat(64));
+});
+
 test('launcher restart marks interrupted work without replay and does not mutate state before owning the process lock', t => {
     const root = fixture(t); packageFixture(root); const launcher = new ManagedLauncher({ root });
     const saved = { version: 1, active: null, previous: null, job: { id: randomUUID(), phase: 'installing', action: 'update' } };
