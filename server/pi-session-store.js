@@ -136,23 +136,40 @@ class PiSessionStore {
         const session = sessions.find(item => item.id === id);
         if (!session) throw new Error('Session not found in this project');
         // One physical session must keep one supervisor key even when the OS accepts a case/symlink alias.
-        return { ...session, path: fs.realpathSync.native(session.path) };
+        const { SessionManager } = await getSdk();
+        const canonical = fs.realpathSync.native(session.path);
+        const assistant = require('./pi-extension-assistant').assistantProfile(SessionManager.open(canonical));
+        return { ...session, path: canonical, assistant };
     }
 
-    async createSession(cwdInput, name = '', { autoTitle = false } = {}) {
+    async createSession(cwdInput, name = '', { autoTitle = false, assistant = null, task = null } = {}) {
         const cwd = this.resolveProject(cwdInput);
         const { SessionManager } = await getSdk();
         const manager = SessionManager.create(cwd);
         const sessionPath = manager.getSessionFile();
         fs.mkdirSync(path.dirname(sessionPath), { recursive: true });
-        fs.writeFileSync(sessionPath, '', { flag: 'wx' });
+        fs.writeFileSync(sessionPath, '', { flag: 'wx', mode: 0o600 });
+        // Task text must never be written before the native session has private permissions.
+        require('./pi-private-files').privateFileMode(sessionPath);
 
         // Opening an explicit empty file makes SessionManager write a valid header immediately.
         const persisted = SessionManager.open(sessionPath, undefined, cwd);
         const cleanName = String(name || '').trim().slice(0, 120);
         if (cleanName) persisted.appendSessionInfo(cleanName);
         else if (autoTitle) persisted.appendCustomEntry('pi5-web-title', { version: 1, sessionId: persisted.getSessionId(), status: 'pending' });
+        if (assistant) persisted.appendCustomEntry(require('./pi-extension-assistant').ASSISTANT_ENTRY,
+            { ...assistant, version: 1, sessionId: persisted.getSessionId() });
+        if (task) {
+            const { TASK_ENTRY, TASK_MESSAGE } = require('./pi-agent-threads');
+            const { message, ...metadata } = task;
+            persisted.appendModelChange(task.model.provider, task.model.modelId);
+            persisted.appendThinkingLevelChange(task.thinkingLevel);
+            persisted.appendCustomEntry(TASK_ENTRY, { ...metadata, sessionId: persisted.getSessionId() });
+            persisted.appendCustomMessageEntry(TASK_MESSAGE, message, true, { source: task.source });
+        }
+        require('./pi-private-files').privateFileMode(sessionPath);
         return {
+            assistant: assistant ? require('./pi-extension-assistant').assistantProfile(persisted) : null,
             id: persisted.getSessionId(),
             path: fs.realpathSync.native(sessionPath),
             cwd,

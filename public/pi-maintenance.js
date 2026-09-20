@@ -108,6 +108,7 @@
         }
         return { element,
             open() { if (opened) return; opened = true; epoch++; void read(); },
+            async reviewUpdate() { await read(); if (ready() && state?.supported && state.updateSupported && !state.busy) await review('update'); },
             close() { opened = false; epoch++; reviewing = false; clearTimeout(timer); if (dialog.open) dialog.close(); }
         };
     }

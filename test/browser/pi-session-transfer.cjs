@@ -97,6 +97,7 @@ async function run(browser, viewport) {
     };
     const importMenu = async () => {
         await drawer(); await page.locator(`[data-project-cwd="${cwd}"] [data-project-action="menu"]`).click();
+        await menu.getByRole('menuitem', { name: '更多操作', exact: true }).click();
         await menu.getByRole('menuitem', { name: '导入 Pi 会话', exact: true }).click(); await dialog.waitFor();
     };
     const geometry = async () => {

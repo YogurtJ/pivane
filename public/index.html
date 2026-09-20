@@ -26,6 +26,7 @@
     <link rel="stylesheet" href="pi-history.css">
     <link rel="stylesheet" href="pi-session-transfer.css">
     <link rel="stylesheet" href="pi-composer-tools.css">
+    <link rel="stylesheet" href="pi-selection-actions.css">
     <link rel="stylesheet" href="pi-side-chat.css">
     <link rel="stylesheet" href="media-lab.css">
     <link rel="stylesheet" href="media-connections.css">
@@ -37,20 +38,23 @@
         <!-- Sidebar -->
         <aside id="workspace-sidebar" class="sidebar">
             <div class="logo">
-                <button id="workspace-sidebar-toggle" class="sidebar-toggle" type="button" title="折叠导航" aria-label="折叠导航" aria-expanded="true" data-i18n-title="s1315" data-i18n-aria-label="s1315">
+                <button id="workspace-brand-toggle" class="sidebar-brand-toggle" type="button" title="折叠导航" aria-label="折叠导航" aria-expanded="true" aria-controls="workspace-sidebar" data-i18n-title="s1315" data-i18n-aria-label="s1315">
                     <img class="workspace-logo" src="brand/logo-64.png" width="28" height="28" alt="">
                 </button>
                 <div class="logo-brand">
                     <h2>Pivane</h2>
                 </div>
+                <button id="workspace-sidebar-toggle" class="sidebar-toggle" type="button" title="折叠导航" aria-label="折叠导航" aria-expanded="true" aria-controls="workspace-sidebar" data-i18n-title="s1315" data-i18n-aria-label="s1315">
+                    <i class="fa-solid fa-angles-left" aria-hidden="true"></i>
+                </button>
             </div>
 
             <nav class="nav-menu" aria-label="工作区" data-i18n-aria-label="s1317">
                 <button class="nav-btn active" data-tab="chat" title="Pi Agent">
-                    <img class="workspace-nav-logo" src="brand/logo-64.png" width="20" height="20" alt=""><span>Pi Agent</span>
+                    <i class="fa-solid fa-comment" aria-hidden="true"></i><span>Pi Agent</span>
                 </button>
                 <button class="nav-btn" data-tab="media" title="多媒体实验室" data-i18n-title="s1318">
-                    <i class="fa-solid fa-flask"></i><span><!--i18n:s1318-->多媒体实验室</span>
+                    <i class="fa-solid fa-flask" aria-hidden="true"></i><span><!--i18n:s1318-->多媒体实验室</span>
                 </button>
             </nav>
 
@@ -411,7 +415,7 @@
                     <section id="pi-side-chat" role="tabpanel" aria-labelledby="pi-side-tab" hidden>
                         <div class="pi-side-heading">
                             <button id="pi-side-parent-state" type="button" title="返回主会话" data-i18n-title="s1451"></button>
-                            <span class="pi-side-mode"><!--i18n:s1452-->无工具</span>
+                            <span id="pi-side-tool-mode" class="pi-side-mode"><!--i18n:s1452-->无工具</span>
                             <button id="pi-side-end" class="icon-btn subtle" type="button" title="结束并清空侧聊" aria-label="结束并清空侧聊" disabled data-i18n-title="s1453" data-i18n-aria-label="s1453"><i class="fa-solid fa-power-off"></i></button>
                         </div>
                         <details id="pi-side-reference" class="pi-side-reference">
@@ -425,6 +429,7 @@
                                 <div id="pi-side-reference-preview"></div>
                             </div>
                         </details>
+                        <div id="pi-side-confirm" class="pi-side-confirm" role="status" aria-live="polite" hidden></div>
                         <div class="pi-transcript-viewport pi-side-viewport">
                             <div id="pi-side-transcript" class="pi-transcript pi-side-transcript" tabindex="0" role="region" aria-label="侧聊消息" data-i18n-aria-label="s1462"><div id="pi-side-messages" aria-live="polite"></div></div>
                             <div id="pi-side-track" class="pi-transcript-track inactive" role="scrollbar" tabindex="-1" aria-label="侧聊滚动位置" aria-controls="pi-side-transcript" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" data-i18n-aria-label="s1463"><div id="pi-side-thumb" class="pi-transcript-thumb"></div></div>
@@ -545,7 +550,7 @@
             <div class="workspace-settings-body">
                 <nav class="workspace-settings-nav" aria-label="设置分类" data-i18n-aria-label="s1507">
                     <button type="button" class="active" data-settings-tab="providers"><i class="fa-solid fa-key"></i><span><!--i18n:s1508-->供应商与模型</span></button>
-                    <button type="button" data-settings-tab="media"><i class="fa-solid fa-photo-film"></i><span><!--i18n:s1472-->媒体模型</span></button>
+                    <button type="button" data-settings-tab="media"><i class="fa-solid fa-photo-film"></i><span>模型与能力</span></button>
                     <button type="button" data-settings-tab="models"><i class="fa-solid fa-sliders"></i><span><!--i18n:s1509-->使用偏好</span></button>
                     <button type="button" id="system-prompts-nav" data-settings-tab="system-prompts" hidden><i class="fa-solid fa-file-lines"></i><span data-system-prompts-label></span></button>
                     <button type="button" id="native-settings-nav" data-settings-tab="native" hidden><i class="fa-solid fa-gear"></i><span><!--i18n:s726-->Pi 配置</span></button>
@@ -558,8 +563,9 @@
                 <div class="workspace-settings-content">
                     <section class="workspace-settings-panel active" data-settings-panel="providers">
                         <div class="settings-panel-header">
+                            <i class="fa-solid fa-key" aria-hidden="true"></i>
                             <div><h3><!--i18n:s1508-->供应商与模型</h3><p><!--i18n:s1512-->展开供应商，连接 Pi 内置服务或自定义服务，并管理其模型。测试会发送少量付费请求。</p></div>
-                            <button id="settings-add-provider" class="settings-primary-button" type="button"><i class="fa-solid fa-plus"></i><!--i18n:s1513--> 自定义 Provider</button>
+                            <div class="settings-header-actions" id="settings-provider-header-actions"><button id="settings-add-provider" class="settings-primary-button" type="button"><i class="fa-solid fa-plus"></i><!--i18n:s1513--> 自定义 Provider</button></div>
                         </div>
                         <div class="settings-toolbar">
                             <label class="settings-search"><i class="fa-solid fa-magnifying-glass"></i><input id="settings-provider-search" type="search" placeholder="搜索 Provider" data-i18n-placeholder="s1514"></label>
@@ -571,7 +577,8 @@
                     </section>
 
                     <section class="workspace-settings-panel" data-settings-panel="media">
-                        <div class="settings-section-header"><div><h3><!--i18n:s1472-->媒体模型</h3><p><!--i18n:s1517-->接入自己的图像、视频和语音服务，模型 ID 由你选择。</p></div></div>
+                        <div class="settings-panel-header"><i class="fa-solid fa-photo-film" aria-hidden="true"></i><div><h3 id="settings-capabilities-title">模型与能力</h3><p><!--i18n:s1517-->接入自己的图像、视频和语音服务，模型 ID 由你选择。</p></div></div>
+                        <h4 id="settings-multimodal-title">多模态</h4>
                         <div class="mc-settings-kinds">
                             <button type="button" data-media-settings-kind="image"><i class="fa-regular fa-image"></i><strong><!--i18n:s109-->图像</strong><span>OpenAI、Gemini、Seedream</span></button>
                             <button type="button" data-media-settings-kind="video"><i class="fa-solid fa-film"></i><strong><!--i18n:s108-->视频</strong><span><!--i18n:s1518-->Seedance、自定义异步服务</span></button>
@@ -579,13 +586,15 @@
                         </div>
                         <p class="settings-help"><!--i18n:s1520-->选择常用服务，填写地址、Key 和模型 ID。高级参数可按需展开，也可让 Agent 根据 API 文档填写接入草稿。</p>
                         <p class="settings-help"><!--i18n:s1521-->同一服务的模型共用 Key。保存接入后，在实验室检查清单并确认生成；回复朗读默认模型在“使用偏好”中选择。</p>
+                        <section id="settings-subagents"></section>
                     </section>
                     <section class="workspace-settings-panel" data-settings-panel="models">
                         <div class="settings-panel-header">
+                            <i class="fa-solid fa-sliders" aria-hidden="true"></i>
                             <div><h3><!--i18n:s1509-->使用偏好</h3><p><!--i18n:s1522-->配置模块 Agent、回复朗读和系统通知；聊天默认模型和思考等级在供应商的模型列表中设置。</p></div>
                             <div class="settings-header-actions">
                                 <button id="settings-add-model" class="settings-secondary-button" type="button"><i class="fa-solid fa-plus"></i><!--i18n:s1523--> 自定义模型</button>
-                                <button id="settings-refresh-models" class="settings-primary-button" type="button"><i class="fa-solid fa-arrows-rotate"></i><!--i18n:s1524--> 刷新目录</button>
+                                <button id="settings-refresh-models" class="settings-secondary-button settings-header-refresh" type="button"><i class="fa-solid fa-rotate" aria-hidden="true"></i><!--i18n:s1524--> 刷新目录</button>
                             </div>
                         </div>
                         <div class="settings-feature-card workspace-language-card">
@@ -648,7 +657,7 @@
                     </section>
 
                     <section class="workspace-settings-panel" data-settings-panel="access" id="workspace-access-panel">
-                        <div class="settings-panel-header"><div><h3><!--i18n:s1510-->访问控制</h3><p><!--i18n:s1552-->管理这个工作台的登录与 API 访问</p></div><button id="workspace-access-refresh" type="button" class="settings-secondary-button"><!--i18n:s1547-->刷新状态</button></div>
+                        <div class="settings-panel-header"><i class="fa-solid fa-lock" aria-hidden="true"></i><div><h3><!--i18n:s1510-->访问控制</h3><p><!--i18n:s1552-->管理这个工作台的登录与 API 访问</p></div><button id="workspace-access-refresh" type="button" class="settings-secondary-button settings-header-refresh"><i class="fa-solid fa-rotate" aria-hidden="true"></i><!--i18n:s1547-->刷新状态</button></div>
                         <form id="workspace-access-form" class="workspace-access-card">
                             <label><input id="workspace-access-enabled" type="checkbox" disabled><strong><!--i18n:s1553-->启用访问验证</strong></label>
                             <p id="workspace-access-source" class="workspace-access-note"><!--i18n:s1554-->正在读取设置</p>
@@ -667,7 +676,7 @@
                     <section class="workspace-settings-panel" data-settings-panel="system-prompts" id="system-prompts-panel"></section>
                     <section class="workspace-settings-panel" data-settings-panel="native" id="native-settings-panel"></section>
                     <section class="workspace-settings-panel" data-settings-panel="usage" id="settings-usage-panel">
-                        <div class="settings-panel-header"><div><h3><!--i18n:s1511-->用量统计</h3><p><!--i18n:s1566-->持久会话的 Token 用量与估算费用</p></div></div>
+                        <div class="settings-panel-header"><i class="fa-solid fa-chart-column" aria-hidden="true"></i><div><h3><!--i18n:s1511-->用量统计</h3><p><!--i18n:s1566-->持久会话的 Token 用量与估算费用</p></div></div>
                         <form id="settings-usage-filters" class="pi-usage-filters">
                             <label class="pi-usage-range"><span><!--i18n:s1567-->时间范围</span><select id="settings-usage-range"><option value="today"><!--i18n:s1568-->今天</option><option value="week"><!--i18n:s1569-->最近 7 天</option><option value="month" selected><!--i18n:s1570-->本月</option><option value="custom"><!--i18n:s622-->自定义</option></select></label>
                             <label class="pi-usage-date pi-usage-from"><span><!--i18n:s1571-->开始日期</span><input id="settings-usage-from" type="date" required></label>
@@ -680,8 +689,9 @@
                     </section>
                     <section class="workspace-settings-panel" data-settings-panel="packages">
                         <div class="settings-panel-header">
+                            <i class="fa-solid fa-box-open" aria-hidden="true"></i>
                             <div><h3>Pi Packages</h3><p><!--i18n:s1578-->安装包可能执行任意代码；只安装已审查并信任的来源。</p></div>
-                            <button id="settings-refresh-resources" class="icon-btn subtle" type="button" title="刷新资源" data-i18n-title="s1579"><i class="fa-solid fa-rotate"></i></button>
+                            <button id="settings-refresh-resources" class="settings-secondary-button settings-header-refresh" type="button" title="刷新资源" data-i18n-title="s1579"><i class="fa-solid fa-rotate" aria-hidden="true"></i><span><!--i18n:s718-->刷新</span></button>
                         </div>
                         <form id="settings-package-form" class="settings-inline-form">
                             <input id="settings-package-source" type="text" placeholder="npm:@scope/package@1.0.0 或 git:https://..." data-i18n-placeholder="s1580"><button class="settings-primary-button" type="submit"><i class="fa-solid fa-download"></i><!--i18n:s695--> 安装</button>
@@ -694,6 +704,7 @@
 
                     <section class="workspace-settings-panel" data-settings-panel="skills">
                         <div class="settings-panel-header">
+                            <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
                             <div><h3>Skills</h3><p><!--i18n:s1582-->按需要启用或停用。想增加能力或修改指令，可以直接告诉 Agent。</p></div>
                         </div>
                         <div id="native-skills" hidden></div>
@@ -820,8 +831,11 @@
     <script src="pi-native-context.js"></script>
     <link rel="stylesheet" href="pi-native-settings.css">
     <script src="pi-maintenance.js"></script>
+    <script src="pi-update-notifications.js"></script>
     <script src="pi-updates.js"></script>
     <link rel="stylesheet" href="pi-updates.css">
+    <script src="pi-subagent-settings.js"></script>
+    <link rel="stylesheet" href="pi-subagent-settings.css">
     <script src="pi-auxiliary-models.js"></script>
     <link rel="stylesheet" href="pi-auxiliary-models.css">
     <script src="pi-title-settings.js"></script>
@@ -840,9 +854,11 @@
     <script src="pi-session-workflows.js"></script>
     <script src="pi-session-titles.js"></script>
     <script src="pi-session-transfer.js"></script>
+    <script src="pi-selection-actions.js"></script>
     <script src="pi-side-chat.js"></script>
     <script src="pi-runtime-controls.js"></script>
     <script src="pi-shell.js"></script>
+    <script src="pi-tool-labels.js"></script>
     <script src="pi-tool-diff.js"></script>
     <script src="/vendor/highlight/highlight.min.js"></script>
     <script src="pi-file-policy.js"></script>
@@ -863,6 +879,7 @@
     <script src="pi-history.js"></script>
     <link rel="stylesheet" href="pi-mermaid.css">
     <script src="pi-mermaid.js"></script>
+    <script src="pi-extension-assistant.js"></script>
     <script src="pi-chat.js"></script>
 </body>
 </html>

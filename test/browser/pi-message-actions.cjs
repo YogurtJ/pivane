@@ -96,6 +96,11 @@ async function run(browser, viewport, theme) {
     assert.equal(await replies.filter({ hasText: '检查当前状态。' }).locator('.pi-message-actions').count(), 0, 'tool commentary has no action row');
     assert.equal(await replies.filter({ hasText: '正在核对方案和现有配置' }).locator('.pi-message-actions').count(), 0, 'plain-text progress also has no action row');
     assert.equal(await page.locator('.pi-message-actions').count(), 2, 'one final action row per question');
+    const replyTime = replies.first().locator('.pi-reply-time');
+    assert.equal(await replyTime.textContent(), '16:20');
+    assert.equal(await replyTime.getAttribute('datetime'), new Date(time + 1000).toISOString());
+    assert.ok((await replyTime.getAttribute('title')).includes('2026/09/07 16:20'));
+    assert.equal(await replyTime.evaluate(node => node === node.parentElement.lastElementChild), true, 'time follows the dynamically added fork action');
     await users.last().locator('[aria-label="复制问题"]').click();
     assert.equal(await page.evaluate(() => window.__copies.at(-1)), latestQuestion);
     await replies.first().locator('[aria-label="复制回复"]').click();
@@ -109,6 +114,12 @@ async function run(browser, viewport, theme) {
             for (const article of document.querySelectorAll('article.pi-message')) {
                 const footer = article.querySelector('.pi-message-actions'), body = article.querySelector('.pi-message-body');
                 if (footer && footer.getBoundingClientRect().top < body.getBoundingClientRect().bottom - 1) failures.push('footer overlaps body');
+                const replyTime = footer?.querySelector('.pi-reply-time');
+                if (replyTime) {
+                    const lastButton = [...footer.querySelectorAll('button')].at(-1);
+                    if (lastButton && replyTime.getBoundingClientRect().left < lastButton.getBoundingClientRect().right) failures.push('reply time overlaps icons');
+                    if (replyTime.getBoundingClientRect().right > footer.getBoundingClientRect().right + 1) failures.push('reply time overflows footer');
+                }
                 const header = article.querySelector('header'), time = header?.querySelector('time'), actions = header?.querySelector('.pi-user-actions');
                 if (time && time.getBoundingClientRect().right > actions.getBoundingClientRect().left + 1) failures.push('time overlaps actions');
                 for (const group of article.querySelectorAll('.pi-message-actions, .pi-user-actions')) {
@@ -204,6 +215,40 @@ async function run(browser, viewport, theme) {
     messages.push(failure); emit({ type: 'gateway_context_changed', messages });
     await page.waitForFunction(() => document.querySelector('#pi-transcript-content').textContent.includes('已终止的部分回复'));
     assert.equal(await replies.filter({ hasText: '已终止的部分回复' }).locator('.pi-message-copy').count(), 1);
+    const longQuestion = '长问题正文，复制时必须保留完整内容。'.repeat(180);
+    const lineQuestion = Array.from({ length: 31 }, (_, i) => `第 ${i + 1} 行`).join('\n');
+    messages.push(
+        { role: 'user', timestamp: time + 190000, content: [{ type: 'text', text: longQuestion }, png] },
+        { role: 'user', timestamp: time + 191000, content: lineQuestion },
+        { role: 'user', timestamp: time + 192000, content: '边'.repeat(2400) },
+        { role: 'user', timestamp: time + 193000, content: Array(30).fill('普通行').join('\n') }
+    );
+    emit({ type: 'gateway_context_changed', messages });
+    const longUser = users.filter({ hasText: longQuestion });
+    const lineUser = users.filter({ hasText: lineQuestion.split('\n')[0] });
+    await longUser.locator('.pi-user-text-toggle').waitFor();
+    assert.equal(await users.locator('.pi-user-text-toggle').count(), 2, 'only messages beyond generous thresholds fold');
+    const toggle = longUser.locator('.pi-user-text-toggle');
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+    const collapsed = await longUser.locator('.pi-user-long-text').evaluate(node => ({ height: node.clientHeight, full: node.scrollHeight }));
+    assert.ok(collapsed.full > collapsed.height, 'preview clips long text');
+    assert.equal(await longUser.locator('img').isVisible(), true, 'attachment remains outside the folded text');
+    await longUser.locator('.pi-message-copy').click();
+    assert.equal(await page.evaluate(() => window.__copies.at(-1)), longQuestion);
+    await toggle.click();
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
+    assert.ok(await longUser.locator('.pi-user-long-text').evaluate(node => node.clientHeight >= node.scrollHeight));
+    messages.push({ role: 'assistant', timestamp: time + 194000, content: '折叠状态刷新检查', stopReason: 'stop' });
+    emit({ type: 'gateway_context_changed', messages });
+    await replies.filter({ hasText: '折叠状态刷新检查' }).waitFor();
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'true', 'snapshot rebuild preserves expansion');
+    await toggle.click();
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+    await lineUser.locator('.pi-user-text-toggle').focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await lineUser.locator('.pi-user-text-toggle').getAttribute('aria-expanded'), 'true');
+    const overflow = await users.evaluateAll(nodes => nodes.flatMap(node => [...node.querySelectorAll('.pi-message-body, .pi-markdown, .pi-user-text-toggle')]).filter(node => node.scrollWidth > node.clientWidth + 1).map(node => node.className));
+    assert.deepEqual(overflow, [], 'actual message children fit the viewport');
     assert.deepEqual(errors, []);
     assert.equal(commands.some(command => ['prompt', 'steer', 'follow_up'].includes(command)), false);
     await context.close();

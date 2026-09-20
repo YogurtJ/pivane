@@ -7,7 +7,6 @@
 :is(#system-prompts-panel, #system-prompt-dialog) button:disabled { opacity: .48; cursor: default; }
 :is(#system-prompts-panel, #system-prompt-dialog) :is(input, select, textarea) { box-sizing: border-box; min-width: 0; max-width: 100%; width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-1); color: var(--text-main); padding: 10px 12px; font: inherit; }
 :is(#system-prompts-panel, #system-prompt-dialog) :is(button, input, textarea, select, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-#system-prompts-panel .settings-panel-header { flex-direction: row; gap: 12px; align-items: flex-start; }
 #system-prompts-refresh { flex: 0 0 auto; }
 .system-prompt-card { border: 1px solid var(--line); border-radius: 12px; margin-top: 18px; min-width: 0; overflow: hidden; }
 .system-prompt-card > h4, .system-prompt-card > summary { padding: 18px; margin: 0; font-size: .93rem; }
@@ -39,7 +38,6 @@
 #system-prompt-dialog mark { background: #ffdc7e; color: #29251b; }
 .system-prompt-copy-buffer { position: fixed; left: 0; top: 0; opacity: 0; pointer-events: none; }
 @media (max-width: 680px) {
-    #system-prompts-panel .settings-panel-header { flex-wrap: wrap; }
     :is(#system-prompts-panel, #system-prompt-dialog) :is(input, select, textarea) { font-size: 16px; }
     .system-prompt-card > form { padding: 0 12px 12px; }
     #system-prompt-dialog { padding: 16px; width: calc(100vw - 20px); max-width: calc(100vw - 20px); }

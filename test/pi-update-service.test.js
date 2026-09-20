@@ -13,13 +13,37 @@ const release = (version, extra = {}) => ({ tag_name: 'v' + version, prerelease:
         browser_download_url: `https://github.com/YogurtJ/pivane/releases/download/v${version}/pivane-${version}.tar.gz${suffix}` })), ...extra });
 const fixture = (releases, options = {}) => {
     const requests = [];
-    const service = new UpdateService({ env: {}, appVersion: '1.0.0-rc.2', piVersion: require('../package.json').dependencies['@earendil-works/pi-coding-agent'],
+    const service = new UpdateService({ env: {}, appVersion: '1.0.0-rc.2', piVersion: options.piVersion || '0.85.1',
         fetch: async (url, opts) => {
             requests.push({ url, opts });
             return { ok: true, json: async () => url.includes('api.github.com') ? releases : { name: '@earendil-works/pi-coding-agent', version: '0.86.0' } };
         }, ...options });
     return { service, requests };
 };
+
+test('automatic update routes share authenticated preferences, enforce Origin and reject execution input', async t => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-auto-updates-'));
+    const preferences = new (require('../server/workspace-preferences-service').WorkspacePreferencesService)({ filePath: path.join(root, 'preferences.json') });
+    const access = new WorkspaceAccessService({ filePath: path.join(root, 'access.json'), envToken: () => 'fixture-token-only' });
+    const { service, requests } = fixture([]);
+    const app = express(); app.use(express.json());
+    const router = express.Router(); router.use(access.middleware()); mountUpdateRoutes(router, service, { preferences, idle: () => true }); app.use('/api/pi', router);
+    const server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
+    t.after(async () => { access.dispose(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); fs.rmSync(root, { recursive: true, force: true }); });
+    const base = `http://127.0.0.1:${server.address().port}/api/pi/settings/updates`;
+    const headers = { Authorization: 'Bearer fixture-token-only', 'Content-Type': 'application/json' };
+    assert.equal((await fetch(base + '/automatic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 401);
+    assert.equal((await fetch(base + '/automatic', { method: 'POST', headers: { ...headers, Origin: 'https://evil.invalid' }, body: '{}' })).status, 403);
+    assert.equal((await fetch(base + '/notifications', { headers })).headers.get('cache-control'), 'no-store');
+    assert.equal(requests.length, 0);
+    for (const body of ['[]', '{"command":"update"}', '{"version":"1.0.0"}']) assert.equal((await fetch(base + '/automatic', { method: 'POST', headers, body })).status, 400);
+    const a = await fetch(base + '/automatic', { method: 'POST', headers, body: '{}' });
+    assert.equal((await a.json()).available, true); assert.equal(requests.length, 1); assert.ok(requests[0].url.includes('registry.npmjs.org'));
+    const snapshot = await fetch(base, { headers }); assert.equal((await snapshot.json()).pi.version, '0.86.0'); assert.equal(requests.length, 1);
+    await fetch(base + '/automatic', { method: 'POST', headers, body: '{}' }); assert.equal(requests.length, 1);
+    const changed = await fetch(base + '/notifications', { method: 'POST', headers, body: '{"enabled":false}' });
+    assert.equal((await changed.json()).enabled, false);
+});
 
 test('update comparisons respect SemVer prerelease numbers, build metadata, invalid and ahead versions', () => {
     for (const [a, b, expected] of [['1.0.0-rc.10', '1.0.0-rc.2', 1], ['1.0.0', '1.0.0-rc.10', 1],
@@ -35,7 +59,7 @@ test('local update snapshots never contact sources; stable and preview are disti
     const preview = await service.check('preview');
     assert.equal(preview.pivane.version, '1.0.0-rc.10'); assert.equal(preview.pivane.status, 'available');
     assert.ok(preview.pivane.downloadUrl.endsWith('pivane-1.0.0-rc.10.tar.gz'));
-    assert.equal(preview.pi.status, 'available'); assert.equal(preview.dependencyMatches, true);
+    assert.equal(preview.pi.status, 'available'); assert.equal(preview.dependencyMatches, false, 'the fixture represents an older runtime than the 0.86 workspace bundle');
     const stable = await service.check('stable');
     assert.equal(stable.pivane.version, '0.9.0'); assert.equal(stable.pivane.status, 'ahead');
     for (const { opts } of requests) {

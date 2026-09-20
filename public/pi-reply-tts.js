@@ -151,7 +151,7 @@
                 }
                 const selected = snapshot.models.find(item => item.id === defaults.modelId);
                 if (!selected?.executable) throw new Error(translateUi("默认语音服务尚未配置，请到朗读设置中选择可用模型。"));
-                const text = plainText(request.text), definition = selected.parameters[defaults.textParameter];
+                const text = request.plain === true ? request.text.trim() : plainText(request.text), definition = selected.parameters[defaults.textParameter];
                 if (!text) throw new Error(translateUi("这条回复没有可朗读的正文。"));
                 if (text.length > (definition?.maxLength || 12000)) throw new Error(translateUi("正文 {0} 字符，超过当前模型 {1} 字符限额。请换用支持更长文本的默认模型，或到语音实验室编辑文本。", text.length, definition?.maxLength || 12000));
                 const reviewed = await api('media/lab/review', { modelId: defaults.modelId, parameters: { ...defaults.parameters, [defaults.textParameter]: text } });

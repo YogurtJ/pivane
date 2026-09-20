@@ -31,6 +31,10 @@ Pivane自身的代码使用[ISC许可证](LICENSE)。第三方软件、字体、
 
 网页从安装的依赖提供marked、DOMPurify和highlight.js资源，未将其许可证改为ISC。另行制作包含node_modules的二进制分发包、容器镜像或安装器时，应保留该分发内容的完整第三方许可和必要声明。
 
+## 默认可选能力
+
+安装流程可从 npm 单独下载 [pi-subagents](https://github.com/nicobailon/pi-subagents) 0.69.0（Nico Bailon，MIT），其依赖与原有许可保留在 Pi 包安装位置。Pivane 源码归档只包含安装清单与适配代码，不包含该插件源码或其依赖；安装失败不影响应用必需依赖。安装范围、跳过和补装见[安装指南](docs/INSTALL_RECOVERY.md#默认可选能力)。
+
 ## 平台与外部服务
 
 随包macOS/Windows原生文件系统组件为项目自有代码，使用ISC；构建输入及哈希记录在native目录。Node.js、操作系统、Bash、ripgrep与浏览器由用户另行安装，不随本源码包分发。

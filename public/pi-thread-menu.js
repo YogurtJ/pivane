@@ -23,6 +23,8 @@
             document.addEventListener('scroll', event => {
                 // A focus scroll queued before opening can arrive after the menu appears.
                 if (event.target === document && this.viewportScroll?.x === scrollX && this.viewportScroll?.y === scrollY) return;
+                const before = this.ancestorScroll?.get(event.target);
+                if (before && event.target.scrollLeft === before.x && event.target.scrollTop === before.y) return;
                 if (!this.element.contains(event.target)) this.close(false);
             }, true);
             this.element.addEventListener('keydown', event => {
@@ -54,6 +56,10 @@
             this.element.classList.remove('hidden');
             this.render();
             this.viewportScroll = { x: scrollX, y: scrollY };
+            this.ancestorScroll = new Map();
+            for (let parent = anchor?.parentElement; parent; parent = parent.parentElement) {
+                this.ancestorScroll.set(parent, { x: parent.scrollLeft, y: parent.scrollTop });
+            }
         }
 
         back() {
@@ -114,6 +120,7 @@
             this.anchor?.setAttribute('aria-expanded', 'false');
             if (restoreFocus && this.anchor?.isConnected) this.anchor.focus({ preventScroll: true });
             this.anchor = null;
+            this.ancestorScroll = null;
             this.frames = [];
         }
     }

@@ -1,0 +1,105 @@
+#settings-subagents { margin-top: 28px; padding: 22px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-1); color: var(--text-main); min-width: 0; }
+#settings-subagents *, .sa-picker * { box-sizing: border-box; }
+#settings-subagents h4, #settings-subagents h5, #settings-subagents p { margin: 0; }
+#settings-subagents h4 { font-size: 1.05rem; line-height: 1.4; }
+#settings-subagents h5 { font-size: .88rem; }
+#settings-subagents .sa-note, .sa-picker .sa-note { color: var(--text-muted); font-size: .78rem; line-height: 1.6; overflow-wrap: anywhere; }
+.sa-header { display: flex; gap: 12px; align-items: center; }
+.sa-emblem, .sa-role-icon { display: grid; place-items: center; flex: 0 0 auto; width: 40px; height: 40px; border-radius: 12px; background: var(--surface-2); color: var(--accent, var(--green)); }
+.sa-heading { flex: 1; min-width: 0; }
+.sa-badge { padding: 4px 9px; border-radius: 20px; border: 1px solid var(--line); font-size: .7rem; color: var(--text-muted); white-space: nowrap; }
+.sa-badge[data-state="ready"] { color: var(--accent, var(--green)); background: color-mix(in srgb, var(--accent, var(--green)) 9%, transparent); border-color: color-mix(in srgb, var(--accent, var(--green)) 24%, transparent); }
+.sa-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 20px 0 16px; }
+.sa-scope { display: flex; gap: 10px; align-items: center; color: var(--text-muted); font-size: .78rem; min-width: 0; }
+#settings-subagents select, #settings-subagents input, .sa-picker select, .sa-picker input { font: inherit; color: var(--text-main); background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; min-width: 0; max-width: 100%; min-height: 42px; }
+#settings-subagents .sa-refresh { display: inline-flex; gap: 7px; align-items: center; background: transparent; color: var(--text-muted); border: 0; border-radius: 8px; cursor: pointer; font: inherit; font-size: .76rem; padding: 10px 6px; }
+#settings-subagents .sa-refresh:hover { color: var(--text-main); background: var(--surface-2); }
+#settings-subagents fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.sa-default-card { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+#settings-subagents .sa-default-card > .sa-note { margin-top: 4px; }
+.sa-fields { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(110px, 1fr); gap: 12px; margin-top: 14px; }
+.sa-field { display: flex; flex-direction: column; gap: 7px; min-width: 0; font-size: .76rem; color: var(--text-muted); }
+.sa-field select { width: 100%; flex: 1; }
+#settings-subagents .sa-model-trigger { display: flex; gap: 10px; align-items: center; text-align: left; min-width: 0; width: 100%; min-height: 58px; padding: 9px 12px; background: var(--surface-1); color: var(--text-main); border: 1px solid var(--line); border-radius: 9px; cursor: pointer; font: inherit; }
+.sa-model-copy { flex: 1; min-width: 0; }
+.sa-model-copy strong { display: block; font-size: .84rem; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sa-model-copy small { display: block; font-size: .7rem; color: var(--text-muted); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sa-model-trigger > i { color: var(--text-muted); }
+#settings-subagents .sa-model-trigger:hover:not(:disabled) { border-color: var(--accent, var(--green)); }
+.sa-role-heading { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; margin: 24px 0 10px; }
+.sa-roles { display: grid; gap: 8px; }
+.sa-role { border: 1px solid var(--line); border-radius: 11px; overflow: hidden; min-width: 0; }
+.sa-role > summary { display: grid; grid-template-columns: 34px minmax(0, 1fr) minmax(0, .7fr) 12px; gap: 10px; align-items: center; padding: 12px; cursor: pointer; list-style: none; }
+.sa-role > summary::-webkit-details-marker, .sa-help > summary::-webkit-details-marker { display: none; }
+.sa-role > summary:hover { background: var(--surface-2); }
+.sa-role-icon { width: 34px; height: 34px; font-size: .8rem; border-radius: 9px; }
+.sa-role-copy { min-width: 0; }
+.sa-role-copy strong { display: block; font-size: .83rem; font-weight: 600; overflow-wrap: anywhere; }
+.sa-role-copy small { display: block; color: var(--text-muted); font-size: .72rem; line-height: 1.6; margin-top: 2px; }
+.sa-role-selection { font-size: .73rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+.sa-role > summary > i { font-size: .65rem; color: var(--text-muted); transition: transform .15s; }
+.sa-role[open] > summary > i { transform: rotate(180deg); }
+.sa-role[open] { border-color: color-mix(in srgb, var(--accent, var(--green)) 40%, var(--line)); }
+.sa-role-body { padding: 0 14px 14px; border-top: 1px solid var(--line); }
+.sa-role-id { display: block; color: var(--text-muted); font: .68rem ui-monospace, monospace; margin-top: 10px; overflow-wrap: anywhere; }
+.sa-role-body .sa-fields { margin-top: 10px; }
+.sa-footer { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.sa-footer > span { flex: 1; }
+.sa-footer .settings-primary-button { display: inline-flex; gap: 7px; align-items: center; }
+#settings-subagents button:disabled { opacity: .5; cursor: default; }
+#settings-subagents :is(button, select, input, summary):focus-visible, .sa-picker :is(button, select, input):focus-visible { outline: 2px solid var(--accent, var(--green)); outline-offset: 3px; }
+#settings-subagents .sa-status { font-size: .79rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 12px; overflow-wrap: anywhere; }
+#settings-subagents .sa-status:empty { display: none; }
+.sa-empty { display: grid; justify-items: start; gap: 14px; padding: 18px; background: var(--surface-2); border-radius: 12px; font-size: .85rem; line-height: 1.7; }
+.sa-empty > i { color: var(--text-muted); font-size: 1.25rem; }
+.sa-help { margin-top: 18px; font-size: .74rem; color: var(--text-muted); }
+.sa-help > summary { cursor: pointer; width: fit-content; padding: 7px 0; }
+.sa-help > div { display: grid; gap: 9px; padding-top: 9px; line-height: 1.7; overflow-wrap: anywhere; }
+.sa-add-role { display: flex; flex-wrap: wrap; gap: 8px; }
+.sa-add-role input { flex: 1 1 150px; width: 0; }
+.sa-picker { margin: auto; width: min(600px, calc(100vw - 32px)); max-width: calc(100vw - 24px); max-height: min(740px, calc(100dvh - 40px)); padding: 0; border: 1px solid var(--line); border-radius: 18px; background: var(--surface-1); color: var(--text-main); box-shadow: 0 24px 80px #0004; overflow: hidden; }
+.sa-picker[open] { display: flex; flex-direction: column; }
+.sa-picker::backdrop { background: #0006; backdrop-filter: blur(3px); }
+.sa-picker > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 20px 12px; flex-shrink: 0; }
+.sa-picker h3 { margin: 0; font-size: 1rem; }
+.sa-picker-close { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 9px; background: var(--surface-2); color: var(--text-muted); cursor: pointer; }
+.sa-picker-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, .55fr); gap: 10px; padding: 0 20px; flex-shrink: 0; }
+.sa-picker input, .sa-picker select { width: 100%; font-size: 16px; }
+.sa-picker-automatic { display: flex; gap: 8px; padding: 14px 20px 0; flex-shrink: 0; }
+.sa-picker-mode { min-height: 38px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-2); color: var(--text-muted); padding: 7px 12px; font: inherit; font-size: .8rem; cursor: pointer; }
+.sa-picker-mode[aria-pressed="true"] { color: var(--accent, var(--green)); border-color: var(--accent, var(--green)); }
+.sa-picker-count { font-size: .73rem; color: var(--text-muted); margin: 14px 20px 8px; flex-shrink: 0; }
+.sa-picker-results { min-height: 100px; overflow-y: auto; overscroll-behavior: contain; padding: 0 12px 10px; min-width: 0; }
+.sa-picker-item { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; padding: 12px 10px; border: 1px solid transparent; border-radius: 9px; text-align: left; font: inherit; color: var(--text-main); background: transparent; cursor: pointer; }
+.sa-picker-item:hover, .sa-picker-item[aria-pressed="true"] { background: var(--surface-2); }
+.sa-picker-item[aria-pressed="true"] > i { color: var(--accent, var(--green)); }
+.sa-picker-item > i { color: var(--text-muted); font-size: .75rem; flex-shrink: 0; }
+.sa-picker-item-copy { min-width: 0; flex: 1; }
+.sa-picker-item strong { display: block; font-weight: 550; font-size: .85rem; overflow-wrap: anywhere; }
+.sa-picker-item small { display: block; margin-top: 4px; font-size: .72rem; line-height: 1.5; color: var(--text-muted); overflow-wrap: anywhere; }
+.sa-picker-more { display: block; width: 100%; min-height: 42px; border: 1px solid var(--line); border-radius: 9px; color: var(--text-main); background: var(--surface-2); font: inherit; font-size: .8rem; cursor: pointer; }
+.sa-picker-empty { color: var(--text-muted); font-size: .82rem; line-height: 1.6; padding: 20px 10px; }
+.sa-picker > footer { flex-shrink: 0; padding: 12px 20px; border-top: 1px solid var(--line); }
+@media (max-width: 600px) {
+    #settings-subagents { padding: 14px; border-radius: 12px; }
+    .sa-header { flex-wrap: wrap; gap: 9px; }
+    .sa-emblem { width: 34px; height: 34px; border-radius: 9px; }
+    .sa-badge { margin-left: 43px; }
+    .sa-fields { grid-template-columns: minmax(0, 1fr); }
+    .sa-default-card { padding: 12px; }
+    .sa-role-heading { flex-wrap: wrap; gap: 4px; }
+    .sa-role > summary { grid-template-columns: 30px minmax(0, 1fr) 12px; gap: 8px; padding: 10px; }
+    .sa-role-icon { width: 30px; height: 30px; grid-row: 1 / 3; }
+    .sa-role > summary > i { grid-column: 3; grid-row: 1 / 3; }
+    .sa-role-selection { grid-column: 2; text-align: left; }
+    .sa-footer > span { flex-basis: 100%; }
+    .sa-footer > button { flex: 1; }
+    #settings-subagents select, #settings-subagents input { font-size: 16px; }
+    .sa-picker { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); border-radius: 14px; }
+    .sa-picker > header { padding: 12px 14px 10px; }
+    .sa-picker-filters { grid-template-columns: minmax(0, 1fr); padding: 0 14px; gap: 8px; }
+    .sa-picker-automatic { padding: 12px 14px 0; flex-wrap: wrap; }
+    .sa-picker-count { margin: 12px 14px 8px; }
+    .sa-picker > footer { padding: 10px 14px; }
+}
+@media (prefers-reduced-motion: reduce) { .sa-role > summary > i { transition: none; } }

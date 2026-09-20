@@ -180,9 +180,22 @@ async function run(browser, viewport) {
     await target.focus();
     await target.press('Shift+F10');
     const menu = page.locator('.pi-thread-menu:not(.hidden)');
+    await page.locator('#pi-session-list').evaluate(node => node.dispatchEvent(new Event('scroll')));
+    assert.equal(await menu.isVisible(), true, 'queued scroll without position change must not dismiss the menu');
     await menu.getByRole('menuitem', { name: '复制', exact: true }).click();
     await menu.getByRole('menuitem', { name: '会话 ID', exact: true }).click();
     assert.deepEqual(await page.evaluate(() => window.copied), ['active']);
+    await section('recent').locator('[data-session-id="active"] [data-action="menu"]').click();
+    const previousScroll = await page.locator('#pi-session-list').evaluate(node => {
+        const before = node.scrollTop;
+        node.scrollTop += 12;
+        if (node.scrollTop === before) node.scrollTop -= 12;
+        if (node.scrollTop === before) throw new Error('Fixture must allow real scrolling');
+        node.dispatchEvent(new Event('scroll'));
+        return before;
+    });
+    assert.equal(await menu.count(), 0, 'real scrolling still dismisses the menu');
+    await page.locator('#pi-session-list').evaluate((node, top) => { node.scrollTop = top; }, previousScroll);
     await section('recent').locator('[data-session-id="active"] [data-action="menu"]').click();
     await menu.getByRole('menuitem', { name: '标记为未读' }).click();
     await expectIds('recent', ['old-visited', 'recent-01', 'recent-02', 'recent-03', 'recent-04', 'recent-05']);

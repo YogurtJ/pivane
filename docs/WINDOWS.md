@@ -4,6 +4,8 @@
 
 ## 安装前提
 
+当前源码的 `npm ci` 默认尝试安装可选 pi-subagents，下载失败不影响 Pivane。独立身份必须在安装前设置 `PI_CODING_AGENT_DIR`；跳过、已有插件与补装规则见[默认可选能力](INSTALL_RECOVERY.md#默认可选能力)。
+
 - Node 22.x x64、npm、Git for Windows（含 Git Bash）、ripgrep 在运行进程 PATH 中可用。Pi 使用项目锁定依赖，不需要全局安装。
 - 普通安装使用随包的 Node-API 8 组件，无需 Visual Studio、编译器或安装时下载原生库。仅维护者重建组件时需要指定编译工具和已核对的 Node 输入文件，见 native/README.md。
 - 普通安装复用当前用户的 Pi CLI 身份，Windows 原生默认通常是 `C:\Users\<用户>\.pi\agent`，不是 AppData；非空 `PI_CODING_AGENT_DIR` 优先。媒体和预约使用实例独立路径。只有需要隔离身份时才另建专用 Pi 目录，不把身份指向驱动器根目录或整个主目录。

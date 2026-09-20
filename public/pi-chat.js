@@ -290,6 +290,23 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    const mainQuotes = document.createElement('div'); mainQuotes.className = 'pi-composer-quotes';
+    elements.attachments.before(mainQuotes);
+    const selectionActions = new window.PiSelectionActions({
+        context: () => ({ connected: state.connected, key: JSON.stringify([state.cwd, state.session?.id, state.socketGeneration]) }),
+        sideEnabled: () => sideChat.enabled,
+        addMain: quote => {
+            if (state.attachmentReads || state.submittingDrafts.has(state.composerSessionKey)) throw new Error(translateUi('请等待附件读取或消息投递完成'));
+            const file = { ...quote, kind: 'quote', id: attachments.id() };
+            const files = [...state.attachmentFiles, file];
+            attachments.validateDraft(elements.input.value, files);
+            state.attachmentFiles = files; renderAttachments(); autoResizeInput();
+            if (innerWidth <= 900) elements.inspector.classList.remove('open');
+            elements.input.focus();
+        },
+        addSide: quote => sideChat.open({ quote }), toast
+    });
+
     const turnEdits = new window.PiTurnEdits({
         transcript: elements.transcript, showPane: mode => sideChat.showPane(mode), copy: copyTextToClipboard, notify: toast,
         api: apiFetch, context: () => ({ cwd: state.cwd, key: JSON.stringify([state.cwd, state.session?.id]), generation: state.socketGeneration })
@@ -498,6 +515,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.composerTools = status.composerTools === true;
             state.nativeSettings = status.nativeSettings === true;
             state.nativeResources = status.nativeResources === true;
+            extensionAssistant.setEnabled(status.extensionAssistant === true);
             state.systemPrompts = status.systemPrompts === true;
             nativeContext.sync();
             state.roots = status.projectRoots || [];
@@ -507,7 +525,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.archiveEnabled = status.archives === true;
             conversationSearch.setArchivesEnabled(state.archiveEnabled);
             workflows.setEnabled(status.sessionWorkflows === true);
-            sideChat.setEnabled(status.sideChat === true, status.sideChatContext === true, status.sideChatRetention === true);
+            sideChat.setEnabled(status.sideChat === true, status.sideChatContext === true, status.sideChatRetention === true, status.sideChatTools === true);
             window.PiReplyTts.setEnabled(status.replyTts === true);
             elements.tokenDialog.classList.add('hidden');
             await loadProjects();
@@ -827,7 +845,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 badge.dataset.phase = phase;
                 badge.innerHTML = `<i class="fa-solid ${icon}" aria-hidden="true"></i><span>${label}</span>`;
             }
-            badge.title = phase === 'inactive' ? translateUi("本工作台没有此会话的运行实例；不代表外部终端状态") : label;
+            badge.title = phase === 'inactive' ? translateUi("本工作台没有此会话的运行实例；不代表外部终端状态")
+                : phase === 'idle' ? translateUi("运行实例仍保留，可使用 /quit 退出") : label;
             const notice = state.replyNotices.get(key);
             const unread = Boolean(notice);
             const unreadBadge = row.querySelector('.pi-session-unread');
@@ -1083,12 +1102,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderSessionItem(session, cwd) {
+        const firstMessage = session.firstMessage === '(no messages)' ? '' : String(session.firstMessage || '').replace(/\s+/g, ' ').trim();
+        const named = typeof session.name === 'string' && Boolean(session.name.trim());
+        const title = session.ephemeral || named ? getSessionTitle(session) : truncate(firstMessage, 160) || translateUi("未命名会话");
+        const query = elements.sessionSearch.value.trim().toLowerCase();
+        const match = query ? firstMessage.toLowerCase().indexOf(query) : -1;
+        let preview = session.ephemeral ? translateUi("退出或断开后立即销毁") : '';
+        if (!session.ephemeral && match >= 0 && (!named || !title.toLowerCase().includes(query))) {
+            const start = Math.max(0, match - 24), end = Math.min(firstMessage.length, match + query.length + 60);
+            preview = `${start ? '…' : ''}${firstMessage.slice(start, end)}${end < firstMessage.length ? '…' : ''}`;
+        }
         return `
             <article class="pi-session-item ${session.ephemeral ? 'ephemeral' : ''} ${state.cwd === cwd && state.session?.id === session.id ? 'active' : ''}" data-session-id="${escapeHtml(session.id)}" data-cwd="${escapeHtml(cwd)}">
                 <button class="pi-session-main" type="button">
                     <span class="pi-session-project" title="${escapeHtml(cwd)}">${escapeHtml(state.projects.find(project => project.cwd === cwd)?.name || getProjectName(cwd))}</span>
-                    <span class="pi-session-title">${escapeHtml(getSessionTitle(session))}${session.ephemeral ? `<em>${translateUi("不保存")}</em>` : ''}</span>
-                    <span class="pi-session-preview">${session.ephemeral ? translateUi("退出或断开后立即销毁") : escapeHtml(truncate(session.firstMessage === '(no messages)' ? '' : session.firstMessage, 62) || translateUi("空会话"))}</span>
+                    <span class="pi-session-title ${!named && !session.ephemeral ? 'pi-session-title-fallback' : ''}" title="${escapeHtml(title)}">${escapeHtml(title)}${session.ephemeral ? `<em>${translateUi("不保存")}</em>` : ''}</span>
+                    ${preview ? `<span class="pi-session-preview">${escapeHtml(preview)}</span>` : ''}
                     ${!session.ephemeral && isThreadArchived(cwd, session.id) ? `<span class="pi-session-archive-label">${state.archivedSessions.has(activityKey(cwd, session.id)) ? translateUi('已归档') : translateUi('随项目归档')}</span>` : ''}
                     <span class="pi-session-deferred" hidden></span>
                     <span class="pi-session-unread" hidden><i class="fa-solid fa-circle" aria-hidden="true"></i> ${translateUi("新回复")}</span>
@@ -1407,6 +1436,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderAttachments(); autoResizeInput();
         }
         state.session = session;
+        extensionAssistant.update(session);
         workflows.update();
         if (!session.ephemeral) localStorage.setItem(`pi.web.session:${state.cwd}`, session.id);
         renderSessions();
@@ -1532,6 +1562,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.queue.classList.add('hidden');
         elements.queue.replaceChildren();
         window.PiReplyTts.reset();
+        selectionActions.hide();
         state.compactRequested = false;
         state.compacting = false;
         state.compaction = null;
@@ -1639,6 +1670,7 @@ document.addEventListener('DOMContentLoaded', () => {
         void composer.run(() => composer.load());
         state.stats = snapshot.stats || null;
         state.session = { ...state.session, ...(snapshot.session || {}) };
+        extensionAssistant.update(state.session);
         renderSessions();
         renderModels();
         renderThinkingLevels();
@@ -1772,6 +1804,54 @@ document.addEventListener('DOMContentLoaded', () => {
         return button;
     }
 
+    function appendAgentThreadLink(header, target, label) {
+        if (!target || typeof target.cwd !== 'string' || typeof target.id !== 'string' || target.cwd !== state.cwd) return;
+        const button = document.createElement('button');
+        button.type = 'button'; button.className = 'pi-agent-thread-link'; button.textContent = label;
+        button.addEventListener('click', async () => {
+            if (state.attachmentReads || state.submittingDrafts.has(state.composerSessionKey)) {
+                toast(translateUi('请等待附件读取或消息投递完成'), 'info'); return;
+            }
+            const generation = state.socketGeneration, cwd = state.cwd;
+            button.disabled = true;
+            try {
+                const rows = await loadSessions(cwd);
+                if (generation !== state.socketGeneration || cwd !== state.cwd) return;
+                const session = rows.find(row => row.id === target.id);
+                if (!session) throw new Error(translateUi('原会话已不存在，请从会话列表选择其他会话。'));
+                await openSession(session);
+            } catch (error) { toast(error.message, 'error'); }
+            finally { button.disabled = false; }
+        });
+        header.appendChild(button);
+    }
+
+    function foldLongUserText(text, source) {
+        // Deliberately generous: ordinary multi-paragraph prompts remain fully visible.
+        if (source.length <= 2400 && source.split(/\r\n|\r|\n/).length <= 30) return;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'pi-user-text-toggle';
+        const update = expanded => {
+            text.classList.toggle('pi-user-text-collapsed', !expanded);
+            button.setAttribute('aria-expanded', String(expanded));
+            button.textContent = translateUi(expanded ? '收起全文' : '展开全文');
+        };
+        text.classList.add('pi-user-long-text');
+        text._piSetExpanded = update;
+        update(false);
+        button.addEventListener('click', () => {
+            const top = text.getBoundingClientRect().top;
+            const expanded = button.getAttribute('aria-expanded') === 'true';
+            update(!expanded);
+            // Keep the beginning reachable when collapsing a message read far below it.
+            if (expanded && top < transcriptScroll.viewport.getBoundingClientRect().top) {
+                text.scrollIntoView({ block: 'start' });
+            }
+        });
+        text.after(button);
+    }
+
     function createMessageContentElement(message, showReplyActions) {
         const role = message.role || 'custom';
         if (role === 'toolResult') return createToolResultElement(message);
@@ -1787,6 +1867,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const title = role === 'user' ? translateUi("你") : role === 'assistant' ? 'Pi' : translateUi("系统");
         const model = role === 'assistant' && message.model ? `<span>${escapeHtml(message.model)}</span>` : '';
         header.innerHTML = `<strong>${title}</strong>${model}`;
+        if (role === 'custom' && ['pi5-agent-task-message', 'pi5-agent-task-receipt'].includes(message.customType)) {
+            article.classList.add('pi-agent-thread-message');
+            const receipt = message.customType === 'pi5-agent-task-receipt';
+            header.querySelector('strong').textContent = translateUi(receipt ? 'Agent 任务线程' : '来自 Agent 的任务');
+            const details = message.details || {};
+            if (receipt) {
+                const meta = document.createElement('span'); meta.className = 'pi-agent-thread-meta';
+                const labels = { saved: '任务已保存，尚未确认启动', submitted: '任务已提交', running: '运行中', tool: '运行中', retrying: '运行中', compacting: '运行中', waiting: '等待处理', completed: '已完成', error: '执行失败', stopped: '已停止', uncertain: '启动状态待核实' };
+                meta.textContent = [details.model?.provider, details.model?.modelId, details.thinkingLevel,
+                    translateUi('创建回执：{0}', translateUi(typeof details.status === 'string' && Object.hasOwn(labels, details.status) ? labels[details.status] : '启动状态待核实'))]
+                    .filter(value => typeof value === 'string' && value).join(' · ');
+                header.appendChild(meta);
+                appendAgentThreadLink(header, details.session, translateUi('打开任务线程'));
+            } else appendAgentThreadLink(header, { cwd: details.source?.cwd, id: details.source?.sessionId }, translateUi('查看来源线程'));
+        }
         const responseText = role === 'assistant' ? messageText(message.content).trim() : '';
         if (responseText) state.lastAssistantText = responseText;
         if (role === 'user') {
@@ -1815,8 +1910,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (block.type === 'text') {
                 const text = document.createElement('div');
                 text.className = 'pi-markdown';
-                text.innerHTML = role === 'assistant' ? renderMarkdown(block.text) : `<p>${escapeHtml(block.text).replace(/\n/g, '<br>')}</p>`;
+                if (role === 'assistant') text.innerHTML = renderMarkdown(block.text);
+                else window.PiQuotes.renderUser(text, block.text);
                 body.appendChild(text);
+                if (role === 'user') foldLongUserText(text, block.text || '');
             } else if (block.type === 'thinking') {
                 body.appendChild(createThinkingBlock(block.thinking));
             } else if (block.type === 'toolCall') {
@@ -1863,6 +1960,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     key: JSON.stringify([state.cwd, state.session?.id, message.timestamp, responseText]) });
                 actions.appendChild(speech);
             }
+            if (typeof message.timestamp === 'number' || typeof message.timestamp === 'string') {
+                const recordedAt = new Date(message.timestamp);
+                if (Number.isFinite(recordedAt.getTime())) {
+                    const time = document.createElement('time');
+                    time.className = 'pi-reply-time';
+                    time.dateTime = recordedAt.toISOString();
+                    time.textContent = recordedAt.toLocaleTimeString(globalThis.PiI18n?.locale || 'zh-CN', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+                    time.title = translateUi('消息时间：{0}', messageTimeFormat.format(recordedAt));
+                    time.setAttribute('aria-label', time.title);
+                    actions.appendChild(time);
+                }
+            }
             article.appendChild(actions);
         }
         return article;
@@ -1904,11 +2013,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             state.toolRows.set(toolCall.id, row);
         }
+        window.PiToolLabels?.update(row);
         return row;
     }
 
     function setToolOutput(row, result) {
         row._piResult = result;
+        window.PiToolLabels?.update(row);
         row.querySelector('.pi-tool-output').textContent = contentToPlainText(result.content);
         window.PiToolDiff.render(row, result, copyTextToClipboard, toast);
         let images = row.querySelector('.pi-tool-images');
@@ -2015,13 +2126,14 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="pi-empty-state session-ready">
                 <div class="pi-empty-mark">π</div>
                 <h2>${escapeHtml(state.session ? getSessionTitle(state.session) : 'Pi Coding Agent')}</h2>
-                <p>${state.session ? escapeHtml(state.cwd) : translateUi("选择项目会话后开始工作")}</p>
+                <p>${state.session?.assistant?.kind === 'extensions' ? escapeHtml(translateUi('描述你想完成的任务，或粘贴技能、扩展包的链接。我会先检查已有能力，再查找适合的方案。')) : state.session ? escapeHtml(state.cwd) : translateUi("选择项目会话后开始工作")}</p>
             </div>
         `;
         transcriptView.refresh();
     }
 
     function clearSessionView() {
+        extensionAssistant.update(null);
         turnEdits.reset();
         state.attachmentEpoch++;
         state.attachmentReads = 0;
@@ -2261,7 +2373,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (delta.type === 'toolcall_start') {
             const block = ensureLiveBlock(index, 'toolcall');
             block.dataset.toolId = delta.id || '';
-            block.querySelector('strong').textContent = delta.toolName || 'tool';
+            block.dataset.toolName = delta.toolName || 'tool';
+            window.PiToolLabels?.update(block);
             if (delta.id) state.toolRows.set(delta.id, block);
         } else if (delta.type === 'toolcall_delta') {
             const block = ensureLiveBlock(index, 'toolcall');
@@ -2270,7 +2383,9 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (delta.type === 'toolcall_end' && delta.toolCall) {
             const block = ensureLiveBlock(index, 'toolcall');
             block.dataset.toolId = delta.toolCall.id || '';
-            block.querySelector('strong').textContent = delta.toolCall.name || 'tool';
+            block.dataset.toolName = delta.toolCall.name || 'tool';
+            block._piToolArgs = delta.toolCall.arguments;
+            window.PiToolLabels?.update(block);
             block.querySelector('.pi-tool-args').textContent = formatToolArgs(delta.toolCall.arguments);
             if (delta.toolCall.id) state.toolRows.set(delta.toolCall.id, block);
         }
@@ -2324,8 +2439,10 @@ document.addEventListener('DOMContentLoaded', () => {
             row._piToolArgs = event.args;
             row.querySelector('.pi-tool-args').textContent = formatToolArgs(event.args);
         }
+        if (event.toolName) row.dataset.toolName = event.toolName;
         const result = event.partialResult || event.result;
         if (result) setToolOutput(row, result);
+        else window.PiToolLabels?.update(row);
         transcriptView.schedule();
         scrollTranscript();
     }
@@ -2738,7 +2855,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.modelRefreshOp) return toast(translateUi("正在更新模型目录，请稍候；草稿已保留"), 'info');
         if (state.resourceRequested) return toast(translateUi("正在重新加载原生资源，请稍候"), 'info');
         const text = elements.input.value.trim();
+        const hasQuotes = state.attachmentFiles.some(file => file.kind === 'quote');
         const shellInput = window.PiShell.parse(elements.input.value);
+        if (hasQuotes && (shellInput || /^\/[^\s/]+(?:\s|$)/.test(text))) return toast(translateUi('请先移除引用，再执行命令'), 'info');
         if (shellInput) return sendShell(shellInput);
         const slash = text.match(/^\/([^\s/]+)(?:\s+([\s\S]*))?$/);
         const selectedCommand = slash && state.commands.find(c => c.name === slash[1]);
@@ -2777,7 +2896,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.submittingDrafts.add(key);
         autoResizeInput(); workflows.update();
         composer.hide();
-        const optimistic = selectedCommand ? null : appendOptimisticUser(text || textAttachments.map(file => translateUi("附件：{0}", file.name)).join(', '), images, message);
+        const optimistic = selectedCommand ? null : appendOptimisticUser(hasQuotes ? attachments.payload(text, state.attachmentFiles.filter(file => file.kind === 'quote')).message : text || textAttachments.map(file => translateUi("附件：{0}", file.name)).join(', '), images, message);
         try {
             await requestRpc(command, { message, images }, 60000);
             state.uncertainDrafts.delete(key);
@@ -2893,14 +3012,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderAttachments() {
-        elements.attachments.classList.toggle('hidden', !state.attachmentFiles.length);
-        elements.attachments.innerHTML = state.attachmentFiles.map(file => `
+        elements.attachments.classList.toggle('hidden', !state.attachmentFiles.some(file => file.kind !== 'quote'));
+        mainQuotes.replaceChildren();
+        elements.attachments.innerHTML = state.attachmentFiles.filter(file => file.kind !== 'quote').map(file => `
             <div class="pi-attachment-chip" data-attachment-id="${file.id}">
                 <button class="pi-attachment-open" type="button" data-preview-attachment title="${translateUi("预览附件")}" aria-label="${translateUi("预览 {0}", escapeHtml(file.name))}">${file.kind === 'image' ? `<img src="${file.preview}" alt="">` : '<span class="pi-file-mark"><i class="fa-solid fa-file-code"></i></span>'}</button>
                 <span title="${escapeHtml(file.name)}"><strong>${escapeHtml(file.name)}</strong><small>${file.size == null ? translateUi("图片") : `${Math.ceil(file.size / 1024)} KB`}</small></span>
                 <button type="button" data-remove-attachment title="${translateUi("移除附件")}" aria-label="${translateUi("移除附件")}"><i class="fa-solid fa-xmark"></i></button>
             </div>
         `).join('');
+        for (const file of state.attachmentFiles.filter(file => file.kind === 'quote')) {
+            mainQuotes.append(window.PiQuotes.card(file, () => {
+                state.attachmentFiles = state.attachmentFiles.filter(item => item !== file);
+                renderAttachments(); autoResizeInput(); workflows.update();
+            }));
+        }
     }
 
     function previewAttachment(file) {
@@ -3142,10 +3268,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (cwd !== state.cwd) await selectProject(cwd);
                     if (state.session?.id !== session.id || !state.connected) await openSession(session);
                     await workflows.openClone();
-                }, { disabled: session.ephemeral }), command(translateUi("待发送消息"), 'fa-clock', async () => {
-                    if (cwd !== state.cwd) await selectProject(cwd);
-                    if (state.session?.id !== session.id || !state.connected) await openSession(session);
-                    await workflows.openList('deferred');
                 }, { disabled: session.ephemeral })] : []),
                 ...(state.manualUnread ? [command(translateUi("标记为未读"), 'fa-envelope', () => markThreadUnread(session, cwd),
                     { disabled: session.ephemeral || state.unreadRequests.has(activityKey(cwd, session.id)) })] : []),
@@ -3160,13 +3282,16 @@ document.addEventListener('DOMContentLoaded', () => {
             ];
         } else {
             const archived = state.archivedProjects.has(cwd);
-            items = [
+            const moreItems = [
                 ...(transfer.enabled ? [command(translateUi("导入 Pi 会话"), 'fa-file-import', () => transfer.openImport(cwd))] : []),
+                ...(state.nativeSettings ? [command(translateUi("项目信任"), 'fa-shield-halved', () => nativeContext.openTrust(cwd))] : []),
+                command(translateUi("复制项目路径"), 'fa-copy', () => copyTextToClipboard(cwd))
+            ];
+            items = [
                 command(translateUi("新建线程"), 'fa-plus', async () => { if (cwd !== state.cwd) await selectProject(cwd); await createSession(); }),
                 command(state.pinnedProjects.includes(cwd) ? translateUi("取消置顶") : translateUi("置顶项目"), 'fa-thumbtack', () => toggleProjectPin(cwd), { disabled: state.pinRequests.has(cwd) }),
-                ...(state.nativeSettings ? [command(translateUi("项目信任"), 'fa-shield-halved', () => nativeContext.openTrust(cwd))] : []),
-                command(translateUi("复制项目路径"), 'fa-copy', () => copyTextToClipboard(cwd)),
                 command(translateUi("刷新线程"), 'fa-rotate', () => loadSessions(cwd)),
+                { label: translateUi("更多操作"), icon: 'fa-ellipsis', children: moreItems },
                 ...(state.archiveEnabled ? [command(archived ? translateUi('恢复项目') : translateUi('归档项目'),
                     'fa-box-archive', () => setArchive(cwd, null, !archived), { disabled: state.archiveRequests.has(activityKey(cwd, '')) })] : []),
                 command(translateUi("从列表移除"), 'fa-folder-minus', () => removeEmptyProject(cwd), {
@@ -3449,6 +3574,45 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    const extensionAssistant = window.PiExtensionAssistant.create({
+        toast,
+        context: () => ({ cwd: state.cwd, defaultProject: state.defaultProject }),
+        async start({ cwd, scope, language, draft, canNavigate }) {
+            if (state.attachmentReads || state.submittingDrafts.has(state.composerSessionKey)) throw new Error(translateUi("请等待附件读取或消息投递完成"));
+            const originCwd = state.cwd, originId = state.session?.id, generation = state.socketGeneration;
+            const session = await apiFetch('/api/pi/extension-assistant/sessions', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cwd, scope, language,
+                    returnSessionId: originCwd === cwd && state.session && !state.session.ephemeral ? originId : null })
+            });
+            // Preserve the new draft even if the user navigated while creation was in flight.
+            state.composerDrafts.set(JSON.stringify([session.cwd, session.id]), { text: draft, files: [] });
+            const rows = state.projectSessions.get(session.cwd) || [];
+            if (!rows.some(row => row.id === session.id)) rows.unshift(session);
+            state.projectSessions.set(session.cwd, rows);
+            if (state.cwd === session.cwd) state.sessions = rows;
+            rememberProject(session.cwd); renderProjects(); renderSessions();
+            if (!canNavigate() || state.cwd !== originCwd || state.session?.id !== originId || generation !== state.socketGeneration) {
+                toast(translateUi('扩展助手会话已创建，可从会话列表打开。'), 'info'); return false;
+            }
+            if (state.cwd !== session.cwd) {
+                await selectProject(session.cwd);
+                if (!canNavigate() || state.cwd !== session.cwd || state.session) return false;
+            }
+            await openSession(session);
+            return state.session?.id === session.id;
+        },
+        async returnTo() {
+            const id = state.session?.assistant?.returnSessionId, cwd = state.cwd, generation = state.socketGeneration;
+            if (!id) return;
+            if (state.attachmentReads || state.submittingDrafts.has(state.composerSessionKey)) throw new Error(translateUi("请等待附件读取或消息投递完成"));
+            const rows = await loadSessions(cwd);
+            if (generation !== state.socketGeneration || cwd !== state.cwd) return;
+            const original = rows.find(row => row.id === id);
+            if (!original) throw new Error(translateUi('原会话已不存在，请从会话列表选择其他会话。'));
+            await openSession(original);
+        }
+    });
     window.PiNativeRuntime = {
         context: () => ({ cwd: state.cwd, sessionId: state.session?.id, generation: state.socketGeneration, connected: state.connected, supported: state.nativeResources,
             systemPrompts: state.systemPrompts, busy: state.treeBusy || state.shellBusy || state.streaming || state.compacting || state.compactRequested || state.controlRequested || state.resourceRequested || state.pendingUi.size > 0 }),

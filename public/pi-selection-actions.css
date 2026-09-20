@@ -1,0 +1,18 @@
+.pi-selection-menu { position: fixed; z-index: 1200; display: flex; gap: 2px; padding: 4px; max-width: calc(100vw - 16px); border: 1px solid var(--line, #8885); border-radius: 12px; background: var(--surface-1, #fff); color: var(--text-main, #222); box-shadow: 0 6px 24px #0002; }
+.pi-selection-menu[hidden] { display: none; }
+.pi-selection-menu button { min-height: 38px; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer; }
+.pi-selection-menu button:hover, .pi-selection-menu button:focus-visible { background: var(--surface-3, #8882); }
+.pi-selection-menu button:disabled { opacity: .45; cursor: default; }
+::highlight(pi-selection) { background: #6b9cff55; }
+.pi-quote-card { position: relative; flex: 1 1 100%; min-width: 0; max-width: 100%; padding: 10px 38px 10px 12px; border: 1px solid var(--line, #8884); border-left: 3px solid var(--accent, #7298dd); border-radius: 10px; background: var(--surface-1, #8881); text-align: left; overflow-wrap: anywhere; }
+.pi-quote-card summary { font-size: 12px; color: var(--text-muted, #888); cursor: pointer; }
+.pi-quote-preview, .pi-quote-full { white-space: pre-wrap; font-size: 13px; line-height: 1.5; margin-top: 5px; }
+.pi-quote-preview { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.pi-quote-card:has(details[open]) > .pi-quote-preview { display: none; }
+.pi-quote-full { max-height: 180px; overflow: auto; }
+.pi-quote-remove { position: absolute; top: 3px; right: 3px; width: 32px; height: 32px; border: 0; background: transparent; color: inherit; font-size: 22px; cursor: pointer; border-radius: 6px; }
+.pi-composer-quotes, .pi-side-quotes { display: grid; gap: 6px; max-height: 220px; overflow: auto; margin-bottom: 8px; }
+.pi-side-quotes { margin: 0 12px 8px; }
+.pi-composer-quotes:empty, .pi-side-quotes:empty { display: none; }
+.pi-markdown > .pi-quote-card { margin-bottom: 8px; }
+@media (max-width: 480px) { .pi-selection-menu { flex-direction: column; } .pi-selection-menu button { min-height: 40px; text-align: left; padding: 8px 12px; } }

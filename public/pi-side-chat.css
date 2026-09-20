@@ -1,3 +1,11 @@
+#pi-side-confirm[hidden] { display: none; }
+.pi-side-confirm { flex: 0 0 auto; max-height: 42dvh; overflow: auto; padding: 10px 12px; border-block: 1px solid var(--amber); font-size: 0.76rem; overflow-wrap: anywhere; }
+.pi-side-confirm p { margin: 6px 0; line-height: 1.5; }
+.pi-side-confirm pre, .pi-side-tool pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow: auto; font-size: 0.72rem; margin: 6px 0; }
+.pi-side-confirm-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pi-side-confirm-actions button { min-height: 36px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-1); color: var(--text-main); cursor: pointer; }
+.pi-side-tool { border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; margin-top: 6px; min-width: 0; font-size: 0.75rem; }
+.pi-side-tool summary { cursor: pointer; overflow-wrap: anywhere; }
 #pi-toggle-side-chat[hidden], #pi-side-chat[hidden], #pi-side-tab[hidden], #pi-inspector-details[hidden], #pi-side-stop[hidden], #pi-side-send[hidden] { display: none !important; }
 .pi-inspector .inspector-heading { min-height: 48px; padding: 6px 12px; flex-shrink: 0; }
 .pi-inspector-tabs { display: flex; align-items: center; gap: 12px; margin-top: 0; }

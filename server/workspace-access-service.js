@@ -26,6 +26,8 @@ class WorkspaceAccessService extends EventEmitter {
         this.secureCookie = options.secureCookie ?? process.env.PI_WEB_SECURE_COOKIE === 'true';
         this.cookieName = `pi_access_${digest(this.filePath).slice(0, 12)}`;
         this.internalToken = randomBytes(32).toString('base64url');
+        // Separate from the media planning credential; only dedicated assistant workers receive it.
+        this.extensionAssistantToken = randomBytes(32).toString('base64url');
         this.cachedToken = null;
         this.attempts = new Map();
         this.sockets = new Map();
@@ -185,7 +187,13 @@ class WorkspaceAccessService extends EventEmitter {
                     && (this.publicFiles.has(pathname) || this.publicPrefixes.some(prefix => pathname.startsWith(prefix)))) return next();
                 if (!this.originAllowed(req)) throw failure('Origin is not allowed', 403);
                 const internal = internalRoutes.get(pathname) === req.method && equal(String(req.headers.authorization || ''), `Bearer ${this.internalToken}`);
-                const identity = internal ? { kind: 'internal' } : this.authenticate(req);
+                const assistantPath = pathname.replace(/^\/api\/pi(?=\/)/, '');
+                const assistant = req.method === 'POST' && ['/extension-assistant/inventory', '/extension-assistant/package'].includes(assistantPath)
+                    && equal(String(req.headers.authorization || ''), `Bearer ${this.extensionAssistantToken}`);
+                const threadPath = pathname.replace(/^\/api\/pi(?=\/)/, '');
+                const thread = req.method === 'POST' && /^\/agent-threads\/(create|status|models)$/.test(threadPath)
+                    ? this.agentThreadIdentity?.(req) : null;
+                const identity = internal ? { kind: 'internal' } : assistant ? { kind: 'extension-assistant' } : thread || this.authenticate(req);
                 if (req.method === 'OPTIONS') {
                     res.set({ 'Access-Control-Allow-Origin': req.headers.origin || '', Vary: 'Origin',
                         'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS', 'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Pi-Access' });

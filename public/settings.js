@@ -42,7 +42,9 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const catalog = $('settings-unified-catalog');
-    catalog.append(elements.refreshModels.closest('.settings-header-actions'), elements.modelSearch.closest('.settings-toolbar'), elements.modelResult, elements.modelList);
+    const modelActions = elements.refreshModels.closest('.settings-header-actions');
+    catalog.append(modelActions, elements.modelSearch.closest('.settings-toolbar'), elements.modelResult, elements.modelList);
+    $('settings-provider-header-actions').append(elements.refreshModels);
     elements.modelSearch.closest('.settings-toolbar').append(elements.providerConfigured.closest('label'));
     elements.providerSearch.closest('.settings-toolbar').hidden = true;
 
@@ -124,6 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const usagePanel = window.PiUsage.create({ apiFetch });
     const nativeSettings = window.PiNativeSettings.create({ apiFetch, currentCwd, toast });
     const updatesPanel = window.PiUpdates.create({ apiFetch });
+    const subagentSettings = window.PiSubagentSettings.create({ apiFetch, currentCwd });
     const systemPrompts = window.PiSystemPrompts.create({ apiFetch, currentCwd });
 
     function openSettings(tab = state.activeTab) {
@@ -137,6 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
         usagePanel.close();
         updatesPanel.close();
         systemPrompts.close();
+        subagentSettings.close();
         closeEditor();
         elements.dialog.classList.add('hidden');
         window.dispatchEvent(new CustomEvent('workspace:settings-closed'));
@@ -144,6 +148,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function switchTab(tab) {
         state.activeTab = tab;
+        if (tab === 'media') void subagentSettings.open();
+        else subagentSettings.close();
         if (tab === 'access') window.WorkspaceAccess?.openSettings();
         else window.WorkspaceAccess?.closeSettings();
         void nativeSettings.open(tab);
@@ -850,6 +856,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (detail.showConfigured === false) elements.providerConfigured.checked = false;
         openSettings(detail.tab || state.activeTab);
+        if (detail.updatePi === true && detail.tab === 'updates') updatesPanel.reviewUpdate();
     });
     elements.close.addEventListener('click', closeSettings);
     elements.dialog.addEventListener('click', event => { if (event.target === elements.dialog) closeSettings(); });

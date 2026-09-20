@@ -4,6 +4,26 @@ const os = require('node:os');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { getSdk } = require('./pi-session-store');
+const { replaceFileSync } = require('./pi-win32-native');
+
+function patchExportSystemPrompt(file, systemPrompt) {
+    if (typeof systemPrompt !== 'string' || !systemPrompt.trim()) return;
+    const html = fs.readFileSync(file, 'utf8');
+    const match = html.match(/(<script id="session-data" type="application\/json">)([^<]+)(<\/script>)/);
+    if (!match) return;
+    let data;
+    try { data = JSON.parse(Buffer.from(match[2], 'base64').toString('utf8')); }
+    catch { return; }
+    if (typeof data !== 'object' || data === null) return;
+    data.systemPrompt = systemPrompt;
+    const encoded = Buffer.from(JSON.stringify(data), 'utf8').toString('base64');
+    const patched = html.slice(0, match.index) + match[1] + encoded + match[3] + html.slice(match.index + match[0].length);
+    const temporary = `${file}.pivane-${process.pid}-${Math.random().toString(16).slice(2)}.tmp`;
+    try {
+        privateFiles.writePrivateFileSync(temporary, patched, true);
+        replaceFileSync(temporary, file);
+    } finally { try { fs.unlinkSync(temporary); } catch {} }
+}
 
 const IMPORT_BYTES = 16 * 1024 * 1024;
 const EXPORT_BYTES = 64 * 1024 * 1024;
@@ -54,14 +74,26 @@ function validateImport(content) {
                 || block.type === 'toolCall' && (!text(block.id) || !block.id || !text(block.name) || !object(block.arguments))) fail('消息内容块格式无效');
         }
     };
+    const tool = value => {
+        if (!object(value) || !text(value.name) || !value.name || !text(value.description) || !object(value.parameters)) fail('系统工具定义无效');
+        if (value.constrainedSampling !== undefined && value.constrainedSampling !== false && !object(value.constrainedSampling)) fail('系统工具约束无效');
+    };
     const message = msg => {
         if (!object(msg)) fail('消息格式无效');
         switch (msg.role) {
+            case 'system':
+                if (!(text(msg.content) || Array.isArray(msg.content))) fail('系统消息内容无效');
+                if (Array.isArray(msg.content)) contentBlocks(msg.content, ['text']);
+                if (msg.sections !== undefined && (!object(msg.sections) || Object.values(msg.sections).some(value => value !== null && !text(value)))) fail('系统消息分区无效');
+                if (msg.toolsAdded !== undefined && (!Array.isArray(msg.toolsAdded) || msg.toolsAdded.some(value => { tool(value); return false; }))) fail('系统工具增量无效');
+                if (msg.toolsRemoved !== undefined && (!Array.isArray(msg.toolsRemoved) || msg.toolsRemoved.some(value => !object(value) || !text(value.name) || !value.name))) fail('系统工具移除无效');
+                if (!Number.isFinite(msg.timestamp)) fail('系统消息时间无效');
+                break;
             case 'user': if (!text(msg.content)) contentBlocks(msg.content, ['text', 'image']); break;
             case 'assistant':
                 contentBlocks(msg.content, ['text', 'image', 'thinking', 'toolCall']);
                 if (![msg.provider, msg.model, msg.api].every(text) || !object(msg.usage)
-                    || !['stop', 'length', 'toolUse', 'error', 'aborted'].includes(msg.stopReason)) fail('助手消息元数据无效');
+                    || !['stop', 'length', 'toolUse', 'error', 'aborted', 'deferred'].includes(msg.stopReason)) fail('助手消息元数据无效');
                 usage(msg.usage);
                 break;
             case 'toolResult':
@@ -94,6 +126,7 @@ function validateImport(content) {
             case 'branch_summary': if (!text(entry.summary) || !text(entry.fromId)) fail('分支摘要无效'); break;
             case 'compaction':
                 if (!text(entry.summary) || !Number.isFinite(entry.tokensBefore)) fail('压缩摘要无效');
+                if (entry.systemMessage !== undefined) message(entry.systemMessage);
                 if (entry.retainedTail !== undefined) {
                     if (!Array.isArray(entry.retainedTail)) fail('压缩保留消息无效');
                     entry.retainedTail.forEach(message);
@@ -118,7 +151,7 @@ class PiSessionTransfer {
         try {
             const session = await this.store.getSession(cwd, id);
             const worker = await this.supervisor.getWorker({ cwd: session.cwd, sessionPath: session.path, sessionId: session.id });
-            return await worker.exclusive(async rpc => {
+            return await worker.exclusive(async (rpc, _runtime, operationToken) => {
                 await this.store.getSession(session.cwd, session.id);
                 if (fs.statSync(session.path).size > EXPORT_BYTES) fail('会话超过 64 MiB 网页导出上限');
                 temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-session-export-'));
@@ -126,6 +159,10 @@ class PiSessionTransfer {
                 const output = path.join(temporary, `session.${format}`);
                 if (format === 'html') {
                     await rpc('export_html', { outputPath: output }, 60000);
+                    try {
+                        const resources = await worker.getNativeResources(true, operationToken);
+                        patchExportSystemPrompt(output, resources.body || resources.systemPrompt || '');
+                    } catch { /* Native export remains valid if the optional prompt snapshot is unavailable. */ }
                 } else {
                     const snapshot = await rpc('get_entries');
                     const { SessionManager, AgentSession } = await getSdk();

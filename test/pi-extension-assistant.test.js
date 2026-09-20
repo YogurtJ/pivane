@@ -1,0 +1,124 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const http = require('node:http');
+const { once } = require('node:events');
+const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'pi-extension-assistant-')));
+process.env.PI_CODING_AGENT_DIR = path.join(root, 'agent');
+process.env.PI_PROJECT_ROOTS = root;
+process.env.PI_OFFLINE = '1';
+process.env.PI_WEB_DEFERRED_FILE = path.join(root, 'deferred.json');
+delete process.env.PI_WEB_APPROVE_PROJECTS;
+const cwd = path.join(root, 'project');
+fs.mkdirSync(cwd, { recursive: true }); fs.mkdirSync(process.env.PI_CODING_AGENT_DIR, { recursive: true });
+const { createPiAgentGateway } = require('../server/pi-agent-routes');
+const { WorkspaceAccessService } = require('../server/workspace-access-service');
+const { assistantProfile } = require('../server/pi-extension-assistant');
+
+test('extension assistant persists its identity, scopes tools, confirms packages and survives runtime recreation', { timeout: 90000 }, async () => {
+    const calls = []; let nextTool = null;
+    const provider = http.createServer(async (req, res) => {
+        let body = ''; for await (const part of req) body += part;
+        calls.push(JSON.parse(body));
+        const tool = nextTool; nextTool = null;
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        const chunk = (delta, finish_reason = null) => res.write(`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', choices: [{ index: 0, delta, finish_reason }] })}\n\n`);
+        if (tool) { chunk({ role: 'assistant', tool_calls: [{ index: 0, id: 'call-' + calls.length, type: 'function', function: { name: tool.name, arguments: JSON.stringify(tool.args) } }] }); chunk({}, 'tool_calls'); }
+        else { chunk({ role: 'assistant', content: 'FIXTURE_OK' }); chunk({}, 'stop'); }
+        res.end('data: [DONE]\n\n');
+    });
+    provider.listen(0, '127.0.0.1'); await once(provider, 'listening');
+    fs.writeFileSync(path.join(process.env.PI_CODING_AGENT_DIR, 'settings.json'), JSON.stringify({ defaultProvider: 'fixture', defaultModel: 'fixture', enableInstallTelemetry: false, defaultProjectTrust: 'never' }));
+    fs.writeFileSync(path.join(process.env.PI_CODING_AGENT_DIR, 'models.json'), JSON.stringify({ providers: { fixture: { baseUrl: `http://127.0.0.1:${provider.address().port}/v1`, api: 'openai-completions', apiKey: 'synthetic', models: [{ id: 'fixture', input: ['text'], contextWindow: 32000, maxTokens: 1000 }] } } }));
+    const access = new WorkspaceAccessService({ envToken: () => 'fixture-web-token' });
+    const gateway = createPiAgentGateway({ accessService: access });
+    const app = require('express')(); app.use(require('express').json()); gateway.mount(app);
+    const server = http.createServer(app); server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    const base = `http://127.0.0.1:${server.address().port}`;
+    process.env.PI_WORKSPACE_INTERNAL_ORIGIN = base;
+    const api = async (url, body, token = 'fixture-web-token', extra = {}) => {
+        const response = await fetch(base + '/api/pi' + url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...extra }, body: JSON.stringify(body) });
+        return { status: response.status, data: await response.json() };
+    };
+    try {
+        const original = await gateway.store.createSession(cwd, 'Original');
+        assert.equal((await api('/extension-assistant/sessions', { cwd, scope: 'arbitrary', language: 'en' })).status, 400);
+        assert.equal((await api('/extension-assistant/sessions', { cwd: os.tmpdir(), scope: 'global', language: 'en' })).status, 400);
+        const made = await api('/extension-assistant/sessions', { cwd, scope: 'global', language: 'en', returnSessionId: original.id });
+        assert.equal(made.status, 201); const session = made.data;
+        assert.equal(calls.length, 0, 'opening never invokes the model');
+        assert.equal(session.assistant.returnSessionId, original.id);
+        const { SessionManager } = await import('@earendil-works/pi-coding-agent');
+        const sm = SessionManager.open(session.path);
+        assert.equal(assistantProfile(sm).scope, 'global');
+        assert.equal(sm.getEntries().filter(e => e.type === 'message').length, 0);
+        assert.equal(assistantProfile({ getEntries: () => sm.getEntries(), getSessionId: () => 'fork-id' }), null, 'copied marker must not activate another session');
+        let worker = await gateway.supervisor.getWorker({ cwd, sessionPath: session.path, sessionId: session.id });
+        let resources = await worker.getNativeResources();
+        assert.ok(resources.tools.some(t => t.name === 'extensions_package' && t.active));
+        const ordinary = await gateway.supervisor.getWorker({ cwd, sessionPath: original.path, sessionId: original.id });
+        assert.equal((await ordinary.getNativeResources()).tools.some(t => t.name === 'extensions_package'), false);
+        assert.equal(ordinary.client.env.PI_EXTENSION_ASSISTANT_TOKEN, undefined);
+        const run = async tool => {
+            nextTool = tool;
+            const settled = new Promise(resolve => { const unsubscribe = worker.subscribe(e => { if (e.type === 'agent_settled') { unsubscribe(); resolve(); } }); });
+            await worker.request('prompt', { message: 'Synthetic assistant test' });
+            await Promise.race([settled, new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('settle timeout')), 15000); timer.unref(); })]);
+        };
+        await run({ name: 'extensions_inventory', args: {} });
+        assert.match(JSON.stringify(calls[0].messages), /dedicated Extension Assistant/);
+        assert.match(JSON.stringify(calls[0].messages), /openai\/skills/);
+        assert.doesNotMatch(JSON.stringify(calls), new RegExp(access.extensionAssistantToken));
+        const inventoryResult = (await worker.request('get_messages')).messages.find(m => m.role === 'toolResult' && m.toolName === 'extensions_inventory');
+        assert.equal(inventoryResult.isError, false);
+        assert.equal(inventoryResult.details.pi5ToolProvenance.toolCallId, inventoryResult.toolCallId);
+        assert.ok(inventoryResult.details.pi5ToolProvenance.source.path.endsWith('pi-web-session-extension.ts'));
+        const input = { cwd, sessionId: session.id };
+        assert.equal((await api('/extension-assistant/inventory', input, access.internalToken)).status, 401, 'media token cannot manage extensions');
+        assert.equal((await api('/extension-assistant/inventory', input, access.extensionAssistantToken, { Origin: 'https://evil.invalid' })).status, 403);
+        assert.equal((await api('/sessions', { cwd }, access.extensionAssistantToken)).status, 401, 'assistant token cannot create arbitrary sessions');
+        assert.equal((await api('/extension-assistant/inventory', { cwd, sessionId: original.id }, access.extensionAssistantToken)).status, 400);
+        const inventory = await api('/extension-assistant/inventory', input, access.extensionAssistantToken);
+        assert.equal(inventory.status, 200);
+        const pkg = path.join(root, 'fixture-package'); fs.mkdirSync(path.join(pkg, 'skills', 'fixture'), { recursive: true });
+        fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: 'fixture', pi: { skills: ['skills'] } }));
+        fs.writeFileSync(path.join(pkg, 'skills/fixture/SKILL.md'), '---\nname: fixture\ndescription: Synthetic test skill\n---\nOnly a fixture.');
+        const args = { action: 'install', source: pkg, expectedRevision: inventory.data.revision, plan: 'Synthetic local fixture, no network or dependencies. Test-owned materials.' };
+        let allow = false, confirmations = 0;
+        worker.subscribe(event => { if (event.type === 'extension_ui_request' && event.method === 'confirm') {
+            confirmations++; worker.send({ type: 'extension_ui_response', id: event.id, confirmed: allow });
+        } });
+        await run({ name: 'extensions_package', args });
+        assert.equal(confirmations, 1);
+        assert.equal((await worker.request('get_messages')).messages.find(m => m.role === 'toolResult' && m.toolName === 'extensions_package').details.pi5PackageOperation.status, 'cancelled');
+        assert.equal((await api('/extension-assistant/inventory', input)).data.packages.length, 0);
+        allow = true;
+        await run({ name: 'extensions_package', args });
+        assert.equal(confirmations, 2);
+        const installed = (await api('/extension-assistant/inventory', input)).data;
+        assert.ok(installed.packages.some(p => p.installed), JSON.stringify(installed));
+        assert.equal((await api('/extension-assistant/package', { ...input, ...args, confirmed: true })).status, 409, 'stale revision must fail');
+        await gateway.supervisor.stopSession(session.path);
+        assert.equal((await gateway.store.getSession(cwd, session.id)).assistant.kind, 'extensions');
+        worker = await gateway.supervisor.getWorker({ cwd, sessionPath: session.path, sessionId: session.id });
+        resources = await worker.getNativeResources();
+        assert.ok(resources.tools.some(t => t.name === 'extensions_inventory'));
+        await run({ name: 'read', args: { path: path.join(pkg, 'skills/fixture/SKILL.md') } });
+        const readResult = (await worker.request('get_messages')).messages.findLast(m => m.role === 'toolResult' && m.toolName === 'read');
+        assert.equal(readResult.details.pi5ToolProvenance.skill.name, 'fixture');
+        assert.doesNotMatch(JSON.stringify(calls.at(-1).messages), /pi5ToolProvenance/, 'display metadata is not model content');
+        const persisted = SessionManager.open(session.path).getEntries().findLast(e => e.type === 'message' && e.message.role === 'toolResult');
+        assert.deepEqual(persisted.message.details.pi5ToolProvenance, readResult.details.pi5ToolProvenance);
+        const project = (await api('/extension-assistant/sessions', { cwd, scope: 'project', language: 'zh-CN' })).data;
+        await gateway.supervisor.getWorker({ cwd, sessionPath: project.path, sessionId: project.id });
+        const projectInput = { cwd, sessionId: project.id };
+        const projectInventory = (await api('/extension-assistant/inventory', projectInput)).data;
+        const rejected = await api('/extension-assistant/package', { ...projectInput, action: 'install', source: pkg, confirmed: true, expectedRevision: projectInventory.revision, scope: 'global' });
+        assert.equal(rejected.status, 400); assert.match(rejected.data.error, /信任/);
+    } finally {
+        await gateway.dispose(); access.dispose(); await new Promise(r => server.close(r)); await new Promise(r => provider.close(r));
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});

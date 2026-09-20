@@ -184,7 +184,7 @@ async function run(browser, viewport) {
     // 5. Project menu no longer duplicates open/collapse; row and chevron still toggle.
     await page.locator('[data-project-action="menu"]').click();
     const menuItems = await page.locator('.pi-thread-menu:not(.hidden) button span').allInnerTexts();
-    assert.deepEqual(menuItems, ['新建线程', '置顶项目', '复制项目路径', '刷新线程', '从列表移除']);
+    assert.deepEqual(menuItems, ['新建线程', '置顶项目', '刷新线程', '更多操作', '从列表移除']);
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => document.querySelector('.pi-thread-menu').classList.contains('hidden'));
     await page.locator('.pi-project-group-main').click();

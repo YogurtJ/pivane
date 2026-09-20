@@ -28,6 +28,12 @@
 .maintenance-dialog h3 { margin: 0 0 16px; font-size: 18px; }
 .maintenance-check { display: flex; align-items: flex-start; gap: 10px; margin: 16px 0; }
 .maintenance-check input { width: 18px; height: 18px; flex: 0 0 18px; margin-top: 4px; font-size: 16px; accent-color: var(--accent); }
+.updates-notification-settings { margin: 16px 0; }
+.pi-update-badge { display: inline-block; width: 7px; height: 7px; min-width: 7px; margin-inline-start: 6px; border-radius: 50%; background: var(--accent); overflow: hidden; font-size: 0; vertical-align: middle; }
+.pi-update-badge[hidden], #pi-update-notice[hidden], .updates-notification-settings[hidden] { display: none; }
+#pi-update-notice { position: fixed; top: 66px; right: 16px; width: min(360px, calc(100vw - 32px)); box-sizing: border-box; max-height: calc(100dvh - 100px); overflow: auto; z-index: 90; border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: var(--surface-1); color: var(--text-main); box-shadow: 0 8px 28px #0002; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+#pi-update-notice p { margin: 8px 0; }
+#pi-update-notice button { white-space: normal; max-width: 100%; min-height: 40px; }
 @media (max-width: 600px) {
     .updates-maintenance, .maintenance-dialog { padding: 14px; }
     .maintenance-dialog button { min-height: 42px; }

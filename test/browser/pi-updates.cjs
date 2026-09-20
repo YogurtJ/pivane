@@ -21,6 +21,7 @@ async function run(browser, base, width, language) {
     let maintenanceState = { supported: true, updateSupported: true, busy: false, generation: 'fixture-before', storage: '/fixture/private-maintenance', job: null };
     let ticketCounter = 0, lastTicket, maintenanceHold, releaseMaintenance, uncertainExecution = false;
     const executed = [];
+    let noticeState = { enabled: false, available: false, eligible: false, idle: true, currentVersion: '0.85.0', version: '0.86.0', nextCheckAt: Date.now() + 86400000 };
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(({ cwd }) => { localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem('pi.web.session:' + cwd, 'updates-fixture'); }, { cwd });
     await page.route(/https:\/\/(fonts\.googleapis\.com|fonts\.gstatic\.com)\//, r => r.abort());
@@ -28,6 +29,11 @@ async function run(browser, base, width, language) {
         const request = route.request(), url = new URL(request.url());
         if (request.method() !== 'GET') writes.push(url.pathname);
         let data = {};
+        if (url.pathname === '/api/pi/settings/updates/notifications') {
+            const body = request.postDataJSON();
+            if (body?.action === 'claim') { const claimed = noticeState.eligible; noticeState.eligible = false; return route.fulfill({ json: { ...noticeState, claimed } }); }
+            return route.fulfill({ json: noticeState });
+        }
         if (url.pathname === '/api/pi/settings/updates/maintenance') return route.fulfill({ json: maintenanceState });
         if (url.pathname === '/api/pi/settings/updates/review') {
             if (maintenanceHold) await maintenanceHold;
@@ -108,7 +114,7 @@ async function run(browser, base, width, language) {
     for (const theme of ['daylight', 'mint', 'dark']) { await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme); await overflow(); }
     if (width < 600) assert.ok(await page.locator('#updates-channel').evaluate(e => parseFloat(getComputedStyle(e).fontSize)) >= 16);
     await page.screenshot({ path: path.join(os.tmpdir(), `pivane-updates-${language}-${width}.png`) });
-    await page.locator('#maintenance-update').click();
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('workspace:open-settings', { detail: { tab: 'updates', updatePi: true } })));
     await page.locator('#maintenance-dialog[open]').waitFor();
     const confirmationBox = await page.locator('#maintenance-dialog').boundingBox();
     assert.ok(Math.abs(confirmationBox.x + confirmationBox.width / 2 - width / 2) < 2, 'maintenance dialog is centered');
@@ -160,6 +166,17 @@ async function run(browser, base, width, language) {
     releaseMaintenance(); maintenanceHold = null; await lateReview;
     assert.equal(await page.locator('#maintenance-dialog').evaluate(e => e.open), false);
     assert.equal(executed.length, 2);
+    // Login changes also invalidate a pending confirmation, including the reminder entrypoint.
+    maintenanceHold = new Promise(resolve => { releaseMaintenance = resolve; });
+    const beforeAuth = page.waitForRequest(r => r.url().endsWith('/updates/review'));
+    await page.locator('#maintenance-restart').click(); await beforeAuth;
+    await page.evaluate(() => window.dispatchEvent(new Event('workspace:access-locked')));
+    const afterAuth = page.waitForResponse(r => r.url().endsWith('/updates/review'));
+    releaseMaintenance(); maintenanceHold = null; await afterAuth;
+    assert.equal(await page.locator('#maintenance-dialog').evaluate(e => e.open), false);
+    await page.evaluate(() => window.dispatchEvent(new Event('workspace:access-ready')));
+    await page.waitForFunction(() => document.getElementById('maintenance-update')?.disabled === false);
+    assert.equal(executed.length, 2);
     // A delayed check must not overwrite a newly opened panel or a different channel.
     hold = new Promise(resolve => { releaseResponse = resolve; });
     const checkingRequest = page.waitForRequest(r => r.url().endsWith('/settings/updates/check'));
@@ -196,7 +213,18 @@ async function run(browser, base, width, language) {
     await page.locator('#workspace-settings-close').click();
     assert.equal(await page.locator('#pi-input').inputValue(), 'Unsent update discussion');
     assert.ok((await page.locator('#pi-attachments').innerText()).includes('update-notes.txt'));
-    assert.ok(writes.every(p => ['/api/pi/settings/updates/check', '/api/pi/settings/updates/review', '/api/pi/settings/updates/execute'].includes(p)));
+    noticeState = { ...noticeState, enabled: true, available: true, eligible: true };
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.locator('#pi-update-notice').waitFor();
+    const noticeBox = await page.locator('#pi-update-notice').boundingBox();
+    assert.ok(noticeBox.x >= 0 && noticeBox.x + noticeBox.width <= width);
+    assert.equal(await page.locator('#pi-update-notice').evaluate(e => e.scrollWidth <= e.clientWidth + 1), true);
+    assert.equal(await page.locator('#workspace-settings-toggle .pi-update-badge').evaluate(e => e.clientWidth <= 8), true);
+    await page.screenshot({ path: path.join(process.env.PI_BROWSER_ARTIFACT_DIR || os.tmpdir(), `pi-update-full-notice-${language}-${width}.png`) });
+    await page.locator('#pi-update-notice-close').click();
+    assert.equal(await page.locator('#pi-input').inputValue(), 'Unsent update discussion');
+    assert.ok((await page.locator('#pi-attachments').innerText()).includes('update-notes.txt'));
+    assert.ok(writes.every(p => ['/api/pi/settings/updates/check', '/api/pi/settings/updates/review', '/api/pi/settings/updates/execute', '/api/pi/settings/updates/notifications'].includes(p)));
     assert.ok(!rpc.includes('prompt') && !rpc.includes('abort') && !rpc.includes('restart_runtime'));
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ language, width, checks: arrivals, errors, draftsPreserved: true }));

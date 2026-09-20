@@ -9,6 +9,13 @@ const { PiRuntimeControls } = require('./pi-runtime-controls');
 const { PiShellExecution } = require('./pi-shell-execution');
 const DEFAULT_IDLE_MS = 15 * 60 * 1000;
 
+// Pi 0.86 persists prompt/tool checkpoints as role=system messages. They are
+// needed by Pi's provider transcript but are not user-visible chat messages.
+function publicMessages(value) {
+    if (!value || !Array.isArray(value.messages)) return value;
+    return { ...value, messages: value.messages.filter(message => message?.role !== 'system') };
+}
+
 class AgentWorker extends EventEmitter {
     constructor(options) {
         super();
@@ -111,6 +118,7 @@ class AgentWorker extends EventEmitter {
             await this.ensureReady();
             const data = await this.client.request(type, payload, timeoutMs, undefined, value => {
                 if (type === 'get_state') this.live.state(value);
+                if (type === 'get_messages') value = publicMessages(value);
                 if (type === 'get_messages' && this.managed) {
                     const result = { ...value, webLive: this.live.snapshot() };
                     Object.defineProperty(result, 'webSnapshot', { value: {
@@ -225,11 +233,30 @@ class AgentWorker extends EventEmitter {
                 error.code = 'SESSION_BUSY';
                 throw error;
             }
-            return await callback(rpc, runtime);
+            return await callback(rpc, runtime, token);
         } finally {
             this.operation = null;
             this.lastUsedAt = Date.now();
         }
+    }
+
+    async launchTask(task) {
+        return this.exclusive(async (_rpc, runtime) => {
+            if (runtime.model?.provider !== task.model.provider || runtime.model?.id !== task.model.modelId
+                || runtime.thinkingLevel !== task.thinkingLevel) throw new Error('Task model or thinking level changed during startup');
+            const raw = await this.client.request('get_commands');
+            const command = raw.commands.find(c => c.source === 'extension'
+                && (c.sourceInfo?.path || c.path) === path.join(__dirname, 'pi-web-session-extension.ts')
+                && new RegExp(`^${INTERNAL_COMMAND}(?::[0-9]+)?$`).test(c.name) && c.description?.includes('task-v1'));
+            if (!command) throw new Error('Task launch bridge is not available');
+            const id = randomUUID();
+            this.navigationResults.set(id, null);
+            try {
+                await this.client.request('prompt', { message: `/${command.name} ${JSON.stringify({ mode: 'task', requestId: task.requestId, id, token: this.navigationToken })}` }, null);
+                const result = this.navigationResults.get(id);
+                if (!result?.success) throw new Error(result?.error || 'Task launch was not acknowledged');
+            } finally { this.navigationResults.delete(id); }
+        });
     }
 
     async titleRequest(input, { idle = true } = {}) {
@@ -298,8 +325,8 @@ class AgentWorker extends EventEmitter {
         }
     }
 
-    async getNativeResources(systemPrompt = false) {
-        if (this.disposed || this.operation || this.resourceResults.size) throw new Error('资源读取或会话操作正在进行');
+    async getNativeResources(systemPrompt = false, operationToken) {
+        if (this.disposed || this.resourceResults.size || this.operation && operationToken !== this.operation) throw new Error('资源读取或会话操作正在进行');
         const id = randomUUID();
         this.resourceResults.set(id, null);
         try {
@@ -309,7 +336,7 @@ class AgentWorker extends EventEmitter {
                 && (c.sourceInfo?.path || c.path) === path.join(__dirname, 'pi-web-session-extension.ts')
                 && new RegExp(`^${INTERNAL_COMMAND}(?::[0-9]+)?$`).test(c.name) && c.description?.includes(systemPrompt ? 'system-prompt-v1' : 'resources-v1'));
             if (!command) throw new Error('当前实例尚未加载资源查看接口，请在任务结束后退出并重新打开线程');
-            if (this.disposed || this.operation) throw new Error('资源读取或会话操作正在进行');
+            if (this.disposed || this.operation && operationToken !== this.operation) throw new Error('资源读取或会话操作正在进行');
             // Keep the private slot until acknowledgement or process exit, even if the
             // browser stops waiting. A timeout must not allow another read/reload.
             await this.client.request('prompt', { message: `/${command.name} ${JSON.stringify({ mode: 'resources', systemPrompt, id, token: this.navigationToken })}` }, null);
@@ -535,6 +562,10 @@ class AgentWorker extends EventEmitter {
     }
 
     _broadcast(event) {
+        // Pi 0.86 exposes persisted system prompt checkpoints as message events.
+        // They are internal transcript state and must not enter the browser chat,
+        // side-chat event stream, or extension UI history.
+        if (event?.message?.role === 'system') return;
         event = { ...event, webRuntimeId: this.live.runtimeId, webSequence: ++this.live.sequence };
         for (const subscriber of this.subscribers) {
             try {
@@ -580,7 +611,8 @@ class PiAgentSupervisor extends EventEmitter {
         if (this.starting.has(sessionPath)) return this.starting.get(sessionPath);
 
         const starting = (async () => {
-            const worker = new AgentWorker({ cwd, sessionPath, sessionId });
+            const env = this.workerEnvironment ? await this.workerEnvironment({ cwd, sessionId }) : {};
+            const worker = new AgentWorker({ cwd, sessionPath, sessionId, env });
             worker.on('completion', notice => this.emit('completion', notice, worker));
             worker.on('attention', event => this.emit('attention', event));
             worker.on('exit', () => {

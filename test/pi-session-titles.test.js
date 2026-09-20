@@ -311,7 +311,7 @@ test('real managed RPC and synthetic provider: settled automation, private snaps
     const { SessionManager } = await import('@earendil-works/pi-coding-agent');
     const saved = SessionManager.open(session.path);
     assert.equal(saved.getSessionName(), '手机聊天页横向溢出排查');
-    assert.equal(saved.getEntries().filter(entry => entry.type === 'message').length, 2);
+    assert.equal(saved.getEntries().filter(entry => entry.type === 'message' && entry.message?.role !== 'system').length, 2);
     assert.ok(!JSON.stringify(ws.events).includes('pi5Title'));
     const worker = gateway.supervisor.getActiveWorker(session.path);
     worker._handleEvent({ type: 'extension_ui_request', method: 'notify', message: JSON.stringify({ pi5Title: 'unknown', data: 'PRIVATE_LATE_TITLE_EXCERPT' }) });

@@ -1,4 +1,5 @@
 const { randomUUID } = require('crypto');
+const { SIDE_TOOL_POLICY } = require('./pi-side-tools');
 
 const MAX_CONTEXT_BYTES = 32 * 1024 * 1024;
 const MAX_TICKET_BYTES = 64 * 1024 * 1024;
@@ -49,12 +50,16 @@ function referenceMessages(messages, model, convertToLlm) {
     return { messages: normalized, counts };
 }
 
-function buildContextSeed(snapshot, sdk, cwd, mode = 'context') {
+function buildContextSeed(snapshot, sdk, cwd, mode = 'context', toolMode = 'none') {
     const model = snapshot.model;
     if (!Number.isFinite(model?.contextWindow) || model.contextWindow < 1024) throw contextError('当前模型没有有效的上下文容量');
     const { messages, counts } = referenceMessages(snapshot.messages, model, sdk.convertToLlm);
-    const systemPrompt = `${snapshot.systemPrompt || ''}\n\n${SIDE_POLICY}`.trim();
-    const estimatedTokens = sdk.estimateTokens({ role: 'user', content: systemPrompt, timestamp: 0 })
+    const systemPrompt = `${snapshot.systemPrompt || ''}\n\n${toolMode === 'assist' ? SIDE_TOOL_POLICY : SIDE_POLICY}`.trim();
+    const toolTokens = toolMode === 'assist' ? sdk.estimateTokens({ role: 'user', timestamp: 0, content: JSON.stringify(
+        ['createReadTool', 'createGrepTool', 'createFindTool', 'createLsTool', 'createEditTool', 'createWriteTool', process.platform === 'win32' ? 'createPowerShellTool' : 'createBashTool']
+            .map(name => sdk[name](cwd)).map(({ name, description, parameters }) => ({ name, description, parameters }))
+    ) }) : 0;
+    const estimatedTokens = toolTokens + sdk.estimateTokens({ role: 'user', content: systemPrompt, timestamp: 0 })
         + messages.reduce((sum, message) => sum + sdk.estimateTokens(message), 0)
         + sdk.estimateTokens({ role: 'user', content: SIDE_BOUNDARY, timestamp: 0 });
     const outputReserve = Math.min(model.maxTokens || 16384, 16384, Math.floor(model.contextWindow / 4));
@@ -63,7 +68,7 @@ function buildContextSeed(snapshot, sdk, cwd, mode = 'context') {
     const manager = sdk.SessionManager.inMemory(cwd, { id: randomUUID() });
     for (const message of messages) manager.appendMessage(message);
     const boundaryId = manager.appendCustomMessageEntry(BOUNDARY_TYPE, SIDE_BOUNDARY, false);
-    const seed = { version: 1, sessionId: manager.getSessionId(), entries: manager.getEntries(), boundaryId, systemPrompt,
+    const seed = { version: 1, toolMode, sessionId: manager.getSessionId(), entries: manager.getEntries(), boundaryId, systemPrompt,
         provider: model.provider, modelId: model.id, thinkingLevel: snapshot.thinkingLevel || 'off' };
     const bytes = Buffer.byteLength(JSON.stringify(seed), 'utf8');
     if (bytes > MAX_CONTEXT_BYTES) throw contextError('主会话背景超过 32 MiB 的内存传输限额，未截断；请选择文本引用或压缩主会话。');
@@ -71,8 +76,8 @@ function buildContextSeed(snapshot, sdk, cwd, mode = 'context') {
         messageCount: counts.messages, toolCalls: counts.toolCalls, toolResults: counts.toolResults,
         summaryCount: counts.summaries, summaryIncluded: counts.summaries > 0, systemIncluded: Boolean(snapshot.systemPrompt),
         images: counts.images, omittedImages: counts.omittedImages, omittedThinking: counts.omittedThinking,
-        estimatedTokens, tokenBudget, outputReserve, contextWindow: model.contextWindow, omittedMessages: 0,
-        source: snapshot.source, preview: [], frozen: true, toolFormat: 'reference-text' },
+        estimatedTokens, toolTokens, tokenBudget, outputReserve, contextWindow: model.contextWindow, omittedMessages: 0,
+        source: snapshot.source, preview: [], frozen: true, toolFormat: 'reference-text', toolMode },
         limits: { messageCharacters: Math.min(8000, Math.floor(model.contextWindow / 4)) } };
 }
 

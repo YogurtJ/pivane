@@ -21,6 +21,7 @@
     function create({ apiFetch }) {
         const panel = document.getElementById('settings-updates-panel');
         const maintenance = window.PiMaintenance.create({ apiFetch });
+        const notifications = window.PiUpdateNotifications.create({ apiFetch });
         const versionPanel = node('div'), manualPanel = node('div');
         let epoch = 0, channel, snapshot;
         const active = n => n === epoch && panel.classList.contains('active') && !document.getElementById('workspace-settings-dialog').classList.contains('hidden');
@@ -50,12 +51,12 @@
         }
         function render(data, busy = false, checking = busy) {
             const expanded = panel.querySelector('#updates-guide')?.open;
-            if (versionPanel.parentElement !== panel) panel.replaceChildren(versionPanel, maintenance.element, manualPanel);
+            if (versionPanel.parentElement !== panel) panel.replaceChildren(versionPanel, notifications.element, maintenance.element, manualPanel);
             versionPanel.replaceChildren();
             const header = node('div', undefined, { class: 'settings-panel-header' });
             const caption = node('div');
             caption.append(node('h3', translateUi('版本与更新')), node('p', translateUi('查看 Pivane 和 Pi Coding Agent 的版本与更新方式。')));
-            header.append(caption);
+            header.append(node('i', undefined, { class: 'fa-solid fa-cloud-arrow-down', 'aria-hidden': 'true' }), caption);
             const toolbar = node('div', undefined, { class: 'updates-toolbar' });
             const label = node('label', translateUi('Pivane 更新渠道'));
             const select = node('select', undefined, { id: 'updates-channel' });
@@ -92,13 +93,13 @@
                 });
                 links.append(steps); card.append(links); cards.append(card);
             }
-            const status = node('p', busy ? translateUi(checking ? '正在检查更新…' : '正在读取版本信息…') : data.checkedAt ? translateUi('上次检查：{0}', new Date(data.checkedAt).toLocaleString(globalThis.PiI18n?.locale || undefined)) : translateUi('打开此页不会自动联网检查。'), { id: 'updates-feedback', role: 'status', 'aria-live': 'polite' });
+            const status = node('p', busy ? translateUi(checking ? '正在检查更新…' : '正在读取版本信息…') : data.checkedAt ? translateUi('上次检查：{0}', new Date(data.checkedAt).toLocaleString(globalThis.PiI18n?.locale || undefined)) : translateUi('尚未手动检查。自动检查仅查询 Pi 正式版。'), { id: 'updates-feedback', role: 'status', 'aria-live': 'polite' });
             const instructions = guide(data); instructions.open = Boolean(expanded);
             versionPanel.append(cards, status);
             manualPanel.replaceChildren(instructions);
             maintenance.open();
         }
-        async function load(check) {
+        async function load(check, review = false) {
             const n = ++epoch;
             if (snapshot) render(snapshot, true, check);
             else panel.replaceChildren(node('p', translateUi('正在读取版本信息…'), { role: 'status' }));
@@ -110,6 +111,8 @@
                 if (!active(n)) return;
                 if (!data?.appVersion || !data.pi || !data.pivane) throw new Error('Unsupported update service');
                 snapshot = data; channel = data.channel; render(data);
+                void notifications.refresh();
+                if (review) await maintenance.reviewUpdate();
             } catch {
                 if (!active(n)) return;
                 if (snapshot) { channel = snapshot.channel; render(snapshot); }
@@ -128,8 +131,12 @@
         window.addEventListener('pi:maintenance-completed', () => {
             if (panel.classList.contains('active') && !document.getElementById('workspace-settings-dialog').classList.contains('hidden')) void load(false);
         });
-        window.addEventListener('workspace:access-ready', () => { epoch++; snapshot = null; });
-        return { open() { void load(false); }, close() { epoch++; maintenance.close(); } };
+        window.addEventListener('workspace:access-locked', () => { epoch++; snapshot = null; maintenance.close(); });
+        window.addEventListener('workspace:access-ready', () => {
+            epoch++; snapshot = null; maintenance.close();
+            if (active(epoch)) void load(false);
+        });
+        return { open() { void load(false); }, reviewUpdate() { void load(false, true); }, close() { epoch++; maintenance.close(); } };
     }
     window.PiUpdates = { create };
 })();

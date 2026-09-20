@@ -26,7 +26,7 @@ const files = [
     ...['fa-brands-400', 'fa-regular-400', 'fa-solid-900', 'fa-v4compatibility'].flatMap(name => ['woff2','ttf'].map(ext => `public/brand/fontawesome-6.4.0/webfonts/${name}.${ext}`)),
     'public/site.webmanifest', 'public/brand/favicon.ico', 'public/brand/apple-touch-icon.png',
     ...[64, 192, 512, 1024].map(size => `public/brand/logo-${size}.png`),
-    'config/media-lab.json', 'config/tts-providers.json', 'scripts/package-trial.cjs', 'scripts/pi-agent-dir.cjs', 'scripts/access-reset.cjs', 'scripts/run-tests.cjs', 'scripts/start-managed.cjs', 'scripts/restore-managed-backup.cjs',
+    'config/media-lab.json', 'config/tts-providers.json', 'scripts/package-trial.cjs', 'scripts/pi-agent-dir.cjs', 'scripts/access-reset.cjs', 'scripts/run-tests.cjs', 'scripts/start-managed.cjs', 'scripts/install-default-capabilities.cjs', 'scripts/restore-managed-backup.cjs',
     // Synthetic compatibility fixture only; user session directories are never included.
     'test/private-file-helper.cjs', 'test/release/guard.cjs',
     'test/fixtures/pi-0843-session.jsonl', 'test/fixtures/release-video.mp4', 'test/release/provider.cjs', 'test/release/data.cjs', 'test/release/state.cjs', 'test/release/runtime.cjs',

@@ -14,6 +14,8 @@
 
 本文件描述当前代码中的实际接口，不是未来设计。
 
+工具结果的可选 `details.pi5ToolProvenance` 包含 `{version:1,toolName,toolCallId,source?:{source,path,scope,origin},skill?:{name,path}}`，由受管 worker 的调用前元数据生成，随原生 toolResult 和原有 WS 工具结果传递。缺失即未知，不通过设置清单补填；前端核对名称与调用 ID，仅作来源显示。扩展助手包确认取消时提供 `details.pi5PackageOperation.status='cancelled'`。不新增 REST 或改动原始正文、错误和用量，详见[执行来源](NATIVE_SETTINGS.md#执行记录中的技能与扩展来源)。
+
 ## 工作台访问验证（accessControl）
 
 2026-09-09 新后端以 `/api/access/status.accessControl=true` 标记，公开接口仅返回 enabled/authenticated。设置/登录/退出/撤销与全部字段见 [ACCESS_CONTROL.md](ACCESS_CONTROL.md)。配置缺省免认证；开启后所有私人API、WebSocket和静态媒体均需要Cookie或Bearer，不能凭同源Origin或URL Token绕过。非空PI_WEB_TOKEN强制启用；网页配置可由用户修改且要求修订/确认。
@@ -33,6 +35,10 @@
 ## 2. Pi REST API
 
 所有路径前缀为 `/api/pi`。
+
+### Agent 任务线程
+
+`GET /status.agentThreads=true` 标记任务线程后端。受管持久 Agent 的 `agent_thread` 工具通过私有 POST `/agent-threads/create|status|models` 创建并立即启动同项目任务、按 requestId 查询或读取模型默认值/目录。身份绑定实际存活源 worker；普通工作台 Cookie/Token 不能代替。`/activity.agentThreadLaunches` 返回准备中的创建数，参与维护空闲和停机等待。任务参数、模型/思考选择、原生来源消息、跨运行实例去重和失败语义见[Agent 任务线程](AGENT_THREADS.md)。不提供任意已有线程消息投递或自动结果回传。
 
 ### `GET /status`
 
@@ -59,6 +65,8 @@
 
 `browserNotifications=true` 标记设备Web Push订阅与任务通知后端。`GET /notifications`、`POST /notifications/key`、`POST /notifications/status`、`PUT/DELETE /notifications/subscription`、`POST /notifications/test` 复用认证和Origin，响应no-store；只公开VAPID公钥，订阅绑定当前访问身份，关闭/撤销停止后续推送。参数、限额和HTTPS/手机要求见 [NOTIFICATIONS.md](NOTIFICATIONS.md)。
 
+`/settings/subagents` 提供 pi-subagents 专属状态与模型/思考配置，`/settings/subagents/install` 确认后补装固定版本。未安装、停用或版本不匹配时不能保存，ready 不代表已加载进当前 worker。字段、修订、范围与安装限制见[子 Agent 专属设置](NATIVE_SETTINGS.md#子-agent-专属设置)。
+
 `nativeSettings`、`nativeResources`、`projectTrust`、`modelAdvanced` 标记原生配置增强。设置 `/settings/native`、`/settings/native/trust`、`/settings/native/resources`、`/settings/native/packages`、`/settings/native/skill` 和 `/settings/models/advanced` 的方法、修订、范围和限额见 [NATIVE_SETTINGS.md](NATIVE_SETTINGS.md)。主连接新增 `get_native_resources` 返回当前 worker 的实际 trust/资源来源，不返回系统提示正文或工具 schema；最多3000项/512KiB，不扩展裸 RPC 白名单。`/activity.nativeSettingsBusy` 供空闲部署检查。受管扩展原生换会话或直接导航被取消，网页入口保持。
 
 `systemPrompts=true` 标记系统提示词管理：GET `/settings/system-prompts?cwd` 返回 global/project × append/base 原生文件正文、推导来源、整体 revision 和 64 KiB 单文件预算；PUT 接受 `{cwd,scope,kind,content,expectedRevision}`，content=null 恢复默认/继承，成功返回 `{ok:true,requiresReload:true}`。修订覆盖四文件内容/身份和原生配置/trust，冲突409不覆盖，保存不重载或中断 worker。主连接 `get_system_prompt` 通过当前 worker 私有资源管道读取正文、基础/追加输入、上下文文件、Skills、实际工具、时间与运行身份，1 MiB 超限整体失败；`configured` 为当前文件与实际信任推导来源，`matchesSavedFiles` 仅比较基础/追加与信任，无法核对为 null，不表示最终供应商请求一致。原 `get_native_resources` 继续不返回正文；读取不调用模型、不写历史、不广播私有结果。完整失败、草稿与生效语义见 [NATIVE_SETTINGS.md](NATIVE_SETTINGS.md#系统提示词查看与编辑)。
@@ -83,7 +91,7 @@
 
 ### 版本检查与 Pi 受管维护
 
-`/status` 的 `appVersion` 表示 Pivane，原 `version` 继续表示实际 Pi 包版本。`GET /settings/updates?channel=stable或preview`只读当前版本与内存缓存；`POST /settings/updates/check`接受 JSON `{channel?}`，显式查询 GitHub/npm 并缓存 5 分钟，查询本身不安装。
+`/status` 的 `appVersion` 表示 Pivane，原 `version` 继续表示实际 Pi 包版本。`GET /settings/updates?channel=stable或preview`只读当前版本与内存缓存；`POST /settings/updates/check`接受 JSON `{channel?}`，显式查询 GitHub/npm 并缓存 5 分钟，查询本身不安装。`POST /settings/updates/automatic`仅接受空 JSON `{}`，按持久 24 小时成功期限检查 Pi 正式版，失败按 1–24 小时指数退避；并发共享请求，不安装。`GET /settings/updates/notifications`返回 enabled、available、eligible、idle、currentVersion、version、lastSuccessAt/nextCheckAt（Unix 毫秒或 null）。`POST`同路径接受 `{enabled:boolean}` 或 `{action:"claim"或"snooze"或"ignore",version}`；claim 仅当前可提醒版本且空闲时返回 claimed:true，同版本仅一次，snooze 延后 3 天，ignore 仅忽略该版。过期版本动作 409、错误字段 400、存储/服务不可用 503。身份与 Origin 校验、no-store 沿用工作台；偏好保留无关字段，查询与提醒不会产生维护票据或执行请求。
 
 `GET /settings/updates/maintenance`返回启动器能力、generation、busy、版本指针和最近维护结果；`POST /settings/updates/review`只接受 `{action:"update"或"backup"或"restart"}`，返回绑定服务端目标版本和进程代次的 10 分钟票据。`POST /settings/updates/execute`只接受 `{ticket,confirmed:true,draftsSaved:true,externalWritersStopped:true}`，再次检查空闲并暂停预约，接受返回 202。票据一次有效，不接受命令、URL、路径或版本覆盖；忙碌/过期/重复为 409，格式错误 400，不支持或交接失败 503。交接不确定不自动解锁或重试。
 
@@ -201,6 +209,10 @@ Body: `{ "cwd": "/workspace/demo" }`。先经过 token/Origin/realpath 根检查
 ```
 
 `path` 供当前可信单用户 UI 展示和 gateway 内部使用。不要把该接口暴露给不可信多用户。
+
+### 扩展助手会话
+
+`/status.extensionAssistant=true` 时，`POST /extension-assistant/sessions` 接受 `{cwd,scope,language,returnSessionId?}`，创建独立原生会话并返回 `assistant` 元数据，不提交模型消息。`POST /extension-assistant/inventory` 和 `/extension-assistant/package` 为已打开的助手提供固定安装范围的配置读取与包操作，分别接受 `{cwd,sessionId}` 和附加的 `{action,source,expectedRevision,confirmed:true}`。包操作复用原生配置互斥、trust 和修订检查；独立进程凭据只授权这两个管理端点，不能用于其他 API，媒体规划凭据不能用于扩展管理。请求/响应、确认、取消、身份恢复和限制见[扩展助手契约](NATIVE_SETTINGS.md#扩展助手接口与持久化)。
 
 ### `POST /sessions`
 
@@ -495,7 +507,11 @@ Web 的“正文 / 完整记录”是纯本地展示模式，不新增 REST/RPC�
 
 Web 删除源线程及显式 quit_session 清理该源的全部侧聊（含脱离父连接者），并在关闭前发送 `{type:'gateway_side_parent_ended', reason:'deleted'|'quit'}`；deleted 时前端清理对应页面缓存。鉴权仍逐侧连接验证与撤销；没有新增历史存储、模型执行权限或自动投递。
 
-侧连接只允许 prompt、abort、get_state、get_messages、get_session_stats、quit_side_chat，prompt 仅含普通文本（不接受 images/streamingBehavior），拒绝斜杠命令。超时/不确定投递后再次提交需 confirmUncertain=true，仍不能在忙碌期间重复提交。失败可带 errorCode。其他管理/工具/排队命令、嵌套侧聊均拒绝。
+侧连接允许 prompt、abort、get_state、get_messages、get_session_stats、quit_side_chat；assist 模式另允许 answer_side_confirmation。prompt 仅含普通文本（不接受 images/streamingBehavior），拒绝斜杠命令。超时/不确定投递后再次提交需 confirmUncertain=true，仍不能在忙碌期间重复提交。失败可带 errorCode。原始 bash/extension_ui_response 和其他管理/排队命令、嵌套侧聊均拒绝；Agent builtin 工具通过原生执行与下面的确认机制运行。
+
+`/status.sideChatTools=true` 表示支持 `prepare_side_chat.toolMode='assist'|'none'`。新页面默认 assist；省略字段保持旧客户端 none。assist 下 context/quote/blank 均通过 SDK 内存会话运行，模型可见 read/grep/find/ls/edit/write 和平台命令工具。修改/命令的本次回复授权通过原生 `tool_call` + `ctx.ui.confirm` 发起，读取不额外确认。
+
+`state` 增加 toolMode、toolAccess（none/read/write）和 pendingUi（本侧有效确认）；权限更新事件 `{type:'gateway_side_tool_access', access:'read'|'write'}`。回答确认发送 `{type:'answer_side_confirmation', requestId, confirmed:boolean}`，只接受本段 worker pendingUi 中未过期的确认，返回 accepted:true 只表示交付确认，不能视为工具成功。过期/重复/伪造 ID 拒绝，不能回答主会话或其他侧聊的确认。原生 gateway_ui_resolved/agent_settled 清除界面状态，五分钟未处理按拒绝，不重放。每段独立渲染确认和工具结果；后台确认不会借用当前其他线程弹窗。
 
 Web `/btw [问题]` 本地路由到侧聊，不进入主 prompt/steer/follow_up；网关同样阻止这种误透传。2026-09-09 前端只提供“接着当前任务聊”（context）和“单独问个问题”（blank）两个主要选择，旧后端仍显示明确标为旧版的 recent 选项；不再有回复末尾入口或选中文字自动引用。quote API 保留兼容既有页面，协议和票据不变。引用冻结，更新引用重新创建临时 runtime，不改主 session。新默认由 SDK 内存 SessionManager + 官方 RPC runner 承载，旧模式继续 CLI no-session；新 get_messages 只返回隐藏边界之后的侧消息，计费/计数扣除继承部分。内部 get_entries 和快照控制命令不开放给侧浏览器，compaction retainedTail 不透传。全部字段与生命周期见 [SIDE_CHAT.md](SIDE_CHAT.md)。
 

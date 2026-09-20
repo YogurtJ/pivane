@@ -13,6 +13,20 @@ Pivane runs on your computer or server. You can open it from another device's br
 
 Before selecting a project, you can manage global Pi settings, Packages and Skills. `@` inserts a server project file path. Attachment uploads, paste and drag-and-drop read files supplied by your browser; they are different workflows.
 
+## Workspace navigation
+
+The colorful π at the top identifies Pivane. Pi Agent uses a conversation icon, and the Media Lab uses a flask; the active entry uses the theme accent color. On desktop, use the arrow beside the Pivane title to collapse navigation. The expand arrow appears below the brand icon when collapsed. Buttons have hover labels, and the browser remembers your choice. Clicking the brand icon remains a shortcut.
+
+Narrow tablets use an icon rail, with entry names available on hover. Phones use bottom navigation with visible labels. These layouts do not show the desktop collapse button.
+
+## Models and capabilities
+
+**Settings → Models & capabilities** combines Multimodal services (image, video and speech) with Subagents, powered by pi-subagents. Default installation attempts to download the pinned plugin version; failure leaves other Pivane features usable. Missing, disabled and unsupported versions are shown explicitly and cannot be configured here. A missing plugin can be installed after confirmation; use Packages to manage existing installations.
+
+Subagent defaults and role overrides use the plugin's existing Pi settings, with global/project scope. Expand a role card to change its settings and view the original role ID; translated display names do not change role identity. The model picker supports search by name, full ID or provider, a provider filter, and batches of 40 results. Selecting a model still requires saving. Unavailable saved selections remain intact. **Automatic** removes the override for this scope; **Discard changes** clears only its unsaved draft. Plugin details and custom role overrides are under the expandable help section.
+
+The role list contains bundled native roles and saved overrides, not complete live discovery. Adding an override by name does not create a role definition. Model options come from the available Pi catalog. Saved values may be overridden by role definitions, provider-specific settings or per-run choices. Saving does not launch tasks or interrupt existing runs; reopen the runtime when idle to apply changes.
+
 ## Customize system prompts
 
 Open **Settings → System prompts**, choose all projects or the current project, and edit **Additional instructions** for response preferences and working habits. The advanced section replaces Pi's base instructions. Preview Markdown or review changes before saving. Restore default/inheritance first creates a draft; save it to remove this scope's file. Private backups retain the previous content.
@@ -35,27 +49,37 @@ Advanced documents, upstream/third-party diagnostics and background push notific
 
 ## Packages and resources
 
-Open **Settings → Packages** and choose all projects or the current project. The overview shows enabled and total configured extensions, skills, prompts and themes; it does not indicate what a conversation has loaded. Install from npm, Git or a local path on the server. Installation, updates and removal still require confirmation of the source and scope.
+Execution records use readable labels for skill-file reads, inventory checks and package operations. Extension tools with recorded call-time provenance show a source label; expand the row to inspect the original tool name, source, arguments and result. Older records are not attributed using today's installation. Reading a skill file does not prove the model followed it. Reading mode still folds tool records; expand them or use the full record view.
 
-Package cards show source, scope and installation status. Search the resource list, browse batches of 40, or expand **View source** to inspect a full path. Choose enabled, disabled or project inheritance and save. Untrusted projects cannot receive project writes. If a read fails, refresh to verify the current configuration; operations are not retried automatically. Reload resources when the conversation is idle. See the detailed [native settings contract](../NATIVE_SETTINGS.md).
+Use **Composer + → Add capabilities…** or **Settings → Packages / Skills → Set up with assistant** to create a dedicated Extension Assistant session. Choose an installation scope, describe a task or paste a source link, then select **Continue to assistant** in the footer. Installation host and project details can be expanded when needed. The request is placed in the composer for you to send; opening the assistant does not call a model or install anything. The question mark on each package or skill offers **About this package / skill** and **Troubleshoot**. About requests a read-only explanation of purpose, suitable tasks, an example and dependencies; troubleshooting requests a diagnosis and proposed fixes. Both include the exact source and scope in a draft for you to send.
+
+The assistant checks existing resources, sources, licenses, dependencies and compatibility, then proposes a setup plan. Package changes use the native management service and a confirmation dialog. Standalone skill files and dependency setup use the session's enabled Agent tools. Installs run on the Pivane host. **Return to original chat** preserves the original draft and attachments in this page's memory; refresh clears unsent drafts. Existing runtimes need an explicit idle reload. Publicly available files are not automatically licensed for adaptation or redistribution, and arbitrary third-party packages are not guaranteed to work. See the [detailed assistant contract](../NATIVE_SETTINGS.md#扩展助手).
+
+Open **Settings → Packages** and choose all projects or the current project. Cards show package names, scope and installation status. Expand **Install from a link** to use npm, Git or a local path on the server. Installation, updates and removal still require confirmation of the source and scope.
+
+**Advanced settings** starts collapsed and contains configured resource counts and controls; counts do not indicate what a conversation has loaded. Resources use available skill names, with directory or file names as a fallback instead of repeated SKILL.md or index.ts labels. Search the resource list, browse batches of 40, or expand **View source** to inspect a full path. Choose enabled, disabled or project inheritance and save. Untrusted projects cannot receive project writes. If a read fails, refresh to verify the current configuration; operations are not retried automatically. Reload resources when the conversation is idle. See the detailed [native settings contract](../NATIVE_SETTINGS.md).
 
 On touch devices, Preferences scrolls vertically, with language, automatic titles, planner and notification controls fitting the available width. Browser zoom controls remain available.
 
 ## Versions and updates
 
-Open **Settings → Versions and updates** to see the running Pivane and Pi versions and the Pi version bundled with this release. **Check for updates** queries GitHub and npm from the server; results are cached for five minutes. Choose stable releases or include prereleases. Opening the page does not automatically contact either source.
+Open **Settings → Versions and updates** to see the running Pivane and Pi versions and the Pi version bundled with this release. **Check for updates** queries GitHub and npm from the server; results are cached for five minutes. Choose stable Pivane releases or include prereleases. **Automatically check for Pi updates** is enabled by default: while the page is visible, the instance checks stable Pi versions at most once every 24 hours. A dot marks an available update; a light reminder appears once when work is idle. Dismiss it, snooze for three days, or skip that version. Devices share these choices, and network failures back off silently. **Review and update** opens the existing confirmation dialog; automatic checks never install anything.
 
 The page provides **Update Pi**, **Back up only** and **Restart instance**. Click Update Pi, confirm, then view the actual command, stdout/stderr, exit code and resulting version in the output area. Both `node server.js` and `npm start` automatically support this flow; existing service startup commands can stay unchanged after loading the new backend. Pi updates support Node 22 or 24 with the default local Pi installation. Since upstream `pi update` rejects project-local dependencies, Pivane uses an equivalent local npm update and shows the command it actually runs.
 
 After you confirm that drafts are saved and external writers have stopped, Pivane rechecks its own activity, pauses scheduled messages and blocks new work. Updates install the exact Pi version and its matching packages in a separate directory and run isolated SDK/RPC/session checks before stopping for backup and activation. The old installation is retained. **Back up only** also stops and restarts the service; **Restart instance** does not create another data backup. Closing settings or losing the connection does not cancel or repeat an accepted operation.
 
-Backups include Pi identity, sessions, configuration and media history/files, but exclude project source and external link targets. They stay in the private `.pivane-runtime` directory. Verify data and resume scheduled messages individually after maintenance. Automatic checks do not certify every third-party extension or provider. The managed release contains a snapshot of Pivane's code; later edits to the original source directory do not automatically change it. Use `start:direct` in a separate development instance.
+Backups include Pi identity, sessions, configuration and media history/files, but exclude project source and external link targets. They stay in the private `.pivane-runtime` directory. Verify data and resume scheduled messages individually after maintenance. Installation compatibility checks do not certify every third-party extension or provider. The managed release contains a snapshot of Pivane's code; later edits to the original source directory do not automatically change it. Use `start:direct` in a separate development instance.
 
 Pivane application updates still use the official release archive and manual platform guides. A global Pi CLI and extensions managed under Packages remain separate. For backup limits, failure handling and the offline restore command, see the detailed [update contract](../UPDATES.md) in Chinese. The automatic update flow has been exercised on Linux ARM64 with Node 22; other server platforms have not received native acceptance for this new flow.
 
 ## Conversation and tools
 
 **Reading** is the default view and groups consecutive thinking and tool records. **Full record** shows them individually. The browser remembers your selection. While a task runs, send steering or follow-up messages, or stop the task. After a timeout or disconnect, check thread state before repeating a request.
+
+Final replies in the main chat show the local message time to the right of the action icons. Hover to see the full date and time. This uses the native message timestamp, which can mark the start of generation rather than its exact completion. Missing or invalid timestamps are omitted.
+
+Long user messages in the main chat use a generous folding threshold: text blocks exceeding 2,400 characters or 30 lines show a preview of about 20 lines. Choose **Show full message** to expand, or **Collapse message** to fold it again. Short messages stay fully visible, image attachments remain visible, and copying a question still copies its complete text. Expansion is retained during chat updates and resets to the default after a page refresh.
 
 In the main composer, `!command` runs server Shell; `!!command` keeps its output out of later model context while retaining the native execution record. Tools use the server user's permissions. Project roots are not a sandbox. Install only trusted Packages, extensions and Skills.
 
@@ -77,7 +101,17 @@ The thread menu groups **Session tree**, **Search history and bookmarks**, and *
 
 Title generation’s **Auto** follows the current thread model. Media planning’s **Auto** uses its planner defaults, described in the row. Both purposes may share the same inexpensive model. An unavailable or failing dedicated model is not replaced with another model. **Set all to Auto** stages automatic choices for saving while preserving the automatic-title switch.
 
-This does not change chat models, media execution models or resource installation. Packages/Skills still use their existing management tools; there are no separate AI discovery/review purposes yet. See the detailed [auxiliary model contract](../AUXILIARY_MODELS.md) for scope and future integration.
+This does not change chat models, media execution models or resource installation. The Extension Assistant uses a normal dedicated conversation and its model selector; it does not add an auxiliary-model route. See the detailed [auxiliary model contract](../AUXILIARY_MODELS.md) for scope and future integration.
+
+## Thread list display
+
+Regular thread cards show a title and a compact metadata row without repeating the first question. Named titles use one line, with the full title available on hover. Unnamed threads use up to two lines from the first question. Update time, message count and selection highlighting remain visible; the work view also identifies the project.
+
+Running, tool use, compaction, retries, waiting, unread, failure, stopped and unknown connection states remain visible. A retained runtime shows a green circle-check icon and **Idle** label with a tooltip explaining `/quit`; threads without a workspace runtime omit the inactive label. When a search match in the first question needs context, the card shows a nearby excerpt; clearing search removes it. Temporary threads retain their unsaved/disconnection notice.
+
+The project menu groups **Import Pi session**, **Project trust**, and **Copy project path** under **More actions**. Common actions such as creating, pinning, refreshing and archiving remain at the top level. Thread menus omit the duplicate **Pending messages** entry; use the pending-message count/manage control above the composer. Queue indicators remain on thread cards.
+
+Idle does not mean resources have been released. The default idle eviction threshold is 15 minutes, but eviction also requires no browser subscribers, running tasks or operations that prevent eviction; retained recovery drafts can also prevent it. Switching threads does not immediately stop the runtime. To release one explicitly, open that thread and use `/quit`.
 
 ## Conversation titles
 
@@ -97,7 +131,7 @@ HTML exports are for reading. JSONL exports contain the current active branch fo
 
 Successful edit/write tool records produce a file list for each turn. Diffs and recorded write contents describe those operations. **Current file** reads the current disk file only when requested; use Refresh to update its snapshot. Large code, formulas and diagrams stay in their own viewing areas.
 
-Side chat freezes the main task's effective context when created and has no tools. Discuss independently, then explicitly append selected text to the main draft. This page can retain a limited number of side chats across persistent threads. Refresh, closing the page and signing out end them.
+Side chat freezes the main task's effective context when created. With `sideChatTools` enabled, it can read and search current files. Explicit modification requests can use edit, write and command tools after an approval inside side chat; the grant lasts for that reply and is reset afterwards. Main and side agents share files: avoid concurrent edits to the same files, and remember that stopping does not undo completed changes. Tool activity is shown in side chat; selected text can still be explicitly appended to the main draft. This page can retain a limited number of side chats across persistent threads. Refresh, closing the page and signing out end them.
 
 ## Media lab and read aloud
 

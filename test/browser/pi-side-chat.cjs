@@ -17,6 +17,11 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
     const tickets = new Map();
     const reply = (ws, cmd, data, error, errorCode) => ws.send(JSON.stringify({ type: 'response', id: cmd.id, command: cmd.type, success: !error, data, error, errorCode }));
     const send = (ws, event) => ws.send(JSON.stringify(event));
+    const sideState = connection => ({ model, isStreaming: connection.busy, isCompacting: false, toolMode: fullContext ? 'assist' : 'none', toolAccess: connection.access || 'read', pendingUi: connection.pendingUi ? [connection.pendingUi] : [] });
+    const askApproval = (connection, id) => {
+        connection.pendingUi = { type: 'extension_ui_request', id, method: 'confirm', title: '允许侧聊本次回复修改文件和运行命令？', message: JSON.stringify({ tool: 'edit', arguments: { path: 'fixture/example.js', edits: [{ oldText: 'before', newText: 'after' }] } }) };
+        send(connection.ws, connection.pendingUi);
+    };
     const mainStats = { contextUsage: { tokens: 2000, percent: 6.25, contextWindow: 32000 }, cost: 0.1, totalMessages: 3 };
     page.on('pageerror', error => errors.push(error.message));
     page.on('dialog', dialog => acceptDialogs ? dialog.accept() : dialog.dismiss());
@@ -29,7 +34,7 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
         const req = route.request(), endpoint = new URL(req.url()).pathname;
         const respond = json => route.fulfill({ json });
         if (req.method() !== 'GET') { writes.push(endpoint); return respond({ ok: true }); }
-        if (endpoint === '/api/pi/status') return respond({ ok: true, sideChat: true, sideChatContext: fullContext, sideChatRetention: retention, sessionWorkflows: true, replyFork: true, projectRoots: ['/srv'] });
+        if (endpoint === '/api/pi/status') return respond({ ok: true, sideChat: true, sideChatContext: fullContext, sideChatRetention: retention, sideChatTools: fullContext, sessionWorkflows: true, replyFork: true, projectRoots: ['/srv'] });
         if (endpoint === '/api/pi/projects') return respond({ projects: [{ cwd, name: 'Side fixture', sessionCount: 2 }], roots: ['/srv'] });
         if (endpoint === '/api/pi/sessions') return respond({ sessions: [mainSession, otherSession, ...(retention ? [{ ...mainSession, id: 'third', name: '第三个任务' }, { ...mainSession, id: 'fourth', name: '第四个任务' }] : [])] });
         if (endpoint === '/api/pi/activity') return respond({ runtimes: [], pinnedProjects: [], hiddenProjects: [], replyNotices: [] });
@@ -74,10 +79,16 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
                 assert.ok(tickets.has(cmd.ticket));
                 const reference = tickets.get(cmd.ticket); tickets.delete(cmd.ticket);
                 if (holdOpen) { connection.pendingOpen = { cmd, reference }; return; }
-                return reply(ws, cmd, { state: { sessionId: `side-${sideCount}`, model, isStreaming: false, isCompacting: false }, reference, limits: { messageCharacters: 8000 }, messages: [], stats: {} });
+                return reply(ws, cmd, { state: { ...sideState(connection), sessionId: `side-${sideCount}` }, reference, limits: { messageCharacters: 8000 }, messages: [], stats: {} });
             }
             assert.equal(connection.kind, 'side');
-            if (cmd.type === 'get_state') return reply(ws, cmd, { model, isStreaming: connection.busy, isCompacting: false });
+            if (cmd.type === 'answer_side_confirmation') {
+                assert.equal(cmd.requestId, connection.pendingUi?.id); assert.equal(typeof cmd.confirmed, 'boolean');
+                connection.pendingUi = null; connection.access = cmd.confirmed ? 'write' : 'read';
+                reply(ws, cmd, { accepted: true }); send(ws, { type: 'gateway_ui_resolved', id: cmd.requestId });
+                send(ws, { type: 'gateway_side_tool_access', access: connection.access }); return;
+            }
+            if (cmd.type === 'get_state') return reply(ws, cmd, sideState(connection));
             if (cmd.type === 'get_messages') return reply(ws, cmd, { messages: connection.messages });
             if (cmd.type === 'get_session_stats') return reply(ws, cmd, { contextUsage: { tokens: 300, percent: 0.94, contextWindow: 32000 }, cost: 0.002 });
             if (cmd.type === 'quit_side_chat') { reply(ws, cmd, { quit: true }); ws.close({ code: 1000, reason: 'Side ended' }); return; }
@@ -120,6 +131,7 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
     await page.waitForFunction(() => document.querySelector('#pi-side-messages').textContent.includes('这是一条独立回答。') && document.querySelector('#pi-input').value === '');
     assert.equal(sideCount, 1); assert.equal(mainPrompts.length, 0);
     assert.equal(preparations[0].mode, fullContext ? 'context' : 'recent');
+    assert.equal(preparations[0].toolMode, fullContext ? 'assist' : undefined);
     assert.equal(preparations[0].retainOnSwitch, retention ? true : undefined);
     assert.equal(preparations[0].quote, undefined, 'text selection does not change /btw background');
     assert.equal(await page.locator('[data-side-quote]').count(), 0);
@@ -229,6 +241,31 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
     assert.match(await page.locator('#pi-input').inputValue(), /^保留主草稿\n\n## 侧聊回答/);
     assert.equal(mainPrompts.length, 0);
     await page.locator('#pi-toggle-side-chat').click();
+    if (fullContext) {
+        const call = { type: 'toolCall', id: 'edit-fixture', name: 'edit', arguments: { path: 'very-long-folder/'.repeat(15) + 'file.js', edits: [{ oldText: 'before', newText: 'after' }] } };
+        const assistant = { role: 'assistant', content: [{ type: 'text', text: '正在检查修改。' }, call], stopReason: 'toolUse', timestamp: ++ticks };
+        activeSide.messages.push(assistant); activeSide.busy = true; send(activeSide.ws, { type: 'agent_start' });
+        send(activeSide.ws, { type: 'message_end', message: assistant });
+        send(activeSide.ws, { type: 'tool_execution_start', toolCallId: call.id, toolName: call.name, args: call.arguments });
+        askApproval(activeSide, 'approve-tool');
+        await page.locator('#pi-side-confirm:not([hidden])').waitFor();
+        assert.equal(await page.locator('#pi-request-dialog').evaluate(node => node.open), false);
+        assert.equal(await page.locator('#pi-side-tool-mode').textContent(), '等待确认');
+        assert.equal(await page.locator('#pi-side-confirm').evaluate(node => node.scrollWidth > node.clientWidth + 1), false);
+        await page.screenshot({ path: `/tmp/pi-side-tools-${viewport.width}-approval.png` });
+        await page.locator('#pi-details-tab').click(); await page.locator('#pi-side-tab').click();
+        assert.equal(sideCount, 1);
+        await page.locator('#pi-side-confirm button').last().click();
+        await page.waitForFunction(() => document.querySelector('#pi-side-tool-mode').textContent === '本次可修改');
+        const result = { role: 'toolResult', toolCallId: call.id, toolName: 'edit', content: [{ type: 'text', text: 'TOOL_RESULT <script>window.badSide=true</script>' }], isError: false, timestamp: ++ticks };
+        activeSide.messages.push(result); activeSide.busy = false; activeSide.access = 'read';
+        send(activeSide.ws, { type: 'tool_execution_end', toolCallId: call.id, toolName: 'edit', result, isError: false });
+        send(activeSide.ws, { type: 'message_end', message: result }); send(activeSide.ws, { type: 'agent_settled' });
+        await page.waitForFunction(() => document.querySelector('#pi-side-tool-mode').textContent === '可读取');
+        await page.locator('.pi-side-tool summary').click();
+        assert.match(await page.locator('.pi-side-tool').textContent(), /TOOL_RESULT/);
+        assert.equal(await page.evaluate(() => window.badSide), undefined);
+    }
     await page.locator('#pi-side-reference summary').click();
     const checkLayout = async () => {
         assert.equal(await page.evaluate(() => document.body.scrollWidth > document.body.clientWidth), false);
@@ -301,7 +338,7 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
     await page.locator('#pi-toggle-side-chat').click();
     assert.equal(preparations.at(-1).mode, fullContext ? 'context' : 'recent');
     assert.equal(preparations.at(-1).quote, undefined);
-    await page.waitForFunction(() => document.querySelector('#pi-side-status').textContent === '正在启动无工具侧聊');
+    await page.waitForFunction(() => document.querySelector('#pi-side-status').textContent.startsWith('正在启动'));
     await page.locator('#pi-side-end').click();
     await page.waitForFunction(() => document.querySelector('#pi-side-status').textContent === '侧聊已结束');
     holdOpen = false;
@@ -378,12 +415,12 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
         holdOpen = true;
         await page.locator('#pi-side-reference summary').click();
         await page.locator('#pi-side-refresh').click();
-        await page.waitForFunction(() => document.querySelector('#pi-side-status').textContent === '正在启动无工具侧聊');
+        await page.waitForFunction(() => document.querySelector('#pi-side-status').textContent.startsWith('正在启动'));
         const startingD = activeSide, countAtStartup = sideCount;
         await switchThread('main'); await page.locator('#pi-toggle-side-chat').click();
         const aText = await page.locator('#pi-side-messages').textContent();
         holdOpen = false;
-        reply(startingD.ws, startingD.pendingOpen.cmd, { state: { sessionId: 'delayed-side', model, isStreaming: false }, reference: startingD.pendingOpen.reference,
+        reply(startingD.ws, startingD.pendingOpen.cmd, { state: { ...sideState(startingD), sessionId: 'delayed-side' }, reference: startingD.pendingOpen.reference,
             limits: { messageCharacters: 8000 }, messages: [], stats: {} });
         await page.waitForTimeout(100);
         assert.equal(await page.locator('#pi-side-messages').textContent(), aText, 'late startup stays with its own thread');
@@ -391,6 +428,17 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
         await switchThread('fourth'); await page.locator('#pi-toggle-side-chat').click();
         await page.waitForFunction(() => document.querySelector('#pi-side-status').textContent === '侧聊已就绪');
         assert.equal(sideCount, countAtStartup, 'return resumes an already claimed startup');
+        if (fullContext) {
+            retainedA.busy = true; send(retainedA.ws, { type: 'agent_start' }); askApproval(retainedA, 'background-confirm');
+            await page.waitForTimeout(100);
+            assert.equal(await page.locator('#pi-side-confirm').isVisible(), false, 'background approval must not appear in another thread');
+            await switchThread('main'); await page.locator('#pi-toggle-side-chat').click();
+            await page.locator('#pi-side-confirm:not([hidden])').waitFor();
+            assert.equal(await page.locator('#pi-side-input').inputValue(), 'A 的未发送草稿');
+            await page.locator('#pi-side-confirm button').first().click();
+            retainedA.busy = false; send(retainedA.ws, { type: 'agent_settled' });
+            await page.waitForFunction(() => document.querySelector('#pi-side-confirm').hidden && document.querySelector('#pi-side-tool-mode').textContent === '可读取');
+        }
         await page.evaluate(() => window.dispatchEvent(new Event('beforeunload')));
         await page.waitForTimeout(100);
         assert.ok([retainedA, retainedB, retainedC, activeSide].every(side => side.closed), 'page exit closes all retained side sockets');

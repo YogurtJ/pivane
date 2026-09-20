@@ -58,13 +58,21 @@ test('strict import rejects malformed lines, foreign logs, trees with cycles/dup
     const { SessionManager } = await import('@earendil-works/pi-coding-agent');
     const sm = SessionManager.inMemory(root); sm.appendMessage(user('question')); sm.appendMessage(assistant('reply'));
     const valid = [sm.getHeader(), ...sm.getEntries()];
-    assert.equal(validateImport('\uFEFF' + jsonl(valid).replace(/\n/g, '\r\n')).length, 3);
+    const system = { type: 'message', id: 'system-entry', parentId: null, timestamp: new Date().toISOString(), message: {
+        role: 'system', content: '', sections: { preamble: 'Fixture prompt', tools: null },
+        toolsAdded: [{ name: 'read', description: 'Read files', parameters: { type: 'object', properties: {} } }],
+        toolsRemoved: [{ name: 'old-tool' }], timestamp: Date.now()
+    } };
+    assert.equal(validateImport('\uFEFF' + jsonl([valid[0], system, ...valid.slice(1)]).replace(/\n/g, '\r\n')).length, 4);
     for (const value of ['', '<html>archive</html>', '{"type":"session_meta"}', jsonl(valid) + '{broken}', 'x'.repeat(16 * 1024 * 1024 + 1)]) assert.throws(() => validateImport(value));
     const bad = change => { const entries = structuredClone(valid); change(entries); assert.throws(() => validateImport(jsonl(entries))); };
     bad(e => e[0].version = 999); bad(e => e[1].parentId = e[1].id); bad(e => e[2].id = e[1].id);
     bad(e => e[2].message.content = null); bad(e => e[2].message.stopReason = 'pending');
     bad(e => e[2].message.usage.cost = 'invalid');
     bad(e => e[2].message.role = 'event_msg'); bad(e => e[1].type = 'unknown');
+    const badSystem = change => { const entries = structuredClone([valid[0], { type: 'message', id: 'system-entry', parentId: null, timestamp: new Date().toISOString(), message: { role: 'system', content: '', timestamp: Date.now() } }, ...valid.slice(1)]); change(entries[1].message); assert.throws(() => validateImport(jsonl(entries))); };
+    badSystem(message => message.toolsAdded = [{ name: '', description: 'bad', parameters: {} }]);
+    badSystem(message => message.sections = { broken: 42 });
     bad(e => e[1].timestamp = 'bad');
 });
 

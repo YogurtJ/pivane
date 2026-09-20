@@ -5,7 +5,7 @@
 - 原生Pi会话与唯一受管worker，浏览器流式回复、附件、工具、停止、压缩和运行恢复。
 - 供应商API Key/OAuth、动态模型与Thinking、原生设置、Packages/Skills、项目信任与资源核对。
 - 项目/线程管理、搜索、书签、会话树、分叉/重试/恢复、导入导出和一次性延迟消息。
-- 无工具临时侧聊、文件差异/全文、数学公式/Mermaid、用量统计、回复朗读与通知入口。
+- 临时侧聊（读取/检索与逐回复确认后的修改/命令；sideChatTools 标记）、文件差异/全文、数学公式/Mermaid、用量统计、回复朗读与通知入口。
 - 媒体模型自配置、常见HTTP协议、文档接入草稿、参数规划与确认单项执行。
 - Linux、已验收Apple Silicon macOS及Windows11 x64原生适配；具体范围见[平台验证](RELEASE_INSTALL_VALIDATION.md)。
 

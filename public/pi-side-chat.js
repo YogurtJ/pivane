@@ -19,7 +19,13 @@
             this.connected = false;
             this.busy = false;
             this.messages = [];
+            this.toolEvents = new Map();
+            this.toolMode = manager.toolsEnabled ? 'assist' : 'none';
+            this.toolAccess = 'read';
             this.input = $('pi-side-input');
+            this.quotes = [];
+            this.quoteHost = document.createElement('div'); this.quoteHost.className = 'pi-side-quotes';
+            $('pi-side-form').before(this.quoteHost);
             this.content = $('pi-side-messages');
             this.source = $('pi-side-source');
             this.scroll = new window.PiTranscriptScroll({ viewport: $('pi-side-transcript'), content: this.content,
@@ -79,23 +85,36 @@
             const ready = this.enabled && this.host.context().connected;
             $('pi-side-refresh').disabled = !ready || Boolean(this.starting);
             this.source.disabled = !ready || Boolean(this.starting);
-            $('pi-side-end').disabled = !this.socket && !this.starting && !this.messages.length && !this.input.value;
+            $('pi-side-tool-mode').textContent = this.toolMode !== 'assist' ? translateUi('无工具') : this.confirmation ? translateUi('等待确认') : this.toolAccess === 'write' ? translateUi('本次可修改') : translateUi('可读取');
+            $('pi-side-end').disabled = !this.socket && !this.starting && !this.messages.length && !this.input.value && !this.quotes.length;
             this.input.disabled = !this.connected || Boolean(this.starting);
             $('pi-side-send').hidden = this.busy;
             $('pi-side-stop').hidden = !this.busy;
             $('pi-side-stop').disabled = !this.connected;
-            $('pi-side-send').disabled = !this.connected || this.busy || this.submitting || !this.input.value.trim();
+            $('pi-side-send').disabled = !this.connected || this.busy || this.submitting || (!this.input.value.trim() && !this.quotes.length);
         }
         status(text, error = false) { $('pi-side-status').textContent = text; $('pi-side-status').dataset.error = String(error); }
         options(value = this.source.value) {
             return value === 'context' ? { mode: 'context' } : value === 'blank' ? { mode: 'blank' } : { mode: 'recent', count: value === 'recent-12' ? 12 : 6 };
         }
-        async open({ question } = {}) {
+        renderQuotes() {
+            this.quoteHost.replaceChildren(...this.quotes.map(quote => window.PiQuotes.card(quote, () => {
+                this.quotes = this.quotes.filter(item => item !== quote); this.renderQuotes(); this.controls();
+            })));
+        }
+        async open({ question, quote } = {}) {
+            const key = this.identity();
             if (!this.enabled) throw new Error(translateUi("当前后端尚未启用侧聊"));
             if (!this.host.context().connected) throw new Error(translateUi("请先连接主会话"));
             this.showPane('side');
             if (this.starting) await this.starting;
             if (!this.connected && !await this.restart()) return false;
+            if (this.destroyed || this.manager.current !== this || key !== this.identity()) return false;
+            if (quote) {
+                const quotes = [...this.quotes, quote];
+                if (quotes.length > 8 || (quotes.map(window.PiQuotes.serialize).join('') + this.input.value).length > this.limits.messageCharacters) throw new Error(translateUi('引用与问题超过侧聊长度限制，请减少选中文字'));
+                this.quotes = quotes; this.renderQuotes(); this.controls();
+            }
             if (question) {
                 if (this.input.value.trim() && this.input.value !== question) throw new Error(translateUi("侧聊已有未发送草稿，请先处理该草稿"));
                 this.input.value = question;
@@ -108,7 +127,7 @@
         async restart(options = this.options()) {
             this.manager.reserve(this);
             if (this.starting) return this.starting;
-            if ((this.messages.length || this.busy || this.input.value.trim()) && !window.confirm(translateUi("重新引用会开始新的临时侧聊，已有侧聊记录将清空。继续？"))) return false;
+            if ((this.messages.length || this.busy || this.input.value.trim() || this.quotes.length) && !window.confirm(translateUi("重新引用会开始新的临时侧聊，已有侧聊记录将清空。继续？"))) return false;
             const key = this.identity(), draft = this.input.value;
             const promise = (async () => {
                 await this.shutdownSocket();
@@ -125,7 +144,7 @@
                 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const socket = new WebSocket(`${protocol}//${location.host}/api/pi/ws`);
                 this.socket = socket;
-                this.status(translateUi("正在启动无工具侧聊"));
+                this.status(this.manager.toolsEnabled ? translateUi('正在启动侧聊') : translateUi("正在启动无工具侧聊"));
                 await new Promise((resolve, reject) => {
                     const handshake = setTimeout(() => {
                         if (socket.readyState === WebSocket.CONNECTING) { socket.close(); reject(new Error(translateUi("侧聊连接超时"))); }
@@ -142,6 +161,7 @@
                             this.input.value = draft;
                             $('pi-side-model').textContent = data.state.model?.name || data.state.model?.id || translateUi("侧聊");
                             $('pi-side-model').title = `${data.state.model?.provider}/${data.state.model?.id}`;
+                            this.setToolState(data.state);
                             this.showReference(data.reference); this.render(data.messages || []); this.updateUsage(data.stats);
                             this.status(translateUi("侧聊已就绪")); this.controls(); resolve();
                         } catch (error) { if (generation === this.generation) this.dropSocket(); reject(error); }
@@ -152,6 +172,7 @@
                         reject(Object.assign(new Error(translateUi("侧聊已结束")), { code: generation === this.generation ? 'SIDE_DISCONNECTED' : 'SIDE_CANCELLED' }));
                         if (generation !== this.generation) return;
                         this.connected = false; this.busy = false; this.live = null;
+                        this.confirmation = null; this.toolAccess = 'read'; this.renderConfirmation();
                         if (this.socket === socket) this.socket = null;
                         this.rejectRequests(new Error(translateUi("侧聊连接已断开")));
                         this.status(translateUi("连接已断开，临时侧聊已结束"), true); this.controls(); this.manager.reconcile(this); reject(new Error(translateUi("侧聊已结束")));
@@ -175,10 +196,41 @@
             preview.appendChild(meta);
             if (reference.mode === 'context') {
                 const note = document.createElement('p');
-                note.textContent = translateUi("历史工具作为只读记录，侧聊无执行工具。{0}{1}", reference.omittedThinking ? translateUi("未复制 {0} 块思考及签名。", reference.omittedThinking) : '', reference.omittedImages ? translateUi("当前模型不支持图像，{0} 张图片仅保留占位说明。", reference.omittedImages) : reference.images ? translateUi("含 {0} 张图片。", reference.images) : '');
+                note.textContent = translateUi(reference.toolMode === 'assist' ? '历史工具是只读背景；侧聊可读取当前文件，修改和命令需确认。{0}{1}' : "历史工具作为只读记录，侧聊无执行工具。{0}{1}", reference.omittedThinking ? translateUi("未复制 {0} 块思考及签名。", reference.omittedThinking) : '', reference.omittedImages ? translateUi("当前模型不支持图像，{0} 张图片仅保留占位说明。", reference.omittedImages) : reference.images ? translateUi("含 {0} 张图片。", reference.images) : '');
                 preview.appendChild(note);
             }
             for (const item of reference.preview || []) { const p = document.createElement('p'); p.textContent = item.text; preview.appendChild(p); }
+        }
+        setToolState(state = {}) {
+            this.toolMode = state.toolMode || 'none';
+            this.toolAccess = state.toolAccess === 'write' ? 'write' : 'read';
+            this.confirmation = (state.pendingUi || []).find(item => item.method === 'confirm') || null;
+            this.renderConfirmation(); this.controls();
+        }
+        renderConfirmation() {
+            const panel = $('pi-side-confirm');
+            panel.replaceChildren(); panel.hidden = !this.confirmation;
+            if (!this.confirmation) return;
+            const request = this.confirmation;
+            const title = document.createElement('strong'); title.textContent = translateUi(request.title);
+            const scope = document.createElement('p');
+            scope.textContent = translateUi('允许后，本次回复可编辑、写入和运行命令；结束后恢复询问。主侧共享目录，请避免同时修改相同文件。');
+            const preview = document.createElement('pre'); preview.textContent = request.message || '';
+            const actions = document.createElement('div'); actions.className = 'pi-side-confirm-actions';
+            for (const [allowed, label] of [[false, '取消执行'], [true, '允许本次回复执行']]) {
+                const button = document.createElement('button'); button.type = 'button'; button.textContent = translateUi(label);
+                button.addEventListener('click', () => this.run(async () => {
+                    if (this.manager.current !== this || this.confirmation?.id !== request.id) return;
+                    const generation = this.generation;
+                    for (const node of actions.children) node.disabled = true;
+                    try {
+                        await this.request('answer_side_confirmation', { requestId: request.id, confirmed: allowed });
+                        if (generation === this.generation && this.confirmation?.id === request.id) { this.confirmation = null; this.renderConfirmation(); }
+                    } finally { if (generation === this.generation) for (const node of actions.children) node.disabled = false; }
+                }));
+                actions.appendChild(button);
+            }
+            panel.append(title, scope, preview, actions);
         }
         request(type, payload = {}, timeout = 45000) {
             if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error(translateUi("侧聊未连接")));
@@ -194,6 +246,7 @@
             const socket = this.socket;
             this.generation++; this.socket = null; this.connected = false; this.busy = false; this.submitting = false;
             this.rejectRequests(Object.assign(new Error(translateUi("侧聊已结束")), { code: 'SIDE_CANCELLED' }));
+            this.confirmation = null; this.renderConfirmation(); this.toolAccess = 'read';
             socket?.close(1000, 'Side chat ended');
             this.controls();
         }
@@ -202,10 +255,10 @@
             this.dropSocket();
         }
         async end() {
-            if ((this.busy || this.messages.length || this.input.value) && !window.confirm(translateUi("结束并清空这段临时侧聊？主会话不受影响。"))) return false;
+            if ((this.busy || this.messages.length || this.input.value || this.quotes.length) && !window.confirm(translateUi("结束并清空这段临时侧聊？主会话不受影响。"))) return false;
             this.starting = null;
             await this.shutdownSocket();
-            this.render([]); this.input.value = ''; this.live = null; this.uncertain = false;
+            this.render([]); this.input.value = ''; this.quotes = []; this.renderQuotes(); this.live = null; this.uncertain = false; this.toolEvents.clear();
             this.reference = null; this.referenceValue = this.defaultSource(); this.source.value = this.referenceValue;
             $('pi-side-reference-label').textContent = translateUi("尚未引用上下文"); $('pi-side-reference-preview').replaceChildren();
             $('pi-side-model').textContent = translateUi("临时侧聊"); $('pi-side-model').title = ''; $('pi-side-usage').textContent = '';
@@ -215,7 +268,9 @@
         async send() {
             if (this.manager.current !== this || this.destroyed) return false;
             if (!this.connected || this.busy || this.submitting || this.starting) return false;
-            const message = this.input.value.trim(); if (!message) return false;
+            const draft = this.input.value, quotes = this.quotes;
+            const message = quotes.map(window.PiQuotes.serialize).join('') + draft.trim(); if (!message.trim()) return false;
+            if (message.length > this.limits.messageCharacters) { this.status(translateUi('引用与问题超过侧聊长度限制，请减少选中文字'), true); return false; }
             if (/^\//.test(message)) { this.status(translateUi("侧聊不执行斜杠命令，请用普通文字提问"), true); return false; }
             if (this.parentKey !== this.identity()) { this.status(translateUi("主会话已切换，请开始新的侧聊"), true); return false; }
             const confirmUncertain = this.uncertain && window.confirm(translateUi("上次发送结果不确定，请先核对侧聊记录。确认仍要发送？"));
@@ -225,7 +280,7 @@
             try {
                 await this.request('prompt', { message, ...(confirmUncertain ? { confirmUncertain: true } : {}) }, 65000);
                 if (generation !== this.generation) return false;
-                if (this.input.value.trim() === message) this.input.value = '';
+                if (this.input.value === draft && this.quotes === quotes) { this.input.value = ''; this.quotes = []; this.renderQuotes(); }
                 this.uncertain = false;
                 return true;
             } catch (error) {
@@ -245,6 +300,25 @@
                 else pending.reject(Object.assign(new Error(event.error || translateUi("侧聊请求失败")), { code: event.errorCode || 'RPC_REJECTED' }));
                 return;
             }
+            if (event.type === 'gateway_side_tool_access') {
+                this.revision++; this.toolAccess = event.access === 'write' ? 'write' : 'read'; this.controls(); return;
+            }
+            if (event.type === 'extension_ui_request' && event.method === 'confirm' && this.toolMode === 'assist') {
+                this.revision++; this.confirmation = event; this.renderConfirmation();
+                this.status(translateUi('侧聊等待执行确认')); this.controls(); return;
+            }
+            if (event.type === 'gateway_ui_resolved' && this.confirmation?.id === event.id) {
+                this.revision++; this.confirmation = null; this.renderConfirmation();
+                if (this.busy) this.status(translateUi('侧聊回复中'));
+                this.controls(); return;
+            }
+            if (['tool_execution_start', 'tool_execution_update', 'tool_execution_end'].includes(event.type)) {
+                this.toolEvents.set(event.toolCallId, event);
+                if (!this.toolFrame) this.toolFrame = requestAnimationFrame(() => {
+                    this.toolFrame = null;
+                    if (!this.destroyed && this.root.isConnected) this.render(this.messages, this.live);
+                });
+            }
             if (event.type === 'gateway_side_parent_ended' && event.reason === 'deleted') {
                 this.manager.forget(this.key); return;
             }
@@ -261,12 +335,14 @@
                     this.scheduleRender();
                 }
             }
-            if (event.type === 'message_end' && ['user', 'assistant'].includes(event.message?.role)) {
-                if (!this.messages.some(item => item.role === event.message.role && item.timestamp === event.message.timestamp && textOf(item) === textOf(event.message))) this.messages.push(event.message);
+            if (event.type === 'message_end' && ['user', 'assistant', 'toolResult'].includes(event.message?.role)) {
+                if (!this.messages.some(item => item.role === event.message.role && (event.message.role !== 'toolResult' || item.toolCallId === event.message.toolCallId) && item.timestamp === event.message.timestamp && textOf(item) === textOf(event.message))) this.messages.push(event.message);
                 if (event.message.role === 'assistant') this.live = null;
+                if (event.message.role === 'toolResult') this.toolEvents.delete(event.message.toolCallId);
                 this.render(this.messages, this.live);
             }
             if (event.type === 'agent_settled') {
+                this.toolAccess = 'read'; this.confirmation = null; this.renderConfirmation();
                 this.busy = false;
                 const last = this.messages.filter(message => message.role === 'assistant').at(-1);
                 this.status(last?.stopReason === 'aborted' ? translateUi("侧聊回复已停止") : last?.errorMessage || last?.stopReason === 'error' ? translateUi("侧聊回复失败") : translateUi("侧聊已完成"), Boolean(last?.errorMessage || last?.stopReason === 'error'));
@@ -287,6 +363,19 @@
                 this.scroll.update();
             });
         }
+        renderTool(call, result) {
+            const event = this.toolEvents.get(call.id), output = result || event?.result || event?.partialResult;
+            const details = document.createElement('details'); details.className = 'pi-side-tool'; details.dataset.detailKey = call.id;
+            const label = document.createElement('summary');
+            const status = result || event?.type === 'tool_execution_end' ? (result?.isError || event?.isError ? '工具失败' : '工具完成') : '工具执行中';
+            label.textContent = `${call.name} · ${translateUi(status)}`;
+            const params = document.createElement('pre'); params.textContent = JSON.stringify(call.arguments || event?.args || {}, null, 2);
+            details.append(label, params);
+            if (output) {
+                const pre = document.createElement('pre'); pre.textContent = textOf(output) || translateUi('工具返回了非文本内容'); details.appendChild(pre);
+            }
+            return details;
+        }
         render(messages, live = null) {
             this.messages = messages;
             const position = this.scroll.capture();
@@ -294,7 +383,12 @@
             const sequence = [...messages, ...(live ? [live] : [])];
             const finalReplies = this.host.finalReplyIndices(sequence, this.busy);
             for (const [index, message] of sequence.entries()) {
-                if (!['user', 'assistant', 'compactionSummary'].includes(message.role)) continue;
+                if (!['user', 'assistant', 'toolResult', 'compactionSummary'].includes(message.role)) continue;
+                if (message.role === 'toolResult') {
+                    const paired = sequence.some(item => Array.isArray(item.content) && item.content.some(block => block.type === 'toolCall' && block.id === message.toolCallId));
+                    if (!paired) this.content.appendChild(this.renderTool({ id: message.toolCallId, name: message.toolName }, message));
+                    continue;
+                }
                 const text = message.role === 'compactionSummary' ? message.summary : textOf(message);
                 const article = document.createElement('article'); article.className = `pi-message ${message.role}`;
                 article.dataset.messageKey = JSON.stringify(['side', message.role, message.timestamp]);
@@ -303,11 +397,14 @@
                 const body = document.createElement('div'); body.className = 'pi-message-body'; body.dataset.readingKey = article.dataset.messageKey;
                 const markdown = document.createElement('div'); markdown.className = 'pi-markdown';
                 if (message.role === 'assistant') markdown.innerHTML = text ? this.host.renderMarkdown(text) : `<p class="pi-side-empty">${translateUi("思考中")}</p>`;
-                else { markdown.textContent = text; markdown.style.whiteSpace = 'pre-wrap'; }
+                else window.PiQuotes.renderUser(markdown, text);
                 body.appendChild(markdown);
                 if (message.errorMessage || ['error', 'aborted'].includes(message.stopReason)) {
                     const error = document.createElement('p'); error.className = 'pi-inline-error'; error.textContent = message.errorMessage || translateUi("回复已停止"); body.appendChild(error);
                 }
+                const toolCalls = Array.isArray(message.content) ? message.content.filter(block => block.type === 'toolCall') : [];
+                if (message.role === 'assistant' && toolCalls.length && !text) markdown.replaceChildren();
+                for (const call of toolCalls) body.appendChild(this.renderTool(call, sequence.find(item => item.role === 'toolResult' && item.toolCallId === call.id)));
                 article.appendChild(body);
                 if (message.role === 'assistant' && text && finalReplies.has(index)) {
                     const footer = document.createElement('footer'); footer.className = 'pi-message-actions';
@@ -331,10 +428,11 @@
                 if (generation !== this.generation || revision !== this.revision) return;
                 this.busy = Boolean(state.isStreaming || state.isCompacting); this.uncertain ||= Boolean(state.uncertain);
                 if (!this.busy) { this.live = null; this.render(data.messages || []); }
+                this.setToolState(state);
                 this.updateUsage(stats); this.controls();
             } catch {}
         }
-        hasState() { return Boolean(this.socket || this.starting || this.messages.length || this.input.value); }
+        hasState() { return Boolean(this.socket || this.starting || this.messages.length || this.input.value || this.quotes.length); }
         destroy() {
             this.destroyed = true;
             this.starting = null;
@@ -342,6 +440,7 @@
             this.scroll.resizeObserver.disconnect(); this.scroll.mutationObserver.disconnect();
             if (this.scroll.frame !== null) cancelAnimationFrame(this.scroll.frame);
             if (this.frame) cancelAnimationFrame(this.frame);
+            if (this.toolFrame) cancelAnimationFrame(this.toolFrame);
             this.root.remove();
         }
         updateUsage(stats = {}) {
@@ -386,7 +485,7 @@
             };
             entry = createThread({ ...this.host,
                 context: () => !this.retention || isCurrent() ? this.host.context() : { ...saved, connected: false },
-                prepare: guard(options => this.host.prepare({ ...options, ...(entry.retainOnSwitch ? { retainOnSwitch: true } : {}) })),
+                prepare: guard(options => this.host.prepare({ ...options, ...(this.toolsEnabled ? { toolMode: 'assist' } : {}), ...(entry.retainOnSwitch ? { retainOnSwitch: true } : {}) })),
                 insertDraft: guard(text => this.host.insertDraft(text)), focusMain: guard(() => this.host.focusMain()),
                 toast: (...args) => { if (!this.retention || isCurrent()) this.host.toast(...args); }
             }, root, this);
@@ -427,7 +526,8 @@
             requestAnimationFrame(() => { if (this.current === entry) entry.root.scrollTop = entry.panelTop || 0; });
             if (entry.connected) void entry.synchronize();
         }
-        setEnabled(enabled, fullContext = false, retention = false) {
+        setEnabled(enabled, fullContext = false, retention = false, toolsEnabled = false) {
+            this.toolsEnabled = toolsEnabled;
             this.enabled = enabled; this.fullContext = fullContext;
             // Capability changes are only applied before an entry has a running conversation.
             if (retention !== this.retention && !this.current.hasState() && !this.entries.size) {
@@ -443,6 +543,7 @@
             $('pi-toggle-side-chat').hidden = !this.enabled;
             $('pi-side-tab').hidden = !this.enabled;
             $('pi-toggle-side-chat').disabled = !this.host.context().connected;
+            if (!this.current.hasState()) { this.current.toolMode = this.toolsEnabled ? 'assist' : 'none'; this.current.toolAccess = 'read'; }
             this.current.setEnabled(this.enabled, this.fullContext);
         }
         async run(action) {

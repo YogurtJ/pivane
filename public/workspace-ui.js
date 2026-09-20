@@ -33,11 +33,15 @@
             });
         });
         const sidebarToggle = document.getElementById('workspace-sidebar-toggle');
+        const brandToggle = document.getElementById('workspace-brand-toggle');
         const themeToggle = document.getElementById('workspace-theme-toggle');
         const themeMenu = document.getElementById('workspace-theme-menu');
         const themeMeta = document.querySelector('meta[name="theme-color"]');
         const systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
         const mobileMedia = window.matchMedia('(max-width: 900px)');
+        const syncBrandToggle = () => { if (brandToggle) brandToggle.disabled = mobileMedia.matches; };
+        syncBrandToggle();
+        mobileMedia.addEventListener('change', syncBrandToggle);
         const touchMedia = window.matchMedia('(hover: none) and (pointer: coarse)');
         const viewport = window.visualViewport;
         const pageIsZoomed = () => (viewport?.scale || 1) > 1.01;
@@ -58,11 +62,14 @@
 
         function setSidebarCollapsed(collapsed) {
             app?.classList.toggle('sidebar-collapsed', collapsed);
-            sidebarToggle?.setAttribute('aria-expanded', String(!collapsed));
-            if (sidebarToggle) {
-                sidebarToggle.title = collapsed ? translateUi("展开导航") : translateUi("折叠导航");
-                sidebarToggle.setAttribute('aria-label', sidebarToggle.title);
+            for (const button of [sidebarToggle, brandToggle]) {
+                if (!button) continue;
+                button.setAttribute('aria-expanded', String(!collapsed));
+                button.title = collapsed ? translateUi("展开导航") : translateUi("折叠导航");
+                button.setAttribute('aria-label', button.title);
             }
+            const icon = sidebarToggle?.querySelector('i');
+            if (icon) icon.className = `fa-solid fa-angles-${collapsed ? 'right' : 'left'}`;
             localStorage.setItem(SIDEBAR_KEY, String(collapsed));
             window.setTimeout(() => window.dispatchEvent(new Event('resize')), 180);
         }
@@ -95,9 +102,11 @@
 
         setSidebarCollapsed(localStorage.getItem(SIDEBAR_KEY) === 'true');
 
-        sidebarToggle?.addEventListener('click', () => {
-            setSidebarCollapsed(!app.classList.contains('sidebar-collapsed'));
-        });
+        for (const button of [sidebarToggle, brandToggle]) {
+            button?.addEventListener('click', () => {
+                setSidebarCollapsed(!app.classList.contains('sidebar-collapsed'));
+            });
+        }
 
         themeToggle?.addEventListener('click', event => {
             event.stopPropagation();

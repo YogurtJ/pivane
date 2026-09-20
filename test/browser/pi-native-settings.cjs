@@ -65,6 +65,7 @@ let legacy = false;
     await page.locator('[data-filter="all"]').click();
     await page.locator(`[data-project-cwd="${other}"] [data-project-action="menu"]`).click();
     await page.evaluate(() => document.dispatchEvent(new Event('scroll')));
+    await page.getByRole('menuitem', { name: '更多操作', exact: true }).click();
     await page.getByRole('menuitem', { name: '项目信任', exact: true }).click({ timeout: 5000 }).catch(async e => { console.log(await page.evaluate(() => window.menuDebug)); await page.screenshot({ path: `/tmp/pi-native-menu-failure-${width}.png` }); throw e; });
     await page.locator('#native-trust-state').waitFor();
     const box = await page.locator('#pi-project-trust-dialog').boundingBox();

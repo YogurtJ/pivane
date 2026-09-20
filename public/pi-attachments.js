@@ -9,7 +9,8 @@
     const escapeName = name => String(name).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
     const textBlock = file => `\n\n<attached_file name="${escapeName(file.name)}">\n${file.text}\n</attached_file>`;
     function payload(text, files) {
-        return { message: `${text}${files.filter(file => file.kind === 'text').map(textBlock).join('')}`.trim(),
+        const quotes = files.filter(file => file.kind === 'quote').map(file => window.PiQuotes.serialize(file)).join('');
+        return { message: `${quotes}${text}${files.filter(file => file.kind === 'text').map(textBlock).join('')}`.trim(),
             images: files.filter(file => file.kind === 'image').map(file => ({ type: 'image', mimeType: file.mimeType, data: file.data })) };
     }
     function validatePayload({ message, images = [] }) {

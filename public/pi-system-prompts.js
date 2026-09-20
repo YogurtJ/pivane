@@ -74,7 +74,9 @@
                 } catch (e) { if (valid(n, cwd)) $('system-prompts-status').textContent = e.message; }
                 finally { if (valid(n, cwd)) refresh.disabled = false; }
             });
-            heading.append(caption, refresh);
+            refresh.className = 'settings-header-refresh';
+            refresh.prepend(node('i', undefined, { class: 'fa-solid fa-rotate', 'aria-hidden': 'true' }));
+            heading.append(node('i', undefined, { class: 'fa-solid fa-file-lines', 'aria-hidden': 'true' }), caption, refresh);
             const scopeSelect = select(currentCwd() ? [['global', scopeTitle('global')], ['project', scopeTitle('project')]] : [['global', scopeTitle('global')]], scope, 'system-prompts-scope');
             scopeSelect.addEventListener('change', () => { selectedScope = scopeSelect.value; render(cwd, value); });
             const scopeRow = node('div', undefined, { class: 'native-scope-row' });

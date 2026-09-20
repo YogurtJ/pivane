@@ -119,7 +119,7 @@
                 button.type = 'button'; button.dataset.messageWorkflow = action;
                 button.title = title; button.setAttribute('aria-label', title);
                 button.innerHTML = `<i class="fa-solid ${glyph}" aria-hidden="true"></i>`;
-                container.appendChild(button);
+                container.insertBefore(button, container.querySelector('.pi-reply-time'));
             }
             button.disabled = this.busy();
         }

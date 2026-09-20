@@ -1,0 +1,127 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const http = require('node:http');
+const { once } = require('node:events');
+const { sideToolGate, STATUS_KEY, CONFIRM_TITLE } = require('../server/pi-side-tools');
+
+const waitFor = async check => {
+    const deadline = Date.now() + 15000;
+    while (!await check()) { if (Date.now() > deadline) throw Error('Side tools fixture timeout'); await new Promise(resolve => setTimeout(resolve, 20)); }
+};
+
+test('side tool gate grants one reply, blocks rejected/expired/aborted operations, and never treats shell as read-only', async () => {
+    const handlers = new Map(), states = [];
+    sideToolGate({ on: (type, fn) => handlers.set(type, fn) });
+    let confirms = 0, allow = true;
+    const ctx = { cwd: '/fixture', hasUI: true, ui: { setStatus: (key, value) => states.push([key, value]), confirm: async () => { confirms++; return allow; } } };
+    const call = name => handlers.get('tool_call')({ toolName: name, input: { path: 'file', command: 'pwd' } }, ctx);
+    handlers.get('before_agent_start')({}, ctx);
+    for (const name of ['read', 'grep', 'find', 'ls']) assert.equal(await call(name), undefined);
+    assert.equal(confirms, 0);
+    assert.equal(await call('bash'), undefined); assert.equal(confirms, 1);
+    assert.equal(await call('write'), undefined); assert.equal(confirms, 1);
+    assert.deepEqual(states.at(-1), [STATUS_KEY, 'write']);
+    handlers.get('agent_settled')({}, ctx); allow = false;
+    assert.equal((await call('edit')).block, true); assert.equal(confirms, 2);
+    assert.equal((await call('powershell')).block, true); assert.equal(confirms, 2, 'decline does not cause repeated confirmation requests');
+    assert.equal((await call('unknown_tool')).block, true);
+    handlers.get('before_agent_start')({}, ctx);
+    ctx.signal = AbortSignal.abort(); allow = true;
+    assert.equal((await call('write')).block, true); assert.equal(confirms, 2);
+    delete ctx.signal;
+    handlers.get('before_agent_start')({}, ctx);
+    let resolve;
+    ctx.ui.confirm = () => new Promise(done => { resolve = done; });
+    const pending = call('write');
+    handlers.get('agent_settled')({}, ctx); resolve(true);
+    assert.equal((await pending).block, true, 'late confirmation cannot authorize a later reply');
+});
+
+test('real side SDK reads, confirms edits/writes/commands, resets permission, denies forged responses and aborts pending approval', { timeout: 90000 }, async t => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-side-tools-'));
+    process.env.PI_CODING_AGENT_DIR = path.join(root, 'agent');
+    process.env.PI_PROJECT_ROOTS = root; process.env.PI_OFFLINE = '1';
+    const input = path.join(root, 'input.txt'), output = path.join(root, 'output.txt'), commandOutput = path.join(root, 'command.txt');
+    fs.writeFileSync(input, 'before');
+    const requests = [], events = [];
+    const provider = http.createServer(async (req, res) => {
+        let raw = ''; for await (const chunk of req) raw += chunk;
+        const body = JSON.parse(raw); requests.push(body);
+        const names = body.tools.map(tool => tool.function.name);
+        for (const name of ['read', 'grep', 'find', 'ls', 'edit', 'write']) assert.ok(names.includes(name));
+        assert.ok(!JSON.stringify(body.messages).includes('你没有任何工具'));
+        const userIndex = body.messages.findLastIndex(message => message.role === 'user');
+        const content = body.messages[userIndex].content;
+        const prompt = typeof content === 'string' ? content : content.filter(block => block.type === 'text').map(block => block.text).join('');
+        const results = body.messages.slice(userIndex + 1).filter(message => message.role === 'tool');
+        const tools = [];
+        if (!results.length) {
+            if (prompt === 'READ') tools.push({ name: 'read', arguments: { path: input } });
+            else if (prompt === 'CHANGE') tools.push({ name: 'edit', arguments: { path: input, edits: [{ oldText: 'before', newText: 'after' }] } }, { name: 'write', arguments: { path: output, content: 'written' } });
+            else tools.push({ name: 'write', arguments: { path: output, content: prompt } });
+        } else if (prompt === 'CHANGE' && results.length === 2) {
+            tools.push({ name: process.platform === 'win32' ? 'powershell' : 'bash', arguments: { command: process.platform === 'win32' ? "Set-Content -LiteralPath command.txt -Value 'command-ran'" : "printf 'command-ran' > command.txt" } });
+        }
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        const send = data => res.write(`data: ${JSON.stringify(data)}\n\n`);
+        send({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', choices: [{ index: 0, delta: tools.length ? { role: 'assistant', tool_calls: tools.map((tool, index) => ({ index, id: `tool-${requests.length}-${index}`, type: 'function', function: { name: tool.name, arguments: JSON.stringify(tool.arguments) } })) } : { role: 'assistant', content: 'DONE' }, finish_reason: null }] });
+        send({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', choices: [{ index: 0, delta: {}, finish_reason: tools.length ? 'tool_calls' : 'stop' }], usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 } });
+        res.end('data: [DONE]\n\n');
+    });
+    provider.listen(0, '127.0.0.1'); await once(provider, 'listening');
+    const agentDir = process.env.PI_CODING_AGENT_DIR;
+    fs.mkdirSync(path.join(agentDir, 'extensions'), { recursive: true });
+    const sentinel = path.join(root, 'unexpected-extension');
+    fs.writeFileSync(path.join(agentDir, 'extensions', 'sentinel.ts'), `import {writeFileSync} from 'node:fs'; export default function(){writeFileSync(${JSON.stringify(sentinel)},'unsafe')}`);
+    const model = { provider: 'fixture', id: 'fixture', api: 'openai-completions', input: ['text'], contextWindow: 32000, maxTokens: 1000, reasoning: false };
+    fs.writeFileSync(path.join(agentDir, 'models.json'), JSON.stringify({ providers: { fixture: { api: model.api, apiKey: 'fixture-key', baseUrl: `http://127.0.0.1:${provider.address().port}/v1`, models: [{ ...model, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } }));
+    fs.writeFileSync(path.join(agentDir, 'settings.json'), JSON.stringify({ compaction: { enabled: false } }));
+    const settings = fs.readFileSync(path.join(agentDir, 'settings.json'));
+    const { PiAgentSupervisor } = require('../server/pi-agent-supervisor');
+    const { PiSideChatService } = require('../server/pi-side-chat');
+    const supervisor = new PiAgentSupervisor();
+    const service = new PiSideChatService({ store: { resolveProject: value => value }, supervisor });
+    t.after(async () => { await service.dispose(); await supervisor.dispose(); provider.closeAllConnections(); await new Promise(resolve => provider.close(resolve)); fs.rmSync(root, { recursive: true, force: true }); });
+    const owner = { readyState: 1 }, source = { cwd: root, sessionId: 'parent', request: async () => ({ model, sessionId: 'parent' }) };
+    const prepared = await service.prepare(owner, source, { mode: 'blank', toolMode: 'assist', retainOnSwitch: true }, () => true);
+    const side = service.claim(prepared.ticket, { close() {} }, event => events.push(event));
+    const opened = await side.ready;
+    assert.equal(opened.state.toolMode, 'assist'); assert.equal(opened.state.toolAccess, 'read');
+    assert.equal(side.worker.client.sessionPath, undefined);
+    assert.equal(fs.existsSync(sentinel), false);
+    const settled = () => events.filter(event => event.type === 'agent_settled').length;
+    const ask = async message => { const count = settled(); await side.handle({ type: 'prompt', message }); return count; };
+    let count = await ask('READ'); await waitFor(() => settled() > count);
+    assert.equal(events.filter(event => event.method === 'confirm').length, 0);
+    assert.ok(JSON.stringify((await side.handle({ type: 'get_messages' })).messages).includes('before'));
+    count = await ask('CHANGE');
+    await waitFor(() => events.some(event => event.method === 'confirm'));
+    const first = events.find(event => event.method === 'confirm'); assert.equal(first.title, CONFIRM_TITLE);
+    assert.equal(fs.readFileSync(input, 'utf8'), 'before'); assert.equal(fs.existsSync(output), false);
+    assert.equal((await side.handle({ type: 'get_state' })).pendingUi[0].id, first.id);
+    await assert.rejects(side.handle({ type: 'answer_side_confirmation', requestId: 'forged', confirmed: true }), /失效/);
+    await assert.rejects(side.handle({ type: 'answer_side_confirmation', requestId: first.id, confirmed: 'yes' }), /无效/);
+    await side.handle({ type: 'answer_side_confirmation', requestId: first.id, confirmed: true });
+    await waitFor(() => settled() > count);
+    assert.equal(fs.readFileSync(input, 'utf8'), 'after'); assert.equal(fs.readFileSync(output, 'utf8'), 'written');
+    assert.equal(fs.readFileSync(commandOutput, 'utf8').trim(), 'command-ran');
+    assert.equal(events.filter(event => event.method === 'confirm').length, 1, 'one grant covers the current reply only');
+    await assert.rejects(side.handle({ type: 'answer_side_confirmation', requestId: first.id, confirmed: true }), /失效/);
+    assert.equal((await side.handle({ type: 'get_state' })).toolAccess, 'read');
+    count = await ask('DENIED'); await waitFor(() => events.filter(event => event.method === 'confirm').length === 2);
+    const denied = events.filter(event => event.method === 'confirm').at(-1);
+    await side.handle({ type: 'answer_side_confirmation', requestId: denied.id, confirmed: false });
+    await waitFor(() => settled() > count); assert.equal(fs.readFileSync(output, 'utf8'), 'written');
+    count = await ask('ABORT'); await waitFor(() => events.filter(event => event.method === 'confirm').length === 3);
+    await side.handle({ type: 'abort' }); await waitFor(() => settled() > count);
+    assert.equal(fs.readFileSync(output, 'utf8'), 'written');
+    assert.deepEqual((await side.handle({ type: 'get_state' })).pendingUi, []);
+    for (const type of ['extension_ui_response', 'bash', 'set_model', 'prepare_side_chat']) await assert.rejects(side.handle({ type }), /不支持/);
+    assert.deepEqual(fs.readFileSync(path.join(agentDir, 'settings.json')), settings);
+    await ask('CLOSE'); await waitFor(() => events.filter(event => event.method === 'confirm').length === 4);
+    await side.dispose(); assert.equal(supervisor.ephemeralWorkers.size, 0);
+    assert.equal(fs.readFileSync(output, 'utf8'), 'written', 'closing during confirmation must not execute the pending write');
+});

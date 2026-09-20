@@ -1,3 +1,6 @@
+import { registerToolProvenance } from './pi-tool-provenance.js';
+import { registerAgentThreads, launchAgentTask } from './pi-agent-threads-extension.ts';
+import { registerExtensionAssistant } from './pi-extension-assistant-extension.ts';
 import { handleTitleRequest } from './pi-session-title-state.js';
 import { randomUUID } from 'node:crypto';
 import { searchHistory, previewHistory, setHistoryBookmark } from './pi-history-model.js';
@@ -5,7 +8,21 @@ import { sessionTree, checkNavigation } from './pi-session-tree.js';
 import { promptFromEntry, validateMessage } from './pi-message-payload.js';
 import { buildSessionContext, type ExtensionAPI } from '@earendil-works/pi-coding-agent';
 
+// Pi 0.86 stores prompt/tool checkpoints as native system messages in the
+// transcript. They are provider context, not chat bubbles or side-chat input.
+function currentSystemPrompt(ctx: any, messages: any[]) {
+    const runtimePrompt = typeof ctx.getSystemPrompt === 'function' ? ctx.getSystemPrompt() : '';
+    const current = [...messages].reverse().find(message => message?.role === 'system');
+    if (!current) return runtimePrompt;
+    const content = typeof current.content === 'string' ? current.content : (current.content || [])
+        .filter((block: any) => block?.type === 'text').map((block: any) => block.text).join('\n');
+    return content || runtimePrompt;
+}
+
 export default function (pi: ExtensionAPI) {
+    registerToolProvenance(pi);
+    registerExtensionAssistant(pi);
+    registerAgentThreads(pi);
     // A managed process is bound to one file. Native replacement must not bypass Supervisor.
     const managed = () => Boolean(process.env.PI_WEB_NAVIGATION_TOKEN);
     const reportTitleEligibility = (_event: unknown, ctx: any) => {
@@ -32,11 +49,16 @@ export default function (pi: ExtensionAPI) {
         }
     });
     pi.registerCommand('pi5-web-navigate', {
-        description: `Pivane internal session navigation and context snapshot; managed-v1; title-v1; model-catalog-v1; resources-v1; history-v1; tree-v1; tree-presentation-v1; history-presentation-v1; history-body-v1; system-prompt-v1; reload-v1:${randomUUID()}`,
+        description: `Pivane internal session navigation and context snapshot; managed-v1; task-v1; title-v1; model-catalog-v1; resources-v1; history-v1; tree-v1; tree-presentation-v1; history-presentation-v1; history-body-v1; system-prompt-v1; reload-v1:${randomUUID()}`,
         handler: async (args, ctx) => {
             const request = JSON.parse(args);
             if (ctx.mode !== 'rpc' || request.token !== process.env.PI_WEB_NAVIGATION_TOKEN) throw new Error('Invalid navigation request');
             const notify = (data: object) => ctx.ui.notify(JSON.stringify({ pi5Navigation: request.id, ...data }));
+            if (request.mode === 'task') {
+                try { launchAgentTask(pi, ctx, request.requestId); notify({ success: true }); }
+                catch (error) { notify({ success: false, error: error instanceof Error ? error.message : 'Task launch failed' }); }
+                return;
+            }
             if (request.mode === 'title') {
                 try {
                     const data = handleTitleRequest(pi, ctx, request.input);
@@ -135,7 +157,7 @@ export default function (pi: ExtensionAPI) {
                         return message;
                     });
                     response = { pi5Context: request.id, success: true, snapshot: {
-                        systemPrompt: ctx.getSystemPrompt(), messages, thinkingLevel: pi.getThinkingLevel(),
+                        systemPrompt: currentSystemPrompt(ctx, context.messages), messages, thinkingLevel: pi.getThinkingLevel(),
                         model: ctx.model && { provider: ctx.model.provider, id: ctx.model.id, name: ctx.model.name,
                             contextWindow: ctx.model.contextWindow, maxTokens: ctx.model.maxTokens, input: ctx.model.input },
                         source: { cwd: ctx.cwd, sessionId: ctx.sessionManager.getSessionId(), name: ctx.sessionManager.getSessionName() || '主会话' },

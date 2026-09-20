@@ -94,6 +94,7 @@ function createPiAgentGateway(options = {}) {
     settingsService.auxiliaryModelsService = auxiliaryModels;
     const nativeService = new (require('./pi-native-service').PiNativeService)(store);
     const resourceService = new (require('./pi-resource-service').PiResourceService)(nativeService);
+    const subagentSettings = new (require('./pi-subagent-settings-service').PiSubagentSettingsService)(nativeService, resourceService, settingsService);
     const systemPrompts = new (require('./pi-system-prompt-service').PiSystemPromptService)(nativeService);
     settingsService.nativeService = nativeService;
     const mediaAgentService = options.mediaAgentService || null;
@@ -112,8 +113,8 @@ function createPiAgentGateway(options = {}) {
 
     router.use(access.middleware());
     require('./pi-update-service').mountUpdateRoutes(router, undefined, {
-        maintenance,
-        idle: () => !settingsService.mutating && !settingsService.loginService.busy && !nativeService.busy && !sessionTransfer.running
+        maintenance, preferences,
+        idle: () => !agentThreads.jobs.size && !settingsService.mutating && !settingsService.loginService.busy && !nativeService.busy && !sessionTransfer.running
             && !titles.jobs.size && !titles.savingModel && !deferred.running && !sideChat.connections.size && !sideChat.tickets.size
             && ![...sideChat.parents.values()].some(parent => parent.preparing) && !supervisor.ephemeralWorkers.size && !supervisor.starting.size
             && !options.mediaLabService?.inFlight && !options.mediaLabService?.providerService?.busy && !options.mediaLabService?.providerService?.active
@@ -124,6 +125,9 @@ function createPiAgentGateway(options = {}) {
         pause: () => deferred.pauseAll()
     });
     notifications.mount(router);
+    require('./pi-extension-assistant').mountExtensionAssistant(router, { store, supervisor, resourceService, settingsService, access });
+    const agentThreads = require('./pi-agent-threads').mountAgentThreads(router, { store, supervisor, settingsService, access,
+        isSuspended: () => maintenance.locked });
 
     router.get('/status', (req, res) => {
         res.json({
@@ -137,6 +141,8 @@ function createPiAgentGateway(options = {}) {
             projectRoots: store.roots,
             defaultProject: store.defaultProject(),
             nativeResources: true,
+            agentThreads: true,
+            extensionAssistant: true,
             nativeSettings: true,
             systemPrompts: true,
             projectTrust: true,
@@ -169,6 +175,7 @@ function createPiAgentGateway(options = {}) {
             sideChat: true,
             sideChatContext: true,
             sideChatRetention: true,
+            sideChatTools: true,
             manualUnread: true,
             archives: true,
             projectIdentity: true,
@@ -188,6 +195,9 @@ function createPiAgentGateway(options = {}) {
             res.json(await action(req));
         } catch (error) { res.status(error.status || error.statusCode || 400).json({ error: error.message }); }
     };
+    router.get('/settings/subagents', nativeRoute(req => subagentSettings.snapshot(req.query.cwd)));
+    router.put('/settings/subagents', nativeRoute(req => subagentSettings.save(req.body), true));
+    router.post('/settings/subagents/install', nativeRoute(req => subagentSettings.install(req.body), true));
     router.get('/settings/system-prompts', nativeRoute(req => systemPrompts.snapshot(req.query.cwd)));
     router.put('/settings/system-prompts', nativeRoute(req => systemPrompts.save(req.body), true));
     router.get('/settings/native', nativeRoute(req => nativeService.snapshot(req.query.cwd)));
@@ -308,7 +318,7 @@ function createPiAgentGateway(options = {}) {
 
     router.get('/activity', (req, res) => {
         res.set('Cache-Control', 'no-store');
-        res.json({ archives: archives(), titleRevision: titles.revisionId, titleGenerations: titles.jobs.size, runtimes: supervisor.getActivity(), nativeSettingsBusy: nativeService.busy || settingsService.mutating || Boolean(titles.savingModel) || auxiliaryModels.busy, sessionTransfers: sessionTransfer.running, pinnedProjects: pinnedProjects(), hiddenProjects: hiddenProjects(), replyNotices: replyNotices(), deferred: deferred.summary() });
+        res.json({ agentThreadLaunches: agentThreads.jobs.size, archives: archives(), titleRevision: titles.revisionId, titleGenerations: titles.jobs.size, runtimes: supervisor.getActivity(), nativeSettingsBusy: nativeService.busy || settingsService.mutating || Boolean(titles.savingModel) || auxiliaryModels.busy, sessionTransfers: sessionTransfer.running, pinnedProjects: pinnedProjects(), hiddenProjects: hiddenProjects(), replyNotices: replyNotices(), deferred: deferred.summary() });
     });
 
     router.patch('/projects/pin', (req, res) => {
@@ -1048,8 +1058,10 @@ function createPiAgentGateway(options = {}) {
         const stoppingAuxiliaryModels = auxiliaryModels.dispose();
         const stoppingTitles = titles.dispose();
         const stoppingDeferred = deferred.dispose();
+        const stoppingThreads = agentThreads.dispose();
         const stoppingSide = sideChat.dispose();
         await supervisor.dispose();
+        await stoppingThreads;
         await Promise.all([stoppingDeferred, stoppingSide, stoppingTitles, stoppingAuxiliaryModels]);
     }, store, supervisor, deferred, sideChat, titles, auxiliaryModels };
 }

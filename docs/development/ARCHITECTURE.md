@@ -40,7 +40,27 @@ PiSessionStore通过公开SessionManager列举、新建、命名与删除。空�
 
 自动标题服务监听符合资格线程的最终完成，使用私有同步桥接读取有界正文摘录及名称/分支修订，经独立 ModelRuntime.completeSimple 请求后条件保存原生名称。资格/尝试状态仅写原生 custom entry，绑定 session ID；标题请求不占主 prompt 操作锁，运行/导航/手动改名变化使旧结果失效。实例偏好保存开关、独立标题模型引用及设置修订，生成前冻结选择；专用模型不可用不回退。activity 只报生成数及变更代次；没有第二份聊天或标题存储。手动建议的本次模型与用量仅在响应中展示，不累计落盘。异步模型设置校验预占互斥、保存时复核设置修订，计入配置活动/停机等待。生成请求单独计入回收/停机清理，详见[会话工作流](../SESSION_WORKFLOWS.md#自动标题与重新生成)。
 
-侧聊默认通过现有worker只读捕获当前有效背景，私有管道交给SDK内存SessionManager。禁用工具与资源发现，工具历史转换为只读证据，思考/签名不转移。前端只显示继承边界后的新对话，统计扣除继承基线。票据、后台保留与生命周期见[侧聊](../SIDE_CHAT.md)。
+侧聊默认通过现有worker只读捕获当前有效背景，私有管道交给SDK内存SessionManager。关闭自动资源发现，工具历史转换为只读证据，思考/签名不转移。`sideChatTools` 启用后，新页面以 toolMode=assist 选择原生 read/grep/find/ls/edit/write 及平台命令工具，只额外加载项目自有的 sideToolGate；原生 tool_call + ctx.ui.confirm 管理逐回复写入/命令授权，不凭提示词自动授权。读取直接执行，拒绝/取消/过期确认阻止修改；SideConnection 只将本侧 pendingUi 中有效 ID 的布尔确认传给 worker，其他管理 RPC 继续拒绝。旧客户端省略 toolMode 保留 none。工具与确认由各 SideThread 独立安全 DOM 展示，后台请求不会借用当前主线程的确认窗口。主侧共享文件，不承诺跨进程事务或隔离。前端只显示继承边界后的新对话，统计扣除继承基线。票据、后台保留与生命周期见[侧聊](../SIDE_CHAT.md)。
+
+## 默认能力与插件设置
+
+`pi-default-capabilities` 是精确版本的可选 Pi Package 清单，目前仅 pi-subagents 0.69.0。postinstall 调用公开 DefaultPackageManager，在实际 Pi 身份内逐项安装；身份内状态文件和独占锁记录尝试，异常不使主依赖安装失败，后续安装不隐式重试或恢复已卸载包。新能力必须加入清单并验证，而非把第三方包作为应用必需依赖。
+
+`pi-subagent-settings-service` 通过原生资源服务检测包版本、安装路径与配置启用状态，投影子 Agent 默认值及角色模型/思考覆盖。写入复用 native 配置互斥、修订、文件身份检查、原生锁和私有原子保存；不引入第二份模型路由。随附角色与已有覆盖只构成设置清单，不冒充插件实际运行发现。版本不匹配则拒绝编辑；将来扩大兼容范围必须单独验证。详情见[子 Agent 设置](../NATIVE_SETTINGS.md#子-agent-专属设置)。
+
+## 扩展助手
+
+扩展助手是带原生 `pi5-extension-assistant` custom entry 的普通持久会话，身份绑定 sessionId。Store 创建和读取元数据，Supervisor 仍按规范 sessionPath 管理唯一 worker；仅助手 worker 获得独立的管理凭据。`pi-extension-assistant-extension.ts` 在 session_start 注册 inventory/package 工具，在 before_agent_start 追加指引，包含实际身份目录、Pi CLI/文档路径和工具状态，不改用户全局提示文件。分叉/导入的新 sessionId 不自动继承助手角色。
+
+专用 HTTP 桥接只允许读取固定范围资源和执行已确认的包操作；写入复用 PiResourceService/PiNativeService 的配置锁、修订、trust 和活动计数，凭据不输出给模型，媒体规划凭据不扩大授权。独立技能和依赖配置仍由正常 Agent 工具承担，不宣称跨工具事务或沙箱。前端两个入口共用创建 dialog，不自动投递消息；请求结束时复核页面/会话代次，迟到创建保留在列表及内存草稿中。管理状态来自原生资源读取，对话来自原生 JSONL。详见[扩展助手](../NATIVE_SETTINGS.md#扩展助手)。
+
+## Agent 任务线程
+
+`pi-agent-threads` 将存活来源 worker 的身份绑定到三个内部端点；扩展工具只能在原项目创建任务、查询自己的 requestId 或读取模型目录。创建 await 前预占名额，先用公开 ModelRuntime 与 SettingsManager 校验并冻结默认/指定配置，再由 Store 在新原生会话保存模型、思考等级、身份绑定的 task custom entry 及可见 Agent 来源 custom message。Supervisor 以原有规范路径唯一 worker 启动，通过私有导航命令触发新轮次，启动回执沿用私有响应截获。
+
+Agent 的 create 工具结果与来源线程可见回执均在原生会话中；没有全局聊天副本。启动失败保留目标线程，重复 requestId 只读已有结果，不重放。终态由 agent_settled 原生扩展事件保存，运行中优先读取现有 activity。来源卡片使用安全 DOM、同项目会话列表解析和页面代次检查跳转；不抢走当前会话。创建中任务计入维护空闲与停机等待。限制和协议见[Agent 任务线程](../AGENT_THREADS.md)。
+
+工具执行来源由受管扩展在 tool_call 时从公开工具 sourceInfo 和已加载技能路径捕获，在 tool_result 中附加有界可选 details，随原生会话持久化。前端只消费与调用 ID/工具名匹配的来源；旧记录不按当前清单追认归属。钩子不读文件或改执行参数，不改变第三方特殊 details 结构；仅作显示说明，不是权限或防篡改审计机制。详见[执行来源契约](../NATIVE_SETTINGS.md#执行记录中的技能与扩展来源)。
 
 ## 文件系统与凭据
 
@@ -54,7 +74,7 @@ Windows受保护DACL在私密文件创建时设置，专用配置/导出目录�
 
 public/pi-chat.js协调当前会话、请求代次、流式消息与附件；专用模块管理滚动、正文/完整记录、菜单、历史、文件、侧聊和设置。共享主题/分栏归workspace-ui，后端模型/字段目录不写死在前端。
 
-messages快照与webRuntimeId/webSequence衔接有界live状态，settled后以原生记录校正；message_end/agent_end不是整轮完成依据。迟到读取按线程、socket代次、revision及草稿版本丢弃。
+messages快照与webRuntimeId/webSequence衔接有界live状态，settled后以原生记录校正；message_end/agent_end不是整轮完成依据。Pi 0.86 的原生 `role: system` 提示词/工具检查点属于 provider transcript，不是网页聊天消息；网关在公开边界过滤这些记录，但主会话上下文与导出仍从当前原生 system message 读取。迟到读取按线程、socket代次、revision及草稿版本丢弃。
 
 正文模式仅改变显示，连续思考/工具合并折叠；普通文字、附件、错误、等待确认保留。文件变化只从成功edit/write记录派生，不推算bash或提供净变化/回滚。当前磁盘全文需用户显式读取。
 
@@ -70,7 +90,7 @@ Markdown经marked与DOMPurify。公式由本地KaTeX的独立清理输出生成�
 
 ## 版本查询与受管维护
 
-pi-update-service按需查询固定 GitHub/npm 来源，5 分钟内存缓存独立于执行。受管维护由 start-managed 启动器持有服务进程和安装目录锁，通过私有 IPC/启动 nonce 接受服务端已确认的动作；维护票据绑定动作、Pi 精确版本与服务代次，await 前预占互斥。普通 node server.js 与 npm start 通过同一启动入口自动接入，显式 --direct 仅用于开发。命令 stdout/stderr 按完整行去控制码与凭据后，经 IPC 回传有界日志尾部；阶段及终态保存输出和退出码，网页使用纯文本展示并在完成后刷新版本。
+pi-update-service按需查询固定 GitHub/npm 来源，5 分钟内存缓存独立于执行。pi-update-notifications将Pi正式版自动检查的24小时成功期限、1–24小时失败退避和提醒选择放入现有实例偏好，原子读改写保留无关字段；只在可见网页请求时检查，不增加服务端定时任务。await前预占并发请求及持久退避期限；提醒领取同步检查版本和维护空闲条件，同版本仅一次，可延后3天或忽略，迟到查询不覆盖用户开关。前端提醒与设置按钮只进入现有确认流程，不能自动提交维护。受管维护由 start-managed 启动器持有服务进程和安装目录锁，通过私有 IPC/启动 nonce 接受服务端已确认的动作；维护票据绑定动作、Pi 精确版本与服务代次，await 前预占互斥。普通 node server.js 与 npm start 通过同一启动入口自动接入，显式 --direct 仅用于开发。命令 stdout/stderr 按完整行去控制码与凭据后，经 IPC 回传有界日志尾部；阶段及终态保存输出和退出码，网页使用纯文本展示并在完成后刷新版本。
 
 Pi 官方配套依赖在 `.pivane-runtime/releases/<id>` 的 Pivane 代码快照中同步固定版本，安装过程使用独立 npm 配置，隔离探针验证 SDK/RPC/会话格式。随后暂停预约并拒绝普通 API/WS 新工作，等待服务和全部已登记 RPC 进程实际退出，再通过原生描述符边界备份身份、会话及媒体，最后启动候选版本并持久化指针。原安装保留，数据路径固定在原实例；源码编辑不自动同步至已安装快照。
 

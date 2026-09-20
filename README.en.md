@@ -20,7 +20,7 @@ The default reading view groups consecutive thinking and tool records. Switch to
 
 Session history uses Pi's native SessionManager and JSONL files. Search conversations, add bookmarks, inspect the session tree, fork a discussion, edit and retry a question, or export HTML and the active JSONL branch.
 
-A temporary side chat can reference the main task's context without tools. Discuss a separate question and explicitly append selected content to your main draft. Session navigation changes the conversation position; it does not undo files or external actions.
+A temporary side chat can reference the main task's context, read files and search code. With `sideChatTools` enabled, explicit modification requests can use edit, write and command tools after an approval for that reply. Main and side agents share files; avoid concurrent edits to the same files. You can also explicitly append selected content to your main draft. Session navigation changes the conversation position; it does not undo files or external actions.
 
 ## Your models and deployment
 
@@ -34,11 +34,11 @@ Run the server on Linux, macOS or Windows, then access it through a browser. Des
 
 The current source supports **Simplified Chinese and English**. It follows the browser's preferred supported language on first use; other languages fall back to English. Choose a language under **Settings → Preferences → Interface language**. The choice is saved for this browser and applies on the next page load, without automatically refreshing or interrupting your current work. Model replies, user content and speech language are independent.
 
-The bilingual interface is included starting with **1.0.0-rc.2**. The older **1.0.0-rc.1** archive is unchanged. The current release is **1.0.0-rc.3**, with **Pi 0.85.1**, AI session titles, archives, system prompt editing and managed Pi updates. See the [RC3 notes](docs/releases/1.0.0-rc.3.md) and its validation attachment for this artifact's exact verification scope.
+The bilingual interface is included starting with **1.0.0-rc.2**. The older RC archives remain unchanged. **1.0.0-rc.4** is the current release candidate and is pinned to **Pi 0.86.0**; RC3 remains a historical artifact with Pi 0.85.1. See the [RC4 notes](docs/releases/1.0.0-rc.4.md) for the current release scope.
 
 ## Install
 
-Use **Node.js 22.x** and the locked dependencies. The RC baseline was validated with Node 22.23.2 and Pi 0.85.0. You do not need a global Pi installation, a frontend build, or a compiler for the packaged native components.
+Use **Node.js 22.x** and the locked dependencies. RC4 is pinned to Pi 0.86.0 and is validated against the exact archive and its isolated acceptance report. You do not need a global Pi installation, a frontend build, or a compiler for the packaged native components.
 
 | Server platform | Validated RC baseline |
 |---|---|

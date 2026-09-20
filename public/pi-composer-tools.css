@@ -37,6 +37,51 @@
 .pi-template-dialog details { margin: 12px 0; }
 .pi-template-dialog details button { margin: 5px 5px 0 0; }
 .pi-composer-help, .pi-composer-empty { font-size: .8rem; color: var(--text-muted); line-height: 1.6; }
+#pi-extension-assistant-add { border-top: 1px solid var(--line); margin-top: 4px; border-radius: 0 0 5px 5px; }
+#pi-extension-assistant-dialog { width: min(600px, calc(100vw - 24px)); padding: 0; border-radius: 18px; overflow: hidden; background: var(--surface-1); box-shadow: 0 24px 80px #0003; }
+#pi-extension-assistant-dialog > header { flex-wrap: nowrap; align-items: flex-start; padding: 24px 24px 18px; margin: 0; gap: 16px; }
+#pi-extension-assistant-dialog h2 { margin: 0; font-size: 1.2rem; line-height: 1.4; }
+#pi-extension-assistant-dialog p { margin: 0; font-size: .8rem; line-height: 1.6; overflow-wrap: anywhere; color: var(--text-muted); }
+#pi-extension-assistant-dialog header p { margin-top: 6px; }
+#pi-extension-assistant-dialog .pi-extension-close { flex: 0 0 36px; width: 36px; height: 36px; padding: 0; border: 0; background: transparent; color: var(--text-muted); font-size: 24px; line-height: 1; border-radius: 50%; }
+#pi-extension-assistant-dialog form { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.pi-extension-body { padding: 0 24px 22px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+#pi-extension-assistant-dialog label { margin: 0; font-size: .82rem; font-weight: 500; }
+#pi-extension-assistant-dialog textarea { margin-top: 10px; min-height: 132px; max-height: 280px; padding: 14px; border-radius: 12px; line-height: 1.7; background: var(--surface-2); font-size: .9rem; }
+#pi-extension-assistant-dialog textarea::placeholder { font-weight: 400; }
+.pi-extension-examples { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+#pi-extension-assistant-dialog .pi-extension-examples button { padding: 6px 10px; border: 1px solid var(--line); border-radius: 20px; min-height: 32px; background: transparent; color: var(--text-muted); font-size: .76rem; }
+#pi-extension-assistant-dialog .pi-extension-examples button:hover { background: var(--green-soft); color: var(--text-main); }
+.pi-extension-options { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 16px; }
+#pi-extension-assistant-dialog .pi-extension-options label { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-muted); }
+#pi-extension-assistant-dialog .pi-extension-options select { width: auto; max-width: 65%; margin: 0; border-color: var(--line); border-radius: 8px; padding: 8px 10px; font-size: .82rem; }
+#pi-extension-assistant-dialog .pi-extension-location { margin: 12px 0 0; color: var(--text-muted); font-size: .75rem; }
+.pi-extension-location summary { cursor: pointer; }
+#pi-extension-assistant-dialog .pi-extension-target { margin-top: 8px; font-size: .75rem; }
+.pi-extension-footer { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 24px; border-top: 1px solid var(--line); background: var(--surface-2); }
+#pi-extension-assistant-dialog .pi-extension-footer p { max-width: 290px; font-size: .75rem; }
+#pi-extension-assistant-create { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 44px; padding: 11px 20px; border-radius: 10px; background: var(--primary); border-color: var(--primary); color: var(--primary-contrast); font: inherit; font-size: .88rem; font-weight: 600; }
+#pi-extension-assistant-create:hover:not(:disabled) { background: var(--primary-hover); }
+#pi-extension-assistant-dialog #pi-extension-assistant-status { flex-shrink: 0; margin: 0; padding: 10px 24px; font-size: .78rem; max-height: 100px; overflow: auto; }
+#pi-extension-assistant-status:empty { display: none; }
+@media (max-width: 600px) {
+    #pi-extension-assistant-dialog > header { padding: 20px 18px 16px; }
+    .pi-extension-body { padding: 0 18px 18px; }
+    #pi-extension-assistant-dialog textarea, #pi-extension-assistant-dialog .pi-extension-options select { font-size: 16px; }
+    #pi-extension-assistant-dialog textarea { min-height: 124px; }
+    .pi-extension-footer { padding: 14px 18px; gap: 12px; flex-direction: column-reverse; align-items: stretch; }
+    #pi-extension-assistant-dialog .pi-extension-footer p { max-width: none; text-align: center; font-size: .72rem; }
+    #pi-extension-assistant-create { width: 100%; }
+    #pi-extension-assistant-dialog .pi-extension-examples button { min-height: 40px; }
+}
+.pi-extension-actions, .native-assistant-entry { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.native-assistant-entry { margin: 12px 0; }
+.native-assistant-entry:empty { display: none; }
+.native-assistant-entry small { color: var(--text-muted); }
+#pi-extension-assistant-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; padding: 8px 0; font-size: .78rem; color: var(--text-muted); overflow-wrap: anywhere; }
+#pi-extension-assistant-banner[hidden] { display: none; }
+#pi-extension-assistant-banner button { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); color: var(--text-main); cursor: pointer; font: inherit; }
+#pi-extension-assistant-banner button[hidden] { display: none; }
 @media (max-width: 600px) {
     .pi-template-dialog { padding: 12px; }
     .pi-template-dialog input, .pi-template-dialog textarea, .pi-template-dialog select { font-size: 16px; }

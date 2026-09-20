@@ -69,6 +69,10 @@ class UpdateService {
     snapshot(channel = this.appVersion.includes('-') ? 'preview' : 'stable') {
         if (!['stable', 'preview'].includes(channel)) throw Object.assign(new Error('Invalid update channel'), { status: 400 });
         const cached = this.cache.get(channel);
+        const automatic = this.notifications?.cachedPi();
+        const pi = automatic && (!cached || automatic.checkedAt > Date.parse(cached.checkedAt))
+            ? { version: automatic.version, status: relation(this.piVersion, automatic.version), releasesUrl: PI_PAGE }
+            : cached?.pi;
         return {
             channel, platform: this.platform, installMode: 'manual',
             appVersion: this.appVersion, piVersion: this.piVersion, bundledPiVersion: this.bundledPiVersion,
@@ -77,7 +81,7 @@ class UpdateService {
             checkedAt: cached?.checkedAt || null,
             cacheUntil: cached ? new Date(cached.expires).toISOString() : null,
             pivane: cached?.pivane || { status: 'unchecked', releasesUrl: RELEASE_PAGE },
-            pi: cached?.pi || { status: 'unchecked', releasesUrl: PI_PAGE }
+            pi: pi || { status: 'unchecked', releasesUrl: PI_PAGE }
         };
     }
     async json(url) {
@@ -133,6 +137,9 @@ class UpdateService {
                 pivane: results[0].status === 'fulfilled' ? results[0].value : { status: 'error', releasesUrl: RELEASE_PAGE },
                 pi: results[1].status === 'fulfilled' ? results[1].value : { status: 'error', releasesUrl: PI_PAGE }
             });
+            if (results[1].status === 'fulfilled') {
+                try { this.notifications?.recordSuccess(results[1].value); } catch { /* Manual version lookup remains usable if reminder storage is unavailable. */ }
+            }
             return this.snapshot(channel);
         }).finally(() => this.inflight.delete(channel));
         this.inflight.set(channel, pending);
@@ -142,6 +149,21 @@ class UpdateService {
 function mountUpdateRoutes(router, service = new UpdateService(), hooks = {}) {
     const maintenance = hooks.maintenance || new (require('./pi-maintenance-client').MaintenanceClient)({ managed: false });
     const idle = hooks.idle || (() => false);
+    const notifications = hooks.preferences ? new (require('./pi-update-notifications').UpdateNotifications)({ preferences: hooks.preferences, service, idle: () => !maintenance.locked && idle() }) : null;
+    service.notifications = notifications;
+    const notificationRoute = action => async (req, res) => {
+        res.set('Cache-Control', 'no-store');
+        try {
+            if (!notifications) return res.status(503).json({ error: 'Update reminders unavailable' });
+            if (action === 'check' && (!req.body || typeof req.body !== 'object' || Array.isArray(req.body) || Object.keys(req.body).length)) {
+                return res.status(400).json({ error: 'Invalid update notification request' });
+            }
+            res.json(action === 'check' ? await notifications.check() : action === 'change' ? notifications.change(req.body) : notifications.snapshot());
+        } catch (error) { res.status(error.status || 503).json({ error: error.status ? error.message : 'Update reminders unavailable' }); }
+    };
+    router.get('/settings/updates/notifications', notificationRoute('read'));
+    router.post('/settings/updates/notifications', notificationRoute('change'));
+    router.post('/settings/updates/automatic', notificationRoute('check'));
     router.get('/settings/updates/maintenance', (_req, res) => res.set('Cache-Control', 'no-store').json(maintenance.status()));
     router.post('/settings/updates/review', async (req, res) => {
         res.set('Cache-Control', 'no-store');

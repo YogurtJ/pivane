@@ -4,6 +4,8 @@
 
 ## 安装前提
 
+当前源码的 `npm ci` 默认尝试安装可选 pi-subagents，下载失败不影响 Pivane。独立身份必须在安装前设置 `PI_CODING_AGENT_DIR`；跳过、已有插件与补装规则见[默认可选能力](INSTALL_RECOVERY.md#默认可选能力)。
+
 - Node 22.x、npm、系统ripgrep。可以保留已有其他版本Node，为本实例指定独立Node22。
 - 安装包必须包含`native/pi-darwin-fd.node`、对应C源码与manifest；它们为同一批构建。正常安装不需要Xcode、Python或现场编译。缺失或不匹配时不启用全文/搜索/统计，不回退为较弱的路径检查。
 - 本轮实测使用独立Node22官方Darwin ARM64归档，并用官方SHASUMS256核对；没有替换原全局Node。也可通过自己的Node版本管理器或Homebrew提供Node22，启动前用`node --version`核对。

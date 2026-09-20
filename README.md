@@ -10,9 +10,9 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 
 **A self-hosted AI workspace powered by Pi Coding Agent. Code, manage files, and create images, video & audio from your desktop, tablet or phone. Bring your own models.**
 
-[下载当前 RC](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.3) · [开始使用](docs/USER_GUIDE.md) · [安装与恢复](docs/INSTALL_RECOVERY.md) · [Agent 操作指南](docs/AGENT_GUIDE.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues)
+[下载当前 RC](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.4) · [开始使用](docs/USER_GUIDE.md) · [安装与恢复](docs/INSTALL_RECOVERY.md) · [Agent 操作指南](docs/AGENT_GUIDE.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues)
 
-RC3 新增 AI 会话标题、项目与会话归档、系统提示词查看与编辑、辅助模型统一设置，以及 Pi 受管更新和命令输出反馈。[查看本版变化](docs/releases/1.0.0-rc.3.md)。
+RC4 绑定 Pi 0.86.0，包含原生 system transcript 兼容、会话导入导出修复、AI 会话标题、项目与会话归档、系统提示词查看与编辑、辅助模型统一设置，以及 Pi 受管更新。[查看本版变化](docs/releases/1.0.0-rc.4.md)。
 
 ## 为什么用 Pivane
 
@@ -26,7 +26,7 @@ RC3 新增 AI 会话标题、项目与会话归档、系统提示词查看与编
 
 ### 长期工作有原生记录可循
 
-沿用 Pi 原生 SessionManager 与 JSONL 会话，提供搜索、书签、会话树、分叉、编辑重试和 HTML/JSONL 导入导出。可以围绕当前任务开一段临时侧聊，讨论后把选定内容追加到主草稿。
+沿用 Pi 原生 SessionManager 与 JSONL 会话，提供搜索、书签、会话树、分叉、编辑重试和 HTML/JSONL 导入导出。可以围绕当前任务开一段临时侧聊，读取文件、检索代码，或在明确交办并确认本次执行权限后完成小范围修改；主侧共享目录，需避免并发修改同一文件。讨论后也可把选定内容追加到主草稿。
 
 ### 模型和部署由你选择
 
@@ -62,7 +62,7 @@ RC3 新增 AI 会话标题、项目与会话归档、系统提示词查看与编
 
 ## 部署在你自己的机器上
 
-当前版本为 **1.0.0-rc.3**，使用包内锁定的 **Pi 0.85.1** 和 Node.js 22.x，验收基线为 Node 22.23.2。
+当前 RC4 已适配并锁定 **Pi 0.86.0** 和 Node.js 22.x；RC3 仍作为历史资产保留，不会被源码修改。RC4 的精确包 SHA256、验收范围和限制见[版本说明](docs/releases/1.0.0-rc.4.md)及 Release 附件。
 
 | 服务端平台 | 已验收范围 | 安装入口 |
 |---|---|---|
@@ -80,7 +80,7 @@ RC3 新增 AI 会话标题、项目与会话归档、系统提示词查看与编
 
 普通安装以网页可打开、只读健康检查通过为基础交付，不需要运行开发测试或打包；模型认证和真实请求单独验证，后台常驻按需配置。数据目录独立不代表项目必须放进指定子目录：普通安装默认开放系统用户可访问的目录，Linux/macOS 使用 `/`，Windows 使用各盘符根目录；用户明确需要时才缩小范围。当前网页不能扩大项目范围，配置方法见[目录范围排障](docs/INSTALL_RECOVERY.md#项目选择器找不到目录)。
 
-首次安装需要下载锁定依赖；图标、代码高亮、公式与图表所需资源随包或随依赖提供。聊天模型与媒体服务需要使用者自行配置，其服务费用由使用者承担。没有默认可执行的媒体服务。
+首次安装需要下载锁定依赖；`npm ci` 还会尝试安装可选的 pi-subagents 0.69.0，失败不影响 Pivane 使用，可在“设置 → 模型与能力 → 子 Agent”确认补装。已有版本保留，默认安装不自动启动子任务；跳过与独立身份说明见[默认可选能力](docs/INSTALL_RECOVERY.md#默认可选能力)。图标、代码高亮、公式与图表所需资源随包或随依赖提供。聊天模型与媒体服务需要使用者自行配置，其服务费用由使用者承担。没有默认可执行的媒体服务。
 
 [.env.example](.env.example) 采用 `127.0.0.1:3001`；未配置时服务端口默认 3000。不同设备访问时，请使用部署机器的可达地址。
 
@@ -90,7 +90,7 @@ RC3 新增 AI 会话标题、项目与会话归档、系统提示词查看与编
 - Windows 普通用户权限下另通过 **30 项检查**；Ubuntu x86_64 另完成同包安装、167 项测试和静态检查补验。
 - 各验收环境的生产依赖 audit 为 **0 漏洞**。测试使用独立身份与合成服务，不把这些结果称为所有真实媒体供应商或手机系统的验收。
 
-准确的首版平台、包 SHA256 和检查结果随 [RC1 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.1) 的 `validation.json` 提供。**RC3** 的变更和本包验证范围见[版本说明](docs/releases/1.0.0-rc.3.md)及[RC3 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.3)附件；首版跨平台结果不冒充新版实机验收。
+准确的首版平台、包 SHA256 和检查结果随 [RC1 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.1) 的 `validation.json` 提供。**RC4** 的变更和本包验证范围见[版本说明](docs/releases/1.0.0-rc.4.md)及[RC4 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.4)附件；RC3 和首版跨平台结果不冒充 RC4 实机验收。
 
 ## 文档与 Agent 入口
 

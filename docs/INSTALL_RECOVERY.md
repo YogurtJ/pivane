@@ -26,10 +26,10 @@ Pivane 媒体和预约数据按实例保存，Pi 身份默认与 CLI 共用；`P
 
 ## 2. 从源码发布包安装
 
-先下载`pivane-1.0.0-rc.3.tar.gz`及同名.sha256到Downloads，核对发布来源，然后检查哈希：
+先下载`pivane-1.0.0-rc.4.tar.gz`及同名.sha256到Downloads，核对发布来源，然后检查哈希：
 
 ```bash
-ARCHIVE="$HOME/Downloads/pivane-1.0.0-rc.3.tar.gz"
+ARCHIVE="$HOME/Downloads/pivane-1.0.0-rc.4.tar.gz"
 (cd "$(dirname "$ARCHIVE")" && sha256sum -c "$(basename "$ARCHIVE").sha256")
 ```
 
@@ -39,9 +39,9 @@ ARCHIVE="$HOME/Downloads/pivane-1.0.0-rc.3.tar.gz"
 BASE="$HOME/pivane"
 test ! -e "$BASE" || { echo "此目录已存在，请按更新流程操作或选择新的BASE"; exit 1; }
 umask 077
-mkdir -p "$BASE/releases/1.0.0-rc.3" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
-tar -xzf "$ARCHIVE" -C "$BASE/releases/1.0.0-rc.3" --strip-components=1
-cd "$BASE/releases/1.0.0-rc.3"
+mkdir -p "$BASE/releases/1.0.0-rc.4" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
+tar -xzf "$ARCHIVE" -C "$BASE/releases/1.0.0-rc.4" --strip-components=1
+cd "$BASE/releases/1.0.0-rc.4"
 npm ci
 ```
 
@@ -89,6 +89,16 @@ curl -fsS http://127.0.0.1:3001/api/pi/status
 
 预期 `ok=true`，`projectRoots` 为本次配置的 `/`，实际 Pi `version` 对应发布包依赖。浏览器打开 `http://127.0.0.1:3001`。从其他设备访问需要修改 HOST、重启并配置自己的地址/防火墙/访问验证；localhost 指浏览器所在机器。远程管理凭据请使用可信 HTTPS 或受信网络。
 
+## 默认可选能力
+
+当前源码的 `npm ci` 在必需依赖安装后尝试安装 `npm:pi-subagents@0.69.0`，使用 Pi 公开包管理接口写入当前用户的 Pi 配置，与 CLI 共用。下载失败只产生提示，Pivane 仍可安装和运行。默认安装不会自动委派任务。插件按自身 MIT 许可单独下载，不将其源码复制进 Pivane 仓库。
+
+如使用独立身份，必须在 `npm ci` **之前**设置 `PI_CODING_AGENT_DIR`（或准备应用 `.env`），避免把可选插件安装到默认身份。已有 Pi 用户保持原来的身份环境。设置 `PI_SKIP_DEFAULT_CAPABILITIES=1`、`PI_OFFLINE=1` 或使用 npm 的 `--ignore-scripts` 可跳过自动安装；前两种方式记录跳过，`--ignore-scripts` 不运行安装器也不写记录。
+
+每个 Pi 身份的 `pivane-default-capabilities.json` 保存能力安装尝试状态；成功、失败、中断、跳过或发现已有配置后，不会在后续启动或 `npm ci` 自动重放。已安装的其他版本保留，用户卸载后不会自动装回。缺失插件可在“设置 → 模型与能力 → 子 Agent”确认补装，异常或结果不确定先刷新核对。停用、版本调整与移除通过 Packages 管理。
+
+默认能力清单用于后续扩展其他包/Skills，目前只包含 pi-subagents；并非自动安装任意第三方能力。首次添加的新清单项会在下一次执行安装脚本时单独尝试。
+
 ## 3. 首次网页使用
 
 1. 首次会显示“打开项目”窗口，可先选择项目，或关闭窗口再配置模型。打开设置 → **供应商与模型**。复用 Pi 身份时应能看到原生配置中的供应商和认证；只有新身份才需要首次配置。
@@ -121,7 +131,7 @@ curl -fsS http://127.0.0.1:3001/api/pi/status
 
 | 类别 | 本指南布局 | 恢复含义 |
 |---|---|---|
-| 代码/依赖清单 | `releases/1.0.0-rc.3`、原发布包及哈希 | 重解压并 `npm ci`；不跨平台复制 node_modules |
+| 代码/依赖清单 | `releases/1.0.0-rc.4`、原发布包及哈希 | 重解压并 `npm ci`；不跨平台复制 node_modules |
 | Pi 会话 | 实际 `PI_CODING_AGENT_DIR` 下的 `sessions/` 原生 JSONL | 完整原生树与活动位置；网页当前分支导出不等于完整备份 |
 | Pi 凭据/模型/设置 | 整个实际 Pi 身份目录，通常在 BASE 之外 | 含 auth、models、settings、trust 等；不要只挑 auth.json 或手工改写它 |
 | 工作台配置 | Agent 目录内 `pi5-workspace.json`、`pi5-access.json`、`pi5-notifications.json` | 偏好、访问校验/登录、通知订阅；均作为私人数据处理 |

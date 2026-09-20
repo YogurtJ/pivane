@@ -206,6 +206,7 @@
                     key: child.dataset.messageKey,
                     index: i,
                     open: [...child.querySelectorAll('details')].map(detail => detail.open),
+                    userTextExpanded: [...child.querySelectorAll('.pi-user-text-toggle')].map(button => button.getAttribute('aria-expanded') === 'true'),
                     ownOpen: child.tagName === 'DETAILS' ? child.open : undefined
                 }))
             };
@@ -219,6 +220,9 @@
             for (const item of saved.details || []) {
                 const child = find(item);
                 if (!child) continue;
+                [...child.querySelectorAll('.pi-user-long-text')].forEach((text, i) => {
+                    if (item.userTextExpanded?.[i] !== undefined) text._piSetExpanded?.(item.userTextExpanded[i]);
+                });
                 if (item.ownOpen !== undefined && !child.dataset.detailKey) child.open = item.ownOpen;
                 [...child.querySelectorAll('details')].forEach((detail, i) => {
                     if (!detail.dataset.detailKey && item.open[i] !== undefined) detail.open = item.open[i];

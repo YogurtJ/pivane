@@ -57,6 +57,10 @@
 .pi-diff-line.removed { background: color-mix(in srgb, var(--danger) 13%, transparent); }
 .pi-diff-line.hunk { color: var(--blue); background: var(--surface-2); }
 .pi-diff-gutter { user-select: none; color: var(--text-muted); }
+.pi-tool-row > summary > strong { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pi-tool-source { min-width: 0; max-width: 32%; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: .66rem; }
+.pi-tool-row .pi-tool-status { flex: 0 0 auto; white-space: nowrap; }
+.pi-tool-provenance { margin: 0; padding: 10px 12px; border-bottom: 1px solid var(--line); color: var(--text-muted); font-size: .72rem; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .pi-tool-row .pi-tool-raw > summary { justify-content: flex-start; font-size: .75rem; padding: 9px 12px; min-height: 32px; }
 .pi-edit-diff, .pi-tool-detail, .pi-extension-state { min-width: 0; max-width: 100%; }
 @media (max-width: 900px) {
