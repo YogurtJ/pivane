@@ -101,14 +101,21 @@ async function relocateProjectSessions({ installation, agentDir, sourceCwd, targ
         if (fs.statSync(path.dirname(sourceDir)).dev !== fs.statSync(transaction).dev) throw new Error('Session relocation requires one filesystem');
         const rows = [];
         for (const name of names) {
-            const original = path.join(sourceDir, name), bytes = readSafe(original, MAX_SESSION_BYTES);
+            const original = path.join(sourceDir, name), modified = fs.statSync(original).mtime;
+            const bytes = readSafe(original, MAX_SESSION_BYTES);
             const entry = manifest.entries.find(entry => entry.path === original && entry.type === 'file');
             if (!entry || hash(bytes) !== entry.sha256) throw new Error('Session changed after backup');
             const result = await relocateSessionBytes(bytes, { sourceCwd, targetCwd, paths });
-            writePrivateFileSync(path.join(staging, name), result.bytes, true);
+            const destination = path.join(staging, name);
+            writePrivateFileSync(destination, result.bytes, true);
+            // CLI continue-recent and discovery use file mtime. Keep its millisecond;
+            // the microsecond offset prevents float conversion rounding down.
+            // Descriptor identity checks still use their original full precision.
+            fs.utimesSync(destination, modified, modified.getTime() / 1000 + 0.000001);
+            if (fs.statSync(destination).mtime.getTime() !== modified.getTime()) throw new Error('Could not preserve session modification time');
             const { bytes: _bytes, ...metadata } = result;
             rows.push({ source: original, destination: path.join(targetDir, name), originalSha256: entry.sha256,
-                sha256: hash(result.bytes), ...metadata });
+                sha256: hash(result.bytes), modifiedAt: modified.toISOString(), ...metadata });
         }
         // Every source is checked again after all asynchronous native validation.
         if (!sameNames(sourceDir, names)) throw new Error('Session membership changed during preparation');

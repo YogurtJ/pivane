@@ -54,8 +54,15 @@ test('header relocation preserves every body byte, native identity, branch, labe
 });
 
 test('offline relocation retains exact originals and exposes the full sessions under their new native project', async t => {
-    const f = fixture(t), native = await nativeSessions(f), originals = new Map();
-    for (const name of fs.readdirSync(native.directory)) originals.set(name, fs.readFileSync(path.join(native.directory, name)));
+    const f = fixture(t), native = await nativeSessions(f), originals = new Map(), modified = new Map();
+    for (const [index, name] of fs.readdirSync(native.directory).entries()) {
+        const file = path.join(native.directory, name), time = new Date(Date.UTC(2024, 0, 1) + 123 + index * 1234);
+        fs.utimesSync(file, time, time);
+        originals.set(name, fs.readFileSync(file));
+        modified.set(name, fs.statSync(file).mtime.getTime());
+    }
+    const previousTimes = new Map((await native.SessionManager.list(f.old, native.directory)).map(session => [session.id, session.modified.getTime()]));
+    const previousRecent = native.SessionManager.continueRecent(f.old, native.directory).getSessionId();
     const options = { installation: f.old, agentDir: f.agent, sourceCwd: f.old, targetCwd: f.target,
         evidenceDir: path.join(f.root, 'evidence'), externalWritersStopped: true };
     const result = await relocateProjectSessions(options);
@@ -63,6 +70,11 @@ test('offline relocation retains exact originals and exposes the full sessions u
     assert.equal(fs.existsSync(native.directory), false);
     const listed = await native.SessionManager.list(f.target, result.targetDir);
     assert.deepEqual(new Set(listed.map(session => session.id)), new Set([native.id, native.childId]));
+    for (const session of listed) {
+        assert.equal(session.modified.getTime(), previousTimes.get(session.id), 'native activity timestamps are unchanged');
+        assert.equal(fs.statSync(session.path).mtime.getTime(), modified.get(path.basename(session.path)), 'filesystem recent discovery retains its modification time');
+    }
+    assert.equal(native.SessionManager.continueRecent(f.target, result.targetDir).getSessionId(), previousRecent, 'continue-recent selects the same native identity');
     for (const [name, bytes] of originals) {
         assert.deepEqual(fs.readFileSync(path.join(result.originals, name)), bytes);
         const newBytes = fs.readFileSync(path.join(result.targetDir, name));
