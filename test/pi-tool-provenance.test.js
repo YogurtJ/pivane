@@ -17,15 +17,15 @@ test('call-time provenance is bounded, invocation-bound and leaves foreign resul
         handlers.tool_call(call, ctx); source = { ...source, source: 'npm:new-owner' };
         const patched = handlers.tool_result({ ...call, details: { original: true } });
         assert.equal(patched.details.original, true);
-        assert.equal(patched.details.pi5ToolProvenance.source.source, 'npm:fixture@1');
+        assert.equal(patched.details.pivaneToolProvenance.source.source, 'npm:fixture@1');
         assert.deepEqual(Object.keys(patched), ['details']);
         assert.equal(handlers.tool_result(call), undefined, 'consumed once');
         const read = { toolName: 'read', toolCallId: 'read', input: { path: 'skills/slides/SKILL.md' } };
         handlers.tool_call(read, ctx);
-        assert.equal(handlers.tool_result(read).details.pi5ToolProvenance.skill.name, 'slides');
+        assert.equal(handlers.tool_result(read).details.pivaneToolProvenance.skill.name, 'slides');
         handlers.tool_call(read, ctx);
         assert.equal(handlers.tool_result({ ...read, input: { path: 'unrelated/SKILL.md' } }), undefined, 'later argument changes cannot inherit a skill label');
-        for (const details of [[], 'text', 42, { pi5ToolProvenance: { foreign: true } }]) {
+        for (const details of [[], 'text', 42, { pi5ToolProvenance: { foreign: true } }, { pivaneToolProvenance: { foreign: true } }]) {
             handlers.tool_call(call, ctx); assert.equal(handlers.tool_result({ ...call, details }), undefined);
         }
         handlers.tool_call(call, ctx); assert.equal(handlers.tool_result({ ...call, toolName: 'other' }), undefined);

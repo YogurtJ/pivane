@@ -60,7 +60,7 @@ models 使用实验室公开模型结构，仅列有可编辑文本字段的语�
 - parameters 不得包含 textParameter 对应的正文值；不保存测试文本或回复内容，未知字段拒绝。
 - 复用 `validateParameters()` 的动态规则和 `MediaLabService.validate()`；内置 adapter 继续通过 `TtsProviderService.resolveRequest()` 规范化。验证用单字符占位仅在内存，不创建票据或合成。
 - 请求最多 64000 字符；缺少／冲突 revision 返回 409，非法模型、字段或参数返回 400。异步验证后再同步检查 revision，两个浏览器同版并发保存最多一个成功。
-- revision 覆盖实时公开模型目录与当前 replyTts 偏好。保存到 `pi5-workspace.json.replyTts`，0600 原子替换并保留其他偏好；不写 models.json、auth.json 或 Pi session。
+- revision 覆盖实时公开模型目录与当前 replyTts 偏好。保存到 `pivane-workspace.json.replyTts`（既有 `pi5-workspace.json` 自动沿用），0600 原子替换并保留其他偏好；不写 models.json、auth.json 或 Pi session。
 - 成功返回 `{defaults, revision}`，下一次打开生效；不重启聊天 worker。
 
 ## 实现与验证

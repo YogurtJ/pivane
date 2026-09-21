@@ -1,6 +1,7 @@
 // Native metadata and bounded text selection shared by the private bridge and tests.
 const { createHash } = require('node:crypto');
-const TITLE_STATE = 'pi5-web-title';
+const { customTypeIs } = require('./pivane-compat');
+const TITLE_STATE = 'pivane-web-title';
 
 function textOf(message, limit = 2000) {
     if (typeof message?.content === 'string') return message.content.slice(0, limit).trim();
@@ -15,13 +16,13 @@ function textOf(message, limit = 2000) {
 function titleSnapshot(manager, model) {
     const entries = manager.getEntries();
     const sessionId = manager.getSessionId();
-    const state = entries.findLast(entry => entry.type === 'custom' && entry.customType === TITLE_STATE && entry.data?.sessionId === sessionId)?.data;
+    const state = entries.findLast(entry => entry.type === 'custom' && customTypeIs(entry, TITLE_STATE) && entry.data?.sessionId === sessionId)?.data;
     const nameRevision = entries.findLast(entry => entry.type === 'session_info')?.id || null;
     const branch = manager.getBranch();
     const revision = createHash('sha256');
     for (const entry of branch) {
         if (['message', 'compaction', 'branch_summary'].includes(entry.type)
-            || entry.type === 'custom' && entry.customType === 'pi5-web-navigation') revision.update(entry.id + '\n');
+            || entry.type === 'custom' && customTypeIs(entry, 'pivane-web-navigation')) revision.update(entry.id + '\n');
     }
     const messages = [];
     // Keep only recent questions and terminal answers, never tools, images or thinking.

@@ -2,15 +2,16 @@ const fs = require('node:fs');
 const { createHash, timingSafeEqual } = require('node:crypto');
 const { getSdk } = require('./pi-session-store');
 
-const TASK_ENTRY = 'pi5-agent-task';
-const TASK_MESSAGE = 'pi5-agent-task-message';
-const TASK_RECEIPT = 'pi5-agent-task-receipt';
+const { customTypeIs } = require('./pivane-compat');
+const TASK_ENTRY = 'pivane-agent-task';
+const TASK_MESSAGE = 'pivane-agent-task-message';
+const TASK_RECEIPT = 'pivane-agent-task-receipt';
 function taskProfile(manager) {
-    return manager.getEntries().find(entry => entry.type === 'custom' && entry.customType === TASK_ENTRY
+    return manager.getEntries().find(entry => entry.type === 'custom' && customTypeIs(entry, TASK_ENTRY)
         && entry.data?.version === 1 && entry.data.sessionId === manager.getSessionId())?.data || null;
 }
 function taskState(manager) {
-    return manager.getEntries().findLast(entry => entry.type === 'custom' && entry.customType === 'pi5-agent-task-state'
+    return manager.getEntries().findLast(entry => entry.type === 'custom' && customTypeIs(entry, 'pivane-agent-task-state')
         && entry.data?.sessionId === manager.getSessionId())?.data || null;
 }
 function validateInput(input) {

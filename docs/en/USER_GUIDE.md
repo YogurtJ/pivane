@@ -151,6 +151,8 @@ Configure read-aloud defaults under Preferences. Clicking a reply's speaker butt
 
 ## Settings, usage and notifications
 
+Current source uses Pivane names while retaining compatibility with existing settings and session metadata. Ordinary upgrades do not require manual file renaming. Moving a project requires a separate offline migration of its native session ownership and runtime paths; never replace path strings throughout conversation JSONL. Maintainer details are in [naming and migration](../development/NAMING.md).
+
 Usage statistics read native persistent-session records. Costs are historical estimates, not provider invoices. Temporary sessions, side chats, title generation and media planning are outside persistent-session usage statistics.
 
 Saved Pi configuration generally applies to new runtimes. Existing tasks are not automatically stopped. When a setting requires reopening the runtime, finish the task, use `/quit`, then reopen the thread. Refreshing the webpage can reconnect to the same existing worker.

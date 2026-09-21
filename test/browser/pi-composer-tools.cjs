@@ -16,7 +16,7 @@ async function run(browser, viewport) {
     const runtime = { model, thinkingLevel: 'off', isStreaming: false, isCompacting: false };
     const controls = { runtimeId: 'a', revision: 1, stopping: false, queue: { steering: [], followUp: [] }, recoveries: [], extension: { title: '', statuses: [], widgets: [] } };
     const templates = []; let remote = Array.from({ length: 35 }, (_, i) => ({ name: `fixture-${i}`, source: 'extension', description: `Command ${i} <img src=x onerror=alert(1)>` }));
-    remote.push({ name: 'fixture-1', source: 'prompt', description: 'Shadowed by extension' }, { name: 'skill:review', source: 'prompt', description: 'Shadowed by Skill' }, { name: 'skill:review', source: 'skill', description: 'Review Skill' }, { name: 'pi5-web-navigate', source: 'extension', description: 'internal' });
+    remote.push({ name: 'fixture-1', source: 'prompt', description: 'Shadowed by extension' }, { name: 'skill:review', source: 'prompt', description: 'Shadowed by Skill' }, { name: 'skill:review', source: 'skill', description: 'Review Skill' }, { name: 'pi5-web-navigate', source: 'extension', description: 'internal' }, { name: 'pivane-web-navigate', source: 'extension', description: 'internal' });
     const reply = (ws, cmd, data = {}, error) => ws.send(JSON.stringify({ type: 'response', id: cmd.id, command: cmd.type, success: !error, data, error }));
     const emit = event => socket.send(JSON.stringify(event));
     page.on('pageerror', error => errors.push(error.message));
@@ -135,7 +135,7 @@ async function run(browser, viewport) {
     await input.fill('/');
     await page.waitForFunction(() => document.querySelectorAll('#pi-command-menu button').length > 50);
     assert.equal(await menu.locator('img').count(), 0);
-    assert.doesNotMatch(await menu.textContent(), /pi5-web-navigate|Shadowed/);
+    assert.doesNotMatch(await menu.textContent(), /(?:pi5|pivane)-web-navigate|Shadowed/);
     assert.equal(await menu.getByText('/fixture-1', { exact: true }).count(), 1, 'native command precedence prevents ambiguous invocation');
     await menu.hover(); await page.mouse.wheel(0, 500);
     await page.waitForFunction(() => document.querySelector('#pi-command-menu').scrollTop > 0);

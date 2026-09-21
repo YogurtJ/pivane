@@ -171,7 +171,7 @@ Body: `{ "cwd": "/workspace/demo" }`。先经过 token/Origin/realpath 根检查
 { "cwd": "/workspace/demo", "pinned": true }
 ```
 
-`pinned` 必须是 boolean；`false` 取消置顶。cwd 经过 realpath/项目根白名单检查。原子写入 0600 `pi5-workspace.json` 的 `pinnedProjects`，保留其他配置；返回 `{ "pinnedProjects": [...] }`，最近置顶排在前面。不同浏览器通过 activity 轮询自动同步。不改 Pi JSONL。
+`pinned` 必须是 boolean；`false` 取消置顶。cwd 经过 realpath/项目根白名单检查。原子写入 0600 `pivane-workspace.json` 的 `pinnedProjects`（既有 `pi5-workspace.json` 自动沿用），保留其他配置；返回 `{ "pinnedProjects": [...] }`，最近置顶排在前面。不同浏览器通过 activity 轮询自动同步。不改 Pi JSONL。
 
 `GET /projects` 也返回 `pinnedProjects`，并包含没有 session 的有效置顶项目；不存在或不再允许的路径不会返回，也不会因此删除原偏好。
 
@@ -582,7 +582,7 @@ Key 只作为 request body 进入服务端，现有值永不回显。此单字�
 { "provider": "my-provider", "modelId": "planner-model" }
 ```
 
-服务端只接受 `ModelRuntime.getAvailable()` 中当前已认证的模型，并原子写入 0600 的 `~/.pi/agent/pi5-workspace.json`。它不会修改 Pi Agent 默认模型，response 不包含 credential。
+服务端只接受 `ModelRuntime.getAvailable()` 中当前已认证的模型，并原子写入 0600 的 `~/.pi/agent/pivane-workspace.json`（已有旧 `pi5-workspace.json` 时沿用）。它不会修改 Pi Agent 默认模型，response 不包含 credential。
 
 模型测试 body：
 

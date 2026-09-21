@@ -38,7 +38,7 @@ test('access configuration follows the native agent directory including tilde ex
     const before = process.env.PI_CODING_AGENT_DIR;
     process.env.PI_CODING_AGENT_DIR = '~/.pi-access-path-fixture';
     const service = new WorkspaceAccessService({ envToken: () => '' });
-    try { assert.equal(service.filePath, path.join(os.homedir(), '.pi-access-path-fixture/pi5-access.json')); }
+    try { assert.equal(service.filePath, path.join(os.homedir(), '.pi-access-path-fixture/pivane-access.json')); }
     finally { service.dispose(); if (before === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = before; }
 });
 

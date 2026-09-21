@@ -1,14 +1,18 @@
 # Pivane 开发文档
 
-这些文档保存可复用的技术约束，应与源码一起版本管理。维护者机器地址、临时部署脚本、会话交接和原始测试日志使用被忽略的本地记录目录。
+这些文档随源码版本管理，保存可复用的设计和流程。机器地址、当前部署、有效授权和完整验证日志放在私有维护资料中；源码入口通过可选的 `AGENTS.local.md` 指向本机资料。
 
-- [架构与数据流](ARCHITECTURE.md)
-- [中英文界面文案与浏览器偏好](../I18N.md)
-- [版本与发布流程](RELEASING.md)
-- [贡献约定](../../CONTRIBUTING.md)
-- [源码Agent约定](../../AGENTS.md)
-- [API契约](../API.md)
-- [原生文件系统组件](../../native/README.md)
+| 需要了解什么 | 入口 |
+|---|---|
+| 系统边界、数据和运行过程 | [架构](ARCHITECTURE.md) |
+| 一类功能应该修改哪里 | [模块导航](MODULES.md) |
+| 开发步骤、验证范围、文档责任 | [开发流程](WORKFLOW.md) |
+| Pivane 名称、旧版本兼容、项目迁移 | [命名与迁移](NAMING.md) |
+| 当前结构的检查结论和后续关注点 | [架构检查记录](REVIEW.md) |
+| 候选包、发布与恢复演练 | [发布流程](RELEASING.md) |
+| 通用参与方式 | [贡献指南](../../CONTRIBUTING.md)、[源码 Agent 入口](../../AGENTS.md) |
+| 字段和协议 | [API](../API.md)、对应功能文档 |
+| 平台原生组件 | [native](../../native/README.md) |
 
 ## 验证入口
 
@@ -20,8 +24,6 @@ npm audit --omit=dev
 npm run pack:trial
 ```
 
-Node用例位于test/，浏览器专项位于test/browser/。浏览器脚本的URL/CHROMIUM_PATH支持情况应查看该脚本；PLAYWRIGHT_MODULE可指定已安装的Playwright。不要把测试脚本的默认地址当成用户部署地址。模拟API的浏览器测试不代表真实供应商或Safari真机验收。
+Node 用例递归发现 `test/` 下的 `.test.js`；浏览器专项位于 `test/browser/`，真实归档演练位于 `test/release/`。专项脚本支持的 URL、CHROMIUM_PATH 和 PLAYWRIGHT_MODULE 以该脚本为准，不能把测试默认地址当成用户部署地址。
 
-测试实例必须指定独立Agent/媒体/预约/项目路径和本实例URL，并清除不需要的继承认证。真实安装演练使用test/release的合成Provider与哨兵保护；未满足保护条件不要绕过执行。默认npm test通过Node枚举文件并串行执行，不依赖shell通配符，Windows和POSIX执行同一组用例。
-
-公开功能文档中的“实现与验证”部分是相应模块契约的补充。新增参数、预算或错误状态时同时维护，避免只改代码或只更新入口文案。
+测试必须使用独立身份、合成服务与哨兵保护。日常迭代、源码交付和正式发行需要的检查范围见 [验证矩阵](WORKFLOW.md#验证矩阵)。

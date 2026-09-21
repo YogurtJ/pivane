@@ -32,9 +32,9 @@
 
 新后端以 `/status.auxiliaryModels=true` 提供统一[辅助模型](AUXILIARY_MODELS.md)卡片，标题模型与自动命名开关分别位于标题行和该行齿轮选项。已有设置直接沿用，下面的专用标题 API 继续兼容；缺少统一能力时保留原独立卡片。
 
-运行中 `/status.sessionTitles=true` 表示已启用标题接口；旧后端隐藏菜单/设置入口。`sessionTitleModels=true` 另标记可独立选择标题模型，只有旧开关能力时保留开关并隐藏模型选择。实例偏好 `pi5-workspace.json.sessionTitles` 保存 `enabled`（默认 true）、`provider/modelId`（默认均为空，跟随线程）与递增 `revision`，保留其他字段。专用模型供全部线程的自动/手动命名使用，与媒体规划及聊天默认值独立。配置保存不停止任务或供应商请求；关闭或更改设置后不应用尚在生成的自动结果，手动建议仍报告实际使用的冻结模型。
+运行中 `/status.sessionTitles=true` 表示已启用标题接口；旧后端隐藏菜单/设置入口。`sessionTitleModels=true` 另标记可独立选择标题模型，只有旧开关能力时保留开关并隐藏模型选择。实例偏好 `pivane-workspace.json.sessionTitles`（既有 `pi5-workspace.json` 自动沿用） 保存 `enabled`（默认 true）、`provider/modelId`（默认均为空，跟随线程）与递增 `revision`，保留其他字段。专用模型供全部线程的自动/手动命名使用，与媒体规划及聊天默认值独立。配置保存不停止任务或供应商请求；关闭或更改设置后不应用尚在生成的自动结果，手动建议仍报告实际使用的冻结模型。
 
-只有在功能开启时通过 POST `/sessions` 新建的未命名持久线程写入 `pi5-web-title` 原生 custom metadata。自动命名等待成功最终回复及 `agent_settled`，跳过无标记的旧历史、有名称的线程和临时会话。标记绑定原生 session ID，复制/导入的标记不能使新身份自动命名。用户手动命名后即受保护，后续轮次不自动更新标题。
+只有在功能开启时通过 POST `/sessions` 新建的未命名持久线程写入 `pivane-web-title` 原生 custom metadata（兼容旧 `pi5-web-title`）。自动命名等待成功最终回复及 `agent_settled`，跳过无标记的旧历史、有名称的线程和临时会话。标记绑定原生 session ID，复制/导入的标记不能使新身份自动命名。用户手动命名后即受保护，后续轮次不自动更新标题。
 
 私有桥接同步读取当前原生分支，摘取最近最多 6 条问题/完整终态回答，每条最多 2000 字符，总计 8000 字符。不包含工具调用/结果、思考、图片、Shell、系统提示或被放弃分支。常见寒暄不请求模型；模型判断尚无具体话题时可等待新正文再尝试，最多 3 次。明确失败、超时、无效输出或结果过期不自动重放，仍可由用户主动重新生成。
 
@@ -83,7 +83,7 @@
 
 Pi JSONL 仍是唯一聊天历史。队列只保存尚待确认/投递的消息，接受投递或取消后删除 payload，仅保留最多 100 条终态 metadata。工作台偏好不存这些正文。
 
-端口3001默认队列：`~/.pi/agent/pi5-deferred-messages.json`；非 3001 端口默认追加 `-<port>` 后缀，未设置 PORT 时视为开发 3000。`PI_CODING_AGENT_DIR` 仍决定 Agent 数据根，`PI_WEB_DEFERRED_FILE` 可显式覆盖。一个队列文件只能由一个服务进程管理，不可让两个实例共享该文件或同一正在写入的 Pi session。
+端口 3001 的新实例默认队列：`~/.pi/agent/pivane-deferred-messages.json`，既有同位置的 `pi5-deferred-messages.json` 自动沿用；非 3001 端口默认追加 `-<port>` 后缀，未设置 PORT 时视为开发 3000。`PI_CODING_AGENT_DIR` 仍决定 Agent 数据根，`PI_WEB_DEFERRED_FILE` 可显式覆盖。一个队列文件只能由一个服务进程管理，不可让两个实例共享该文件或同一正在写入的 Pi session。
 
 队列写入同目录 0600 临时文件，fsync、rename，再 fsync 目录；目录创建权限 0700。最多 50 条非终态消息，完整队列最多 64 MiB。单消息最多 400000 字符、6 张 PNG/JPEG/WebP/GIF、24 MiB base64；浏览器单图 6 MiB、文本附件 1 MiB。预约时间限未来一年。
 
@@ -107,13 +107,13 @@ Pi JSONL 仍是唯一聊天历史。队列只保存尚待确认/投递的消息�
 
 ## 分叉与回退
 
-分叉在 source worker 空闲互斥区内读取最新 entries/leaf，使用单独的官方 `SessionManager.open(...).createBranchedSession(...)` 提取选定路径。原 worker 不切换 session，不改变原文件，其他客户端不被带到新线程。新分支保留官方 parentSession；目标之前尚无 assistant 时，沿用 Web 的立即可见空 header 流程，通过公开 append API 保留消息/模型/思考/自定义记录，并保存 `pi5-web-fork-origin` metadata。
+分叉在 source worker 空闲互斥区内读取最新 entries/leaf，使用单独的官方 `SessionManager.open(...).createBranchedSession(...)` 提取选定路径。原 worker 不切换 session，不改变原文件，其他客户端不被带到新线程。新分支保留官方 parentSession；目标之前尚无 assistant 时，沿用 Web 的立即可见空 header 流程，通过公开 append API 保留消息/模型/思考/自定义记录，并保存 `pivane-web-fork-origin` metadata。
 
 这是 SessionManager 层提取，不会触发原 runtime 的 `session_before_fork/session_shutdown` 钩子，也不执行扩展的代码检查点恢复。它不是直接放开会改变 worker 归属的原生 fork/clone RPC。
 
-原地回退使用项目内扩展的 `ctx.navigateTree(..., { summarize: false })`，遵守原生 `session_before_tree` 的取消，随后用 `pi.appendEntry('pi5-web-navigation', ...)` 记录原 leaf、目标 entry 和 retry/restore 模式。该 custom entry 不进入 LLM 上下文，同时让新活动 leaf 在刷新/重启后可恢复；无摘要，不删 JSONL 记录。
+原地回退使用项目内扩展的 `ctx.navigateTree(..., { summarize: false })`，遵守原生 `session_before_tree` 的取消，随后用 `pi.appendEntry('pivane-web-navigation', ...)` 记录原 leaf、目标 entry 和 retry/restore 模式。该 custom entry 不进入 LLM 上下文，同时让新活动 leaf 在刷新/重启后可恢复；无摘要，不删 JSONL 记录。
 
-Web worker 使用 `-e server/pi-web-session-extension.ts` 显式加载桥接。`pi5-web-navigate` 从 command catalog 隐藏，gateway 拒绝浏览器直接提交该命令；worker 通过一次性关联 ID 和进程内随机 token 调用，`ui.notify` 中的结构化结果仅在 worker 内消费，不进入浏览器通知或 session。它没有 LLM 可调用工具，也不修改全局 Packages 或上游 Pi package。
+Web worker 使用 `-e server/pi-web-session-extension.ts` 显式加载桥接。`pivane-web-navigate` 及旧兼容名称从 command catalog 隐藏，gateway 拒绝浏览器直接提交该命令；worker 通过一次性关联 ID 和进程内随机 token 调用，`ui.notify` 中的结构化结果仅在 worker 内消费，不进入浏览器通知或 session。它没有 LLM 可调用工具，也不修改全局 Packages 或上游 Pi package。
 
 操作必须提供 `expectedLeafId`。互斥在 await 前预占，检查 prompt preflight、活动状态、压缩和原生待处理队列；其他修改请求拒绝，只读请求可继续。导航超时会关闭对应 worker 后重连，不放任可能仍在执行的导航与新 prompt 并发。
 

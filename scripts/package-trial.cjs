@@ -3,7 +3,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { execFileSync } = require('node:child_process');
-const { publicDocumentation, checkDocumentation } = require('./check-docs.cjs');
+const { checkDocumentation } = require('./check-docs.cjs');
+const { distributionFiles } = require('./source-files.cjs');
 
 const root = path.resolve(__dirname, '..');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -15,34 +16,7 @@ if (application.name !== 'pivane' || !/^\d+\.\d+\.\d+(?:-[a-z0-9]+(?:\.[a-z0-9]+
     || lock.version !== application.version || lock.packages[''].version !== application.version
     || lock.name !== application.name || lock.packages[''].name !== application.name) throw new Error('Application/lockfile release identity mismatch');
 const releaseMetadata = { product: 'Pivane', appVersion: application.version, piVersion: application.dependencies['@earendil-works/pi-coding-agent'], channel: application.version.includes('-') ? 'prerelease' : 'stable' };
-const files = [
-    ...publicDocumentation(root), 'docs/public-files.json', 'scripts/check-docs.cjs',
-    'native/pi-win32-fd.c', 'native/pi-win32-x64-fd.node', 'native/win32-x64-manifest.json', 'scripts/build-win32-fd.cjs', 'scripts/check-syntax.cjs',
-    'native/pi-darwin-fd.c', 'native/pi-darwin-fd.node', 'native/darwin-fd-manifest.json', 'scripts/build-darwin-fd.cjs',
-    'package.json', 'package-lock.json', 'LICENSE', 'server.js', '.env.example', '.gitignore',
-    'public/vendor/mermaid-11.17.2.min.js', 'public/vendor/mermaid-LICENSE.txt',
-    'public/vendor/katex-0.18.7/katex.min.js', 'public/vendor/katex-0.18.7/katex.min.css', 'public/vendor/katex-0.18.7/LICENSE',
-    'public/brand/fontawesome-6.4.0/css/all.min.css', 'public/brand/fontawesome-6.4.0/LICENSE.txt',
-    ...['fa-brands-400', 'fa-regular-400', 'fa-solid-900', 'fa-v4compatibility'].flatMap(name => ['woff2','ttf'].map(ext => `public/brand/fontawesome-6.4.0/webfonts/${name}.${ext}`)),
-    'public/site.webmanifest', 'public/brand/favicon.ico', 'public/brand/apple-touch-icon.png',
-    ...[64, 192, 512, 1024].map(size => `public/brand/logo-${size}.png`),
-    'config/media-lab.json', 'config/tts-providers.json', 'scripts/package-trial.cjs', 'scripts/pi-agent-dir.cjs', 'scripts/access-reset.cjs', 'scripts/run-tests.cjs', 'scripts/install-service.cjs', 'scripts/start-managed.cjs', 'scripts/install-default-capabilities.cjs', 'scripts/restore-managed-backup.cjs',
-    // Synthetic compatibility fixture only; user session directories are never included.
-    'test/private-file-helper.cjs', 'test/release/guard.cjs',
-    'test/fixtures/pi-0843-session.jsonl', 'test/fixtures/release-video.mp4', 'test/release/provider.cjs', 'test/release/data.cjs', 'test/release/state.cjs', 'test/release/runtime.cjs',
-    'pi-packages/media-workbench/package.json', 'pi-packages/media-workbench/extensions/media-tools.ts'
-];
-function includeDirectory(directory, pattern) {
-    for (const entry of fs.readdirSync(path.join(root, directory), { withFileTypes: true })) {
-        if (entry.isFile() && pattern.test(entry.name) && !/\.bak|\.tmp|~$/.test(entry.name)) files.push(`${directory}/${entry.name}`);
-    }
-}
-includeDirectory('public/vendor/katex-0.18.7/fonts', /^KaTeX_[A-Za-z0-9]+-[A-Za-z]+\.(woff2?|ttf)$/);
-includeDirectory('server', /\.(js|mjs|ts)$/);
-includeDirectory('public', /\.(html|css|js)$/);
-includeDirectory('test', /\.test\.js$/);
-includeDirectory('test/browser', /\.cjs$/);
-includeDirectory('test/release', /\.cjs$/);
+const files = distributionFiles(root);
 checkDocumentation(root, files);
 if (application.license !== 'ISC' || !fs.readFileSync(path.join(root, 'LICENSE'), 'utf8').startsWith('ISC License\n')) throw new Error('Project license declaration mismatch');
 const nativeManifest = JSON.parse(fs.readFileSync(path.join(root, 'native/darwin-fd-manifest.json')));

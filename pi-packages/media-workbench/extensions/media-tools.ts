@@ -4,9 +4,15 @@ import { Type } from "typebox";
 
 const mediaKind = StringEnum(["image", "video", "tts"] as const);
 
+function workspaceSetting(suffix: 'BASE_URL' | 'ACCESS_TOKEN'): string | undefined {
+  const current = process.env[`PIVANE_WORKSPACE_${suffix}`], legacy = process.env[`PI_WORKSPACE_${suffix}`];
+  if (current && legacy && current !== legacy) throw new Error(`Conflicting Pivane workspace ${suffix} configuration`);
+  return current || legacy;
+}
+
 function workspaceBaseUrl(): string {
   const ownedOrigin = process.env.PI_WORKSPACE_INTERNAL_TOKEN && process.env.PI_WORKSPACE_INTERNAL_ORIGIN;
-  return (ownedOrigin || process.env.PI_WORKSPACE_BASE_URL || "http://127.0.0.1:3001").replace(/\/+$/, "");
+  return (ownedOrigin || workspaceSetting('BASE_URL') || "http://127.0.0.1:3001").replace(/\/+$/, "");
 }
 
 function plannerCurrentState(): Record<string, unknown> {
@@ -26,7 +32,7 @@ async function requestJson(path: string, options: RequestInit = {}): Promise<any
   // The process credential is scoped to this instance and planning endpoints only.
   // Independent CLI installations can explicitly configure their own workspace access token.
   const internal = process.env.PI_WORKSPACE_INTERNAL_ORIGIN === target.origin ? process.env.PI_WORKSPACE_INTERNAL_TOKEN : undefined;
-  const token = internal || (process.env.PI_WORKSPACE_BASE_URL ? process.env.PI_WORKSPACE_ACCESS_TOKEN : undefined);
+  const token = internal || (workspaceSetting('BASE_URL') ? workspaceSetting('ACCESS_TOKEN') : undefined);
   const response = await fetch(target, { ...options, redirect: 'error',
     headers: { ...options.headers, ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
   const data = await response.json().catch(() => null);

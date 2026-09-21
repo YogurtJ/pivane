@@ -54,7 +54,7 @@ export function registerExtensionAssistant(pi: ExtensionAPI) {
                 const english = profile.language === 'en';
                 const title = english ? 'Confirm package change' : '确认扩展包操作';
                 const description = `${params.action}: ${params.source}\n${english ? 'Scope' : '范围'}: ${profile.scope}\n${english ? 'Deployment project' : '部署端项目'}: ${context.cwd}\n\n${params.plan}`;
-                if (!await context.ui.confirm(title, description, { signal })) return { content: [{ type: 'text' as const, text: english ? 'Cancelled. No package operation was submitted.' : '已取消，没有提交包操作。' }], details: { pi5PackageOperation: { status: 'cancelled' } } };
+                if (!await context.ui.confirm(title, description, { signal })) return { content: [{ type: 'text' as const, text: english ? 'Cancelled. No package operation was submitted.' : '已取消，没有提交包操作。' }], details: { pivanePackageOperation: { status: 'cancelled' } } };
                 signal?.throwIfAborted();
                 return request('package', context, { action: params.action, source: params.source, expectedRevision: params.expectedRevision, confirmed: true }, signal);
             }

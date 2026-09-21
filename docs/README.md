@@ -34,4 +34,4 @@ English: [project overview](../README.en.md) · [installation](en/INSTALL.md) ·
 
 [开发入口](development/README.md)保存架构、测试和发布流程，随源码版本管理。根目录[AGENTS.md](../AGENTS.md)约束源码修改；它不是用户Agent的默认运维指令。
 
-`docs/local/`、`AGENTS.local.md`和`backups/`保存维护者私有记录，Git忽略且候选包排除。公开文档与应用不依赖这些文件。公开文件的明确清单为[public-files.json](public-files.json)。
+维护者私有记录可放在独立维护仓库；本机 `AGENTS.local.md` 提供读取入口。已有 `docs/local/` 和 `backups/` 布局继续被 Git 与发行规则排除。公开文档和应用不依赖私有资料；当前状态与历史记录分开维护。公开文件的明确清单为 [public-files.json](public-files.json)，维护责任见 [开发流程](development/WORKFLOW.md)。

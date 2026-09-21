@@ -85,11 +85,27 @@ test('media credentials use native Pi login/logout, preserve literal keys and ex
     await credentials.save('target', key);
     assert.equal(await credentials.get('target'), key);
     assert.equal(fs.existsSync(sentinel), false);
-    assert.equal((await credentials.runtime()).getModels('pi5-media:target').length, 0);
+    assert.equal((await credentials.runtime()).getModels('pivane-media:target').length, 0);
     require('./private-file-helper.cjs').assertPrivateFile(authPath);
     const fresh = new MediaProviderCredentials({ authPath }); assert.equal(await fresh.get('target'), key);
     await fresh.remove('target'); assert.equal(await credentials.get('target'), '');
     assert.equal(await credentials.get('unrelated'), 'another-fixture-key');
+});
+
+test('legacy media credentials remain readable; new saves and removals use the public native lifecycle', async () => {
+    const authPath = path.join(root, 'compat-auth', 'auth.json');
+    const credentials = new MediaProviderCredentials({ authPath });
+    const runtime = await credentials.register('legacy', true);
+    await runtime.login(credentials.providerId('legacy', true), 'api_key', { prompt: async () => 'legacy-synthetic-key', notify() {} });
+    const before = fs.readFileSync(authPath);
+    assert.equal(await credentials.get('legacy'), 'legacy-synthetic-key');
+    assert.deepEqual(fs.readFileSync(authPath), before, 'reading does not migrate credentials');
+    await credentials.save('legacy', 'new-synthetic-key');
+    assert.equal(await credentials.get('legacy'), 'new-synthetic-key');
+    assert.equal((await credentials.list()).size, 1);
+    await credentials.remove('legacy');
+    assert.equal(await credentials.get('legacy'), '');
+    assert.equal((await credentials.list()).size, 0);
 });
 
 test('Qwen speech template uses the native input envelope and URL response, with documented system voices', () => {

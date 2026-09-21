@@ -8,7 +8,7 @@
         return String(value).replace(/\\/g, '/').split('/').some(part => {
             part = part.toLowerCase();
             return privateDirs.has(part) || /^\.env(?:\.|$)/.test(part)
-                || /^(?:auth|pi5-access|pi5-notifications|models|models-store|credentials|connections)\.json(?:$|[.~_-])/.test(part)
+                || /^(?:auth|(?:pivane|pi5)-access|(?:pivane|pi5)-notifications|models|models-store|credentials|connections)\.json(?:$|[.~_-])/.test(part)
                 || /^(?:\.npmrc|\.netrc|\.pypirc|id_rsa|id_ed25519|id_ecdsa)(?:$|[.~_-])/.test(part)
                 || /\.(?:pem|key|p12|pfx|kdbx)(?:$|[.~_-])/.test(part);
         });

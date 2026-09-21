@@ -1,13 +1,9 @@
-const fs = require('node:fs');
+const { sourceFiles } = require('./source-files.cjs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
-const files = ['server.js'];
-for (const [directory, extensions] of [['server', ['.js', '.mjs']], ['public', ['.js']], ['scripts', ['.cjs']]]) {
-    for (const entry of fs.readdirSync(path.join(root, directory), { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-        if (entry.isFile() && extensions.includes(path.extname(entry.name))) files.push(path.join(directory, entry.name));
-    }
-}
+const files = [...new Set(['server.js', ...['server', 'public', 'scripts', 'testSupport'].flatMap(group => sourceFiles(root, group))
+    .filter(file => /\.(?:js|cjs|mjs|ts)$/.test(file)), 'pi-packages/media-workbench/extensions/media-tools.ts'])];
 for (const filename of files) {
     const result = spawnSync(process.execPath, ['--check', path.join(root, filename)], { stdio: 'inherit' });
     if (result.error) { console.error(result.error.message); process.exit(1); }

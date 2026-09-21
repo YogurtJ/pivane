@@ -62,7 +62,7 @@ PI_WORKSPACE_BASE_URL=http://127.0.0.1:3001
 PI_CODING_AGENT_DIR=$AGENT_DIR
 PI_MEDIA_CONFIG_DIR=$BASE/data/media-lab
 PI_MEDIA_DATA_DIR=$BASE/data/media
-PI_WEB_DEFERRED_FILE=$BASE/data/pi5-deferred-messages.json
+PI_WEB_DEFERRED_FILE=$BASE/data/pivane-deferred-messages.json
 PI_PROJECT_ROOTS=/
 EOF
 chmod 600 "$BASE/instance.env"

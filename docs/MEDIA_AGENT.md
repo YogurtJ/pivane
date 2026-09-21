@@ -58,7 +58,7 @@ TTS 的字段来自 `TtsProviderService.getPublicConfig()`；已配置模型复�
 
 没有显式或已保存模型时采用“自动”：`PI_MEDIA_PLANNER_MODEL`、Pi 默认模型形成候选；没有匹配项时选第一个可用非 batch 模型。候选来自 `ModelRuntime.getAvailable()`，保留既有默认候选尝试及结果报告，不内置个人 Provider/模型名称。
 
-偏好仍保存于选定 Pi Agent 目录下的 `pi5-workspace.json.mediaAgent`，不改变 Pi 对话默认模型。保存后下一次 plan 生效，response 返回实际 `plannerModel`、`fallbackUsed` 和截断的失败尝试；只有自动默认候选可在失败后切换，不重试媒体执行。
+偏好仍保存于选定 Pi Agent 目录下的 `pivane-workspace.json.mediaAgent`（既有 `pi5-workspace.json` 自动沿用），不改变 Pi 对话默认模型。保存后下一次 plan 生效，response 返回实际 `plannerModel`、`fallbackUsed` 和截断的失败尝试；只有自动默认候选可在失败后切换，不重试媒体执行。
 
 ## API 和连接
 

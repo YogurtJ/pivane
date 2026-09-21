@@ -139,7 +139,7 @@ Agent 返回的草稿自动填入表单，用户可继续修改，再明确保�
 
 - 新服务与模型：`<媒体配置目录>/connections.json`，版本 1，0600 原子替换与备份。
 - 每个服务可有多种媒体模型，最多 40 个服务、合计 60 个托管模型，配置文件上限 2MiB。
-- Key 通过 Pi 官方 `ModelRuntime.login/logout` 保存到选定 Pi Agent 凭据库，ID 使用 `pi5-media:<服务ID>`。
+- Key 通过 Pi 官方 `ModelRuntime.login/logout` 保存到选定 Pi Agent 凭据库。新保存的 ID 使用 `pivane-media:<服务ID>`，兼容读取旧 `pi5-media:`；读取不迁移凭据，移除通过原生生命周期处理两种名称。
 - 凭据 runtime 使用公开 `registerNativeProvider` 注册无聊天模型的认证入口，不更改 `models.json` 或聊天模型偏好。
 - Key 按 Pi config-value 语法编码为字面量，`!`、`$` 不会被当作用户要求执行的命令或环境变量。
 - 配置响应、模型目录、导出和 planner 都没有 Key；网页只显示是否已保存和是否需重新绑定。

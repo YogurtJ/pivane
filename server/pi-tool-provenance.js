@@ -1,6 +1,6 @@
 const path = require('node:path');
 const os = require('node:os');
-const KEY = 'pi5ToolProvenance';
+const KEY = 'pivaneToolProvenance';
 const text = (value, limit) => typeof value === 'string' && value.length > 0 && value.length <= limit ? value : undefined;
 function inputPath(value, cwd) {
     if (!text(value, 4096)) return;
@@ -54,7 +54,7 @@ function registerToolProvenance(pi) {
             // Preserve tool-specific details shapes, including primitive/array results and collisions.
             if (event.details != null && (typeof event.details !== 'object' || Array.isArray(event.details)
                 || ![Object.prototype, null].includes(Object.getPrototypeOf(event.details)))) return;
-            if (event.details && Object.hasOwn(event.details, KEY)) return;
+            if (event.details && (Object.hasOwn(event.details, KEY) || Object.hasOwn(event.details, 'pi5ToolProvenance'))) return;
             return { details: { ...event.details, [KEY]: record } };
         } catch { /* No changes to content, errors, usage or control signals. */ }
     });

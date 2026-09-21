@@ -4,12 +4,12 @@
 
 package.json的应用版本、Pi依赖版本和快照时间戳是不同概念。npm run pack:release生成按应用版本命名的包，TRIAL_MANIFEST.json含appVersion/piVersion，保留原文件名与version=1格式。`/api/pi/status.version`表示加载的Pi版本；它不能单独证明网页和后端属于同一候选包。用压缩包SHA256及TRIAL_MANIFEST逐文件核对构建内容。
 
-版本下载与发布时间以[GitHub Releases](https://github.com/YogurtJ/pivane/releases)为准，不能把本地pack成功称为已公开发布。v1.0.0-rc.1标签固定已验收源码，主分支可继续更新项目介绍与文档；不要据主分支README的变化推断发行包被替换。Pivane改名不要求迁移环境变量、数据文件、服务名称或已有安装目录。
+版本下载与发布时间以[GitHub Releases](https://github.com/YogurtJ/pivane/releases)为准，不能把本地pack成功称为已公开发布。v1.0.0-rc.1标签固定已验收源码，主分支可继续更新项目介绍与文档；不要据主分支README的变化推断发行包被替换。Pivane 名称变更保持旧配置可读取；目录、服务或持久化标识需要改名时执行[明确的兼容与迁移流程](NAMING.md)，不将改名混入普通升级。
 
 ## 候选包
 
-1. 冻结源码与公开文档，完成所需的Node、语法、文档、audit及浏览器回归。
-2. 运行npm run pack:release（开发快照仍用pack:trial）。相同版本包存在时拒绝覆盖；冻结包变化须重新验收，已公开版本不能悄悄替换。代码允许清单与docs/public-files.json决定内容；LICENSE、第三方声明和原生manifest随包；AGENTS.local.md、docs/local、身份、媒体和备份禁止纳入。构建后核对manifest/hash，不能仅检查.gitignore。
+1. 从明确的源码提交准备候选，核对 Git 跟踪清单与未提交改动，冻结公开文档，完成所需的 Node、语法、文档、audit 及浏览器回归。记录源码提交、实际运行版本和候选之间的差异。
+2. 运行npm run pack:release（开发快照仍用pack:trial）。相同版本包存在时拒绝覆盖；冻结包变化须重新验收，已公开版本不能悄悄替换。`scripts/source-files.cjs` 的发行集合与 docs/public-files.json 决定内容；LICENSE、第三方声明和原生manifest随包；AGENTS.local.md、docs/local、身份、媒体和备份禁止纳入。构建后核对manifest/hash，不能仅检查.gitignore。
 3. 从该包在独立目录npm ci，不继承维护者的node_modules、Provider环境或Pi身份；做必要的平台/浏览器安装、更新和恢复回归。
 4. 更新公开平台范围与CHANGELOG，将测试结果绑定到准确的包SHA256。后续代码变化需按影响补验并重新生成包。
 5. 准备下载包、SHA256、版本说明、安装/恢复步骤与已知限制。发布仓库/渠道和外部上传作为独立明确操作。

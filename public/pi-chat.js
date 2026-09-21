@@ -1867,9 +1867,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const title = role === 'user' ? translateUi("你") : role === 'assistant' ? 'Pi' : translateUi("系统");
         const model = role === 'assistant' && message.model ? `<span>${escapeHtml(message.model)}</span>` : '';
         header.innerHTML = `<strong>${title}</strong>${model}`;
-        if (role === 'custom' && ['pi5-agent-task-message', 'pi5-agent-task-receipt'].includes(message.customType)) {
+        if (role === 'custom' && ['pivane-agent-task-message', 'pivane-agent-task-receipt', 'pi5-agent-task-message', 'pi5-agent-task-receipt'].includes(message.customType)) {
             article.classList.add('pi-agent-thread-message');
-            const receipt = message.customType === 'pi5-agent-task-receipt';
+            const receipt = ['pivane-agent-task-receipt', 'pi5-agent-task-receipt'].includes(message.customType);
             header.querySelector('strong').textContent = translateUi(receipt ? 'Agent 任务线程' : '来自 Agent 的任务');
             const details = message.details || {};
             if (receipt) {

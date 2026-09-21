@@ -45,7 +45,7 @@ function checkDocumentation(root, distributionFiles) {
         }
     }
     inspectDirectory('docs');
-    const instanceMarker = /\/srv\/Pi5_GUI|\/home\/pi(?:\/|["`])|pi5-[a-z-]+-deploy-\d{8}|\/tmp\/pi-[a-z0-9-]*deploy-result\.json|backups\/[a-z0-9-]+-2026\d{4}/i;
+    const instanceMarker = /\/srv\/(?:Pi5_GUI|pivane(?:-maintenance)?)(?:\/|\b)|\/home\/pi(?:\/|["`])|(?:pi5|pivane)-[a-z-]+-deploy-\d{8}|\/tmp\/pi-[a-z0-9-]*deploy-result\.json|backups\/[a-z0-9-]+-2026\d{4}/i;
     for (const file of files) {
         if (!regular(file)) { errors.push(`Not a regular public file: ${file}`); continue; }
         if (included && !included.has(file)) errors.push(`Public document omitted from package: ${file}`);

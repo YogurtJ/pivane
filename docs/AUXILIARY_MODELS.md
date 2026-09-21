@@ -21,7 +21,7 @@
 
 已有标题模型和媒体“模块 Agent”选择直接显示在新卡片中，不进行开机迁移或重复保存。原来的两张独立配置卡片在新后端隐藏；缺少辅助模型能力的后端仍使用原入口。
 
-Pi 原生会话仍是唯一聊天事实来源。工作台继续使用 `pi5-workspace.json.sessionTitles` 和 `mediaAgent`，不另存第二套路由或聊天历史。`sessionTitles.revision` 与媒体配置变更计数供并发检测，未知配置和无关偏好保持。界面开关、模型路由、媒体执行参数是独立状态。
+Pi 原生会话仍是唯一聊天事实来源。工作台使用所选偏好文件的 `sessionTitles` 和 `mediaAgent`，新文件默认 `pivane-workspace.json`，已有 `pi5-workspace.json` 自动沿用，不另存第二套路由或聊天历史。`sessionTitles.revision` 与媒体配置变更计数供并发检测，未知配置和无关偏好保持。界面开关、模型路由、媒体执行参数是独立状态。
 
 原 `/settings/session-titles` 和 `/settings/media-agent` API 保留；从旧入口保存的变化会使新入口的旧修订失效。新入口一次保存所有改动；异步模型校验期间，另一页面改了相关设置则整次拒绝，不部分覆盖。失败后保留未保存选择并读取最新修订，由用户核对后再保存。标题请求的本次 Token 显示与持久用量统计口径不变。
 

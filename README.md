@@ -100,7 +100,7 @@ RC4 绑定 Pi 0.86.1，包含原生 system transcript 兼容、会话导入导�
 | 让自己的 Agent 帮助安装、配置或排障 | [用户 Agent 操作指南](docs/AGENT_GUIDE.md) |
 | 升级、停机备份与恢复 | [安装与恢复](docs/INSTALL_RECOVERY.md) · [运维](docs/OPERATIONS.md) |
 | 查询功能和接口 | [文档目录](docs/README.md) · [REST/WebSocket API](docs/API.md) |
-| 修改 Pivane 源码 | [贡献指南](CONTRIBUTING.md) · [源码 Agent 约定](AGENTS.md) · [架构](docs/development/ARCHITECTURE.md) |
+| 修改 Pivane 源码 | [贡献指南](CONTRIBUTING.md) · [源码 Agent 约定](AGENTS.md) · [模块导航](docs/development/MODULES.md) · [架构](docs/development/ARCHITECTURE.md) |
 | 查看版本变化与后续方向 | [变更记录](CHANGELOG.md) · [路线图](docs/ROADMAP.md) |
 
 **给协助用户的 Agent：** 安装与排障从 `docs/AGENT_GUIDE.md` 开始；修改源码才转读 `AGENTS.md`。按实际实例的 `/api/pi/status` 和模型目录核对能力，不推断用户的凭据、项目路径或服务配置。
@@ -111,7 +111,7 @@ Pivane 面向个人独立部署，不提供多人共用同一实例的账户隔�
 
 Pi 原生会话是对话的唯一事实来源。不要让网页与外部 CLI 同时写同一会话；历史导航不会撤销文件或外部请求的副作用。媒体规划不会直接执行生成，失败或结果不确定的请求不会自动重放。
 
-升级前请结束任务、暂停预约、停机并整批备份。沿用现有 `PI_*` 配置、`pi5-*` 数据文件、API/RPC 和浏览器偏好键，改名不要求迁移已有身份或目录。当前源码在设置提供[版本检查、Pi 受管更新、停机备份与重启](docs/UPDATES.md)。`node server.js` 和 `npm start` 都自动支持网页执行与命令输出反馈，无需更改服务启动命令；Pivane 应用可从版本卡片安装新发布包，自动校验、安装锁定依赖并停机备份后切换；首次启用需加载支持应用更新的启动器。当前不包含离线模式。
+升级前请结束任务、暂停预约、停机并整批备份。兼容既有 `PI_*` 配置、旧数据文件、API/RPC 和浏览器偏好。新源码采用 Pivane 标识并提供配置别名，目录改名使用单独的停机迁移流程，详见[命名与兼容](docs/development/NAMING.md)。当前源码在设置提供[版本检查、Pi 受管更新、停机备份与重启](docs/UPDATES.md)。`node server.js` 和 `npm start` 都自动支持网页执行与命令输出反馈，无需更改服务启动命令；Pivane 应用可从版本卡片安装新发布包，自动校验、安装锁定依赖并停机备份后切换；首次启用需加载支持应用更新的启动器。当前不包含离线模式。
 
 ## 开发与许可
 

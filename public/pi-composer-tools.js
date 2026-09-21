@@ -73,7 +73,7 @@
             this.hide(); if (this.dialog.open) this.dialog.close();
         }
         setCommands(commands) {
-            this.remote = (commands || []).filter(c => !/^pi5-web-navigate(?::\d+)?$/.test(c.name));
+            this.remote = (commands || []).filter(c => !/^(?:pivane|pi5)-web-navigate(?::\d+)?$/.test(c.name));
             this.host.commands(this.commands());
             if (!this.dialog.open && this.input.value.startsWith('/') && this.active < 0) this.complete();
         }

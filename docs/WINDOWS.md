@@ -51,7 +51,7 @@ PI_WORKSPACE_BASE_URL=http://127.0.0.1:3001
 PI_CODING_AGENT_DIR=$piIdentity
 PI_MEDIA_CONFIG_DIR=$dataRoot/data/media-lab
 PI_MEDIA_DATA_DIR=$dataRoot/data/media
-PI_WEB_DEFERRED_FILE=$dataRoot/data/pi5-deferred-messages.json
+PI_WEB_DEFERRED_FILE=$dataRoot/data/pivane-deferred-messages.json
 PI_PROJECT_ROOTS=$projectRoots
 "@
 [IO.File]::WriteAllText((Join-Path $base 'instance.env'), $config, [Text.UTF8Encoding]::new($false))

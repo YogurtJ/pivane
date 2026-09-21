@@ -49,4 +49,4 @@
 
 依据用户授权进行可逆修复，优先只读收集必要信息。报告发生了什么、修改了哪些文件、如何验证及仍然不确定的范围。分享日志前移除凭据、私人正文、账户标识和不必要的机器地址。
 
-Pivane保留PI_*变量、pi5-*数据文件、API路径和浏览器存储键，以兼容已有安装。用户不需要为改名重命名服务或数据目录。HTTP/WS契约见[API](API.md)，常见故障见[运维](OPERATIONS.md)，已验证系统范围见[平台说明](RELEASE_INSTALL_VALIDATION.md)。
+Pivane 兼容既有 PI_* 变量、pi5-* 数据、API 路径和浏览器偏好。新源码的命名与配置别名见[命名与迁移](development/NAMING.md)；普通升级不要求手动改名，明确要求迁移目录时应分别核对启动配置、项目归属和原生会话，不能替换 JSONL 正文。HTTP/WS 契约见[API](API.md)，常见故障见[运维](OPERATIONS.md)，已验证系统范围见[平台说明](RELEASE_INSTALL_VALIDATION.md)。

@@ -55,7 +55,7 @@ Pi 包操作使用 `extensions_inventory` 和 `extensions_package`：读取真�
 | POST | `/api/pi/extension-assistant/inventory` | `{cwd,sessionId}`；只服务已打开的扩展助手，返回其固定范围的原生资源快照与 revision |
 | POST | `/api/pi/extension-assistant/package` | `{cwd,sessionId,action,source,expectedRevision,confirmed:true}`；范围取自原生助手身份，不由调用方覆盖；复用原生包服务的预算、锁、信任与冲突检查 |
 
-原生 `pi5-extension-assistant` custom entry 保存版本、当前 sessionId、安装范围、界面语言和可选返回会话 ID，不保存第二份对话。身份绑定 sessionId，分叉或导入新身份不会因复制旧 marker 自动成为助手。Web 打开会话快照的 `session.assistant` 返回身份元数据；恢复、压缩或资源重载后，扩展按该身份重新加载工具，并在每轮开始追加助手指引，不改全局 SYSTEM/APPEND_SYSTEM 文件。
+原生 `pivane-extension-assistant` custom entry（兼容旧 `pi5-extension-assistant`） 保存版本、当前 sessionId、安装范围、界面语言和可选返回会话 ID，不保存第二份对话。身份绑定 sessionId，分叉或导入新身份不会因复制旧 marker 自动成为助手。Web 打开会话快照的 `session.assistant` 返回身份元数据；恢复、压缩或资源重载后，扩展按该身份重新加载工具，并在每轮开始追加助手指引，不改全局 SYSTEM/APPEND_SYSTEM 文件。
 
 管理工具使用独立的进程凭据，只授权 inventory/package 两个 POST 端点，禁止重定向；媒体规划凭据的范围不变。REST 仍检查 Origin、实例访问验证及实际会话/worker，返回 no-store。该凭据不进入模型提示、工具结果或 JSONL。它不隔离同一系统用户下的恶意扩展。包确认通过原有 RPC UI；取消不提交，请求中断不表示服务端取消。包写入计入 `nativeSettingsBusy`，不另开同会话 worker。
 

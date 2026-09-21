@@ -1,10 +1,10 @@
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
-const INTERNAL_COMMAND = 'pi5-web-navigate';
+const { INTERNAL_COMMAND, INTERNAL_COMMAND_PATTERN } = require('./pivane-compat');
 
 function validateMessage(input, { plain = false } = {}) {
     if (typeof input.message !== 'string' || input.message.length > 400000) throw new Error('消息必须为不超过 400000 字符的文本');
     if (plain && /^\s*\//.test(input.message)) throw new Error('此操作仅支持普通消息，不支持斜杠命令');
-    if (new RegExp(`^\\s*/${INTERNAL_COMMAND}(?:\\s|:|$)`).test(input.message)) throw new Error('内部会话命令不能直接发送');
+    if (new RegExp(`^\\s*/${INTERNAL_COMMAND_PATTERN}(?:\\s|:|$)`).test(input.message)) throw new Error('内部会话命令不能直接发送');
     if (input.images !== undefined && !Array.isArray(input.images)) throw new Error('图片格式无效');
     const images = input.images || [];
     if (images.length > 6) throw new Error('一次最多发送 6 张图片');

@@ -1,9 +1,10 @@
 const { randomUUID } = require('crypto');
 const { EventEmitter } = require('events');
 const path = require('path');
-const { INTERNAL_COMMAND } = require('./pi-message-payload');
+const { INTERNAL_COMMAND_PATTERN, isInternalCommand, privateReply } = require('./pivane-compat');
 const { PiRpcClient } = require('./pi-rpc-client');
 const { PiRuntimeActivity, isCompactionNoop } = require('./pi-runtime-activity');
+const { workerLifecycle } = require('./pi-worker-lifecycle');
 
 const { PiRuntimeControls } = require('./pi-runtime-controls');
 const { PiShellExecution } = require('./pi-shell-execution');
@@ -140,7 +141,7 @@ class AgentWorker extends EventEmitter {
                     && !this.activity.snapshot().busy && !this.compactPending) this.finishControl();
                 return { ...data, webNavigation: this.navigation.snapshot(), webShell: this.shell.snapshot(), webQueueModes: this.queueModes(data), webCompaction: this.compaction, webOperation: Boolean(this.operation || this.controlPending || this.shell.busy), webControls: this.controls.snapshot() };
             }
-            if (type === 'get_commands') return { ...data, commands: data.commands.filter(command => !command.name.startsWith(INTERNAL_COMMAND)) };
+            if (type === 'get_commands') return { ...data, commands: data.commands.filter(command => !isInternalCommand(command.name)) };
             return data;
         } catch (error) {
             if (changingModel && error.code === 'RPC_TIMEOUT') this.modelChangeUncertain = true;
@@ -247,7 +248,7 @@ class AgentWorker extends EventEmitter {
             const raw = await this.client.request('get_commands');
             const command = raw.commands.find(c => c.source === 'extension'
                 && (c.sourceInfo?.path || c.path) === path.join(__dirname, 'pi-web-session-extension.ts')
-                && new RegExp(`^${INTERNAL_COMMAND}(?::[0-9]+)?$`).test(c.name) && c.description?.includes('task-v1'));
+                && new RegExp(`^${INTERNAL_COMMAND_PATTERN}(?::[0-9]+)?$`).test(c.name) && c.description?.includes('task-v1'));
             if (!command) throw new Error('Task launch bridge is not available');
             const id = randomUUID();
             this.navigationResults.set(id, null);
@@ -274,7 +275,7 @@ class AgentWorker extends EventEmitter {
             const raw = await this.client.request('get_commands');
             const command = raw.commands.find(c => c.source === 'extension'
                 && (c.sourceInfo?.path || c.path) === path.join(__dirname, 'pi-web-session-extension.ts')
-                && new RegExp(`^${INTERNAL_COMMAND}(?::[0-9]+)?$`).test(c.name) && c.description?.includes('title-v1'));
+                && new RegExp(`^${INTERNAL_COMMAND_PATTERN}(?::[0-9]+)?$`).test(c.name) && c.description?.includes('title-v1'));
             if (!command) throw new Error('当前运行实例尚未加载标题接口，请在任务结束后退出并重新打开线程');
             available();
             // Synchronous bridge reads/CAS do not reserve the main prompt pipeline. Keep
@@ -302,7 +303,7 @@ class AgentWorker extends EventEmitter {
             const commands = await this.client.request('get_commands');
             const extensionPath = path.join(__dirname, 'pi-web-session-extension.ts');
             const command = commands.commands.find(c => c.source === 'extension'
-                && (c.sourceInfo?.path || c.path) === extensionPath && new RegExp(`^${INTERNAL_COMMAND}(?::[0-9]+)?$`).test(c.name)
+                && (c.sourceInfo?.path || c.path) === extensionPath && isInternalCommand(c.name)
                 && c.description?.includes(kind === 'tree' ? 'tree-v1' : 'history-v1'));
             if (!command) throw new Error('当前运行实例尚未加载历史接口，请在任务结束后退出并重新打开会话');
             if (writing && (this.controlPending || this.compactPending || this.activity.compacting)) throw new Error('停止或压缩正在进行，请稍后保存书签');
@@ -334,7 +335,7 @@ class AgentWorker extends EventEmitter {
             const raw = await this.client.request('get_commands');
             const command = raw.commands.find(c => c.source === 'extension'
                 && (c.sourceInfo?.path || c.path) === path.join(__dirname, 'pi-web-session-extension.ts')
-                && new RegExp(`^${INTERNAL_COMMAND}(?::[0-9]+)?$`).test(c.name) && c.description?.includes(systemPrompt ? 'system-prompt-v1' : 'resources-v1'));
+                && isInternalCommand(c.name) && c.description?.includes(systemPrompt ? 'system-prompt-v1' : 'resources-v1'));
             if (!command) throw new Error('当前实例尚未加载资源查看接口，请在任务结束后退出并重新打开线程');
             if (this.disposed || this.operation && operationToken !== this.operation) throw new Error('资源读取或会话操作正在进行');
             // Keep the private slot until acknowledgement or process exit, even if the
@@ -352,7 +353,7 @@ class AgentWorker extends EventEmitter {
             const extensionPath = path.join(__dirname, 'pi-web-session-extension.ts');
             const find = data => data.commands.find(item => item.source === 'extension'
                 && (item.sourceInfo?.path || item.path) === extensionPath
-                && new RegExp(`^${INTERNAL_COMMAND}(?::[0-9]+)?$`).test(item.name)
+                && isInternalCommand(item.name)
                 && item.description?.includes('reload-v1:'));
             const before = find(await this.client.request('get_commands'));
             if (!before) throw new Error('当前 runtime 尚未加载重载接口，请在任务结束后退出并重新打开会话');
@@ -360,7 +361,7 @@ class AgentWorker extends EventEmitter {
                 await rpc('prompt', { message: `/${before.name} ${JSON.stringify({ mode: 'reload', token: this.navigationToken })}` }, 120000);
                 const raw = await this.client.request('get_commands');
                 const after = find(raw);
-                const commands = { ...raw, commands: raw.commands.filter(c => !c.name.startsWith(INTERNAL_COMMAND)) };
+                const commands = { ...raw, commands: raw.commands.filter(c => !isInternalCommand(c.name)) };
                 if (!after || after.description === before.description) throw new Error('未确认资源重新加载成功，请检查扩展错误并重新查看命令目录');
                 this._broadcast({ type: 'gateway_commands', commands: commands.commands });
                 return commands;
@@ -383,7 +384,7 @@ class AgentWorker extends EventEmitter {
             const extensionPath = path.join(__dirname, 'pi-web-session-extension.ts');
             const command = commands.commands.find(item => item.source === 'extension'
                 && (item.sourceInfo?.path || item.path) === extensionPath
-                && new RegExp(`^${INTERNAL_COMMAND}(?::[0-9]+)?$`).test(item.name)
+                && isInternalCommand(item.name)
                 && item.description?.includes('context snapshot'));
             if (!command) throw new Error('主 runtime 尚未加载上下文快照接口，请在任务结束后重新打开主会话');
             const id = randomUUID();
@@ -408,7 +409,7 @@ class AgentWorker extends EventEmitter {
             const extensionPath = path.join(__dirname, 'pi-web-session-extension.ts');
             const command = commands.commands.find(item => item.source === 'extension'
                 && (item.sourceInfo?.path || item.path) === extensionPath
-                && new RegExp(`^${INTERNAL_COMMAND}(?::[0-9]+)?$`).test(item.name));
+                && isInternalCommand(item.name));
             if (!command) throw new Error('原生回退扩展未加载，请重新打开 runtime');
             if (payload.mode === 'tree' && !command.description?.includes('tree-v1')) throw new Error('当前实例尚未加载会话树导航，请在任务结束后退出并重新打开线程');
             if (options.beforeSend && !options.beforeSend()) return { cancelled: true };
@@ -472,38 +473,38 @@ class AgentWorker extends EventEmitter {
         if (this.shell.handle(event)) return;
         if (event.type === 'extension_ui_request' && event.method === 'notify') {
             try {
-                const result = JSON.parse(event.message);
+                const result = privateReply(JSON.parse(event.message));
                 if (this.modelCatalog.handle(result)) return;
-                if (typeof result.pi5Resources === 'string') {
-                    if (this.resourceResults.has(result.pi5Resources)) this.resourceResults.set(result.pi5Resources, result);
+                if (typeof result.pivaneResources === 'string') {
+                    if (this.resourceResults.has(result.pivaneResources)) this.resourceResults.set(result.pivaneResources, result);
                     return; // Including late/unknown private replies.
                 }
-                if (typeof result.pi5TitleEligibility === 'boolean') {
-                    this.autoTitleEligible = result.pi5TitleEligibility;
+                if (typeof result.pivaneTitleEligibility === 'boolean') {
+                    this.autoTitleEligible = result.pivaneTitleEligibility;
                     return;
                 }
-                if (typeof result.pi5Title === 'string') {
-                    if (this.titleResults.has(result.pi5Title)) this.titleResults.set(result.pi5Title, result);
+                if (typeof result.pivaneTitle === 'string') {
+                    if (this.titleResults.has(result.pivaneTitle)) this.titleResults.set(result.pivaneTitle, result);
                     return; // Never broadcast private excerpts, including late/unknown replies.
                 }
-                if (typeof result.pi5History === 'string') {
-                    const slot = this.historyResults.get(result.pi5History);
+                if (typeof result.pivaneHistory === 'string') {
+                    const slot = this.historyResults.get(result.pivaneHistory);
                     if (slot) {
                         slot.result = result;
                         if (slot.writing) {
                             if (this.historyWriting === slot) this.historyWriting = null;
-                            this.historyResults.delete(result.pi5History);
+                            this.historyResults.delete(result.pivaneHistory);
                             if (result.success) this._broadcast({ type: 'gateway_history_changed', entryId: slot.entryId });
                         }
                     }
                     return; // Unknown and late history responses are private too.
                 }
-                if (typeof result.pi5Context === 'string') {
-                    if (this.contextResults.has(result.pi5Context)) this.contextResults.set(result.pi5Context, result);
+                if (typeof result.pivaneContext === 'string') {
+                    if (this.contextResults.has(result.pivaneContext)) this.contextResults.set(result.pivaneContext, result);
                     return; // Late/unknown private responses must never reach a browser.
                 }
-                if (typeof result.pi5Navigation === 'string') {
-                    if (this.navigationResults.has(result.pi5Navigation)) this.navigationResults.set(result.pi5Navigation, result);
+                if (typeof result.pivaneNavigation === 'string') {
+                    if (this.navigationResults.has(result.pivaneNavigation)) this.navigationResults.set(result.pivaneNavigation, result);
                     return;
                 }
             } catch {}
@@ -576,8 +577,16 @@ class AgentWorker extends EventEmitter {
         }
     }
 
+    lifecycle() {
+        return workerLifecycle(this);
+    }
+
+    isIdle() {
+        return this.lifecycle().blockers.length === 0;
+    }
+
     canEvict(now, idleMs) {
-        return !this.titleResults.size && !this.titleGeneration && !this.shell.busy && !this.resourceResults.size && !this.historyPending && !this.historyWriting && !this.controlPending && !this.controls.recoveries.length && !this.controls.drafts.length && !this.contextCapture && !this.operation && !this.compactPending && this.promptPending === 0 && !this.activity.snapshot().busy && this.subscribers.size === 0 && now - this.lastUsedAt >= idleMs;
+        return this.isIdle() && this.subscribers.size === 0 && now - this.lastUsedAt >= idleMs;
     }
 
     async dispose() {
@@ -676,15 +685,16 @@ class PiAgentSupervisor extends EventEmitter {
         return [...this.workers.values(), ...this.ephemeralWorkers].some(worker => worker.cwd === cwd && !worker.disposed);
     }
 
+    isIdle() {
+        return !this.disposing && !this.starting.size && !this.ephemeralWorkers.size
+            && [...this.workers.values()].every(worker => worker.isIdle());
+    }
+
     getActivity() {
         return [...this.workers.values()]
             .filter(worker => !worker.disposed && worker.sessionId)
-            .map(worker => {
-                const activity = worker.activity.snapshot();
-                return { cwd: worker.cwd, sessionId: worker.sessionId, titleGenerating: worker.titleGeneration, ...activity,
-                    busy: activity.busy || worker.navigation.busy || worker.shell.busy || worker.controlPending || Boolean(worker.titleResults.size || worker.resourceResults.size || worker.historyPending || worker.historyWriting),
-                    phase: (worker.navigation.busy || worker.shell.busy || worker.controlPending || worker.titleResults.size || worker.resourceResults.size || worker.historyPending || worker.historyWriting) && !activity.busy ? 'running' : activity.phase };
-            });
+            .map(worker => ({ cwd: worker.cwd, sessionId: worker.sessionId, titleGenerating: worker.titleGeneration,
+                ...worker.lifecycle().activity }));
     }
 
     getActiveWorker(sessionPath) {

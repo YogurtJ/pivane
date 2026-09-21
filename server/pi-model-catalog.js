@@ -1,5 +1,5 @@
 const { randomUUID } = require('node:crypto');
-const { INTERNAL_COMMAND } = require('./pi-message-payload');
+const { isInternalCommand, privateReply } = require('./pivane-compat');
 class PiModelCatalog {
     constructor(worker) { this.worker = worker; this.pending = new Map(); this.inflight = null; }
     refresh() {
@@ -9,8 +9,9 @@ class PiModelCatalog {
         return task;
     }
     handle(result) {
-        if (typeof result?.pi5Models !== 'string') return false;
-        if (this.pending.has(result.pi5Models)) this.pending.set(result.pi5Models, result);
+        result = privateReply(result);
+        if (typeof result?.pivaneModels !== 'string') return false;
+        if (this.pending.has(result.pivaneModels)) this.pending.set(result.pivaneModels, result);
         return true; // Private, including late/unknown responses.
     }
     async run() {
@@ -18,7 +19,7 @@ class PiModelCatalog {
         if (worker.modelChangesPending || worker.modelChangeUncertain) throw Object.assign(new Error('模型切换尚未确认，请等待完成；超时后请空闲退出并重开线程'), { code: 'SESSION_BUSY' });
         return worker.exclusive(async () => {
             const commands = await worker.client.request('get_commands');
-            const command = commands.commands?.find(c => c.name.startsWith(INTERNAL_COMMAND) && c.description?.includes('model-catalog-v1'));
+            const command = commands.commands?.find(c => isInternalCommand(c.name) && c.description?.includes('model-catalog-v1'));
             if (!command) throw new Error('当前运行实例尚未支持模型目录刷新，请空闲退出并重新打开线程');
             const id = randomUUID(); this.pending.set(id, null);
             try {

@@ -16,9 +16,10 @@ async function check(browser, base, width, language) {
         localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem(`pi.web.session:${cwd}`, 'source');
         localStorage.setItem('pi.workspace.language', language);
     }, { cwd, language });
-    const receipt = { role: 'custom', customType: 'pi5-agent-task-receipt', display: true, content: text,
+    const markerPrefix = language === 'en' ? 'pivane' : 'pi5';
+    const receipt = { role: 'custom', customType: `${markerPrefix}-agent-task-receipt`, display: true, content: text,
         details: { session: child, model: { provider: 'fixture', modelId: 'long-model-'.repeat(30) }, thinkingLevel: 'off', status: 'submitted' } };
-    const task = { role: 'custom', customType: 'pi5-agent-task-message', display: true, content: text, details: { source: { cwd, sessionId: source.id } } };
+    const task = { role: 'custom', customType: `${markerPrefix}-agent-task-message`, display: true, content: text, details: { source: { cwd, sessionId: source.id } } };
     const histories = { source: [{ role: 'user', content: 'Create task B' }, receipt], child: [task, { role: 'assistant', content: 'Task complete.', stopReason: 'stop' }] };
     let active = source;
     await page.route('**/api/**', route => {

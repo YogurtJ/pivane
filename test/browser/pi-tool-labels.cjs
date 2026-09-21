@@ -14,15 +14,15 @@ const calls = [
     { id: 'unknown', name: 'unknown_tool', arguments: {} }
 ];
 const result = (id, name, details = {}, isError = false) => ({ role: 'toolResult', toolCallId: id, toolName: name, details, isError, content: [{ type: 'text', text: 'Synthetic tool output' }] });
-const provenance = (id, name, extra) => ({ pi5ToolProvenance: { version: 1, toolCallId: id, toolName: name, ...extra } });
+const provenance = (id, name, extra, legacy = false) => ({ [legacy ? 'pi5ToolProvenance' : 'pivaneToolProvenance']: { version: 1, toolCallId: id, toolName: name, ...extra } });
 const messages = [
     { role: 'user', content: 'Explain the execution records', timestamp: 1 },
     { role: 'assistant', content: calls.map(c => ({ type: 'toolCall', ...c })), timestamp: 2 },
     result('skill', 'read', provenance('skill', 'read', { skill: { name: 'slides', path: '/skills/slides/SKILL.md' } })),
     result('old', 'read', {}, true),
-    result('package', 'render_slides', provenance('package', 'render_slides', { source: { origin: 'package', source: 'npm:slide-kit-with-a-long-package-name', path: '/packages/slide-kit/index.ts' } })),
+    result('package', 'render_slides', provenance('package', 'render_slides', { source: { origin: 'package', source: 'npm:slide-kit-with-a-long-package-name', path: '/packages/slide-kit/index.ts' } }, true)),
     result('inventory', 'extensions_inventory'),
-    result('cancel', 'extensions_package', { pi5PackageOperation: { status: 'cancelled' } }),
+    result('cancel', 'extensions_package', { pivanePackageOperation: { status: 'cancelled' } }),
     result('unknown', 'unknown_tool', provenance('wrong-id', 'unknown_tool', { source: { source: 'false-owner', path: '/x' } }))
 ];
 async function run(browser, base, width, locale) {

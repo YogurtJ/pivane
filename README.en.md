@@ -64,9 +64,11 @@ The default installation runs in the background. After configuring the instance,
 
 The current source includes **Settings → Versions and updates** for version checks and official downloads, plus managed Pi updates, data backups and instance restarts. Both `node server.js` and `npm start` support these actions without changing service startup commands. The page displays the actual command output, exit code and final version. Pi is installed and checked in a separate directory before the service stops for backup and activation. Pivane application updates still use release archives. See [the user guide](docs/en/USER_GUIDE.md#versions-and-updates).
 
+Current source introduces Pivane configuration names and `PIVANE_` aliases for workspace settings, while preserving existing files, browser preferences and Pi-native identity variables. Project directory moves require a verified offline migration; see [naming and compatibility](docs/development/NAMING.md).
+
 ## Documentation and contribution
 
-Start with the [English user guide](docs/en/USER_GUIDE.md). Detailed feature, API and development documentation is currently primarily in Chinese and is linked from the [documentation index](docs/README.md). An Agent helping with deployment should begin with [the operational Agent guide](docs/AGENT_GUIDE.md); source contributors should read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
+Start with the [English user guide](docs/en/USER_GUIDE.md). Detailed feature, API and development documentation is currently primarily in Chinese and is linked from the [documentation index](docs/README.md). An Agent helping with deployment should begin with [the operational Agent guide](docs/AGENT_GUIDE.md); source contributors should read [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) and the [module map](docs/development/MODULES.md).
 
 In an isolated development environment:
 

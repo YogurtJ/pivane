@@ -9,7 +9,7 @@ const { PiSettingsService } = require('./pi-settings-service');
 const { WorkspacePreferencesService } = require('./workspace-preferences-service');
 const { PiDeferredMessages } = require('./pi-deferred-messages');
 const { mountSessionWorkflows } = require('./pi-session-workflows');
-const { INTERNAL_COMMAND } = require('./pi-message-payload');
+const { INTERNAL_COMMAND_PATTERN } = require('./pivane-compat');
 const { descriptorBackendAvailable } = require('./pi-file-descriptor');
 const { PiSideChatService } = require('./pi-side-chat');
 
@@ -63,7 +63,7 @@ function validateRpcPayload(command, payload) {
     if (command !== 'prompt' && command !== 'steer' && command !== 'follow_up') return;
     const message = String(payload.message || '');
     if (/^\s*\/btw(?:\s|$)/.test(message)) throw new Error('请通过 Web 侧聊入口发送 BTW 问题');
-    if (new RegExp(`^\\s*/${INTERNAL_COMMAND}(?:\\s|:|$)`).test(message)) throw new Error('Internal navigation command is not allowed');
+    if (new RegExp(`^\\s*/${INTERNAL_COMMAND_PATTERN}(?:\\s|:|$)`).test(message)) throw new Error('Internal navigation command is not allowed');
     if (message.length > 400000) throw new Error('Message is too large');
     const images = Array.isArray(payload.images) ? payload.images : [];
     if (images.length > 6) throw new Error('A maximum of 6 images can be sent at once');
@@ -116,12 +116,8 @@ function createPiAgentGateway(options = {}) {
         maintenance, preferences,
         idle: () => !agentThreads.jobs.size && !settingsService.mutating && !settingsService.loginService.busy && !nativeService.busy && !sessionTransfer.running
             && !titles.jobs.size && !titles.savingModel && !deferred.running && !sideChat.connections.size && !sideChat.tickets.size
-            && ![...sideChat.parents.values()].some(parent => parent.preparing) && !supervisor.ephemeralWorkers.size && !supervisor.starting.size
-            && !options.mediaLabService?.inFlight && !options.mediaLabService?.providerService?.busy && !options.mediaLabService?.providerService?.active
-            && [...supervisor.workers.values()].every(worker => !worker.disposed && !worker.restarting && !worker.activity.snapshot().busy && !worker.shell.busy && !worker.operation
-                && !worker.controlPending && !worker.contextCapture && !worker.promptPending && !worker.compactPending && !worker.historyPending && !worker.historyWriting
-                && !worker.titleGeneration && !worker.titleResults.size && !worker.resourceResults.size && !worker.pendingUi.size
-                && !worker.controls.recoveries.length && !worker.controls.drafts.length && !worker.controls.queue.steering.length && !worker.controls.queue.followUp.length),
+            && ![...sideChat.parents.values()].some(parent => parent.preparing) && supervisor.isIdle()
+            && !options.mediaLabService?.inFlight && !options.mediaLabService?.providerService?.busy && !options.mediaLabService?.providerService?.active,
         pause: () => deferred.pauseAll()
     });
     notifications.mount(router);
@@ -441,239 +437,9 @@ function createPiAgentGateway(options = {}) {
     mountSessionWorkflows(router, { store, supervisor, deferred, preferences });
     const sessionTransfer = require('./pi-session-transfer').mountSessionTransfer(router, { store, supervisor, preferences });
 
-    router.use('/settings', (req, res, next) => {
-        res.set('Cache-Control', 'no-store');
-        if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body !== undefined && (!req.body || typeof req.body !== 'object' || Array.isArray(req.body))) return res.status(400).json({ error: 'A JSON object is required' });
-        next();
-    });
-    const settingsAction = handler => async (req, res) => {
-        try { res.json(await handler(req)); }
-        catch (error) { res.status(error.statusCode || 400).json({ error: error.message }); }
-    };
-    router.get('/settings/auxiliary-models', settingsAction(() => auxiliaryModels.snapshot()));
-    router.put('/settings/auxiliary-models', settingsAction(req => auxiliaryModels.save(req.body)));
-    router.get('/settings/session-titles', settingsAction(() => preferences.getSessionTitles()));
-    router.put('/settings/session-titles', settingsAction(req => titles.saveSettings(req.body)));
-    router.get('/settings/usage', settingsAction(req => usage.report(req.query)));
-    router.post('/settings/providers/:id/login', settingsAction(req => {
-        if (settingsService.mutating || nativeService.busy) throw Object.assign(new Error('设置正在保存，请稍后再试'), { statusCode: 409 });
-        return settingsService.loginService.start(req.params.id, req.body?.method);
-    }));
-    router.get('/settings/login/:id', settingsAction(req => settingsService.loginService.snapshot(req.params.id)));
-    router.post('/settings/login/:id/answer', settingsAction(req => settingsService.loginService.answer(req.params.id, req.body)));
-    router.delete('/settings/login/:id', settingsAction(req => settingsService.loginService.cancel(req.params.id)));
-    router.put('/settings/models/thinking', settingsAction(req => settingsService.saveModelThinking(req.body)));
+    require('./routes/settings').mountSettingsRoutes(router, { settingsService, nativeService, auxiliaryModels, titles, preferences, usage, store });
 
-    router.get('/settings/models', async (req, res) => {
-        try {
-            res.json(await settingsService.getModelSnapshot());
-        } catch (error) {
-            res.status(500).json({ error: error.message });
-        }
-    });
-
-    router.post('/settings/providers/:id/api-key', async (req, res) => {
-        try {
-            res.json(await settingsService.saveApiKey(req.params.id, req.body.apiKey));
-        } catch (error) {
-            res.status(error.statusCode || 400).json({ error: error.message });
-        }
-    });
-
-    router.delete('/settings/providers/:id/credential', async (req, res) => {
-        try {
-            res.json(await settingsService.logout(req.params.id));
-        } catch (error) {
-            res.status(error.statusCode || 400).json({ error: error.message });
-        }
-    });
-
-    router.post('/settings/models/refresh', async (req, res) => {
-        try {
-            res.json(await settingsService.refreshModels());
-        } catch (error) {
-            res.status(502).json({ error: error.message });
-        }
-    });
-
-    router.post('/settings/models/preferences', async (req, res) => {
-        try {
-            res.json(await settingsService.setModelPreferences(req.body));
-        } catch (error) {
-            res.status(error.statusCode || 400).json({ error: error.message });
-        }
-    });
-
-    router.patch('/settings/media-agent', async (req, res) => {
-        try {
-            res.json(await settingsService.setMediaAgentModel(req.body));
-        } catch (error) {
-            res.status(400).json({ error: error.message });
-        }
-    });
-
-    router.post('/settings/models/test', async (req, res) => {
-        try {
-            res.json(await settingsService.testModel(req.body));
-        } catch (error) {
-            res.status(502).json({ error: error.message });
-        }
-    });
-
-    router.post('/settings/custom-providers', async (req, res) => {
-        try {
-            res.json(await settingsService.upsertCustomProvider(req.body));
-        } catch (error) {
-            res.status(error.statusCode || 400).json({ error: error.message });
-        }
-    });
-
-    router.delete('/settings/custom-providers/:providerId', async (req, res) => {
-        try {
-            res.json(await settingsService.deleteCustomProvider(req.params.providerId));
-        } catch (error) {
-            res.status(error.statusCode || 400).json({ error: error.message });
-        }
-    });
-
-    router.post('/settings/custom-providers/:providerId/models', async (req, res) => {
-        try {
-            res.json(await settingsService.upsertCustomModel(req.params.providerId, req.body));
-        } catch (error) {
-            res.status(error.statusCode || 400).json({ error: error.message });
-        }
-    });
-
-    router.delete('/settings/custom-providers/:providerId/models/:modelId', async (req, res) => {
-        try {
-            res.json(await settingsService.deleteCustomModel(req.params.providerId, req.params.modelId));
-        } catch (error) {
-            res.status(error.statusCode || 400).json({ error: error.message });
-        }
-    });
-
-    router.get('/settings/resources', async (req, res) => {
-        try {
-            const cwd = store.resolveProject(req.query.cwd || process.cwd());
-            res.json(await settingsService.getResourceSnapshot(cwd));
-        } catch (error) {
-            res.status(400).json({ error: error.message });
-        }
-    });
-
-    router.post('/settings/packages/action', async (req, res) => {
-        try {
-            const cwd = store.resolveProject(req.body.cwd || process.cwd());
-            res.json(await settingsService.packageAction({ ...req.body, cwd }));
-        } catch (error) {
-            res.status(400).json({ error: error.message });
-        }
-    });
-
-    router.post('/settings/skills', async (req, res) => {
-        try {
-            res.status(201).json(await settingsService.createSkill(req.body));
-        } catch (error) {
-            res.status(400).json({ error: error.message });
-        }
-    });
-
-    router.delete('/settings/skills/:name', async (req, res) => {
-        try {
-            res.json(await settingsService.deleteSkill(req.params.name));
-        } catch (error) {
-            res.status(400).json({ error: error.message });
-        }
-    });
-
-    router.patch('/settings/skill-commands', async (req, res) => {
-        try {
-            const cwd = store.resolveProject(req.body.cwd || process.cwd());
-            res.json(await settingsService.setSkillCommands(req.body.enabled, cwd));
-        } catch (error) {
-            res.status(400).json({ error: error.message });
-        }
-    });
-
-    router.get('/media/capabilities/:kind', (req, res) => {
-        if (!mediaAgentService) return res.status(503).json({ error: 'Media Agent is not available' });
-        try {
-            res.json(mediaAgentService.getCapabilities(req.params.kind));
-        } catch (error) {
-            res.status(error.statusCode || 400).json({ error: error.message });
-        }
-    });
-
-    router.post('/media/plan', async (req, res) => {
-        if (!mediaAgentService) return res.status(503).json({ error: 'Media Agent is not available' });
-        try {
-            const cwd = store.resolveProject(req.body.cwd || process.cwd());
-            res.json(await mediaAgentService.createPlan({ ...req.body, cwd }));
-        } catch (error) {
-            res.status(error.statusCode || 500).json({ error: error.message });
-        }
-    });
-
-    if (options.mediaLabService) {
-        const lab = options.mediaLabService;
-        const respond = handler => async (req, res) => {
-            res.set('Cache-Control', 'no-store');
-            try { res.json(await handler(req)); }
-            catch (error) { res.status(error.statusCode || 500).json({ error: error.message, ...(error.taskId ? { taskId: error.taskId } : {}) }); }
-        };
-        router.use('/media/lab', (req, res, next) => {
-            if (req.method === 'POST' && (!req.body || typeof req.body !== 'object' || Array.isArray(req.body))) return res.status(400).json({ error: 'A JSON request object is required' });
-            next();
-        });
-        const replyTts = new (require('./pi-reply-tts-service').PiReplyTtsService)(lab, preferences);
-        router.get('/settings/reply-tts', respond(() => replyTts.snapshot()));
-        router.put('/settings/reply-tts', respond(req => replyTts.save(req.body)));
-        router.get('/media/lab', respond(() => lab.catalog()));
-        router.get('/media/lab/activity', respond(() => ({ running: lab.inFlight, connectionMutation: Boolean(lab.providerService?.busy), connectionOperations: lab.providerService?.active || 0 })));
-        router.get('/media/lab/execution/:ticket', respond(req => lab.executionStatus(req.params.ticket)));
-        if (lab.providerService) {
-            const providers = lab.providerService;
-            router.get('/media/lab/connections', respond(async () => ({ ...await providers.snapshot(), ...require('./media-connection-planner').connectionSchema() })));
-            router.post('/media/lab/providers', respond(req => providers.saveProvider(req.body)));
-            router.delete('/media/lab/providers/:id', respond(req => providers.removeProvider(req.params.id, req.body)));
-            router.post('/media/lab/providers/:id/key', respond(req => providers.setKey(req.params.id, req.body)));
-            router.delete('/media/lab/providers/:id/key', respond(req => providers.removeKey(req.params.id, req.body)));
-            router.post('/media/lab/providers/:id/probe', respond(req => {
-                if (req.body.confirmed !== true || !['connection','models'].includes(req.body.mode)) throw Object.assign(new Error('Choose and confirm a read-only provider probe'), { statusCode: 400 });
-                return providers.probe(req.params.id, req.body.mode === 'models');
-            }));
-            router.post('/media/lab/providers/:id/models', respond(req => providers.saveModel(req.params.id, req.body)));
-            router.delete('/media/lab/providers/:id/models/:modelId', respond(req => providers.removeModel(req.params.id, req.params.modelId, req.body)));
-            router.post('/media/lab/connection-plan', respond(req => {
-                let cwd;
-                try { cwd = store.resolveProject(req.body.cwd || process.cwd()); }
-                catch (error) { throw Object.assign(error, { statusCode: 400 }); }
-                if (!mediaAgentService) throw Object.assign(new Error('Media planner is unavailable'), { statusCode: 503 });
-                return require('./media-connection-planner').createConnectionDraft(mediaAgentService, providers, { ...req.body, cwd });
-            }));
-        }
-        router.post('/media/lab/models', respond(async req => {
-            if ((await lab.models()).some(model => model.id === req.body.model?.id)) throw Object.assign(new Error('Model ID already exists'), { statusCode: 409 });
-            return require('./media-lab-models').installMediaModel(lab.profile, req.body);
-        }));
-        router.get('/media/lab/docs', (req, res) => res.type('text/markdown').sendFile(path.join(__dirname, '..', 'docs', 'MEDIA_LAB.md')));
-        router.get('/media/lab/history', respond(req => lab.history(req.query.kind)));
-        router.delete('/media/lab/history/:kind/:id', respond(req => lab.deleteMedia(req.params.kind, req.params.id)));
-        router.post('/media/lab/review', respond(req => lab.review(req.body)));
-        router.post('/media/lab/execute', respond(req => {
-            if (req.body.confirmed !== true || typeof req.body.ticket !== 'string' || Object.keys(req.body).some(key => !['ticket', 'confirmed'].includes(key))) {
-                throw Object.assign(new Error('An explicit reviewed ticket is required'), { statusCode: 400 });
-            }
-            return lab.execute(req.body.ticket);
-        }));
-        router.post('/media/lab/plan', respond(req => {
-            let cwd;
-            try { cwd = store.resolveProject(req.body.cwd || process.cwd()); }
-            catch (error) { throw Object.assign(error, { statusCode: 400 }); }
-            if (!mediaAgentService) throw Object.assign(new Error('Media planner is unavailable'), { statusCode: 503 });
-            return mediaAgentService.createLabPlan({ ...req.body, cwd });
-        }));
-    }
+    require('./routes/media').mountMediaRoutes(router, { mediaAgentService, mediaLabService: options.mediaLabService, preferences, store });
 
     function mount(app) {
         app.use('/api/pi', router);

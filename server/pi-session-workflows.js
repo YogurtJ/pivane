@@ -1,3 +1,4 @@
+const { customTypeIs } = require('./pivane-compat');
 const { activeBranch, promptFromEntry, replyText, isReplyForkPoint, validateMessage, assertSendable } = require('./pi-message-payload');
 
 function workflowSnapshot(snapshot) {
@@ -6,7 +7,7 @@ function workflowSnapshot(snapshot) {
     const versions = [];
     const seen = new Set();
     for (const entry of snapshot.entries) {
-        if (entry.type !== 'custom' || entry.customType !== 'pi5-web-navigation') continue;
+        if (entry.type !== 'custom' || !customTypeIs(entry, 'pivane-web-navigation')) continue;
         const target = entry.data?.fromLeafId;
         if (!target || seen.has(target) || target === snapshot.leafId) continue;
         seen.add(target);

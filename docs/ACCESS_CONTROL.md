@@ -42,7 +42,7 @@ Token 修改撤销全部旧 Cookie 和旧 Token；“撤销所有登录”只撤
 
 ## 配置与恢复
 
-网页配置位于 `<PI_CODING_AGENT_DIR 或 ~/.pi/agent>/pi5-access.json`。文件使用0600、同目录临时文件、fsync后原子rename；不写工作台普通偏好或原生 auth.json。仅保存盐与scrypt校验值、配置修订、最多64条登录标识的SHA-256与期限，不保存原 Token 或原 Cookie。一个配置文件只由一个服务进程管理。
+网页新配置位于 `<PI_CODING_AGENT_DIR 或 ~/.pi/agent>/pivane-access.json`；既有 `pi5-access.json` 自动沿用，两者同时存在时拒绝猜测。文件使用0600、同目录临时文件、fsync后原子rename；不写工作台普通偏好或原生 auth.json。仅保存盐与scrypt校验值、配置修订、最多64条登录标识的SHA-256与期限，不保存原 Token 或原 Cookie。一个配置文件只由一个服务进程管理。
 
 文件不存在表示默认免认证；关闭网页验证会清除原Token校验值，再次开启需重新设置或生成。损坏、非法结构、非普通文件或符号链接返回503并阻止私人访问，不悄悄关闭验证。更改设置需认证、confirmed和expectedRevision，旧页面409，不自动重放失败写入。Cookie登录元数据不改变设置修订。
 

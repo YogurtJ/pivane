@@ -47,7 +47,7 @@
 
 导航在 await 前进入现有空闲互斥区，与发送、压缩、Shell、重载、书签和预约互斥。`get_state.webNavigation` 与 `gateway_navigation` 携带 runtimeId/revision/busy 和最新 job 的 ID/目标/状态/时间，不含草稿或摘要正文；不产生完成未读。取消走原生 abort，但只有原导航结果终态才释放占用。摘要重试遵循 Pi 原生设置；网关不重新提交导航。服务等待最多10分钟，浏览器11分钟；RPC超时关闭不确定worker后重新连接核对，不自动重放。错误后也通知页面重读位置，以覆盖导航后扩展钩子失败的情况。
 
-成功导航通过公开 pi.appendEntry 追加 `pi5-web-navigation` metadata 保持重启后的 leaf；不含聊天副本。已有原生 summary 保持原格式与 usage；当前状态仅内存。未知/迟到 pi5Navigation 与 pi5History 响应在 Supervisor 截获。
+成功导航通过公开 pi.appendEntry 追加 `pivane-web-navigation` metadata（兼容旧 `pi5-web-navigation`） 保持重启后的 leaf；不含聊天副本。已有原生 summary 保持原格式与 usage；当前状态仅内存。未知/迟到 pivaneNavigation 与 pivaneHistory 响应及其旧 pi5 别名在 Supervisor 截获。
 
 专项 `test/pi-session-tree.test.js` 使用原生 SessionManager、真实RPC和loopback SSE，覆盖正文/工具投影、折叠/分页、无摘要/有摘要/取消/错误、图片草稿、修订冲突、双客户端、预约暂停及重启恢复。`test/browser/pi-session-tree.cjs` 验证1440/393/320px三主题、正文阅读面积、树操作、确认取消、草稿与迟到线程隔离；沿用原历史、工作流、附件、输入与文件查看回归。所有测试使用独立数据或mock，不操作用户线程或调用付费模型。
 

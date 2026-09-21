@@ -16,7 +16,7 @@ class PiDeferredMessages {
         this.supervisor = supervisor;
         this.now = now;
         const portSuffix = String(process.env.PORT || '3000') === '3001' ? '' : `-${String(process.env.PORT || '3000').replace(/[^0-9]/g, '')}`;
-        this.filePath = filePath || process.env.PI_WEB_DEFERRED_FILE || path.join(process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), '.pi', 'agent'), `pi5-deferred-messages${portSuffix}.json`);
+        this.filePath = filePath || process.env.PI_WEB_DEFERRED_FILE || require('./pivane-compat').dataFile(process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), '.pi', 'agent'), `pivane-deferred-messages${portSuffix}.json`);
         this.jobs = [];
         this.disposed = false;
         this.running = null;

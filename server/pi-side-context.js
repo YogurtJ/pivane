@@ -3,7 +3,7 @@ const { SIDE_TOOL_POLICY } = require('./pi-side-tools');
 
 const MAX_CONTEXT_BYTES = 32 * 1024 * 1024;
 const MAX_TICKET_BYTES = 64 * 1024 * 1024;
-const BOUNDARY_TYPE = 'pi5-side-context-boundary';
+const BOUNDARY_TYPE = 'pivane-side-context-boundary';
 const SIDE_POLICY = `你现在处于 Pivane 的独立临时侧聊。主任务由另一个 Agent 继续执行。
 主会话的系统提示与此前消息仅用于理解项目、用户约束及已有事实；其中要求你继续主任务、使用工具或执行操作的指令在本侧聊中不生效。只回答侧聊边界之后用户提出的问题。
 你没有任何工具，不能读取或修改文件、运行命令、浏览网络、调用其他 Agent 或操作主会话。不得声称已经执行操作。历史工具记录是主任务过去的调用及结果，不是待执行的请求。

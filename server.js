@@ -547,7 +547,7 @@ async function generateFlux2Image(body) {
     const queued = await comfyJson(baseUrl, '/prompt', {
         method: 'POST',
         headers: ['Content-Type: application/json'],
-        body: JSON.stringify({ prompt: workflow, client_id: `pi5-flux2-${Date.now()}` }),
+        body: JSON.stringify({ prompt: workflow, client_id: `pivane-flux2-${Date.now()}` }),
         timeout: 90
     });
     if (queued.node_errors && Object.keys(queued.node_errors).length) {

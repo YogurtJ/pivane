@@ -41,7 +41,7 @@ function buildFlux2Workflow(input = {}, files = {}) {
         workflow: {
             '6': { class_type: 'CLIPTextEncode', inputs: { text: prompt, clip: ['38', 0] } },
             '8': { class_type: 'VAEDecode', inputs: { samples: ['13', 0], vae: ['10', 0] } },
-            '9': { class_type: 'SaveImage', inputs: { filename_prefix: 'Pi5_GUI/flux2_dev', images: ['8', 0] } },
+            '9': { class_type: 'SaveImage', inputs: { filename_prefix: 'pivane/flux2_dev', images: ['8', 0] } },
             '10': { class_type: 'VAELoader', inputs: { vae_name: vae } },
             '12': { class_type: 'UNETLoader', inputs: { unet_name: diffusionModel, weight_dtype: 'default' } },
             '13': { class_type: 'SamplerCustomAdvanced', inputs: { noise: ['25', 0], guider: ['22', 0], sampler: ['16', 0], sigmas: ['48', 0], latent_image: ['47', 0] } },

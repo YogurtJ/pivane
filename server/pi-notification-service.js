@@ -25,7 +25,7 @@ function subscription(value) {
 class PiNotificationService {
     constructor({ access, store, filePath, send = webPush.sendNotification }) {
         this.access = access; this.store = store;
-        this.filePath = filePath || path.join(path.dirname(access.filePath), 'pi5-notifications.json');
+        this.filePath = filePath || require('./pivane-compat').dataFile(path.dirname(access.filePath), 'pivane-notifications.json');
         this.send = send; this.running = 0; this.seen = new Set(); this.lastTest = new Map();
     }
     read() {
@@ -76,7 +76,7 @@ class PiNotificationService {
             || !this.read()?.devices.some(d => d.id === device.id && d.revision === device.revision)) return false;
         try {
             await this.send(device.subscription, JSON.stringify(payload), { TTL: 300, urgency: 'normal', timeout: 10000,
-                vapidDetails: { subject: 'https://example.com/pi-workspace', ...vapid } });
+                vapidDetails: { subject: 'https://github.com/YogurtJ/pivane', ...vapid } });
             return true;
         } catch (error) {
             if ([404, 410].includes(error.statusCode)) {

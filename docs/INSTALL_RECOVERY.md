@@ -66,7 +66,7 @@ PI_CODING_AGENT_DIR=$AGENT_DIR
 PI_MEDIA_CONFIG_DIR=$BASE/data/media-lab
 PI_MEDIA_DATA_DIR=$BASE/data/media
 PI_PROJECT_ROOTS=/
-PI_WEB_DEFERRED_FILE=$BASE/data/pi5-deferred-messages.json
+PI_WEB_DEFERRED_FILE=$BASE/data/pivane-deferred-messages.json
 PI_WORKSPACE_BASE_URL=http://127.0.0.1:3001
 EOF
 chmod 600 "$BASE/instance.env"
@@ -134,8 +134,8 @@ curl -fsS http://127.0.0.1:3001/api/pi/status
 | 代码/依赖清单 | `releases/1.0.0-rc.4`、原发布包及哈希 | 重解压并 `npm ci`；不跨平台复制 node_modules |
 | Pi 会话 | 实际 `PI_CODING_AGENT_DIR` 下的 `sessions/` 原生 JSONL | 完整原生树与活动位置；网页当前分支导出不等于完整备份 |
 | Pi 凭据/模型/设置 | 整个实际 Pi 身份目录，通常在 BASE 之外 | 含 auth、models、settings、trust 等；不要只挑 auth.json 或手工改写它 |
-| 工作台配置 | Agent 目录内 `pi5-workspace.json`、`pi5-access.json`、`pi5-notifications.json` | 偏好、访问校验/登录、通知订阅；均作为私人数据处理 |
-| 预约 | 明确指定的 `pi5-deferred-messages.json` | 包含未发送内容；备份前暂停，恢复后核对，禁止自动补发 |
+| 工作台配置 | Agent 目录内所选的 workspace、access、notifications 配置（新名称为 `pivane-*`，既有 `pi5-*` 沿用） | 偏好、访问校验/登录、通知订阅；均作为私人数据处理 |
+| 预约 | 明确指定的预约 JSON 文件，例如 `pivane-deferred-messages.json` | 包含未发送内容；备份前暂停，恢复后核对，禁止自动补发 |
 | 媒体配置与 Key | `data/media-lab/` + 实际 Pi 身份的凭据库 | 配方、connections、registry、说明文件和 Key 必须配套 |
 | 媒体历史与文件 | 整个 `data/media/` | 三类 history JSON、prompts.json 与 public/images、videos、audio 必须同批恢复 |
 | 项目和项目资源 | `projects/` | 源码、未提交修改、`.pi`、项目模板/Package；会话不会替你备份项目文件 |

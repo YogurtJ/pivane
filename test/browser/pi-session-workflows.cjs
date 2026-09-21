@@ -91,7 +91,9 @@ async function run(browser, viewport, historyEnabled = true) {
     const inspector = async () => {
         if (!historyEnabled) {
             await closeInspector();
-            return page.locator('#pi-current-thread-menu').click();
+            await page.locator('#pi-current-thread-menu').click();
+            await page.getByRole('menuitem', { name: '历史与记录', exact: true }).click();
+            return;
         }
         if (!await page.locator('#pi-close-inspector').isVisible()) await page.locator('#pi-toggle-inspector').click();
         await page.locator('#pi-history-tab').click();

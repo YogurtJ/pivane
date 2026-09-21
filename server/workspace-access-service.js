@@ -21,7 +21,7 @@ class WorkspaceAccessService extends EventEmitter {
         super();
         const configuredDir = process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), '.pi', 'agent');
         const agentDir = path.resolve(configuredDir.replace(/^~(?=$|\/)/, os.homedir()));
-        this.filePath = path.resolve(options.filePath || path.join(agentDir, 'pi5-access.json'));
+        this.filePath = path.resolve(options.filePath || require('./pivane-compat').dataFile(agentDir, 'pivane-access.json'));
         this.envToken = options.envToken || (() => process.env.PI_WEB_TOKEN || '');
         this.secureCookie = options.secureCookie ?? process.env.PI_WEB_SECURE_COOKIE === 'true';
         this.cookieName = `pi_access_${digest(this.filePath).slice(0, 12)}`;

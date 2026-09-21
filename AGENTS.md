@@ -1,34 +1,33 @@
-# Pivane：代码 Agent 约定
+# Pivane：源码 Agent 入口
 
-本文件面向修改源码的 Agent。仅帮助用户安装、配置或排障时，先读 `docs/AGENT_GUIDE.md`，不要将源码开发流程当成用户操作步骤。
+本文件用于修改源码。安装、配置和排障从 [用户 Agent 指南](docs/AGENT_GUIDE.md) 开始。
 
 ## 开始工作
 
-依次阅读 README.md、docs/README.md、CONTRIBUTING.md 和与任务有关的接口/功能文档。架构见 docs/development/ARCHITECTURE.md，验证与发布见 docs/development/README.md。
+首次接手依次读 README.md、docs/README.md、CONTRIBUTING.md；再按 [模块导航](docs/development/MODULES.md) 选择相关实现和契约。架构见 [ARCHITECTURE.md](docs/development/ARCHITECTURE.md)，验证与文档维护见 [开发流程](docs/development/WORKFLOW.md)。
 
-若当前 checkout 存在 `AGENTS.local.md`，继续读取其中的实例约束；它是可选的本地上下文，不是用户安装所需文件。`docs/local/` 保存维护者记录，公开源码/候选包不依赖该目录。没有 Git 时先在备份目录建立本次改动快照；不要假设可以 git checkout 回滚。
+如果存在 `AGENTS.local.md`，读取其中的本机入口。私有维护资料可以在相邻的独立仓库，按入口给出的绝对路径读取；Pi 不会自动加载任意相邻目录。公开源码和发行包不依赖私有资料。
 
-## 必须保持的边界
+修改前检查 Git 状态，保留用户已有改动；没有 Git 时先保存本次改动快照。明确源码、实际运行版本和候选版本，不能用旧发布快照覆盖尚未发布的修复。默认直接完成已授权工作；用户已有授权继续有效。
 
-1. **原生会话**：Pi 是唯一会话事实来源，使用 SessionManager 和原生 JSONL。不得创建第二套聊天历史或文本改写 JSONL 冒充完整跨路径迁移。
-2. **唯一 worker**：同一规范 sessionPath 在服务进程内只能由 PiAgentSupervisor 管理一个 RPC worker；规范路径使用系统 native realpath。不可绕过管理器另开同文件 worker。
-3. **严格协议**：Pi stdout 使用严格 LF framing；禁止 readline 按 Unicode 分隔符拆帧。内部扩展私有结果含迟到/未知响应也须截获，不广播隐藏上下文。
-4. **上游依赖**：不得修改 node_modules 或维护 Pi 源码补丁；适配放在本项目 CLI/RPC/SDK 边界。依赖更新单独验证并保持 lockfile 一致。
-5. **文件与身份**：项目先经过 realpath/PI_PROJECT_ROOTS/系统权限检查。保留已打开对象的内核路径、身份、类型、预算与前后变化检查：Linux /proc、macOS F_GETPATH、Windows HANDLE。不能以请求路径或低精度 inode 兜底。原生源码/二进制/manifest 成批更新。
-6. **私密写入**：凭据走公开 ModelRuntime.login/logout，未知模型配置字段保留，原子写入及私有备份；POSIX权限与Windows实际DACL分别验证。不得输出 .env、auth.json、Cookie、Key、Token 或私钥。
-7. **用户数据**：未经要求不删除/覆盖会话、媒体历史、public/images、public/videos、public/audio 或 prompts。删除须先停止对应 worker，按实际 trash 结果说明永久删除。
-8. **执行确认**：媒体规划没有生成/保存授权。执行只使用用户确认的服务器票据，不覆盖票据参数、不自动批量执行或重放失败/不确定请求。朗读的喇叭点击授权当前回复单项生成。
-9. **异步与运行状态**：await 前预占互斥；超时不代表取消/空闲。保留 runtime/revision/socket-generation 防迟到响应串线程、覆盖草稿或重发消息。保存配置不自动停止正在运行的任务。
-10. **显示安全**：Markdown 经 marked + DOMPurify，用户/工具文字使用安全 DOM。模型目录、思考等级和参数由 runtime/schema 获取。保留手机16px表单、内部滚动边界、正文默认与显式浏览器偏好。
-11. **维护操作**：不要重启承载当前开发会话的服务；部署需核对 Agent、Shell、侧聊、预约、媒体、配置和导入导出活动，暂停预约、停机备份。外部副作用不会因会话导航或停止而撤销。
-12. **命名兼容**：产品名 Pivane；Pi Agent 是上游能力名。保留已有 PI_*、pi5-*、API/RPC 标识与存储键，改名不迁移用户安装目录或身份。
-13. **发行身份**：应用版本与lockfile根版本保持一致；pack:release按版本命名且不覆盖同名包。原生manifest、项目LICENSE与第三方声明随包；验收结果绑定实际归档SHA256。
-14. **正常停机**：SIGINT/SIGTERM通过pi-process-shutdown统一异步清理，监听在退出前保持注册；不能恢复once监听导致Pi依赖的signal-exit提前重发信号。重复信号不重跑清理，失败不报告成功。
+## 正确性边界
 
-## 验证与文档
+1. **会话与 worker**：Pi SessionManager 和原生 JSONL 是唯一对话事实来源。每个 native realpath 会话文件只能有一个受 Supervisor 管理的 RPC worker。不可另建聊天副本或绕开管理器启动同文件 worker。
+2. **协议与状态**：stdout 严格按 LF 分帧。迟到/未知的私有响应也要截获。异步变更在 await 前预占互斥；超时不表示取消或空闲。保留 runtime、revision、socket generation 与草稿版本检查。新增 worker 工作类型同时维护生命周期投影。
+3. **文件与身份**：保留 realpath、项目范围、系统权限、已打开描述符的内核路径/完整身份/类型/预算/前后变化校验。Linux /proc、macOS F_GETPATH、Windows HANDLE 不得退化为请求路径或低精度 inode。原生源码、二进制和 manifest 一起更新。
+4. **凭据与执行**：凭据使用公开 ModelRuntime.login/logout，私密文件保留 POSIX 权限或实际 Windows DACL、原子保存和未知字段。不要输出 .env、auth.json、Cookie、Key、Token 或私钥。媒体规划与执行票据分离，执行只用用户确认的服务器票据，不自动重放失败或不确定请求。
+5. **用户数据与迁移**：不因重构删除会话、媒体、历史或 prompts。迁移必须有明确范围、停机备份、变更清单和原生语义验证。禁止全局替换 JSONL 正文冒充迁移；项目改名只允许经验证的结构字段迁移，保持会话 ID、时间、完整分支、书签和正文。删除会话先停对应 worker，并按实际 trash 结果报告。
+6. **展示与平台**：模型、思考等级和参数取自 runtime/schema。Markdown 经 marked + DOMPurify，其余用户/工具文字使用安全 DOM。保留手机 16px 表单、内部滚动边界和浏览器明确偏好。
+7. **上游与部署**：适配放在本项目的 CLI/RPC/SDK 边界，不改 node_modules。依赖升级单独验证，lockfile 一致。不能重启承载当前执行的服务；维护前核对全部任务、Shell、侧聊、预约、媒体、配置及导入导出。SIGINT/SIGTERM 继续使用统一异步停机，重复信号不重跑清理，失败不报告成功。
 
-完成源码变更至少运行 `npm test`、`npm run check`、`npm audit --omit=dev`。只改文档也运行 `npm run check:docs` 和 `npm run pack:trial` 核对链接、公开清单与排除边界。UI需Chromium/Playwright桌面和手机检查pageerror、实际子项宽度、抽屉/附件/tool状态；测试用独立身份和合成服务，不在当前工作会话发送测试消息。
+## 命名与开发
 
-按变化同步用户指南、接口契约及CHANGELOG；架构变化同步开发文档。用户文档只描述已实现行为和限制；公开平台范围与版本验收分开，不把代码完成写成某台机器已部署。不将维护者地址、用户名、运维单元、验收日志写进公开文档。
+产品名 Pivane；Pi Coding Agent 是上游引擎名。新工作台标识使用 `pivane`，旧名称集中在兼容边界；原生 Pi 包名、身份变量和协议保持上游定义。改目录、配置或持久化名称按 [命名与迁移](docs/development/NAMING.md) 执行，不能仅替换字符串。
 
-`docs/local/`、`AGENTS.local.md`、备份、身份、用户媒体必须同时由 .gitignore 与发布允许清单排除。.gitignore 不等于打包规则，也不是工具权限边界；已经提交到其他仓库的内容不会因新增 ignore 自动移除。
+按功能职责提取模块，避免只为缩短文件而转移同样的共享状态。新增代码、测试和文档应进入统一源码发现或明确的公开清单；不要在打包、受管快照和测试入口各维护一份目录规则。
+
+开发中运行相关检查；源码交付前完成 `npm test`、`npm run check`。本轮架构、兼容和发行边界变更还须 `npm run check:docs`、`npm audit --omit=dev`、`npm run pack:trial`。后续任务按开发流程的变更类型选择额外检查。UI 变更使用独立身份/合成服务完成 Chromium 桌面和手机检查，核对 pageerror、实际宽度、抽屉、附件与工具状态；不在维护中的真实会话发送测试消息。
+
+用户可见行为更新指南和 CHANGELOG，接口变化更新 API，模块责任变化更新开发文档。只记录已实现行为，区分源码完成、已部署、已发布和实机验收。应用版本与 lockfile 根版本一致，发行结果绑定实际包 SHA256，同名正式包不覆盖。
+
+私有资料、身份、媒体、备份和运行目录必须同时被 Git 和发行规则排除。Git ignore 不是打包策略或权限边界，也不清除已经提交的历史。

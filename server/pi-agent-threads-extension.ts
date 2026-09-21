@@ -2,6 +2,7 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 import { StringEnum } from '@earendil-works/pi-ai';
 import { TASK_MESSAGE, TASK_RECEIPT, taskProfile, taskState } from './pi-agent-threads.js';
+import { customTypeIs } from './pivane-compat.js';
 
 export function registerAgentThreads(pi: ExtensionAPI) {
     const enabled = (ctx: any) => ctx.mode === 'rpc' && Boolean(ctx.sessionManager.getSessionFile())
@@ -14,13 +15,13 @@ export function registerAgentThreads(pi: ExtensionAPI) {
     });
     pi.on('agent_start', (_event, ctx) => {
         if (enabled(ctx) && taskProfile(ctx.sessionManager) && taskState(ctx.sessionManager)?.status !== 'submitted')
-            pi.appendEntry('pi5-agent-task-state', { sessionId: ctx.sessionManager.getSessionId(), status: 'submitted' });
+            pi.appendEntry('pivane-agent-task-state', { sessionId: ctx.sessionManager.getSessionId(), status: 'submitted' });
     });
     pi.on('agent_settled', (_event, ctx) => {
         const task = taskProfile(ctx.sessionManager);
         if (!enabled(ctx) || !task || !taskState(ctx.sessionManager)) return;
         const last = ctx.sessionManager.getBranch().findLast((entry: any) => entry.type === 'message' && entry.message.role === 'assistant') as any;
-        pi.appendEntry('pi5-agent-task-state', { sessionId: ctx.sessionManager.getSessionId(), status: 'settled',
+        pi.appendEntry('pivane-agent-task-state', { sessionId: ctx.sessionManager.getSessionId(), status: 'settled',
             outcome: last?.message.stopReason === 'error' ? 'error' : last?.message.stopReason === 'aborted' ? 'stopped' : 'completed' });
     });
     pi.on('session_start', (_event, ctx) => {
@@ -73,7 +74,7 @@ export function launchAgentTask(pi: ExtensionAPI, ctx: any, requestId: string) {
     if (!task || task.requestId !== requestId) throw new Error('Task identity mismatch');
     if (!ctx.isIdle() || ctx.hasPendingMessages()) throw new Error('Task thread is busy');
     if (taskState(ctx.sessionManager)) throw new Error('Task was already submitted; inspect the existing thread');
-    if (!ctx.sessionManager.getBranch().some((entry: any) => entry.type === 'custom_message' && entry.customType === TASK_MESSAGE)) throw new Error('Saved task message is missing from the current branch');
-    pi.appendEntry('pi5-agent-task-state', { sessionId: ctx.sessionManager.getSessionId(), status: 'submitted' });
-    pi.sendMessage({ customType: 'pi5-agent-task-start', content: 'Begin the saved Agent task above now, within its stated scope.', display: false }, { triggerTurn: true });
+    if (!ctx.sessionManager.getBranch().some((entry: any) => entry.type === 'custom_message' && customTypeIs(entry, TASK_MESSAGE))) throw new Error('Saved task message is missing from the current branch');
+    pi.appendEntry('pivane-agent-task-state', { sessionId: ctx.sessionManager.getSessionId(), status: 'submitted' });
+    pi.sendMessage({ customType: 'pivane-agent-task-start', content: 'Begin the saved Agent task above now, within its stated scope.', display: false }, { triggerTurn: true });
 }

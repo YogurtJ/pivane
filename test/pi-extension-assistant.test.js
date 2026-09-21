@@ -73,8 +73,8 @@ test('extension assistant persists its identity, scopes tools, confirms packages
         assert.doesNotMatch(JSON.stringify(calls), new RegExp(access.extensionAssistantToken));
         const inventoryResult = (await worker.request('get_messages')).messages.find(m => m.role === 'toolResult' && m.toolName === 'extensions_inventory');
         assert.equal(inventoryResult.isError, false);
-        assert.equal(inventoryResult.details.pi5ToolProvenance.toolCallId, inventoryResult.toolCallId);
-        assert.ok(inventoryResult.details.pi5ToolProvenance.source.path.endsWith('pi-web-session-extension.ts'));
+        assert.equal(inventoryResult.details.pivaneToolProvenance.toolCallId, inventoryResult.toolCallId);
+        assert.ok(inventoryResult.details.pivaneToolProvenance.source.path.endsWith('pi-web-session-extension.ts'));
         const input = { cwd, sessionId: session.id };
         assert.equal((await api('/extension-assistant/inventory', input, access.internalToken)).status, 401, 'media token cannot manage extensions');
         assert.equal((await api('/extension-assistant/inventory', input, access.extensionAssistantToken, { Origin: 'https://evil.invalid' })).status, 403);
@@ -92,7 +92,7 @@ test('extension assistant persists its identity, scopes tools, confirms packages
         } });
         await run({ name: 'extensions_package', args });
         assert.equal(confirmations, 1);
-        assert.equal((await worker.request('get_messages')).messages.find(m => m.role === 'toolResult' && m.toolName === 'extensions_package').details.pi5PackageOperation.status, 'cancelled');
+        assert.equal((await worker.request('get_messages')).messages.find(m => m.role === 'toolResult' && m.toolName === 'extensions_package').details.pivanePackageOperation.status, 'cancelled');
         assert.equal((await api('/extension-assistant/inventory', input)).data.packages.length, 0);
         allow = true;
         await run({ name: 'extensions_package', args });
@@ -107,10 +107,10 @@ test('extension assistant persists its identity, scopes tools, confirms packages
         assert.ok(resources.tools.some(t => t.name === 'extensions_inventory'));
         await run({ name: 'read', args: { path: path.join(pkg, 'skills/fixture/SKILL.md') } });
         const readResult = (await worker.request('get_messages')).messages.findLast(m => m.role === 'toolResult' && m.toolName === 'read');
-        assert.equal(readResult.details.pi5ToolProvenance.skill.name, 'fixture');
-        assert.doesNotMatch(JSON.stringify(calls.at(-1).messages), /pi5ToolProvenance/, 'display metadata is not model content');
+        assert.equal(readResult.details.pivaneToolProvenance.skill.name, 'fixture');
+        assert.doesNotMatch(JSON.stringify(calls.at(-1).messages), /(?:pivane|pi5)ToolProvenance/, 'display metadata is not model content');
         const persisted = SessionManager.open(session.path).getEntries().findLast(e => e.type === 'message' && e.message.role === 'toolResult');
-        assert.deepEqual(persisted.message.details.pi5ToolProvenance, readResult.details.pi5ToolProvenance);
+        assert.deepEqual(persisted.message.details.pivaneToolProvenance, readResult.details.pivaneToolProvenance);
         const project = (await api('/extension-assistant/sessions', { cwd, scope: 'project', language: 'zh-CN' })).data;
         await gateway.supervisor.getWorker({ cwd, sessionPath: project.path, sessionId: project.id });
         const projectInput = { cwd, sessionId: project.id };

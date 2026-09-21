@@ -15,7 +15,7 @@ const cwd = path.join(root, 'project');
 fs.mkdirSync(cwd, { recursive: true }); fs.mkdirSync(process.env.PI_CODING_AGENT_DIR, { recursive: true });
 const { createPiAgentGateway } = require('../server/pi-agent-routes');
 const { WorkspaceAccessService } = require('../server/workspace-access-service');
-const { taskProfile, taskState, TASK_MESSAGE } = require('../server/pi-agent-threads');
+const { taskProfile, taskState, TASK_MESSAGE, TASK_RECEIPT } = require('../server/pi-agent-threads');
 const deadline = async (fn, ms = 20000) => {
     const start = Date.now();
     while (Date.now() - start < ms) { const result = await fn(); if (result) return result; await new Promise(resolve => setTimeout(resolve, 30)); }
@@ -91,11 +91,11 @@ test('Agent creates a persistent task, runs immediately with defaults, preserves
         assert.equal(chosen.data.model.modelId, 'chosen-model');
         await deadline(async () => (await api('/agent-threads/status', { requestId: 'chosen' }, token)).data.status === 'completed');
         await worker.request('prompt', { message: 'CREATE_TASK_FIXTURE' });
-        await deadline(async () => (await worker.request('get_messages')).messages.some(message => message.customType === 'pi5-agent-task-receipt'));
+        await deadline(async () => (await worker.request('get_messages')).messages.some(message => message.customType === TASK_RECEIPT));
         await deadline(() => !worker.activity.snapshot().busy && worker.promptPending === 0);
         const messages = (await worker.request('get_messages')).messages;
         assert.ok(messages.some(message => message.role === 'toolResult' && message.toolName === 'agent_thread' && !message.isError));
-        assert.ok(messages.some(message => message.customType === 'pi5-agent-task-receipt' && message.details.session.id));
+        assert.ok(messages.some(message => message.customType === TASK_RECEIPT && message.details.session.id));
         assert.doesNotMatch(JSON.stringify(calls), new RegExp(token));
         const originalGetWorker = gateway.supervisor.getWorker.bind(gateway.supervisor);
         gateway.supervisor.getWorker = async () => { throw new Error('Synthetic startup failure'); };

@@ -6,15 +6,17 @@ const path = require('node:path');
 
 const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-settings-agent-'));
 const packageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-settings-package-'));
+const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-settings-project-'));
 process.env.PI_CODING_AGENT_DIR = agentDir;
 
 const { PiSettingsService } = require('../server/pi-settings-service');
 
-const service = new PiSettingsService({ cwd: '/srv/Pi5_GUI' });
+const service = new PiSettingsService({ cwd: projectDir });
 
 test.after(() => {
     fs.rmSync(agentDir, { recursive: true, force: true });
     fs.rmSync(packageDir, { recursive: true, force: true });
+    fs.rmSync(projectDir, { recursive: true, force: true });
 });
 
 test('manages custom providers and API keys through Pi stores', async () => {
@@ -68,13 +70,13 @@ test('installs, resolves, and removes local packages with the Pi package manager
     }, null, 2));
     fs.writeFileSync(path.join(skillDir, 'SKILL.md'), `---\nname: package-test-skill\ndescription: Skill from a temporary local package.\n---\n\n# Test\n`);
 
-    await service.packageAction({ action: 'install', source: packageDir, cwd: '/srv/Pi5_GUI' });
-    let resources = await service.getResourceSnapshot('/srv/Pi5_GUI');
+    await service.packageAction({ action: 'install', source: packageDir, cwd: projectDir });
+    let resources = await service.getResourceSnapshot(projectDir);
     assert.equal(resources.packages.some(item => item.installedPath === packageDir), true);
     assert.equal(resources.skills.some(item => item.name === 'package-test-skill'), true);
 
-    await service.packageAction({ action: 'remove', source: packageDir, cwd: '/srv/Pi5_GUI' });
-    resources = await service.getResourceSnapshot('/srv/Pi5_GUI');
+    await service.packageAction({ action: 'remove', source: packageDir, cwd: projectDir });
+    resources = await service.getResourceSnapshot(projectDir);
     assert.equal(resources.packages.some(item => item.installedPath === packageDir), false);
 });
 
@@ -84,13 +86,13 @@ test('creates, discovers, and deletes standard user skills', async () => {
         description: 'A temporary skill used by the Web settings test.',
         body: '# Web Test Skill\n\nReturn the requested test value.'
     });
-    let resources = await service.getResourceSnapshot('/srv/Pi5_GUI');
+    let resources = await service.getResourceSnapshot(projectDir);
     const skill = resources.skills.find(item => item.name === 'web-test-skill');
     assert.equal(skill.manageable, true);
     assert.equal(path.basename(skill.filePath), 'SKILL.md');
     assert.equal(path.basename(path.dirname(skill.filePath)), 'web-test-skill');
 
     await service.deleteSkill('web-test-skill');
-    resources = await service.getResourceSnapshot('/srv/Pi5_GUI');
+    resources = await service.getResourceSnapshot(projectDir);
     assert.equal(resources.skills.some(item => item.name === 'web-test-skill'), false);
 });

@@ -14,6 +14,10 @@ video_history.json
 tts_history.json
 prompts.json
 pi5-access.json*
+pivane-access.json*
+pivane-notifications.json*
+pivane-workspace.json*
+pivane-deferred-messages*.json*
 *.log
 *.bak*
 *.tmp
@@ -23,3 +27,5 @@ dist/
 # Private maintainer context; public development contracts remain versioned.
 /AGENTS.local.md
 /docs/local/
+# Local native linker output; release binaries are explicitly listed.
+/native/*.lib

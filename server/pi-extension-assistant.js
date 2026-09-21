@@ -1,8 +1,9 @@
 const path = require('node:path');
 
-const ASSISTANT_ENTRY = 'pi5-extension-assistant';
+const { customTypeIs } = require('./pivane-compat');
+const ASSISTANT_ENTRY = 'pivane-extension-assistant';
 function assistantProfile(manager) {
-    const data = manager.getEntries().findLast(entry => entry.type === 'custom' && entry.customType === ASSISTANT_ENTRY
+    const data = manager.getEntries().findLast(entry => entry.type === 'custom' && customTypeIs(entry, ASSISTANT_ENTRY)
         && entry.data?.version === 1 && entry.data?.sessionId === manager.getSessionId())?.data;
     if (!data || !['global', 'project'].includes(data.scope)) return null;
     return { kind: 'extensions', scope: data.scope, language: data.language === 'en' ? 'en' : 'zh-CN',

@@ -3,7 +3,7 @@
     const text = (s, limit = 4096) => typeof s === 'string' && s.length <= limit ? s : '';
     function update(row) {
         const name = row.dataset.toolName || 'tool', args = row._piToolArgs || {}, result = row._piResult;
-        const raw = result?.details?.pi5ToolProvenance;
+        const raw = result?.details?.pivaneToolProvenance ?? result?.details?.pi5ToolProvenance;
         const meta = raw?.version === 1 && raw.toolName === name && raw.toolCallId === row.dataset.toolId ? raw : null;
         const source = meta?.source && text(meta.source.source, 1000) && text(meta.source.path) ? meta.source : null;
         const skill = meta?.skill && text(meta.skill.name, 256) && text(meta.skill.path) ? meta.skill : null;
@@ -34,7 +34,7 @@
             if (!detail) { detail = document.createElement('p'); detail.className = 'pi-tool-provenance'; row.querySelector('.pi-tool-detail')?.prepend(detail); }
             detail.textContent = t('原始工具：{0}', name) + (info ? '\n' + info : '');
         } else detail?.remove();
-        if (name === 'extensions_package' && result?.details?.pi5PackageOperation?.status === 'cancelled') {
+        if (name === 'extensions_package' && (result?.details?.pivanePackageOperation ?? result?.details?.pi5PackageOperation)?.status === 'cancelled') {
             row.dataset.state = 'cancelled'; row.querySelector('.pi-tool-status').textContent = t('已取消');
         }
     }

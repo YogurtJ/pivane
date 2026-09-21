@@ -31,7 +31,7 @@
 
 ## 后端与数据
 
-`server/pi-notification-service.js` 接收 Supervisor 的 metadata 事件。独立 `pi5-notifications.json` 位于工作台访问配置的同一 Agent 目录，保存 VAPID 密钥对、订阅 endpoint/加密公钥以及授权身份摘要；0600、临时文件原子替换。首次显式启用才生成密钥文件，不写 Pi auth.json、session 或聊天历史。最多64台设备；该文件是私人配置，不分享、不通过文件查看器读取。不能同时由多个服务进程管理。
+`server/pi-notification-service.js` 接收 Supervisor 的 metadata 事件。独立 `pivane-notifications.json`（既有 `pi5-notifications.json` 自动沿用）位于工作台访问配置的同一 Agent 目录，保存 VAPID 密钥对、订阅 endpoint/加密公钥以及授权身份摘要；0600、临时文件原子替换。首次显式启用才生成密钥文件，不写 Pi auth.json、session 或聊天历史。最多64台设备；该文件是私人配置，不分享、不通过文件查看器读取。不能同时由多个服务进程管理。
 
 订阅绑定当前登录身份；每次发送重新检查授权与订阅修订。退出对应 Cookie 登录、登录过期、撤销或更换访问配置后旧订阅不再发送，重新登录后显式启用即可重新绑定。免认证实例订阅只在原免认证修订仍有效时工作。已交给远端推送服务的通知无法撤回，最多保留300秒；关闭通知会停止后续服务器发送并取消浏览器订阅，不撤销系统权限。
 

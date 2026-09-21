@@ -156,7 +156,7 @@ class PiSessionStore {
         const persisted = SessionManager.open(sessionPath, undefined, cwd);
         const cleanName = String(name || '').trim().slice(0, 120);
         if (cleanName) persisted.appendSessionInfo(cleanName);
-        else if (autoTitle) persisted.appendCustomEntry('pi5-web-title', { version: 1, sessionId: persisted.getSessionId(), status: 'pending' });
+        else if (autoTitle) persisted.appendCustomEntry('pivane-web-title', { version: 1, sessionId: persisted.getSessionId(), status: 'pending' });
         if (assistant) persisted.appendCustomEntry(require('./pi-extension-assistant').ASSISTANT_ENTRY,
             { ...assistant, version: 1, sessionId: persisted.getSessionId() });
         if (task) {
@@ -209,7 +209,7 @@ class PiSessionStore {
                 else if (entry.type === 'custom') fresh.appendCustomEntry(entry.customType, entry.data);
                 else if (entry.type === 'custom_message') fresh.appendCustomMessageEntry(entry.customType, entry.content, entry.display, entry.details);
             }
-            fresh.appendCustomEntry('pi5-web-fork-origin', { sessionId: session.id, entryId: targetId });
+            fresh.appendCustomEntry('pivane-web-fork-origin', { sessionId: session.id, entryId: targetId });
         }
         require('./pi-private-files').privateFileMode(result.path);
         return { session: result, draft };

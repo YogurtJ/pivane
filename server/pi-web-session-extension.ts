@@ -2,6 +2,7 @@ import { registerToolProvenance } from './pi-tool-provenance.js';
 import { registerAgentThreads, launchAgentTask } from './pi-agent-threads-extension.ts';
 import { registerExtensionAssistant } from './pi-extension-assistant-extension.ts';
 import { handleTitleRequest } from './pi-session-title-state.js';
+import { INTERNAL_COMMAND, isInternalCommand, customTypeIs } from './pivane-compat.js';
 import { randomUUID } from 'node:crypto';
 import { searchHistory, previewHistory, setHistoryBookmark } from './pi-history-model.js';
 import { sessionTree, checkNavigation } from './pi-session-tree.js';
@@ -28,9 +29,9 @@ export default function (pi: ExtensionAPI) {
     const reportTitleEligibility = (_event: unknown, ctx: any) => {
         if (ctx.mode !== 'rpc' || !managed()) return;
         const entries = ctx.sessionManager.getEntries(), sessionId = ctx.sessionManager.getSessionId();
-        const state = entries.findLast((entry: any) => entry.type === 'custom' && entry.customType === 'pi5-web-title' && entry.data?.sessionId === sessionId)?.data;
+        const state = entries.findLast((entry: any) => entry.type === 'custom' && customTypeIs(entry, 'pivane-web-title') && entry.data?.sessionId === sessionId)?.data;
         const eligible = !entries.some((entry: any) => entry.type === 'session_info') && state?.status === 'pending';
-        ctx.ui.notify(JSON.stringify({ pi5TitleEligibility: Boolean(eligible) }));
+        ctx.ui.notify(JSON.stringify({ pivaneTitleEligibility: Boolean(eligible) }));
     };
     pi.on('session_start', reportTitleEligibility);
     pi.on('session_info_changed', reportTitleEligibility);
@@ -48,12 +49,12 @@ export default function (pi: ExtensionAPI) {
             return { cancel: true };
         }
     });
-    pi.registerCommand('pi5-web-navigate', {
+    pi.registerCommand(INTERNAL_COMMAND, {
         description: `Pivane internal session navigation and context snapshot; managed-v1; task-v1; title-v1; model-catalog-v1; resources-v1; history-v1; tree-v1; tree-presentation-v1; history-presentation-v1; history-body-v1; system-prompt-v1; reload-v1:${randomUUID()}`,
         handler: async (args, ctx) => {
             const request = JSON.parse(args);
             if (ctx.mode !== 'rpc' || request.token !== process.env.PI_WEB_NAVIGATION_TOKEN) throw new Error('Invalid navigation request');
-            const notify = (data: object) => ctx.ui.notify(JSON.stringify({ pi5Navigation: request.id, ...data }));
+            const notify = (data: object) => ctx.ui.notify(JSON.stringify({ pivaneNavigation: request.id, ...data }));
             if (request.mode === 'task') {
                 try { launchAgentTask(pi, ctx, request.requestId); notify({ success: true }); }
                 catch (error) { notify({ success: false, error: error instanceof Error ? error.message : 'Task launch failed' }); }
@@ -62,9 +63,9 @@ export default function (pi: ExtensionAPI) {
             if (request.mode === 'title') {
                 try {
                     const data = handleTitleRequest(pi, ctx, request.input);
-                    ctx.ui.notify(JSON.stringify({ pi5Title: request.id, success: true, data }));
+                    ctx.ui.notify(JSON.stringify({ pivaneTitle: request.id, success: true, data }));
                 } catch (error) {
-                    ctx.ui.notify(JSON.stringify({ pi5Title: request.id, success: false, error: error instanceof Error ? error.message : '标题操作失败' }));
+                    ctx.ui.notify(JSON.stringify({ pivaneTitle: request.id, success: false, error: error instanceof Error ? error.message : '标题操作失败' }));
                 }
                 return;
             }
@@ -77,10 +78,10 @@ export default function (pi: ExtensionAPI) {
                     if (available.length > 5000) throw new Error('model-limit');
                     const models = available.map(m => ({ id: m.id, provider: m.provider, name: m.name, input: m.input,
                         reasoning: m.reasoning, contextWindow: m.contextWindow, maxTokens: m.maxTokens, cost: m.cost }));
-                    const response = { pi5Models: request.id, success: true, data: { models } };
+                    const response = { pivaneModels: request.id, success: true, data: { models } };
                     if (Buffer.byteLength(JSON.stringify(response)) > 1024 * 1024) throw new Error('model-budget');
                     ctx.ui.notify(JSON.stringify(response));
-                } catch { ctx.ui.notify(JSON.stringify({ pi5Models: request.id, success: false })); }
+                } catch { ctx.ui.notify(JSON.stringify({ pivaneModels: request.id, success: false })); }
                 return;
             }
             if (request.mode === 'resources') {
@@ -88,7 +89,7 @@ export default function (pi: ExtensionAPI) {
                     const options = ctx.getSystemPromptOptions();
                     const source = (value: any) => ({ path: String(value?.path || '').slice(0, 4096), source: String(value?.source || '').slice(0, 1000), scope: value?.scope, origin: value?.origin });
                     const active = new Set(pi.getActiveTools());
-                    const commands = pi.getCommands().filter(c => !c.name.startsWith('pi5-web-navigate'));
+                    const commands = pi.getCommands().filter(c => !isInternalCommand(c.name));
                     const tools = pi.getAllTools();
                     const skills = options.skills || [];
                     const files = options.contextFiles || [];
@@ -103,7 +104,7 @@ export default function (pi: ExtensionAPI) {
                             activeTools: [...active]
                         };
                         if (Buffer.byteLength(JSON.stringify(snapshot)) > 1024 * 1024) throw new Error('prompt-budget');
-                        ctx.ui.notify(JSON.stringify({ pi5Resources: request.id, success: true, data: snapshot }));
+                        ctx.ui.notify(JSON.stringify({ pivaneResources: request.id, success: true, data: snapshot }));
                         return;
                     }
                     const data = {
@@ -115,8 +116,8 @@ export default function (pi: ExtensionAPI) {
                         tools: tools.map(t => ({ name: t.name, active: active.has(t.name), source: source(t.sourceInfo) })),
                     };
                     if (Buffer.byteLength(JSON.stringify(data)) > 512 * 1024) throw new Error('资源信息超过 512 KiB');
-                    ctx.ui.notify(JSON.stringify({ pi5Resources: request.id, success: true, data }));
-                } catch { ctx.ui.notify(JSON.stringify({ pi5Resources: request.id, success: false, error: '无法读取当前资源，或结果超过资源预算' })); }
+                    ctx.ui.notify(JSON.stringify({ pivaneResources: request.id, success: true, data }));
+                } catch { ctx.ui.notify(JSON.stringify({ pivaneResources: request.id, success: false, error: '无法读取当前资源，或结果超过资源预算' })); }
                 return;
             }
             if (request.mode === 'history') {
@@ -128,10 +129,10 @@ export default function (pi: ExtensionAPI) {
                     else if (request.kind === 'preview') data = previewHistory(ctx.sessionManager, request.input, { settled: ctx.isIdle() && !ctx.hasPendingMessages() });
                     else if (request.kind === 'bookmark') data = setHistoryBookmark(ctx.sessionManager, request.input, (id, label) => pi.setLabel(id, label));
                     else throw new Error('不支持的历史操作');
-                    response = { pi5History: request.id, success: true, data };
+                    response = { pivaneHistory: request.id, success: true, data };
                     if (Buffer.byteLength(JSON.stringify(response), 'utf8') > 256 * 1024) throw new Error('历史查询结果超过传输上限，请缩小查询');
                 } catch (error) {
-                    response = { pi5History: request.id, success: false, error: error instanceof Error ? error.message : '历史操作失败', code: (error as any)?.code };
+                    response = { pivaneHistory: request.id, success: false, error: error instanceof Error ? error.message : '历史操作失败', code: (error as any)?.code };
                 }
                 ctx.ui.notify(JSON.stringify(response));
                 return;
@@ -156,7 +157,7 @@ export default function (pi: ExtensionAPI) {
                         }
                         return message;
                     });
-                    response = { pi5Context: request.id, success: true, snapshot: {
+                    response = { pivaneContext: request.id, success: true, snapshot: {
                         systemPrompt: currentSystemPrompt(ctx, context.messages), messages, thinkingLevel: pi.getThinkingLevel(),
                         model: ctx.model && { provider: ctx.model.provider, id: ctx.model.id, name: ctx.model.name,
                             contextWindow: ctx.model.contextWindow, maxTokens: ctx.model.maxTokens, input: ctx.model.input },
@@ -165,7 +166,7 @@ export default function (pi: ExtensionAPI) {
                     } };
                     if (Buffer.byteLength(JSON.stringify(response), 'utf8') > 32 * 1024 * 1024) throw new Error('context-limit');
                 } catch {
-                    response = { pi5Context: request.id, success: false, error: '无法读取主上下文，或背景超过 32 MiB 传输限额；未截断背景。' };
+                    response = { pivaneContext: request.id, success: false, error: '无法读取主上下文，或背景超过 32 MiB 传输限额；未截断背景。' };
                 }
                 ctx.ui.notify(JSON.stringify(response));
                 return;
@@ -180,13 +181,13 @@ export default function (pi: ExtensionAPI) {
                     webNavigation = true;
                     const result = await ctx.navigateTree(target.id, { summarize: request.input.summarize, customInstructions: request.input.customInstructions || undefined });
                     if (!result.cancelled) {
-                        pi.appendEntry('pi5-web-navigation', { fromLeafId: initialLeaf, targetId: target.id, mode: 'tree' });
+                        pi.appendEntry('pivane-web-navigation', { fromLeafId: initialLeaf, targetId: target.id, mode: 'tree' });
                         persisted = true;
                     }
                     notify({ success: true, data: { cancelled: result.cancelled, leafId: ctx.sessionManager.getLeafId(), draft: result.cancelled ? null : draft } });
                 } catch (error) {
                     // A post-navigation hook may fail after the native leaf changed. Persist and report the actual context.
-                    if (!persisted && ctx.sessionManager.getLeafId() !== initialLeaf) pi.appendEntry('pi5-web-navigation', { fromLeafId: initialLeaf, targetId: request.input?.entryId, mode: 'tree' });
+                    if (!persisted && ctx.sessionManager.getLeafId() !== initialLeaf) pi.appendEntry('pivane-web-navigation', { fromLeafId: initialLeaf, targetId: request.input?.entryId, mode: 'tree' });
                     notify({ success: false, error: error instanceof Error ? error.message : '导航失败，请核对当前位置' });
                 } finally { webNavigation = false; }
                 return;
@@ -199,7 +200,7 @@ export default function (pi: ExtensionAPI) {
                     const last = ctx.sessionManager.getBranch().filter(entry => entry.type === 'message' && entry.message.role === 'user').at(-1);
                     if (last?.id !== request.entryId) throw new Error('只能编辑当前分支的最近一条问题');
                 } else if (request.mode === 'restore') {
-                    if (!entries.some(entry => entry.type === 'custom' && entry.customType === 'pi5-web-navigation' && entry.data?.fromLeafId === request.entryId)) throw new Error('历史版本不存在');
+                    if (!entries.some(entry => entry.type === 'custom' && customTypeIs(entry, 'pivane-web-navigation') && entry.data?.fromLeafId === request.entryId)) throw new Error('历史版本不存在');
                 } else throw new Error('Invalid navigation mode');
                 let result;
                 webNavigation = true;
@@ -207,7 +208,7 @@ export default function (pi: ExtensionAPI) {
                 finally { webNavigation = false; }
                 if (result.cancelled) throw new Error('会话回退已被扩展取消');
                 // Persist the new active leaf, including navigation before the first user message.
-                pi.appendEntry('pi5-web-navigation', { fromLeafId: request.expectedLeafId, targetId: request.entryId, mode: request.mode });
+                pi.appendEntry('pivane-web-navigation', { fromLeafId: request.expectedLeafId, targetId: request.entryId, mode: request.mode });
                 notify({ success: true });
             } catch (error) {
                 notify({ success: false, error: error instanceof Error ? error.message : '会话回退失败' });

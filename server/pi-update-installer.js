@@ -50,24 +50,8 @@ function runNode(args, { cwd, env, timeout = 20 * 60 * 1000, signal, onOutput = 
 }
 function copyCode(root, destination) {
     privateDir(destination);
-    const files = [], metadata = [];
-    function include(relative, recursive = true) {
-        const filename = path.join(root, relative);
-        const stat = fs.lstatSync(filename);
-        if (stat.isSymbolicLink()) throw new Error('Code snapshot contains a symlink');
-        if (stat.isDirectory()) {
-            if (recursive) for (const name of fs.readdirSync(filename)) include(path.join(relative, name));
-        } else if (stat.isFile()) files.push(relative);
-        else throw new Error('Code snapshot contains a special file');
-    }
-    for (const file of ['server.js', 'package.json', 'package-lock.json', 'LICENSE', '.env.example', '.gitignore', 'server', 'native', 'config', 'pi-packages', 'scripts', 'test']) include(file);
-    for (const name of fs.readdirSync(path.join(root, 'public'))) if (/\.(js|css|html|webmanifest)$/.test(name)) include('public/' + name);
-    for (const directory of ['public/vendor', 'public/brand']) include(directory);
-    const docs = JSON.parse(readSafe(path.join(root, 'docs/public-files.json'))).files;
-    for (const doc of [...docs, 'docs/public-files.json']) {
-        if (typeof doc !== 'string' || (!doc.endsWith('.md') && doc !== 'docs/public-files.json') || doc === 'AGENTS.local.md' || path.isAbsolute(doc) || doc.split(/[\\/]/).includes('..') || /(?:^|\/)local\//.test(doc)) throw new Error('Invalid documentation manifest');
-        if (fs.existsSync(path.join(root, doc))) include(doc);
-    }
+    const files = require('../scripts/source-files.cjs').distributionFiles(root), metadata = [];
+    require('../scripts/check-docs.cjs').checkDocumentation(root, files);
     const budget = { files: 0, bytes: 0, maxBytes: 1024 ** 3, maxFiles: 20000 };
     for (const relative of new Set(files)) {
         const target = path.join(destination, relative); privateDir(path.dirname(target));
