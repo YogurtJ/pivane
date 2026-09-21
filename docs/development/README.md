@@ -9,6 +9,7 @@
 | 开发步骤、验证范围、文档责任 | [开发流程](WORKFLOW.md) |
 | Pivane 名称、旧版本兼容、项目迁移 | [命名与迁移](NAMING.md) |
 | 当前结构的检查结论和后续关注点 | [架构检查记录](REVIEW.md) |
+| Pi/第三方依赖、公开 API 和升级验证 | [依赖与上游适配](DEPENDENCIES.md) |
 | 候选包、发布与恢复演练 | [发布流程](RELEASING.md) |
 | 通用参与方式 | [贡献指南](../../CONTRIBUTING.md)、[源码 Agent 入口](../../AGENTS.md) |
 | 字段和协议 | [API](../API.md)、对应功能文档 |

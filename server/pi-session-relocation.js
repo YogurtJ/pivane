@@ -81,6 +81,7 @@ async function relocateProjectSessions({ installation, agentDir, sourceCwd, targ
         // No outside parent links may be broken silently. Other project headers
         // need an explicit separate migration if they reference this directory.
         for (const bucket of fs.readdirSync(path.join(agentDir, 'sessions'), { withFileTypes: true })) {
+            if (bucket.isSymbolicLink()) throw new Error('Linked session directories require an expanded migration scope');
             const directory = path.join(agentDir, 'sessions', bucket.name);
             if (directory === sourceDir || !bucket.isDirectory()) continue;
             for (const name of fs.readdirSync(directory).filter(name => name.endsWith('.jsonl'))) {

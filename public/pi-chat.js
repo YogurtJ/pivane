@@ -1805,7 +1805,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function appendAgentThreadLink(header, target, label) {
-        if (!target || typeof target.cwd !== 'string' || typeof target.id !== 'string' || target.cwd !== state.cwd) return;
+        if (!target || typeof target.cwd !== 'string' || !target.cwd || target.cwd.length > 4096
+            || typeof target.id !== 'string' || !target.id || target.id.length > 300) return;
+        const reference = { cwd: target.cwd, id: target.id };
         const button = document.createElement('button');
         button.type = 'button'; button.className = 'pi-agent-thread-link'; button.textContent = label;
         button.addEventListener('click', async () => {
@@ -1815,9 +1817,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const generation = state.socketGeneration, cwd = state.cwd;
             button.disabled = true;
             try {
+                // Historical task metadata keeps its original cwd. Resolve an
+                // old path only on click; never navigate outside this project.
+                if (reference.cwd !== cwd) {
+                    const resolved = await apiFetch(`/api/pi/projects/resolve?cwd=${encodeURIComponent(reference.cwd)}`);
+                    if (generation !== state.socketGeneration || cwd !== state.cwd) return;
+                    const current = state.session?.cwd || state.projectAliases.get(cwd) || cwd;
+                    if (!resolved.cwd || resolved.cwd !== current) throw new Error(translateUi('原会话已不存在，请从会话列表选择其他会话。'));
+                }
                 const rows = await loadSessions(cwd);
                 if (generation !== state.socketGeneration || cwd !== state.cwd) return;
-                const session = rows.find(row => row.id === target.id);
+                const session = rows.find(row => row.id === reference.id);
                 if (!session) throw new Error(translateUi('原会话已不存在，请从会话列表选择其他会话。'));
                 await openSession(session);
             } catch (error) { toast(error.message, 'error'); }

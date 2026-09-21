@@ -17,9 +17,10 @@ async function check(browser, base, width, language) {
         localStorage.setItem('pi.workspace.language', language);
     }, { cwd, language });
     const markerPrefix = language === 'en' ? 'pivane' : 'pi5';
+    const recordedCwd = '/synthetic/before-project-rename';
     const receipt = { role: 'custom', customType: `${markerPrefix}-agent-task-receipt`, display: true, content: text,
-        details: { session: child, model: { provider: 'fixture', modelId: 'long-model-'.repeat(30) }, thinkingLevel: 'off', status: 'submitted' } };
-    const task = { role: 'custom', customType: `${markerPrefix}-agent-task-message`, display: true, content: text, details: { source: { cwd, sessionId: source.id } } };
+        details: { session: { ...child, cwd: recordedCwd }, model: { provider: 'fixture', modelId: 'long-model-'.repeat(30) }, thinkingLevel: 'off', status: 'submitted' } };
+    const task = { role: 'custom', customType: `${markerPrefix}-agent-task-message`, display: true, content: text, details: { source: { cwd: recordedCwd, sessionId: source.id } } };
     const histories = { source: [{ role: 'user', content: 'Create task B' }, receipt], child: [task, { role: 'assistant', content: 'Task complete.', stopReason: 'stop' }] };
     let active = source;
     await page.route('**/api/**', route => {
@@ -27,6 +28,7 @@ async function check(browser, base, width, language) {
         if (req.method() !== 'GET') writes.push(url.pathname);
         const send = data => route.fulfill({ json: data });
         if (url.pathname === '/api/pi/status') return send({ ok: true, agentThreads: true, projectRoots: ['/synthetic'] });
+        if (url.pathname === '/api/pi/projects/resolve') return send({ cwd: url.searchParams.get('cwd') === recordedCwd ? cwd : url.searchParams.get('cwd') });
         if (url.pathname === '/api/pi/projects') return send({ projects: [{ cwd, name: 'Fixture', sessionCount: 2 }], roots: ['/synthetic'] });
         if (url.pathname === '/api/pi/sessions') return send({ sessions: [source, child] });
         if (url.pathname === '/api/pi/activity') return send({ runtimes: [], pinnedProjects: [], hiddenProjects: [], replyNotices: [] });
@@ -72,6 +74,13 @@ async function check(browser, base, width, language) {
     await page.locator('.pi-agent-thread-message').waitFor();
     assert.ok((await page.locator('.pi-agent-thread-meta').textContent()).includes(language === 'en' ? 'Startup needs verification' : '启动状态待核实'));
     await layout();
+    receipt.details.session = { ...child, cwd: '/synthetic/different-project' };
+    await page.reload();
+    await page.locator('.pi-agent-thread-message').waitFor();
+    const beforeForeign = opened.length;
+    await page.locator('.pi-agent-thread-link').click();
+    await page.getByText(language === 'en' ? 'The original chat no longer exists. Choose another session from the list.' : '原会话已不存在，请从会话列表选择其他会话。', { exact: true }).waitFor();
+    assert.equal(opened.length, beforeForeign, 'a foreign project reference cannot change the current thread');
     assert.deepEqual(writes, []); assert.deepEqual(errors, []);
     await context.close();
 }

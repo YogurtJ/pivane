@@ -18,7 +18,7 @@ assert.match(project||'',/^\/tmp\/pi-onboarding-[^/]+\/project$/);
   await page.evaluate(()=>localStorage.removeItem('pi.web.cwd'));
   if(!await page.locator('#pi-project-dialog-close').isVisible())await page.locator('#pi-project-button').click();
   await page.waitForFunction(()=>document.querySelector('#pi-project-input').value===document.querySelector('#pi-directory-current').textContent);
-  assert.notEqual(await page.locator('#pi-project-input').inputValue(),'/srv/Pi5_GUI');
+  assert.equal(await page.locator('#pi-project-input').inputValue(),status.defaultProject);
   await page.locator('#pi-project-dialog-close').click();await page.locator('#workspace-settings-toggle').click();
   await page.locator('[data-settings-tab=native]').click();await page.locator('#native-settings-scope').waitFor();
   assert.deepEqual(await page.locator('#native-settings-scope option').evaluateAll(o=>o.map(x=>x.value)),['global']);

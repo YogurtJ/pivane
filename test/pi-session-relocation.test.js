@@ -105,6 +105,31 @@ test('very deep native histories are validated without recursive tree traversal'
     assert.deepEqual(decodeSession(relocated.bytes).tail, decodeSession(bytes).tail);
 });
 
+test('verification failure after publishing restores the untouched original sessions', async t => {
+    const f = fixture(t), native = await nativeSessions(f), before = fs.readFileSync(native.filename);
+    const target = sessionDirectory(f.agent, f.target), rename = fs.renameSync;
+    t.mock.method(fs, 'renameSync', (from, to) => {
+        const result = rename(from, to);
+        if (to === target) fs.appendFileSync(path.join(target, path.basename(native.filename)), 'synthetic corruption');
+        return result;
+    });
+    await assert.rejects(relocateProjectSessions({ installation: f.old, agentDir: f.agent, sourceCwd: f.old, targetCwd: f.target,
+        evidenceDir: path.join(f.root, 'evidence'), externalWritersStopped: true }), /verification/);
+    assert.deepEqual(fs.readFileSync(native.filename), before);
+    assert.equal(fs.existsSync(target), false);
+    assert.equal(fs.existsSync(path.join(f.root, 'evidence/result.json')), false);
+});
+
+test('linked discovery directories cannot hide an external parent reference', async t => {
+    const f = fixture(t), native = await nativeSessions(f);
+    const other = path.join(f.root, 'external'); fs.mkdirSync(other);
+    fs.symlinkSync(other, path.join(f.agent, 'sessions/linked'), process.platform === 'win32' ? 'junction' : 'dir');
+    await assert.rejects(relocateProjectSessions({ installation: f.old, agentDir: f.agent, sourceCwd: f.old, targetCwd: f.target,
+        evidenceDir: path.join(f.root, 'evidence'), externalWritersStopped: true }), /Linked session/);
+    assert.ok(fs.existsSync(native.filename));
+    assert.equal(fs.existsSync(sessionDirectory(f.agent, f.target)), false);
+});
+
 test('an external parent reference blocks a partial project migration', async t => {
     const f = fixture(t), native = await nativeSessions(f), other = path.join(f.root, 'other');
     fs.mkdirSync(other);
