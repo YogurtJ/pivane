@@ -8030,6 +8030,7 @@
     ,['打开任务线程', 'Open task thread']
     ,['查看来源线程', 'View source thread']
     ,['创建回执：{0}', 'Creation receipt: {0}']
+    ,['创建时状态：{0}', 'State at creation: {0}']
     ,['运行中', 'Running']
     ,['等待处理', 'Waiting']
     ,['已完成', 'Completed']

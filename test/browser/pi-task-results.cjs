@@ -10,7 +10,11 @@ async function check(browser, base, width, language) {
     const context = await browser.newContext({ viewport: { width, height: 900 }, locale: language });
     const page = await context.newPage(), errors = [], writes = [];
     page.on('pageerror', e => errors.push(e.message));
-    let active = parent, read = false, busy = false, indexed = false;
+    let active = parent, read = false, busy = false, indexed = false, delivered = false, liveSocket, holdNextRead = false, releaseRead, heldReady;
+    const heldReadReady = new Promise(resolve => { heldReady = resolve; });
+    const messages = Array.from({ length: 15 }, (_, index) => ({ role: 'user', timestamp: index + 1, content: `Earlier message ${index}\n` + 'Previous context\n'.repeat(10) }));
+    messages.push({ role: 'custom', customType: 'pivane-agent-task-receipt', timestamp: 20, display: true, content: 'Task created',
+        details: { session: child, status: 'running', requestId: 'task', model: { provider: 'fixture', modelId: 'fixture' } } });
     const result = { deliveryId: 'a'.repeat(64), requestId: 'task', sourceSessionId: parent.id, session: child,
         status: 'completed', preview: '<img src=x onerror=alert(1)> ' + 'long-result-'.repeat(150), truncated: true };
     await page.addInitScript(({ cwd, language }) => { localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem(`pi.web.session:${cwd}`, 'parent'); localStorage.setItem('pi.workspace.language', language); }, { cwd, language });
@@ -23,25 +27,58 @@ async function check(browser, base, width, language) {
         if (url.pathname === '/api/pi/activity') return send({ runtimes: [], pinnedProjects: [], hiddenProjects: [], replyNotices: [] });
         if (url.pathname === '/api/pi/agent-threads/results') {
             if (!indexed) { indexed = true; return send({ status: 'indexing', coverage: { files: 54, checked: 10 }, results: [] }); }
-            return send({ status: 'ready', results: url.searchParams.get('sourceSessionId') === 'parent' ? [{ ...result, read }] : [] });
+            return send({ status: 'ready', results: delivered && url.searchParams.get('sourceSessionId') === 'parent' ? [{ ...result, read }] : [] });
         }
         if (url.pathname === '/api/pi/agent-threads/read') { read = true; return send({ read: true }); }
         if (url.pathname.includes('history') || url.pathname === '/api/prompts') return send([]);
         return send({ configured: false });
     });
     await page.routeWebSocket('**/api/pi/ws', ws => ws.onMessage(raw => {
+        liveSocket = ws;
         const cmd = JSON.parse(raw), reply = data => ws.send(JSON.stringify({ type: 'response', id: cmd.id, command: cmd.type, success: true, data }));
         const state = { model, thinkingLevel: 'off', isStreaming: busy, isCompacting: false, autoCompactionEnabled: true };
         if (cmd.type === 'open_session') { active = cmd.sessionId === 'child' ? child : parent; return reply({ session: active, state,
-            messages: { messages: [{ role: 'user', content: 'Fixture conversation' }] }, stats: {}, models: { models: [model] }, thinkingLevels: { levels: ['off'] }, commands: { commands: [] } }); }
+            messages: { messages: active.id === parent.id ? messages : [{ role: 'user', content: 'Child fixture' }] }, stats: {}, models: { models: [model] }, thinkingLevels: { levels: ['off'] }, commands: { commands: [] } }); }
         if (cmd.type === 'get_state') return reply(state);
-        if (cmd.type === 'get_messages') return reply({ messages: [{ role: 'user', content: 'Fixture conversation' }] });
+        if (cmd.type === 'get_messages') {
+            const snapshot = structuredClone(active.id === parent.id ? messages : []);
+            if (holdNextRead) { holdNextRead = false; releaseRead = () => reply({ messages: snapshot }); heldReady(); return; }
+            return reply({ messages: snapshot });
+        }
         if (cmd.type === 'get_session_stats') return reply({});
         throw new Error(`Unexpected RPC: ${cmd.type}`);
     }));
     await page.goto(base);
     await page.locator('#pi-input').fill('Unsent draft');
     await page.locator('#pi-file-input').setInputFiles({ name: 'note.txt', mimeType: 'text/plain', buffer: Buffer.from('Synthetic attachment') });
+    const transcriptResult = page.locator('#pi-transcript-content .pi-agent-thread-message').filter({ has: page.locator('strong', { hasText: language === 'en' ? 'Agent task result' : 'Agent 任务结果' }) });
+    assert.equal(await transcriptResult.count(), 0);
+    assert.ok((await page.locator('#pi-transcript-content .pi-agent-thread-meta').textContent()).includes(language === 'en' ? 'State at creation:' : '创建时状态：'));
+    // Hold a history snapshot from before delivery. A live custom message must
+    // appear without reload, and this older response must not erase it.
+    holdNextRead = true; liveSocket.send(JSON.stringify({ type: 'agent_settled' }));
+    let timer; await Promise.race([heldReadReady, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('No history reconciliation')), 10000); })]); clearTimeout(timer);
+    const beforeScroll = await page.locator('#pi-transcript').evaluate(async node => {
+        node.scrollTop = 300;
+        node.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, bubbles: true }));
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        return node.scrollTop;
+    });
+    const message = { role: 'custom', customType: 'pivane-agent-task-result', timestamp: 30, display: true, content: result.preview, details: result };
+    messages.push(message); delivered = true;
+    liveSocket.send(JSON.stringify({ type: 'message_start', message }));
+    liveSocket.send(JSON.stringify({ type: 'message_end', message }));
+    await transcriptResult.waitFor();
+    assert.equal(await transcriptResult.locator('img').count(), 0);
+    releaseRead();
+    liveSocket.send(JSON.stringify({ type: 'message_end', message: { ...message, timestamp: 31 } }));
+    liveSocket.send(JSON.stringify({ type: 'message_end', message: { role: 'custom', customType: 'hidden-fixture', content: 'HIDDEN_FIXTURE', display: false } }));
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(await transcriptResult.count(), 1);
+    assert.ok(Math.abs(await page.locator('#pi-transcript').evaluate(node => node.scrollTop) - beforeScroll) < 3);
+    assert.equal(await page.getByText('HIDDEN_FIXTURE', { exact: true }).count(), 0);
+    assert.equal(await page.locator('#pi-input').inputValue(), 'Unsent draft');
+    assert.ok(await page.locator('#pi-attachments').isVisible());
     await page.locator('#pi-task-results').waitFor({ state: 'visible' });
     await page.waitForFunction(() => document.querySelectorAll('.pi-task-result').length === 1);
     await page.locator('#pi-task-results > summary').click();
@@ -54,9 +91,10 @@ async function check(browser, base, width, language) {
     await page.getByRole('button', { name: language === 'en' ? 'Mark read' : '标为已读', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('#pi-task-results > summary').textContent.includes('0'));
     await page.reload(); await page.waitForFunction(() => document.querySelectorAll('.pi-task-result').length === 1);
+    assert.equal(await transcriptResult.count(), 1, 'native history reload keeps exactly one delivered receipt');
     assert.ok((await page.locator('#pi-task-results > summary').textContent()).includes('0'));
     await page.locator('#pi-task-results > summary').click();
-    await page.getByRole('button', { name: language === 'en' ? 'Open complete result' : '查看完整结果', exact: true }).click();
+    await page.locator('#pi-task-results').getByRole('button', { name: language === 'en' ? 'Open complete result' : '查看完整结果', exact: true }).click();
     await page.waitForFunction(cwd => localStorage.getItem(`pi.web.session:${cwd}`) === 'child', cwd);
     await page.waitForFunction(() => document.querySelector('#pi-task-results').hidden);
     assert.equal(active.id, 'child');

@@ -1784,6 +1784,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function createMessageElement(message, showReplyActions = false) {
         const element = createMessageContentElement(message, showReplyActions);
+        if (element && message.role === 'custom') element._piCustomMessage = message;
         if (element && message.timestamp != null) {
             element.dataset.messageKey = JSON.stringify([message.role, message.timestamp, message.toolCallId || '']);
             element.querySelectorAll('.pi-message-body > *').forEach((block, index) => {
@@ -1893,7 +1894,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const meta = document.createElement('span'); meta.className = 'pi-agent-thread-meta';
                 const labels = { saved: '任务已保存，尚未确认启动', submitted: '任务已提交', running: '运行中', tool: '运行中', retrying: '运行中', compacting: '运行中', waiting: '等待处理', completed: '已完成', error: '执行失败', stopped: '已停止', uncertain: '启动状态待核实' };
                 meta.textContent = [details.model?.provider, details.model?.modelId, details.thinkingLevel,
-                    translateUi('创建回执：{0}', translateUi(typeof details.status === 'string' && Object.hasOwn(labels, details.status) ? labels[details.status] : '启动状态待核实'))]
+                    translateUi('创建时状态：{0}', translateUi(typeof details.status === 'string' && Object.hasOwn(labels, details.status) ? labels[details.status] : '启动状态待核实'))]
                     .filter(value => typeof value === 'string' && value).join(' · ');
                 header.appendChild(meta);
                 appendAgentThreadLink(header, details.session, translateUi('打开任务线程'));
@@ -2416,6 +2417,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function endLiveMessage(message) {
+        if (message?.role === 'custom') {
+            if (message.display === false) return;
+            const duplicate = [...elements.transcript.querySelectorAll('.pi-message.custom')].some(element => {
+                const previous = element._piCustomMessage;
+                if (!previous || previous.customType !== message.customType) return false;
+                if (message.customType === 'pivane-agent-task-result' && typeof message.details?.deliveryId === 'string')
+                    return previous.details?.deliveryId === message.details.deliveryId;
+                return message.timestamp != null && previous.timestamp === message.timestamp
+                    && JSON.stringify(previous.content) === JSON.stringify(message.content)
+                    && JSON.stringify(previous.details) === JSON.stringify(message.details);
+            });
+            if (duplicate) return;
+            const element = createMessageElement(message);
+            if (!element) return;
+            // A persisted custom message can arrive after agent_settled. Invalidate
+            // older history requests and append without disturbing a draft/live reply.
+            state.runtimeRevision++;
+            const readingPosition = transcriptScroll.capture();
+            elements.transcript.querySelector('.pi-empty-state')?.remove();
+            elements.transcript.appendChild(element);
+            transcriptView.refresh(); workflows.decorate();
+            transcriptScroll.restore(readingPosition);
+            void taskResults?.refresh();
+            return;
+        }
         if (message?.role === 'user') {
             const key = JSON.stringify([message.role, message.timestamp, '']);
             const duplicate = [...elements.transcript.querySelectorAll(`[data-message-key="${CSS.escape(key)}"]`)].some(element => JSON.stringify(element._piUserMessage?.content) === JSON.stringify(message.content));

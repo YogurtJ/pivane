@@ -56,6 +56,10 @@ test('Agent creates a persistent task, runs immediately with defaults, preserves
         const source = await gateway.store.createSession(cwd, 'Source A');
         const worker = await gateway.supervisor.getWorker({ cwd, sessionPath: source.path, sessionId: source.id });
         const token = worker.navigationToken;
+        const returnedEvents = [];
+        const unsubscribeReturns = worker.subscribe(event => {
+            if (event.message?.customType === 'pivane-agent-task-result') returnedEvents.push(event);
+        });
         assert.ok((await worker.getNativeResources()).tools.some(tool => tool.name === 'agent_thread'));
         await worker.request('set_model', { provider: 'fixture', modelId: 'chosen-model' });
         const initial = { requestId: 'one', title: 'Task B', message: 'TASK_BODY_FIXTURE. Read-only explanation.' };
@@ -85,6 +89,10 @@ test('Agent creates a persistent task, runs immediately with defaults, preserves
         assert.equal(returned.length, 1);
         assert.equal(returned[0].details.session.id, child.id);
         assert.equal(returned[0].details.preview, 'TASK_FIXTURE_OK');
+        await deadline(() => returnedEvents.some(event => event.type === 'message_end'));
+        assert.equal(returnedEvents.filter(event => event.type === 'message_end').length, 1, 'idle result is emitted live, without another agent turn');
+        assert.equal(returnedEvents.find(event => event.type === 'message_end').message.details.deliveryId, returned[0].details.deliveryId);
+        unsubscribeReturns();
         const originalReply = await api('/agent-threads/result', { requestId: 'one', resultId: returned[0].details.resultId }, token);
         assert.equal(originalReply.status, 200, JSON.stringify(originalReply));
         assert.equal(originalReply.data.text, 'TASK_FIXTURE_OK');
