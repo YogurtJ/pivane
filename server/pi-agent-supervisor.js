@@ -241,6 +241,10 @@ class AgentWorker extends EventEmitter {
         }
     }
 
+    async taskReturn(input) {
+        return this.exclusive(rpc => this.navigate(rpc, { mode: 'task-result', input }, { timeoutMs: 30000 }));
+    }
+
     async launchTask(task) {
         return this.exclusive(async (_rpc, runtime) => {
             if (runtime.model?.provider !== task.model.provider || runtime.model?.id !== task.model.modelId
@@ -411,6 +415,7 @@ class AgentWorker extends EventEmitter {
                 && (item.sourceInfo?.path || item.path) === extensionPath
                 && isInternalCommand(item.name));
             if (!command) throw new Error('原生回退扩展未加载，请重新打开 runtime');
+            if (payload.mode === 'task-result' && !command.description?.includes('task-results-v1')) throw new Error('Task result bridge is not loaded');
             if (payload.mode === 'tree' && !command.description?.includes('tree-v1')) throw new Error('当前实例尚未加载会话树导航，请在任务结束后退出并重新打开线程');
             if (options.beforeSend && !options.beforeSend()) return { cancelled: true };
             this.navigationResults.set(id, null);

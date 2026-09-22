@@ -488,6 +488,10 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => elements.tokenInput.focus(), 0);
     }
 
+    const taskResults = window.PiTaskResults?.create({ root: document.getElementById('pi-task-results'), fetch: apiFetch,
+        scope: () => state.session && !state.session.ephemeral ? { cwd: state.cwd, id: state.session.id, generation: state.socketGeneration,
+            busy: !state.connected || state.streaming || state.compacting || state.shellBusy || state.pendingUi.size > 0 } : null,
+        link: appendAgentThreadLink, error: message => toast(message, 'error') });
     let accessBootstrapped = false;
     async function bootstrap() {
         await window.WorkspaceAccess?.ready;
@@ -501,6 +505,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const status = await apiFetch('/api/pi/status');
             accessBootstrapped = true;
             state.modelCatalogSupported = status.modelCatalog === true;
+            taskResults?.setEnabled(status.agentTaskResults === true);
             state.runtimeConfiguration = status.runtimeConfiguration === true;
             conversationSearch.setEnabled(status.sessionSearch === true);
             state.extensionDrafts = status.extensionDrafts === true;
@@ -900,6 +905,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const noticeRevision = state.noticeRevision;
         try {
             const data = await apiFetch('/api/pi/activity', { signal: AbortSignal.timeout(8000) });
+            void taskResults?.refresh();
             if (document.hidden) return;
             if (data.titleRevision && data.titleRevision !== titleServerRevision) {
                 const revision = titleUiRevision;
@@ -1543,6 +1549,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function disconnectSocket(intentional = false) {
+        taskResults?.reset();
         titleEditor?.close();
         threadMenu.close(false);
         state.socketGeneration++;
@@ -1891,6 +1898,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 header.appendChild(meta);
                 appendAgentThreadLink(header, details.session, translateUi('打开任务线程'));
             } else appendAgentThreadLink(header, { cwd: details.source?.cwd, id: details.source?.sessionId }, translateUi('查看来源线程'));
+        }
+        if (role === 'custom' && message.customType === 'pivane-agent-task-result') {
+            article.classList.add('pi-agent-thread-message');
+            window.PiTaskResults?.decorate(header, message.details || {}, appendAgentThreadLink);
         }
         const responseText = role === 'assistant' ? messageText(message.content).trim() : '';
         if (responseText) state.lastAssistantText = responseText;

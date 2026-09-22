@@ -78,6 +78,23 @@ test('Agent creates a persistent task, runs immediately with defaults, preserves
         assert.ok(calls.some(call => call.model === 'default-model' && JSON.stringify(call.messages).includes('TASK_BODY_FIXTURE')));
         assert.equal((await worker.request('get_state')).sessionId, source.id);
         const callCount = calls.length;
+        await deadline(() => SessionManager.open(source.path).getEntries().some(entry => entry.customType === 'pivane-agent-task-result'));
+        assert.equal(calls.length, callCount, 'returning a result does not start a model turn');
+        const returned = SessionManager.open(source.path).getEntries().filter(entry => entry.customType === 'pivane-agent-task-result');
+        assert.equal(returned.length, 1);
+        assert.equal(returned[0].details.session.id, child.id);
+        assert.equal(returned[0].details.preview, 'TASK_FIXTURE_OK');
+        const originalReply = await api('/agent-threads/result', { requestId: 'one', resultId: returned[0].details.resultId }, token);
+        assert.equal(originalReply.status, 200, JSON.stringify(originalReply));
+        assert.equal(originalReply.data.text, 'TASK_FIXTURE_OK');
+        assert.equal(originalReply.data.nextOffset, null);
+        assert.equal((await api('/agent-threads/result', { requestId: 'one' }, gateway.supervisor.getActiveWorker(child.path).navigationToken)).status, 400);
+        const inboxResponse = await fetch(base + '/api/pi/agent-threads/results?' + new URLSearchParams({ cwd, sourceSessionId: source.id }),
+            { headers: { Authorization: 'Bearer fixture-web-token' } });
+        const inbox = await inboxResponse.json();
+        assert.equal(inbox.results[0].read, false);
+        const marked = await api('/agent-threads/read', { cwd, sourceSessionId: source.id, deliveryId: inbox.results[0].deliveryId }, 'fixture-web-token');
+        assert.equal(marked.status, 200, JSON.stringify(marked));
         const replay = await api('/agent-threads/create', initial, token);
         assert.equal(replay.data.session.id, child.id); assert.equal(replay.data.reused, true); assert.equal(calls.length, callCount);
         assert.equal((await api('/agent-threads/create', { ...initial, message: 'changed' }, token)).status, 400);
@@ -114,6 +131,9 @@ test('Agent creates a persistent task, runs immediately with defaults, preserves
         const resumedSource = await originalGetWorker({ cwd, sessionPath: source.path, sessionId: source.id });
         const resumed = await api('/agent-threads/create', initial, resumedSource.navigationToken);
         assert.equal(resumed.data.session.id, child.id, 'deduplication survives source runtime recreation');
+        assert.equal(SessionManager.open(source.path).getEntries().filter(entry => entry.customType === 'pivane-agent-task-result'
+            && entry.details.session.id === child.id).length, 1, 'worker recreation does not duplicate the result');
+        assert.ok(SessionManager.open(source.path).getEntries().some(entry => entry.customType === 'pivane-agent-task-read'));
         const seen = [];
         const unsubscribe = resumedSource.subscribe(event => seen.push(event));
         resumedSource._handleEvent({ type: 'extension_ui_request', method: 'notify', message: JSON.stringify({ pi5Navigation: 'late-task-reply', success: true, data: 'PRIVATE_FIXTURE' }) });

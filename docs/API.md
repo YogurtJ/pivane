@@ -38,7 +38,11 @@
 
 ### Agent 任务线程
 
-`GET /status.agentThreads=true` 标记任务线程后端。受管持久 Agent 的 `agent_thread` 工具通过私有 POST `/agent-threads/create|status|models` 创建并立即启动同项目任务、按 requestId 查询或读取模型默认值/目录。身份绑定实际存活源 worker；普通工作台 Cookie/Token 不能代替。`/activity.agentThreadLaunches` 返回准备中的创建数，参与维护空闲和停机等待。任务参数、模型/思考选择、原生来源消息、跨运行实例去重和失败语义见[Agent 任务线程](AGENT_THREADS.md)。不提供任意已有线程消息投递或自动结果回传。
+`GET /status.agentThreads=true` 标记任务线程后端，`agentTaskResults=true` 标记来源线程结果回执。受管持久 Agent 的 `agent_thread` 工具通过私有 POST `/agent-threads/create|status|models|result` 创建任务、查询状态/模型或分页只读原生结果。身份绑定存活源 worker；工作台 Cookie/Token 不能代替。目录未完成时返回202及 `TASK_INDEXING`/coverage，不把未核实记录当作不存在。`/activity.agentThreadLaunches`、`agentTaskIndexing`、`agentTaskReturns` 分别报告创建、目录读取和交付工作，均进入维护空闲与停机等待。
+
+工作台身份使用 `GET /agent-threads/results?cwd=...&sourceSessionId=...` 读取来源线程的任务与最近100份结果，返回 `status`、`tasks`、`results`、`coverage`、`total`、`truncated`。结果含 deliveryId、requestId、sourceSessionId、session、status、resultId、entryId、completedAt、preview、truncated、delivered、read。`POST /agent-threads/read` 接受 cwd/sourceSessionId/deliveryId，仅由当前来源 worker 在空闲时保存已读；忙碌或归属错误返回409。
+
+来源忙碌或关闭不丢结果，重开后从原生任务状态和回执恢复；回传不触发新的模型轮次。任务参数、预算、旧任务兼容和失败语义见[Agent 任务线程](AGENT_THREADS.md)。
 
 ### `GET /status`
 

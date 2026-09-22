@@ -1,4 +1,5 @@
 import { registerToolProvenance } from './pi-tool-provenance.js';
+import { receiveTaskReturn } from './pi-task-returns.js';
 import { registerAgentThreads, launchAgentTask } from './pi-agent-threads-extension.ts';
 import { registerExtensionAssistant } from './pi-extension-assistant-extension.ts';
 import { handleTitleRequest } from './pi-session-title-state.js';
@@ -50,11 +51,16 @@ export default function (pi: ExtensionAPI) {
         }
     });
     pi.registerCommand(INTERNAL_COMMAND, {
-        description: `Pivane internal session navigation and context snapshot; managed-v1; task-v1; title-v1; model-catalog-v1; resources-v1; history-v1; tree-v1; tree-presentation-v1; history-presentation-v1; history-body-v1; system-prompt-v1; reload-v1:${randomUUID()}`,
+        description: `Pivane internal session navigation and context snapshot; managed-v1; task-v1; task-results-v1; title-v1; model-catalog-v1; resources-v1; history-v1; tree-v1; tree-presentation-v1; history-presentation-v1; history-body-v1; system-prompt-v1; reload-v1:${randomUUID()}`,
         handler: async (args, ctx) => {
             const request = JSON.parse(args);
             if (ctx.mode !== 'rpc' || request.token !== process.env.PI_WEB_NAVIGATION_TOKEN) throw new Error('Invalid navigation request');
             const notify = (data: object) => ctx.ui.notify(JSON.stringify({ pivaneNavigation: request.id, ...data }));
+            if (request.mode === 'task-result') {
+                try { notify({ success: true, data: receiveTaskReturn(pi, ctx, request.input) }); }
+                catch (error) { notify({ success: false, error: error instanceof Error ? error.message : 'Task receipt failed' }); }
+                return;
+            }
             if (request.mode === 'task') {
                 try { launchAgentTask(pi, ctx, request.requestId); notify({ success: true }); }
                 catch (error) { notify({ success: false, error: error instanceof Error ? error.message : 'Task launch failed' }); }

@@ -4788,6 +4788,15 @@ body.is-resizing * {
     }
 }
 
+.pi-task-results { flex: 0 0 auto; min-width: 0; margin: 4px 12px; font-size: 13px; }
+.pi-task-results > summary { cursor: pointer; padding: 8px; }
+.pi-task-results-list { max-height: min(35vh, 340px); overflow: auto; overscroll-behavior: contain; }
+.pi-task-result { padding: 10px; border-top: 1px solid var(--border-color, #7775); min-width: 0; overflow-wrap: anywhere; }
+.pi-task-result header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pi-task-result p { white-space: pre-wrap; max-height: 140px; overflow: auto; overscroll-behavior: contain; }
+.pi-task-result small { display: block; margin: 6px 0; }
+.pi-task-result button { font-size: 16px; max-width: 100%; white-space: normal; }
+
 .pi-message.pi-agent-thread-message {
     border-inline-start: 3px solid var(--accent-color, #6287d8);
     padding-inline-start: 12px;

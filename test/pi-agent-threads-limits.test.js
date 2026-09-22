@@ -17,6 +17,21 @@ test('task launches reserve before await, status reports preparing, and duplicat
     assert.equal(service.jobs.size, 0);
 });
 
+test('task slots count saved launches once and recheck request identity after model discovery', async t => {
+    const { createHash } = require('node:crypto'); let created = 0, scans = 0;
+    const service = new AgentThreadsService({ store: { createSession() { created++; } }, supervisor: { getActiveWorker: () => null }, settingsService: {} });
+    t.after(() => service.dispose());
+    const records = [{ session: { id: 'child', cwd: source.cwd }, task: { requestId: 'same', source }, state: { status: 'submitted' } }];
+    service.jobs.set('source:same', true); service.jobs.set('source:second', true); service.jobs.set('source:third', true);
+    assert.equal(service.checkScope(records, source), 1);
+    service.jobs.clear();
+    const fingerprint = createHash('sha256').update(JSON.stringify([input.title, input.message, null, null, null])).digest('hex');
+    service.records = async () => ++scans === 1 ? [] : [{ session: { id: 'existing', cwd: source.cwd }, task: { source, requestId: input.requestId, fingerprint } }];
+    service.catalog = async () => ({ defaults: { provider: 'fixture', modelId: 'model', thinkingLevel: 'off' }, models: [{ provider: 'fixture', modelId: 'model', thinkingLevels: ['off'] }] });
+    const result = await service.create(source, input);
+    assert.equal(created, 0); assert.equal(result.reused, true); assert.equal(result.session.id, 'existing');
+});
+
 test('task preflight rejects unknown fields, nesting, and concurrent siblings before creating sessions', async () => {
     let creates = 0;
     const service = new AgentThreadsService({ store: { createSession: async () => { creates++; } }, supervisor: {}, settingsService: {} });

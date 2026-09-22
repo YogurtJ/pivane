@@ -1,4 +1,3 @@
-const fs = require('node:fs');
 const { createHash, timingSafeEqual } = require('node:crypto');
 const { getSdk } = require('./pi-session-store');
 
@@ -31,6 +30,8 @@ class AgentThreadsService {
     constructor({ store, supervisor, settingsService, isSuspended = () => false }) {
         Object.assign(this, { store, supervisor, settingsService, isSuspended });
         this.jobs = new Map();
+        this.catalogIndex = new (require('./pi-task-catalog').TaskCatalog)({ store, suspended: isSuspended });
+        this.returns = new (require('./pi-task-returns').TaskReturns)({ catalog: this.catalogIndex, supervisor, isSuspended });
     }
     authenticate(req) {
         const bearer = String(req.headers.authorization || '');
@@ -54,32 +55,43 @@ class AgentThreadsService {
                 thinkingLevels: getSupportedThinkingLevels(model) })) };
     }
     async records(cwd) {
-        const { SessionManager } = await getSdk();
-        const sessions = await this.store.listSessions(cwd);
-        if (sessions.length > 2000) throw new Error('Task lookup is limited to projects with at most 2000 sessions');
-        let bytes = 0;
-        return sessions.map(row => {
-            const session = { ...row, path: fs.realpathSync.native(row.path) };
-            bytes += fs.statSync(session.path).size;
-            if (bytes > 64 * 1024 * 1024) throw new Error('Task lookup exceeds the 64 MiB session budget');
-            const manager = SessionManager.open(session.path);
-            return { session, task: taskProfile(manager), state: taskState(manager) };
-        }).filter(record => record.task);
+        const snapshot = await this.catalogIndex.refresh(cwd);
+        if (!snapshot.complete) throw Object.assign(new Error('Task directory is being prepared; query the same requestId again. No task has been created.'),
+            { code: 'TASK_INDEXING', coverage: snapshot.coverage });
+        const requests = new Set();
+        for (const record of snapshot.records) {
+            if (record.sourceMatches === false) continue;
+            const key = JSON.stringify([record.task.source.sessionId, record.task.requestId]);
+            if (requests.has(key)) throw Object.assign(new Error('Duplicate native task request identity; reconcile the task records'), { code: 'TASK_REQUEST_CONFLICT' });
+            requests.add(key);
+        }
+        return snapshot.records;
     }
-    receipt({ session, task, state }, extra = {}) {
+    receipt({ session, task, state, results = [] }, extra = {}) {
         const worker = this.supervisor.getActiveWorker(session.path);
         const activity = worker?.activity.snapshot();
         return { session: { id: session.id, cwd: session.cwd, name: session.name }, requestId: task.requestId,
             source: task.source, model: task.model, thinkingLevel: task.thinkingLevel,
             status: activity?.busy ? activity.phase : state?.status === 'settled' ? state.outcome : state ? (worker ? 'submitted' : 'uncertain') : 'saved',
+            result: results.at(-1) ? this.returns.result({ session, task }, results.at(-1)) : null,
             ...extra };
     }
     async lookup(source, requestId) {
         if (typeof requestId !== 'string' || requestId.length > 160) throw new Error('Invalid requestId');
         if (this.jobs.has(`${source.sessionId}:${requestId}`)) return { requestId, status: 'preparing' };
-        const record = (await this.records(source.cwd)).find(row => row.task.source.sessionId === source.sessionId && row.task.requestId === requestId);
+        const record = (await this.records(source.cwd)).find(row => row.sourceMatches !== false && row.task.source.sessionId === source.sessionId && row.task.requestId === requestId);
         if (!record) throw new Error('Task not found for this source thread');
         return this.receipt(record);
+    }
+    async readResult(source, input) {
+        if (typeof input.requestId !== 'string' || input.requestId.length > 160) throw new Error('Invalid task request');
+        const record = (await this.records(source.cwd)).find(row => row.sourceMatches !== false
+            && row.task.source.sessionId === source.sessionId && row.task.requestId === input.requestId);
+        if (!record) throw new Error('Task not found for this source thread');
+        const result = input.resultId ? record.results.find(row => row.resultId === input.resultId) : record.results.at(-1);
+        if (!result?.replyEntryId) throw new Error('No original reply is recorded for this task result; open its thread');
+        return { requestId: input.requestId, resultId: result.resultId,
+            ...await this.catalogIndex.reply(source.cwd, record.session.id, result.replyEntryId, input.offset ?? 0) };
     }
     create(source, raw) {
         const input = validateInput(raw);
@@ -95,22 +107,29 @@ class AgentThreadsService {
     }
     async dispose() {
         this.stopping = true;
+        await this.returns.dispose();
         await Promise.allSettled([...this.jobs.values()]);
+        await this.catalogIndex.dispose();
+    }
+    checkScope(records, source) {
+        const parent = records.find(row => row.session.id === source.sessionId)?.task;
+        const depth = (parent?.depth || 0) + 1;
+        if (depth > 3) throw new Error('Task thread nesting is limited to three levels');
+        const unfinished = new Set(records.filter(row => row.sourceMatches !== false && row.task.source.sessionId === source.sessionId
+            && row.state?.status !== 'settled').map(row => row.task.requestId ? `${source.sessionId}:${row.task.requestId}` : Symbol()));
+        for (const key of this.jobs.keys()) if (key.startsWith(`${source.sessionId}:`)) unfinished.add(key);
+        if (unfinished.size > 3) throw new Error('This source already has three unfinished task threads; inspect them before creating another');
+        return depth;
     }
     async _create(source, input) {
         const fingerprint = createHash('sha256').update(JSON.stringify([input.title, input.message, input.provider ?? null, input.modelId ?? null, input.thinkingLevel ?? null])).digest('hex');
         const records = await this.records(source.cwd);
-        const existing = records.find(row => row.task.source.sessionId === source.sessionId && row.task.requestId === input.requestId);
+        const existing = records.find(row => row.sourceMatches !== false && row.task.source.sessionId === source.sessionId && row.task.requestId === input.requestId);
         if (existing) {
             if (existing.task.fingerprint !== fingerprint) throw new Error('requestId already belongs to a different task');
             return this.receipt(existing, { reused: true });
         }
-        const parent = records.find(row => row.session.id === source.sessionId)?.task;
-        const depth = (parent?.depth || 0) + 1;
-        if (depth > 3) throw new Error('Task thread nesting is limited to three levels');
-        const siblings = records.filter(row => row.task.source.sessionId === source.sessionId && row.state?.status !== 'settled');
-        const preparing = [...this.jobs.keys()].filter(key => key.startsWith(`${source.sessionId}:`)).length;
-        if (siblings.length + preparing > 3) throw new Error('This source already has three unfinished task threads; inspect them before creating another');
+        this.checkScope(records, source);
         const catalog = await this.catalog(source.cwd);
         const provider = input.provider ?? catalog.defaults.provider, modelId = input.modelId ?? catalog.defaults.modelId;
         const model = catalog.models.find(row => row.provider === provider && row.modelId === modelId);
@@ -121,8 +140,15 @@ class AgentThreadsService {
         const thinkingLevel = model.thinkingLevels.includes(requestedThinking) ? requestedThinking
             : model.thinkingLevels.filter(level => order.indexOf(level) <= order.indexOf(requestedThinking)).at(-1) || model.thinkingLevels[0];
         if (!thinkingLevel) throw new Error('No supported thinking level for the selected model');
+        const latest = await this.records(source.cwd);
+        const concurrent = latest.find(row => row.sourceMatches !== false && row.task.source.sessionId === source.sessionId && row.task.requestId === input.requestId);
+        if (concurrent) {
+            if (concurrent.task.fingerprint !== fingerprint) throw new Error('requestId already belongs to a different task');
+            return this.receipt(concurrent, { reused: true });
+        }
+        const depth = this.checkScope(latest, source);
         if (source.disposed || source.restarting || this.stopping || this.isSuspended() || this.supervisor.disposing) throw new Error('Source runtime or workspace is stopping');
-        const task = { version: 1, requestId: input.requestId, fingerprint, depth,
+        const task = { version: 1, requestId: input.requestId, fingerprint, depth, returnResults: true,
             source: { sessionId: source.sessionId, cwd: source.cwd }, model: { provider, modelId }, thinkingLevel };
         const session = await this.store.createSession(source.cwd, input.title, { task: { ...task, message: input.message } });
         let submitted = false;
@@ -144,15 +170,26 @@ class AgentThreadsService {
 function mountAgentThreads(router, options) {
     const service = new AgentThreadsService(options);
     options.access.agentThreadIdentity = req => service.authenticate(req);
-    for (const action of ['create', 'status', 'models']) router.post(`/agent-threads/${action}`, async (req, res) => {
+    router.get('/agent-threads/results', async (req, res) => {
+        res.set('Cache-Control', 'no-store');
+        try { res.json(await service.returns.list(req.query.cwd, req.query.sourceSessionId)); }
+        catch (error) { res.status(409).json({ error: error.message, code: error.code }); }
+    });
+    router.post('/agent-threads/read', async (req, res) => {
+        try { res.json(await service.returns.markRead(req.body.cwd, req.body.sourceSessionId, req.body.deliveryId)); }
+        catch (error) { res.status(409).json({ error: error.message, code: error.code }); }
+    });
+    for (const action of ['create', 'status', 'models', 'result']) router.post(`/agent-threads/${action}`, async (req, res) => {
         res.set('Cache-Control', 'no-store');
         try {
             const source = req.workspaceIdentity?.kind === 'agent-thread' && req.workspaceIdentity.worker;
             if (!source || source.disposed || source.restarting) return res.status(403).json({ error: 'A live source Agent thread is required' });
             const data = action === 'create' ? await service.create(source, req.body)
-                : action === 'models' ? await service.catalog(source.cwd) : await service.lookup(source, req.body?.requestId);
+                : action === 'models' ? await service.catalog(source.cwd)
+                : action === 'result' ? await service.readResult(source, req.body) : await service.lookup(source, req.body?.requestId);
             res.json(data);
-        } catch (error) { res.status(400).json({ error: error.message }); }
+        } catch (error) { res.status(error.code === 'TASK_INDEXING' ? 202 : 400).json({ error: error.message, code: error.code,
+            ...(error.coverage ? { status: 'indexing', coverage: error.coverage } : {}) }); }
     });
     return service;
 }
