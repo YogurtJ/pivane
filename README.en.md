@@ -34,11 +34,11 @@ Run the server on Linux, macOS or Windows, then access it through a browser. Des
 
 The current source supports **Simplified Chinese and English**. It follows the browser's preferred supported language on first use; other languages fall back to English. Choose a language under **Settings → Preferences → Interface language**. The choice is saved for this browser and applies on the next page load, without automatically refreshing or interrupting your current work. Model replies, user content and speech language are independent.
 
-The bilingual interface is included starting with **1.0.0-rc.2**. The older RC archives remain unchanged. **1.0.0-rc.4** is the current release candidate and is pinned to **Pi 0.86.1**; RC3 remains a historical artifact with Pi 0.85.1. See the [RC4 notes](docs/releases/1.0.0-rc.4.md) for the current release scope.
+The bilingual interface is included starting with **1.0.0-rc.2**. **1.0.0 is the first stable release**, pinned to **Pi 0.86.1**. It includes the extension center, application updates, background installation, persistent usage accounting and task result receipts. Historical RC artifacts remain available. See the [1.0.0 notes](docs/releases/1.0.0.md) for changes and validation scope.
 
 ## Install
 
-Use **Node.js 22.x** and the locked dependencies. RC4 is pinned to Pi 0.86.1 and is validated against the exact archive and its isolated acceptance report. You do not need a global Pi installation, a frontend build, or a compiler for the packaged native components.
+Use **Node.js 22.x** and the locked dependencies. Version 1.0.0 is pinned to Pi 0.86.1; validation results are attached to its exact archive SHA256. You do not need a global Pi installation, a frontend build, or a compiler for the packaged native components.
 
 | Server platform | Validated RC baseline |
 |---|---|

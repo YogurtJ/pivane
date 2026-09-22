@@ -23,6 +23,7 @@
             for (const [title, prompt] of [
                 [t('办公文档'), t('帮我查找适合处理 Word 和 PDF 的技能，先检查本机已有能力，并比较来源和配置要求。检查兼容性后给出安装方案')],
                 [t('分析 Excel'), t('帮我查找整理 Excel 数据、汇总分析和制作图表的技能，先检查兼容性并给出安装方案。')],
+                [t('检查更新'), t('帮我检查所有已安装的 Packages 和 Skills 是否有版本更新。先核对本机清单、安装范围、来源和当前版本，再查询对应来源的最新版本，列出可更新项、主要变化、兼容性影响及更新方案。对手动安装或无法确认版本的项目明确标注，不要猜测。先只读检查，等我确认后再更新。')],
                 [t('排查扩展'), t('帮我检查已安装的 Packages 和 Skills，找出缺失依赖或加载问题，先说明发现的问题和修复方案。')]
             ]) examples.append(button(title, () => { need.value = prompt; need.focus(); }));
             const status = node('p', '', { role: 'status', 'aria-live': 'polite', id: 'pi-extension-assistant-status' });

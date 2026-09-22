@@ -14,12 +14,12 @@
 下面使用普通用户目录中的新实例。先将发布包和同名.sha256下载到Downloads；PowerShell执行：
 
 ```powershell
-$archive = Join-Path $env:USERPROFILE 'Downloads\pivane-1.0.0-rc.3.tar.gz'
+$archive = Join-Path $env:USERPROFILE 'Downloads\pivane-1.0.0.tar.gz'
 $expected = (Get-Content -LiteralPath ($archive + '.sha256') -Raw).Trim().Split()[0]
 if ($expected -notmatch '^[a-fA-F0-9]{64}$' -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ine $expected) { throw '发布包校验失败' }
 $base = Join-Path $env:USERPROFILE 'Pivane'
 if (Test-Path -LiteralPath $base) { throw '此目录已存在，请按更新流程操作或选择新的base' }
-$app = Join-Path $base 'releases\1.0.0-rc.3'
+$app = Join-Path $base 'releases\1.0.0'
 @($app, "$base\data\media", "$base\projects\demo", "$base\backups") | ForEach-Object { New-Item -ItemType Directory -Path $_ -Force | Out-Null }
 tar.exe -xzf $archive -C $app --strip-components=1
 if ($LASTEXITCODE -ne 0) { throw '解包失败' }
@@ -92,4 +92,4 @@ node.exe scripts/install-service.cjs
 
 Windows 10、Windows Server、ARM64、ReFS/exFAT、网络共享/映射盘及真实供应商/硬件未在本轮验收。打开文件时系统可能拒绝父目录移动；测试分别记录系统拒绝及可执行的路径竞争场景，不把无法发生的重命名算成成功移动。
 
-平台基线、最新候选包与尚未验收范围见[RELEASE_INSTALL_VALIDATION.md](RELEASE_INSTALL_VALIDATION.md)。
+平台基线、当前发布包与尚未验收范围见[RELEASE_INSTALL_VALIDATION.md](RELEASE_INSTALL_VALIDATION.md)。

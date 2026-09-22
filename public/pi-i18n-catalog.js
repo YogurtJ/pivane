@@ -8189,6 +8189,7 @@
     ,['汇总周期', 'Aggregation period']
     ,['每周用量（周一开始）', 'Weekly usage (Monday start)']
     ,['自然月用量', 'Calendar month usage']
+    ,['帮我检查所有已安装的 Packages 和 Skills 是否有版本更新。先核对本机清单、安装范围、来源和当前版本，再查询对应来源的最新版本，列出可更新项、主要变化、兼容性影响及更新方案。对手动安装或无法确认版本的项目明确标注，不要猜测。先只读检查，等我确认后再更新。', 'Check all installed Packages and Skills for updates. First verify the local inventory, installation scopes, sources and current versions, then check the latest versions at the corresponding sources. List available updates, key changes, compatibility impacts and a proposed update plan. Clearly flag manually installed items or versions that cannot be verified; do not guess. Perform read-only checks first and wait for my confirmation before updating.']
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

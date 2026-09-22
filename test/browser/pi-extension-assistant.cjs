@@ -112,7 +112,12 @@ async function run(browser, base, width, locale, noProject = false) {
     await page.locator('.extensions-card [data-extension-configure]').click();
     await page.locator('#pi-extension-assistant-dialog').waitFor({ state: 'visible' });
     assert.match(await page.locator('#pi-extension-assistant-need').inputValue(), /npm:@injaneity\/pi-computer-use/);
-    assert.equal(await page.locator('.pi-extension-examples button').count(), 3);
+    assert.equal(await page.locator('.pi-extension-examples button').count(), 4);
+    await page.locator('.pi-extension-examples button').nth(2).click();
+    const updateDraft = await page.locator('#pi-extension-assistant-need').inputValue();
+    assert.match(updateDraft, /Packages.*Skills/);
+    assert.match(updateDraft, locale === 'en' ? /read-only.*confirmation before updating/ : /只读检查，等我确认后再更新/);
+    assert.equal(mutations.length, 0, 'choosing the update preset only fills a draft');
     await page.locator('.pi-extension-examples button').first().click();
     assert.equal(await page.locator('#pi-extension-assistant-need').inputValue(), locale === 'en'
         ? 'Find skills for working with Word and PDF documents. Check existing capabilities on this machine first, and compare sources and setup requirements. Check compatibility, then propose an installation plan.'

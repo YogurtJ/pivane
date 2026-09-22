@@ -2,7 +2,11 @@
 
 此页描述已完成的平台验证；不表示每个新候选包已经重复完成全部实机测试。准确的包版本、SHA256和补验结果应随该次发布说明提供。RC4 的中间候选验收失败记录不作为最终发布结论，只有绑定最终归档 SHA256 的 validation.json 才代表 RC4。
 
-## 当前 RC4
+## 当前正式版 1.0.0
+
+[1.0.0](releases/1.0.0.md) 锁定 Pi 0.86.1。最终包的安装、RC4 升级、恢复和浏览器检查结果随 Release 的 `pivane-1.0.0.validation.json` 提供，并绑定精确归档 SHA256。本次验收平台为 Linux ARM64、Node 22.x；macOS、Windows 与 Linux x86_64 保留历史基线，不宣称本包已重跑这些实机验收。新后台安装器的 macOS/Windows 系统服务与桌面入口仍需实机验收。
+
+## 历史 RC4
 
 [1.0.0-rc.4](releases/1.0.0-rc.4.md) 锁定 Pi 0.86.1。发布验收以该版本的精确归档 SHA256 和 validation.json 为准；Linux ARM64、Node 22.23.2 的隔离安装与浏览器/原生恢复结果不得沿用 RC3 的历史结论。macOS、Windows 和 Linux x86_64 若未在 RC4 包重跑，仍只标为历史基线。
 

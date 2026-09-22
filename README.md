@@ -10,9 +10,9 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 
 **A self-hosted AI workspace powered by Pi Coding Agent. Code, manage files, and create images, video & audio from your desktop, tablet or phone. Bring your own models.**
 
-[下载当前 RC](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.4) · [开始使用](docs/USER_GUIDE.md) · [安装与恢复](docs/INSTALL_RECOVERY.md) · [Agent 操作指南](docs/AGENT_GUIDE.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues)
+[下载 1.0.0 正式版](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0) · [开始使用](docs/USER_GUIDE.md) · [安装与恢复](docs/INSTALL_RECOVERY.md) · [Agent 操作指南](docs/AGENT_GUIDE.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues)
 
-RC4 绑定 Pi 0.86.1，包含原生 system transcript 兼容、会话导入导出修复、AI 会话标题、项目与会话归档、系统提示词查看与编辑、辅助模型统一设置，以及 Pi 受管更新。[查看本版变化](docs/releases/1.0.0-rc.4.md)。
+**1.0.0 是 Pivane 首个正式版**，绑定 Pi 0.86.1，提供跨设备 AI 工作台、扩展中心、应用更新与后台常驻，新增持久用量账本、任务结果回执和扩展更新检查预设，并整理架构与兼容边界。[查看本版变化](docs/releases/1.0.0.md)。
 
 ## 为什么用 Pivane
 
@@ -62,7 +62,7 @@ RC4 绑定 Pi 0.86.1，包含原生 system transcript 兼容、会话导入导�
 
 ## 部署在你自己的机器上
 
-当前 RC4 已适配并锁定 **Pi 0.86.1** 和 Node.js 22.x；RC3 仍作为历史资产保留，不会被源码修改。RC4 的精确包 SHA256、验收范围和限制见[版本说明](docs/releases/1.0.0-rc.4.md)及 Release 附件。
+当前正式版 **1.0.0** 锁定 **Pi 0.86.1**，推荐 Node.js 22.x；历史 RC 资产保留。1.0.0 的精确包 SHA256、验收范围和限制见[版本说明](docs/releases/1.0.0.md)及 Release 附件。下表是历史平台基线，不表示本包已在每个平台重跑验收。
 
 | 服务端平台 | 已验收范围 | 安装入口 |
 |---|---|---|
@@ -84,13 +84,13 @@ RC4 绑定 Pi 0.86.1，包含原生 system transcript 兼容、会话导入导�
 
 [.env.example](.env.example) 采用 `127.0.0.1:3001`；未配置时服务端口默认 3000。不同设备访问时，请使用部署机器的可达地址。
 
-## 已完成的首版验收
+## 历史平台验收基线
 
 - Linux ARM64、M2 Mac、Windows 11：同一发布包各通过 **167 项 Node 测试**，完成干净安装、核心 RPC、浏览器、旧包升级和 **17 个文件逐项哈希一致的原路径恢复**。
 - Windows 普通用户权限下另通过 **30 项检查**；Ubuntu x86_64 另完成同包安装、167 项测试和静态检查补验。
 - 各验收环境的生产依赖 audit 为 **0 漏洞**。测试使用独立身份与合成服务，不把这些结果称为所有真实媒体供应商或手机系统的验收。
 
-准确的首版平台、包 SHA256 和检查结果随 [RC1 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.1) 的 `validation.json` 提供。**RC4** 的变更和本包验证范围见[版本说明](docs/releases/1.0.0-rc.4.md)及[RC4 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.4)附件；RC3 和首版跨平台结果不冒充 RC4 实机验收。
+准确的历史平台、包 SHA256 和检查结果随 [RC1 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.1) 的 `validation.json` 提供。**1.0.0** 的变更和本包验证范围见[版本说明](docs/releases/1.0.0.md)及[1.0.0 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0)附件；历史 RC 跨平台结果不冒充 1.0.0 实机验收。
 
 ## 文档与 Agent 入口
 

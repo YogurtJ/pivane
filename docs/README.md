@@ -4,7 +4,7 @@ English: [project overview](../README.en.md) · [installation](en/INSTALL.md) ·
 
 第一次使用从[用户指南](USER_GUIDE.md)开始；需要安装或恢复实例，从[安装与恢复](INSTALL_RECOVERY.md)开始。让自己的Agent协助时，把[用户Agent操作指南](AGENT_GUIDE.md)交给它。
 
-电脑、平板和手机使用同一套响应式浏览器界面；服务可部署在下述已验收的Linux、Apple Silicon macOS与Windows环境中。下载包、校验文件和精确验收摘要见[GitHub Releases](https://github.com/YogurtJ/pivane/releases)；当前候选为 RC4/Pi 0.86.1。
+电脑、平板和手机使用同一套响应式浏览器界面；服务可部署在下述已验收的Linux、Apple Silicon macOS与Windows环境中。下载包、校验文件和精确验收摘要见[GitHub Releases](https://github.com/YogurtJ/pivane/releases)；当前正式版为 1.0.0/Pi 0.86.1，本包验收范围以其发布附件为准。
 
 ## 使用与管理
 
@@ -14,7 +14,7 @@ English: [project overview](../README.en.md) · [installation](en/INSTALL.md) ·
 | 部署、升级、备份和恢复 | [安装与恢复](INSTALL_RECOVERY.md) · [macOS](MACOS.md) · [Windows](WINDOWS.md) |
 | 后台常驻、登录启动与桌面入口 | [后台服务](BACKGROUND_SERVICE.md) |
 | 检查版本、更新 Pi、备份与重启 | [版本与更新](UPDATES.md) |
-| 版本与系统范围 | [版本与更新](UPDATES.md) · [1.0.0-rc.4说明](releases/1.0.0-rc.4.md) · [RC3历史说明](releases/1.0.0-rc.3.md) · [RC2](releases/1.0.0-rc.2.md) · [首版RC1](releases/1.0.0-rc.1.md) · [平台验证范围](RELEASE_INSTALL_VALIDATION.md) |
+| 版本与系统范围 | [版本与更新](UPDATES.md) · [1.0.0 正式版说明](releases/1.0.0.md) · [RC4历史说明](releases/1.0.0-rc.4.md) · [RC3历史说明](releases/1.0.0-rc.3.md) · [RC2](releases/1.0.0-rc.2.md) · [首版RC1](releases/1.0.0-rc.1.md) · [平台验证范围](RELEASE_INSTALL_VALIDATION.md) |
 | 界面语言、浏览器默认与生效方式 | [中英文界面](I18N.md) |
 | 访问验证、通知、日常排障 | [访问控制](ACCESS_CONTROL.md) · [通知](NOTIFICATIONS.md) · [运维](OPERATIONS.md) |
 | 聊天模型、Thinking、资源 | [供应商与模型](PROVIDER_SETTINGS.md) · [Pi原生设置](NATIVE_SETTINGS.md) |
