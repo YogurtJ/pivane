@@ -84,6 +84,7 @@ window.PiUsage = (() => {
                 const card = node('div'); card.append(node('span', label), node('strong', value)); cards.append(card);
             }
             result.append(cards);
+            if (data.ledger) result.append(node('p', translateUi("已持久入账，删除会话后仍保留统计。{0} 条记录按官方目录价补算，{1} 条非零用量仍无可确认价格。", number(total.estimatedRecords), number(total.unpricedRecords)), 'pi-usage-muted'));
             result.append(node('p', translateUi("已去重 {0} 条副本记录 · {1} 条用量记录 · {2} 条缺少价格／费用，{3} 条记录费用为零。", number(c.duplicates), number(total.records), number(total.missingCost), number(total.zeroCost)), 'pi-usage-muted'));
             if (!total.records) result.append(node('p', translateUi("此时间范围内没有持久会话用量记录。"), 'settings-empty'));
             const chart = node('section', undefined, 'pi-usage-section'); chart.append(node('h4', translateUi("每日用量")));
@@ -91,12 +92,19 @@ window.PiUsage = (() => {
             for (const [value, label] of [['total', translateUi("总 Token")], ['input', translateUi("输入 Token")], ['output', translateUi("输出 Token")], ['cacheRead', translateUi("缓存读取")], ['cacheWrite', translateUi("缓存写入")], ['cost', translateUi("估算费用（USD）")]]) {
                 const option = node('option', label); option.value = value; metric.append(option);
             }
+            const period = node('select'); period.setAttribute('aria-label', translateUi("汇总周期"));
+            for (const [value, label] of [['daily', translateUi("每日用量")], ['weekly', translateUi("每周用量（周一开始）")], ['monthly', translateUi("自然月用量")]]) {
+                if (!data[value]) continue;
+                const option = node('option', label); option.value = value; period.append(option);
+            }
             const plot = node('div', undefined, 'pi-usage-chart');
             const detail = node('p', translateUi("点击或用键盘选择日期查看数值。"), 'pi-usage-muted'); detail.setAttribute('aria-live', 'polite');
             function draw() {
                 plot.replaceChildren();
-                const max = Math.max(...data.daily.map(day => day[metric.value]), 1);
-                for (const day of data.daily) {
+                const rows = data[period.value] || data.daily;
+                chart.querySelector('h4').textContent = period.selectedOptions[0]?.textContent || translateUi("每日用量");
+                const max = Math.max(...rows.map(day => day[metric.value]), 1);
+                for (const day of rows) {
                     const value = metric.value === 'cost' ? cost(day.cost) : number(day[metric.value]);
                     const label = `${day.date}：${value}`;
                     const bar = node('button', undefined, 'pi-usage-bar'); bar.type = 'button'; bar.title = label; bar.setAttribute('aria-label', label);
@@ -105,7 +113,8 @@ window.PiUsage = (() => {
                     bar.addEventListener('focus', select); bar.addEventListener('click', select); plot.append(bar);
                 }
             }
-            metric.addEventListener('change', draw); draw(); chart.append(metric, plot, node('p', `${data.from} — ${data.to}`, 'pi-usage-muted'), detail); result.append(chart);
+            period.addEventListener('change', draw);
+            metric.addEventListener('change', draw); draw(); chart.append(period, metric, plot, node('p', `${data.from} — ${data.to}`, 'pi-usage-muted'), detail); result.append(chart);
             const values = [['Token', row => number(row.total)], [translateUi("输入 / 输出"), row => `${number(row.input)} / ${number(row.output)}`],
                 [translateUi("缓存读 / 写"), row => `${number(row.cacheRead)} / ${number(row.cacheWrite)}`], [translateUi("估算 USD"), row => cost(row.cost)]];
             result.append(table(translateUi("按供应商"), data.providers, [[translateUi("供应商"), row => row.provider], ...values]));

@@ -6302,16 +6302,16 @@
         "Statistics scope and costs"
     ],
     [
-        "统计当前允许项目下仍保留的 Pi 持久会话，包含所有分支、压缩前历史和有记录的工具／摘要用量。临时会话、BTW 侧聊、标题生成、媒体规划、模型测试及已删除的记录不在此范围。",
-        "Includes retained Pi persistent sessions in currently allowed projects: all branches, pre-compaction history, and recorded tool/summary usage. Excludes temporary sessions, BTW side chats, title generation, media planning, model tests and deleted records."
+        "统计已入账的 Pi 持久会话，删除会话后仍保留用量。包含所有分支和有记录的工具／摘要用量；临时会话、侧聊、标题生成、媒体规划、模型测试及首次入账前已删除的记录不包含在内。",
+        "Includes booked Pi persistent-session usage, retained after session deletion, across all branches and recorded tool/summary usage. Excludes temporary sessions, side chats, title generation, media planning, model tests and records deleted before their first import."
     ],
     [
-        "原生复制、分叉和导入中保持 ID、时间与内容相同的记录只计一次，归属最早创建的现存会话；手工改变这些字段的副本无法可靠识别。项目和会话明细显示去重后的归属用量。",
-        "Native copies, forks and imports with identical record ID, time and content count once and belong to the earliest created surviving session. Manually modified copies cannot be reliably identified. Project and session details show usage after deduplication."
+        "原生复制、分叉和导入中保持 ID、时间与内容相同的记录只计一次，保留首次入账的会话归属。每日累计，支持按周和自然月查看；周从周一开始，各周期只包含所选日期范围。",
+        "Native copies, forks and imports with identical record ID, time and content count once and keep their first booked session attribution. Daily totals can be viewed by week or calendar month. Weeks start on Monday; periods include only the selected date range."
     ],
     [
-        "费用来自记录当时的 Pi 价格配置，属于美元估算，不是供应商账单。零费用可能表示未配置价格或订阅计费。缺少上报的用量不会被当作零消耗；工具和摘要无法归属模型时单列。",
-        "Costs use Pi's price configuration at the time of recording and are estimates in USD, not provider bills. Zero cost may mean missing pricing or subscription billing. Missing usage is not treated as zero; tools and summaries without a model attribution are listed separately."
+        "保留原始费用；零或缺失费用在模型 ID 精确匹配时按内置官方目录价补算，包含已知阶梯价。估算不是中转站账单，也不代表消费当日价格；无法确认的型号不猜价。缺少上报的用量仍标为未知。",
+        "Original costs are retained. Zero or missing costs are estimated from the bundled official catalog on exact model ID matches, including known pricing tiers. These are not relay bills or historical-date prices. Unrecognized models are not guessed; missing usage remains unknown."
     ],
     [
         "安装包可能执行任意代码；只安装已审查并信任的来源。",
@@ -8185,6 +8185,10 @@
     ,['手动更新与故障帮助', 'Manual update and troubleshooting']
     ,['自动下载、校验和备份后安装，失败时尝试启动旧版。', 'Download, verify, back up and install automatically. If startup fails, try starting the previous version.']
     ,['当前启动器不支持 Pivane 应用更新，请先加载新版启动器', 'This launcher does not support application updates. Load the new launcher first.']
+    ,['已持久入账，删除会话后仍保留统计。{0} 条记录按官方目录价补算，{1} 条非零用量仍无可确认价格。', 'Usage is durably recorded and retained after session deletion. {0} records use official catalog estimates; {1} records with nonzero usage still have no confirmed price.']
+    ,['汇总周期', 'Aggregation period']
+    ,['每周用量（周一开始）', 'Weekly usage (Monday start)']
+    ,['自然月用量', 'Calendar month usage']
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

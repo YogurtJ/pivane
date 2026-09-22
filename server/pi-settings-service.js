@@ -394,6 +394,7 @@ class PiSettingsService {
         const models = Array.isArray(provider.models) ? provider.models : [];
         const index = models.findIndex(model => model.id === id);
         const current = index >= 0 ? models[index] : {};
+        const official = (await require('./pi-usage-pricing').officialPrices()).get(id);
         const model = {
             ...current,
             id,
@@ -402,7 +403,7 @@ class PiSettingsService {
             input: input.imageInput ? ['text', 'image'] : ['text'],
             contextWindow: numberInRange(input.contextWindow, 128000, 1024, 4000000),
             maxTokens: numberInRange(input.maxTokens, 16384, 1, 1000000),
-            cost: current.cost || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+            cost: current.cost || official?.rates || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
         };
         if (Object.hasOwn(input, 'thinkingLevelMap')) {
             const map = thinkingMap(input.thinkingLevelMap);

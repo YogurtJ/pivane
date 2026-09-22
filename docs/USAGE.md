@@ -1,70 +1,72 @@
 # 持久会话用量统计
 
-2026-09-11 Windows句柄后端与所有平台BigInt stat接入：先校验长度预算再转Number分配buffer，Windows额外核对路径当前对象的完整卷/128位File ID；无描述符后端不静默返回零。Windows11 x64原生持久用量、跨线程正文搜索及恢复后正数用量验证通过，平台限制见WINDOWS.md。
+设置 → 用量统计提供今天、最近 7 天、本月及自定义日期（最多 366 天），包含输入、输出、缓存读写、总 Token 和估算美元费用。趋势可以按日、周和自然月查看；周从周一开始，周期只累计所选日期范围，不把范围外的日期算入。供应商、模型、项目和会话明细按 Token 降序，每批显示 20 行。
 
-2026-09-11 macOS适配：扫描器通过共享描述符边界使用F_GETPATH，Linux继续/proc；原有目录、文件身份、预算与前后变化检查保留。缺失安全后端在扫描前拒绝，不伪报零用量。系统原生realpath处理Mac路径大小写和/tmp别名；原生JSONL仍是唯一来源，不改历史费用。详见MACOS.md。
+## 持久账本
 
-设置 → 用量统计提供今天、最近 7 天、本月及自定义日期（最多 366 天），包含输入、输出、缓存读写、总 Token 和估算美元费用。每日趋势可切换指标，点击或键盘聚焦日期查看数值；供应商、模型、项目和可展开的会话明细按总 Token 降序排列，每张明细表分批显示 20 行。手机表格与长时间图表在各自区域横向滚动。
+用量保存于 Pi Agent 身份目录的 `pivane-usage/ledger.sqlite`。这是只有用量事实、去重指纹、定价依据和归属信息的独立账本，不是聊天副本，不含正文、思考、工具参数或摘要。原生 SessionManager/JSONL 仍是唯一对话事实来源；统计不会修改 JSONL，也不会创建 RPC worker 或请求模型。
 
-## 页面布局
+- 首次同步从 `sessions/<project>/*.jsonl` 补录原生 v2/v3 用量，后续按完整文件身份、大小和纳秒 mtime/ctime 跳过未变化文件，只重新解析变化的文件。
+- 服务每分钟进行有界同步，打开统计时也同步；同一查询保留 15 秒内存缓存。服务关闭时等待进行中的账本操作退出。休眠或停机不依赖跨日定时任务，恢复后补录仍存在的历史文件。
+- 每笔事实和各时区日汇总在同一 SQLite 事务内提交，重复导入不再次累计；重启、会话删除或历史文件缩短不会扣回已入账用量。
+- 日汇总入账即更新，周/月直接相加，不必等到周期结束才能保住用量。新时区首次使用从精简事实建立日汇总，以后直接读取日汇总；保留最多 32 个时区，包括默认 UTC。
+- 网页删除会话先停止对应 worker，再确认该文件的当前修订已完整入账；入账失败、文件损坏、日期无效或超限时拒绝删除。通过外部 CLI/文件管理器删除时没有此检查，应先确认统计同步完成。
+- 首次入账之前已经删除且没有副本的记录无法恢复。外部删除尚未同步的新增记录也无法事后补录。
 
-筛选区使用统一高度的范围/日期/刷新控件，桌面横排，平板两行；480px 以下范围与刷新同排，起止日期各自一行。日期继续使用浏览器原生选择器，其显示格式由浏览器/系统地区设置决定；提交仍为 YYYY-MM-DD。读取时刷新图标转动，减弱动态效果时关闭转动，不改变原有请求生命周期。
+账本不再是可以随意丢弃的缓存。删除原生会话后，账本是这些用量的保留凭据；备份、恢复和迁移身份目录时必须包含整个 `pivane-usage/`。实例停机整批备份涵盖该目录。使用 SQLite 完整同步事务、私密目录与文件权限，损坏或不可读时返回错误，不伪报零数据。需要 Node.js 22.19 或更新版本的 `node:sqlite`；部分 Node 版本会打印实验性模块提示。
 
-外层统计页不提供横向浏览空间；长表格和多日趋势在各自容器内滚动，大额数字和长标识可换行。UI 回归要同时检查面板、结果、卡片及日期字段的实际边界，不能仅验证 body 宽度。设置中的“使用偏好”同时加固原生模型 select 的轨道宽度，并说明模块 Agent 用于多媒体实验室生成方案。
+## 统计范围与去重
 
-## 数据来源与口径
+新增入账仍严格校验 header.cwd 的 realpath、目录存在性、系统访问权限和当前项目根范围。已入账项目按当时验证的规范 cwd 保留；项目目录随后删除也不会丢失已入账数据，但查询仍按当前允许项目根筛选。
 
-唯一来源是当前 Pi Agent 目录下 `sessions/<project>/*.jsonl` 的原生 v2/v3 记录。读取并严格解析 JSON，复用原生文档的数据结构；不调用可能迁移落盘的 SessionManager.open，不创建第二个 RPC worker、模型请求、数据库或聊天历史。旧 v1、损坏、非 UTF-8、超限、扫描中变化的文件跳过并显示统计不完整。
+累计所有分支的 assistant usage、明确上报 usage 的 toolResult，以及 compaction/branch_summary 的 usage；不递归计算 retainedTail。没有 usage 的普通工具结果不算额外模型消耗，摘要/assistant 缺少完整 usage 标明未知。失败或停止记录只要有用量也计入。总 Token 为 input + output + cacheRead + cacheWrite，与当前上下文占用独立。
 
-- 只包含 header.cwd 经 realpath、目录存在性和当前 PI_PROJECT_ROOTS 校验的项目。已移出侧栏的项目若仍有有效记录，按同一根规则统计；目录已不存在或范围外的项目不纳入。
-- 累加所有分支的 assistant usage、明确上报 usage 的 toolResult，以及 compaction/branch_summary 的 usage；不递归累加 retainedTail 中的旧消息。没有 usage 的普通工具结果不视为额外模型消耗，摘要/assistant 缺少完整 usage 则标明未知。
-- 总 Token 为 input + output + cacheRead + cacheWrite；与当前上下文占用独立。失败或停止记录只要包含用量也计入。
-- 以原生 entry.timestamp 在所选 IANA 时区的日期分组，首尾日期均包含。默认浏览器当前时区；无有效日期不推算，报告 invalidDates。
-- 跨文件按 entry ID、entry timestamp 和规范化载荷的 SHA-256 去重，忽略可能被分支导出改动的 parentId；ID 相同但载荷不同仍分别计数。原生复制、分叉、导入保留这些字段时只计一次，不追随 header.parentSession 读取任意路径。手工修改 ID/时间/载荷的副本无法可靠去重。
-- 重复记录归属最早创建的现存会话（相同时间按文件路径稳定排序）。原文件删除后可由存活副本承接，因此这是现存记录的归属统计，不是不可变账本。各项目/会话小计可加和到总量。
-- 模型按 assistant.provider 和 responseModel（没有时 model）归属；工具/摘要用量单列“工具与摘要”，不猜测模型。
-- 费用使用原生记录当时的 usage.cost.total，不重新按当前目录价格回算。缺少费用和零费用分开计数；订阅、代理折扣或未配置价格时不能当作真实账单。
-- 不覆盖临时会话、BTW 侧聊、标题生成、媒体 planner、模型测试、外部未落盘请求及已删除记录；不新增长期临时用量日志。
+以原生 entry.timestamp 和所选 IANA 时区分日，首尾日期均包含；无有效日期不推算。跨文件按 entry ID、timestamp 和规范化载荷的 SHA-256 去重，忽略 parentId。原生复制、分叉、导入保留这些字段时只计一次，不追随 parentSession 读取任意路径；手工修改 ID/时间/载荷不能可靠去重。
 
-标题重新生成窗口会显示该次请求实际使用的模型和 Pi 返回的 Token 用量，缺失字段明确标为未知。这是一次请求的临时展示，不写入本统计或累计标题用量日志，不能据此把未显示的自动标题请求视为免费。
+首次批量入账按会话创建时间和路径排序确定归属，后续保留第一次入账的归属。删除原始会话不会将用量转给副本。会话明细包括已删除会话的显式名称或 ID，各归属小计可以加和到总量。
 
-返回结果只含数值、日期、供应商/模型标识、项目路径与会话 ID/显式名称；无 firstMessage、正文、思考、工具参数、摘要或 session 文件路径。没有显式名称的会话显示 ID，不读取首条问题作为标题。
+模型按 assistant.provider 和 responseModel（缺省 model）归属；工具与摘要单列，不猜测模型。临时会话、BTW 侧聊、标题生成、媒体 planner、模型测试和未落盘请求暂不在本账本范围。标题生成窗口的一次请求用量展示不等于累计标题日志。
+
+## 官方参考价格
+
+保留原始 `usage.cost.total`。有完整用量且原始费用为零或缺失时，精确匹配随 Pi 安装的 OpenAI、Google、xAI、Anthropic 官方供应商目录，按每百万 Token 单价补算。包含长上下文阶梯和已记录的一小时缓存写入量。目录读取不加载认证、不发网络或模型请求。
+
+不模糊匹配显示名，不删除模型后缀，不把 `gpt-5.6` 猜成 `gpt-5.6-sol`，也不把 `grok-4.6-build` 猜成 `grok-4.6`。未知型号、价格字段不足或有缓存写入但目录没有写入价时保留原始费用并标明仍无确认价格。非零原始费用保留。新建自定义模型在 ID 精确匹配且尚未设置价格时使用官方目录价（包括阶梯）；已有显式价格不自动覆盖。
+
+每条补算事实保存官方供应商、模型 ID、参考链接、单价内容哈希、完整价格表和本笔适用阶梯，便于追溯。之后目录更新不会自动重估已经入账的费用。它是按补录时目录价计算的参考估算，不代表消费当日价格、中转站实际扣款、订阅费用、折扣、税或音视频及搜索工具额外收费。目录可能滞后于官网，未知费用不能当作免费。
+
+参考：[OpenAI](https://openai.com/api/pricing/) · [Google](https://ai.google.dev/gemini-api/docs/pricing) · [xAI](https://docs.x.ai/developers/models) · [Anthropic](https://platform.claude.com/docs/en/about-claude/pricing)。页面明确区分补算记录数、没有确认价格的非零用量记录数和原有缺失/零费用计数。
 
 ## API
 
-`/api/pi/status.usageStats=true` 标记后端启用。
+`/api/pi/status.usageStats=true` 标记统计可用，`usageLedger=true` 标记持久账本能力。
 
-`GET /api/pi/settings/usage?from=2026-09-01&to=2026-09-09&timeZone=Asia%2FShanghai`
+`GET /api/pi/settings/usage?from=2026-09-01&to=2026-09-30&timeZone=Asia%2FShanghai`
 
-复用 Pi Origin/Bearer 验证、no-store。from/to 必须为真实 `YYYY-MM-DD`，包含两端且最多 366 天；timeZone 缺省为 UTC，必须为 Intl 支持的 IANA 时区。未知字段拒绝，不接收客户端文件路径或额外项目根。
+沿用 Origin/Bearer 验证和 no-store。from/to 必须是真实 YYYY-MM-DD，包含两端且最多 366 天；timeZone 缺省 UTC，必须为 Intl 支持的 IANA 时区。未知参数拒绝，不接受客户端文件路径和额外项目根。
 
-响应字段：
+- `from/to/timeZone/generatedAt/scope` 保留，scope 为 `persistent-sessions`，增加 `ledger:true`。
+- `total`、`daily`、`providers/models/projects/sessions` 保留 `input/output/cacheRead/cacheWrite/total/cost/records/missingUsage/missingCost/zeroCost`。
+- 各汇总增加 `recordedCost`（原始费用合计）、`estimatedRecords`（官方价补算笔数）、`unpricedRecords`（非零用量但仍无确认价格的笔数）。
+- 增加 `weekly/monthly`，date 分别为周一日期或 YYYY-MM；只合计筛选内日期。
+- `coverage` 为本次同步的 `scannedFiles/cachedFiles/skippedFiles/excludedProjects/duplicates/invalidDates/limited/syncedAt`。cachedFiles 表示身份和修订未变化；duplicates 表示本次读取中已入账的指纹数，并非账本历史副本总数。
+- `partial` 在跳过文件、日期异常、达到限额或用量缺失时为 true；价格缺失另行显示。总数包括早先已保存的数据，不能将 partial 报告当作本次完整补录证明。
 
-- from/to/timeZone/generatedAt/scope（固定 persistent-sessions）。
-- total：input/output/cacheRead/cacheWrite/total/cost/records/missingUsage/missingCost/zeroCost。
-- daily：连续日期含零记录日，每项 date 加上述统计。
-- providers/models/projects/sessions：归属标识加上述统计，仅有记录的组返回。
-- coverage：scannedFiles/skippedFiles/excludedProjects/duplicates/invalidDates/limited。
-- partial：跳过文件、无日期、扫描限额或缺失完整 usage 时为 true；缺少价格另以 missingCost 显示。
+非法筛选 400，不同筛选或后台同步并发时 429，线程/账本失败或超时 503。空来源目录仍返回已有账本；首次空目录才是零。页面取消或关闭不会撤销已经开始的事务，也不会自动重放请求。
 
-非法筛选 400，鉴权 401/403，不同筛选并发扫描 429，线程异常/超时 503。空目录成功返回零条记录，错误不能回填假零数值。页面修改日期、关闭设置或切分类后取消并忽略迟到请求；服务扫描可继续完成但不会自动重放。
+## 读取预算与平台
 
-## 读取预算与性能
+一个服务最多一个统计 Worker Thread，30 秒线程限时、192 MiB old generation。最多枚举 100000 个来源路径；单批解析最多 2000 个变化文件、512 MiB、250000 行或 100000 条用量事实，扫描阶段 20 秒。后续批次跳过已核实修订继续推进；单文件 64 MiB、单条 8 MiB。超限、损坏、旧 v1、非 UTF-8 或读取中变化的文件不作为完整入账文件。
 
-一个服务最多一个扫描 Worker Thread，相同查询复用进行中的 Promise；只缓存最近一个汇总结果 15 秒，无定时后台扫描，无磁盘缓存。源文件不修改，数据变化可能在这 15 秒内尚未反映，页面显示结果时间。
+目录只读原生两层布局，不跟随目录或文件软链接。O_NOFOLLOW/O_NONBLOCK、BigInt stat、描述符路径、完整身份及前后校验保留；Linux 使用 /proc，macOS 使用 F_GETPATH，Windows 使用 HANDLE 最终路径和完整卷/File ID。缺少安全后端不降级为不安全扫描。新账本事务已通过 Linux 合成验证，既有 Mac/Windows 扫描后端验收不代表新账本已完成当地实机验证。
 
-目录只访问上述两层结构，不跟随项目目录或文件软链接；文件采用 O_NOFOLLOW/O_NONBLOCK 和真实描述符边界检查，前后检查 inode、大小、mtime/ctime 和项目路径。每次按 LF 串行读取 64KiB 块，允许 CRLF 与 JSON 字符串内的 U+2028/U+2029，非法 UTF-8 拒绝。
+## 页面与验证
 
-限额：2000 文件、单文件64MiB、单条8MiB、扫描总量512MiB、250000原生行、100000范围内用量记录、扫描20秒。达到限额时返回已完整读完文件的部分结果并标明 limited；线程总等待30秒、V8 old generation192MiB，线程失败不返回假完整结果。只返回一份汇总，避免在 Express 主线程解析大量聊天记录。
-
-## 验证与部署
+桌面筛选横排，手机日期字段至少 16px；长表格和图表在内部滚动，外层统计面板不产生横向滚动。只使用安全 DOM 显示模型、项目、会话标识。
 
 ```bash
-node --test test/pi-usage.test.js
+node --test test/pi-usage.test.js test/pi-usage-ledger.test.js
 PLAYWRIGHT_MODULE=/path/to/playwright PI_USAGE_TEST_URL=http://127.0.0.1:3123 node test/browser/pi-usage.cjs
-PLAYWRIGHT_MODULE=/path/to/playwright PI_SETTINGS_LAYOUT_URL=http://127.0.0.1:3001 node test/browser/pi-settings-layout.cjs
 ```
 
-Node 验证真实原生创建/分叉身份、摘要与 retainedTail、日期边界、未知用量/费用、异常/越界文件、预算、并发和鉴权，断言无 worker 创建或源文件改动。浏览器使用 mock API，覆盖1440/393/320px与三主题、筛选/图表/分页、空状态/错误/旧后端和迟到响应，不发送模型或媒体请求。
-
-后端需usageStats能力及可用描述符组件，缺少时页面显示未启用，不伪造已有数据。更新遵循停机备份流程，核对主/侧会话、预约、导入导出和媒体活动，不能中断运行中的任务。
+Node 覆盖原生复制去重、持久化/删除/重启、日周月和时区、阶梯价、事务失败回滚、损坏存储、项目范围、增量推进、删除检查、源文件不变、鉴权和并发。浏览器采用独立身份及 mock API，在桌面/手机核对图表、周期、边界宽度、空状态/错误、迟到响应和 pageerror，不向真实会话发测试消息。

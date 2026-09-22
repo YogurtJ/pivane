@@ -4,10 +4,10 @@ const base = process.env.PI_USAGE_TEST_URL || 'http://127.0.0.1:3123';
 const live = process.env.PI_USAGE_LIVE === '1';
 function fixture(query) {
     const total = { input: 10000, output: 2000, cacheRead: 30000, cacheWrite: 4000, total: 46000, cost: 1.234,
-        records: 10, missingUsage: 0, missingCost: 1, zeroCost: 2 };
+        records: 10, missingUsage: 0, missingCost: 1, zeroCost: 2, estimatedRecords: 7, unpricedRecords: 1 };
     const daily = [];
     for (let d = Date.parse(query.get('from')); d <= Date.parse(query.get('to')); d += 86400000) daily.push({ ...total, date: new Date(d).toISOString().slice(0, 10) });
-    return { from: query.get('from'), to: query.get('to'), timeZone: query.get('timeZone'), generatedAt: new Date().toISOString(), total, daily,
+    return { ledger: true, weekly: [{ ...total, date: '2026-09-21' }], monthly: [{ ...total, date: '2026-09' }], from: query.get('from'), to: query.get('to'), timeZone: query.get('timeZone'), generatedAt: new Date().toISOString(), total, daily,
         coverage: { scannedFiles: 25, skippedFiles: 0, duplicates: 5, invalidDates: 0 }, partial: false,
         providers: [{ ...total, provider: 'fixture' }], models: [{ ...total, provider: 'fixture', model: '<img src=x onerror=alert(1)>' + 'very-long-model/'.repeat(20) }],
         projects: [{ ...total, cwd: '/fixture/' + 'long-project/'.repeat(15) }],
@@ -75,6 +75,12 @@ function fixture(query) {
             assert.match(await page.locator('.pi-usage-section').first().textContent(), /缓存写入/);
             await page.getByLabel('每日趋势指标').selectOption('cost');
             assert.match(await page.locator('.pi-usage-bar').first().getAttribute('aria-label'), /\$/);
+            assert.match(await panel.textContent(), /删除会话后仍保留统计/);
+            await page.getByLabel('汇总周期', { exact: true }).selectOption('weekly');
+            assert.equal(await page.locator('.pi-usage-bar').count(), 1);
+            await page.getByLabel('汇总周期', { exact: true }).selectOption('monthly');
+            assert.match(await page.locator('.pi-usage-section').first().textContent(), /自然月用量/);
+            await page.getByLabel('汇总周期', { exact: true }).selectOption('daily');
             await page.getByText('会话明细（25）', { exact: true }).click();
             await page.locator('details .pi-usage-table-scroll tbody tr').first().waitFor();
             assert.equal(await page.locator('details .pi-usage-table-scroll tbody tr').count(), 20);

@@ -21,7 +21,7 @@ function sourceFiles(root, group) {
         const directory = path.join(root, relative);
         if (fs.lstatSync(directory).isSymbolicLink()) throw new Error(`Source directory is a symlink: ${relative}`);
         for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
-            if (entry.name.startsWith('.') || rule.excluded?.includes(entry.name) || ['node_modules', 'backups'].includes(entry.name) || /\.bak(?:[.-]|$)|\.tmp$|~$/i.test(entry.name)) continue;
+            if (entry.name.startsWith('.') || rule.excluded?.includes(entry.name) || ['node_modules', 'backups', 'pivane-usage'].includes(entry.name) || /\.bak(?:[.-]|$)|\.tmp$|~$/i.test(entry.name)) continue;
             const file = `${relative}/${entry.name}`;
             if (entry.isSymbolicLink()) throw new Error(`Source entry is a symlink: ${file}`);
             if (entry.isDirectory()) visit(file);

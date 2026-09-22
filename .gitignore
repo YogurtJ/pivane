@@ -18,6 +18,7 @@ pivane-access.json*
 pivane-notifications.json*
 pivane-workspace.json*
 pivane-deferred-messages*.json*
+pivane-usage/
 *.log
 *.bak*
 *.tmp

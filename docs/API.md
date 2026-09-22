@@ -544,7 +544,7 @@ Shell仅空闲单项执行，期间消息/压缩/导航/重载及预约投递互
 
 ### 持久会话用量
 
-`/api/pi/status.usageStats=true` 启用 `GET /api/pi/settings/usage?from=YYYY-MM-DD&to=YYYY-MM-DD&timeZone=Asia%2FShanghai`。日期包含两端，最多366天，时区缺省UTC；非法或未知参数400、其他筛选扫描中429、线程失败503，复用Origin/Bearer与no-store。返回 total/daily/providers/models/projects/sessions、generatedAt、coverage及partial，不含聊天正文。原生副本去重、所有分支/摘要用量、缺失字段、15秒缓存及读取预算见 [USAGE.md](USAGE.md)。不创建RPC worker、不读客户端指定路径或持久保存统计。
+`/api/pi/status.usageStats=true` 启用 `GET /api/pi/settings/usage?from=YYYY-MM-DD&to=YYYY-MM-DD&timeZone=Asia%2FShanghai`。日期包含两端，最多366天，时区缺省UTC；非法或未知参数400、其他筛选扫描中429、线程失败503，复用Origin/Bearer与no-store。返回 total/daily/weekly/monthly/providers/models/projects/sessions、generatedAt、coverage及partial，不含聊天正文。`usageLedger=true` 标记持久账本能力，响应带 `ledger:true`；各汇总增加 recordedCost/estimatedRecords/unpricedRecords，coverage 增加 cachedFiles/syncedAt。事务保存精简用量事实与日汇总，删除会话前须确认入账。去重、官方目录价补算、周期与时区、15秒缓存及读取预算见 [USAGE.md](USAGE.md)。不创建RPC worker、不读客户端指定路径。
 
 ### Provider 和模型
 

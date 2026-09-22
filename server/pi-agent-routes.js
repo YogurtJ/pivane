@@ -85,6 +85,7 @@ function createPiAgentGateway(options = {}) {
     const composer = new (require('./pi-composer-service').PiComposerService)(store);
     const files = new (require('./pi-file-service').PiFileService)(store);
     const usage = new (require('./pi-usage-service').PiUsageService)(store);
+    usage.start();
     const sessionSearch = new (require('./pi-session-search').PiSessionSearch)(store, preferences);
     const settingsService = new PiSettingsService({ workspacePreferencesService: preferences });
     const titles = new (require('./pi-session-title-service').PiSessionTitleService)({ preferences,
@@ -161,6 +162,7 @@ function createPiAgentGateway(options = {}) {
             modelCatalog: true,
             fileViewer: descriptorBackendAvailable(),
             usageStats: descriptorBackendAvailable(),
+            usageLedger: descriptorBackendAvailable(),
             runtimeControls: true,
             userShell: true,
             queueModes: true,
@@ -426,6 +428,7 @@ function createPiAgentGateway(options = {}) {
                 await sideChat.releaseSource(session.cwd, session.id, 'deleted');
                 worker._broadcast({ type: 'gateway_reconnect' });
                 await supervisor.stopSession(session.path);
+                await usage.preserveSession(session.path);
                 return store.deleteSession(req.query.cwd, req.params.id);
             }, { idle: false });
             preferences.clearReplyNotice(session.cwd, session.id);
@@ -828,6 +831,7 @@ function createPiAgentGateway(options = {}) {
         const stoppingThreads = agentThreads.dispose();
         const stoppingSide = sideChat.dispose();
         await supervisor.dispose();
+        await usage.dispose();
         await stoppingThreads;
         await Promise.all([stoppingDeferred, stoppingSide, stoppingTitles, stoppingAuxiliaryModels]);
     }, store, supervisor, deferred, sideChat, titles, auxiliaryModels };

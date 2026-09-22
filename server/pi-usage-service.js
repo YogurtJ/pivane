@@ -16,7 +16,29 @@ function usageQuery(query = {}) {
 }
 
 class PiUsageService {
-    constructor(store) { this.store = store; this.pending = null; this.cache = null; }
+    constructor(store) { this.store = store; this.pending = null; this.cache = null; this.stopped = false; }
+    start() {
+        if (this.timer || this.stopped) return;
+        this.timer = setInterval(() => {
+            if (!this.pending && !this.stopped) void this.sync().catch(() => {});
+        }, 60000);
+        this.timer.unref();
+    }
+    sync(onlyFile) {
+        if (this.pending) return this.pending.promise.then(() => this.sync(onlyFile));
+        // Reserve before SDK initialization or worker creation.
+        const promise = this.scan(null, onlyFile).finally(() => { this.pending = null; this.cache = null; });
+        this.pending = { key: null, promise };
+        return promise;
+    }
+    async preserveSession(filename) {
+        if (this.pending) await this.pending.promise;
+        return this.sync(filename);
+    }
+    async dispose() {
+        this.stopped = true; clearInterval(this.timer);
+        if (this.pending) await this.pending.promise.catch(() => {});
+    }
     async report(query) {
         const filter = usageQuery(query);
         const key = JSON.stringify(filter);
@@ -32,19 +54,20 @@ class PiUsageService {
         this.pending = { key, promise };
         return promise;
     }
-    async scan(filter) {
+    async scan(filter, onlyFile) {
         const { getAgentDir } = await getSdk();
         return new Promise((resolve, reject) => {
             const worker = new Worker(path.join(__dirname, 'pi-usage-worker.js'), {
-                workerData: { root: path.join(getAgentDir(), 'sessions'), roots: this.store.roots, filter },
+                workerData: { root: path.join(getAgentDir(), 'sessions'), roots: this.store.roots, filter,
+                    ledgerPath: path.join(getAgentDir(), 'pivane-usage', 'ledger.sqlite'), onlyFile },
                 resourceLimits: { maxOldGenerationSizeMb: 192 }
             });
             let finished = false;
-            const finish = (error, value) => {
+            const finish = async (error, value) => {
                 if (finished) return;
                 finished = true;
                 clearTimeout(timer);
-                worker.terminate();
+                await worker.terminate();
                 if (error) reject(Object.assign(new Error(error), { statusCode: 503 }));
                 else resolve(value);
             };

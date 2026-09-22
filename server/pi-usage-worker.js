@@ -38,24 +38,26 @@ function recordFromEntry(entry, dayOf, filter) {
     const raw = summary ? entry.usage : entry.message.usage;
     const usage = raw && fields.every(field => Number.isSafeInteger(raw[field]) && raw[field] >= 0 && raw[field] <= 1e9)
         ? Object.fromEntries(fields.map(field => [field, raw[field]])) : null;
+    if (usage && raw.cacheWrite1h !== undefined) usage.cacheWrite1h = Number.isSafeInteger(raw.cacheWrite1h)
+        && raw.cacheWrite1h >= 0 && raw.cacheWrite1h <= usage.cacheWrite ? raw.cacheWrite1h : null;
     const cost = typeof raw?.cost?.total === 'number' && Number.isFinite(raw.cost.total) && raw.cost.total >= 0 && raw.cost.total <= 1e9 ? raw.cost.total : null;
     // Native forks/imports preserve entry IDs and timestamps. Include payload to avoid ID collisions;
     // parentId may change on branch export. Never recurse into compaction.retainedTail as new usage.
     const payload = assistant || tool ? entry.message : { summary: entry.summary, usage: entry.usage, type: entry.type };
     const key = createHash('sha256').update(JSON.stringify(canonical([entry.id, entry.timestamp, payload]))).digest('hex');
     const safeName = value => typeof value === 'string' ? value.slice(0, 500) : '未知';
-    return { key, day, usage, cost, provider: assistant ? safeName(entry.message.provider) : '工具与摘要',
+    return { key, timestamp, day, usage, cost, provider: assistant ? safeName(entry.message.provider) : '工具与摘要',
         model: assistant ? safeName(entry.message.responseModel || entry.message.model) : '工具与摘要（未归属模型）' };
 }
 
-function scanUsage({ root, roots, filter }, limits = LIMITS) {
+function scanUsage({ root, roots, filter, incremental, onlyFile }, limits = LIMITS) {
     assertDescriptorBackend();
     const started = Date.now();
-    const coverage = { scannedFiles: 0, skippedFiles: 0, excludedProjects: 0, duplicates: 0, invalidDates: 0, limited: false };
+    const coverage = { scannedFiles: 0, cachedFiles: 0, skippedFiles: 0, excludedProjects: 0, duplicates: 0, invalidDates: 0, limited: false };
     const dayOf = new Intl.DateTimeFormat('en-CA', { timeZone: filter.timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
     let bytes = 0, entries = 0, records = 0;
     const files = [], sessions = [];
-    if (!fs.existsSync(root)) return aggregate([], filter, coverage);
+    if (!fs.existsSync(root)) return incremental ? { coverage } : aggregate([], filter, coverage);
     root = fs.realpathSync.native(root);
     const check = () => {
         if (Date.now() - started > limits.milliseconds || bytes > limits.bytes || entries > limits.entries || records > limits.records) {
@@ -71,7 +73,8 @@ function scanUsage({ root, roots, filter }, limits = LIMITS) {
         for (const file of fs.readdirSync(folder, { withFileTypes: true })) {
             if (!file.name.endsWith('.jsonl')) continue;
             if (!file.isFile()) { coverage.skippedFiles++; continue; }
-            if (files.length >= limits.files) { coverage.limited = true; break; }
+            if (onlyFile && path.join(folder, file.name) !== onlyFile) continue;
+            if (files.length >= (incremental ? 100000 : limits.files)) { coverage.limited = true; break; }
             files.push(path.join(folder, file.name));
         }
         if (coverage.limited) break;
@@ -85,8 +88,17 @@ function scanUsage({ root, roots, filter }, limits = LIMITS) {
             const identity = fileIo.identity(fd);
             const actual = descriptorPathSync(fd);
             if (!stat.isFile() || !within(root, actual) || stat.size > limits.fileBytes) throw new Error('file');
+            const signature = JSON.stringify([actual, identity, ...['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs'].map(key => String(stat[key]))]);
+            if (incremental?.cached(filename, signature)) {
+                const current = fs.lstatSync(filename, { bigint: true }), after = fs.fstatSync(fd, { bigint: true });
+                if (!current.isFile() || !fileIo.sameIdentityAtPath(filename, identity)
+                    || ['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs'].some(key => current[key] !== stat[key] || after[key] !== stat[key])
+                    || fs.realpathSync.native(filename) !== actual || descriptorPathSync(fd) !== actual) throw new Error('changed');
+                coverage.cachedFiles++; continue;
+            }
+            if (incremental && sessions.length >= limits.files) { coverage.limited = true; break; }
             const size = Number(stat.size); // Conversion only after the bounded file-size check.
-            const data = { path: filename, rows: [], name: '' };
+            const data = { path: filename, signature, rows: [], name: '', invalidDates: 0 };
             let pending = Buffer.alloc(0), header = null, position = 0;
             const processLine = line => {
                 entries++; check();
@@ -107,7 +119,7 @@ function scanUsage({ root, roots, filter }, limits = LIMITS) {
                 if (!entry || typeof entry !== 'object' || entry.type === 'session') throw new Error('entry');
                 if (entry.type === 'session_info' && typeof entry.name === 'string') data.name = entry.name.slice(0, 120);
                 const row = recordFromEntry(entry, dayOf, filter);
-                if (row?.invalidDate) coverage.invalidDates++;
+                if (row?.invalidDate) { coverage.invalidDates++; data.invalidDates++; }
                 else if (row) { data.rows.push(row); records++; check(); }
             };
             while (position < size) {
@@ -136,7 +148,8 @@ function scanUsage({ root, roots, filter }, limits = LIMITS) {
     }
     // Oldest surviving session owns shared records. Removing an original leaves its surviving copy countable.
     sessions.sort((a, b) => a.created - b.created || a.path.localeCompare(b.path));
-    return aggregate(sessions, filter, coverage);
+    if (incremental) for (const session of sessions) incremental.save(session);
+    return incremental ? { coverage } : aggregate(sessions, filter, coverage);
 }
 function aggregate(sessions, filter, coverage) {
     const seen = new Set(), total = empty(), daily = new Map(), models = new Map(), providers = new Map(), projects = new Map(), sessionRows = [];
@@ -163,7 +176,10 @@ function aggregate(sessions, filter, coverage) {
         partial: coverage.skippedFiles > 0 || coverage.invalidDates > 0 || coverage.limited || total.missingUsage > 0 };
 }
 if (parentPort) {
-    try { parentPort.postMessage({ value: scanUsage(workerData) }); }
-    catch { parentPort.postMessage({ error: '用量扫描未完成，请稍后刷新' }); }
+    Promise.resolve().then(() => workerData.ledgerPath
+        ? require('./pi-usage-ledger').runLedger(workerData)
+        : scanUsage(workerData))
+        .then(value => parentPort.postMessage({ value }))
+        .catch(() => parentPort.postMessage({ error: '用量账本读取或同步失败，请稍后刷新' }));
 }
-module.exports = { scanUsage, recordFromEntry, LIMITS };
+module.exports = { scanUsage, recordFromEntry, LIMITS, empty, fields, within };
