@@ -26,6 +26,29 @@ function validateInput(input) {
     return { ...input, title: input.title.trim() };
 }
 
+// Some providers materialize every optional field in a shared tool schema.
+// Normalize at the SDK boundary before validation and project per-action HTTP
+// payloads; the server's strict create contract remains unchanged.
+function prepareTaskArguments(raw) {
+    const fields = {
+        create: ['requestId', 'title', 'message', 'provider', 'modelId', 'thinkingLevel'],
+        status: ['requestId'], models: ['query'], result: ['requestId', 'resultId', 'offset']
+    };
+    const known = new Set(['action', ...Object.values(fields).flat()]);
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !Object.hasOwn(fields, raw.action)
+        || Object.keys(raw).some(key => !known.has(key))) throw new Error('Invalid task tool arguments');
+    const required = raw.action === 'create' ? ['requestId', 'title', 'message'] : raw.action === 'models' ? [] : ['requestId'];
+    const result = { action: raw.action };
+    for (const key of fields[raw.action]) {
+        if (!Object.hasOwn(raw, key)) continue;
+        const value = raw[key];
+        if (!required.includes(key) && (value == null || typeof value === 'string' && !value.trim())) continue;
+        result[key] = value;
+    }
+    for (const key of required) if (typeof result[key] !== 'string' || !result[key].trim()) throw new Error(`Task ${raw.action} requires ${key}`);
+    return result;
+}
+
 class AgentThreadsService {
     constructor({ store, supervisor, settingsService, isSuspended = () => false }) {
         Object.assign(this, { store, supervisor, settingsService, isSuspended });
@@ -193,4 +216,4 @@ function mountAgentThreads(router, options) {
     });
     return service;
 }
-module.exports = { TASK_ENTRY, TASK_MESSAGE, TASK_RECEIPT, taskProfile, taskState, AgentThreadsService, mountAgentThreads };
+module.exports = { TASK_ENTRY, TASK_MESSAGE, TASK_RECEIPT, taskProfile, taskState, prepareTaskArguments, AgentThreadsService, mountAgentThreads };

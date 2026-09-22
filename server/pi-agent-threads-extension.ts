@@ -2,7 +2,7 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { randomUUID } from 'node:crypto';
 import { Type } from 'typebox';
 import { StringEnum } from '@earendil-works/pi-ai';
-import { TASK_MESSAGE, TASK_RECEIPT, taskProfile, taskState } from './pi-agent-threads.js';
+import { TASK_MESSAGE, TASK_RECEIPT, taskProfile, taskState, prepareTaskArguments } from './pi-agent-threads.js';
 import { customTypeIs } from './pivane-compat.js';
 
 export function registerAgentThreads(pi: ExtensionAPI) {
@@ -49,13 +49,14 @@ export function registerAgentThreads(pi: ExtensionAPI) {
                 thinkingLevel: Type.Optional(Type.String({ maxLength: 100 })),
                 query: Type.Optional(Type.String({ maxLength: 200, description: 'Filter model provider, ID or name.' }))
             }),
+            prepareArguments: prepareTaskArguments,
             execute: async (_id, params, signal, _update, context) => {
                 if (!enabled(context)) throw new Error('A persistent managed thread is required');
                 signal?.throwIfAborted();
                 const origin = process.env.PI_WORKSPACE_INTERNAL_ORIGIN!;
                 const url = new URL(`/api/pi/agent-threads/${params.action}`, origin);
                 if (url.origin !== origin || !['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Invalid task service origin');
-                const { action, query, ...input } = params;
+                const { action, query, ...input } = prepareTaskArguments(params);
                 let response;
                 try {
                     response = await fetch(url, { method: 'POST', redirect: 'error', signal,

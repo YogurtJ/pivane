@@ -56,6 +56,8 @@
 | result | requestId；可选 resultId、offset | 只读原生任务回复，每页最多8000字符，nextOffset 指向下一页；总读取截止20秒，不返回工具/思考/系统内容 |
 | models | 可选 query | 可用模型、支持等级及默认配置；工具最多返回 80 项/50 KiB |
 
+工具入口在参数校验前按 action 选择适用字段，兼容模型把全部可选字段都填写出来的情况。空字符串或 null 的可选模型设置视为未指定；非空的显式选择仍需通过模型与思考等级校验。创建请求不携带 resultId/offset/query；直接调用 REST 创建接口时仍拒绝额外字段。requestId、title、message 等当前操作必需的内容不能用空值替代，未知身份或路径字段不会被静默接受。
+
 requestId 为 1–160 个字母、数字、下划线、点、冒号或短横线；title 为 1–120 字符，message 为 1–40000 字符。来源不从工具参数接收，而从存活 worker 身份取得。
 
 私有 POST `/api/pi/agent-threads/{create,status,models,result}` 使用受管 worker 的短生命周期凭据，限定这四个端点，继续检查 Origin。工作台 Cookie/访问 Token、媒体或扩展助手凭据不能代替来源 worker；凭据不会出现在模型输入、回执或 URL 中。HTTP models 返回最多 5000 项目录，query/80 项限制在工具输出端处理。参数中的目标路径和源 sessionId 不接受覆盖。

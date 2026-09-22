@@ -33,7 +33,8 @@ test('Agent creates a persistent task, runs immediately with defaults, preserves
         const chunk = (delta, finish_reason = null) => res.write(`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: input.model, choices: [{ index: 0, delta, finish_reason }] })}\n\n`);
         if (invoke) {
             chunk({ role: 'assistant', tool_calls: [{ index: 0, id: 'create-task', type: 'function', function: { name: 'agent_thread',
-                arguments: JSON.stringify({ action: 'create', requestId: 'from-tool', title: 'Tool task', message: 'TASK_FROM_TOOL. Reply briefly.' }) } }] });
+                arguments: JSON.stringify({ action: 'create', requestId: 'from-tool', title: 'Tool task', message: 'TASK_FROM_TOOL. Reply briefly.',
+                    provider: '', modelId: '', thinkingLevel: '', query: '', resultId: '', offset: 0 }) } }] });
             chunk({}, 'tool_calls');
         } else { chunk({ role: 'assistant', content: 'TASK_FIXTURE_OK' }); chunk({}, 'stop'); }
         res.end('data: [DONE]\n\n');
