@@ -21,7 +21,7 @@ class PiUsageService {
         if (this.timer || this.stopped) return;
         this.timer = setInterval(() => {
             if (!this.pending && !this.stopped) void this.sync().catch(() => {});
-        }, 60000);
+        }, 5 * 60000);
         this.timer.unref();
     }
     sync(onlyFile) {

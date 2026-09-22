@@ -53,7 +53,8 @@ function recordFromEntry(entry, dayOf, filter) {
 function scanUsage({ root, roots, filter, incremental, onlyFile }, limits = LIMITS) {
     assertDescriptorBackend();
     const started = Date.now();
-    const coverage = { scannedFiles: 0, cachedFiles: 0, skippedFiles: 0, excludedProjects: 0, duplicates: 0, invalidDates: 0, limited: false };
+    const coverage = { scannedFiles: 0, cachedFiles: 0, appendedFiles: 0, parsedBytes: 0, verifiedBytes: 0,
+        skippedFiles: 0, excludedProjects: 0, duplicates: 0, invalidDates: 0, limited: false };
     const dayOf = new Intl.DateTimeFormat('en-CA', { timeZone: filter.timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
     let bytes = 0, entries = 0, records = 0;
     const files = [], sessions = [];
@@ -99,7 +100,31 @@ function scanUsage({ root, roots, filter, incremental, onlyFile }, limits = LIMI
             if (incremental && sessions.length >= limits.files) { coverage.limited = true; break; }
             const size = Number(stat.size); // Conversion only after the bounded file-size check.
             const data = { path: filename, signature, rows: [], name: '', invalidDates: 0 };
-            let pending = Buffer.alloc(0), header = null, position = 0;
+            let pending = Buffer.alloc(0), header = null, position = 0, appended = false;
+            let digest = createHash('sha256'), terminated = false;
+            const checkpoint = incremental?.checkpoint?.(filename);
+            // An inode/size increase alone does not prove an append. Verify every byte
+            // of the old prefix without decoding JSON before trusting the saved cursor.
+            if (checkpoint?.version === 1 && checkpoint.terminated && Number.isSafeInteger(checkpoint.offset)
+                && checkpoint.offset > 0 && checkpoint.offset < size && /^[a-f0-9]{64}$/.test(checkpoint.digest)
+                && checkpoint.identity === JSON.stringify([actual, identity, String(stat.dev), String(stat.ino)])) {
+                while (position < checkpoint.offset) {
+                    const chunk = Buffer.alloc(Math.min(65536, checkpoint.offset - position));
+                    const read = fs.readSync(fd, chunk, 0, chunk.length, position);
+                    if (!read) throw new Error('changed');
+                    position += read; bytes += read; coverage.verifiedBytes += read; check();
+                    digest.update(chunk.subarray(0, read));
+                }
+                if (digest.copy().digest('hex') === checkpoint.digest) {
+                    header = checkpoint.header;
+                    const cwd = fs.realpathSync.native(header.cwd);
+                    if (!fs.statSync(cwd).isDirectory() || !roots.some(base => within(base, cwd))) {
+                        coverage.excludedProjects++; throw new Error('excluded');
+                    }
+                    Object.assign(data, { cwd, id: header.id.slice(0, 128), created: Date.parse(header.timestamp) || 0, name: checkpoint.name });
+                    appended = true;
+                } else { position = 0; digest = createHash('sha256'); }
+            }
             const processLine = line => {
                 entries++; check();
                 if (line.length > limits.lineBytes) throw new Error('line');
@@ -127,7 +152,9 @@ function scanUsage({ root, roots, filter, incremental, onlyFile }, limits = LIMI
                 const chunk = Buffer.alloc(Math.min(65536, size - position));
                 const read = fs.readSync(fd, chunk, 0, chunk.length, position);
                 if (!read) throw new Error('changed');
-                position += read; bytes += read;
+                position += read; bytes += read; coverage.parsedBytes += read;
+                digest.update(chunk.subarray(0, read));
+                terminated = chunk[read - 1] === 10;
                 pending = Buffer.concat([pending, chunk.subarray(0, read)]);
                 let start = 0, end;
                 while ((end = pending.indexOf(10, start)) !== -1) { processLine(pending.subarray(start, end)); start = end + 1; }
@@ -140,7 +167,12 @@ function scanUsage({ root, roots, filter, incremental, onlyFile }, limits = LIMI
                 || fs.realpathSync.native(header.cwd) !== data.cwd
                 || stat.size !== after.size || stat.mtimeMs !== after.mtimeMs || stat.ctimeMs !== after.ctimeMs || stat.mtimeNs !== after.mtimeNs || stat.ctimeNs !== after.ctimeNs
                 || fs.realpathSync.native(filename) !== actual || descriptorPathSync(fd) !== actual) throw new Error('changed');
+            data.checkpoint = { version: 1, offset: size, digest: digest.digest('hex'), terminated,
+                identity: JSON.stringify([actual, identity, String(stat.dev), String(stat.ino)]),
+                header: { type: header.type, version: header.version, id: data.id, cwd: header.cwd,
+                    timestamp: new Date(data.created).toISOString() }, name: data.name };
             sessions.push(data); coverage.scannedFiles++;
+            if (appended) coverage.appendedFiles++;
         } catch (error) {
             if (error.message !== 'excluded') coverage.skippedFiles++;
             if (error.message === 'budget') break;

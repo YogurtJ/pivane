@@ -39,6 +39,7 @@ class UsageLedger {
         this.db.exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL;
             CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS sources (path TEXT PRIMARY KEY, signature TEXT NOT NULL, cwd TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS checkpoints (path TEXT PRIMARY KEY, signature TEXT NOT NULL, data TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS owners (key TEXT PRIMARY KEY, id TEXT NOT NULL, cwd TEXT NOT NULL, name TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS facts (key TEXT PRIMARY KEY, timestamp INTEGER NOT NULL, owner TEXT NOT NULL,
                 provider TEXT NOT NULL, model TEXT NOT NULL, data TEXT NOT NULL);
@@ -77,13 +78,19 @@ class UsageLedger {
     }
     sync(input, catalog) {
         let duplicates = 0;
-        const source = this.db.prepare('SELECT signature,cwd FROM sources WHERE path=?');
+        const source = this.db.prepare('SELECT sources.signature,cwd,checkpoints.signature AS checkpointSignature FROM sources LEFT JOIN checkpoints USING(path) WHERE sources.path=?');
+        const checkpoint = this.db.prepare('SELECT checkpoints.data FROM checkpoints JOIN sources USING(path) WHERE path=? AND checkpoints.signature=sources.signature');
         const result = scanUsage({ ...input, filter: { from: '0000-01-01', to: '9999-12-31', timeZone: 'UTC' },
             incremental: {
                 cached: (filename, signature) => {
                     const old = source.get(filename);
-                    if (!old || old.signature !== signature || !input.roots.some(root => within(root, old.cwd))) return false;
+                    if (!old || old.signature !== signature || old.checkpointSignature !== signature
+                        || !input.roots.some(root => within(root, old.cwd))) return false;
                     try { return fs.realpathSync.native(old.cwd) === old.cwd && fs.statSync(old.cwd).isDirectory(); } catch { return false; }
+                },
+                checkpoint: filename => {
+                    const saved = checkpoint.get(filename);
+                    return saved ? JSON.parse(saved.data) : null;
                 },
                 save: session => this.transaction(() => {
                     this.zones = new Map(this.db.prepare('SELECT zone FROM zones').all().map(row => [row.zone, dayFormatter(row.zone)]));
@@ -98,7 +105,10 @@ class UsageLedger {
                         for (const [zone, formatter] of this.zones) this.saveDay(zone, formatter, owner, row);
                     }
                     // Invalid dates must remain visible on subsequent scans and block deletion.
-                    if (!session.invalidDates) this.db.prepare('INSERT OR REPLACE INTO sources VALUES (?,?,?)').run(session.path, session.signature, session.cwd);
+                    if (!session.invalidDates) {
+                        this.db.prepare('INSERT OR REPLACE INTO sources VALUES (?,?,?)').run(session.path, session.signature, session.cwd);
+                        this.db.prepare('INSERT OR REPLACE INTO checkpoints VALUES (?,?,?)').run(session.path, session.signature, JSON.stringify(session.checkpoint));
+                    }
                 })
             } }, input.limits);
         result.coverage.duplicates += duplicates;
