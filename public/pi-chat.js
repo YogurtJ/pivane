@@ -642,6 +642,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.nativeResources = status.nativeResources === true;
             extensionAssistant.setEnabled(status.extensionAssistant === true);
             state.systemPrompts = status.systemPrompts === true;
+            window.dispatchEvent(new CustomEvent('workspace:agent-profiles-status', { detail: { enabled: status.agentProfiles === true } }));
             nativeContext.sync();
             state.roots = status.projectRoots || [];
             state.defaultProject = status.defaultProject || state.roots[0] || null;
@@ -1116,6 +1117,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const projectChanged = cwd !== state.cwd;
         elements.newSession.disabled = true;
+        $('pi-new-profile-session').disabled = true;
         elements.tempSession.disabled = true;
         closeProjectDialog();
         state.expandedProjects.add(cwd);
@@ -1149,6 +1151,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } finally {
             elements.newSession.disabled = false;
+            $('pi-new-profile-session').disabled = false;
             elements.tempSession.disabled = false;
         }
     }
@@ -1476,20 +1479,23 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function createSession() {
+    async function createSession(options = {}) {
         if (!state.cwd) return openProjectDialog();
+        const cwd = state.cwd;
         elements.newSession.disabled = true;
+        $('pi-new-profile-session').disabled = true;
         try {
             const session = await apiFetch('/api/pi/sessions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cwd: state.cwd })
+                body: JSON.stringify({ cwd, ...(Object.hasOwn(options, 'profileId') ? { profileId: options.profileId } : {}) })
             });
+            if (cwd !== state.cwd) { toast(translateUi('线程已创建在原项目，请从项目列表打开'), 'info'); return; }
             state.sessions.unshift(session);
-            state.projectSessions.set(state.cwd, state.sessions);
-            const project = state.projects.find(item => item.cwd === state.cwd);
+            state.projectSessions.set(cwd, state.sessions);
+            const project = state.projects.find(item => item.cwd === cwd);
             if (project) project.sessionCount = state.sessions.length;
-            rememberProject(state.cwd);
+            rememberProject(cwd);
             renderProjects();
             renderSessions();
             await openSession(session);
@@ -1497,7 +1503,10 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             toast(error.message, 'error');
         } finally {
-            elements.newSession.disabled = false;
+            if (cwd === state.cwd) {
+                elements.newSession.disabled = false;
+                $('pi-new-profile-session').disabled = false;
+            }
         }
     }
 
@@ -2804,6 +2813,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.metaMessages.textContent = state.stats?.totalMessages ?? state.session?.messageCount ?? '--';
         elements.metaFile.textContent = ephemeral ? translateUi("不保存（pi --no-session）") : state.session?.path || runtime?.sessionFile || '--';
         elements.metaFile.title = ephemeral ? translateUi("临时 runtime 不创建 session 文件") : state.session?.path || runtime?.sessionFile || '';
+        window.PiAgentProfilesUI?.displaySession(state.session, state.connected);
     }
 
     function setStreaming(streaming) {
@@ -3588,6 +3598,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     elements.tempSession.addEventListener('click', createEphemeralSession);
     elements.newSession.addEventListener('click', createSession);
+    $('pi-new-profile-session').addEventListener('click', async () => {
+        if (!state.cwd) return openProjectDialog();
+        const cwd = state.cwd;
+        const selection = await window.PiAgentProfilesUI?.chooseSession(cwd);
+        if (!selection) return;
+        if (state.cwd !== cwd) return toast(translateUi('项目已切换，请重新选择新线程的身份'), 'info');
+        await createSession(selection);
+    });
     elements.refreshSessions.addEventListener('click', () => Promise.all([loadProjects(), loadSessions(), refreshActivity()]).catch(error => toast(error.message, 'error')));
     setInterval(() => void refreshActivity(), 3000);
     document.addEventListener('visibilitychange', () => {
