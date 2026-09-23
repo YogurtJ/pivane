@@ -71,7 +71,7 @@ test('profile limits isolate contexts; revisions, document CAS and avatar owners
     const empty = (await read(first.profile.id, 'user')).data;
     assert.equal(empty.status, 'ready'); assert.equal(empty.usage.limit, 8000);
     const initial = await write(first.profile.id, 'user', 'Synthetic user fact', empty);
-    assert.equal(initial.statusCode, 200, JSON.stringify(initial.data));
+    assert.equal(initial.statusCode, process.env.PIVANE_TEST_HERMES_BUNDLE ? 200 : 202, JSON.stringify(initial.data));
     assert.equal(initial.data.usage.used, 'Synthetic user fact'.length);
     assert.equal((await write(first.profile.id, 'user', 'Stale', empty)).statusCode, 409);
     assert.equal((await read(second.profile.id, 'user')).data.content, '');
@@ -90,7 +90,8 @@ test('profile limits isolate contexts; revisions, document CAS and avatar owners
     assert.equal((await read(second.profile.id, 'user')).data.content, '');
     const reduced = await profiles.save({ expectedRevision: second.revision, profile: { ...second.profile,
         memory: { ...second.profile.memory, userCharLimit: 256 } } });
-    assert.equal((await write(second.profile.id, 'user', 'old', (await read(second.profile.id, 'user')).data)).statusCode, 200);
+    assert.equal((await write(second.profile.id, 'user', 'old', (await read(second.profile.id, 'user')).data)).statusCode,
+        process.env.PIVANE_TEST_HERMES_BUNDLE ? 200 : 202);
     assert.ok(reduced.revision);
     const image = png(), upload = '/profiles/:id/avatar';
     const response = await request(r.routes, 'POST', upload, { id: first.profile.id,
@@ -121,5 +122,20 @@ test('profile limits isolate contexts; revisions, document CAS and avatar owners
     assert.equal((await write(first.profile.id, 'user', 'Y'.repeat(257), overLimit)).statusCode, 400);
     assert.equal(fs.readFileSync(file, 'utf8'), 'X'.repeat(300), 'lowering a limit never truncates existing data');
     assert.ok(narrowed.revision);
+    const dormant = await profiles.save({ expectedRevision: narrowed.revision, profile: { ...basic, name: 'Dormant',
+        memory: { enabled: false, autoLearn: false } } });
+    const dormantBefore = (await read(dormant.profile.id, 'user')).data;
+    const privateFiles = require('../server/pi-private-files'), originalMode = privateFiles.privateFileMode;
+    privateFiles.privateFileMode = filename => {
+        if (filename === path.join(agent, 'pivane-profiles', 'data', dormant.profile.id, 'USER.md'))
+            throw Error('synthetic post-publication check failure');
+        return originalMode(filename);
+    };
+    let partial;
+    try { partial = await write(dormant.profile.id, 'user', 'DormantFact', dormantBefore); }
+    finally { privateFiles.privateFileMode = originalMode; }
+    assert.equal(partial.statusCode, 503);
+    assert.deepEqual([partial.data.documentSaved, partial.data.indexSynced], [true, false]);
+    assert.equal((await read(dormant.profile.id, 'user')).data.content, 'DormantFact');
     await profiles.dispose();
 });

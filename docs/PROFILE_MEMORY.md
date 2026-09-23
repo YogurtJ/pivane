@@ -75,10 +75,30 @@ documents can be written. USER can be initialized with memory disabled, while
 MEMORY requires the memory flag. PUT requires both the document revision and
 saved profile revision; it uses the same profile-local interprocess mutation
 lock/generation as agent writes. A changed generation invalidates stale
-auto-learning proposals. Failed edits preserve the browser draft and prior
-file. This route does not write the project Markdown, SQLite extended memories
-or learned skills. Routes must be mounted under existing same-origin access
-middleware; a saved document does not reload running workers.
+auto-learning proposals. With memory installed and enabled, PUT verifies an
+unambiguous old Markdown identity for each fact, publishes the document, and
+transactionally updates only those exact global target/project-null/category-null
+SQLite rows; distinct SQLite-only facts and other scopes remain unchanged.
+Ambiguous/missing source rows return 409 before publication. A failure after
+publication returns 503 with `documentSaved:true,indexSynced:false` and the
+current document snapshot, not a false claim that the write was undone. A
+private per-target pending marker blocks affected worker memory search/writes;
+PUT of the same current content and fresh revisions deterministically repairs
+the index before accepting further edits. GET reports `indexSynced:false` while
+pending. USER editing with memory disabled/unavailable can save the document
+without indexing and returns 202 with explicit index status. This route does
+not write project Markdown, unrelated SQLite-only facts or learned skills.
+Routes must be mounted under existing same-origin access middleware; a saved
+document does not reload running workers.
+
+The learned-skill list (`GET /profiles/:id/memory?kind=skills`) includes
+`scope:profile|project` and `source:profile-owned` for each item; project
+items may include their opaque hashed `projectKey`. It does not include bodies
+or infer an author. `GET /profiles/:id/skills/:skillId` accepts only the
+opaque ID from that list, scans bounded verified profile-owned skill roots,
+and returns `ready`, `missing`, `disabled` or `unsupported`. A ready item adds
+the verified `content` and its file `revision`; no shared installed skill or
+arbitrary path can be read through the route.
 
 ## Auto-learning
 

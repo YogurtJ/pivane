@@ -7,6 +7,7 @@ import scope from './scope.js';
 import indexer from './index.js';
 import autoLearn from './auto-learn.js';
 import mutation from './mutation-lock.js';
+import documentIndex from './document-index.js';
 import { profileMemoryCapability } from './management.js';
 
 function assertPrivateSkillTree(...roots: string[]) {
@@ -47,6 +48,8 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
     const allowed = (ctx: any) => started && !stopped && ctx?.mode === 'rpc'
         && scope.eligibleManager(ctx.sessionManager, context, ctx.cwd)
         && scope.sameActiveFile(ctx.sessionManager.getSessionFile(), activeIdentity);
+    const indexPending = (target?: string) => ['memory', 'user'].some(kind =>
+        (!target || target === kind) && documentIndex.pendingDocumentIndex(root, kind));
     const guarded = new Proxy(pi, {
         get(target, key) {
             if (key !== 'registerTool') return (target as any)[key];
@@ -59,6 +62,8 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
                         'After a useful repeated procedure or correction, consider creating or updating a profile-owned skill with verification steps. Never modify shared installed skills. Newly created skills are available after reload.' ] : tool.promptGuidelines,
                     execute: async (...args: any[]) => {
                         if (!allowed(args[args.length - 1])) throw new Error('Profile memory session binding is unavailable');
+                        if ((tool.name === 'memory_search' || ['memory_add', 'memory_replace', 'memory_remove'].includes(tool.name))
+                            && indexPending(args[1]?.target)) throw new Error('Profile document search index needs repair');
                         if (tool.name === 'session_search') {
                             sourceIndex?.reconcile();
                             if (sourceIndex) coverage = sourceIndex.coverage();
@@ -70,6 +75,7 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
                                 await store?.loadFromDisk();
                                 await projectStore?.loadFromDisk();
                                 if (!allowed(args[args.length - 1])) throw new Error('Profile memory binding changed');
+                                if (indexPending(args[1]?.target)) throw new Error('Profile document search index needs repair');
                                 return execute();
                             }) : await execute();
                         if (tool.name === 'session_search') {
@@ -82,6 +88,8 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
                             if (coverage.limited || !coverage.initialSweepComplete) result.content.push({ type: 'text',
                                 text: 'Profile session recall is partial; backfill is still progressing or the scan limit was reached.' });
                         }
+                        if (tool.name === 'memory_search' && indexPending(args[1]?.target))
+                            throw new Error('Profile document search index changed during search');
                         return result;
                     },
                 };
