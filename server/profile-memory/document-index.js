@@ -103,7 +103,14 @@ async function documentIndex(root, target, bundlePath, before, after) {
     const dbManager = new upstream.DatabaseManager(root);
     const file = path.join(root, target === 'user' ? 'USER.md' : 'MEMORY.md');
     try {
-        const pending = pendingDocumentIndex(root, target);
+        let pending = pendingDocumentIndex(root, target);
+        // A stopped process may have marked an edit without publishing it. Only
+        // the unchanged, descriptor-verified old document can discard that plan.
+        if (pending && pending.before !== pending.after && (before?.revision ?? null) === pending.before
+            && (safeFile(file)?.revision ?? null) === pending.before) {
+            fs.unlinkSync(filename(root, target));
+            pending = null;
+        }
         const plan = pending ?? { version: 1, target, before: before?.revision ?? null,
             after: hash(after), old: documentEntries(store, before?.text ?? ''), next: documentEntries(store, after) };
         if (pending && (before?.revision !== pending.after || hash(after) !== pending.after))

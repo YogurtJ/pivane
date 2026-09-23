@@ -78,16 +78,17 @@ function mountProfileAvatarRoutes(router, { profiles, getAgentDir } = {}) {
             if (bytes.toString('base64') !== body.dataUrl.slice('data:image/png;base64,'.length)) throw fail('Invalid avatar encoding');
             validatePng(bytes);
             const version = createHash('sha256').update(bytes).digest('hex');
-            const record = await profiles.getProfile(id);
-            if (!record) throw fail('Profile not found', 404);
-            const root = location(await getAgentDir(), id, true);
-            const file = path.join(root, `avatar-${version}.png`);
-            try { privateFiles.writePrivateFileSync(file, bytes, true); }
-            catch (error) { if (error.code !== 'EEXIST' || !readAvatar(file).equals(bytes)) {
-                if (error.code === 'EEXIST') throw fail('Avatar asset already exists with conflicting contents', 409);
-                throw error;
-            } }
-            const result = await profiles.saveAvatar(id, body.expectedRevision, version);
+            const result = await profiles.saveAvatar(id, body.expectedRevision, version, async () => {
+                const root = location(await getAgentDir(), id, true);
+                const file = path.join(root, `avatar-${version}.png`);
+                return () => {
+                    try { privateFiles.writePrivateFileSync(file, bytes, true); }
+                    catch (error) { if (error.code !== 'EEXIST' || !readAvatar(file).equals(bytes)) {
+                        if (error.code === 'EEXIST') throw fail('Avatar asset already exists with conflicting contents', 409);
+                        throw error;
+                    } }
+                };
+            });
             res.json(result);
         } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : 'Avatar upload unavailable' }); }
     });

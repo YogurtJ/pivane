@@ -23,14 +23,14 @@ async function request(routes, method, route, { id, query = {}, body = {} } = {}
         json(value) { this.data = value; return this; }, send(value) { this.data = value; return this; } };
     await routes.get(`${method} ${route}`)({ params: { id }, query, body }, res); return res;
 }
-function png() {
+function png(red = 255) {
     const crc = bytes => { let n = -1; for (const byte of bytes) { n ^= byte;
         for (let i = 0; i < 8; i++) n = n >>> 1 ^ (n & 1 ? 0xedb88320 : 0); } return (n ^ -1) >>> 0; };
     const chunk = (type, data) => { const size = Buffer.alloc(4), tail = Buffer.alloc(4), raw = Buffer.concat([Buffer.from(type), data]);
         size.writeUInt32BE(data.length); tail.writeUInt32BE(crc(raw)); return Buffer.concat([size, raw, tail]); };
     const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(1, 0); ihdr.writeUInt32BE(1, 4); ihdr[8] = 8; ihdr[9] = 6;
     return Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), chunk('IHDR', ihdr),
-        chunk('IDAT', zlib.deflateSync(Buffer.from([0, 255, 0, 0, 255]))), chunk('IEND', Buffer.alloc(0))]);
+        chunk('IDAT', zlib.deflateSync(Buffer.from([0, red, 0, 0, 255]))), chunk('IEND', Buffer.alloc(0))]);
 }
 test('profile limits isolate contexts; revisions, document CAS and avatar ownership', async t => {
     t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -137,5 +137,34 @@ test('profile limits isolate contexts; revisions, document CAS and avatar owners
     assert.equal(partial.statusCode, 503);
     assert.deepEqual([partial.data.documentSaved, partial.data.indexSynced], [true, false]);
     assert.equal((await read(dormant.profile.id, 'user')).data.content, 'DormantFact');
-    await profiles.dispose();
+    const replacement = png(123), nextVersion = createHash('sha256').update(replacement).digest('hex');
+    const nextFile = path.join(agent, 'pivane-profiles', 'data', first.profile.id, `avatar-${nextVersion}.png`);
+    const uploadBody = { dataUrl: `data:image/png;base64,${replacement.toString('base64')}` };
+    const stale = await request(r.routes, 'POST', upload, { id: first.profile.id,
+        body: { ...uploadBody, expectedRevision: response.data.revision } });
+    assert.equal(stale.statusCode, 409);
+    assert.equal(fs.existsSync(nextFile), false, 'stale registry CAS cannot publish a private asset');
+    let entered, release;
+    const preparing = new Promise(resolve => { entered = resolve; });
+    const hold = new Promise(resolve => { release = resolve; });
+    const paused = router();
+    profiles.nativeService = { busy: false };
+    mountProfileAvatarRoutes(paused, { profiles, getAgentDir: async () => { entered(); await hold; return agent; } });
+    const pending = request(paused.routes, 'POST', upload, { id: first.profile.id,
+        body: { ...uploadBody, expectedRevision: (await profiles.state()).revision } });
+    assert.equal(profiles.busy, true, 'avatar reserves activity before resolving the asset path');
+    assert.equal(profiles.nativeService.busy, true);
+    await preparing;
+    let disposed = false;
+    const shutdown = profiles.dispose().then(() => { disposed = true; });
+    await Promise.resolve();
+    assert.equal(disposed, false);
+    assert.equal(fs.existsSync(nextFile), false);
+    release();
+    const committed = await pending;
+    assert.equal(committed.statusCode, 200, JSON.stringify(committed.data));
+    await shutdown;
+    assert.equal(disposed, true);
+    assert.equal(fs.existsSync(nextFile), true);
+    assert.equal(profiles.nativeService.busy, false);
 });

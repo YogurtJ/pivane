@@ -16,10 +16,12 @@ test('native helper only drafts on current session ID; forks and ordinary worker
     t.after(() => fs.rmSync(root, { recursive: true, force: true }));
     const { SessionManager } = await import('@earendil-works/pi-coding-agent');
     const profile = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', name: 'Existing' };
-    const profiles = { getProfile: async id => id === profile.id ? profile : null };
+    const profiles = { getProfile: async id => id === profile.id ? profile : null,
+        reserve: action => Promise.resolve().then(action) };
     const sessions = new Map();
     // Narrow stand-in for A's synchronous initializeSession seam, after header/binding.
     const store = { defaultProject: () => cwd, resolveProject: value => value === cwd ? value : (() => { throw Error('Invalid cwd'); })(),
+        profileManager: (session, SessionManager) => SessionManager.open(session.path),
         async createSession(project, name, { agentProfileId, initializeSession }) {
             assert.equal(project, cwd); assert.equal(agentProfileId, null);
             const manager = SessionManager.create(project), file = manager.getSessionFile();
@@ -76,10 +78,93 @@ test('native helper only drafts on current session ID; forks and ordinary worker
         assert.deepEqual((await call('GET', draftRoute, { params: { id: session.id }, query: { cwd } })).data.proposal, { name: 'Native proposal' });
         assert.equal(tools.size, 1, 'only the planning tool is registered');
     }
+    manager.appendCustomEntry('synthetic-bounded-proposal', { text: 'p'.repeat(128 * 1024) });
+    manager.appendMessage({ role: 'user', content: [{ type: 'text', text: 'x'.repeat(8 * 1024 * 1024) }], timestamp: Date.now() });
+    assert.ok(fs.statSync(session.path).size > 8 * 1024 * 1024);
+    const largeDraft = await call('GET', draftRoute, { params: { id: session.id }, query: { cwd } });
+    assert.equal(largeDraft.statusCode, 200, JSON.stringify(largeDraft.data));
+    assert.equal(largeDraft.data.proposal.name, jitiPath ? 'Native proposal' : 'Refined');
+    assert.ok((await profileAuthoringEnvironment({ store, cwd, sessionId: session.id })).PIVANE_PROFILE_AUTHORING_CONTEXT);
+    if (jitiPath) {
+        process.env.PIVANE_PROFILE_AUTHORING_CONTEXT = (await profileAuthoringEnvironment({ store, cwd, sessionId: session.id })).PIVANE_PROFILE_AUTHORING_CONTEXT;
+        const { registerProfileAuthoring } = require(jitiPath).createJiti(path.join(__dirname, '../server/pi-profile-authoring-extension.ts'))(
+            path.join(__dirname, '../server/pi-profile-authoring-extension.ts'));
+        const handlers = new Map(), tools = new Map();
+        registerProfileAuthoring({ on(name, fn) { handlers.set(name, fn); }, registerTool(tool) { tools.set(tool.name, tool); } }, () => agent);
+        handlers.get('session_start')({}, { mode: 'rpc', cwd, sessionManager: SessionManager.open(session.path) });
+        assert.ok(tools.has('profile_draft'), 'reopened large helper retains its planning tool');
+    }
+    const originalProfileManager = store.profileManager;
+    store.profileManager = (candidate, SDK) => {
+        const parsed = originalProfileManager(candidate, SDK);
+        manager.appendCustomEntry('synthetic-concurrent-append', { version: 1 });
+        return parsed;
+    };
+    try { assert.equal((await call('GET', draftRoute, { params: { id: session.id }, query: { cwd } })).statusCode, 409); }
+    finally { store.profileManager = originalProfileManager; }
     const foreign = { getSessionId: () => 'foreign', getSessionFile: () => session.path, getEntries: () => manager.getEntries() };
     assert.equal(readProfileAuthoring(foreign), null);
     manager.appendCustomEntry('pivane-profile-authoring', { version: 1, sessionId: session.id, profileId: null, profileRevision: null, language: 'en' });
     assert.equal(readProfileAuthoring(manager), null, 'duplicate current-ID markers fail closed');
     assert.deepEqual(await profileAuthoringEnvironment({ store, cwd, sessionId: session.id }), {});
     assert.equal((await call('GET', draftRoute, { params: { id: session.id }, query: { cwd } })).statusCode, 404);
+});
+
+test('helper creation reserves maintenance activity before awaits and disposal waits for native creation', async () => {
+    const { PiProfileRegistry } = require('../server/pi-profile-registry');
+    let started, release;
+    const entered = new Promise(resolve => { started = resolve; });
+    const hold = new Promise(resolve => { release = resolve; });
+    let creations = 0;
+    const store = { defaultProject: () => cwd, resolveProject: value => value,
+        profileManager: (session, SessionManager) => SessionManager.open(session.path),
+        async createSession() { creations++; started(); await hold; return { id: 'synthetic-session', cwd }; },
+        async getSession() {} };
+    const profiles = new PiProfileRegistry(store);
+    profiles.nativeService = { busy: false };
+    const router = { post(_path, fn) { this.postHandler = fn; }, get() {} };
+    mountProfileAuthoringRoutes(router, { store, profiles });
+    const post = async () => { const res = { code: 200, set() { return this; }, status(code) { this.code = code; return this; },
+        json(data) { this.data = data; return this; } };
+        await router.postHandler({ body: { profileId: null, language: 'en' } }, res); return res; };
+    profiles.maintenance = { locked: true };
+    assert.equal((await post()).code, 409);
+    assert.equal(creations, 0, 'maintenance rejects before creating a native session');
+    profiles.maintenance.locked = false;
+    const pending = post();
+    assert.equal(profiles.busy, true, 'reservation is synchronous before the first await');
+    assert.equal(profiles.nativeService.busy, true);
+    await entered;
+    let disposed = false;
+    const shutdown = profiles.dispose().then(() => { disposed = true; });
+    await Promise.resolve();
+    assert.equal(disposed, false);
+    assert.equal((await post()).code, 409, 'stopping rejects new creations');
+    assert.equal(creations, 1);
+    release();
+    assert.equal((await pending).code, 201);
+    await shutdown;
+    assert.equal(disposed, true);
+    assert.equal(profiles.nativeService.busy, false);
+});
+
+test('oversize helper sessions return 413 before native parsing', async t => {
+    fs.mkdirSync(path.join(agent, 'sessions', 'synthetic'), { recursive: true });
+    process.env.PI_CODING_AGENT_DIR = agent;
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const file = path.join(agent, 'sessions', 'synthetic', 'large.jsonl');
+    fs.writeFileSync(file, JSON.stringify({ type: 'session', id: 'synthetic', cwd, timestamp: new Date().toISOString() }) + '\n');
+    fs.truncateSync(file, require('../server/pi-profile-authoring').MAX_AUTHORING_SESSION_BYTES + 1);
+    const session = { id: 'synthetic', cwd, path: file };
+    const store = { defaultProject: () => cwd, resolveProject: value => value,
+        async getSession() { return session; }, async createSession() {},
+        profileManager() { throw Error('Oversize session must be rejected before parsing'); } };
+    const router = { post() {}, get(_path, handler) { this.handler = handler; } };
+    mountProfileAuthoringRoutes(router, { store, profiles: { getProfile: async () => null, reserve: action => action() } });
+    const res = { code: 200, set() { return this; }, status(code) { this.code = code; return this; },
+        json(data) { this.data = data; return this; } };
+    await router.handler({ params: { id: session.id }, query: { cwd } }, res);
+    assert.equal(res.code, 413);
+    assert.match(res.data.error, /64 MiB/);
+    assert.deepEqual(await profileAuthoringEnvironment({ store, cwd, sessionId: session.id }), {});
 });
