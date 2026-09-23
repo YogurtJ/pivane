@@ -19,6 +19,7 @@
     <link rel="stylesheet" href="workspace.css">
     <link rel="stylesheet" href="workspace-access.css">
     <link rel="stylesheet" href="pi-model-picker.css">
+    <link rel="stylesheet" href="pi-agent-profiles.css">
     <link rel="stylesheet" href="pi-mobile-header.css">
     <link rel="stylesheet" href="pi-usage.css">
     <link rel="stylesheet" href="pi-native-controls.css">
@@ -163,6 +164,7 @@
                             <button id="pi-new-session" class="icon-btn accent" type="button" title="新建会话" aria-label="新建会话" data-i18n-title="s1339" data-i18n-aria-label="s1339">
                                 <i class="fa-solid fa-plus"></i>
                             </button>
+                            <button id="pi-new-profile-session" class="icon-btn subtle" type="button" title="选择新线程的助手身份" aria-label="选择新线程的助手身份" hidden><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button>
                         </div>
                     </div>
                     <div id="pi-session-filters" class="pi-session-filters" role="group" aria-label="线程状态筛选" data-i18n-aria-label="s1340">
@@ -188,6 +190,7 @@
                         <span class="pi-status-dot"></span>
                         <span id="pi-mobile-thread-title"></span>
                         <span id="pi-connection-text"><!--i18n:s477-->正在连接 Pi Agent</span>
+                        <span id="pi-session-profile" class="pi-session-profile" hidden></span>
                         <button id="pi-current-thread-menu" type="button" title="当前线程操作" aria-label="当前线程操作" aria-haspopup="menu" aria-expanded="false" disabled data-i18n-title="s1347" data-i18n-aria-label="s1347"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>
                         <div id="pi-transcript-modes" class="pi-transcript-modes" role="group" aria-label="消息视图" data-i18n-aria-label="s1348">
                             <button type="button" data-transcript-mode="reading" aria-pressed="true" aria-controls="pi-transcript-content" title="默认正文视图：连续工具调用和思考合并折叠，点击执行记录可展开" data-i18n-title="s1349"><!--i18n:s1350-->正文</button>
@@ -336,6 +339,7 @@
                         <summary><!--i18n:s1392-->会话信息</summary>
                         <dl class="pi-session-meta">
                             <div><dt><!--i18n:s1393-->名称</dt><dd id="pi-meta-name">--</dd></div>
+                            <div id="pi-meta-profile-row" hidden><dt>助手身份</dt><dd id="pi-meta-profile">--</dd></div>
                             <div><dt>ID</dt><dd id="pi-meta-id">--</dd></div>
                             <div><dt><!--i18n:s1002-->消息</dt><dd id="pi-meta-messages">--</dd></div>
                             <div><dt><!--i18n:s1378-->文件</dt><dd id="pi-meta-file">--</dd></div>
@@ -581,6 +585,7 @@
                 <nav class="workspace-settings-nav" aria-label="设置分类" data-i18n-aria-label="s1507">
                     <button type="button" class="active" data-settings-tab="providers"><i class="fa-solid fa-key"></i><span><!--i18n:s1508-->供应商与模型</span></button>
                     <button type="button" data-settings-tab="media"><i class="fa-solid fa-photo-film"></i><span>模型与能力</span></button>
+                    <button type="button" id="pi-profiles-nav" data-settings-tab="profiles" hidden><i class="fa-solid fa-user-gear"></i><span>助手身份</span></button>
                     <button type="button" data-settings-tab="models"><i class="fa-solid fa-sliders"></i><span><!--i18n:s1509-->使用偏好</span></button>
                     <button type="button" id="system-prompts-nav" data-settings-tab="system-prompts" hidden><i class="fa-solid fa-file-lines"></i><span data-system-prompts-label></span></button>
                     <button type="button" id="native-settings-nav" data-settings-tab="native" hidden><i class="fa-solid fa-gear"></i><span><!--i18n:s726-->Pi 配置</span></button>
@@ -617,6 +622,10 @@
                         <p class="settings-help"><!--i18n:s1520-->选择常用服务，填写地址、Key 和模型 ID。高级参数可按需展开，也可让 Agent 根据 API 文档填写接入草稿。</p>
                         <p class="settings-help"><!--i18n:s1521-->同一服务的模型共用 Key。保存接入后，在实验室检查清单并确认生成；回复朗读默认模型在“使用偏好”中选择。</p>
                         <section id="settings-subagents"></section>
+                    </section>
+                    <section class="workspace-settings-panel" data-settings-panel="profiles" id="pi-profiles-panel">
+                        <div class="settings-panel-header"><i class="fa-solid fa-user-gear" aria-hidden="true"></i><div><h3>助手身份</h3><p>身份仅在新建线程时确定。已打开的线程不会因保存设置而重新加载。</p></div><button id="pi-profiles-refresh" class="settings-secondary-button settings-header-refresh" type="button" title="刷新助手身份" aria-label="刷新助手身份"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button></div>
+                        <div id="pi-profiles-content"></div>
                     </section>
                     <section class="workspace-settings-panel" data-settings-panel="models">
                         <div class="settings-panel-header">
@@ -871,6 +880,13 @@
     <script src="pi-title-settings.js"></script>
     <script src="pi-extensions.js"></script>
     <link rel="stylesheet" href="pi-extensions.css">
+    <dialog id="pi-profile-choice" class="pi-profile-choice" aria-labelledby="pi-profile-choice-title">
+        <form method="dialog"><header><h2 id="pi-profile-choice-title">新线程的助手身份</h2><button id="pi-profile-choice-close" class="icon-btn subtle" type="button" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
+            <p id="pi-profile-choice-project"></p><label>助手身份<select id="pi-profile-choice-select"></select></label><p id="pi-profile-choice-state" role="status" aria-live="polite"></p>
+            <footer><button id="pi-profile-choice-cancel" class="settings-secondary-button" type="button">取消</button><button id="pi-profile-choice-create" class="settings-primary-button" type="submit" disabled><i class="fa-solid fa-plus"></i> 新建线程</button></footer>
+        </form>
+    </dialog>
+    <script src="pi-agent-profiles.js"></script>
     <script src="settings.js"></script>
     <script src="media-fields.js"></script>
     <script src="media-lab.js"></script>

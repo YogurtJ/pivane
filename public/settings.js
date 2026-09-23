@@ -129,6 +129,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const updatesPanel = window.PiUpdates.create({ apiFetch });
     const subagentSettings = window.PiSubagentSettings.create({ apiFetch, currentCwd });
     const systemPrompts = window.PiSystemPrompts.create({ apiFetch, currentCwd });
+    const agentProfiles = window.PiAgentProfiles.create({ apiFetch, currentCwd });
+    window.PiAgentProfilesUI = agentProfiles;
 
     let settingsOpener;
     let settingsViewEpoch = 0;
@@ -146,6 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
         usagePanel.close();
         updatesPanel.close();
         systemPrompts.close();
+        agentProfiles.close();
         subagentSettings.close();
         closeEditor();
         elements.dialog.classList.add('hidden');
@@ -168,6 +171,8 @@ document.addEventListener('DOMContentLoaded', () => {
         else usagePanel.close();
         if (tab === 'updates') updatesPanel.open();
         else updatesPanel.close();
+        if (tab === 'profiles') agentProfiles.open();
+        else agentProfiles.close();
         elements.nav.querySelectorAll('[data-settings-tab]').forEach(button => button.classList.toggle('active', button.dataset.settingsTab === tab));
         elements.panels.forEach(panel => panel.classList.toggle('active', panel.dataset.settingsPanel === tab));
         // Settings may have changed outside this page. Read local configuration again;
@@ -860,6 +865,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.editorReturnFocus = null;
     }
 
+    window.addEventListener('workspace:agent-profiles-status', event => agentProfiles.setEnabled(event.detail?.enabled === true));
     elements.toggle.addEventListener('click', () => openSettings(['extensions', 'packages', 'skills'].includes(state.activeTab) ? 'providers' : state.activeTab));
     window.addEventListener('workspace:open-settings', event => {
         const detail = event.detail || {};
