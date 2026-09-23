@@ -144,7 +144,14 @@ test('revisioned HTTP, native immutable bindings, fork/import, and verified runt
     assert.equal((await gateway.supervisor.workerEnvironment({ cwd: first, sessionId: selected.data.id, sessionPath: selected.data.path })).PIVANE_AGENT_PROFILE_CONTEXT, undefined);
     assert.equal((await call('PUT', '/profiles/default', { cwd: first, profileId: null, expectedRevision: state.data.revision })).status, 200);
     const updated = await call('GET', '/profiles');
-    const disabled = await call('PUT', '/profiles', { expectedRevision: updated.data.revision, profile: { ...saved.data.profile, enabled: false } });
+    const flagsChanged = await call('PUT', '/profiles', { expectedRevision: updated.data.revision,
+        profile: { ...saved.data.profile, memory: { enabled: true, autoLearn: false } } });
+    assert.equal(flagsChanged.status, 200);
+    assert.equal(secondWorker.loadedAgentProfileId, id, 'saving flags does not reconfigure a running worker');
+    assert.notEqual(secondWorker.loadedAgentProfileRevision, profileRevision(flagsChanged.data.profile));
+    assert.equal(readProfileRuntime(forkManager, first, getAgentDir(), sessionsRoot,
+        JSON.stringify({ ...context, sessionId: fork.session.id })), null, 'stale environment flags fail closed on a fresh load');
+    const disabled = await call('PUT', '/profiles', { expectedRevision: flagsChanged.data.revision, profile: { ...flagsChanged.data.profile, enabled: false } });
     assert.equal(disabled.status, 200);
     assert.equal(secondWorker.loadedAgentProfileId, id, 'saving a disabled profile does not reconfigure an existing worker');
     assert.notEqual(secondWorker.loadedAgentProfileRevision, profileRevision(disabled.data.profile));
@@ -162,12 +169,117 @@ test('revisioned HTTP, native immutable bindings, fork/import, and verified runt
     assert.deepEqual(created.memory, { enabled: false, autoLearn: false });
     assert.deepEqual(created.skills, { learnedEnabled: true });
     assert.equal((await call('GET', '/profiles')).data.profiles.length, 2);
+    assert.equal((await gateway.store.profiles.getProfile(id)).enabled, false);
+    assert.equal(await gateway.store.profiles.getProfile('not-an-id'), null);
+    assert.equal(await gateway.store.profiles.getProfile('00000000-0000-0000-0000-000000000000'), null);
+    const registryService = gateway.store.profiles;
+    const originalPaths = registryService.paths.bind(registryService);
+    let releasePaths;
+    registryService.paths = create => create ? new Promise(resolve => { releasePaths = () => resolve(originalPaths(create)); }) : originalPaths(create);
+    const mutation = registryService.save({ expectedRevision: (await registryService.state()).revision, profile: minimal });
+    try {
+        assert.equal(registryService.busy, true, 'mutation reserves before the first await');
+        assert.equal((await call('GET', '/activity')).data.profilesBusy, true);
+        assert.equal((await call('GET', '/activity')).data.nativeSettingsBusy, true);
+        assert.equal((await call('PUT', '/settings/native', { cwd: first, scope: 'global', expectedRevision: 'stale', values: {} })).status, 409);
+        assert.throws(() => registryService.saveDefault({ cwd: first, profileId: null, expectedRevision: 'stale' }), error => error.status === 409);
+        const blocked = gateway.store.profiles.maintenance;
+        blocked.managed = true; blocked.state.supported = true;
+        assert.throws(() => blocked.assertAvailable('backup', () => !registryService.busy), /任务|busy/i);
+        blocked.managed = false; blocked.state.supported = false;
+    } finally { releasePaths?.(); registryService.paths = originalPaths; }
+    await mutation;
+    assert.equal(registryService.busy, false);
+    const blocked = gateway.store.profiles.maintenance;
+    blocked.locked = true;
+    const lockedRevision = (await registryService.state()).revision;
+    assert.throws(() => registryService.save({ expectedRevision: lockedRevision, profile: minimal }), error => error.status === 409);
+    blocked.locked = false;
+    const missingNative = await legacyStore.createSession(first, 'missing binding');
+    SessionManager.open(missingNative.path).appendCustomEntry(PROFILE_ENTRY,
+        { version: 1, sessionId: missingNative.id, profileId: '00000000-0000-0000-0000-000000000000' });
+    const missing = SessionManager.open(missingNative.path);
+    assert.equal((await registryService.describe(missing)).available, false);
+    assert.equal((await gateway.store.getSession(first, missingNative.id)).agentProfile.available, false);
+    assert.equal(await registryService.context(missing, first), null);
+    const malformed = SessionManager.open(fork.session.path);
+    malformed.appendCustomEntry(PROFILE_ENTRY, { version: 2, sessionId: malformed.getSessionId(), profileId: id });
+    assert.equal(readProfileBinding(malformed), null);
+    assert.equal((await registryService.describe(malformed)), null);
     if (process.platform !== 'win32') {
         const registry = path.join(agentDir, 'pivane-profiles', 'profiles.json');
-        const moved = registry + '.synthetic';
-        fs.renameSync(registry, moved);
-        fs.symlinkSync(moved, registry);
+        const directory = path.dirname(registry), moved = registry + '.synthetic';
+        const originalRead = fs.readSync;
+        let switched = false;
+        fs.readSync = (...args) => {
+            const result = originalRead(...args);
+            if (!switched && require('../server/pi-file-descriptor').descriptorPathSync(args[0]) === registry) {
+                switched = true;
+                fs.renameSync(registry, moved);
+                fs.copyFileSync(moved, registry);
+            }
+            return result;
+        };
+        try { assert.throws(() => require('../server/pi-profile-registry').readRegistry(registry), error => error.status === 409); }
+        finally { fs.readSync = originalRead; fs.unlinkSync(registry); fs.renameSync(moved, registry); }
+        assert.equal(switched, true);
+        let removed = false;
+        fs.readSync = (...args) => {
+            const result = originalRead(...args);
+            if (!removed && require('../server/pi-file-descriptor').descriptorPathSync(args[0]) === registry) {
+                removed = true;
+                fs.renameSync(registry, moved);
+            }
+            return result;
+        };
+        try { assert.throws(() => require('../server/pi-profile-registry').readRegistry(registry), error => error.status === 409); }
+        finally { fs.readSync = originalRead; fs.renameSync(moved, registry); }
+        assert.equal(removed, true);
+        const privateFiles = require('../server/pi-private-files');
+        const originalWrite = privateFiles.writePrivateFileSync;
+        const movedDirectory = directory + '.moved';
+        let parentSwitched = false;
+        privateFiles.writePrivateFileSync = (...args) => {
+            originalWrite(...args);
+            if (!parentSwitched && args[0].startsWith(registry + '.') && args[0].endsWith('.tmp')) {
+                parentSwitched = true;
+                fs.renameSync(directory, movedDirectory);
+                fs.mkdirSync(directory, { mode: 0o700 });
+                fs.copyFileSync(path.join(movedDirectory, 'profiles.json'), registry);
+            }
+        };
+        try {
+            await assert.rejects(registryService.save({ expectedRevision: (await registryService.state()).revision, profile: minimal }), error => error.status === 409);
+        } finally {
+            privateFiles.writePrivateFileSync = originalWrite;
+            fs.rmSync(directory, { recursive: true, force: true });
+            fs.rmSync(path.join(movedDirectory, 'profiles.lock'), { recursive: true, force: true });
+            fs.renameSync(movedDirectory, directory);
+        }
+        assert.equal(parentSwitched, true);
+        assert.equal((await registryService.state()).state.profiles.length, 3, 'parent replacement did not publish a fourth profile');
+        const movedSession = empty.data.path + '.synthetic';
+        fs.renameSync(empty.data.path, movedSession);
+        fs.symlinkSync(movedSession, empty.data.path);
+        try { await assert.rejects(gateway.store.getSession(first, empty.data.id), /Session file changed|Session not found/); }
+        finally { fs.unlinkSync(empty.data.path); fs.renameSync(movedSession, empty.data.path); }
+        const movedFile = registry + '.synthetic';
+        fs.renameSync(registry, movedFile);
+        fs.symlinkSync(movedFile, registry);
         assert.notEqual((await call('GET', '/profiles')).status, 200, 'symlink registry must not be followed');
-        fs.unlinkSync(registry); fs.renameSync(moved, registry);
+        fs.unlinkSync(registry); fs.renameSync(movedFile, registry);
     }
+    let releaseShutdown;
+    registryService.paths = create => create ? new Promise(resolve => { releaseShutdown = () => resolve(originalPaths(create)); }) : originalPaths(create);
+    const finishing = registryService.save({ expectedRevision: (await registryService.state()).revision, profile: minimal });
+    let stopped = false;
+    const shutdown = registryService.dispose().then(() => { stopped = true; });
+    try {
+        await Promise.resolve();
+        assert.equal(stopped, false, 'shutdown waits for a reserved mutation');
+        assert.throws(() => registryService.save({ expectedRevision: 'stale', profile: minimal }), error => error.status === 409);
+    } finally { releaseShutdown?.(); registryService.paths = originalPaths; }
+    await finishing;
+    await shutdown;
+    assert.equal(stopped, true);
 });

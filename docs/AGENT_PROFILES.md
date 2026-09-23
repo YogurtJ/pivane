@@ -8,7 +8,7 @@ This backend provides optional, session-bound assistant profiles. It does not in
 
 Profiles are limited to 50. Names have at most 80 characters, descriptions 500, and SOUL 32 KiB UTF-8. New profiles default to `memory:{enabled:false,autoLearn:false}` and `skills:{learnedEnabled:true}` when omitted. Enabling memory does not secretly enable learning. Disabling a profile retains its data but prevents new bindings and excludes it from new worker context. There is no deletion API in v1.
 
-The private registry is `<Pi agentDir>/pivane-profiles/profiles.json`; profile-owned data belongs under `data/<id>/`. Back up the whole Pi identity directory before migration or deployment changes. API clients supply IDs, not storage paths. SOUL is profile-level behavioral guidance; durable factual memory and changing project study notes should be kept in their respective stores.
+The private registry is `<Pi agentDir>/pivane-profiles/profiles.json`; profile-owned data belongs under `data/<id>/`. Back up the whole Pi identity directory before migration or deployment changes. API clients supply IDs, not storage paths. A profile save or default change reserves the native settings mutation slot until completion, appears as `profilesBusy` in `/api/pi/activity`, and prevents maintenance while pending. SOUL is profile-level behavioral guidance; durable factual memory and changing project study notes should be kept in their respective stores.
 
 ## Sessions and Runtime
 
