@@ -44,7 +44,6 @@ document.addEventListener('DOMContentLoaded', () => {
         requestCancel: $('pi-request-cancel'),
         sessionCount: $('pi-session-count'),
         refreshSessions: $('pi-refresh-sessions'),
-        tempSession: $('pi-temp-session'),
         newSession: $('pi-new-session'),
         transcript: $('pi-transcript-content'),
         connectionBanner: $('pi-connection-banner'),
@@ -134,6 +133,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const state = {
         token: sessionStorage.getItem('pi.web.token') || '',
+        assistantMode: false,
+        assistantSupported: false,
+        assistantProfiles: [],
+        profileInventory: [],
+        assistantProfileId: null,
+        assistantGroups: [],
+        assistantSessions: new Map(),
+        assistantProjectId: null,
+        assistantArchivedOpen: false,
+        assistantRevision: null,
+        assistantEpoch: 0,
+        navigationEpoch: 0,
+        routeKey: null,
+        creatingSession: false,
         projects: [],
         pinnedProjects: [],
         hiddenProjects: [],
@@ -293,7 +306,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const thinkingName = state.connected && state.session
             ? [...elements.thinkingSelect.options].find(option => option.value === state.thinkingLevel)?.textContent || '' : '';
         const percent = elements.contextPercent.textContent;
-        elements.mobileTitle.textContent = elements.projectName.textContent;
+        elements.mobileTitle.textContent = state.assistantMode
+            ? state.assistantGroups.find(group => group.id === state.assistantProjectId)?.name || state.assistantProfiles.find(profile => profile.id === state.assistantProfileId)?.name || translateUi('对话')
+            : elements.projectName.textContent;
         elements.mobileThreadTitle.textContent = state.session ? getSessionTitle(state.session)
             : state.cwd ? translateUi('选择会话开始工作') : translateUi('选择项目会话后开始工作');
         elements.mobileThreadTitle.title = state.session ? elements.mobileThreadTitle.textContent : '';
@@ -548,7 +563,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showTokenDialog();
             throw new Error(translateUi("需要 Pi Web 访问令牌"));
         }
-        if (!response.ok) throw new Error(translateUi(data?.error || `HTTP ${response.status}`));
+        if (!response.ok) throw Object.assign(new Error(translateUi(data?.error || `HTTP ${response.status}`)), { status: response.status });
         return data;
     }
 
@@ -642,6 +657,12 @@ document.addEventListener('DOMContentLoaded', () => {
             state.nativeResources = status.nativeResources === true;
             extensionAssistant.setEnabled(status.extensionAssistant === true);
             state.systemPrompts = status.systemPrompts === true;
+            state.assistantSupported = status.assistantProjects === true && status.agentProfiles === true;
+            if (status.agentProfiles === true && !state.assistantMode) {
+                void apiFetch('/api/pi/profiles').then(data => {
+                    if (Array.isArray(data?.profiles)) { state.profileInventory = data.profiles; syncActualIdentity(); }
+                }).catch(() => {});
+            }
             window.dispatchEvent(new CustomEvent('workspace:agent-profiles-status', { detail: { enabled: status.agentProfiles === true, autoLearn: status.profileMemory?.installed === true && status.profileMemory?.autoLearn === true } }));
             nativeContext.sync();
             state.roots = status.projectRoots || [];
@@ -662,8 +683,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const visibleProjects = orderedProjects();
             const project = visibleProjects.find(item => item.cwd === preferred)
                 || visibleProjects[0];
-            if (project) await selectProject(project.cwd, { restoreSession: true });
-            else openProjectDialog();
+            if (project) await selectProject(project.cwd, { restoreSession: !state.assistantMode });
+            else if (!state.assistantMode) openProjectDialog();
+            if (state.assistantMode) {
+                const params = window.PiWorkspaceRoute?.current().params;
+                refreshAssistant({ profileId: params?.get('profileId'), projectId: params?.get('projectId'), sessionId: params?.get('sessionId') });
+            }
         } catch (error) {
             if (!elements.tokenDialog.classList.contains('hidden')) return;
             setConnection('error', error.message);
@@ -1117,8 +1142,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const projectChanged = cwd !== state.cwd;
         elements.newSession.disabled = true;
-        $('pi-new-profile-session').disabled = true;
-        elements.tempSession.disabled = true;
         closeProjectDialog();
         state.expandedProjects.add(cwd);
         saveExpandedProjects();
@@ -1151,9 +1174,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (saved) await openSession(saved);
             }
         } finally {
-            elements.newSession.disabled = false;
-            $('pi-new-profile-session').disabled = false;
-            elements.tempSession.disabled = false;
+            elements.newSession.disabled = state.assistantMode && !state.assistantGroups.some(group => group.id === state.assistantProjectId && !group.unclassified && !group.archived);
         }
     }
 
@@ -1180,6 +1201,116 @@ document.addEventListener('DOMContentLoaded', () => {
             state.loadingProjects.delete(cwd);
             if (options.render !== false) renderSessions();
         }
+    }
+
+    function showAssistantError(error) {
+        $('pi-assistant-profile-status').textContent = error.message;
+        elements.sessionList.replaceChildren();
+        const message = document.createElement('p'); message.className = 'pi-list-state'; message.textContent = error.message;
+        elements.sessionList.append(message);
+    }
+
+    function refreshAssistant(requested = {}) {
+        const pending = loadAssistant(requested), epoch = state.assistantEpoch;
+        void pending.catch(error => { if (state.assistantMode && state.assistantEpoch === epoch) showAssistantError(error); });
+    }
+
+    async function loadAssistant(requested = {}) {
+        if (!state.assistantMode || !accessBootstrapped) return;
+        const epoch = ++state.assistantEpoch;
+        const status = $('pi-assistant-profile-status');
+        status.textContent = translateUi('正在读取助手档案');
+        const profiles = await apiFetch('/api/pi/profiles');
+        if (epoch !== state.assistantEpoch || !state.assistantMode) return;
+        if (profiles?.version !== 1 || !Array.isArray(profiles.profiles)) throw new Error(translateUi('助手档案数据不可用'));
+        state.assistantProfiles = profiles.profiles.filter(profile => profile.enabled);
+        state.profileInventory = profiles.profiles;
+        const selector = $('pi-assistant-profile');
+        selector.replaceChildren();
+        for (const profile of state.assistantProfiles) {
+            const option = document.createElement('option'); option.value = profile.id; option.textContent = profile.name; selector.append(option);
+        }
+        const chosen = [requested.profileId, state.assistantProfileId, localStorage.getItem('pi.web.assistantProfile')]
+            .find(id => state.assistantProfiles.some(profile => profile.id === id)) || state.assistantProfiles[0]?.id || null;
+        state.assistantProfileId = chosen;
+        selector.value = chosen || '';
+        const profile = state.assistantProfiles.find(item => item.id === chosen);
+        $('pi-assistant-avatar').replaceWith(Object.assign(window.PiAssistantProjects.avatar(profile), { id: 'pi-assistant-avatar' }));
+        $('pi-assistant-add-project').disabled = !chosen || !state.assistantSupported;
+        elements.newSession.disabled = !chosen || !state.assistantSupported;
+        if (!chosen || !state.assistantSupported) {
+            state.assistantGroups = []; state.assistantSessions = new Map(); state.assistantProjectId = null;
+            status.replaceChildren(document.createTextNode(!state.assistantSupported ? translateUi('当前服务尚未启用助手项目') : translateUi('还没有已启用的助手档案')));
+            const button = document.createElement('button'); button.type = 'button'; button.className = 'settings-secondary-button';
+            button.textContent = translateUi('管理助手档案'); button.addEventListener('click', () => window.PiWorkspaceRoute.navigate('profiles'));
+            status.append(' ', button); renderAssistantSessions(); return;
+        }
+        localStorage.setItem('pi.web.assistantProfile', chosen);
+        const previousProjectId = state.assistantProjectId;
+        state.assistantGroups = [];
+        state.assistantSessions = new Map();
+        state.assistantProjectId = null;
+        status.textContent = translateUi('正在读取项目');
+        renderAssistantSessions();
+        const data = await apiFetch(`/api/pi/assistant-projects?profileId=${encodeURIComponent(chosen)}`);
+        if (epoch !== state.assistantEpoch || chosen !== state.assistantProfileId || !state.assistantMode) return;
+        if (data?.version !== 1 || !Array.isArray(data.projects) || typeof data.revision !== 'string') throw new Error(translateUi('助手项目数据不可用'));
+        const groups = data.projects.filter(group => !group.archived && group.profileIds?.includes(chosen));
+        const archivedGroups = data.projects.filter(group => group.archived && group.profileIds?.includes(chosen));
+        const cwds = [...new Set([...state.projects.map(project => project.cwd), ...groups.map(group => group.cwd)])];
+        const [groupResults, unclassified] = await Promise.all([
+            Promise.all(groups.map(group => apiFetch(`/api/pi/assistant-projects/${encodeURIComponent(group.id)}/sessions?profileId=${encodeURIComponent(chosen)}`))),
+            Promise.all(cwds.map(cwd => apiFetch(`/api/pi/sessions?cwd=${encodeURIComponent(cwd)}`)))
+        ]);
+        if (epoch !== state.assistantEpoch || chosen !== state.assistantProfileId || !state.assistantMode) return;
+        state.assistantRevision = data.revision;
+        state.assistantGroups = groups;
+        state.assistantSessions = new Map(groups.map((group, index) => [group.id, groupResults[index].sessions || []]));
+        for (let i = 0; i < cwds.length; i++) {
+            const cwd = cwds[i], rows = unclassified[i].sessions || [];
+            state.projectSessions.set(cwd, rows);
+            if (cwd === state.cwd) state.sessions = rows;
+            const orphaned = rows.filter(session => session.agentProfile?.id === chosen && !session.assistantProject && !session.ephemeral);
+            if (orphaned.length) {
+                const id = `unclassified:${cwd}`;
+                state.assistantGroups.push({ id, name: translateUi('未分类'), cwd, unclassified: true });
+                state.assistantSessions.set(id, orphaned);
+            }
+        }
+        state.assistantGroups.push(...archivedGroups);
+        const candidate = requested.projectId || (previousProjectId && state.assistantGroups.some(group => group.id === previousProjectId) ? previousProjectId : localStorage.getItem(`pi.web.assistantProject:${chosen}`));
+        state.assistantProjectId = state.assistantGroups.some(group => group.id === candidate) ? candidate : state.assistantGroups.find(group => !group.unclassified)?.id || null;
+        if (window.PiWorkspaceRoute?.current().tab === 'assistant' && !requested.sessionId) {
+            window.PiWorkspaceRoute.navigate('assistant', { profileId: chosen, projectId: state.assistantProjectId }, true);
+        }
+        status.textContent = '';
+        syncActualIdentity();
+        renderAssistantSessions();
+        if (requested.sessionId) {
+            const selected = state.assistantSessions.get(state.assistantProjectId)?.find(row => row.id === requested.sessionId);
+            if (selected) {
+                if (selected.cwd !== state.cwd) await selectProject(selected.cwd);
+                if (epoch !== state.assistantEpoch || !state.assistantMode) return;
+                await openSession(selected);
+            }
+        }
+    }
+
+    function renderAssistantSessions() {
+        const query = elements.sessionSearch.value.trim().toLowerCase();
+        const groups = state.assistantGroups.filter(group => !query || `${group.name} ${group.cwd}`.toLowerCase().includes(query)
+            || state.assistantSessions.get(group.id)?.some(session => `${session.name || ''} ${session.firstMessage || ''}`.toLowerCase().includes(query)));
+        const sessions = new Map(groups.map(group => [group.id, [...new Map((state.assistantSessions.get(group.id) || [])
+            .filter(session => !query || `${group.name} ${group.cwd} ${session.name || ''} ${session.firstMessage || ''}`.toLowerCase().includes(query))
+            .map(session => [session.id, session])).values()]]));
+        const active = groups.filter(group => !group.archived);
+        const archived = groups.filter(group => group.archived);
+        elements.sessionList.innerHTML = window.PiAssistantProjects.renderGroups(active, sessions, state.assistantProjectId, renderSessionItem)
+            + (archived.length ? `<details class="pi-archive-group pi-archived-projects" data-archive-kind="assistant-projects" ${state.assistantArchivedOpen || query ? 'open' : ''}><summary>${translateUi('已归档项目（{0}）', archived.length)}</summary>${window.PiAssistantProjects.renderGroups(archived, sessions, state.assistantProjectId, renderSessionItem)}</details>` : '')
+            || `<div class="pi-list-state">${translateUi(query ? '没有匹配的项目或线程' : '还没有助手项目')}</div>`;
+        elements.sessionCount.textContent = translateUi('{0} 个项目', state.assistantGroups.length);
+        elements.newSession.disabled = !state.assistantGroups.some(group => group.id === state.assistantProjectId && !group.unclassified && !group.archived);
+        renderActivityBadges();
     }
 
     function getSessionTitle(session) {
@@ -1243,11 +1374,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const start = Math.max(0, match - 24), end = Math.min(firstMessage.length, match + query.length + 60);
             preview = `${start ? '…' : ''}${firstMessage.slice(start, end)}${end < firstMessage.length ? '…' : ''}`;
         }
+        const badge = session.agentProfile ? `<span class="pi-session-profile-tag">${escapeHtml(session.agentProfile.name || translateUi('身份不可用'))}</span>` : '';
         return `
             <article class="pi-session-item ${session.ephemeral ? 'ephemeral' : ''} ${state.cwd === cwd && state.session?.id === session.id ? 'active' : ''}" data-session-id="${escapeHtml(session.id)}" data-cwd="${escapeHtml(cwd)}">
                 <button class="pi-session-main" type="button">
                     <span class="pi-session-project" title="${escapeHtml(cwd)}">${escapeHtml(state.projects.find(project => project.cwd === cwd)?.name || getProjectName(cwd))}</span>
-                    <span class="pi-session-title ${!named && !session.ephemeral ? 'pi-session-title-fallback' : ''}" title="${escapeHtml(title)}">${escapeHtml(title)}${session.ephemeral ? `<em>${translateUi("不保存")}</em>` : ''}</span>
+                    <span class="pi-session-title ${!named && !session.ephemeral ? 'pi-session-title-fallback' : ''}" title="${escapeHtml(title)}">${escapeHtml(title)}${badge}${session.ephemeral ? `<em>${translateUi("不保存")}</em>` : ''}</span>
                     ${preview ? `<span class="pi-session-preview">${escapeHtml(preview)}</span>` : ''}
                     ${!session.ephemeral && isThreadArchived(cwd, session.id) ? `<span class="pi-session-archive-label">${state.archivedSessions.has(activityKey(cwd, session.id)) ? translateUi('已归档') : translateUi('随项目归档')}</span>` : ''}
                     <span class="pi-session-deferred" hidden></span>
@@ -1262,6 +1394,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderSessions() {
+        if (state.assistantMode) return renderAssistantSessions();
         const scrollTop = elements.sessionList.scrollTop;
         const focused = elements.sessionList.contains(document.activeElement) ? document.activeElement : null;
         const focusedWorkAction = focused?.dataset.workAction;
@@ -1430,7 +1563,6 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.sessionSearchField.hidden = !open;
         archiveSearchLabel.hidden = !open || !state.archiveEnabled;
         elements.sessionHeadingTitle.hidden = open;
-        elements.tempSession.hidden = open;
         elements.sessionSearchToggle.setAttribute('aria-expanded', String(open));
         const label = open ? translateUi("退出搜索") : translateUi("搜索项目或线程");
         elements.sessionSearchToggle.title = label;
@@ -1455,9 +1587,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (generation === searchGeneration) renderSessions();
     }
 
-    async function createEphemeralSession() {
-        if (!state.cwd) return openProjectDialog();
-        elements.tempSession.disabled = true;
+    async function createEphemeralSession(cwd = state.cwd) {
+        if (!cwd) return openProjectDialog();
+        if (cwd !== state.cwd) await selectProject(cwd);
+        if (cwd !== state.cwd) throw new Error(translateUi('项目已切换，请重新选择临时会话'));
         const now = new Date().toISOString();
         const session = {
             id: `ephemeral-${Date.now()}`,
@@ -1475,25 +1608,34 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.input.focus();
         } catch (error) {
             toast(error.message, 'error');
-        } finally {
-            elements.tempSession.disabled = false;
         }
     }
 
-    async function createSession(options = {}) {
+    async function createSession() {
+        if (state.creatingSession) return;
+        if (state.assistantMode && !state.assistantGroups.some(group => group.id === state.assistantProjectId && !group.unclassified && !group.archived)) return;
         if (!state.cwd) return openProjectDialog();
-        const cwd = state.cwd;
+        const cwd = state.cwd, assistantMode = state.assistantMode, assistantProjectId = assistantMode ? state.assistantProjectId : null;
+        const profileId = state.assistantMode ? state.assistantProfileId : null;
+        state.creatingSession = true;
         elements.newSession.disabled = true;
-        $('pi-new-profile-session').disabled = true;
         try {
             const session = await apiFetch('/api/pi/sessions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cwd, ...(Object.hasOwn(options, 'profileId') ? { profileId: options.profileId } : {}) })
+                body: JSON.stringify({ cwd, profileId, ...(assistantProjectId ? { assistantProjectId } : {}) })
             });
-            if (cwd !== state.cwd) { toast(translateUi('线程已创建在原项目，请从项目列表打开'), 'info'); return; }
+            const route = window.PiWorkspaceRoute?.current();
+            const stillSelected = cwd === state.cwd && assistantMode === state.assistantMode
+                && (assistantMode ? route?.tab === 'assistant' && route.params.get('profileId') === profileId
+                    && assistantProjectId === state.assistantProjectId : route?.tab === 'chat');
+            if (!stillSelected) { toast(translateUi('线程已创建在原项目，请从项目列表打开'), 'info'); return; }
             state.sessions.unshift(session);
             state.projectSessions.set(cwd, state.sessions);
+            if (assistantProjectId) {
+                const list = state.assistantSessions.get(assistantProjectId) || [];
+                state.assistantSessions.set(assistantProjectId, [session, ...list.filter(item => item.id !== session.id)]);
+            }
             const project = state.projects.find(item => item.cwd === cwd);
             if (project) project.sessionCount = state.sessions.length;
             rememberProject(cwd);
@@ -1504,10 +1646,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             toast(error.message, 'error');
         } finally {
-            if (cwd === state.cwd) {
-                elements.newSession.disabled = false;
-                $('pi-new-profile-session').disabled = false;
-            }
+            state.creatingSession = false;
+            elements.newSession.disabled = state.assistantMode && !state.assistantGroups.some(group => group.id === state.assistantProjectId && !group.unclassified && !group.archived);
         }
     }
 
@@ -1574,12 +1714,21 @@ document.addEventListener('DOMContentLoaded', () => {
             renderAttachments(); autoResizeInput();
         }
         state.session = session;
+        syncActualIdentity();
         syncMobileHeader();
         extensionAssistant.update(session);
         workflows.update();
         if (!session.ephemeral) localStorage.setItem(`pi.web.session:${state.cwd}`, session.id);
         renderSessions();
         updateSessionMeta();
+        if (state.assistantMode) {
+            const groupId = session.assistantProject?.id || state.assistantGroups.find(group => group.unclassified && group.cwd === state.cwd && state.assistantSessions.get(group.id)?.some(item => item.id === session.id))?.id;
+            if (groupId) state.assistantProjectId = groupId;
+        }
+        const routeTab = state.assistantMode ? 'assistant' : 'chat';
+        const routeParams = state.assistantMode ? { profileId: state.assistantProfileId, projectId: state.assistantProjectId, sessionId: session.id } : { cwd: state.cwd, sessionId: session.id };
+        if (['chat', 'assistant'].includes(window.PiWorkspaceRoute?.current().tab)) window.PiWorkspaceRoute.navigate(routeTab, routeParams);
+        else window.PiWorkspaceRoute?.rememberConversation(routeTab, routeParams);
         elements.input.disabled = true;
         elements.sendButton.disabled = true;
         elements.compactButton.disabled = true;
@@ -2807,6 +2956,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (stats?.totalMessages != null) elements.metaMessages.textContent = String(stats.totalMessages);
     }
 
+    function syncActualIdentity() {
+        const profile = state.session?.ephemeral ? null : state.session?.agentProfile;
+        const header = $('pi-actual-identity'), composer = $('pi-composer-identity');
+        const origin = $('pi-conversation-origin');
+        const groupId = state.session?.assistantProject?.id || state.assistantGroups.find(group => group.unclassified
+            && group.cwd === state.cwd && state.assistantSessions.get(group.id)?.some(item => item.id === state.session?.id))?.id;
+        origin.hidden = !state.assistantMode || !state.session || profile?.id === state.assistantProfileId && groupId === state.assistantProjectId;
+        for (const node of [header, composer]) {
+            node.hidden = !profile;
+            node.replaceChildren();
+            if (!profile) continue;
+            const source = state.profileInventory.find(item => item.id === profile.id) || profile;
+            node.append(window.PiAssistantProjects.avatar(source), document.createTextNode(source.name || profile.name || translateUi('身份不可用')));
+            node.title = $('pi-session-profile').title || profile.name || '';
+        }
+    }
+
     function updateSessionMeta(runtime) {
         const ephemeral = Boolean(state.session?.ephemeral);
         elements.metaName.textContent = state.session ? getSessionTitle(state.session) : '--';
@@ -2815,6 +2981,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.metaFile.textContent = ephemeral ? translateUi("不保存（pi --no-session）") : state.session?.path || runtime?.sessionFile || '--';
         elements.metaFile.title = ephemeral ? translateUi("临时 runtime 不创建 session 文件") : state.session?.path || runtime?.sessionFile || '';
         window.PiAgentProfilesUI?.displaySession(state.session, state.connected, JSON.stringify([state.cwd, state.session?.id, state.socketGeneration]));
+        syncActualIdentity();
     }
 
     function setStreaming(streaming) {
@@ -3481,6 +3648,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ];
             items = [
                 command(translateUi("新建线程"), 'fa-plus', async () => { if (cwd !== state.cwd) await selectProject(cwd); await createSession(); }),
+                command(translateUi('临时会话（不保存）'), 'fa-bolt', () => createEphemeralSession(cwd)),
                 command(state.pinnedProjects.includes(cwd) ? translateUi("取消置顶") : translateUi("置顶项目"), 'fa-thumbtack', () => toggleProjectPin(cwd), { disabled: state.pinRequests.has(cwd) }),
                 command(translateUi("刷新线程"), 'fa-rotate', () => loadSessions(cwd)),
                 { label: translateUi("更多操作"), icon: 'fa-ellipsis', children: moreItems },
@@ -3494,6 +3662,22 @@ document.addEventListener('DOMContentLoaded', () => {
             ];
         }
         threadMenu.open(anchor, items, point);
+    }
+
+    const projectEditor = window.PiAssistantProjects.createEditor({ apiFetch, profileId: () => state.assistantProfileId,
+        onSaved: project => { state.assistantProjectId = project.id; refreshAssistant(); } });
+    function showAssistantMenu(target, group) {
+        const cwd = group.cwd;
+        const command = (label, icon, run) => ({ label, icon, run: () => Promise.resolve().then(run).catch(error => toast(error.message, 'error')) });
+        threadMenu.open(target, [
+            ...(!group.unclassified && !group.archived ? [command(translateUi('新建线程'), 'fa-plus', async () => {
+                state.assistantProjectId = group.id;
+                if (cwd !== state.cwd) await selectProject(cwd);
+                await createSession();
+            })] : []),
+            ...(!group.unclassified ? [command(translateUi('编辑项目'), 'fa-pen', () => projectEditor.open(group, state.assistantRevision))] : []),
+            command(translateUi('临时会话（不保存）'), 'fa-bolt', () => createEphemeralSession(cwd))
+        ]);
     }
 
     const archiveSearchLabel = document.createElement('label');
@@ -3515,6 +3699,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!details?.matches('details[data-archive-kind]')) return;
         const opening = !details.open;
         if (details.dataset.archiveKind === 'projects') state.archiveProjectsOpen = opening;
+        else if (details.dataset.archiveKind === 'assistant-projects') state.assistantArchivedOpen = opening;
         else if (opening) state.archiveThreadsOpen.add(details.dataset.cwd);
         else state.archiveThreadsOpen.delete(details.dataset.cwd);
     });
@@ -3530,11 +3715,25 @@ document.addEventListener('DOMContentLoaded', () => {
         void loadFilteredProjects();
     });
     elements.sessionList.addEventListener('contextmenu', event => {
+        const groupNode = state.assistantMode && !event.target.closest('[data-session-id]') && event.target.closest('[data-assistant-project-id]');
+        if (groupNode) {
+            event.preventDefault();
+            const group = state.assistantGroups.find(item => item.id === groupNode.dataset.assistantProjectId);
+            if (group) showAssistantMenu(groupNode.querySelector('[data-assistant-action="menu"]'), group);
+            return;
+        }
         if (!event.target.closest('[data-project-cwd], [data-session-id]') || event.target.closest('input, textarea, [contenteditable]') || window.getSelection()?.toString()) return;
         event.preventDefault();
         showThreadMenu(event.target, { x: event.clientX, y: event.clientY });
     });
     elements.sessionList.addEventListener('keydown', event => {
+        const groupNode = state.assistantMode && !event.target.closest('[data-session-id]') && event.target.closest('[data-assistant-project-id]');
+        if (groupNode && (event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey)) {
+            event.preventDefault();
+            const group = state.assistantGroups.find(item => item.id === groupNode.dataset.assistantProjectId);
+            if (group) showAssistantMenu(groupNode.querySelector('[data-assistant-action="menu"]'), group);
+            return;
+        }
         if (event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey) {
             if (!event.target.closest('[data-project-cwd], [data-session-id]')) return;
             event.preventDefault();
@@ -3597,17 +3796,80 @@ document.addEventListener('DOMContentLoaded', () => {
         sessionStorage.setItem('pi.web.token', state.token);
         bootstrap();
     });
-    elements.tempSession.addEventListener('click', createEphemeralSession);
-    elements.newSession.addEventListener('click', createSession);
-    $('pi-new-profile-session').addEventListener('click', async () => {
-        if (!state.cwd) return openProjectDialog();
-        const cwd = state.cwd;
-        const selection = await window.PiAgentProfilesUI?.chooseSession(cwd);
-        if (!selection) return;
-        if (state.cwd !== cwd) return toast(translateUi('项目已切换，请重新选择新线程的身份'), 'info');
-        await createSession(selection);
+    elements.newSession.addEventListener('click', () => {
+        if (!state.assistantMode) return void createSession();
+        const group = state.assistantGroups.find(item => item.id === state.assistantProjectId);
+        if (!group || group.unclassified || group.archived) return;
+        void (async () => { if (group.cwd !== state.cwd) await selectProject(group.cwd); await createSession(); })().catch(error => toast(error.message, 'error'));
     });
-    elements.refreshSessions.addEventListener('click', () => Promise.all([loadProjects(), loadSessions(), refreshActivity()]).catch(error => toast(error.message, 'error')));
+    $('pi-assistant-add-project').addEventListener('click', () => projectEditor.open(null, state.assistantRevision, state.cwd));
+    $('pi-conversation-origin').addEventListener('click', () => window.PiWorkspaceRoute?.navigate('chat', { cwd: state.cwd, sessionId: state.session?.id }));
+    $('pi-assistant-profile').addEventListener('change', event => {
+        state.assistantProjectId = null;
+        window.PiWorkspaceRoute?.navigate('assistant', { profileId: event.target.value });
+    });
+    window.addEventListener('workspace:agent-profiles-changed', () => {
+        if (state.assistantMode) refreshAssistant();
+        else void apiFetch('/api/pi/profiles').then(data => {
+            if (Array.isArray(data?.profiles)) { state.profileInventory = data.profiles; syncActualIdentity(); }
+        }).catch(() => {});
+    });
+    window.addEventListener('workspace:tabchanged', event => {
+        const { tab, params } = event.detail;
+        const routeKey = location.hash || '#/chat';
+        if (routeKey !== state.routeKey) { state.routeKey = routeKey; state.navigationEpoch++; }
+        if (tab !== 'chat' && tab !== 'assistant') { state.assistantEpoch++; return; }
+        const wasAssistant = state.assistantMode;
+        state.assistantMode = tab === 'assistant';
+        $('pi-assistant-switcher').hidden = !state.assistantMode;
+        elements.sessionFilters.hidden = state.assistantMode;
+        elements.projectButton.hidden = state.assistantMode;
+        elements.sessionHeadingTitle.textContent = state.assistantMode ? translateUi('对话') : translateUi('项目与线程');
+        syncActualIdentity();
+        syncMobileHeader();
+        if (state.assistantMode && state.sessionFilter !== 'all') {
+            state.sessionFilter = 'all';
+            elements.sessionFilters.querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.filter === 'all')));
+        }
+        if (state.assistantMode) {
+            if (!wasAssistant || params.get('profileId') !== state.assistantProfileId || params.get('projectId') && params.get('projectId') !== state.assistantProjectId) {
+                refreshAssistant({ profileId: params.get('profileId'), projectId: params.get('projectId'), sessionId: params.get('sessionId') });
+            } else if (params.get('sessionId') && state.session?.id !== params.get('sessionId')) {
+                const session = state.assistantSessions.get(state.assistantProjectId)?.find(item => item.id === params.get('sessionId'));
+                if (session) void (async () => { if (session.cwd !== state.cwd) await selectProject(session.cwd); await openSession(session); })().catch(showAssistantError);
+            }
+        } else {
+            state.assistantEpoch++; renderSessions();
+            if (params.get('cwd') && params.get('sessionId') && state.session?.id !== params.get('sessionId')) {
+                void (async () => { if (params.get('cwd') !== state.cwd) await selectProject(params.get('cwd')); const rows = await loadSessions(); const session = rows.find(item => item.id === params.get('sessionId')); if (session) await openSession(session); })().catch(error => toast(error.message, 'error'));
+            }
+        }
+    });
+    const route = window.PiWorkspaceRoute?.current();
+    if (route?.tab === 'assistant' || route?.tab === 'chat') window.dispatchEvent(new CustomEvent('workspace:tabchanged', { detail: route }));
+    window.PiChatNavigation = Object.freeze({
+        async openSession({ cwd, sessionId, draft }) {
+            if (!cwd || !sessionId) throw new Error(translateUi('会话地址无效'));
+            window.PiWorkspaceRoute.navigate('chat');
+            const epoch = state.navigationEpoch;
+            if (cwd !== state.cwd) await selectProject(cwd);
+            const rows = await loadSessions(cwd);
+            if (epoch !== state.navigationEpoch || window.PiWorkspaceRoute.current().tab !== 'chat' || cwd !== state.cwd) throw new Error(translateUi('导航已改变；会话未打开'));
+            const target = rows.find(item => item.id === sessionId);
+            if (!target) throw new Error(translateUi('会话已不存在'));
+            const opening = state.session?.id !== sessionId || !state.connected ? openSession(target) : Promise.resolve();
+            const openingEpoch = state.navigationEpoch;
+            await opening;
+            if (openingEpoch !== state.navigationEpoch || window.PiWorkspaceRoute.current().tab !== 'chat'
+                || state.composerSessionKey !== JSON.stringify([cwd, sessionId]) || !state.connected) throw new Error(translateUi('导航已改变；会话未打开'));
+            if (draft != null) {
+                if (typeof draft !== 'string' || elements.input.value || state.attachmentFiles.length || state.attachmentReads) throw new Error(translateUi('会话已有草稿或附件；未覆盖原内容'));
+                elements.input.value = draft; elements.input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            return target;
+        }
+    });
+    elements.refreshSessions.addEventListener('click', () => Promise.all([loadProjects(), loadSessions(), refreshActivity(), ...(state.assistantMode ? [loadAssistant()] : [])]).catch(error => toast(error.message, 'error')));
     setInterval(() => void refreshActivity(), 3000);
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
@@ -3629,6 +3891,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     elements.sessionSearch.addEventListener('input', () => handleSessionSearch().catch(error => toast(error.message, 'error')));
     elements.sessionList.addEventListener('click', event => {
+        const assistantControl = event.target.closest('[data-assistant-action]');
+        if (assistantControl && state.assistantMode) {
+            const group = state.assistantGroups.find(item => item.id === assistantControl.closest('[data-assistant-project-id]')?.dataset.assistantProjectId);
+            if (!group) return;
+            if (assistantControl.dataset.assistantAction === 'menu') showAssistantMenu(assistantControl, group);
+            else {
+                state.assistantProjectId = group.id;
+                localStorage.setItem(`pi.web.assistantProject:${state.assistantProfileId}`, group.id);
+                renderAssistantSessions();
+                window.PiWorkspaceRoute?.navigate('assistant', { profileId: state.assistantProfileId, projectId: group.id });
+            }
+            return;
+        }
         const recentToggle = event.target.closest('[data-work-action="toggle-recent"]');
         if (recentToggle) {
             state.recentSessionsExpanded = !state.recentSessionsExpanded;
@@ -3675,7 +3950,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.cwd !== cwd) await selectProject(cwd);
             const session = state.session?.ephemeral && state.session.id === item.dataset.sessionId
                 ? state.session
-                : (state.projectSessions.get(cwd) || state.sessions).find(candidate => candidate.id === item.dataset.sessionId);
+                : (state.assistantMode ? [...state.assistantSessions.values()].flat() : (state.projectSessions.get(cwd) || state.sessions)).find(candidate => candidate.id === item.dataset.sessionId);
             if (!session) return;
             if (action === 'rename') await renameCurrent(session, cwd);
             else if (action === 'delete') await deleteOneSession(session, cwd);

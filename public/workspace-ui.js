@@ -50,15 +50,56 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         const app = document.querySelector('.app-container');
+        const managementPage = document.getElementById('workspace-settings-dialog');
+        if (app && managementPage) app.append(managementPage);
         const hostLabel = document.getElementById('workspace-host');
         if (hostLabel) hostLabel.textContent = window.location.host;
-        document.querySelectorAll('.nav-btn[data-tab]').forEach(button => {
-            button.addEventListener('click', () => {
-                document.querySelectorAll('.nav-btn[data-tab]').forEach(item => item.classList.toggle('active', item === button));
-                document.querySelectorAll('.tab-content').forEach(panel => panel.classList.toggle('active', panel.id === `${button.dataset.tab}-tab`));
-                window.dispatchEvent(new CustomEvent('workspace:tabchanged', { detail: { tab: button.dataset.tab } }));
+        const routeTabs = new Set(['chat', 'assistant', 'media', 'profiles', 'extensions', 'settings']);
+        const settingsTabs = new Set(['providers', 'media', 'models', 'system-prompts', 'native', 'access', 'usage', 'packages', 'skills', 'updates', 'extensions', 'profiles']);
+        let lastConversation = '#/chat';
+        function parseRoute() {
+            const match = /^#\/(chat|assistant|media|profiles|extensions|settings)(?:\?(.*))?$/.exec(location.hash);
+            if (!match) return { tab: 'chat', params: new URLSearchParams() };
+            return { tab: match[1], params: new URLSearchParams(match[2] || '') };
+        }
+        function showRoute() {
+            const { tab, params } = parseRoute();
+            if (tab === 'chat' || tab === 'assistant') lastConversation = location.hash || '#/chat';
+            document.querySelectorAll('.nav-btn[data-tab]').forEach(button => {
+                const active = button.dataset.tab === tab;
+                button.classList.toggle('active', active);
+                if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
             });
+            document.querySelectorAll('.tab-content').forEach(panel => panel.classList.toggle('active', panel.id === `${tab === 'assistant' ? 'chat' : tab}-tab`));
+            document.getElementById('workspace-settings-dialog')?.classList.toggle('hidden', !['profiles', 'extensions', 'settings'].includes(tab));
+            window.dispatchEvent(new CustomEvent('workspace:tabchanged', { detail: { tab, params } }));
+            window.dispatchEvent(new CustomEvent('workspace:settings-route', { detail: { tab, settingsTab: tab === 'settings' && settingsTabs.has(params.get('tab')) ? params.get('tab') : tab === 'extensions' ? (settingsTabs.has(params.get('tab')) ? params.get('tab') : 'extensions') : 'profiles', profileId: params.get('profileId'), section: params.get('section'), authoringSession: params.get('authoringSession'), authoringCwd: params.get('authoringCwd') } }));
+        }
+        function routeHash(tab, params = {}) {
+            if (!routeTabs.has(tab)) throw new Error('Unknown workspace route');
+            const query = new URLSearchParams();
+            for (const [key, value] of Object.entries(params)) if (value != null && value !== '') query.set(key, value);
+            return `#/${tab}${query.size ? `?${query}` : ''}`;
+        }
+        function navigate(tab, params = {}, replace = false) {
+            const hash = routeHash(tab, params);
+            if (location.hash === hash) return showRoute();
+            if (replace) history.replaceState(null, '', hash);
+            else history.pushState(null, '', hash);
+            showRoute();
+        }
+        window.PiWorkspaceRoute = Object.freeze({ navigate, current: parseRoute,
+            rememberConversation(tab, params) { if (tab === 'chat' || tab === 'assistant') lastConversation = routeHash(tab, params); },
+            returnToConversation: () => {
+            const url = ['chat', 'assistant'].includes(parseRoute().tab) ? location.hash : lastConversation;
+            history.pushState(null, '', url); showRoute();
+        } });
+        window.addEventListener('popstate', showRoute);
+        window.addEventListener('hashchange', showRoute);
+        document.querySelectorAll('.nav-btn[data-tab]').forEach(button => {
+            button.addEventListener('click', () => navigate(button.dataset.tab));
         });
+        showRoute();
         const sidebarToggle = document.getElementById('workspace-sidebar-toggle');
         const brandToggle = document.getElementById('workspace-brand-toggle');
         const themeToggle = document.getElementById('workspace-theme-toggle');
