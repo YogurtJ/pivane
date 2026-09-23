@@ -166,4 +166,4 @@ function mountProfileMemoryRoutes(router, { profiles, getAgentDir, bundlePath = 
         } catch { return res.json({ ...base, status: 'error', reason: 'Profile data cannot be read' }); }
     });
 }
-module.exports = { mountProfileMemoryRoutes, profileMemoryCapability };
+module.exports = { mountProfileMemoryRoutes, profileMemoryCapability, safeFile };

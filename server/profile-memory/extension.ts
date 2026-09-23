@@ -106,8 +106,8 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
         upstream.registerSkillTool(guarded, skillStore);
     }
     const config = {
-        memoryDir: root, memoryMode: 'legacy-inject', memoryCharLimit: 16000,
-        userCharLimit: 8000, memoryOverflowStrategy: 'reject', autoConsolidate: false,
+        memoryDir: root, memoryMode: 'legacy-inject', memoryCharLimit: context.memory.memoryCharLimit,
+        userCharLimit: context.memory.userCharLimit, memoryOverflowStrategy: 'reject', autoConsolidate: false,
         failureInjectionEnabled: false,
     };
     const store = context.memory.enabled ? new upstream.MemoryStore(config) : null;

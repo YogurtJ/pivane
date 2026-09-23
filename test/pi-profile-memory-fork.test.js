@@ -33,7 +33,7 @@ test('A native fork inherits its own marker while copied parent markers cannot b
     const child = SessionManager.open(fork.session.path);
     const ctx = { version: 1, profileId, sessionId: child.getSessionId(), cwd,
         profileRoot: path.join(agentDir, 'pivane-profiles', 'data', profileId), sessionsRoot: path.join(agentDir, 'sessions'),
-        memory: { enabled: true, autoLearn: false }, skills: { learnedEnabled: true } };
+        memory: { enabled: true, autoLearn: false, memoryCharLimit: 16000, userCharLimit: 8000 }, skills: { learnedEnabled: true } };
     const parsed = scope.parseContext(JSON.stringify(ctx));
     assert.ok(parsed);
     assert.equal(child.getEntries().filter(entry => entry.customType === 'pivane-agent-profile').length, 2);

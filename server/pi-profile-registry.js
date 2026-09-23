@@ -15,6 +15,24 @@ const ID = /^[a-f0-9-]{36}$/;
 const MAX_REGISTRY = 2 * 1024 * 1024;
 const stamp = stat => [stat.dev, stat.ino, stat.mode, stat.size, stat.mtimeNs, stat.ctimeNs].map(String).join(':');
 const changed = () => fail('Profile registry changed during read or save', 409);
+const MEMORY_LIMITS = Object.freeze({ memoryCharLimit: [16000, 256, 65536], userCharLimit: [8000, 256, 32768] });
+function normalizedMemory(memory) {
+    if (!object(memory)) throw fail('Invalid profile memory');
+    const limits = {};
+    for (const [key, [fallback, min, max]] of Object.entries(MEMORY_LIMITS)) {
+        const value = memory[key] ?? fallback;
+        if (!Number.isSafeInteger(value) || value < min || value > max) throw fail(`Invalid ${key}`);
+        limits[key] = value;
+    }
+    return limits;
+}
+function validAvatar(avatar) {
+    return avatar === null || object(avatar) && Object.keys(avatar).every(key => ['kind', 'value', 'version'].includes(key))
+        && (avatar.kind === 'emoji' && typeof avatar.value === 'string' && avatar.value.trim() === avatar.value
+            && avatar.value.length > 0 && avatar.value.length <= 16 && Buffer.byteLength(avatar.value) <= 64 && !/[\x00-\x1f\x7f<>]/.test(avatar.value)
+            && avatar.version === undefined
+            || avatar.kind === 'image' && /^[a-f0-9]{64}$/.test(avatar.version) && avatar.value === undefined);
+}
 
 function readRegistry(file) {
     let fd, existed = false;
@@ -42,7 +60,8 @@ function readRegistry(file) {
                 || typeof p.soul !== 'string' || Buffer.byteLength(p.soul, 'utf8') > 32 * 1024
                 || typeof p.enabled !== 'boolean' || !object(p.memory) || !object(p.skills)
                 || typeof p.memory.enabled !== 'boolean' || typeof p.memory.autoLearn !== 'boolean'
-                || typeof p.skills.learnedEnabled !== 'boolean')) throw fail('Profile registry is invalid');
+                || typeof p.skills.learnedEnabled !== 'boolean' || p.avatar !== undefined && !validAvatar(p.avatar)
+                || (() => { try { normalizedMemory(p.memory); return false; } catch { return true; } })())) throw fail('Profile registry is invalid');
         return { raw, state };
     } catch (error) {
         if (error.code === 'ENOENT') {
@@ -65,8 +84,12 @@ function validateProfile(input, previous) {
         || memory.autoLearn !== undefined && typeof memory.autoLearn !== 'boolean'
         || skills.learnedEnabled !== undefined && typeof skills.learnedEnabled !== 'boolean'
         || input.id !== undefined && (typeof input.id !== 'string' || !ID.test(input.id))) throw fail('Invalid profile');
+    normalizedMemory(memory);
+    const avatar = input.avatar === undefined ? previous?.avatar ?? null : input.avatar;
+    if (!validAvatar(avatar)) throw fail('Invalid avatar');
     return { name: input.name.trim(), description: input.description, soul: input.soul, enabled: input.enabled,
-        memory: { enabled: memory.enabled ?? false, autoLearn: memory.autoLearn ?? false },
+        ...(avatar !== null || input.avatar !== undefined || previous?.avatar !== undefined ? { avatar } : {}),
+        memory: { ...previous?.memory, ...memory, enabled: memory.enabled ?? false, autoLearn: memory.autoLearn ?? false },
         skills: { learnedEnabled: skills.learnedEnabled ?? true } };
 }
 
@@ -183,6 +206,9 @@ class PiProfileRegistry {
             const index = existingId === undefined ? -1 : state.profiles.findIndex(p => p.id === existingId);
             const previous = state.profiles[index];
             const profile = validateProfile(input.profile, previous);
+            // Image references can only retain an asset already owned by this record.
+            if (profile.avatar?.kind === 'image' && (previous?.avatar?.kind !== 'image'
+                || previous.avatar.version !== profile.avatar.version)) throw fail('Image avatar must be uploaded');
             if (existingId !== undefined && index < 0) throw fail('Profile not found');
             if (index < 0 && state.profiles.length >= 50) throw fail('Profile limit reached');
             const now = new Date().toISOString();
@@ -190,6 +216,16 @@ class PiProfileRegistry {
                 createdAt: previous?.createdAt || now, updatedAt: now };
             if (index < 0) state.profiles.push(record); else state.profiles[index] = record;
             return { ok: true, profile: record, requiresReload: true };
+        }));
+    }
+
+    saveAvatar(id, expectedRevision, version) {
+        return this.reserve(() => this.mutate(expectedRevision, state => {
+            const index = state.profiles.findIndex(profile => profile.id === id);
+            if (index < 0) throw fail('Profile not found', 404);
+            const record = { ...state.profiles[index], avatar: { kind: 'image', version }, updatedAt: new Date().toISOString() };
+            state.profiles[index] = record;
+            return { ok: true, profile: record };
         }));
     }
 
@@ -235,9 +271,9 @@ class PiProfileRegistry {
         return { version: 1, profileId: profile.id, sessionId: binding.sessionId, cwd,
             sessionPath: fs.realpathSync.native(manager.getSessionFile()),
             profileRoot, sessionsRoot: path.join(fs.realpathSync.native(agentDir), 'sessions'),
-            memory: { enabled: profile.memory.enabled, autoLearn: profile.memory.autoLearn },
+            memory: { enabled: profile.memory.enabled, autoLearn: profile.memory.autoLearn, ...normalizedMemory(profile.memory) },
             skills: { learnedEnabled: profile.skills.learnedEnabled } };
     }
 }
 
-module.exports = { PiProfileRegistry, readRegistry, profileRevision };
+module.exports = { PiProfileRegistry, readRegistry, profileRevision, normalizedMemory };

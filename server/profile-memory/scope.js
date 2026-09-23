@@ -30,6 +30,8 @@ function parseContext(raw) {
             || typeof value.sessionId !== 'string' || !value.sessionId || value.sessionId.length > 200
             || !path.isAbsolute(value.cwd) || !path.isAbsolute(value.profileRoot) || !path.isAbsolute(value.sessionsRoot)
             || typeof value.memory?.enabled !== 'boolean' || typeof value.memory?.autoLearn !== 'boolean'
+            || !Number.isSafeInteger(value.memory.memoryCharLimit) || value.memory.memoryCharLimit < 256 || value.memory.memoryCharLimit > 65536
+            || !Number.isSafeInteger(value.memory.userCharLimit) || value.memory.userCharLimit < 256 || value.memory.userCharLimit > 32768
             || typeof value.skills?.learnedEnabled !== 'boolean') return null;
         if (value.sessionPath !== undefined && (typeof value.sessionPath !== 'string'
             || !path.isAbsolute(value.sessionPath) || path.resolve(value.sessionPath) !== value.sessionPath)) return null;

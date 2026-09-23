@@ -34,7 +34,7 @@ function fixture() {
         return { file, header, entries };
     };
     const context = session => ({ version: 1, profileId, sessionId: session.header.id, sessionPath: session.file,
-        cwd, sessionsRoot, profileRoot: root, memory: { enabled: true, autoLearn: false }, skills: { learnedEnabled: true } });
+        cwd, sessionsRoot, profileRoot: root, memory: { enabled: true, autoLearn: false, memoryCharLimit: 16000, userCharLimit: 8000 }, skills: { learnedEnabled: true } });
     return { base, root, create, context, cwd, cleanup: () => fs.rmSync(base, { recursive: true, force: true }) };
 }
 

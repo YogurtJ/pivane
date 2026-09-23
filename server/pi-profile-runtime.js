@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { safeFile } = require('./pi-native-service');
-const { readRegistry, profileRevision } = require('./pi-profile-registry');
+const { readRegistry, profileRevision, normalizedMemory } = require('./pi-profile-registry');
 const { readProfileBinding } = require('./pi-profile-state');
 
 function readProfileRuntime(manager, cwd, agentDir, sessionsRoot, raw = process.env.PIVANE_AGENT_PROFILE_CONTEXT) {
@@ -18,7 +18,7 @@ function readProfileRuntime(manager, cwd, agentDir, sessionsRoot, raw = process.
             || input.sessionsRoot !== sessionsRoot) return null;
         safeFile(agentDir, ['pivane-profiles', 'data', binding.profileId, '.profile-root']);
         const record = readRegistry(file).state.profiles.find(p => p.id === binding.profileId && p.enabled);
-        if (!record || JSON.stringify(input.memory) !== JSON.stringify({ enabled: record.memory.enabled, autoLearn: record.memory.autoLearn })
+        if (!record || JSON.stringify(input.memory) !== JSON.stringify({ enabled: record.memory.enabled, autoLearn: record.memory.autoLearn, ...normalizedMemory(record.memory) })
             || JSON.stringify(input.skills) !== JSON.stringify({ learnedEnabled: record.skills.learnedEnabled })
             || typeof record.soul !== 'string' || Buffer.byteLength(record.soul) > 32 * 1024) return null;
         return { context: input, soul: record.soul, revision: profileRevision(record) };
