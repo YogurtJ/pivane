@@ -2,7 +2,13 @@
 
 此页描述已完成的平台验证；不表示每个新候选包已经重复完成全部实机测试。准确的包版本、SHA256和补验结果应随该次发布说明提供。RC4 的中间候选验收失败记录不作为最终发布结论，只有绑定最终归档 SHA256 的 validation.json 才代表 RC4。
 
-## 当前正式版 1.0.0
+## 当前正式版 1.1.0
+
+[1.1.0](releases/1.1.0.md) 锁定 Pi 0.87.1。精确归档通过 Linux ARM64 / Node 22.23.2 的 292 项 Node 测试、12 组 Chromium 浏览器专项、独立安装、从 1.0.0 升级及 17 个文件逐项哈希一致的原路径恢复，生产依赖 audit 为 0 漏洞。结果随 Release 的 `pivane-1.1.0.validation.json` 提供，并绑定归档 SHA256。测试采用隔离身份与合成供应商。
+
+macOS、Windows、Linux x86_64 保留历史基线，本包未新增这些平台的实机验收；Chromium 手机宽度仿真不代表 Safari、真实手机后台通知或所有真实供应商已验收。
+
+## 历史正式版 1.0.0
 
 [1.0.0](releases/1.0.0.md) 锁定 Pi 0.86.1。最终包的安装、RC4 升级、恢复和浏览器检查结果随 Release 的 `pivane-1.0.0.validation.json` 提供，并绑定精确归档 SHA256。本次验收平台为 Linux ARM64、Node 22.x；macOS、Windows 与 Linux x86_64 保留历史基线，不宣称本包已重跑这些实机验收。新后台安装器的 macOS/Windows 系统服务与桌面入口仍需实机验收。
 

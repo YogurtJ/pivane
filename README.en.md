@@ -8,7 +8,7 @@
 
 Pivane is a self-hosted AI workspace powered by **Pi Coding Agent**. Work on code, manage projects and files, follow Agent tasks, and use your own image, video and speech models from a desktop, tablet or phone.
 
-[Releases](https://github.com/YogurtJ/pivane/releases) · [Install](docs/en/INSTALL.md) · [User guide](docs/en/USER_GUIDE.md) · [Report an issue](https://github.com/YogurtJ/pivane/issues)
+[Download 1.1.0](https://github.com/YogurtJ/pivane/releases/tag/v1.1.0) · [Install](docs/en/INSTALL.md) · [User guide](docs/en/USER_GUIDE.md) · [Report an issue](https://github.com/YogurtJ/pivane/issues)
 
 ## From a question to completed work
 
@@ -34,13 +34,13 @@ Run the server on Linux, macOS or Windows, then access it through a browser. Des
 
 The current source supports **Simplified Chinese and English**. It follows the browser's preferred supported language on first use; other languages fall back to English. Choose a language under **Settings → Preferences → Interface language**. The choice is saved for this browser and applies on the next page load, without automatically refreshing or interrupting your current work. Model replies, user content and speech language are independent.
 
-The bilingual interface is included starting with **1.0.0-rc.2**. **1.0.0 is the first stable release**, pinned to **Pi 0.86.1**. It includes the extension center, application updates, background installation, persistent usage accounting and task result receipts. Historical RC artifacts remain available. See the [1.0.0 notes](docs/releases/1.0.0.md) for changes and validation scope.
+The bilingual interface is included starting with **1.0.0-rc.2**. Version **1.0.0** was the first stable release, pinned to Pi 0.86.1. Historical artifacts remain available with their original validation records.
 
 ## Install
 
-The **1.1.0 release candidate** targets **Pi 0.87.1**, adding project file browsing, task progress, shared model favorites and mobile UI improvements. See the [candidate notes](docs/releases/1.1.0.md). This does not replace the published 1.0.0/Pi 0.86.1 archive or update a running instance automatically.
+The current stable release, **1.1.0**, is pinned to **Pi 0.87.1**. It adds project file browsing, native task progress, searchable model selection, shared favorites and mobile interaction improvements. See the [release notes](docs/releases/1.1.0.md). This archive passed 292 Node tests, 12 browser suites, installation, upgrade from 1.0.0 and same-path restoration on Linux ARM64 with Node 22. Running instances change only after an explicit update.
 
-Use **Node.js 22.x** and the locked dependencies. Version 1.0.0 is pinned to Pi 0.86.1; validation results are attached to its exact archive SHA256. You do not need a global Pi installation, a frontend build, or a compiler for the packaged native components.
+Use **Node.js 22.x** and the locked dependencies. Validation results are attached to the exact archive SHA256. You do not need a global Pi installation, a frontend build, or a compiler for the packaged native components.
 
 | Server platform | Validated RC baseline |
 |---|---|
