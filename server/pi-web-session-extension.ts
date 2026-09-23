@@ -9,7 +9,8 @@ import { randomUUID } from 'node:crypto';
 import { searchHistory, previewHistory, setHistoryBookmark } from './pi-history-model.js';
 import { sessionTree, checkNavigation } from './pi-session-tree.js';
 import { promptFromEntry, validateMessage } from './pi-message-payload.js';
-import { buildSessionContext, type ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import { buildSessionContext, getAgentDir, type ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import { registerAgentProfile } from './pi-profile-runtime.js';
 
 // Pi 0.86 stores prompt/tool checkpoints as native system messages in the
 // transcript. They are provider context, not chat bubbles or side-chat input.
@@ -27,6 +28,7 @@ export default function (pi: ExtensionAPI) {
     registerExtensionAssistant(pi);
     registerAgentThreads(pi);
     registerTaskProgress(pi);
+    registerAgentProfile(pi, getAgentDir);
     // A managed process is bound to one file. Native replacement must not bypass Supervisor.
     const managed = () => Boolean(process.env.PI_WEB_NAVIGATION_TOKEN);
     const reportTitleEligibility = (_event: unknown, ctx: any) => {
