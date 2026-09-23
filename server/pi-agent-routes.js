@@ -81,6 +81,8 @@ function createPiAgentGateway(options = {}) {
     const access = options.accessService || new (require('./workspace-access-service').WorkspaceAccessService)();
     const supervisor = new PiAgentSupervisor();
     const store = new PiSessionStore();
+    const profiles = new (require('./pi-profile-registry').PiProfileRegistry)(store);
+    store.profiles = profiles;
     const preferences = options.workspacePreferencesService || new WorkspacePreferencesService();
     const composer = new (require('./pi-composer-service').PiComposerService)(store);
     const files = new (require('./pi-file-service').PiFileService)(store);
@@ -124,6 +126,25 @@ function createPiAgentGateway(options = {}) {
     });
     notifications.mount(router);
     require('./pi-extension-assistant').mountExtensionAssistant(router, { store, supervisor, resourceService, settingsService, access });
+    const assistantEnvironment = supervisor.workerEnvironment;
+    supervisor.workerEnvironment = async ({ cwd, sessionId, sessionPath }) => {
+        const env = assistantEnvironment ? await assistantEnvironment({ cwd, sessionId }) : {};
+        const session = await store.getSession(cwd, sessionId);
+        if (session.path !== sessionPath) throw new Error('Session path changed before runtime startup');
+        const { SessionManager } = await require('./pi-session-store').getSdk();
+        const manager = SessionManager.open(session.path);
+        if (manager.getSessionId() !== sessionId) throw new Error('Native session identity changed');
+        const context = await profiles.context(manager, cwd);
+        return { ...env, ...(context ? { PIVANE_AGENT_PROFILE_CONTEXT: JSON.stringify(context) } : {}) };
+    };
+    const profileRoute = action => async (req, res) => {
+        res.set('Cache-Control', 'no-store');
+        try { res.json(await action(req)); }
+        catch (error) { res.status(error.status || error.statusCode || 400).json({ error: error.message, code: error.code }); }
+    };
+    router.get('/profiles', profileRoute(req => profiles.list(req.query.cwd)));
+    router.put('/profiles', profileRoute(req => profiles.save(req.body)));
+    router.put('/profiles/default', profileRoute(req => profiles.saveDefault(req.body)));
     const agentThreads = require('./pi-agent-threads').mountAgentThreads(router, { store, supervisor, settingsService, access,
         isSuspended: () => maintenance.locked });
 
@@ -140,6 +161,7 @@ function createPiAgentGateway(options = {}) {
             defaultProject: store.defaultProject(),
             nativeResources: true,
             agentThreads: true,
+            agentProfiles: true,
             agentTaskResults: true,
             taskProgress: true,
             extensionAssistant: true,
@@ -398,7 +420,8 @@ function createPiAgentGateway(options = {}) {
 
     router.post('/sessions', async (req, res) => {
         try {
-            const session = await store.createSession(req.body.cwd, req.body.name, { autoTitle: preferences.getSessionTitles().enabled });
+            const session = await store.createSession(req.body.cwd, req.body.name, { autoTitle: preferences.getSessionTitles().enabled,
+                agentProfileId: Object.hasOwn(req.body, 'profileId') ? req.body.profileId : undefined });
             if (preferences.getHiddenProjects().includes(session.cwd)) preferences.setProjectHidden(session.cwd, false);
             res.status(201).json(session);
         } catch (error) {
@@ -708,11 +731,14 @@ function createPiAgentGateway(options = {}) {
                     const source = worker;
                     const saved = await nativeService.snapshot(source.cwd);
                     const actual = await source.getNativeResources();
+                    const savedProfile = source.noSession ? null : (await store.getSession(source.cwd, source.sessionId)).agentProfile;
                     if (worker !== source || source.disposed) throw new Error('运行实例已变化，请重新核对配置');
                     safeSend(socket, { type: 'response', id: message.id, command: message.type, success: true, data: {
                         actualProjectTrusted: actual.projectTrusted,
                         runtimeId: source.controls.runtimeId, revision: saved.revision, matchesSavedConfig: source.configRevision == null ? null : source.configRevision === saved.revision,
                         trust: saved.trust, ephemeral: source.noSession,
+                        agentProfile: { saved: savedProfile, loadedProfileId: source.loadedAgentProfileId,
+                            loadedConfirmed: source.loadedAgentProfileConfirmed },
                         recoveries: source.controls.recoveries.length, drafts: source.controls.drafts.length } });
                     return;
                 }

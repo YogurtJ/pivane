@@ -125,9 +125,11 @@ class PiSessionStore {
     async listSessions(input) {
         const cwd = this.resolveProject(input);
         const { SessionManager } = await getSdk();
+        const profiles = this.profiles;
+        const profileState = profiles ? (await profiles.state()).state : null;
         const sessions = await SessionManager.list(cwd);
-        return sessions
-            .map(session => this._serializeSession(session))
+        return (await Promise.all(sessions.map(async session => this._serializeSession(session,
+            profiles ? await profiles.describe(SessionManager.open(session.path), profileState) : null))))
             .sort((a, b) => b.modified.localeCompare(a.modified));
     }
 
@@ -142,8 +144,10 @@ class PiSessionStore {
         return { ...session, path: canonical, assistant };
     }
 
-    async createSession(cwdInput, name = '', { autoTitle = false, assistant = null, task = null } = {}) {
+    async createSession(cwdInput, name = '', { autoTitle = false, assistant = null, task = null, agentProfileId, inheritedProfileId } = {}) {
         const cwd = this.resolveProject(cwdInput);
+        const selectedProfileId = inheritedProfileId !== undefined ? inheritedProfileId
+            : assistant ? null : this.profiles ? await this.profiles.select(cwd, agentProfileId) : null;
         const { SessionManager } = await getSdk();
         const manager = SessionManager.create(cwd);
         const sessionPath = manager.getSessionFile();
@@ -154,6 +158,8 @@ class PiSessionStore {
 
         // Opening an explicit empty file makes SessionManager write a valid header immediately.
         const persisted = SessionManager.open(sessionPath, undefined, cwd);
+        if (this.profiles) persisted.appendCustomEntry(require('./pi-profile-state').PROFILE_ENTRY,
+            { version: 1, sessionId: persisted.getSessionId(), profileId: selectedProfileId });
         const cleanName = String(name || '').trim().slice(0, 120);
         if (cleanName) persisted.appendSessionInfo(cleanName);
         else if (autoTitle) persisted.appendCustomEntry('pivane-web-title', { version: 1, sessionId: persisted.getSessionId(), status: 'pending' });
@@ -170,6 +176,7 @@ class PiSessionStore {
         require('./pi-private-files').privateFileMode(sessionPath);
         return {
             assistant: assistant ? require('./pi-extension-assistant').assistantProfile(persisted) : null,
+            agentProfile: this.profiles ? await this.profiles.describe(persisted) : null,
             id: persisted.getSessionId(),
             path: fs.realpathSync.native(sessionPath),
             cwd,
@@ -187,6 +194,8 @@ class PiSessionStore {
         const { SessionManager } = await getSdk();
         const { activeBranch, promptFromEntry, isReplyForkPoint } = require('./pi-message-payload');
         const source = SessionManager.open(session.path);
+        const sourceBinding = require('./pi-profile-state').readProfileBinding(source);
+        const inheritedProfileId = sourceBinding?.profileId ?? null;
         if (source.getLeafId() !== snapshot.leafId) throw new Error('会话已变化，请刷新后重试');
         const selected = entryId ? snapshot.entries.find(entry => entry.id === entryId) : null;
         if (position === 'at' && !isReplyForkPoint(selected)) throw new Error('请选择已完成且没有待执行工具调用的回复');
@@ -196,6 +205,8 @@ class PiSessionStore {
         let result;
         if (branch.some(entry => entry.type === 'message' && entry.message.role === 'assistant')) {
             source.createBranchedSession(targetId);
+            if (this.profiles) source.appendCustomEntry(require('./pi-profile-state').PROFILE_ENTRY,
+                { version: 1, sessionId: source.getSessionId(), profileId: inheritedProfileId });
             source.appendSessionInfo(`${session.name || '会话'} · 分叉`.slice(0, 120));
             result = await this.getSession(session.cwd, source.getSessionId());
         } else if (branch.length) {
@@ -203,6 +214,8 @@ class PiSessionStore {
             // an assistant exists. Materialize the native export privately so an
             // early fork is immediately visible without re-appending/re-IDing entries.
             source.createBranchedSession(targetId);
+            if (this.profiles) source.appendCustomEntry(require('./pi-profile-state').PROFILE_ENTRY,
+                { version: 1, sessionId: source.getSessionId(), profileId: inheritedProfileId });
             source.appendSessionInfo(`${session.name || '会话'} · 分叉`.slice(0, 120));
             source.appendCustomEntry('pivane-web-fork-origin', { sessionId: session.id, entryId: targetId });
             const privateFiles = require('./pi-private-files');
@@ -217,7 +230,7 @@ class PiSessionStore {
                 result = await this.getSession(session.cwd, source.getSessionId());
             } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
         } else {
-            result = await this.createSession(session.cwd, `${session.name || '会话'} · 分叉`);
+            result = await this.createSession(session.cwd, `${session.name || '会话'} · 分叉`, { inheritedProfileId });
             SessionManager.open(result.path).appendCustomEntry('pivane-web-fork-origin', { sessionId: session.id, entryId: targetId });
         }
         require('./pi-private-files').privateFileMode(result.path);
@@ -248,8 +261,9 @@ class PiSessionStore {
         }
     }
 
-    _serializeSession(session) {
+    _serializeSession(session, agentProfile = null) {
         return {
+            agentProfile,
             id: session.id,
             path: session.path,
             cwd: session.cwd,

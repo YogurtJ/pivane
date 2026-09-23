@@ -46,6 +46,8 @@ class AgentWorker extends EventEmitter {
         this.contextResults = new Map();
         this.modelCatalog = new (require('./pi-model-catalog').PiModelCatalog)(this);
         this.resourceResults = new Map();
+        this.loadedAgentProfileId = null;
+        this.loadedAgentProfileConfirmed = false;
         this.autoTitleEligible = false;
         this.titleResults = new Map();
         this.titleGeneration = false;
@@ -56,7 +58,8 @@ class AgentWorker extends EventEmitter {
         this.contextCapture = null;
         this.client = new PiRpcClient({ ...options,
             extraArgs: [...(options.extraArgs || []), ...(options.profile === 'side-chat' ? [] : ['-e', path.join(__dirname, 'pi-web-session-extension.ts')])],
-            env: { ...options.env, ...(options.profile === 'side-chat' ? {} : { PI_WEB_NAVIGATION_TOKEN: this.navigationToken }) }
+            env: { PIVANE_AGENT_PROFILE_CONTEXT: undefined, ...options.env,
+                ...(options.profile === 'side-chat' ? {} : { PI_WEB_NAVIGATION_TOKEN: this.navigationToken }) }
         });
         this.subscribers = new Set();
         this.streaming = false;
@@ -371,6 +374,7 @@ class AgentWorker extends EventEmitter {
             const before = find(await this.client.request('get_commands'));
             if (!before) throw new Error('当前 runtime 尚未加载重载接口，请在任务结束后退出并重新打开会话');
             try {
+                this.loadedAgentProfileConfirmed = false;
                 await rpc('prompt', { message: `/${before.name} ${JSON.stringify({ mode: 'reload', token: this.navigationToken })}` }, 120000);
                 const raw = await this.client.request('get_commands');
                 const after = find(raw);
@@ -489,6 +493,14 @@ class AgentWorker extends EventEmitter {
             try {
                 const result = privateReply(JSON.parse(event.message));
                 if (this.modelCatalog.handle(result)) return;
+                if (result && Object.hasOwn(result, 'pivaneAgentProfileLoaded')) {
+                    if (this.managed && !this.noSession && result.sessionId === this.sessionId
+                        && (result.pivaneAgentProfileLoaded === null || typeof result.pivaneAgentProfileLoaded === 'string')) {
+                        this.loadedAgentProfileId = result.pivaneAgentProfileLoaded;
+                        this.loadedAgentProfileConfirmed = true;
+                    }
+                    return;
+                }
                 if (result && Object.hasOwn(result, 'pivaneProgress')) {
                     const update = result.pivaneProgress;
                     if (this.managed && update && (this.noSession || update.sessionId === this.sessionId)) {
@@ -645,7 +657,7 @@ class PiAgentSupervisor extends EventEmitter {
         if (this.starting.has(sessionPath)) return this.starting.get(sessionPath);
 
         const starting = (async () => {
-            const env = this.workerEnvironment ? await this.workerEnvironment({ cwd, sessionId }) : {};
+            const env = this.workerEnvironment ? await this.workerEnvironment({ cwd, sessionId, sessionPath }) : {};
             const worker = new AgentWorker({ cwd, sessionPath, sessionId, env });
             worker.on('completion', notice => this.emit('completion', notice, worker));
             worker.on('attention', event => this.emit('attention', event));

@@ -1,0 +1,23 @@
+# Assistant Profiles (Backend)
+
+This backend provides optional, session-bound assistant profiles. It does not install or activate a memory provider by itself. Memory browsing and agent memory tools require the separate memory runtime integration. No existing session is migrated or assigned a profile.
+
+## Saved Profiles
+
+`GET /api/pi/profiles` lists profiles with an opaque revision. Add `?cwd=<absolute-project-path>` to resolve a canonical project path and its default; without `cwd`, both fields are null. `PUT /api/pi/profiles` accepts `{expectedRevision,profile:{id?,name,description,soul,enabled,memory?,skills?}}`. A missing ID creates a new opaque ID; an existing ID updates that record. `PUT /api/pi/profiles/default` accepts `{cwd,profileId,expectedRevision}` where `profileId:null` clears the default. A default can reference only an enabled record. Concurrent or stale writes return HTTP 409; reread before editing. All three endpoints require the existing workspace access/Origin rules and return `Cache-Control: no-store`.
+
+Profiles are limited to 50. Names have at most 80 characters, descriptions 500, and SOUL 32 KiB UTF-8. New profiles default to `memory:{enabled:false,autoLearn:false}` and `skills:{learnedEnabled:true}` when omitted. Enabling memory does not secretly enable learning. Disabling a profile retains its data but prevents new bindings and excludes it from new worker context. There is no deletion API in v1.
+
+The private registry is `<Pi agentDir>/pivane-profiles/profiles.json`; profile-owned data belongs under `data/<id>/`. Back up the whole Pi identity directory before migration or deployment changes. API clients supply IDs, not storage paths. SOUL is profile-level behavioral guidance; durable factual memory and changing project study notes should be kept in their respective stores.
+
+## Sessions and Runtime
+
+`POST /api/pi/sessions` accepts optional `profileId`. Omission uses the canonical project's current default, explicit null selects no profile, and an unavailable ID fails without fallback. Project defaults affect only subsequent creations. Native custom entries of type `pivane-agent-profile` contain `{version:1,sessionId,profileId}`; a valid single entry must match the actual native session ID. A missing, malformed, copied, or conflicting entry never activates a profile. `session.agentProfile` is null or `{id,name,enabled,available}`; a disabled or missing bound profile remains identified but unavailable. The extension-assistant session creation path explicitly selects none. Agent task threads use the destination project's default, not their source thread's profile. Ephemeral sessions and side chats have no profile memory eligibility in v1.
+
+Web forks explicitly attach the source identity under the new native ID, including early and reply-end forks; an unavailable source profile remains bound but unavailable. JSONL imports keep their source entries for native fidelity but copied markers do not match the imported new ID and confer no profile. Imports are no-profile. There is no mid-thread profile switch.
+
+The Supervisor verifies the native session file, cwd, ID and binding before spawning a worker. An enabled profile yields `PIVANE_AGENT_PROFILE_CONTEXT`, a credential-free JSON object with `version`, `profileId`, `sessionId`, `cwd`, `profileRoot`, `sessionsRoot`, `memory:{enabled,autoLearn}` and `skills:{learnedEnabled}`. Absent/unavailable bindings omit it. The managed extension independently validates this context against the native session and registry before appending SOUL to Pi's existing system prompt at `before_agent_start`. It does not replace Pi's base prompt, project instructions, installed skills, or identity directory. Normal session JSONL remains the conversation authority.
+
+`GET /api/pi/status` advertises `agentProfiles:true`. The existing WebSocket `get_runtime_configuration` response includes `agentProfile:{saved,loadedProfileId,loadedConfirmed}`. `saved` is the current registry projection; `loadedProfileId` is the extension's last acknowledged profile and `loadedConfirmed` distinguishes an actual acknowledgment from an unknown startup/reload state. Saving settings does not silently restart a running worker. Reopen/restart the runtime to apply process-environment changes; a resource reload alone cannot refresh its environment. A changed or disabled profile fails closed on a fresh worker. Memory runtime/provider status is a separate capability, not inferred from `agentProfiles`.
+
+See [architecture](development/AGENT_PROFILES.md) for the binding and integration boundary. The general API index and documentation manifest are updated during integrated assembly.
