@@ -18,7 +18,7 @@ Pivane自身的代码使用[ISC许可证](LICENSE)。第三方软件、字体、
 
 | 依赖 | 版本 | 声明的许可证 |
 |---|---|---|
-| @earendil-works/pi-ai、pi-coding-agent、pi-server | 0.85.0 | MIT |
+| @earendil-works/pi-ai、pi-coding-agent、pi-server | 0.87.1 | MIT |
 | @highlightjs/cdn-assets | 11.11.1 | BSD-3-Clause |
 | cors | 2.8.6 | MIT |
 | dompurify | 3.4.14 | MPL-2.0 OR Apache-2.0 |
@@ -34,6 +34,10 @@ Pivane自身的代码使用[ISC许可证](LICENSE)。第三方软件、字体、
 ## 默认可选能力
 
 安装流程可从 npm 单独下载 [pi-subagents](https://github.com/nicobailon/pi-subagents) 0.69.0（Nico Bailon，MIT），其依赖与原有许可保留在 Pi 包安装位置。Pivane 源码归档只包含安装清单与适配代码，不包含该插件源码或其依赖；安装失败不影响应用必需依赖。安装范围、跳过和补装见[安装指南](docs/INSTALL_RECOVERY.md#默认可选能力)。
+
+## 可选档案记忆组件
+
+[pi-hermes-memory](https://github.com/chandra447/pi-hermes-memory) 0.9.9 使用 MIT 许可证。档案记忆适配按需取得该包，在独立安装目录中构建所需组件；源码发行包只含 Pivane 的适配与安装脚本，不包含上游源码、生成 bundle 或其依赖。安装目录应保留官方包的 LICENSE、来源版本、完整性信息和依赖许可；重新分发生成 bundle 时也须附带原许可。安装方式、原生 SQLite 依赖及验证范围见[档案记忆适配](docs/PROFILE_MEMORY.md)。
 
 ## 平台与外部服务
 

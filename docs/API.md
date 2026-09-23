@@ -44,6 +44,12 @@
 
 所有路径前缀为 `/api/pi`。
 
+### 可选助手档案
+
+`GET /status.agentProfiles=true` 表示可选助手档案接口可用。`GET /profiles?cwd` 返回档案、修订和所选项目默认身份；`PUT /profiles` 接受 `{expectedRevision,profile}` 创建或更新档案；`PUT /profiles/default` 接受 `{cwd,profileId,expectedRevision}`，`profileId:null` 清除项目默认身份。现有 `POST /sessions` 的可选 `profileId` 省略时使用项目默认，显式 null 创建无档案线程。
+
+会话序列化字段 `agentProfile` 是保存的身份投影，不能据此推断 worker 已加载。`get_runtime_configuration.agentProfile` 分别返回 saved、savedProfileRevision、loadedProfileId、loadedProfileRevision、loadedConfirmed 与 matchesSavedProfile。旧会话不因新增项目默认身份而追认归属，网页分叉显式继承源身份，导入不会仅因复制旧会话标记而获得绑定。字段限制、保存与重开语义见[助手档案](AGENT_PROFILES.md)；记忆组件安装与接口接入见[记忆适配](PROFILE_MEMORY.md)。
+
 ### Agent 任务线程
 
 `GET /status.agentThreads=true` 标记任务线程后端，`agentTaskResults=true` 标记来源线程结果回执。受管持久 Agent 的 `agent_thread` 工具通过私有 POST `/agent-threads/create|status|models|result` 创建任务、查询状态/模型或分页只读原生结果。身份绑定存活源 worker；工作台 Cookie/Token 不能代替。目录未完成时返回202及 `TASK_INDEXING`/coverage，不把未核实记录当作不存在。`/activity.agentThreadLaunches`、`agentTaskIndexing`、`agentTaskReturns` 分别报告创建、目录读取和交付工作，均进入维护空闲与停机等待。

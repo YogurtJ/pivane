@@ -21,6 +21,7 @@ English: [project overview](../README.en.md) · [installation](en/INSTALL.md) ·
 | 访问验证、通知、日常排障 | [访问控制](ACCESS_CONTROL.md) · [通知](NOTIFICATIONS.md) · [运维](OPERATIONS.md) |
 | 聊天模型、Thinking、资源 | [供应商与模型](PROVIDER_SETTINGS.md) · [Pi原生设置](NATIVE_SETTINGS.md) |
 | 按用途配置标题与媒体规划模型 | [辅助模型](AUXILIARY_MODELS.md) |
+| 可选助手档案与档案记忆 | [助手档案](AGENT_PROFILES.md) · [记忆适配与安装](PROFILE_MEMORY.md) |
 | 输入、Shell、运行恢复 | [命令与模板](COMPOSER_TOOLS.md) · [Shell](WEB_SHELL.md) · [运行控制](NATIVE_CONTROLS.md) · [运行与配置恢复](NATIVE_COMPLETION.md) |
 | 历史、分叉、导出与侧聊 | [历史](HISTORY.md) · [工作流](SESSION_WORKFLOWS.md) · [导入导出](SESSION_TRANSFER.md) · [侧聊](SIDE_CHAT.md) |
 | 让 Agent 新开线程并立即交办任务 | [Agent 任务线程](AGENT_THREADS.md) |
