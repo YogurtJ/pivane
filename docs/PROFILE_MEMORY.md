@@ -79,7 +79,13 @@ auto-learning proposals. With memory installed and enabled, PUT verifies an
 unambiguous old Markdown identity for each fact, publishes the document, and
 transactionally updates only those exact global target/project-null/category-null
 SQLite rows; distinct SQLite-only facts and other scopes remain unchanged.
-Ambiguous/missing source rows return 409 before publication. A failure after
+Missing old mirror rows (for example USER saved before memory was enabled)
+are not conflicts: the edit inserts any missing desired facts, including
+retained unchanged facts. Duplicate exact rows or category conflicts still
+return 409 before publication. GET checks the actual read-only SQLite rows
+before reporting `indexSynced:true`; absence of a pending marker alone is not
+proof. An unsynced document also blocks matching worker memory searches and
+writes until a revisioned PUT reconciles it. A failure after
 publication returns 503 with `documentSaved:true,indexSynced:false` and the
 current document snapshot, not a false claim that the write was undone. A
 private per-target pending marker blocks affected worker memory search/writes;

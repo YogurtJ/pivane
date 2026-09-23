@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
+const { createRequire } = require('node:module');
 const { pathToFileURL } = require('node:url');
 const { safeFile } = require('./management');
 const privateFiles = require('../pi-private-files');
@@ -38,32 +39,30 @@ function documentEntries(store, content) {
     return items;
 }
 
-function checkRows(db, plan, repairing = false) {
-    const old = new Set(plan.old.map(item => item.content));
+function checkRows(db, plan) {
     const rows = db.prepare('SELECT id, category FROM memories WHERE target = ? AND project IS NULL AND content = ?');
-    for (const content of new Set([...old, ...plan.next.map(item => item.content)])) {
+    for (const content of new Set([...plan.old.map(item => item.content), ...plan.next.map(item => item.content)])) {
         const found = rows.all(plan.target, content);
-        if (found.length > 1 || found.some(row => row.category !== null)
-            || !repairing && old.has(content) && found.length !== 1)
-            throw fail('Memory search index has ambiguous or missing document facts; reconcile before editing');
+        if (found.length > 1 || found.some(row => row.category !== null))
+            throw fail('Memory search index has ambiguous document facts or conflicting metadata; reconcile before editing');
     }
 }
 
-function reconcile(dbManager, plan, repairing) {
+function reconcile(dbManager, plan) {
     const perform = () => {
         const db = dbManager.getDb();
         const tx = db.transaction(() => {
-            checkRows(db, plan, repairing);
+            checkRows(db, plan);
             const old = new Set(plan.old.map(item => item.content));
             const next = new Set(plan.next.map(item => item.content));
             const remove = db.prepare('DELETE FROM memories WHERE target = ? AND project IS NULL AND category IS NULL AND content = ?');
             for (const content of old) if (!next.has(content)) {
                 const removed = remove.run(plan.target, content).changes;
-                if (removed !== 1 && !(repairing && removed === 0)) throw fail('Document index changed during removal');
+                if (removed > 1) throw fail('Document index changed during removal');
             }
             const count = db.prepare('SELECT COUNT(*) AS total FROM memories WHERE target = ? AND project IS NULL AND category IS NULL AND content = ?');
             const insert = db.prepare('INSERT INTO memories (project, target, category, content, created, last_referenced) VALUES (NULL, ?, NULL, ?, ?, ?)');
-            for (const item of plan.next) if (!old.has(item.content) && count.get(plan.target, item.content).total === 0)
+            for (const item of plan.next) if (count.get(plan.target, item.content).total === 0)
                 insert.run(plan.target, item.content, item.created, item.lastReferenced);
             for (const item of plan.next) if (count.get(plan.target, item.content).total !== 1)
                 throw fail('Document index changed during insertion');
@@ -71,6 +70,31 @@ function reconcile(dbManager, plan, repairing) {
         tx.immediate();
     };
     dbManager.withCorruptionRecovery(perform);
+}
+
+async function documentIndexSynced(root, target, bundlePath, content) {
+    if (pendingDocumentIndex(root, target)) return false;
+    const upstream = await import(pathToFileURL(bundlePath).href);
+    const store = new upstream.MemoryStore({ memoryDir: root });
+    const desired = documentEntries(store, content);
+    const dbPath = path.join(root, 'sessions.db');
+    let stat;
+    try { stat = fs.lstatSync(dbPath); }
+    catch (error) { if (error.code === 'ENOENT') return desired.length === 0; throw error; }
+    if (!stat.isFile() || stat.isSymbolicLink() || fs.realpathSync.native(dbPath) !== dbPath)
+        throw fail('Unsafe profile memory database');
+    const Database = createRequire(bundlePath)('better-sqlite3');
+    const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+    try {
+        const rows = db.prepare('SELECT category FROM memories WHERE target = ? AND project IS NULL AND content = ?');
+        return desired.every(item => {
+            const matches = rows.all(target, item.content);
+            return matches.length === 1 && matches[0].category === null;
+        });
+    } catch (error) {
+        if (error.code === 'SQLITE_ERROR' || error.code === 'SQLITE_CORRUPT') return false;
+        throw error;
+    } finally { db.close(); }
 }
 
 async function documentIndex(root, target, bundlePath, before, after) {
@@ -85,7 +109,7 @@ async function documentIndex(root, target, bundlePath, before, after) {
         if (pending && (before?.revision !== pending.after || hash(after) !== pending.after))
             throw fail('Repair the pending document index before editing again');
         // Inspect the exact rows before publishing. No unrelated SQLite scope is reconciled.
-        dbManager.withCorruptionRecovery(() => checkRows(dbManager.getDb(), plan, Boolean(pending)));
+        dbManager.withCorruptionRecovery(() => checkRows(dbManager.getDb(), plan));
         return {
             repairing: Boolean(pending),
             plan,
@@ -93,7 +117,7 @@ async function documentIndex(root, target, bundlePath, before, after) {
             cancel() { fs.unlinkSync(filename(root, target)); },
             sync() {
                 if (safeFile(file)?.revision !== plan.after) throw fail('Published document changed before indexing');
-                reconcile(dbManager, plan, Boolean(pending));
+                reconcile(dbManager, plan);
                 if (safeFile(file)?.revision !== plan.after) throw fail('Published document changed during indexing');
                 fs.unlinkSync(filename(root, target));
             },
@@ -102,4 +126,4 @@ async function documentIndex(root, target, bundlePath, before, after) {
     } catch (error) { dbManager.close(); throw error; }
 }
 
-module.exports = { documentIndex, pendingDocumentIndex };
+module.exports = { documentIndex, pendingDocumentIndex, documentIndexSynced };

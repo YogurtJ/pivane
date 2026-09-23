@@ -103,6 +103,14 @@ test('active session beyond history page and 8 MiB retains tools while recall re
     } finally { fs.unlinkSync(pendingFile); }
     assert.ok((await tools.get('memory_search').execute('call', { query: 'large-active-fact', target: 'memory' },
         undefined, undefined, ctx)).details.count);
+    const unmirroredUser = path.join(f.root, 'USER.md');
+    fs.writeFileSync(unmirroredUser, 'USER fact created before memory was enabled', { mode: 0o600 });
+    try {
+        await assert.rejects(tools.get('memory_search').execute('call', { query: 'USER fact', target: 'user' },
+            undefined, undefined, ctx), /index needs repair/);
+        await assert.rejects(tools.get('memory_add').execute('call', { target: 'user', content: 'unsafe-unmirrored-add' },
+            undefined, undefined, ctx), /index needs repair/);
+    } finally { fs.unlinkSync(unmirroredUser); }
     const result = await tools.get('session_search').execute('call', { query: 'older' }, undefined, undefined, ctx);
     assert.equal(result.details.coverage.initialSweepComplete, false);
     for (let i = 0; i < 28; i++) await events.get('agent_settled')({}, ctx);

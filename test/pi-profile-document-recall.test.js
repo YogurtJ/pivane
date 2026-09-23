@@ -144,3 +144,118 @@ test('post-publication index failure reports partial save and permits determinis
     assert.equal((await call('PUT', { target: 'user', content: now.content, expectedRevision: now.revision,
         expectedProfileRevision: now.profileRevision })).code, 200);
 });
+
+test('USER initialized without memory or a mirror is indexed after enable, including unchanged documents', { skip: !bundle }, async t => {
+    const base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-document-enable-')));
+    t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+    const agent = path.join(base, 'agent'); fs.mkdirSync(agent);
+    process.env.PI_CODING_AGENT_DIR = agent;
+    const upstream = await import(bundle);
+    const profiles = new PiProfileRegistry({ resolveProject: value => value });
+    t.after(() => profiles.dispose());
+    const create = async (name, enabled) => (await profiles.save({ expectedRevision: (await profiles.state()).revision,
+        profile: { name, description: '', soul: '', enabled: true, memory: { enabled, autoLearn: false } } })).profile;
+    const dormant = await create('Dormant', false);
+    const root = path.join(agent, 'pivane-profiles', 'data', dormant.id);
+    const handlers = new Map(), router = { get: (_name, fn) => handlers.set('GET', fn), put: (_name, fn) => handlers.set('PUT', fn) };
+    mountProfileDocumentRoutes(router, { profiles, getAgentDir: async () => agent, bundlePath: bundle });
+    const request = async (method, id, body) => {
+        const res = { code: 200, set() { return this; }, status(code) { this.code = code; return this; },
+            json(value) { this.data = value; return this; } };
+        await handlers.get(method)({ params: { id }, query: { target: 'user' }, body }, res);
+        return res;
+    };
+    const read = async id => (await request('GET', id)).data;
+    const save = async (id, content) => {
+        const before = await read(id);
+        return request('PUT', id, { target: 'user', content, expectedRevision: before.revision,
+            expectedProfileRevision: before.profileRevision });
+    };
+    assert.equal((await save(dormant.id, 'BeforeEnable')).code, 202);
+    assert.equal(fs.existsSync(path.join(root, 'sessions.db')), false, 'inactive USER initialization does not open SQLite');
+    await profiles.save({ expectedRevision: (await profiles.state()).revision,
+        profile: { ...dormant, memory: { ...dormant.memory, enabled: true } } });
+    assert.equal((await read(dormant.id)).indexSynced, false, 'enabling memory does not invent mirror rows');
+    const db = new upstream.DatabaseManager(root);
+    t.after(() => db.close());
+    db.getDb().prepare('INSERT INTO memories (target, project, content, created, last_referenced) VALUES (?, ?, ?, ?, ?)')
+        .run('user', null, 'IndependentSqliteOnly', '2026-01-01', '2026-01-01');
+    assert.equal((await read(dormant.id)).indexSynced, false, 'an unrelated SQLite row does not prove the document is indexed');
+    assert.equal((await save(dormant.id, 'AfterEnable')).code, 200);
+    assert.equal((await read(dormant.id)).indexSynced, true);
+    assert.equal(upstream.searchMemories(db, 'BeforeEnable', { target: 'user' }).length, 0);
+    assert.equal(upstream.searchMemories(db, 'AfterEnable', { target: 'user' }).length, 1);
+    assert.equal(upstream.searchMemories(db, 'IndependentSqliteOnly', { target: 'user' }).length, 1);
+
+    const legacy = await create('Legacy', true);
+    const legacyRoot = path.join(agent, 'pivane-profiles', 'data', legacy.id);
+    fs.mkdirSync(legacyRoot, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(legacyRoot, 'USER.md'), 'LegacyWithoutAdapter', { mode: 0o600 });
+    assert.equal((await read(legacy.id)).indexSynced, false, 'pre-existing native Markdown without a DB is not indexed');
+    assert.equal((await save(legacy.id, 'LegacyWithoutAdapter')).code, 200, 'unchanged-current PUT repairs a missing mirror');
+    assert.equal((await read(legacy.id)).indexSynced, true);
+    const legacyDb = new upstream.DatabaseManager(legacyRoot);
+    assert.equal(upstream.searchMemories(legacyDb, 'LegacyWithoutAdapter', { target: 'user' }).length, 1);
+    legacyDb.close();
+
+    const empty = await create('Empty DB', true);
+    const emptyRoot = path.join(agent, 'pivane-profiles', 'data', empty.id);
+    fs.mkdirSync(emptyRoot, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(emptyRoot, 'USER.md'), 'BeforeEmptyIndex', { mode: 0o600 });
+    const emptyDb = new upstream.DatabaseManager(emptyRoot);
+    emptyDb.getDb();
+    assert.equal((await read(empty.id)).indexSynced, false, 'an empty SQLite database is not a mirror');
+    assert.equal((await save(empty.id, 'AfterEmptyIndex')).code, 200);
+    assert.equal(upstream.searchMemories(emptyDb, 'BeforeEmptyIndex', { target: 'user' }).length, 0);
+    assert.equal(upstream.searchMemories(emptyDb, 'AfterEmptyIndex', { target: 'user' }).length, 1);
+    emptyDb.close();
+});
+
+test('interrupted pending plan restores missing retained facts without changing unrelated rows', { skip: !bundle }, async t => {
+    const base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-document-retained-')));
+    t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+    const agent = path.join(base, 'agent'); fs.mkdirSync(agent);
+    process.env.PI_CODING_AGENT_DIR = agent;
+    const upstream = await import(bundle);
+    const profiles = new PiProfileRegistry({ resolveProject: value => value });
+    t.after(() => profiles.dispose());
+    const profile = (await profiles.save({ expectedRevision: (await profiles.state()).revision,
+        profile: { name: 'Interrupted', description: '', soul: '', enabled: true, memory: { enabled: true, autoLearn: false } } })).profile;
+    const root = path.join(agent, 'pivane-profiles', 'data', profile.id);
+    const handlers = new Map(), router = { get: (_name, fn) => handlers.set('GET', fn), put: (_name, fn) => handlers.set('PUT', fn) };
+    mountProfileDocumentRoutes(router, { profiles, getAgentDir: async () => agent, bundlePath: bundle });
+    const request = async (method, body) => {
+        const res = { code: 200, set() { return this; }, status(code) { this.code = code; return this; },
+            json(data) { this.data = data; return this; } };
+        await handlers.get(method)({ params: { id: profile.id }, query: { target: 'user' }, body }, res);
+        return res;
+    };
+    const save = async content => { const before = (await request('GET')).data;
+        return request('PUT', { target: 'user', content, expectedRevision: before.revision,
+            expectedProfileRevision: before.profileRevision }); };
+    assert.equal((await save('Retained\n§\nRemoved')).code, 200);
+    const db = new upstream.DatabaseManager(root);
+    t.after(() => db.close());
+    db.getDb().prepare('INSERT INTO memories (target, project, content, created, last_referenced) VALUES (?, ?, ?, ?, ?)')
+        .run('user', null, 'SeparateSqliteFact', '2026-01-01', '2026-01-01');
+    const original = upstream.DatabaseManager.prototype.withCorruptionRecovery;
+    let calls = 0;
+    upstream.DatabaseManager.prototype.withCorruptionRecovery = function (...args) {
+        if (++calls === 2) throw Error('synthetic post-publication interruption');
+        return original.apply(this, args);
+    };
+    let partial;
+    try { partial = await save('Retained\n§\nAdded'); }
+    finally { upstream.DatabaseManager.prototype.withCorruptionRecovery = original; }
+    assert.equal(partial.code, 503, JSON.stringify(partial.data));
+    assert.ok(pendingDocumentIndex(root, 'user'));
+    db.getDb().prepare("DELETE FROM memories WHERE target = 'user' AND project IS NULL AND content IN ('Retained', 'Removed')").run();
+    assert.equal((await request('GET')).data.indexSynced, false);
+    assert.equal((await save('Retained\n§\nAdded')).code, 200, 'the same current content repairs the pending plan');
+    assert.equal((await request('GET')).data.indexSynced, true);
+    assert.equal(upstream.searchMemories(db, 'Retained', { target: 'user' }).length, 1);
+    assert.equal(upstream.searchMemories(db, 'Added', { target: 'user' }).length, 1);
+    assert.equal(upstream.searchMemories(db, 'Removed', { target: 'user' }).length, 0);
+    assert.equal(upstream.searchMemories(db, 'SeparateSqliteFact', { target: 'user' }).length, 1);
+    assert.equal(pendingDocumentIndex(root, 'user'), null);
+});
