@@ -45,16 +45,17 @@ test('isolated Pi 0.87.1 upstream components enforce profile index, recall, skil
         getSessionId: () => session.header.id, getSessionFile: () => session.file });
     const fakePi = () => {
         const events = new Map(), tools = new Map();
-        return { events, tools, on(name, fn) { events.set(name, [...(events.get(name) || []), fn]); },
+        return { events, tools, records: [], on(name, fn) { events.set(name, [...(events.get(name) || []), fn]); },
+            appendEntry(type, data) { this.records.push({ type, data }); },
             registerTool(tool) { tools.set(tool.name, tool); },
             async emit(name, event, ctx) { for (const fn of events.get(name) || []) await fn(event, ctx); } };
     };
     const jiti = require(jitiPath).createJiti(path.join(__dirname, '..', 'server/profile-memory/extension.ts'));
     const { registerProfileMemory } = jiti(path.join(__dirname, '..', 'server/profile-memory/extension.ts'));
-    const start = async (session, profileId) => {
-        const context = { version: 1, profileId, sessionId: session.header.id, cwd: session.cwd,
+    const start = async (session, profileId, autoLearn = false) => {
+        const context = { version: 1, profileId, sessionId: session.header.id, sessionPath: session.file, cwd: session.cwd,
             profileRoot: path.join(agent, 'pivane-profiles', 'data', profileId), sessionsRoot,
-            memory: { enabled: true, autoLearn: false }, skills: { learnedEnabled: true } };
+            memory: { enabled: true, autoLearn }, skills: { learnedEnabled: true } };
         process.env.PIVANE_AGENT_PROFILE_CONTEXT = JSON.stringify(context);
         process.env.PIVANE_HERMES_BUNDLE = bundle;
         const pi = fakePi();
@@ -64,7 +65,8 @@ test('isolated Pi 0.87.1 upstream components enforce profile index, recall, skil
         await new Promise(resolve => setTimeout(resolve, 80));
         return { pi, ctx, root: context.profileRoot, close: () => pi.emit('session_shutdown', {}, ctx) };
     };
-    t.after(() => { delete process.env.PIVANE_AGENT_PROFILE_CONTEXT; delete process.env.PIVANE_HERMES_BUNDLE; });
+    t.after(() => { delete process.env.PIVANE_AGENT_PROFILE_CONTEXT; delete process.env.PIVANE_HERMES_BUNDLE;
+        delete process.env.PIVANE_PROFILE_MEMORY_REVIEW_MODEL; });
     const alpha = await start(a, alphaId);
     assert.ok(alpha.pi.tools.has('memory_add'));
     const add = alpha.pi.tools.get('memory_add');
@@ -90,13 +92,31 @@ test('isolated Pi 0.87.1 upstream components enforce profile index, recall, skil
         procedure_steps: ['Check input'], verification_steps: ['Check output'] }, undefined, undefined, alpha.ctx);
     assert.equal(skill.details.success, true, JSON.stringify(skill.details));
     assert.ok(fs.existsSync(path.join(alpha.root, 'skills', 'synthetic-proof', 'SKILL.md')));
+    const sharedSkill = path.join(agent, 'skills', 'shared-synthetic', 'SKILL.md');
+    fs.mkdirSync(path.dirname(sharedSkill), { recursive: true });
+    fs.writeFileSync(sharedSkill, '# Shared synthetic skill\n');
+    const collision = await alpha.pi.tools.get('skill_manage').execute('call', { action: 'create', name: 'shared-synthetic',
+        description: 'Shared synthetic procedure', scope: 'global', when_to_use: 'Synthetic checks',
+        procedure_steps: ['Check input'], verification_steps: ['Check output'] }, undefined, undefined, alpha.ctx);
+    assert.equal(collision.details.success, false);
+    assert.equal(fs.readFileSync(sharedSkill, 'utf8'), '# Shared synthetic skill\n');
+    assert.equal(fs.existsSync(path.join(alpha.root, 'skills', 'shared-synthetic')), false);
+    const redirected = path.join(alpha.root, 'skills', 'redirected');
+    fs.mkdirSync(redirected);
+    fs.symlinkSync(sharedSkill, path.join(redirected, 'SKILL.md'));
+    await assert.rejects(alpha.pi.tools.get('skill_manage').execute('call', { action: 'delete',
+        skill_id: 'global:redirected' }, undefined, undefined, alpha.ctx), /not private/);
+    assert.equal(fs.readFileSync(sharedSkill, 'utf8'), '# Shared synthetic skill\n');
+    fs.unlinkSync(path.join(redirected, 'SKILL.md'));
+    fs.rmdirSync(redirected);
     const localSkill = await alpha.pi.tools.get('skill_manage').execute('call', { action: 'create', name: 'cwd-only',
         description: 'Project-specific procedure', scope: 'project', when_to_use: 'Project work',
         procedure_steps: ['Check project'], verification_steps: ['Check directory'] }, undefined, undefined, alpha.ctx);
     assert.equal(localSkill.details.success, true);
     assert.ok(fs.existsSync(path.join(alpha.root, 'projects', createHash('sha256').update(cwdA).digest('hex'),
         'skills', 'cwd-only', 'SKILL.md')));
-    const same = await start(b, alphaId);
+    process.env.PIVANE_PROFILE_MEMORY_REVIEW_MODEL = JSON.stringify({ provider: 'synthetic', modelId: 'cheap' });
+    const same = await start(b, alphaId, true);
     for (let i = 0; i < 5; i++) await same.pi.emit('agent_settled', {}, same.ctx);
     const lateArchive = await same.pi.tools.get('session_search').execute('call', { query: 'archive-key-26' }, undefined, undefined, same.ctx);
     assert.equal(lateArchive.details.count, 1, 'backfill cursor must progress beyond the first 20 files');
@@ -115,6 +135,33 @@ test('isolated Pi 0.87.1 upstream components enforce profile index, recall, skil
         same.pi.tools.get('memory_add').execute('call', { target: 'memory', content: 'parallel-beta' }, undefined, undefined, same.ctx),
     ]);
     assert.ok(parallel.every(result => result.details.success), JSON.stringify(parallel.map(result => result.details)));
+    let propose;
+    let entered;
+    const reviewing = new Promise(resolve => { entered = resolve; });
+    same.ctx.modelRegistry = {
+        getModel: () => ({ reasoning: false, cost: { input: 0.1, output: 0.2 } }),
+        getAvailable: async () => [{ provider: 'synthetic', id: 'cheap' }],
+        completeSimple: async () => {
+            entered();
+            return new Promise(resolve => { propose = () => resolve({ stopReason: 'stop', usage: {
+                input: 25, output: 8, cost: { total: 0.001 } },
+                content: [{ type: 'text', text: '{"target":"memory","content":"stale-review-fact"}' }] }); });
+        },
+    };
+    const reviewEvent = { outcome: 'completed', context: { contextMessages: [
+        { role: 'user', content: 'Always use a synthetic verification checklist for this project and record the confirmed steps.' },
+        { role: 'assistant', content: 'I will use a synthetic verification checklist and record the confirmed steps.' },
+    ] } };
+    for (let i = 0; i < 2; i++) await same.pi.emit('agent_before_settle', reviewEvent, same.ctx);
+    const pending = same.pi.emit('agent_before_settle', reviewEvent, same.ctx);
+    await reviewing;
+    assert.equal((await add.execute('call', { target: 'memory', content: 'intervening-runtime-update' }, undefined, undefined, alpha.ctx)).details.success, true);
+    propose();
+    await pending;
+    assert.equal(same.pi.records.at(-1).data.status, 'skipped');
+    assert.equal(same.pi.records.at(-1).data.reason, 'memory-changed');
+    assert.equal(same.pi.records.at(-1).data.usage.input, 25);
+    assert.equal((await same.pi.tools.get('memory_search').execute('call', { query: 'stale-review-fact' }, undefined, undefined, same.ctx)).details.count, 0);
     await alpha.close();
     const remembered = await same.pi.tools.get('memory_search').execute('call', { query: '秩' }, undefined, undefined, same.ctx);
     assert.equal(remembered.details.count >= 1, true);
@@ -156,6 +203,12 @@ test('isolated Pi 0.87.1 upstream components enforce profile index, recall, skil
     assert.equal(noSession.details.count || 0, 0);
     assert.equal(fs.existsSync(path.join(beta.root, 'skills', 'synthetic-proof', 'SKILL.md')), false);
     await beta.close();
+    process.env.PIVANE_AGENT_PROFILE_CONTEXT = JSON.stringify({ version: 1, profileId: alphaId,
+        sessionId: a.header.id, cwd: cwdA, profileRoot: alpha.root, sessionsRoot,
+        memory: { enabled: true, autoLearn: false }, skills: { learnedEnabled: true } });
+    const noPath = fakePi();
+    await registerProfileMemory(noPath);
+    assert.equal(noPath.tools.size, 0, 'factory cannot register tools before native path verification');
     delete process.env.PIVANE_AGENT_PROFILE_CONTEXT;
     const none = fakePi();
     await registerProfileMemory(none);

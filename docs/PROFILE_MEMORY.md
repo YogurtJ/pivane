@@ -31,8 +31,13 @@ module, and publish its `{ installed, autoLearn }` result as `profileMemory`.
 model is configured; this capability does **not** prove credentials or a
 completed review. Actual per-worker loaded-state remains A's separate signal;
 actual per-review completion/failure is a native
-`pivane-profile-review` custom entry with `{version,profileId,status,reason,at}`.
-No conversation content, secrets or model response are recorded in this entry.
+`pivane-profile-review` custom entry with `{version,profileId,status,reason,at,provider?,modelId?,usage?}`.
+The receipt includes only bounded reported token counts and provider-reported total USD cost
+when the provider supplies them, even when a charged proposal is rejected. No
+conversation body, credential or proposal text is stored in the receipt. Absent usage
+is omitted, not estimated. Neither this receipt nor a nested boundary model call contributes
+to normal native session usage totals; a parent-owned ledger integration would be required.
+A zero model-catalogue price is not evidence of free service and is rejected for review.
 
 The managed web-session extension must **await** `registerProfileMemory(pi)`
 inside an async default factory. Provide `PIVANE_AGENT_PROFILE_CONTEXT` only
@@ -50,7 +55,8 @@ Global profile memory and generated skills live under
 `<agentDir>/pivane-profiles/data/<id>/`, with cwd-specific stores beneath
 `projects/<sha256(canonical cwd)>/`. Global memory/skills cross project cwd;
 project memory/skills do not alias same-name cwd folders. Installed shared Pi
-skills are read-only when refusing a skill collision. The active agent's
+skills are read-only when refusing a skill collision; profile skill operations
+reject symlinks in their owned trees. The active agent's
 `skill_manage` guidance recommends deliberate profile-only skill improvements
 after useful procedures or corrections. Pi discovers newly created skills
 after session reload. The memory and learned-skill flags are independent.
@@ -64,40 +70,58 @@ Select a configured provider/id from the Pi runtime catalogue; no model is
 hardcoded and the current conversation model is never silently substituted.
 The model must resolve as available via `ctx.modelRegistry` and have input
 price at most 1 and output price at most 2 per million tokens. Parent should
-choose a cheaper model explicitly and inspect its actual schema/cost. A review runs only after three
-eligible completed turns, at most once per 15 minutes and four attempts per
-worker session. It reads at most 6,000 characters of the latest user/assistant
-exchange, requests at most 220 output tokens with minimal reasoning, no tools,
-a 20-second abort signal, and no CLI/subagent fallback. Pi awaits
+choose a cheaper model explicitly and inspect its actual schema/cost. A review
+runs only after three eligible completed turns, at most once per 15 minutes and
+four attempts per worker session. It reads at most 6,000 characters of the latest user/assistant
+exchange, requests at most 220 output tokens with a supported low reasoning
+level (or no reasoning option for a non-reasoning model), no tools, a 20-second
+abort signal, and no CLI/subagent fallback. Pi awaits
 `agent_before_settle`, so a request still in flight remains owned; timeout
 requests cancellation but the handler awaits actual completion. It applies at
-most one bounded stable fact using the guarded `memory_add` operation after
-reloading/checking memory state. Abort, unavailable model, malformed proposal,
-conflicting state and write uncertainty record non-success. This is not a
+most one bounded stable fact through the guarded `memory_add` operation. All adapter
+memory add/replace/remove writes across workers acquire the same profile-local
+interprocess mutation lock. The reviewer takes a revision and disk snapshot under
+that lock, releases it for the provider call, then reacquires it to reload, compare
+revision/content and perform the write. A stale proposal is skipped; a busy or
+abandoned lock fails closed and requires operator reconciliation rather than unsafe
+lock stealing. Abort, unavailable model, malformed proposal, conflicting state
+and write uncertainty record non-success. This is not a
 mastery/progress inference engine. Native custom status entries are operational
 records, not additional chat logs. Provider cancellation behavior must be
 verified for each selected provider before real activation.
 
 ## Source index and bounds
 
-A single opened no-follow native descriptor supplies the validated bytes used
-for binding and parsing. BigInt identity, kernel descriptor path, type, size,
-mtime/ctime and path identity are checked before and after. A profile-local
+A single opened no-follow native descriptor supplies the validated historical
+bytes used for parsing and indexing. BigInt identity, kernel descriptor path,
+type, size, mtime/ctime and path identity are checked before and after.
+`sessionPath` must be supplied for factory-time registration and must equal
+the live read-only SessionManager's `getSessionFile()` at startup. Without a
+canonical native path, the extension remains inert; the parent supplies it for
+eligible managed workers. Active binding is
+verified by streaming the actual descriptor and inspecting its native header
+and current-ID markers, independent of history discovery or the 8 MiB index
+snapshot cap. An active conversation exceeding that cap retains memory and
+skill tools, while its transcript is not indexed. A profile-local
 `pivane_sources` table binds each derived session row to the verified native
-path and content fingerprint. Legacy unproven derived rows are removed. Search
+path and content fingerprint. Replacing session rows, upstream messages/file
+metadata and provenance is one SQLite transaction, with a fresh source check
+inside it even when another worker supplied an older candidate. Legacy
+unproven derived rows are removed. Search
 reconciles all tracked sources before and after querying; deleted, edited,
 rebound or replaced sources cannot leak old snippets. A change detected after
 query preparation fails the result and asks for retry. Indexing advances a
 persisted cursor through bounded batches at startup and after settled turns,
-including sources beyond the first 20 or 5,000. It never scans raw JSONL through the
-upstream anchor fallback. Tool results report partial coverage while the
-initial sweep is unfinished. At most 8 MiB per native session is eligible; a
-search rejects verification beyond 5,000 tracked rows or 64 MiB read budget
+including sources beyond the first 20 or 5,000. It never scans raw JSONL
+through the upstream anchor fallback. Tool results report partial coverage while the
+initial sweep is unfinished, a source exceeds the historical byte cap, or a
+verified candidate cannot be indexed. Ineligible foreign/no-profile files do
+not by themselves make coverage partial. At most 8 MiB per historical native session is eligible for the derived index;
+this is not an active-session/tool limit. A search rejects verification beyond
+5,000 tracked rows or 64 MiB read budget
 rather than returning unchecked data. Oversized native histories remain
-unindexed; no full-recall promise is made. Factory-time active-session
-verification checks the first 5,000 native file headers, so an active session
-beyond this bound remains inert (even though backfill advances beyond it).
-Cwd must remain resolvable.
+unindexed and visibly partial; no full-recall promise is made. Cwd must remain
+resolvable. The source candidate has not been deployed.
 
 ## Isolated installation
 

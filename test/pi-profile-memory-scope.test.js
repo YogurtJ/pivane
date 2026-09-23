@@ -42,9 +42,10 @@ test('native session marker and canonical profile root are mandatory', t => {
     const copied = f.session('session-d', f.profileId);
     const changed = copied.lines.map(line => line.type === 'custom' ? { ...line, data: { ...line.data, sessionId: 'session-a' } } : line);
     fs.writeFileSync(copied.file, changed.map(line => JSON.stringify(line)).join('\n') + '\n');
-    const ctx = scope.parseContext(JSON.stringify(f.context));
+    const ctx = scope.parseContext(JSON.stringify({ ...f.context, sessionPath: own.file }));
     assert.ok(ctx);
-    assert.equal(scope.verifyNativeSession(ctx), true);
+    assert.ok(scope.verifyNativeSession(ctx));
+    assert.equal(scope.verifyNativeSession({ ...ctx, sessionPath: foreign.file }), null);
     assert.equal(scope.eligibleFile(own.file, ctx), true);
     for (const file of [foreign.file, absent.file, copied.file]) assert.equal(scope.eligibleFile(file, ctx), false);
     assert.deepEqual(scope.listEligibleFiles(ctx).map(file => path.basename(file)), ['session-a.jsonl']);

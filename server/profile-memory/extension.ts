@@ -6,14 +6,28 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import scope from './scope.js';
 import indexer from './index.js';
 import autoLearn from './auto-learn.js';
+import mutation from './mutation-lock.js';
+import { profileMemoryCapability } from './management.js';
+
+function assertPrivateSkillTree(...roots: string[]) {
+    let count = 0;
+    const visit = (file: string) => {
+        if (++count > 1000) throw new Error('Profile skill tree exceeds safety budget');
+        const stat = fs.lstatSync(file);
+        if (stat.isSymbolicLink() || fs.realpathSync.native(file) !== file)
+            throw new Error('Profile skill path is not private');
+        if (stat.isDirectory()) for (const name of fs.readdirSync(file)) visit(path.join(file, name));
+    };
+    for (const root of roots) if (fs.existsSync(root)) visit(root);
+}
 
 // Loaded only in a worker whose native session already carries the matching marker.
 export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
     const context = scope.parseContext(process.env.PIVANE_AGENT_PROFILE_CONTEXT);
-    if (!context || (!context.memory.enabled && !context.skills.learnedEnabled)
-        || !scope.verifyNativeSession(context)) return;
+    if (!context || !context.sessionPath || (!context.memory.enabled && !context.skills.learnedEnabled)) return;
     const bundle = process.env.PIVANE_HERMES_BUNDLE;
-    if (!bundle || !path.isAbsolute(bundle) || !fs.existsSync(bundle) || !fs.statSync(bundle).isFile()) return;
+    if (!bundle || !path.isAbsolute(bundle) || !profileMemoryCapability({ bundlePath: bundle }).installed
+        || !scope.verifyNativeSession(context)) return;
     const upstream = await import(pathToFileURL(bundle).href);
     const root = context.profileRoot;
     const projectKey = createHash('sha256').update(context.cwd).digest('hex');
@@ -26,11 +40,13 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
     let started = false;
     let stopped = false;
     let sourceIndex: ReturnType<typeof indexer.createIndex> | null = null;
+    let activeIdentity: any = null;
+    const memoryMutation = mutation.createMutationLock(root);
     let coverage = { limited: true, initialSweepComplete: false };
     const registered = new Map<string, any>();
     const allowed = (ctx: any) => started && !stopped && ctx?.mode === 'rpc'
         && scope.eligibleManager(ctx.sessionManager, context, ctx.cwd)
-        && scope.snapshot(ctx.sessionManager.getSessionFile(), context)?.header.id === context.sessionId;
+        && scope.sameActiveFile(ctx.sessionManager.getSessionFile(), activeIdentity);
     const guarded = new Proxy(pi, {
         get(target, key) {
             if (key !== 'registerTool') return (target as any)[key];
@@ -43,10 +59,24 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
                         'After a useful repeated procedure or correction, consider creating or updating a profile-owned skill with verification steps. Never modify shared installed skills. Newly created skills are available after reload.' ] : tool.promptGuidelines,
                     execute: async (...args: any[]) => {
                         if (!allowed(args[args.length - 1])) throw new Error('Profile memory session binding is unavailable');
-                        if (tool.name === 'session_search') sourceIndex?.reconcile();
-                        const result = await tool.execute(...args);
-                        if (tool.name === 'session_search' && sourceIndex?.reconcile())
-                            throw new Error('Profile session sources changed; retry search');
+                        if (tool.name === 'session_search') {
+                            sourceIndex?.reconcile();
+                            if (sourceIndex) coverage = sourceIndex.coverage();
+                        }
+                        if (tool.name === 'skill_manage') assertPrivateSkillTree(skillStore.getGlobalSkillsDir(), skillStore.getProjectSkillsDir());
+                        const execute = async () => tool.execute(...args);
+                        const result = ['memory_add', 'memory_replace', 'memory_remove'].includes(tool.name)
+                            ? await memoryMutation.run(args[2], async () => {
+                                await store?.loadFromDisk();
+                                await projectStore?.loadFromDisk();
+                                if (!allowed(args[args.length - 1])) throw new Error('Profile memory binding changed');
+                                return execute();
+                            }) : await execute();
+                        if (tool.name === 'session_search') {
+                            const changed = sourceIndex?.reconcile();
+                            if (sourceIndex) coverage = sourceIndex.coverage();
+                            if (changed) throw new Error('Profile session sources changed; retry search');
+                        }
                         if (tool.name === 'session_search') {
                             result.details = { ...result.details, coverage };
                             if (coverage.limited || !coverage.initialSweepComplete) result.content.push({ type: 'text',
@@ -70,8 +100,7 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
     });
     if (context.skills.learnedEnabled) {
         pi.on('resources_discover', (event: any, ctx: any) => {
-            if (stopped || event.cwd !== context.cwd || !scope.eligibleManager(ctx.sessionManager, context, ctx.cwd)
-                || scope.snapshot(ctx.sessionManager.getSessionFile(), context)?.header.id !== context.sessionId) return;
+            if (stopped || (event.cwd || ctx.cwd) !== context.cwd || !allowed(ctx)) return;
             return { skillPaths: [skillStore.getGlobalSkillsDir(), skillStore.getProjectSkillsDir()] };
         });
         upstream.registerSkillTool(guarded, skillStore);
@@ -94,13 +123,14 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
             if (block) return { systemPrompt: event.systemPrompt + '\n\n' + block };
         });
         if (context.memory.autoLearn) {
-            const reviewer = autoLearn.createReviewer(pi, { context, store, projectStore, tools: registered, allowed });
+            const reviewer = autoLearn.createReviewer(pi, { context, store, projectStore, tools: registered, allowed, mutation: memoryMutation });
             pi.on('agent_before_settle', reviewer.review);
         }
     }
     pi.on('session_start', async (_event: any, ctx: any) => {
-        if (stopped || ctx.mode !== 'rpc' || !scope.eligibleManager(ctx.sessionManager, context, ctx.cwd)
-            || !scope.snapshot(ctx.sessionManager.getSessionFile(), context)) return;
+        if (stopped || ctx.mode !== 'rpc' || !scope.eligibleManager(ctx.sessionManager, context, ctx.cwd)) return;
+        activeIdentity = scope.verifyNativeSession(context, ctx.sessionManager);
+        if (!activeIdentity) return;
         if (store) {
             await store.loadFromDisk();
             await projectStore.loadFromDisk();
@@ -108,9 +138,11 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
         if (context.skills.learnedEnabled) await skillStore.ensureDiscoveredRoots();
         if (db) {
             sourceIndex = indexer.createIndex(db, upstream, context);
-            sourceIndex.reconcile();
-            sourceIndex.index(ctx.sessionManager.getSessionFile());
-            coverage = sourceIndex.advance();
+            try {
+                sourceIndex.reconcile();
+                sourceIndex.index(ctx.sessionManager.getSessionFile());
+                coverage = sourceIndex.advance();
+            } catch { coverage = { limited: true, initialSweepComplete: false }; }
         }
         started = true;
     });
