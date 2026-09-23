@@ -31,6 +31,8 @@ function parseContext(raw) {
             || !path.isAbsolute(value.cwd) || !path.isAbsolute(value.profileRoot) || !path.isAbsolute(value.sessionsRoot)
             || typeof value.memory?.enabled !== 'boolean' || typeof value.memory?.autoLearn !== 'boolean'
             || typeof value.skills?.learnedEnabled !== 'boolean') return null;
+        if (value.sessionPath !== undefined && (typeof value.sessionPath !== 'string'
+            || !path.isAbsolute(value.sessionPath) || path.resolve(value.sessionPath) !== value.sessionPath)) return null;
         const agentDir = path.dirname(path.dirname(path.dirname(path.resolve(value.profileRoot))));
         if (directoryIdentity(agentDir) !== agentDir
             || path.resolve(value.profileRoot) !== path.join(agentDir, 'pivane-profiles', 'data', value.profileId)
@@ -42,6 +44,8 @@ function parseContext(raw) {
         }
         const cwd = fs.realpathSync.native(value.cwd);
         if (cwd !== value.cwd) return null;
+        if (value.sessionPath !== undefined && (!inside(value.sessionsRoot, value.sessionPath)
+            || path.extname(value.sessionPath) !== '.jsonl')) return null;
         return { ...value, sessionsRoot: path.join(agentDir, 'sessions'), cwd, agentDir };
     } catch { return null; }
 }
@@ -63,6 +67,7 @@ function eligibleManager(manager, context, cwd) {
             && fs.realpathSync.native(cwd) === context.cwd
             && binding(manager.getEntries(), header.id)?.profileId === context.profileId
             && file && inside(context.sessionsRoot, path.resolve(file))
+            && (!context.sessionPath || file === context.sessionPath)
             && fs.realpathSync.native(file) === path.resolve(file);
     } catch { return false; }
 }
@@ -122,27 +127,80 @@ function listSessionFiles(context, startAfter = '', cap = MAX_SCAN_FILES) {
     return { files, limited };
 }
 
-function verifyNativeSession(context) {
-    try { return listSessionFiles(context).files.some(file => {
-        let fd;
-        try {
-            fd = io.openReadSync(file);
-            const opened = fs.fstatSync(fd, { bigint: true });
-            if (!opened.isFile() || opened.size > BigInt(MAX_SESSION_BYTES) || descriptorPathSync(fd) !== file) return false;
-            const first = Buffer.alloc(8192), n = fs.readSync(fd, first, 0, first.length, 0);
-            const newline = first.subarray(0, n).indexOf(10);
-            if (newline < 0) return false;
-            const header = JSON.parse(first.subarray(0, newline).toString('utf8'));
-            if (header.id !== context.sessionId || header.cwd !== context.cwd) return false;
-            return snapshot(file, context)?.header.id === context.sessionId;
-        } catch { return false; }
-        finally { if (fd !== undefined) fs.closeSync(fd); }
-    }); } catch { return false; }
+// Inspect only metadata lines of the active descriptor; message bodies are never retained.
+function activeBinding(file, context) {
+    let fd;
+    try {
+        assertDescriptorBackend();
+        if (!file || !inside(context.sessionsRoot, file) || path.extname(file) !== '.jsonl'
+            || fs.realpathSync.native(path.dirname(file)) !== path.dirname(file)) return null;
+        const before = fs.lstatSync(file, { bigint: true });
+        if (!before.isFile() || before.isSymbolicLink() || before.size < 20n) return null;
+        fd = io.openReadSync(file);
+        const opened = fs.fstatSync(fd, { bigint: true }), identity = io.identity(fd);
+        if (stamp(before) !== stamp(opened) || descriptorPathSync(fd) !== file) return null;
+        const chunk = Buffer.alloc(64 * 1024);
+        let prefix = Buffer.alloc(0), header = null, matches = 0, first = true;
+        const consume = () => {
+            const text = prefix.toString('utf8');
+            if (first || /^\s*\{\s*"type"\s*:\s*"custom"/.test(text)) {
+                if (prefix.length >= 64 * 1024) throw new Error('Oversize session metadata');
+                const entry = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(prefix));
+                if (first) { header = entry; first = false; }
+                else if (entry.type === 'custom' && entry.customType === PROFILE_ENTRY && entry.data?.sessionId === context.sessionId) {
+                    matches++;
+                    if (entry.data.version !== 1 || entry.data.profileId !== context.profileId) throw new Error('Wrong binding');
+                }
+            }
+            prefix = Buffer.alloc(0);
+        };
+        let offset = 0;
+        while (offset < Number(opened.size)) {
+            const n = fs.readSync(fd, chunk, 0, Math.min(chunk.length, Number(opened.size) - offset), offset);
+            if (!n) return null;
+            offset += n;
+            let start = 0;
+            for (let i = 0; i < n; i++) if (chunk[i] === 10) {
+                const fragment = chunk.subarray(start, i);
+                if (prefix.length < 64 * 1024) prefix = Buffer.concat([prefix, fragment.subarray(0, 64 * 1024 - prefix.length)]);
+                consume(); start = i + 1;
+            }
+            if (start < n && prefix.length < 64 * 1024)
+                prefix = Buffer.concat([prefix, chunk.subarray(start, start + 64 * 1024 - prefix.length)]);
+        }
+        if (prefix.length) consume();
+        if (header?.type !== 'session' || header.id !== context.sessionId || header.cwd !== context.cwd || matches !== 1) return null;
+        if (stamp(fs.fstatSync(fd, { bigint: true })) !== stamp(opened) || stamp(fs.lstatSync(file, { bigint: true })) !== stamp(opened)
+            || descriptorPathSync(fd) !== file || fs.realpathSync.native(file) !== file || !io.sameIdentityAtPath(file, identity)) return null;
+        return { dev: opened.dev, ino: opened.ino, mode: opened.mode, native: identity };
+    } catch { return null; }
+    finally { if (fd !== undefined) fs.closeSync(fd); }
+}
+
+function verifyNativeSession(context, manager) {
+    try {
+        if (manager && !eligibleManager(manager, context, context.cwd)) return null;
+        const file = manager?.getSessionFile() || context.sessionPath;
+        if (!file || context.sessionPath && file !== context.sessionPath) return null;
+        return activeBinding(file, context);
+    } catch { return null; }
+}
+
+function sameActiveFile(file, proof) {
+    let fd;
+    try {
+        if (!proof || fs.realpathSync.native(file) !== file) return false;
+        fd = io.openReadSync(file);
+        const opened = fs.fstatSync(fd, { bigint: true });
+        return opened.isFile() && opened.dev === proof.dev && opened.ino === proof.ino && opened.mode === proof.mode
+            && descriptorPathSync(fd) === file && io.sameIdentityAtPath(file, proof.native);
+    } catch { return false; }
+    finally { if (fd !== undefined) fs.closeSync(fd); }
 }
 
 function listEligibleFiles(context, cap = 20) {
     return listSessionFiles(context).files.filter(file => eligibleFile(file, context)).slice(0, cap);
 }
 
-module.exports = { parseContext, binding, eligibleManager, eligibleFile, snapshot, verifyNativeSession,
+module.exports = { parseContext, binding, eligibleManager, eligibleFile, snapshot, verifyNativeSession, sameActiveFile,
     listSessionFiles, listEligibleFiles, MAX_SESSION_BYTES };
