@@ -47,6 +47,7 @@ class AgentWorker extends EventEmitter {
         this.modelCatalog = new (require('./pi-model-catalog').PiModelCatalog)(this);
         this.resourceResults = new Map();
         this.loadedAgentProfileId = null;
+        this.loadedAgentProfileRevision = null;
         this.loadedAgentProfileConfirmed = false;
         this.autoTitleEligible = false;
         this.titleResults = new Map();
@@ -495,8 +496,11 @@ class AgentWorker extends EventEmitter {
                 if (this.modelCatalog.handle(result)) return;
                 if (result && Object.hasOwn(result, 'pivaneAgentProfileLoaded')) {
                     if (this.managed && !this.noSession && result.sessionId === this.sessionId
-                        && (result.pivaneAgentProfileLoaded === null || typeof result.pivaneAgentProfileLoaded === 'string')) {
+                        && (result.pivaneAgentProfileLoaded === null && result.profileRevision === null
+                            || typeof result.pivaneAgentProfileLoaded === 'string' && /^[a-f0-9-]{36}$/.test(result.pivaneAgentProfileLoaded)
+                                && typeof result.profileRevision === 'string' && /^[a-f0-9]{64}$/.test(result.profileRevision))) {
                         this.loadedAgentProfileId = result.pivaneAgentProfileLoaded;
+                        this.loadedAgentProfileRevision = result.profileRevision;
                         this.loadedAgentProfileConfirmed = true;
                     }
                     return;

@@ -19,6 +19,7 @@ const { createPiAgentGateway } = require('../server/pi-agent-routes');
 const { WorkspaceAccessService } = require('../server/workspace-access-service');
 const { PROFILE_ENTRY, readProfileBinding } = require('../server/pi-profile-state');
 const { readProfileRuntime, registerAgentProfile } = require('../server/pi-profile-runtime');
+const { profileRevision } = require('../server/pi-profile-registry');
 const { PiSessionTransfer } = require('../server/pi-session-transfer');
 
 test('revisioned HTTP, native immutable bindings, fork/import, and verified runtime context', { timeout: 30000 }, async t => {
@@ -75,7 +76,8 @@ test('revisioned HTTP, native immutable bindings, fork/import, and verified runt
         const notices = [];
         const ui = { notify: message => notices.push(JSON.parse(message)) };
         handlers.get('session_start')({}, { mode: 'rpc', sessionManager: bound, cwd: first, ui });
-        assert.deepEqual(notices[0], { pivaneAgentProfileLoaded: id, sessionId: selected.data.id });
+        assert.deepEqual(notices[0], { pivaneAgentProfileLoaded: id,
+            profileRevision: profileRevision(saved.data.profile), sessionId: selected.data.id });
         const appended = handlers.get('before_agent_start')({ systemPrompt: 'Pi base prompt and project instructions' },
             { mode: 'rpc', sessionManager: bound, cwd: first });
         assert.match(appended.systemPrompt, /Pi base prompt and project instructions/);
@@ -100,6 +102,7 @@ test('revisioned HTTP, native immutable bindings, fork/import, and verified runt
         api: 'openai-completions', apiKey: 'synthetic', models: [{ id: 'fixture', input: ['text'], contextWindow: 32000, maxTokens: 1000 }] } } }));
     const worker = await gateway.supervisor.getWorker({ cwd: first, sessionId: selected.data.id, sessionPath: selected.data.path });
     assert.equal(worker.loadedAgentProfileId, id);
+    assert.equal(worker.loadedAgentProfileRevision, profileRevision(saved.data.profile));
     assert.equal(worker.loadedAgentProfileConfirmed, true);
     const finished = new Promise(resolve => { const unsubscribe = worker.subscribe(event => { if (event.type === 'agent_settled') { unsubscribe(); resolve(); } }); });
     await worker.request('prompt', { message: 'Synthetic test only' });
@@ -144,6 +147,7 @@ test('revisioned HTTP, native immutable bindings, fork/import, and verified runt
     const disabled = await call('PUT', '/profiles', { expectedRevision: updated.data.revision, profile: { ...saved.data.profile, enabled: false } });
     assert.equal(disabled.status, 200);
     assert.equal(secondWorker.loadedAgentProfileId, id, 'saving a disabled profile does not reconfigure an existing worker');
+    assert.notEqual(secondWorker.loadedAgentProfileRevision, profileRevision(disabled.data.profile));
     assert.equal((await gateway.store.getSession(first, fork.session.id)).agentProfile.available, false);
     assert.equal((await gateway.supervisor.workerEnvironment({ cwd: first, sessionId: fork.session.id, sessionPath: fork.session.path })).PIVANE_AGENT_PROFILE_CONTEXT, undefined);
     assert.equal(readProfileRuntime(forkManager, first, getAgentDir(), sessionsRoot, JSON.stringify({ ...context, sessionId: fork.session.id })), null);

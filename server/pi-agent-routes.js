@@ -732,13 +732,19 @@ function createPiAgentGateway(options = {}) {
                     const saved = await nativeService.snapshot(source.cwd);
                     const actual = await source.getNativeResources();
                     const savedProfile = source.noSession ? null : (await store.getSession(source.cwd, source.sessionId)).agentProfile;
+                    const profileRecords = (await profiles.state()).state.profiles;
+                    const savedProfileRevision = require('./pi-profile-registry').profileRevision(profileRecords.find(record => record.id === savedProfile?.id));
+                    const matchesSavedProfile = source.loadedAgentProfileConfirmed
+                        && (savedProfile?.id ?? null) === source.loadedAgentProfileId
+                        && (!savedProfile || savedProfileRevision !== null && savedProfileRevision === source.loadedAgentProfileRevision);
                     if (worker !== source || source.disposed) throw new Error('运行实例已变化，请重新核对配置');
                     safeSend(socket, { type: 'response', id: message.id, command: message.type, success: true, data: {
                         actualProjectTrusted: actual.projectTrusted,
                         runtimeId: source.controls.runtimeId, revision: saved.revision, matchesSavedConfig: source.configRevision == null ? null : source.configRevision === saved.revision,
                         trust: saved.trust, ephemeral: source.noSession,
-                        agentProfile: { saved: savedProfile, loadedProfileId: source.loadedAgentProfileId,
-                            loadedConfirmed: source.loadedAgentProfileConfirmed },
+                        agentProfile: { saved: savedProfile, savedProfileRevision,
+                            loadedProfileId: source.loadedAgentProfileId, loadedProfileRevision: source.loadedAgentProfileRevision,
+                            loadedConfirmed: source.loadedAgentProfileConfirmed, matchesSavedProfile },
                         recoveries: source.controls.recoveries.length, drafts: source.controls.drafts.length } });
                     return;
                 }
