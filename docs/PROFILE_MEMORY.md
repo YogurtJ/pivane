@@ -59,7 +59,26 @@ skills are read-only when refusing a skill collision; profile skill operations
 reject symlinks in their owned trees. The active agent's
 `skill_manage` guidance recommends deliberate profile-only skill improvements
 after useful procedures or corrections. Pi discovers newly created skills
-after session reload. The memory and learned-skill flags are independent.
+after session reload. The memory and learned-skill flags are independent. Each saved profile may also set
+`memoryCharLimit` (256..65536, default 16000) and `userCharLimit`
+(256..32768, default 8000) within `memory`. Server context, worker runtime
+verification and both global/project MemoryStore instances carry those actual
+limits; no other profile inherits them. They are core character caps, not
+history or token budgets. Lowering a cap never removes existing Markdown; its
+used count can exceed the saved limit until the user intentionally edits it.
+Saved configuration is distinct from already loaded worker configuration.
+
+`mountProfileDocumentRoutes(router,{profiles,getAgentDir,bundlePath})` adds
+GET/PUT `/profiles/:id/documents`. The global native `MEMORY.md` and `USER.md`
+are read as-is, including entry separators and metadata; only bounded full
+documents can be written. USER can be initialized with memory disabled, while
+MEMORY requires the memory flag. PUT requires both the document revision and
+saved profile revision; it uses the same profile-local interprocess mutation
+lock/generation as agent writes. A changed generation invalidates stale
+auto-learning proposals. Failed edits preserve the browser draft and prior
+file. This route does not write the project Markdown, SQLite extended memories
+or learned skills. Routes must be mounted under existing same-origin access
+middleware; a saved document does not reload running workers.
 
 ## Auto-learning
 

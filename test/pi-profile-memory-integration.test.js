@@ -55,7 +55,7 @@ test('isolated Pi 0.87.1 upstream components enforce profile index, recall, skil
     const start = async (session, profileId, autoLearn = false) => {
         const context = { version: 1, profileId, sessionId: session.header.id, sessionPath: session.file, cwd: session.cwd,
             profileRoot: path.join(agent, 'pivane-profiles', 'data', profileId), sessionsRoot,
-            memory: { enabled: true, autoLearn }, skills: { learnedEnabled: true } };
+            memory: { enabled: true, autoLearn, memoryCharLimit: 16000, userCharLimit: 8000 }, skills: { learnedEnabled: true } };
         process.env.PIVANE_AGENT_PROFILE_CONTEXT = JSON.stringify(context);
         process.env.PIVANE_HERMES_BUNDLE = bundle;
         const pi = fakePi();
@@ -205,7 +205,7 @@ test('isolated Pi 0.87.1 upstream components enforce profile index, recall, skil
     await beta.close();
     process.env.PIVANE_AGENT_PROFILE_CONTEXT = JSON.stringify({ version: 1, profileId: alphaId,
         sessionId: a.header.id, cwd: cwdA, profileRoot: alpha.root, sessionsRoot,
-        memory: { enabled: true, autoLearn: false }, skills: { learnedEnabled: true } });
+        memory: { enabled: true, autoLearn: false, memoryCharLimit: 16000, userCharLimit: 8000 }, skills: { learnedEnabled: true } });
     const noPath = fakePi();
     await registerProfileMemory(noPath);
     assert.equal(noPath.tools.size, 0, 'factory cannot register tools before native path verification');
