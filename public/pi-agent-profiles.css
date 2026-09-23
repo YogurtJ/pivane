@@ -24,7 +24,8 @@
 .pi-profile-form { display: grid; gap: 12px; margin: 22px 0; padding: 14px 0; border-top: 1px solid var(--line); }
 .pi-profile-form label:not(.pi-profile-check), .pi-profile-search { display: grid; gap: 5px; min-width: 0; font-size: .88rem; }
 .pi-profile-form textarea { resize: vertical; min-height: 68px; }
-.pi-profile-form .pi-profile-check { display: flex; align-items: center; gap: 9px; font-size: .88rem; }
+.pi-profile-form .pi-profile-check { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; font-size: .88rem; }
+.pi-profile-auto-reason { min-width: 0; color: var(--text-soft); overflow-wrap: anywhere; }
 .pi-profile-form-actions { display: flex; justify-content: flex-end; }
 .pi-profile-kinds { display: inline-flex; gap: 0; margin: 12px 0; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; max-width: 100%; }
 .pi-profile-kinds button { padding: 8px 12px; border: 0; background: transparent; color: inherit; cursor: pointer; }

@@ -865,7 +865,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.editorReturnFocus = null;
     }
 
-    window.addEventListener('workspace:agent-profiles-status', event => agentProfiles.setEnabled(event.detail?.enabled === true));
+    window.addEventListener('workspace:agent-profiles-status', event => agentProfiles.setEnabled(event.detail?.enabled === true, event.detail?.autoLearn === true));
     elements.toggle.addEventListener('click', () => openSettings(['extensions', 'packages', 'skills'].includes(state.activeTab) ? 'providers' : state.activeTab));
     window.addEventListener('workspace:open-settings', event => {
         const detail = event.detail || {};
