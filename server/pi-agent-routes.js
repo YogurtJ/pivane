@@ -143,6 +143,8 @@ function createPiAgentGateway(options = {}) {
         const projectContext = await assistantProjects.context(manager, cwd);
         return { ...env, PIVANE_AGENT_PROFILE_CONTEXT: context ? JSON.stringify(context) : undefined,
             PIVANE_ASSISTANT_PROJECT_CONTEXT: projectContext ? JSON.stringify(projectContext) : undefined,
+            PIVANE_PROFILE_AUTHORING_CONTEXT: undefined,
+            ...await require('./pi-profile-authoring').profileAuthoringEnvironment({ store, cwd, sessionId }),
             ...await profileMemory.environment(context) };
     };
     const profileRoute = action => async (req, res) => {
@@ -156,9 +158,13 @@ function createPiAgentGateway(options = {}) {
     router.get('/assistant-projects', profileRoute(req => assistantProjects.list(req.query.profileId)));
     router.put('/assistant-projects', profileRoute(req => assistantProjects.save(req.body)));
     router.get('/assistant-projects/:id/sessions', profileRoute(async req => ({ sessions: await assistantProjects.sessions(req.params.id, req.query.profileId) })));
-    require('./profile-memory/management').mountProfileMemoryRoutes(router, { profiles,
+    const profileResources = { profiles,
         getAgentDir: async () => fs.realpathSync.native((await require('./pi-session-store').getSdk()).getAgentDir()),
-        bundlePath: async () => (await profileMemory.snapshot()).bundlePath });
+        bundlePath: async () => (await profileMemory.snapshot()).bundlePath };
+    require('./profile-memory/management').mountProfileMemoryRoutes(router, profileResources);
+    require('./pi-profile-documents').mountProfileDocumentRoutes(router, profileResources);
+    require('./pi-profile-avatar').mountProfileAvatarRoutes(router, profileResources);
+    require('./pi-profile-authoring').mountProfileAuthoringRoutes(router, { store, profiles });
     const agentThreads = require('./pi-agent-threads').mountAgentThreads(router, { store, supervisor, settingsService, access,
         isSuspended: () => maintenance.locked });
 
@@ -178,6 +184,8 @@ function createPiAgentGateway(options = {}) {
             agentThreads: true,
             agentProfiles: true,
             assistantProjects: true,
+            profileDocuments: true,
+            profileAuthoring: true,
             profileMemory: memoryConfiguration.capability,
             agentTaskResults: true,
             taskProgress: true,
@@ -756,6 +764,11 @@ function createPiAgentGateway(options = {}) {
                     const savedProfile = savedSession?.agentProfile ?? null;
                     const savedProject = savedSession?.assistantProject ?? null;
                     const profileRecords = (await profiles.state()).state.profiles;
+                    const projectRecords = (await assistantProjects.state()).state.projects;
+                    const savedProjectRevision = require('./pi-assistant-project-registry').projectRevision(projectRecords.find(record => record.id === savedProject?.id));
+                    const matchesSavedProject = source.loadedAssistantProjectConfirmed
+                        && (savedProject?.id ?? null) === source.loadedAssistantProjectId
+                        && (!savedProject || savedProjectRevision !== null && savedProjectRevision === source.loadedAssistantProjectRevision);
                     const savedProfileRevision = require('./pi-profile-registry').profileRevision(profileRecords.find(record => record.id === savedProfile?.id));
                     const matchesSavedProfile = source.loadedAgentProfileConfirmed
                         && (savedProfile?.id ?? null) === source.loadedAgentProfileId
@@ -768,7 +781,9 @@ function createPiAgentGateway(options = {}) {
                         agentProfile: { saved: savedProfile, savedProfileRevision,
                             loadedProfileId: source.loadedAgentProfileId, loadedProfileRevision: source.loadedAgentProfileRevision,
                             loadedConfirmed: source.loadedAgentProfileConfirmed, matchesSavedProfile },
-                        assistantProject: { saved: savedProject, loadedConfirmed: null, matchesSavedProject: null },
+                        assistantProject: { saved: savedProject, savedProjectRevision,
+                            loadedProjectId: source.loadedAssistantProjectId, loadedProjectRevision: source.loadedAssistantProjectRevision,
+                            loadedConfirmed: source.loadedAssistantProjectConfirmed, matchesSavedProject },
                         recoveries: source.controls.recoveries.length, drafts: source.controls.drafts.length } });
                     return;
                 }

@@ -49,6 +49,9 @@ class AgentWorker extends EventEmitter {
         this.loadedAgentProfileId = null;
         this.loadedAgentProfileRevision = null;
         this.loadedAgentProfileConfirmed = false;
+        this.loadedAssistantProjectId = null;
+        this.loadedAssistantProjectRevision = null;
+        this.loadedAssistantProjectConfirmed = false;
         this.autoTitleEligible = false;
         this.titleResults = new Map();
         this.titleGeneration = false;
@@ -60,6 +63,7 @@ class AgentWorker extends EventEmitter {
         this.client = new PiRpcClient({ ...options,
             extraArgs: [...(options.extraArgs || []), ...(options.profile === 'side-chat' ? [] : ['-e', path.join(__dirname, 'pi-web-session-extension.ts')])],
             env: { PIVANE_AGENT_PROFILE_CONTEXT: undefined, PIVANE_HERMES_BUNDLE: undefined,
+                PIVANE_ASSISTANT_PROJECT_CONTEXT: undefined, PIVANE_PROFILE_AUTHORING_CONTEXT: undefined,
                 PIVANE_PROFILE_MEMORY_REVIEW_MODEL: undefined, ...options.env,
                 ...(options.profile === 'side-chat' ? {} : { PI_WEB_NAVIGATION_TOKEN: this.navigationToken }) }
         });
@@ -377,6 +381,7 @@ class AgentWorker extends EventEmitter {
             if (!before) throw new Error('当前 runtime 尚未加载重载接口，请在任务结束后退出并重新打开会话');
             try {
                 this.loadedAgentProfileConfirmed = false;
+                this.loadedAssistantProjectConfirmed = false;
                 await rpc('prompt', { message: `/${before.name} ${JSON.stringify({ mode: 'reload', token: this.navigationToken })}` }, 120000);
                 const raw = await this.client.request('get_commands');
                 const after = find(raw);
@@ -503,6 +508,18 @@ class AgentWorker extends EventEmitter {
                         this.loadedAgentProfileId = result.pivaneAgentProfileLoaded;
                         this.loadedAgentProfileRevision = result.profileRevision;
                         this.loadedAgentProfileConfirmed = true;
+                    }
+                    return;
+                }
+                if (result && Object.hasOwn(result, 'pivaneAssistantProjectLoaded')) {
+                    if (this.managed && !this.noSession && result.sessionId === this.sessionId
+                        && (result.pivaneAssistantProjectLoaded === null && result.projectRevision === null
+                            || typeof result.pivaneAssistantProjectLoaded === 'string'
+                                && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(result.pivaneAssistantProjectLoaded)
+                                && typeof result.projectRevision === 'string' && /^[a-f0-9]{64}$/.test(result.projectRevision))) {
+                        this.loadedAssistantProjectId = result.pivaneAssistantProjectLoaded;
+                        this.loadedAssistantProjectRevision = result.projectRevision;
+                        this.loadedAssistantProjectConfirmed = true;
                     }
                     return;
                 }

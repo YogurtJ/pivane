@@ -12,6 +12,8 @@ import { promptFromEntry, validateMessage } from './pi-message-payload.js';
 import { buildSessionContext, getAgentDir, type ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { registerAgentProfile } from './pi-profile-runtime.js';
 import { registerProfileMemory } from './profile-memory/extension.ts';
+import { registerAssistantProject } from './pi-assistant-project-runtime.js';
+import { registerProfileAuthoring } from './pi-profile-authoring-extension.ts';
 
 // Pi 0.86 stores prompt/tool checkpoints as native system messages in the
 // transcript. They are provider context, not chat bubbles or side-chat input.
@@ -30,6 +32,8 @@ export default async function (pi: ExtensionAPI) {
     registerAgentThreads(pi);
     registerTaskProgress(pi);
     registerAgentProfile(pi, getAgentDir);
+    registerAssistantProject(pi, getAgentDir);
+    registerProfileAuthoring(pi, getAgentDir);
     await registerProfileMemory(pi);
     // A managed process is bound to one file. Native replacement must not bypass Supervisor.
     const managed = () => Boolean(process.env.PI_WEB_NAVIGATION_TOKEN);

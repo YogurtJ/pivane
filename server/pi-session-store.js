@@ -179,7 +179,8 @@ class PiSessionStore {
         const assistantProject = this.projects ? this.projects.describe(manager, cwd, (await this.projects.state()).state) : null;
         const session = this._serializeSession(candidate, agentProfile, assistantProject);
         const assistant = require('./pi-extension-assistant').assistantProfile(manager);
-        return { ...session, path: canonical, assistant };
+        const profileAuthoring = require('./pi-profile-authoring').readProfileAuthoring(manager);
+        return { ...session, path: canonical, assistant, profileAuthoring };
     }
 
     async createSession(cwdInput, name = '', { autoTitle = false, assistant = null, task = null, agentProfileId, inheritedProfileId,
@@ -219,6 +220,7 @@ class PiSessionStore {
         require('./pi-private-files').privateFileMode(sessionPath);
         return {
             assistant: assistant ? require('./pi-extension-assistant').assistantProfile(persisted) : null,
+            profileAuthoring: require('./pi-profile-authoring').readProfileAuthoring(persisted),
             agentProfile: this.profiles ? await this.profiles.describe(persisted) : null,
             assistantProject: this.projects ? this.projects.describe(persisted, cwd, (await this.projects.state()).state) : null,
             id: persisted.getSessionId(),
