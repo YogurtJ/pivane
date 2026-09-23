@@ -84,6 +84,9 @@ test('assembled HTTP and real RPC isolate profile memory across projects without
             enabled: true, memory: { enabled: true, autoLearn: false }, skills: { learnedEnabled: true } } })).profile;
     };
     const study = await createProfile('Study'), dev = await createProfile('Development');
+    const ownedSkill = path.join(agentDir, 'pivane-profiles', 'data', study.id, 'skills', 'fixture-study-method');
+    fs.mkdirSync(ownedSkill, { recursive: true });
+    fs.writeFileSync(path.join(ownedSkill, 'SKILL.md'), '---\nname: fixture-study-method\ndescription: Synthetic study procedure used only by the study profile.\n---\nUse this synthetic study method.\n');
     const makeWorker = async (cwd, profileId) => {
         const session = await call('POST', '/sessions', { cwd, profileId });
         const worker = await gateway.supervisor.getWorker({ cwd, sessionId: session.id, sessionPath: session.path });
@@ -100,6 +103,8 @@ test('assembled HTTP and real RPC isolate profile memory across projects without
         assert.equal(target.worker.client.env.PIVANE_PROFILE_MEMORY_REVIEW_MODEL, undefined, 'autoLearn=false sends no review model');
     }
     assert.equal((await names(none.worker)).includes('memory_add'), false);
+    for (const target of [source, same]) assert.ok((await target.worker.getNativeResources()).skills.some(skill => skill.name === 'fixture-study-method'));
+    for (const target of [other, none]) assert.equal((await target.worker.getNativeResources()).skills.some(skill => skill.name === 'fixture-study-method'), false);
     assert.equal(none.worker.client.env.PIVANE_HERMES_BUNDLE, undefined);
     const prompt = async (worker, message) => {
         let timer, unsubscribe;
