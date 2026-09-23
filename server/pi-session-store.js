@@ -4,6 +4,9 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 
 const { windowsPath } = require('./pi-platform-path');
+const io = require('./pi-file-io');
+const { descriptorPathSync } = require('./pi-file-descriptor');
+const sessionStamp = stat => [stat.dev, stat.ino, stat.mode, stat.size, stat.mtimeNs, stat.ctimeNs].map(String).join(':');
 const execFileAsync = promisify(execFile);
 let sdkPromise;
 const privateAgentDirectories = new Set();
@@ -122,25 +125,56 @@ class PiSessionStore {
         return { current, parent, directories };
     }
 
+    // Pi owns the parsing; pin the same native file identity around that parse.
+    // A replaced path must not contribute a marker to a different list row.
+    profileManager(session, SessionManager) {
+        let fd;
+        const listed = fs.lstatSync(session.path, { bigint: true });
+        if (!listed.isFile() || listed.isSymbolicLink()) throw new Error('Session file changed');
+        const file = fs.realpathSync.native(session.path);
+        try {
+            const before = fs.lstatSync(file, { bigint: true });
+            if (!before.isFile() || before.isSymbolicLink()) throw new Error('Session file changed');
+            fd = io.openReadSync(file);
+            const opened = fs.fstatSync(fd, { bigint: true }), identity = io.identity(fd);
+            if (sessionStamp(before) !== sessionStamp(opened) || sessionStamp(listed) !== sessionStamp(opened)
+                || descriptorPathSync(fd) !== file) throw new Error('Session file changed');
+            const manager = SessionManager.open(file);
+            if (manager.getSessionId() !== session.id || manager.getCwd() !== session.cwd
+                || sessionStamp(opened) !== sessionStamp(fs.fstatSync(fd, { bigint: true }))
+                || sessionStamp(opened) !== sessionStamp(fs.lstatSync(file, { bigint: true }))
+                || sessionStamp(opened) !== sessionStamp(fs.lstatSync(session.path, { bigint: true }))
+                || descriptorPathSync(fd) !== file || !io.sameIdentityAtPath(file, identity)
+                || fs.realpathSync.native(session.path) !== file) throw new Error('Session file changed');
+            return manager;
+        } finally { if (fd !== undefined) fs.closeSync(fd); }
+    }
+
     async listSessions(input) {
         const cwd = this.resolveProject(input);
         const { SessionManager } = await getSdk();
         const profiles = this.profiles;
         const profileState = profiles ? (await profiles.state()).state : null;
         const sessions = await SessionManager.list(cwd);
-        return (await Promise.all(sessions.map(async session => this._serializeSession(session,
-            profiles ? await profiles.describe(SessionManager.open(session.path), profileState) : null))))
-            .sort((a, b) => b.modified.localeCompare(a.modified));
+        const result = [];
+        for (const session of sessions) {
+            const manager = profiles ? this.profileManager(session, SessionManager) : null;
+            result.push(this._serializeSession(session, manager ? await profiles.describe(manager, profileState) : null));
+        }
+        return result.sort((a, b) => b.modified.localeCompare(a.modified));
     }
 
     async getSession(cwdInput, id) {
-        const sessions = await this.listSessions(cwdInput);
-        const session = sessions.find(item => item.id === id);
-        if (!session) throw new Error('Session not found in this project');
-        // One physical session must keep one supervisor key even when the OS accepts a case/symlink alias.
+        const cwd = this.resolveProject(cwdInput);
         const { SessionManager } = await getSdk();
-        const canonical = fs.realpathSync.native(session.path);
-        const assistant = require('./pi-extension-assistant').assistantProfile(SessionManager.open(canonical));
+        const candidate = (await SessionManager.list(cwd)).find(item => item.id === id);
+        if (!candidate) throw new Error('Session not found in this project');
+        // One physical session must keep one supervisor key even when the OS accepts a case/symlink alias.
+        const canonical = fs.realpathSync.native(candidate.path);
+        const manager = this.profileManager(candidate, SessionManager);
+        const agentProfile = this.profiles ? await this.profiles.describe(manager) : null;
+        const session = this._serializeSession(candidate, agentProfile);
+        const assistant = require('./pi-extension-assistant').assistantProfile(manager);
         return { ...session, path: canonical, assistant };
     }
 

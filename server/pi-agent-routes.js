@@ -104,6 +104,7 @@ function createPiAgentGateway(options = {}) {
     const mediaAgentService = options.mediaAgentService || null;
     const router = express.Router();
     const maintenance = options.maintenance || new (require('./pi-maintenance-client').MaintenanceClient)({ managed: false });
+    Object.assign(profiles, { nativeService, settingsService, maintenance });
     const deferred = new PiDeferredMessages({ store, supervisor, filePath: options.deferredFilePath, isSuspended: () => maintenance.locked });
     const sideChat = new PiSideChatService({ store, supervisor });
     const notifications = new (require('./pi-notification-service').PiNotificationService)({ access, store });
@@ -118,7 +119,7 @@ function createPiAgentGateway(options = {}) {
     router.use(access.middleware());
     require('./pi-update-service').mountUpdateRoutes(router, undefined, {
         maintenance, preferences,
-        idle: () => !agentThreads.jobs.size && !agentThreads.catalogIndex.busy && !agentThreads.returns.busy && !settingsService.mutating && !settingsService.loginService.busy && !nativeService.busy && !sessionTransfer.running
+        idle: () => !profiles.busy && !agentThreads.jobs.size && !agentThreads.catalogIndex.busy && !agentThreads.returns.busy && !settingsService.mutating && !settingsService.loginService.busy && !nativeService.busy && !sessionTransfer.running
             && !titles.jobs.size && !titles.savingModel && !deferred.running && !sideChat.connections.size && !sideChat.tickets.size
             && ![...sideChat.parents.values()].some(parent => parent.preparing) && supervisor.isIdle()
             && !options.mediaLabService?.inFlight && !options.mediaLabService?.providerService?.busy && !options.mediaLabService?.providerService?.active,
@@ -355,7 +356,7 @@ function createPiAgentGateway(options = {}) {
 
     router.get('/activity', (req, res) => {
         res.set('Cache-Control', 'no-store');
-        res.json({ agentThreadLaunches: agentThreads.jobs.size, agentTaskIndexing: agentThreads.catalogIndex.busy, agentTaskReturns: agentThreads.returns.busy, archives: archives(), titleRevision: titles.revisionId, titleGenerations: titles.jobs.size, runtimes: supervisor.getActivity(), nativeSettingsBusy: nativeService.busy || settingsService.mutating || Boolean(titles.savingModel) || auxiliaryModels.busy, sessionTransfers: sessionTransfer.running, pinnedProjects: pinnedProjects(), hiddenProjects: hiddenProjects(), replyNotices: replyNotices(), deferred: deferred.summary() });
+        res.json({ agentThreadLaunches: agentThreads.jobs.size, agentTaskIndexing: agentThreads.catalogIndex.busy, agentTaskReturns: agentThreads.returns.busy, archives: archives(), titleRevision: titles.revisionId, titleGenerations: titles.jobs.size, runtimes: supervisor.getActivity(), profilesBusy: profiles.busy, nativeSettingsBusy: nativeService.busy || settingsService.mutating || Boolean(titles.savingModel) || auxiliaryModels.busy, sessionTransfers: sessionTransfer.running, pinnedProjects: pinnedProjects(), hiddenProjects: hiddenProjects(), replyNotices: replyNotices(), deferred: deferred.summary() });
     });
 
     router.patch('/projects/pin', (req, res) => {
@@ -871,6 +872,7 @@ function createPiAgentGateway(options = {}) {
 
     return { mount, attachWebSocket, dispose: async () => {
         sessionSearch.dispose();
+        await profiles.dispose();
         if (!options.accessService) access.dispose();
         await settingsService.loginService.dispose();
         const stoppingAuxiliaryModels = auxiliaryModels.dispose();

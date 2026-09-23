@@ -2,6 +2,7 @@ const PROFILE_ENTRY = 'pivane-agent-profile';
 
 function readProfileBinding(manager) {
     const sessionId = manager.getSessionId();
+    if (typeof sessionId !== 'string' || !sessionId) return null;
     const entries = manager.getEntries().filter(entry => entry.type === 'custom' && entry.customType === PROFILE_ENTRY
         && entry.data?.sessionId === sessionId);
     // A second or malformed session-bound marker cannot change an immutable identity.
