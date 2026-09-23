@@ -84,6 +84,8 @@ function createPiAgentGateway(options = {}) {
     const store = new PiSessionStore();
     const profiles = new (require('./pi-profile-registry').PiProfileRegistry)(store);
     store.profiles = profiles;
+    const assistantProjects = new (require('./pi-assistant-project-registry').PiAssistantProjectRegistry)(store, profiles);
+    store.projects = assistantProjects;
     const profileMemory = new (require('./profile-memory/config').ProfileMemoryConfiguration)();
     const preferences = options.workspacePreferencesService || new WorkspacePreferencesService();
     const composer = new (require('./pi-composer-service').PiComposerService)(store);
@@ -138,7 +140,9 @@ function createPiAgentGateway(options = {}) {
         const manager = SessionManager.open(session.path);
         if (manager.getSessionId() !== sessionId) throw new Error('Native session identity changed');
         const context = await profiles.context(manager, cwd);
+        const projectContext = await assistantProjects.context(manager, cwd);
         return { ...env, PIVANE_AGENT_PROFILE_CONTEXT: context ? JSON.stringify(context) : undefined,
+            PIVANE_ASSISTANT_PROJECT_CONTEXT: projectContext ? JSON.stringify(projectContext) : undefined,
             ...await profileMemory.environment(context) };
     };
     const profileRoute = action => async (req, res) => {
@@ -149,6 +153,9 @@ function createPiAgentGateway(options = {}) {
     router.get('/profiles', profileRoute(req => profiles.list(req.query.cwd)));
     router.put('/profiles', profileRoute(req => profiles.save(req.body)));
     router.put('/profiles/default', profileRoute(req => profiles.saveDefault(req.body)));
+    router.get('/assistant-projects', profileRoute(req => assistantProjects.list(req.query.profileId)));
+    router.put('/assistant-projects', profileRoute(req => assistantProjects.save(req.body)));
+    router.get('/assistant-projects/:id/sessions', profileRoute(async req => ({ sessions: await assistantProjects.sessions(req.params.id, req.query.profileId) })));
     require('./profile-memory/management').mountProfileMemoryRoutes(router, { profiles,
         getAgentDir: async () => fs.realpathSync.native((await require('./pi-session-store').getSdk()).getAgentDir()),
         bundlePath: async () => (await profileMemory.snapshot()).bundlePath });
@@ -170,6 +177,7 @@ function createPiAgentGateway(options = {}) {
             nativeResources: true,
             agentThreads: true,
             agentProfiles: true,
+            assistantProjects: true,
             profileMemory: memoryConfiguration.capability,
             agentTaskResults: true,
             taskProgress: true,
@@ -429,8 +437,12 @@ function createPiAgentGateway(options = {}) {
 
     router.post('/sessions', async (req, res) => {
         try {
-            const session = await store.createSession(req.body.cwd, req.body.name, { autoTitle: preferences.getSessionTitles().enabled,
-                agentProfileId: Object.hasOwn(req.body, 'profileId') ? req.body.profileId : undefined });
+            const createOptions = { autoTitle: preferences.getSessionTitles().enabled,
+                agentProfileId: Object.hasOwn(req.body, 'profileId') ? req.body.profileId : undefined };
+            const session = Object.hasOwn(req.body, 'assistantProjectId')
+                ? await assistantProjects.createSession(req.body.cwd, req.body.name,
+                    { ...createOptions, assistantProjectId: req.body.assistantProjectId })
+                : await store.createSession(req.body.cwd, req.body.name, createOptions);
             if (preferences.getHiddenProjects().includes(session.cwd)) preferences.setProjectHidden(session.cwd, false);
             res.status(201).json(session);
         } catch (error) {
@@ -740,7 +752,9 @@ function createPiAgentGateway(options = {}) {
                     const source = worker;
                     const saved = await nativeService.snapshot(source.cwd);
                     const actual = await source.getNativeResources();
-                    const savedProfile = source.noSession ? null : (await store.getSession(source.cwd, source.sessionId)).agentProfile;
+                    const savedSession = source.noSession ? null : await store.getSession(source.cwd, source.sessionId);
+                    const savedProfile = savedSession?.agentProfile ?? null;
+                    const savedProject = savedSession?.assistantProject ?? null;
                     const profileRecords = (await profiles.state()).state.profiles;
                     const savedProfileRevision = require('./pi-profile-registry').profileRevision(profileRecords.find(record => record.id === savedProfile?.id));
                     const matchesSavedProfile = source.loadedAgentProfileConfirmed
@@ -754,6 +768,7 @@ function createPiAgentGateway(options = {}) {
                         agentProfile: { saved: savedProfile, savedProfileRevision,
                             loadedProfileId: source.loadedAgentProfileId, loadedProfileRevision: source.loadedAgentProfileRevision,
                             loadedConfirmed: source.loadedAgentProfileConfirmed, matchesSavedProfile },
+                        assistantProject: { saved: savedProject, loadedConfirmed: null, matchesSavedProject: null },
                         recoveries: source.controls.recoveries.length, drafts: source.controls.drafts.length } });
                     return;
                 }

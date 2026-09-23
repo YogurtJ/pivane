@@ -52,6 +52,17 @@
 
 `GET /status.profileMemory` 返回 `{installed,autoLearn}`，核对私有配置指向的适配 bundle 与本机 SQLite；autoLearn 表示已配置直接复盘模型，不证明供应商请求已成功。配置失效时返回 false，不隐式切换聊天模型或全局安装插件。`GET /profiles/:id/memory?kind=memories|skills&query=&offset=` 为已挂载的只读档案数据接口，分页每次最多50条；其 ready 是数据可读状态，与当前会话是否加载分开。安装、模型配置与检索限额见[记忆适配](PROFILE_MEMORY.md)。
 
+### 逻辑助手项目
+
+`/status.assistantProjects=true` 标记逻辑项目后端。项目是独立命名分组，同一规范 cwd 可对应多个项目；分组的 `instructions` 作为额外上下文追加到已加载的助手提示词，不修改共享 AGENTS.md，也不改变 profile+物理 cwd 的记忆范围。归档仅阻止创建新线程，已保存的线程及其绑定不删除。档案不是文件权限沙箱。
+
+- `GET /assistant-projects[?profileId=UUID]` 返回 `{version:1,revision,projects}`。省略筛选返回全部记录；提供 ID 时仅返回关联该档案的组。
+- `PUT /assistant-projects` 接受 `{expectedRevision,project:{id?,name,cwd,description,instructions,profileIds,archived}}`，返回 `{ok,revision,project,requiresReload:true}`。新建省略 ID；更新必须给出已有 ID。name 非空且最多 80 字符、description 最多 500 字符、instructions 最多 8192 UTF-8 字节、profileIds 为不重复 UUID 数组，archived 为布尔值。新关联必须是已启用档案；cwd 经现有 realpath/允许根校验，创建后不可改变。无删除接口。
+- `GET /assistant-projects/:id/sessions?profileId=UUID` 返回 `{sessions:[...]}`，只返回原生当前会话 ID 的项目绑定和实际档案绑定均匹配的线程；缺少 profileId 或无效 ID 拒绝。不按浏览器选中状态推断身份。
+- `POST /sessions` 可增加 `assistantProjectId`，此时必须同时显式提交关联、启用的 `profileId`，cwd 必须匹配项目且项目未归档。未知 ID、无效身份或 cwd 冲突在原生文件创建前拒绝，不回退到普通线程。省略 assistantProjectId 保持旧调用和项目默认档案行为。
+
+现有 `/sessions?cwd` 仍列出全部原生线程，新增 `assistantProject:null|{id,name,cwd,available}`；不存在的已绑定组仍显示 ID 和 available=false，不能自动归入另一组。旧有档案绑定但无项目标记的线程仍按真实 cwd 保持未分类。项目标记 `pivane-assistant-project` 保存 `{version:1,sessionId,projectId,cwd}`：只认唯一且匹配当前原生 ID/cwd 的标记，复制导入的旧 ID 不生效；网页分叉给新 ID 追加新绑定。保存分组指令不自动重载当前 worker；`get_runtime_configuration.assistantProject` 的 saved 是当前磁盘投影，loadedConfirmed/matchesSavedProject 为 null，表示此版本尚未核实运行中加载的组修订，不能用 saved 冒充运行配置。注册表保存在原生 agentDir 的私有 `pivane-profiles/assistant-projects.json`，项目和档案保存共用设置/维护忙碌互斥；过期修订和占用返回 409，未授权或非法输入按现有访问控制返回错误。
+
 ### Agent 任务线程
 
 `GET /status.agentThreads=true` 标记任务线程后端，`agentTaskResults=true` 标记来源线程结果回执。受管持久 Agent 的 `agent_thread` 工具通过私有 POST `/agent-threads/create|status|models|result` 创建任务、查询状态/模型或分页只读原生结果。身份绑定存活源 worker；工作台 Cookie/Token 不能代替。目录未完成时返回202及 `TASK_INDEXING`/coverage，不把未核实记录当作不存在。`/activity.agentThreadLaunches`、`agentTaskIndexing`、`agentTaskReturns` 分别报告创建、目录读取和交付工作，均进入维护空闲与停机等待。
