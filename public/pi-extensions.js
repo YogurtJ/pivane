@@ -51,6 +51,71 @@
         el.addEventListener('click', action); return el;
     };
     let enabled = false, host, generation = 0, view = '', inventory = null, inventoryState = 'unknown', renderCards = () => {};
+    let extensionTab = 'learned', learnedProfile = '', learnedQuery = '', learnedOffset = 0, learnedProfiles = [], learnedItems = [], learnedMore = false;
+    function showExtensionTab() {
+        const learned = document.getElementById('extensions-learned'), featured = document.getElementById('extensions-featured');
+        if (!learned || !featured) return;
+        learned.hidden = extensionTab !== 'learned'; featured.hidden = extensionTab !== 'featured';
+        document.querySelectorAll('[data-extension-tab]').forEach(button => button.setAttribute('aria-current', String(button.dataset.extensionTab === extensionTab ? 'page' : 'false')));
+        if (view === 'extensions') { if (extensionTab === 'learned') void refreshLearned(); else void refreshInventory(); }
+    }
+    async function refreshLearned(append = false) {
+        if (!host || view !== 'extensions' || extensionTab !== 'learned') return;
+        const ticket = ++generation, status = document.getElementById('extensions-learned-status');
+        status.textContent = text('正在读取已学习技能…', 'Loading learned skills…');
+        try {
+            const listing = await host.apiFetch('/api/pi/profiles');
+            if (ticket !== generation || view !== 'extensions' || extensionTab !== 'learned') return;
+            if (listing.version !== 1 || !Array.isArray(listing.profiles)) throw new Error(text('档案列表无效', 'Invalid profile list'));
+            learnedProfiles = listing.profiles;
+            const select = document.getElementById('extensions-learned-profile');
+            select.replaceChildren(node('option', text('所有档案', 'All profiles'), { value: '' }));
+            for (const p of learnedProfiles) select.append(node('option', `${p.name}${p.enabled ? '' : ` · ${text('已停用', 'Disabled')}`}`, { value: p.id }));
+            if (learnedProfile && !learnedProfiles.some(p => p.id === learnedProfile)) learnedProfile = '';
+            select.value = learnedProfile;
+            const candidates = learnedProfiles.filter(p => !learnedProfile || p.id === learnedProfile);
+            if (!append) { learnedItems = []; learnedOffset = 0; }
+            const results = await Promise.all(candidates.map(async p => ({ profile: p, data: await host.apiFetch(`/api/pi/profiles/${encodeURIComponent(p.id)}/memory?${new URLSearchParams({ kind: 'skills', offset: String(learnedOffset), query: learnedQuery })}`) })));
+            if (ticket !== generation || view !== 'extensions' || extensionTab !== 'learned') return;
+            learnedMore = results.some(({ data }) => data.status === 'ready' && data.hasMore);
+            const failed = results.filter(({ data }) => data.status !== 'ready');
+            learnedItems.push(...results.flatMap(({ profile, data }) => data.status === 'ready' ? (data.items || []).map(item => ({ profile, item })) : []));
+            renderLearned();
+            status.textContent = failed.length ? failed.map(({ profile, data }) => `${profile.name}: ${data.reason || data.status}`).join(' · ')
+                : learnedItems.length ? '' : text('没有已学习技能。', 'No learned skills.');
+        } catch (error) { if (ticket === generation) status.textContent = `${text('读取失败', 'Could not load learned skills')}: ${error.message}`; }
+    }
+    function renderLearned() {
+        const list = document.getElementById('extensions-learned-list'); list.replaceChildren();
+        for (const { profile, item } of learnedItems) {
+            const card = node('article', null, { class: 'extensions-learned-row' });
+            const title = node('strong', item.name || text('未命名技能', 'Unnamed skill'));
+            const scope = item.scope === 'profile' ? text('助手共用', 'Shared by profile') : item.scope === 'project' ? text('项目专属', 'Project-specific') : text('范围未提供', 'Scope not provided');
+            const origin = item.source === 'profile-owned' ? text('助手技能库', 'Profile skill library') : text('来源未提供', 'Source not provided');
+            const source = node('small', `${profile.name} · ${scope} · ${origin}`);
+            const detail = node('details'); detail.append(node('summary', text('查看技能正文', 'Read skill text')));
+            const content = node('div', null, { class: 'extensions-skill-detail', role: 'status' }); detail.append(content);
+            let read = 0;
+            detail.addEventListener('toggle', async () => {
+                const ticket = ++read, current = generation;
+                if (!detail.open) return;
+                content.textContent = text('正在读取技能正文…', 'Loading skill text…');
+                try {
+                    const result = await host.apiFetch(`/api/pi/profiles/${encodeURIComponent(profile.id)}/skills/${encodeURIComponent(item.id)}`);
+                    if (ticket !== read || current !== generation || !detail.open || !card.isConnected || view !== 'extensions' || extensionTab !== 'learned') return;
+                    if (result.status !== 'ready') { content.textContent = result.status === 'missing' ? text('技能已不存在。请刷新。', 'Skill no longer exists. Refresh.')
+                        : result.status === 'disabled' ? text('此档案的技能已停用。', 'Skills are disabled for this profile.')
+                            : text('此服务器无法读取技能正文。', 'Skill text is unavailable on this server.'); return; }
+                    if (result.profileId !== profile.id || result.item?.id !== item.id || typeof result.item.content !== 'string') throw new Error(text('技能响应不匹配', 'Skill response does not match'));
+                    content.replaceChildren(node('p', result.item.description || text('没有描述', 'No description')), node('pre', result.item.content));
+                } catch (error) {
+                    if (ticket === read && current === generation && detail.open && card.isConnected) content.textContent = `${text('读取失败', 'Could not load skill text')}: ${error.message}`;
+                }
+            });
+            card.append(title, source, detail); list.append(card);
+        }
+        document.getElementById('extensions-learned-more').hidden = !learnedMore;
+    }
     const repositories = { 'ppt-master': 'hugohe3/ppt-master', 'pi-mcp-adapter': 'nicobailon/pi-mcp-adapter', 'pi-web-access': 'nicobailon/pi-web-access', 'pi-computer-use': 'injaneity/pi-computer-use', 'pi-subagents': 'nicobailon/pi-subagents', 'pi-hermes-memory': 'chandra447/pi-hermes-memory' };
     function identity(source) {
         if (typeof source !== 'string') return '';
@@ -135,29 +200,37 @@
         },
         setView(tab) {
             view = tab; generation++;
-            if (tab === 'extensions') void refreshInventory();
+            if (tab === 'extensions') showExtensionTab();
             const extensionView = ['extensions', 'packages', 'skills'].includes(tab);
             const dialog = document.getElementById('workspace-settings-dialog');
-            dialog.classList.toggle('extensions-view', extensionView);
-            document.getElementById('workspace-settings-title').textContent = extensionView ? text('扩展', 'Extensions') : text('设置', 'Settings');
+            dialog?.classList.toggle('extensions-view', extensionView);
+            if (document.getElementById('workspace-settings-title')) document.getElementById('workspace-settings-title').textContent = extensionView ? text('扩展', 'Extensions') : text('设置', 'Settings');
             const close = document.getElementById('workspace-settings-close');
-            close.title = close.ariaLabel = extensionView ? text('关闭扩展', 'Close extensions') : text('关闭设置', 'Close settings');
-            document.querySelector('.workspace-settings-nav').setAttribute('aria-label', extensionView ? text('扩展分类', 'Extension categories') : text('设置分类', 'Settings categories'));
+            if (close) close.title = close.ariaLabel = extensionView ? text('关闭扩展', 'Close extensions') : text('关闭设置', 'Close settings');
+            document.querySelector('.workspace-settings-nav')?.setAttribute('aria-label', extensionView ? text('扩展分类', 'Extension categories') : text('设置分类', 'Settings categories'));
         }
     };
     document.addEventListener('DOMContentLoaded', () => {
-        const desktop = button('', open, { id: 'workspace-extensions-toggle', class: 'nav-btn', title: text('扩展', 'Extensions') });
-        desktop.append(node('i', '', { class: 'fa-solid fa-puzzle-piece', 'aria-hidden': 'true' }), node('span', text('扩展', 'Extensions')));
-        document.querySelector('.nav-menu').append(desktop);
-        const mobile = button('', open, { id: 'pi-drawer-extensions', class: 'extensions-drawer-entry' });
-        mobile.append(node('i', '', { class: 'fa-solid fa-puzzle-piece', 'aria-hidden': 'true' }), node('span', text('扩展', 'Extensions')), node('small', text('精选与已安装', 'Featured & installed')));
-        document.querySelector('.pi-session-heading').after(mobile);
         const nav = document.querySelector('.workspace-settings-nav');
-        nav.prepend(button(text('精选', 'Featured'), () => {}, { 'data-settings-tab': 'extensions' }));
+        nav.prepend(button(text('已学习技能', 'Learned skills'), () => {}, { 'data-settings-tab': 'extensions' }));
         for (const [tab, label] of [['packages', text('已安装扩展包', 'Installed packages')], ['skills', text('已安装技能', 'Installed skills')]]) {
             nav.querySelector(`[data-settings-tab="${tab}"] span`).textContent = label;
         }
         const panel = node('section', null, { class: 'workspace-settings-panel', 'data-settings-panel': 'extensions' });
+        const tabs = node('nav', null, { class: 'extensions-tabs', 'aria-label': text('扩展视图', 'Extension views') });
+        tabs.append(button(text('已学习技能', 'Learned skills'), () => { extensionTab = 'learned'; showExtensionTab(); }, { 'data-extension-tab': 'learned' }),
+            button(text('精选', 'Featured'), () => { extensionTab = 'featured'; showExtensionTab(); }, { 'data-extension-tab': 'featured' }));
+        const learned = node('section', null, { id: 'extensions-learned' });
+        const learnedControls = node('div', null, { class: 'extensions-inventory-toolbar' });
+        const profileSelect = node('select', null, { id: 'extensions-learned-profile', 'aria-label': text('筛选档案', 'Filter profiles') });
+        profileSelect.addEventListener('change', () => { learnedProfile = profileSelect.value; learnedOffset = 0; void refreshLearned(); });
+        const learnedSearch = node('input', null, { type: 'search', id: 'extensions-learned-search', placeholder: text('搜索已学习技能', 'Search learned skills'), 'aria-label': text('搜索已学习技能', 'Search learned skills') });
+        let searchTimer;
+        learnedSearch.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { learnedQuery = learnedSearch.value.trim().slice(0, 200); learnedOffset = 0; void refreshLearned(); }, 300); });
+        learnedControls.append(profileSelect, learnedSearch, button(text('刷新', 'Refresh'), () => void refreshLearned(), { class: 'settings-secondary-button' }));
+        const more = button(text('加载更多', 'Load more'), () => { learnedOffset += 50; void refreshLearned(true); }, { id: 'extensions-learned-more', class: 'settings-secondary-button', hidden: '' });
+        learned.append(learnedControls, node('p', '', { id: 'extensions-learned-status', role: 'status' }), node('div', null, { id: 'extensions-learned-list' }), more);
+        const featured = node('section', null, { id: 'extensions-featured', hidden: '' });
         const intro = node('div', null, { class: 'extensions-intro' });
         intro.append(node('h3', text('为你的工作添一种能力', 'Add a capability to your work')), node('p', text('发现适合你的工具与技能，按需配置到 Pivane。', 'Discover tools and skills for your work, and configure them when you need them.')),
             button(text('添加自定义', 'Add custom'), () => assistant(), { class: 'settings-primary-button', 'data-extension-configure': '', disabled: '' }));
@@ -196,7 +269,8 @@
         };
         search.addEventListener('input', render); render();
         const unavailable = node('p', text('当前服务未提供扩展助手。可查看来源，或在已安装页面管理资源。', 'The extension assistant is unavailable on this server. View the sources or manage resources in the installed tabs.'), { id: 'extensions-assistant-unavailable', role: 'status' });
-        panel.append(intro, search, toolbar, feedback, unavailable, grid, empty);
+        featured.append(intro, search, toolbar, feedback, unavailable, grid, empty);
+        panel.append(tabs, learned, featured);
         const invalidate = () => { generation++; view = ''; inventory = null; inventoryState = 'unknown'; renderCards(); };
         window.addEventListener('workspace:settings-closed', invalidate);
         window.addEventListener('workspace:access-locked', invalidate);
