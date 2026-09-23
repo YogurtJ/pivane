@@ -48,7 +48,9 @@
 
 `GET /status.agentProfiles=true` 表示可选助手档案接口可用。`GET /profiles?cwd` 返回档案、修订和所选项目默认身份；`PUT /profiles` 接受 `{expectedRevision,profile}` 创建或更新档案；`PUT /profiles/default` 接受 `{cwd,profileId,expectedRevision}`，`profileId:null` 清除项目默认身份。现有 `POST /sessions` 的可选 `profileId` 省略时使用项目默认，显式 null 创建无档案线程。
 
-会话序列化字段 `agentProfile` 是保存的身份投影，不能据此推断 worker 已加载。`get_runtime_configuration.agentProfile` 分别返回 saved、savedProfileRevision、loadedProfileId、loadedProfileRevision、loadedConfirmed 与 matchesSavedProfile。旧会话不因新增项目默认身份而追认归属，网页分叉显式继承源身份，导入不会仅因复制旧会话标记而获得绑定。字段限制、保存与重开语义见[助手档案](AGENT_PROFILES.md)；记忆组件安装与接口接入见[记忆适配](PROFILE_MEMORY.md)。
+会话序列化字段 `agentProfile` 是保存的身份投影，不能据此推断 worker 已加载。`get_runtime_configuration.agentProfile` 分别返回 saved、savedProfileRevision、loadedProfileId、loadedProfileRevision、loadedConfirmed 与 matchesSavedProfile。旧会话不因新增项目默认身份而追认归属，网页分叉显式继承源身份，导入不会仅因复制旧会话标记而获得绑定。字段限制、保存与重开语义见[助手档案](AGENT_PROFILES.md)。
+
+`GET /status.profileMemory` 返回 `{installed,autoLearn}`，核对私有配置指向的适配 bundle 与本机 SQLite；autoLearn 表示已配置直接复盘模型，不证明供应商请求已成功。配置失效时返回 false，不隐式切换聊天模型或全局安装插件。`GET /profiles/:id/memory?kind=memories|skills&query=&offset=` 为已挂载的只读档案数据接口，分页每次最多50条；其 ready 是数据可读状态，与当前会话是否加载分开。安装、模型配置与检索限额见[记忆适配](PROFILE_MEMORY.md)。
 
 ### Agent 任务线程
 

@@ -8,6 +8,7 @@ const model = { provider: 'fixture', id: 'fixture', name: 'Fixture', input: ['te
 async function run(browser, base, width, locale, noProject = false) {
     const ctx = await browser.newContext({ locale, viewport: { width, height: 900 }, isMobile: width < 900, hasTouch: width < 900 });
     const page = await ctx.newPage(), errors = [], sent = [], writes = [], mutations = [];
+    let memoryAdapterInstalled = false;
     let hold = false, release, enabled = true, failResources = false, inspected = false, holdInventory = false, releaseInventory, projectTrusted = false;
     const sessions = [{ id: 'original', cwd, name: 'Original', messageCount: 2 }];
     page.on('pageerror', e => errors.push(e.message));
@@ -16,7 +17,7 @@ async function run(browser, base, width, locale, noProject = false) {
     await page.route('**/api/**', async route => {
         const req = route.request(), url = new URL(req.url()), p = url.pathname;
         if (req.method() !== 'GET') mutations.push(p);
-        if (p === '/api/pi/status') return route.fulfill({ json: { ok: true, extensionAssistant: enabled, nativeResources: true, nativeSettings: true, defaultProject: cwd, projectRoots: ['/tmp'] } });
+        if (p === '/api/pi/status') return route.fulfill({ json: { ok: true, extensionAssistant: enabled, nativeResources: true, nativeSettings: true, defaultProject: cwd, projectRoots: ['/tmp'], profileMemory: { installed: memoryAdapterInstalled, autoLearn: false } } });
         if (p === '/api/pi/projects') return route.fulfill({ json: { projects: noProject ? [] : [{ cwd, name: 'Fixture', sessionCount: sessions.length }], roots: ['/tmp'] } });
         if (p === '/api/pi/sessions') return route.fulfill({ json: { sessions } });
         if (p === '/api/pi/activity') return route.fulfill({ json: { runtimes: [], replyNotices: [] } });
@@ -82,6 +83,11 @@ async function run(browser, base, width, locale, noProject = false) {
     await page.locator('#extension-pi-subagents [data-installation="installed"]').waitFor();
     assert.equal(await page.locator('#extension-pi-web-access [data-installation="installed"]').count(), 1);
     assert.equal(await page.locator('#extension-pi-hermes-memory [data-installation="configured"]').count(), 1);
+    memoryAdapterInstalled = true; await page.locator('#extensions-refresh').click();
+    await page.locator('#extension-pi-hermes-memory [data-installation="installed"]').waitFor();
+    assert.equal(await page.locator('#extension-pi-hermes-memory [data-installation]').textContent(), locale === 'en' ? 'Profile adapter installed' : '档案适配已安装');
+    memoryAdapterInstalled = false; await page.locator('#extensions-refresh').click();
+    await page.locator('#extension-pi-hermes-memory [data-installation="configured"]').waitFor();
     assert.equal(await page.locator('#extension-pi-computer-use [data-installation="missing"]').count(), 1);
     assert.equal(await page.locator('#extension-ppt-master [data-installation="unknown"]').count(), 1);
     failResources = true; await page.locator('#extensions-refresh').click();

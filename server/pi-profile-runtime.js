@@ -13,6 +13,7 @@ function readProfileRuntime(manager, cwd, agentDir, sessionsRoot, raw = process.
         const root = path.dirname(file);
         if (input?.version !== 1 || !binding?.profileId || input.profileId !== binding.profileId
             || input.sessionId !== manager.getSessionId() || input.cwd !== cwd || manager.getCwd() !== cwd
+            || input.sessionPath !== undefined && input.sessionPath !== fs.realpathSync.native(manager.getSessionFile())
             || input.profileRoot !== path.join(root, 'data', binding.profileId)
             || input.sessionsRoot !== sessionsRoot) return null;
         safeFile(agentDir, ['pivane-profiles', 'data', binding.profileId, '.profile-root']);

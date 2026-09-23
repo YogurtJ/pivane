@@ -140,7 +140,7 @@ function mountProfileMemoryRoutes(router, { profiles, getAgentDir, bundlePath = 
             if (!profile) return res.json({ ...base, status: 'missing' });
             if (!profile.enabled || (kind === 'memories' && !profile.memory?.enabled)
                 || (kind === 'skills' && !profile.skills?.learnedEnabled)) return res.json({ ...base, status: 'disabled' });
-            const bundle = resolveBundle(bundlePath);
+            const bundle = await resolveBundle(bundlePath);
             if (!profileMemoryCapability({ bundlePath: bundle }).installed) return res.json({ ...base, status: 'unsupported', reason: 'Profile memory adapter is not installed' });
             const agentDir = await getAgentDir();
             if (!path.isAbsolute(agentDir) || fs.realpathSync.native(agentDir) !== agentDir || profile.id !== profileId)

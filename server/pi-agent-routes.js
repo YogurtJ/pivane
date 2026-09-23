@@ -1,4 +1,5 @@
 const express = require('express');
+const fs = require('node:fs');
 const path = require('path');
 const { randomUUID } = require('node:crypto');
 const { version: PI_VERSION } = require('../node_modules/@earendil-works/pi-coding-agent/package.json');
@@ -83,6 +84,7 @@ function createPiAgentGateway(options = {}) {
     const store = new PiSessionStore();
     const profiles = new (require('./pi-profile-registry').PiProfileRegistry)(store);
     store.profiles = profiles;
+    const profileMemory = new (require('./profile-memory/config').ProfileMemoryConfiguration)();
     const preferences = options.workspacePreferencesService || new WorkspacePreferencesService();
     const composer = new (require('./pi-composer-service').PiComposerService)(store);
     const files = new (require('./pi-file-service').PiFileService)(store);
@@ -136,7 +138,8 @@ function createPiAgentGateway(options = {}) {
         const manager = SessionManager.open(session.path);
         if (manager.getSessionId() !== sessionId) throw new Error('Native session identity changed');
         const context = await profiles.context(manager, cwd);
-        return { ...env, ...(context ? { PIVANE_AGENT_PROFILE_CONTEXT: JSON.stringify(context) } : {}) };
+        return { ...env, PIVANE_AGENT_PROFILE_CONTEXT: context ? JSON.stringify(context) : undefined,
+            ...await profileMemory.environment(context) };
     };
     const profileRoute = action => async (req, res) => {
         res.set('Cache-Control', 'no-store');
@@ -146,10 +149,14 @@ function createPiAgentGateway(options = {}) {
     router.get('/profiles', profileRoute(req => profiles.list(req.query.cwd)));
     router.put('/profiles', profileRoute(req => profiles.save(req.body)));
     router.put('/profiles/default', profileRoute(req => profiles.saveDefault(req.body)));
+    require('./profile-memory/management').mountProfileMemoryRoutes(router, { profiles,
+        getAgentDir: async () => fs.realpathSync.native((await require('./pi-session-store').getSdk()).getAgentDir()),
+        bundlePath: async () => (await profileMemory.snapshot()).bundlePath });
     const agentThreads = require('./pi-agent-threads').mountAgentThreads(router, { store, supervisor, settingsService, access,
         isSuspended: () => maintenance.locked });
 
-    router.get('/status', (req, res) => {
+    router.get('/status', async (req, res) => {
+        const memoryConfiguration = await profileMemory.snapshot();
         res.json({
             ok: true,
             version: PI_VERSION,
@@ -163,6 +170,7 @@ function createPiAgentGateway(options = {}) {
             nativeResources: true,
             agentThreads: true,
             agentProfiles: true,
+            profileMemory: memoryConfiguration.capability,
             agentTaskResults: true,
             taskProgress: true,
             extensionAssistant: true,

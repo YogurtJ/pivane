@@ -1,23 +1,66 @@
-# Assistant Profiles (Backend)
+# 可选助手档案
 
-This backend provides optional, session-bound assistant profiles. It does not install or activate a memory provider by itself. Memory browsing and agent memory tools require the separate memory runtime integration. No existing session is migrated or assigned a profile.
+助手档案用于保存名称、行为说明（SOUL）、记忆和已学习技能设置。它是可选能力：普通项目可以选择“无身份”，继续使用原有项目指令、工具和已配置 Skills。一个档案可以用于多个项目，学科或任务方式不必分别创建档案。
 
-## Saved Profiles
+本功能属于未发布源码候选。实际实例需完成安装与安全切换；已安装文件、服务支持以及会话已加载是不同状态。
 
-`GET /api/pi/profiles` lists profiles with an opaque revision. Add `?cwd=<absolute-project-path>` to resolve a canonical project path and its default; without `cwd`, both fields are null. `PUT /api/pi/profiles` accepts `{expectedRevision,profile:{id?,name,description,soul,enabled,memory?,skills?}}`. A missing ID creates a new opaque ID; an existing ID updates that record. `PUT /api/pi/profiles/default` accepts `{cwd,profileId,expectedRevision}` where `profileId:null` clears the default. A default can reference only an enabled record. Concurrent or stale writes return HTTP 409; reread before editing. All three endpoints require the existing workspace access/Origin rules and return `Cache-Control: no-store`.
+## 使用入口
 
-Profiles are limited to 50. Names have at most 80 characters, descriptions 500, and SOUL 32 KiB UTF-8. New profiles default to `memory:{enabled:false,autoLearn:false}` and `skills:{learnedEnabled:true}` when omitted. Enabling memory does not secretly enable learning. Disabling a profile retains its data but prevents new bindings and excludes it from new worker context. There is no deletion API in v1.
+在 **设置 → 助手身份** 创建或编辑档案。名称最多80字符，描述500字符，行为说明最多32 KiB UTF-8；最多保存50个档案。新档案的记忆和自动学习默认关闭，已学习技能默认允许使用。记忆与技能设置独立，开启记忆不会自动开启学习。
 
-The private registry is `<Pi agentDir>/pivane-profiles/profiles.json`; profile-owned data belongs under `data/<id>/`. Back up the whole Pi identity directory before migration or deployment changes. API clients supply IDs, not storage paths. A profile save or default change reserves the native settings mutation slot until completion, appears as `profilesBusy` in `/api/pi/activity`, and prevents maintenance while pending. SOUL is profile-level behavioral guidance; durable factual memory and changing project study notes should be kept in their respective stores.
+选择项目后，可以设置该项目**新线程**的默认身份。新建线程按钮使用项目默认；旁边的箭头可为一次新建选择其他已启用档案或“无身份”。已有线程的归属不随项目默认变化；要切换身份，请另建线程。旧会话不会自动绑定档案。
 
-## Sessions and Runtime
+关闭档案保留原有数据，使它不能用于新建或新加载。已运行会话保留其已加载配置，保存不会打断任务。详情页分别核对保存的档案和当前运行实例确认加载的ID、版本；配置已变化时需要空闲后重开运行实例。仅刷新网页可能继续连接原来的 worker；资源重载不能更新进程环境中的设置。
 
-`POST /api/pi/sessions` accepts optional `profileId`. Omission uses the canonical project's current default, explicit null selects no profile, and an unavailable ID fails without fallback. Project defaults affect only subsequent creations. Native custom entries of type `pivane-agent-profile` contain `{version:1,sessionId,profileId}`; a valid single entry must match the actual native session ID. A missing, malformed, copied, or conflicting entry never activates a profile. `session.agentProfile` is null or `{id,name,enabled,available}`; a disabled or missing bound profile remains identified but unavailable. The extension-assistant session creation path explicitly selects none. Agent task threads use the destination project's default, not their source thread's profile. Ephemeral sessions and side chats have no profile memory eligibility in v1.
+档案的已保存数据入口提供记忆与技能的只读浏览。数据可读不表示当前会话已加载。需要修改或忘记记忆时，可让已启用该档案的 Agent 使用记忆工具；首版不提供网页直接编辑记忆或删除整个档案的功能。
 
-Web forks explicitly attach the source identity under the new native ID, including early and reply-end forks; an unavailable source profile remains bound but unavailable. JSONL imports keep their source entries for native fidelity but copied markers do not match the imported new ID and confer no profile. Imports are no-profile. There is no mid-thread profile switch.
+自动学习只有在服务确认适配组件已安装、并配置专用复盘模型时才能新启用。已有设置为开启但支持暂时失效时，界面保留其保存值并允许关闭，不会声称复盘正在正常执行。费用、频率、检索限额和错误状态见[记忆适配](PROFILE_MEMORY.md)。
 
-The Supervisor verifies the native session file, cwd, ID and binding before spawning a worker. An enabled profile yields `PIVANE_AGENT_PROFILE_CONTEXT`, a credential-free JSON object with `version`, `profileId`, `sessionId`, `cwd`, `profileRoot`, `sessionsRoot`, `memory:{enabled,autoLearn}` and `skills:{learnedEnabled}`. Absent/unavailable bindings omit it. The managed extension independently validates this context against the native session and registry before appending SOUL to Pi's existing system prompt at `before_agent_start`. It does not replace Pi's base prompt, project instructions, installed skills, or identity directory. Normal session JSONL remains the conversation authority.
+## 数据与会话归属
 
-`GET /api/pi/status` advertises `agentProfiles:true`. The existing WebSocket `get_runtime_configuration` response includes `agentProfile:{saved,savedProfileRevision,loadedProfileId,loadedProfileRevision,loadedConfirmed,matchesSavedProfile}`. `saved` is the current registry projection; per-profile revisions distinguish an edited SOUL or flags from the worker's acknowledged loaded version, even when its profile ID has not changed. `loadedConfirmed` distinguishes an actual extension acknowledgment from an unknown startup/reload state. Saving settings does not silently restart a running worker. Reopen/restart the runtime to apply process-environment changes; a resource reload alone cannot refresh its environment. A changed or disabled profile fails closed on a fresh worker. Memory runtime/provider status is a separate capability, not inferred from `agentProfiles`.
+私有档案注册表位于 `<Pi agentDir>/pivane-profiles/profiles.json`，档案数据位于 `data/<id>/`。部署或迁移前备份完整 Pi 身份目录。SOUL 保存协作方式，长期记忆保存稳定事实，动态学习进度和知识收藏仍以项目资料为准。
 
-See [architecture](development/AGENT_PROFILES.md) for the binding and integration boundary. The general API index and documentation manifest are updated during integrated assembly.
+会话归属通过 Pi 原生 `pivane-agent-profile` custom entry 保存，数据为 `{version:1,sessionId,profileId}`，必须匹配实际原生会话ID。缺失、无效、复制的旧ID或当前ID冲突标记不启用档案。网页分叉为新会话显式继承源档案；导入保留原生历史，但不会仅凭复制的旧标记获得档案，导入结果仍为无身份。
+
+扩展助手明确使用无身份；Agent任务线程使用目标项目的新线程默认值，不自动继承来源线程档案。首版临时线程和侧聊不参与档案记忆或自动学习。档案划分是应用的数据归属规则，不是操作系统工具沙箱。
+
+## 记忆组件安装与实例配置
+
+Pivane 使用独立的 pi-hermes-memory 适配组件。按[安装说明](PROFILE_MEMORY.md)取得已验证版本及原生 SQLite 依赖后，配置实际 Pi 身份目录中的 `pivane-profiles/runtime.json`：
+
+```json
+{
+  "version": 1,
+  "bundlePath": "/absolute/installation/package/profile-memory-bundle.mjs",
+  "reviewModel": {
+    "provider": "your-provider",
+    "modelId": "your-review-model"
+  }
+}
+```
+
+`bundlePath` 为已核对的独立安装 bundle 的绝对路径；`reviewModel` 必须选自当前 Pi 实际模型目录，省略或设置为 null 时不启用自动复盘支持。不要把凭据写入这个文件；模型认证继续由 Pi 管理。此配置只读加载，不通过浏览器接收任意执行文件路径。
+
+服务核对 bundle 和本机 SQLite 后，通过 `/api/pi/status.profileMemory` 返回 `{installed,autoLearn}`。`autoLearn` 表示具备适配支持且已配置模型，不证明模型供应商请求成功；实际调用还会检查模型可用性和预算。配置读取失败不会回退到高价聊天模型。
+
+仅符合条件的持久会话会获得插件环境参数。无档案会话会清除这些参数。不要再全局启用上游默认扩展，其历史扫描范围不同于这里的档案适配。扩展精选区显示“档案适配已安装”时，表示独立组件已核对，不代表原版插件已全局加载。
+
+## 接口契约
+
+所有接口使用现有工作台身份／Origin校验并返回 `Cache-Control: no-store`。档案保存与默认值变更参与原生设置互斥、维护空闲判断和停机等待；`/api/pi/activity.profilesBusy` 表示保存尚未完成。
+
+| 接口 | 行为 |
+|---|---|
+| `GET /api/pi/profiles?cwd` | 返回档案、opaque revision、规范项目路径和项目默认身份；不传 cwd 时项目和默认值为 null |
+| `PUT /api/pi/profiles` | `{expectedRevision,profile:{id?,name,description,soul,enabled,memory?,skills?}}`；无ID创建，有ID更新；冲突409 |
+| `PUT /api/pi/profiles/default` | `{cwd,profileId,expectedRevision}`；null清除默认，仅允许已启用的档案 |
+| `POST /api/pi/sessions` | 原接口增加可选 profileId；省略使用项目默认，显式null创建无身份线程，不可用ID失败而非回退 |
+| `GET /api/pi/profiles/:id/memory` | `kind=memories或skills`，可选query、offset；只读分页，状态区分missing、disabled、unsupported、ready、error |
+
+结果不确定时先刷新核对，不自动重试创建。界面保留编辑草稿和项目默认选择；如果刷新后发现同名记录，需核对保存结果再继续，避免重复创建。
+
+`session.agentProfile` 为 null 或 `{id,name,enabled,available}`，只描述保存的身份。WebSocket `get_runtime_configuration.agentProfile` 返回 `saved`、`savedProfileRevision`、`loadedProfileId`、`loadedProfileRevision`、`loadedConfirmed`、`matchesSavedProfile`，区分身份相同但SOUL／设置版本已变化的情况。缺少确认时保持未验证。
+
+Supervisor在启动前核对原生会话身份，向符合条件的worker提供不含凭据的 `PIVANE_AGENT_PROFILE_CONTEXT`，包括version、profileId、sessionId、cwd、sessionPath、profileRoot、sessionsRoot和memory／skills开关。扩展再次验证会话归属，并将SOUL追加到Pi现有提示词；原生会话JSONL仍是唯一对话事实来源。
+
+模块与持久化边界见[档案架构](development/AGENT_PROFILES.md)。

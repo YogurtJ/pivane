@@ -233,6 +233,7 @@ class PiProfileRegistry {
         privateFiles.privateDirectory(profileRoot);
         if (process.platform !== 'win32') fs.chmodSync(profileRoot, 0o700);
         return { version: 1, profileId: profile.id, sessionId: binding.sessionId, cwd,
+            sessionPath: fs.realpathSync.native(manager.getSessionFile()),
             profileRoot, sessionsRoot: path.join(fs.realpathSync.native(agentDir), 'sessions'),
             memory: { enabled: profile.memory.enabled, autoLearn: profile.memory.autoLearn },
             skills: { learnedEnabled: profile.skills.learnedEnabled } };

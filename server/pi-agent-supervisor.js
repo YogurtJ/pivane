@@ -59,7 +59,8 @@ class AgentWorker extends EventEmitter {
         this.contextCapture = null;
         this.client = new PiRpcClient({ ...options,
             extraArgs: [...(options.extraArgs || []), ...(options.profile === 'side-chat' ? [] : ['-e', path.join(__dirname, 'pi-web-session-extension.ts')])],
-            env: { PIVANE_AGENT_PROFILE_CONTEXT: undefined, ...options.env,
+            env: { PIVANE_AGENT_PROFILE_CONTEXT: undefined, PIVANE_HERMES_BUNDLE: undefined,
+                PIVANE_PROFILE_MEMORY_REVIEW_MODEL: undefined, ...options.env,
                 ...(options.profile === 'side-chat' ? {} : { PI_WEB_NAVIGATION_TOKEN: this.navigationToken }) }
         });
         this.subscribers = new Set();

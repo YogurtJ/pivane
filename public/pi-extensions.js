@@ -61,6 +61,7 @@
     }
     function installation(entry) {
         if (inventoryState !== 'ready') return { state: inventoryState, label: inventoryState === 'loading' ? text('正在核对…', 'Checking…') : text('状态待核对', 'Status unknown') };
+        if (entry.id === 'pi-hermes-memory' && inventory.profileMemoryInstalled) return { state: 'installed', label: text('档案适配已安装', 'Profile adapter installed') };
         const matches = inventory.packages.filter(item => identity(item.source) === entry.source || identity(item.source) === `github:${repositories[entry.id]}`);
         const installed = matches.filter(item => item.installed === true);
         if (installed.length) {
@@ -90,7 +91,7 @@
             const result = await host.apiFetch(`/api/pi/settings/native/resources?cwd=${encodeURIComponent(cwd)}&scope=${scope}`);
             if (!valid()) return;
             if (!Array.isArray(result?.packages) || result.scope !== scope || !result.packages.every(item => typeof item.source === 'string' && typeof item.installed === 'boolean')) throw new Error(text('安装清单格式无效。', 'Invalid installation inventory.'));
-            inventory = result; inventoryState = 'ready';
+            inventory = { ...result, profileMemoryInstalled: status.profileMemory?.installed === true }; inventoryState = 'ready';
             feedback.textContent = scope === 'project' && !result.trust?.effective
                 ? text('项目尚未受信任，仅能确认全局安装；其他项需进一步核对。', 'The project is not trusted. Only global installations can be confirmed; other items need checking.')
                 : text('按所选范围的登记来源核对；已安装不代表当前会话已加载。本地复制的技能需助手核对。', 'Checked against registered sources in the selected scope. Installed does not mean loaded in this session; manually copied skills need an assistant check.');
@@ -101,9 +102,12 @@
         } finally { if (valid()) renderCards(); }
     }
     function assistant(entry) {
-        const need = entry ? text(
+        let need = entry ? text(
             `我想了解并配置 ${entry.name}。来源：${entry.url}${entry.source ? `，Pi 包来源：${entry.source}` : ''}。用途：${text(...entry.description)} 示例：${text(...entry.example)} 请先只读检查已有安装、当前版本、许可、依赖和平台兼容性，说明安装范围与方案，等我确认后再安装；不要重复安装已有能力。安装后分别核对文件、依赖与当前会话加载状态。`,
             `I want to learn about and configure ${entry.name}. Source: ${entry.url}${entry.source ? `; Pi package source: ${entry.source}` : ''}. Purpose: ${text(...entry.description)} Example: ${text(...entry.example)} First inspect existing installations, versions, licenses, dependencies and platform compatibility read-only. Explain the scope and plan, then wait for my confirmation before installing. Avoid duplicate installations. After installation, check files, dependencies and current-session loading separately.`) : '';
+        if (entry?.id === 'pi-hermes-memory' && inventory?.profileMemoryInstalled) need += text(
+            '\nPivane 已安装独立的档案记忆适配组件。请先检查助手身份和实际加载状态；不要另行全局启用上游默认扩展，以免扩大历史索引范围。',
+            '\nPivane already has the separate profile memory adapter installed. Inspect assistant profiles and actual loading first; do not additionally enable the upstream default extension globally, which would broaden history indexing.');
         window.dispatchEvent(new CustomEvent('pi:extension-assistant', { detail: { need, scope: document.getElementById('extensions-scope')?.value || 'global' } }));
     }
     function mountExplore(root) {
