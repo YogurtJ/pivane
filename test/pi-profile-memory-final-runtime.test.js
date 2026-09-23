@@ -90,6 +90,19 @@ test('active session beyond history page and 8 MiB retains tools while recall re
     assert.ok(tools.has('memory_add'));
     assert.ok(tools.has('skill_manage'));
     assert.equal((await tools.get('memory_add').execute('call', { target: 'memory', content: 'large-active-fact' }, undefined, undefined, ctx)).details.success, true);
+    const pendingFile = path.join(f.root, '.pivane-memory-index-memory.pending');
+    fs.writeFileSync(pendingFile, JSON.stringify({ version: 1, target: 'memory', before: null,
+        after: 'a'.repeat(64), old: [], next: [] }), { mode: 0o600 });
+    try {
+        await assert.rejects(tools.get('memory_search').execute('call', { query: 'large-active-fact', target: 'memory' },
+            undefined, undefined, ctx), /index needs repair/);
+        await assert.rejects(tools.get('memory_search').execute('call', { query: 'large-active-fact' },
+            undefined, undefined, ctx), /index needs repair/);
+        await assert.rejects(tools.get('memory_add').execute('call', { target: 'memory', content: 'blocked' },
+            undefined, undefined, ctx), /index needs repair/);
+    } finally { fs.unlinkSync(pendingFile); }
+    assert.ok((await tools.get('memory_search').execute('call', { query: 'large-active-fact', target: 'memory' },
+        undefined, undefined, ctx)).details.count);
     const result = await tools.get('session_search').execute('call', { query: 'older' }, undefined, undefined, ctx);
     assert.equal(result.details.coverage.initialSweepComplete, false);
     for (let i = 0; i < 28; i++) await events.get('agent_settled')({}, ctx);

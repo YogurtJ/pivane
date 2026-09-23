@@ -7,6 +7,7 @@ const { safeFile: selectedFile } = require('./pi-native-service');
 const { safeFile: readFile } = require('./profile-memory/management');
 const { createMutationLock } = require('./profile-memory/mutation-lock');
 const { profileMemoryCapability } = require('./profile-memory/management');
+const { documentIndex, pendingDocumentIndex } = require('./profile-memory/document-index');
 const { normalizedMemory, profileRevision } = require('./pi-profile-registry');
 const { descriptorPathSync } = require('./pi-file-descriptor');
 const io = require('./pi-file-io');
@@ -32,12 +33,13 @@ function location(agentDir, id, create) {
     if (fs.existsSync(root) && (fs.realpathSync.native(root) !== root || !fs.lstatSync(root).isDirectory())) throw fail('Unsafe profile data directory');
     return root;
 }
-function snapshot(root, target, profile, generation) {
+function snapshot(root, target, profile, generation, installed) {
     const file = path.join(root, target === 'user' ? 'USER.md' : 'MEMORY.md');
     const data = readFile(file);
     const content = data?.text ?? '';
     return { version: 1, profileId: profile.id, target, status: 'ready', content,
         revision: revision(data, generation), profileRevision: profileRevision(profile),
+        indexSynced: !pendingDocumentIndex(root, target) && Boolean(installed && profile.memory?.enabled),
         usage: { used: content ? content.trim().split('\n§\n').map(part => part.trim()).filter(Boolean).join('\n§\n').length : 0,
             limit: normalizedMemory(profile.memory)[target === 'user' ? 'userCharLimit' : 'memoryCharLimit'], unit: 'characters' } };
 }
@@ -89,33 +91,80 @@ function mountProfileDocumentRoutes(router, { profiles, getAgentDir, bundlePath 
                     if (write) throw fail('Profile document is disabled', 409);
                     return unavailable(id, target, 'disabled', profile);
                 }
-                if (target === 'memory' && !profileMemoryCapability({ bundlePath: await (typeof bundlePath === 'function' ? bundlePath() : bundlePath) }).installed) {
+                const bundle = await (typeof bundlePath === 'function' ? bundlePath() : bundlePath);
+                const installed = profileMemoryCapability({ bundlePath: bundle }).installed;
+                if (target === 'memory' && !installed) {
                     if (write) throw fail('Profile memory adapter is unavailable', 409);
                     return unavailable(id, target, 'unsupported', profile);
                 }
                 const agentDir = await getAgentDir();
                 const root = location(agentDir, id, write);
                 if (!write && !fs.existsSync(root)) return { version: 1, profileId: id, target, status: 'ready', content: '',
-                    revision: revision(null, 0), profileRevision: profileRevision(profile),
+                    revision: revision(null, 0), profileRevision: profileRevision(profile), indexSynced: Boolean(installed && profile.memory?.enabled),
                     usage: { used: 0, limit: normalizedMemory(profile.memory)[target === 'user' ? 'userCharLimit' : 'memoryCharLimit'], unit: 'characters' } };
                 const lock = createMutationLock(root);
-                if (!write) return lock.inspect(generation => snapshot(root, target, profile, generation));
+                if (!write) return lock.inspect(generation => snapshot(root, target, profile, generation, installed));
                 const result = await lock.run(undefined, async generation => {
                     const latest = await profiles.getProfile(id);
-                    const current = snapshot(root, target, latest, generation);
+                    const current = snapshot(root, target, latest, generation, installed);
                     if (current.revision !== req.body.expectedRevision || current.profileRevision !== req.body.expectedProfileRevision)
                         throw fail('Document or profile changed; reload before saving', 409);
                     validateContent(req.body.content, current.usage.limit);
                     const file = path.join(root, target === 'user' ? 'USER.md' : 'MEMORY.md');
                     const old = readFile(file);
-                    publish(root, target, req.body.content, old?.revision);
-                    return { ok: true };
+                    if (pendingDocumentIndex(root, target) && (!latest.memory.enabled || !installed))
+                        throw fail('Document search index is pending repair', 409);
+                    const index = latest.memory.enabled && installed ? await documentIndex(root, target, bundle, old, req.body.content) : null;
+                    let published = false, marked = false;
+                    try {
+                        if (index?.repairing) {
+                            index.sync();
+                            return { ok: true, documentSaved: true, indexSynced: true };
+                        }
+                        if (index) { index.mark(); marked = true; }
+                        publish(root, target, req.body.content, old?.revision);
+                        published = true;
+                        if (index) { index.sync(); marked = false; }
+                        return installed && latest.memory.enabled
+                            ? { ok: true, documentSaved: true, indexSynced: true }
+                            : { documentSaved: true, indexSynced: false, indexStatus: latest.memory.enabled ? 'unsupported' : 'disabled', httpStatus: 202 };
+                    } catch (error) {
+                        if (!index && !published) {
+                            let actual;
+                            try { actual = readFile(file)?.revision ?? null; } catch { actual = undefined; }
+                            if (actual === createHash('sha256').update(req.body.content).digest('hex'))
+                                return { documentSaved: true, indexSynced: false, indexStatus: latest.memory.enabled ? 'unsupported' : 'disabled',
+                                    error: 'Document saved, but its final file checks failed', httpStatus: 503 };
+                            if (actual !== old?.revision && !(actual === null && !old))
+                                return { documentSaved: 'unknown', indexSynced: false,
+                                    error: 'Document publication is uncertain; inspect its current revision', httpStatus: 503 };
+                        }
+                        if (marked && !published) {
+                            // Replacement can succeed before a later descriptor/fsync check fails.
+                            // Keep the search gate unless the old bytes are still verified.
+                            let actual;
+                            try { actual = readFile(file)?.revision ?? null; } catch { actual = undefined; }
+                            if (actual === index.plan.after) published = true;
+                            else if (actual === index.plan.before) { index.cancel(); marked = false; }
+                            else return { documentSaved: 'unknown', indexSynced: false, indexStatus: 'pending',
+                                error: 'Document publication is uncertain; inspect its current revision before repairing the index', httpStatus: 503 };
+                        }
+                        if (!published || !index) throw error;
+                        let currentDocument;
+                        try { currentDocument = snapshot(root, target, latest, generation + 1, installed); }
+                        catch { return { documentSaved: 'unknown', indexSynced: false, indexStatus: 'pending',
+                            error: 'Document was published but its current revision cannot be verified', httpStatus: 503 }; }
+                        return { documentSaved: true, indexSynced: false, indexStatus: 'pending',
+                            error: 'Document saved, but memory search indexing needs repair', document: currentDocument, httpStatus: 503 };
+                    } finally { index?.close(); }
                 });
                 // A write reserves a generation before publication; return its actual post-write revision.
-                return { ...result, ...await lock.inspect(generation => snapshot(root, target, profile, generation)) };
+                if (result.httpStatus === 503) return result;
+                return { ...result, ...await lock.inspect(generation => snapshot(root, target, profile, generation, installed)) };
             };
             const result = write ? await profiles.reserve(work) : await work();
-            res.json(result);
+            const { httpStatus, ...body } = result;
+            res.status(httpStatus || 200).json(body);
         } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : 'Profile document unavailable' }); }
     };
     router.get('/profiles/:id/documents', handler(false));

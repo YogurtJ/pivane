@@ -8,6 +8,7 @@ const io = require('../pi-file-io');
 const { descriptorPathSync, assertDescriptorBackend } = require('../pi-file-descriptor');
 const { reviewModelConfig } = require('./auto-learn');
 const MAX_FILE = 2 * 1024 * 1024;
+const MAX_SKILL_SCAN = 5000;
 const BUNDLE_SHA256 = '0b2d8dae469077d615f46cb7d96d408663dc66980748718441d137293f9f9faa';
 const hash = data => createHash('sha256').update(data).digest('hex');
 const stamp = s => [s.dev, s.ino, s.mode, s.size, s.mtimeNs, s.ctimeNs].map(String).join(':');
@@ -69,24 +70,38 @@ function listMemories(root, projects) {
     }
     return { items, versions };
 }
-function listSkills(root, projects) {
-    const items = [], versions = [];
-    for (const dir of [path.join(root, 'skills'), ...projects.map(p => path.join(p, 'skills'))]) {
+function skillFiles(root, projects) {
+    const files = [];
+    let scanned = 0;
+    for (const [dir, scope, projectKey] of [[path.join(root, 'skills'), 'profile', null],
+        ...projects.map(p => [path.join(p, 'skills'), 'project', path.basename(p)])]) {
         if (!safeDir(dir)) continue;
         const entries = fs.readdirSync(dir, { withFileTypes: true });
-        if (entries.length > 1000) throw new Error('Profile skill listing exceeds limit');
+        scanned += entries.length;
+        if (scanned > MAX_SKILL_SCAN) throw new Error('Profile skill listing exceeds limit');
         for (const entry of entries) {
             if (!entry.isDirectory()) continue;
             const skillDir = path.join(dir, entry.name);
             if (!safeDir(skillDir)) continue;
-            const file = path.join(skillDir, 'SKILL.md'), data = safeFile(file);
-            if (!data) continue;
-            const front = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(data.text)?.[1] || '';
-            const description = /^description:\s*(.+)$/m.exec(front)?.[1]?.replace(/^['"]|['"]$/g, '') || '';
-            const name = /^name:\s*(.+)$/m.exec(front)?.[1]?.replace(/^['"]|['"]$/g, '') || entry.name;
-            items.push({ id: hash(file), kind: 'skill', name, description, updatedAt: data.updatedAt });
-            versions.push(`${file}:${data.revision}`);
+            files.push({ file: path.join(skillDir, 'SKILL.md'), scope, projectKey, fallbackName: entry.name });
         }
+    }
+    return files;
+}
+function skillItem(candidate, data) {
+    const front = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(data.text)?.[1] || '';
+    const description = /^description:\s*(.+)$/m.exec(front)?.[1]?.replace(/^['"]|['"]$/g, '') || '';
+    const name = /^name:\s*(.+)$/m.exec(front)?.[1]?.replace(/^['"]|['"]$/g, '') || candidate.fallbackName;
+    return { id: hash(candidate.file), name, description, scope: candidate.scope, source: 'profile-owned',
+        ...(candidate.projectKey ? { projectKey: candidate.projectKey } : {}) };
+}
+function listSkills(root, projects) {
+    const items = [], versions = [];
+    for (const candidate of skillFiles(root, projects)) {
+        const data = safeFile(candidate.file);
+        if (!data) continue;
+        items.push({ ...skillItem(candidate, data), kind: 'skill', updatedAt: data.updatedAt });
+        versions.push(`${candidate.file}:${data.revision}`);
     }
     return { items, versions };
 }
@@ -164,6 +179,30 @@ function mountProfileMemoryRoutes(router, { profiles, getAgentDir, bundlePath = 
             const revision = hash(listing.versions.sort().join('\n'));
             return res.json({ ...base, status: 'ready', revision, items: matches.slice(rawOffset, rawOffset + 50), hasMore: matches.length > rawOffset + 50 });
         } catch { return res.json({ ...base, status: 'error', reason: 'Profile data cannot be read' }); }
+    });
+    router.get('/profiles/:id/skills/:skillId', async (req, res) => {
+        res.set('Cache-Control', 'no-store');
+        const profileId = req.params.id, skillId = req.params.skillId;
+        if (!/^[a-f0-9-]{36}$/.test(profileId) || !/^[a-f0-9]{64}$/.test(skillId))
+            return res.status(400).json({ error: 'Invalid profile or skill ID' });
+        const base = { version: 1, profileId };
+        try {
+            const profile = await profiles.getProfile(profileId);
+            if (!profile) return res.json({ ...base, status: 'missing' });
+            if (!profile.enabled || !profile.skills?.learnedEnabled) return res.json({ ...base, status: 'disabled' });
+            const bundle = await resolveBundle(bundlePath);
+            if (!profileMemoryCapability({ bundlePath: bundle }).installed) return res.json({ ...base, status: 'unsupported' });
+            const agentDir = await getAgentDir();
+            if (!path.isAbsolute(agentDir) || fs.realpathSync.native(agentDir) !== agentDir || profile.id !== profileId)
+                throw new Error('Invalid profile identity');
+            const root = path.join(agentDir, 'pivane-profiles', 'data', profileId);
+            if (!safeDir(root)) return res.json({ ...base, status: 'missing' });
+            const candidate = skillFiles(root, projectRoots(root)).find(entry => hash(entry.file) === skillId);
+            if (!candidate) return res.json({ ...base, status: 'missing' });
+            const data = safeFile(candidate.file);
+            if (!data) return res.json({ ...base, status: 'missing' });
+            return res.json({ ...base, status: 'ready', item: { ...skillItem(candidate, data), content: data.text, revision: data.revision } });
+        } catch { return res.status(409).json({ error: 'Profile skill cannot be read safely' }); }
     });
 }
 module.exports = { mountProfileMemoryRoutes, profileMemoryCapability, safeFile };
