@@ -218,6 +218,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const mobileSheet = (() => {
         const dialog = elements.mobileDialog;
+        const composer = elements.input.closest('.pi-composer');
+        let releaseFrame = 0;
+        const releasePointerSummary = () => {
+            cancelAnimationFrame(releaseFrame); releaseFrame = 0;
+            delete composer.dataset.pointerSummary;
+        };
+        // Blurring the composer can move buttons above it before pointerup.
+        // Keep the focused summary's space until the original click is delivered.
+        document.addEventListener('pointerdown', event => {
+            if (!event.isPrimary) return;
+            releasePointerSummary();
+            if (innerWidth <= 680 && event.button === 0 && composer.matches(':focus-within') && !composer.contains(event.target)) {
+                composer.dataset.pointerSummary = 'true';
+            }
+        }, true);
+        document.addEventListener('click', () => {
+            if (composer.dataset.pointerSummary) releaseFrame = requestAnimationFrame(releasePointerSummary);
+        }, true);
+        document.addEventListener('pointercancel', releasePointerSummary, true);
+        window.addEventListener('blur', releasePointerSummary);
+        window.addEventListener('resize', releasePointerSummary);
         dialog.setAttribute('aria-label', `${translateUi('模型')} · ${translateUi('上下文占用')}`);
         const head = document.createElement('div'); head.className = 'pi-mobile-sheet-head';
         const heading = document.createElement('strong'); heading.textContent = dialog.getAttribute('aria-label');

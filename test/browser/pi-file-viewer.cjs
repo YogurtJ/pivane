@@ -114,9 +114,10 @@ async function run(browser, viewport) {
     if (process.env.PI_FILE_LAYOUT_BASELINE) {
         await page.screenshot({ path: path.join(require('node:os').tmpdir(), `pi-file-panel-${viewport.width}-before.png`) }); await context.close(); return;
     }
-    // The project navigation adds one toolbar. Preserve the reader on short
-    // phones while keeping source selection and file controls reachable.
-    assert.ok(geometry.fraction >= (geometry.paneHeight < 620 ? .58 : .66), 'full text retains usable space beneath file navigation');
+    // Fixed-height touch controls reserve at most 240px. Keep at least 58%
+    // for the reader without a discontinuous threshold as panel height changes.
+    assert.ok(geometry.fraction >= .58 && geometry.paneHeight - geometry.bodyHeight <= 240,
+        'full text retains usable space beneath file navigation');
     assert.ok(Math.abs(geometry.bottomGap) <= 2, 'reader fills the remaining panel height');
     assert.equal(await page.locator('#pi-changes-tab').textContent(), '文件');
     assert.equal(await page.locator('#pi-changes-file-list').evaluate(n => n.open), false, 'file navigation starts collapsed on every viewport');

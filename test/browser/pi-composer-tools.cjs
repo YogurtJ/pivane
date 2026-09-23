@@ -104,7 +104,7 @@ async function run(browser, viewport) {
         await page.locator('#settings-manage-templates').click();
     };
     assert.equal(await page.locator('#pi-composer-dialog, #pi-composer-tools-button, #pi-composer-tabs').count(), 0);
-    assert.equal(await page.locator('.pi-composer > .pi-composer-actions:first-child > button:visible').count(), 1, 'one plus replaces the extra composer buttons');
+    assert.equal(await page.locator('.pi-composer-add > button:visible').count(), 1, 'one plus replaces the extra composer buttons');
     assert.equal(await page.locator('#pi-attach-button').isVisible(), false);
     assert.equal(await page.locator('#pi-schedule-button').isVisible(), false);
     await input.fill('Keep this draft'); await plus.click();

@@ -211,6 +211,9 @@ async function run(browser, viewport, historyEnabled = true) {
     await page.waitForFunction(() => !document.querySelector('#pi-workflow-dialog').open);
     assert.equal(jobs.length, 1);
     assert.equal(await page.locator('#pi-input').inputValue(), '');
+    // Blurring this focused mobile composer must not move the banner away
+    // between pointerdown and pointerup: one real click opens the list.
+    await page.locator('#pi-composer-add-button').focus();
     await page.locator('#pi-deferred-open').click();
     await page.locator('[data-workflow-action="edit"]').click();
     await page.locator('#pi-workflow-message').fill('修改后的延迟消息');

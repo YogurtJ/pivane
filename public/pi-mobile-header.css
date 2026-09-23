@@ -72,6 +72,7 @@
 
     .pi-composer { position: relative; flex-wrap: wrap; column-gap: 4px; row-gap: 0; }
     .pi-composer:focus-within .pi-mobile-composer-summary,
+    .pi-composer[data-pointer-summary="true"] .pi-mobile-composer-summary,
     .pi-composer[data-running="true"] .pi-mobile-composer-summary { display: flex; }
     .pi-mobile-composer-summary {
         flex: 0 0 100%;

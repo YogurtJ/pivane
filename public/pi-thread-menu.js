@@ -23,6 +23,9 @@
             document.addEventListener('scroll', event => {
                 // A focus scroll queued before opening can arrive after the menu appears.
                 if (event.target === document && this.viewportScroll?.x === scrollX && this.viewportScroll?.y === scrollY) return;
+                // A sibling transcript can scroll when the mobile composer shrinks;
+                // it does not move this menu's anchor and must not dismiss the menu.
+                if (event.target !== document && !this.ancestorScroll?.has(event.target)) return;
                 const before = this.ancestorScroll?.get(event.target);
                 if (before && event.target.scrollLeft === before.x && event.target.scrollTop === before.y) return;
                 if (!this.element.contains(event.target)) this.close(false);
