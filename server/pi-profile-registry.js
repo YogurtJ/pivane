@@ -56,6 +56,10 @@ function validateProfile(input, previous) {
         skills: { learnedEnabled: skills.learnedEnabled ?? true } };
 }
 
+function profileRevision(profile) {
+    return profile ? createHash('sha256').update(JSON.stringify(profile)).digest('hex') : null;
+}
+
 class PiProfileRegistry {
     constructor(store) { this.store = store; }
 
@@ -167,4 +171,4 @@ class PiProfileRegistry {
     }
 }
 
-module.exports = { PiProfileRegistry, readRegistry };
+module.exports = { PiProfileRegistry, readRegistry, profileRevision };

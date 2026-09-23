@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { safeFile } = require('./pi-native-service');
-const { readRegistry } = require('./pi-profile-registry');
+const { readRegistry, profileRevision } = require('./pi-profile-registry');
 const { readProfileBinding } = require('./pi-profile-state');
 
 function readProfileRuntime(manager, cwd, agentDir, sessionsRoot, raw = process.env.PIVANE_AGENT_PROFILE_CONTEXT) {
@@ -20,7 +20,7 @@ function readProfileRuntime(manager, cwd, agentDir, sessionsRoot, raw = process.
         if (!record || JSON.stringify(input.memory) !== JSON.stringify({ enabled: record.memory.enabled, autoLearn: record.memory.autoLearn })
             || JSON.stringify(input.skills) !== JSON.stringify({ learnedEnabled: record.skills.learnedEnabled })
             || typeof record.soul !== 'string' || Buffer.byteLength(record.soul) > 32 * 1024) return null;
-        return { context: input, soul: record.soul };
+        return { context: input, soul: record.soul, revision: profileRevision(record) };
     } catch { return null; }
 }
 
@@ -31,7 +31,8 @@ function registerAgentProfile(pi, getAgentDir) {
         loaded = ctx.mode === 'rpc' && process.env.PI_WEB_NAVIGATION_TOKEN
             ? readProfileRuntime(ctx.sessionManager, ctx.cwd, getAgentDir(), path.join(fs.realpathSync.native(getAgentDir()), 'sessions')) : null;
         if (ctx.mode === 'rpc' && process.env.PI_WEB_NAVIGATION_TOKEN) ctx.ui.notify(JSON.stringify({
-            pivaneAgentProfileLoaded: loaded?.context.profileId ?? null, sessionId: ctx.sessionManager.getSessionId()
+            pivaneAgentProfileLoaded: loaded?.context.profileId ?? null, profileRevision: loaded?.revision ?? null,
+            sessionId: ctx.sessionManager.getSessionId()
         }));
     };
     pi.on('session_start', (_event, ctx) => { load(ctx); });
