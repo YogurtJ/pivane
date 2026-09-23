@@ -7,7 +7,7 @@ const { safeFile: selectedFile } = require('./pi-native-service');
 const { safeFile: readFile } = require('./profile-memory/management');
 const { createMutationLock } = require('./profile-memory/mutation-lock');
 const { profileMemoryCapability } = require('./profile-memory/management');
-const { documentIndex, pendingDocumentIndex } = require('./profile-memory/document-index');
+const { documentIndex, pendingDocumentIndex, documentIndexSynced } = require('./profile-memory/document-index');
 const { normalizedMemory, profileRevision } = require('./pi-profile-registry');
 const { descriptorPathSync } = require('./pi-file-descriptor');
 const io = require('./pi-file-io');
@@ -33,13 +33,16 @@ function location(agentDir, id, create) {
     if (fs.existsSync(root) && (fs.realpathSync.native(root) !== root || !fs.lstatSync(root).isDirectory())) throw fail('Unsafe profile data directory');
     return root;
 }
-function snapshot(root, target, profile, generation, installed) {
+async function snapshot(root, target, profile, generation, installed, bundle) {
     const file = path.join(root, target === 'user' ? 'USER.md' : 'MEMORY.md');
     const data = readFile(file);
     const content = data?.text ?? '';
+    const indexSynced = Boolean(installed && profile.memory?.enabled
+        && await documentIndexSynced(root, target, bundle, content));
+    if ((readFile(file)?.revision ?? null) !== (data?.revision ?? null)) throw fail('Document changed during read', 409);
     return { version: 1, profileId: profile.id, target, status: 'ready', content,
         revision: revision(data, generation), profileRevision: profileRevision(profile),
-        indexSynced: !pendingDocumentIndex(root, target) && Boolean(installed && profile.memory?.enabled),
+        indexSynced,
         usage: { used: content ? content.trim().split('\n§\n').map(part => part.trim()).filter(Boolean).join('\n§\n').length : 0,
             limit: normalizedMemory(profile.memory)[target === 'user' ? 'userCharLimit' : 'memoryCharLimit'], unit: 'characters' } };
 }
@@ -103,10 +106,10 @@ function mountProfileDocumentRoutes(router, { profiles, getAgentDir, bundlePath 
                     revision: revision(null, 0), profileRevision: profileRevision(profile), indexSynced: Boolean(installed && profile.memory?.enabled),
                     usage: { used: 0, limit: normalizedMemory(profile.memory)[target === 'user' ? 'userCharLimit' : 'memoryCharLimit'], unit: 'characters' } };
                 const lock = createMutationLock(root);
-                if (!write) return lock.inspect(generation => snapshot(root, target, profile, generation, installed));
+                if (!write) return lock.inspect(generation => snapshot(root, target, profile, generation, installed, bundle));
                 const result = await lock.run(undefined, async generation => {
                     const latest = await profiles.getProfile(id);
-                    const current = snapshot(root, target, latest, generation, installed);
+                    const current = await snapshot(root, target, latest, generation, installed, bundle);
                     if (current.revision !== req.body.expectedRevision || current.profileRevision !== req.body.expectedProfileRevision)
                         throw fail('Document or profile changed; reload before saving', 409);
                     validateContent(req.body.content, current.usage.limit);
@@ -151,7 +154,7 @@ function mountProfileDocumentRoutes(router, { profiles, getAgentDir, bundlePath 
                         }
                         if (!published || !index) throw error;
                         let currentDocument;
-                        try { currentDocument = snapshot(root, target, latest, generation + 1, installed); }
+                        try { currentDocument = await snapshot(root, target, latest, generation + 1, installed, bundle); }
                         catch { return { documentSaved: 'unknown', indexSynced: false, indexStatus: 'pending',
                             error: 'Document was published but its current revision cannot be verified', httpStatus: 503 }; }
                         return { documentSaved: true, indexSynced: false, indexStatus: 'pending',
@@ -160,7 +163,7 @@ function mountProfileDocumentRoutes(router, { profiles, getAgentDir, bundlePath 
                 });
                 // A write reserves a generation before publication; return its actual post-write revision.
                 if (result.httpStatus === 503) return result;
-                return { ...result, ...await lock.inspect(generation => snapshot(root, target, profile, generation, installed)) };
+                return { ...result, ...await lock.inspect(generation => snapshot(root, target, profile, generation, installed, bundle)) };
             };
             const result = write ? await profiles.reserve(work) : await work();
             const { httpStatus, ...body } = result;
