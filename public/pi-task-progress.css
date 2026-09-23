@@ -1,0 +1,41 @@
+.pi-task-progress {
+    min-width: 0;
+    margin: 0 0 8px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface-1);
+    color: var(--text-main);
+    font-size: 13px;
+}
+.pi-task-progress[hidden] { display: none; }
+.pi-task-progress > summary {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 44px;
+    padding: 10px 13px;
+    cursor: pointer;
+    list-style: none;
+}
+.pi-task-progress > summary::-webkit-details-marker { display: none; }
+.pi-task-progress > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
+.pi-task-progress > summary > strong, .pi-progress-count { flex-shrink: 0; }
+.pi-progress-count { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.pi-progress-current { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
+.pi-progress-chevron { margin-left: auto; font-size: 10px; color: var(--text-muted); }
+.pi-task-progress[open] .pi-progress-chevron { transform: rotate(180deg); }
+.pi-task-progress[open] .pi-progress-current { visibility: hidden; }
+.pi-progress-body { max-height: min(28dvh, 260px); overflow: auto; overscroll-behavior: contain; padding: 0 13px 10px; }
+.pi-progress-body ol { list-style: none; padding: 0; margin: 0; }
+.pi-progress-body li { display: flex; align-items: baseline; gap: 10px; padding: 7px 0; min-width: 0; }
+.pi-progress-body li > i { flex: 0 0 16px; color: var(--text-muted); }
+.pi-progress-body li[data-status="completed"] > i { color: var(--green); }
+.pi-progress-body li[data-status="in_progress"] > i { color: var(--blue); }
+.pi-progress-body li[data-status="in_progress"] .pi-progress-step { font-weight: 600; }
+.pi-progress-step { min-width: 0; flex: 1; overflow-wrap: anywhere; white-space: pre-wrap; }
+.pi-progress-status { flex-shrink: 0; color: var(--text-muted); font-size: 11px; }
+.pi-progress-explanation { margin: 8px 0 0; padding-top: 10px; border-top: 1px solid var(--line); color: var(--text-muted); overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.5; }
+@media (max-width: 600px) {
+    .pi-task-progress > summary { padding: 9px 10px; gap: 7px; }
+    .pi-progress-body { padding: 0 10px 8px; max-height: min(24dvh, 200px); }
+}

@@ -38,6 +38,8 @@ The bilingual interface is included starting with **1.0.0-rc.2**. **1.0.0 is the
 
 ## Install
 
+The **1.1.0 release candidate** targets **Pi 0.87.1**, adding project file browsing, task progress, shared model favorites and mobile UI improvements. See the [candidate notes](docs/releases/1.1.0.md). This does not replace the published 1.0.0/Pi 0.86.1 archive or update a running instance automatically.
+
 Use **Node.js 22.x** and the locked dependencies. Version 1.0.0 is pinned to Pi 0.86.1; validation results are attached to its exact archive SHA256. You do not need a global Pi installation, a frontend build, or a compiler for the packaged native components.
 
 | Server platform | Validated RC baseline |

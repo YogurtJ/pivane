@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { selectMessageView } = require('./pi-mobile-view-helper.cjs');
 const path = require('node:path');
 const { once } = require('node:events');
 const express = require('express');
@@ -187,7 +188,7 @@ async function run(browser, base, width, locale, supported = true, modelSupport 
     socket.send(JSON.stringify({ type: 'gateway_session_named', cwd, sessionId: session.id, name: '后台生成的新标题' }));
     await page.waitForFunction(() => [...document.querySelectorAll('.pi-session-title')].some(node => node.textContent === '后台生成的新标题'));
     if (width < 900) { await page.locator('#pi-toggle-sessions').click(); await overflow(['#pi-session-pane', '.pi-session-title']); await page.locator('#pi-toggle-sessions').click(); }
-    await page.locator('[data-transcript-mode="full"]').click();
+    await selectMessageView(page, 'full');
     assert.ok((await page.locator('.pi-tool-output').textContent()).includes('fixture tool output'));
     await overflow(['body', '#pi-attachments', '.pi-tool-block']);
     assert.ok(!calls.includes('prompt'), 'title UI must not prompt the main agent');

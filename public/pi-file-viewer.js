@@ -69,15 +69,28 @@
         }
         cancel() { this.sequence++; this.controller?.abort(); this.controller = null; this.loading = false; }
         clear() {
-            this.cancel(); this.file = null; this.data = null; this.current = null;
+            this.cancel(); this.file = null; this.data = null; this.current = null; this.positions = new Map(); this.restoreTop = null;
             $('pi-file-tabs').hidden = true; $('pi-file-viewer').hidden = true; $('pi-file-body').replaceChildren();
         }
         setEnabled(enabled) { this.enabled = enabled; }
+        rememberPosition() {
+            if (this.file && this.data && $('pi-file-body').getClientRects().length) {
+                this.positions.set(this.file.identity, { top: $('pi-file-body').scrollTop, preview: this.preview, wrap: this.wrap });
+                if (this.positions.size > 40) this.positions.delete(this.positions.keys().next().value);
+            }
+        }
+        restorePosition() {
+            const saved = this.positions.get(this.file?.identity);
+            if (saved && this.data) $('pi-file-body').scrollTop = saved.top;
+        }
         setFile(file) {
             if (this.file?.identity === file.identity && this.file.path === file.path && this.file.hasDiff === file.hasDiff && this.file.writes.length === file.writes.length
                 && this.file.writes.every((w, i) => w.id === file.writes[i].id && w.content === file.writes[i].content)) return;
+            this.rememberPosition();
             this.cancel(); this.file = file; this.data = null; this.current = null; this.jumped = false;
-            this.preview = /\.(?:md|markdown)$/i.test(file.path) && !file.line; this.wrap = false;
+            const position = this.positions.get(file.identity);
+            this.restoreTop = position?.top || 0;
+            this.preview = position?.preview ?? (/\.(?:md|markdown)$/i.test(file.path) && !file.line); this.wrap = position?.wrap || false;
             this.source = file.writes.length ? `write:${file.writes.at(-1).id}` : 'current';
             const picker = $('pi-file-source'); picker.replaceChildren();
             file.writes.forEach((w, i) => picker.append(new Option(translateUi("写入记录 {0}", i + 1), `write:${w.id}`)));
@@ -90,6 +103,7 @@
             $('pi-file-info').open = false;
             this.mode = null;
             this.show(file.hasDiff ? 'diff' : 'full');
+            this.host.selected?.(file);
         }
         show(mode) {
             if (!this.file) return;
@@ -203,7 +217,7 @@
                     visit(fragment); body.append(pre);
                 }
             }
-            body.scrollTop = oldTop;
+            body.scrollTop = this.restoreTop ?? oldTop; this.restoreTop = null;
             if (this.file.line && !this.preview && !this.jumped) {
                 const node = body.querySelector(`[data-line="${this.file.line}"]`);
                 if (node) { node.classList.add('pi-file-target-line'); body.scrollTop += node.getBoundingClientRect().top - body.getBoundingClientRect().top - 12; }

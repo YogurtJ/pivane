@@ -6,6 +6,8 @@ English: [project overview](../README.en.md) · [installation](en/INSTALL.md) ·
 
 电脑、平板和手机使用同一套响应式浏览器界面；服务可部署在下述已验收的Linux、Apple Silicon macOS与Windows环境中。下载包、校验文件和精确验收摘要见[GitHub Releases](https://github.com/YogurtJ/pivane/releases)；当前正式版为 1.0.0/Pi 0.86.1，本包验收范围以其发布附件为准。
 
+当前下一版候选为 [1.1.0 / Pi 0.87.1](releases/1.1.0.md)，整合文件浏览、任务进度、模型收藏和手机交互改进；公开发布与在线升级状态分别核对，不改写 1.0.0 历史资产。
+
 ## 使用与管理
 
 | 任务 | 文档 |

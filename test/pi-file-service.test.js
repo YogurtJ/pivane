@@ -165,7 +165,18 @@ test('file API requires existing origin/token authentication, advertises capabil
     const headers = { Authorization: 'Bearer file-fixture', Origin: base };
     const response = await fetch(url, { headers }); assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'no-store');
     assert.equal((await response.json()).content, content + 'new');
-    assert.equal((await (await fetch(base + '/api/pi/status', { headers })).json()).fileViewer, true);
+    const status = await (await fetch(base + '/api/pi/status', { headers })).json();
+    assert.equal(status.fileViewer, true); assert.equal(status.fileBrowser, true);
+    for (const [kind, params] of [['list', { path: '' }], ['search', { q: '报告' }]]) {
+        const browseUrl = base + `/api/pi/files/${kind}?` + new URLSearchParams({ cwd: project, ...params });
+        assert.equal((await fetch(browseUrl)).status, 401);
+        assert.equal((await fetch(browseUrl, { headers: { ...headers, Origin: 'https://other.test' } })).status, 403);
+        const result = await fetch(browseUrl, { headers });
+        assert.equal(result.status, 200); assert.equal(result.headers.get('cache-control'), 'no-store');
+        assert.equal(result.headers.get('x-content-type-options'), 'nosniff');
+        const body = await result.json(); assert.ok(body.entries.some(e => e.name === '报告.md'));
+        assert.ok(body.entries.every(e => !('content' in e)));
+    }
     const missing = await fetch(base + '/api/pi/files/content?' + new URLSearchParams({ cwd: project, path: '../outside.txt' }), { headers });
     assert.equal(missing.status, 403); assert.doesNotMatch(JSON.stringify(await missing.json()), /outside\.txt|private fixture/);
     assert.equal(gateway.supervisor.workers.size, 0); assert.equal(gateway.supervisor.ephemeralWorkers.size, 0);

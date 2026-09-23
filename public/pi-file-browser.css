@@ -1,0 +1,62 @@
+#pi-file-reader[hidden], #pi-file-explorer[hidden], #pi-files-toolbar button[hidden], .pi-files-heading button[hidden] { display: none !important; }
+#pi-files-toolbar { display: flex; align-items: center; gap: 5px; padding: 7px 10px; min-width: 0; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.pi-files-modes { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); margin-right: auto; min-width: 0; }
+.pi-files-modes button { border: 0; border-radius: 5px; background: transparent; color: var(--text-muted); padding: 4px 10px; font: inherit; font-size: .75rem; white-space: nowrap; cursor: pointer; transform: none; }
+.pi-files-modes button[aria-pressed="true"] { color: var(--text-main); background: var(--surface-1); box-shadow: 0 1px 3px #0001; }
+.pi-files-icon { display: inline-grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; border: 0; border-radius: 6px; color: var(--text-muted); background: transparent; padding: 0; cursor: pointer; font-size: .8rem; transform: none; }
+.pi-files-icon:hover, .pi-files-icon[aria-pressed="true"] { background: var(--surface-2); color: var(--green); transform: none; }
+#pi-changes button:focus-visible, .pi-explorer-search:focus-within { outline: 2px solid var(--green); outline-offset: -2px; }
+.pi-file-workspace { display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+#pi-file-reader { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+#pi-file-explorer { display: flex; flex-direction: column; min-height: 0; min-width: 0; flex: 1; background: var(--surface-1); }
+.files-wide.files-has-file #pi-file-explorer { order: 2; flex: 0 0 238px; border-left: 1px solid var(--line); }
+.pi-explorer-heading { display: flex; align-items: center; gap: 8px; padding: 8px 10px 3px 14px; min-width: 0; color: var(--text-muted); font-size: .8rem; }
+.pi-explorer-project { flex: 1; min-width: 0; color: var(--text-main); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: .8rem; font-weight: 600; }
+.pi-explorer-search { display: flex; align-items: center; gap: 9px; padding: 0 10px; margin: 8px 12px; border: 1px solid var(--line); border-radius: 7px; color: var(--text-muted); background: var(--surface-2); font-size: .75rem; }
+.pi-explorer-search input { display: block; flex: 1; min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: var(--text-main); height: 34px; font: inherit; box-shadow: none; padding: 0; }
+.pi-explorer-search input::placeholder { color: var(--text-muted); opacity: .8; }
+.pi-explorer-status { margin: 0; padding: 2px 14px 8px; color: var(--text-muted); font-size: .73rem; line-height: 1.6; overflow-wrap: anywhere; }
+.pi-explorer-status:empty { display: none; }
+.pi-explorer-tree { overflow: auto; overscroll-behavior: contain; flex: 1; min-height: 0; min-width: 0; padding: 2px 7px 18px; }
+.pi-file-tree-row { display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0; height: 32px; margin: 0; padding: 0 8px 0 calc(5px + var(--depth) * 15px); border: 0; border-radius: 5px; background: transparent; color: var(--text-main); font: inherit; font-size: .79rem; text-align: left; cursor: pointer; transform: none; }
+.pi-file-tree-row:hover { background: var(--surface-2); transform: none; }
+.pi-file-tree-row[aria-selected="true"] { color: var(--green); background: color-mix(in srgb, var(--green) 10%, var(--surface-1)); }
+.pi-tree-chevron { display: inline-grid; place-items: center; flex: 0 0 10px; color: var(--text-muted); font-size: .58rem; }
+.pi-tree-file-icon { flex: 0 0 15px; text-align: center; font-size: .88rem; }
+.pi-tree-file-icon[data-kind="folder"] { color: var(--amber); }
+.pi-tree-file-icon[data-kind="document"] { color: var(--green); }
+.pi-tree-file-icon[data-kind="code"] { color: var(--blue); }
+.pi-tree-name { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pi-file-tree-row > .fa-link { font-size: .6rem; color: var(--text-muted); }
+.pi-tree-note { padding: 7px 16px; color: var(--text-muted); font-size: .75rem; line-height: 1.6; overflow-wrap: anywhere; }
+.pi-tree-note .pi-files-icon { margin-left: 4px; }
+.pi-files-heading { gap: 4px; }
+#pi-changes-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.pi-file-breadcrumb { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; overflow: auto; scrollbar-width: none; font-size: .74rem; white-space: nowrap; }
+.pi-file-breadcrumb > .fa-chevron-right { color: var(--text-muted); font-size: .52rem; }
+.pi-file-breadcrumb button { border: 0; border-radius: 4px; background: none; color: var(--text-muted); padding: 4px; font: inherit; cursor: pointer; transform: none; }
+.pi-file-breadcrumb button:hover { color: var(--green); background: var(--surface-2); }
+.pi-breadcrumb-current { color: var(--text-main); font-weight: 600; padding: 4px 0; }
+.file-current-only .pi-file-mode-row { display: none; }
+#pi-file-copy-path, #pi-file-locate { flex-basis: 26px; width: 26px; }
+#pi-changes .pi-file-markdown { padding: 22px clamp(16px, 4%, 44px) 40px; max-width: 920px; margin: 0 auto; font-size: .9rem; line-height: 1.8; }
+#pi-changes .pi-file-markdown h1 { font-size: 1.65em; letter-spacing: -.02em; }
+#pi-changes .pi-file-markdown h2 { font-size: 1.3em; }
+@media (min-width: 901px) {
+    .pi-inspector.show-changes.files-expanded { width: min(1120px, calc(100% - 330px)); flex-basis: min(1120px, calc(100% - 330px)); max-width: none; }
+    .pi-workbench:has(.pi-inspector.show-changes.files-expanded.open) > .pi-session-pane,
+    .pi-workbench:has(.pi-inspector.show-changes.files-expanded.open) > [data-split-key="agent-sessions"] { display: none; }
+}
+@media (max-width: 900px) {
+    #pi-files-toolbar { padding: 5px 8px; }
+    .pi-files-modes button { min-height: 30px; padding: 4px 9px; }
+    .pi-files-icon { height: 36px; width: 36px; flex-basis: 36px; }
+    .pi-file-tree-row { height: 42px; font-size: .85rem; }
+    .pi-explorer-search input { font-size: 16px; height: 40px; }
+    .pi-file-breadcrumb { font-size: .78rem; }
+    #pi-files-expand { display: none; }
+    #pi-changes .pi-file-markdown { padding: 16px 16px 32px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+    .pi-file-tree-row, .pi-files-icon { transition: background-color .12s, color .12s; }
+}

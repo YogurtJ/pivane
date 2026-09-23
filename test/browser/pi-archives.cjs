@@ -131,7 +131,8 @@ async function run(browser, base, width, locale) {
   await page.screenshot({path:`/tmp/pi-archives-${locale}-${width}-${theme}.png`});
   assert.equal(await page.locator('#pi-session-pane, #pi-session-list, .pi-archive-group').evaluateAll(ns=>ns.some(n=>n.scrollWidth>n.clientWidth+1)),false);
  }
- await page.locator('#pi-project-button').click();
+ const openProjectPicker=async()=>{if(width<=680){await page.locator('#pi-mobile-summary').click()}else await page.locator('#pi-project-button').click()};
+ await openProjectPicker();
  await page.locator('#pi-project-dialog').waitFor();
  assert.equal(await page.locator('#pi-project-list .pi-project-row, #pi-project-list .pi-project-row em').evaluateAll(ns=>ns.some(n=>n.scrollWidth>n.clientWidth+1)),false,'localized archive labels fit the project picker');
  await page.locator('#pi-project-dialog-close').click();

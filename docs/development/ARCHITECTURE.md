@@ -38,6 +38,8 @@ PiRpcClient 使用 StringDecoder 并严格按 LF 分帧，不能使用会拆分 
 
 Pi 0.86 的原生 system message 是供应商 transcript 的提示词/工具检查点。公开聊天边界过滤这类消息，原生上下文和导出仍使用完整记录。保存配置不自动重开 worker，资源重载与配置保存是不同操作。
 
+Pi 0.87 的 `context_edit` 只改变模型上下文。主聊天快照从唯一 worker 的一次 `get_entries` 响应，通过公开 `buildContextEntries` / `sessionEntryToContextMessages` 投影原始记录，保留既有压缩范围和 stdout 同步快照边界，不建立聊天副本。完整上下文侧聊继续使用 `buildSessionContext` 的编辑后投影；历史、搜索、分叉与导出保留原生 entry 与引用。
+
 相关契约：[运行恢复](../NATIVE_COMPLETION.md)、[会话工作流](../SESSION_WORKFLOWS.md)、[历史](../HISTORY.md)、[导入导出](../SESSION_TRANSFER.md)。
 
 ## 辅助工作与扩展
@@ -48,6 +50,7 @@ Pi 0.86 的原生 system message 是供应商 transcript 的提示词/工具检�
 - 来源 worker 的私有命令在空闲互斥区保存结果 custom message 和已读 custom entry，不触发模型、不直接从后台追加活跃 JSONL。来源未打开时不启动 worker，重开后补收；任务读取和交付均纳入维护生命周期。
 - 侧聊使用受限内存 SessionManager，冻结主会话背景，历史工具调用转换为引用。工具与逐回复确认由独立侧聊管理，关闭、断线和待确认请求有各自生命周期；共享目录不意味着写入隔离。
 - 扩展助手仍是受 Supervisor 管理的原生会话，仅身份标记有效的 worker 获得专用管理凭据。安装与配置复用原生资源服务的锁、修订和 trust。
+- 任务进度由内置 `update_plan` 工具同步写原生 `pivane-task-progress` custom entry，以完整替换形成确定顺序。启动、分支导航和压缩后从完整当前 branch 恢复，Supervisor 只持有有界展示投影，快照沿用 live sequence 边界；不增加 worker 工作类型或外部任务数据库。模型上下文缺少最新工具结果时由 context hook 补入最新计划数据。
 - 工具来源是调用时捕获的有界展示元数据，绑定调用 ID/工具名；旧记录不按当前清单追认来源，也不把来源标记当成权限验证。
 
 相关契约：[辅助模型](../AUXILIARY_MODELS.md)、[任务线程](../AGENT_THREADS.md)、[侧聊](../SIDE_CHAT.md)、[原生设置](../NATIVE_SETTINGS.md)。
@@ -60,11 +63,21 @@ Pi Provider 身份与工作台访问身份独立。登录/退出使用公开 Mod
 
 POSIX 私密权限和目录刷盘、Windows 受保护 DACL 和写透替换分别处理。原生源码、二进制和 manifest 成批分发，普通安装不现场编译。详见 [native](../../native/README.md)。
 
+项目全文读取与目录浏览共用 `pi-file-scope` 的项目范围和私密根规则。`pi-file-browser` 只枚举受控元数据，父目录与返回条目分别验证打开描述符；文件名搜索有扫描、结果、时间与并发预算，不维护持久文件索引，不调用模型。
+
 实例偏好保存置顶、隐藏、归档、完成提醒及辅助模型设置；这些都是原生项目/会话的附属元数据。归档不改变 worker 或 JSONL。搜索只读扫描原生文件，缓存可丢弃。用量由 `pi-usage-service` 串行调度 Worker，`pi-usage-worker` 校验原生来源，`pi-usage-ledger` 事务保存无正文的用量事实、去重指纹、读取游标与时区日汇总；扫描器用完整前缀校验保护追加解析，改写时重新核对；`pi-usage-pricing` 从上游官方供应商目录按精确 ID 取得参考价。用量账本保留已删除会话的统计，必须随身份目录备份；它不参与聊天恢复或 worker 状态。网页删除在停止 worker 后先完成用量入账检查，关闭服务时等待统计线程退出。
 
 ## 浏览器
 
 `pi-chat.js` 仍是页面协调器，连接当前项目、会话、流式事件、草稿和独立组件。正文/滚动、工具、文件、侧聊、历史和设置分别由组件负责。继续拆分时优先给状态确定唯一所有者，再提取接口；单纯移动闭包代码不会减少耦合。
+
+`pi-files-panel.js` 拥有文件打开入口、项目／本轮模式、阅读布局与共享查看器；`pi-file-browser.js` 拥有目录缓存、文件名搜索、键盘导航和请求取消。`pi-turn-edits.js` 只从原生消息派生轮次记录并通过共享查看器展示，不再管理项目文件链接。目录偏好按项目保留在本页内存；内容、目录数据与请求在切线程时清空，迟到结果继续检查上下文与连接代次。浏览不会改变草稿或模型上下文。
+
+`pi-model-picker.js` 拥有会话模型面板、全目录搜索和设备本地最近记录，以供应商与模型 ID 元组区分身份。常用模型由 `WorkspacePreferencesService` 保存，HTTP 接口提交单项加星／取消操作；旧浏览器导入带持久回执和取消标记，避免全表覆盖与旧数据复活。组件只把明确的模型选择交回 `pi-chat.js`；RPC、忙碌锁、当前模型和 socket 代次继续由协调器管理，不用常用偏好恢复会话模型。
+
+`workspace-ui.js` 提供 `PiActionFeedback`，负责异步按钮的加载图标、动作文字、无障碍属性及恢复；请求互斥、上下文代次与结果归属继续由各功能组件管理。
+
+`pi-task-progress.js` 拥有输入框上方的计划卡渲染和展开状态，只接受当前连接快照与进度事件，不解析回复文本、不从运行终态推断步骤完成。
 
 `pi-task-results.js` 拥有结果面板的请求、渲染和线程代次检查；协调器只提供当前线程、访问接口和已有安全跳转。结果正文使用纯文本，收到结果不改草稿、附件或当前滚动位置。
 

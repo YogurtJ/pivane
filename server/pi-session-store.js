@@ -198,18 +198,27 @@ class PiSessionStore {
             source.createBranchedSession(targetId);
             source.appendSessionInfo(`${session.name || '会话'} · 分叉`.slice(0, 120));
             result = await this.getSession(session.cwd, source.getSessionId());
+        } else if (branch.length) {
+            // Native branching preserves IDs/references, but defers its file until
+            // an assistant exists. Materialize the native export privately so an
+            // early fork is immediately visible without re-appending/re-IDing entries.
+            source.createBranchedSession(targetId);
+            source.appendSessionInfo(`${session.name || '会话'} · 分叉`.slice(0, 120));
+            source.appendCustomEntry('pivane-web-fork-origin', { sessionId: session.id, entryId: targetId });
+            const privateFiles = require('./pi-private-files');
+            const temporary = fs.mkdtempSync(path.join(source.getSessionDir(), '.pivane-fork-'));
+            try {
+                privateFiles.privateDirectory(temporary);
+                const output = path.join(temporary, 'branch.jsonl');
+                const { AgentSession } = await getSdk();
+                AgentSession.prototype.exportToJsonl.call({ sessionManager: source }, output);
+                privateFiles.privateFileMode(output);
+                fs.linkSync(output, source.getSessionFile());
+                result = await this.getSession(session.cwd, source.getSessionId());
+            } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
         } else {
-            // Native branch files are deferred before an assistant exists. Use the Web empty-header path.
             result = await this.createSession(session.cwd, `${session.name || '会话'} · 分叉`);
-            const fresh = SessionManager.open(result.path);
-            for (const entry of branch) {
-                if (entry.type === 'message') fresh.appendMessage(entry.message);
-                else if (entry.type === 'model_change') fresh.appendModelChange(entry.provider, entry.modelId);
-                else if (entry.type === 'thinking_level_change') fresh.appendThinkingLevelChange(entry.thinkingLevel);
-                else if (entry.type === 'custom') fresh.appendCustomEntry(entry.customType, entry.data);
-                else if (entry.type === 'custom_message') fresh.appendCustomMessageEntry(entry.customType, entry.content, entry.display, entry.details);
-            }
-            fresh.appendCustomEntry('pivane-web-fork-origin', { sessionId: session.id, entryId: targetId });
+            SessionManager.open(result.path).appendCustomEntry('pivane-web-fork-origin', { sessionId: session.id, entryId: targetId });
         }
         require('./pi-private-files').privateFileMode(result.path);
         return { session: result, draft };

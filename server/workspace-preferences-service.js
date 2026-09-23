@@ -102,6 +102,51 @@ class WorkspacePreferencesService {
         this.writeDocument(document);
     }
 
+    getModelFavorites() {
+        const data = this.readDocument().modelFavorites || {};
+        return { version: 1, revision: data.revision || 0, favorites: data.favorites || [] };
+    }
+
+    changeModelFavorites(input) {
+        const invalid = () => { throw new Error('Invalid model favorites request'); };
+        const reference = value => {
+            if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !['provider', 'modelId'].includes(key))
+                || typeof value.provider !== 'string' || typeof value.modelId !== 'string'
+                || !value.provider || value.provider.length > 300 || !value.modelId || value.modelId.length > 500
+                || /[\u0000-\u001f\u007f]/.test(value.provider + value.modelId)) return invalid();
+            return { provider: value.provider, modelId: value.modelId };
+        };
+        if (!input || typeof input !== 'object' || Array.isArray(input)) return invalid();
+        let models;
+        if (input.action === 'set') {
+            if (Object.keys(input).some(key => !['action', 'model', 'favorite'].includes(key)) || typeof input.favorite !== 'boolean') return invalid();
+            models = [reference(input.model)];
+        } else if (input.action === 'import') {
+            if (Object.keys(input).some(key => !['action', 'models', 'migrationId'].includes(key))
+                || typeof input.migrationId !== 'string' || !/^[a-zA-Z0-9-]{16,80}$/.test(input.migrationId)
+                || !Array.isArray(input.models) || input.models.length > 5000) return invalid();
+            models = input.models.map(reference);
+        } else return invalid();
+        // Synchronous read/modify/atomic write: actions on different models compose,
+        // without a browser replacing another device's complete list.
+        const document = this.readDocument(), previous = document.modelFavorites || {};
+        const key = model => JSON.stringify([model.provider, model.modelId]);
+        const favorites = new Map((previous.favorites || []).map(model => [key(model), model]));
+        const removed = new Set(previous.removed || []), imports = new Set(previous.imports || []);
+        if (input.action === 'import' && imports.has(input.migrationId)) return this.getModelFavorites();
+        for (const model of models) {
+            const id = key(model);
+            if (input.action === 'set' && !input.favorite) { favorites.delete(id); removed.add(id); }
+            else if (input.action === 'set' || !removed.has(id)) { favorites.set(id, model); removed.delete(id); }
+        }
+        if (input.action === 'import') imports.add(input.migrationId);
+        if (favorites.size > 5000 || removed.size > 5000 || imports.size > 1024) throw new Error('Model favorites storage limit reached');
+        document.modelFavorites = { ...previous, version: 1, revision: (previous.revision || 0) + 1,
+            favorites: [...favorites.values()], removed: [...removed], imports: [...imports] };
+        this.writeDocument(document);
+        return this.getModelFavorites();
+    }
+
     getPinnedProjects() {
         const pins = this.readDocument().pinnedProjects;
         return Array.isArray(pins) ? [...new Set(pins.filter(cwd => typeof cwd === 'string' && path.isAbsolute(cwd)))] : [];

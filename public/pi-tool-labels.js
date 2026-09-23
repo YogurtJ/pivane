@@ -13,7 +13,8 @@
         else if (name === 'read' && !source && /^SKILL\.md$/i.test(parts.at(-1) || '')) {
             title = t('读取技能文件 · {0}', parts.at(-2) || 'SKILL.md');
             info = t('按文件名识别，未核对技能加载状态。');
-        } else if (name === 'extensions_inventory') title = t('检查扩展清单');
+        } else if (name === 'update_plan') title = t('更新任务计划');
+        else if (name === 'extensions_inventory') title = t('检查扩展清单');
         else if (name === 'extensions_package') {
             title = ({ install: t('安装扩展包'), update: t('更新扩展包'), remove: t('移除扩展包') })[args.action] || t('管理扩展包');
             if (text(args.source, 1000)) title += ' · ' + args.source;

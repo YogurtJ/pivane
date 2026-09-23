@@ -6,7 +6,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const root = path.resolve(__dirname, '../..');
 (async () => {
     const app = express(); app.use(express.static(path.join(root, 'public')));
-    app.get('/fixture', (_req, res) => res.send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/pi-updates.css"><style>:root{--surface-1:white;--text-main:#222;--line:#bbb;--accent:#175bd7}body{margin:0}#workspace-settings-dialog.hidden{display:none}</style></head><body>
+    app.get('/fixture', (_req, res) => res.send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/workspace.css"><link rel="stylesheet" href="/brand/fontawesome-6.4.0/css/all.min.css"><link rel="stylesheet" href="/pi-updates.css"><style>body{margin:0}#workspace-settings-dialog.hidden{display:none}</style></head><body>
         <button id="workspace-settings-toggle">Settings</button><button data-settings-tab="updates">Updates</button><div id="workspace-settings-dialog" class="hidden"></div>
         <script src="/pi-i18n-catalog.js"></script><script src="/pi-i18n.js"></script><script src="/pi-update-notifications.js"></script>
         <script>window.events=[];addEventListener('workspace:open-settings',e=>events.push(e.detail));
@@ -20,12 +20,12 @@ const root = path.resolve(__dirname, '../..');
             const page = await context.newPage(); const errors = [], posts = [];
             page.on('pageerror', e => errors.push(e.message)); await page.clock.install();
             let calls = 0, fail = false;
-            let state = { enabled: true, available: false, eligible: false, idle: false, currentVersion: '0.85.1', version: null, nextCheckAt: null };
+            let state = { enabled: true, available: false, eligible: false, idle: false, currentVersion: '0.86.1', version: null, nextCheckAt: null };
             await page.route('**/api/pi/settings/updates/**', async route => {
                 const url = new URL(route.request().url()), body = route.request().postDataJSON();
                 if (route.request().method() !== 'GET') posts.push({ path: url.pathname, body });
                 if (fail) return route.fulfill({ status: 503, json: {} });
-                if (url.pathname.endsWith('/automatic')) { calls++; state = { ...state, available: true, eligible: true, version: '0.86.0', nextCheckAt: Date.now() + 86400000 }; }
+                if (url.pathname.endsWith('/automatic')) { calls++; state = { ...state, available: true, eligible: true, version: '0.86.2', nextCheckAt: Date.now() + 86400000 }; }
                 if (body?.action === 'claim') { const claimed = state.idle && state.eligible; if (claimed) state.eligible = false; return route.fulfill({ json: { ...state, claimed } }); }
                 if (body?.action === 'snooze') state.eligible = false;
                 if (body?.action === 'ignore') state.available = false;
@@ -47,13 +47,32 @@ const root = path.resolve(__dirname, '../..');
             state.eligible = true; await refresh(); await page.locator('#pi-update-notice').waitFor();
             await page.locator('#pi-update-notice-ignore').click(); await page.waitForFunction(() => document.querySelector('.pi-update-badge').hidden);
             state = { ...state, available: true, eligible: true, version: '0.87.0' }; await refresh(); await page.locator('#pi-update-notice').waitFor();
-            await page.screenshot({ path: path.join(process.env.PI_BROWSER_ARTIFACT_DIR || require('node:os').tmpdir(), `pi-update-notice-${locale}-${width}.png`) });
+            const artifacts = process.env.PI_BROWSER_ARTIFACT_DIR || require('node:os').tmpdir();
+            for (const theme of ['daylight', 'dark', 'mint']) {
+                await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+                const card = page.locator('#pi-update-notice');
+                assert.ok((await card.boundingBox()).height < 230, 'card stays compact, including English on mobile');
+                assert.equal(await card.evaluate(e => e.scrollWidth <= e.clientWidth + 1), true);
+                await card.screenshot({ path: path.join(artifacts, `pi-update-notice-${locale}-${width}-${theme}.png`) });
+            }
             await page.locator('#pi-update-notice-open').click();
             assert.deepEqual(await page.evaluate(() => events), [{ tab: 'updates', updatePi: true }]);
             assert.ok(posts.every(p => !/execute|review/.test(p.path)), 'notification cannot execute maintenance');
             await page.evaluate(() => document.getElementById('workspace-settings-dialog').classList.remove('hidden'));
             await page.locator('#updates-auto-check').uncheck(); await page.waitForFunction(() => document.querySelector('.pi-update-badge').hidden);
             state.nextCheckAt = null; await refresh(); assert.equal(calls, 1, 'disabled setting prevents automatic requests');
+            const beforePreview = posts.length;
+            await page.locator('#updates-notice-preview').click();
+            await page.locator('#pi-update-notice-preview').waitFor();
+            for (const action of ['open', 'snooze', 'ignore']) await page.locator('#pi-update-notice-preview-' + action).click();
+            assert.equal(posts.length, beforePreview, 'preview never claims, snoozes, ignores or installs');
+            assert.equal(await page.evaluate(() => events.length), 1, 'preview never opens real maintenance');
+            assert.ok((await page.locator('#pi-update-notice-preview .pi-update-feedback').textContent()).includes(locale === 'en-US' ? 'No action' : '未执行'));
+            await page.locator('#pi-update-notice-preview-open').focus(); await page.keyboard.press('Escape');
+            assert.equal(await page.locator('#updates-notice-preview').getAttribute('aria-expanded'), 'false');
+            assert.equal(await page.locator('#updates-notice-preview').evaluate(e => e === document.activeElement), true);
+            await page.locator('#updates-notice-preview').click(); await page.locator('#pi-update-notice-preview-close').click();
+            assert.equal(await page.locator('#updates-notice-preview-area').isVisible(), false);
             fail = true; await refresh(); assert.deepEqual(errors, []);
             console.log(JSON.stringify({ locale, width, errors, busyDeferred: true, snoozeIgnoreAndNextVersion: true, confirmationOnly: true }));
             await context.close();

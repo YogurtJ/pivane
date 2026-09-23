@@ -1,0 +1,60 @@
+.pi-model-picker-row #pi-model-select {
+    display: flex; align-items: center; gap: 8px; flex: 1; width: 0; min-width: 0;
+    height: 28px; padding: 0 8px; border: 0; border-radius: 5px; background: transparent;
+    color: var(--text-main); cursor: pointer; text-align: left; font: inherit; font-size: .75rem;
+}
+.pi-model-trigger-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.pi-model-trigger-chevron { color: var(--text-muted); }
+.pi-model-picker-row #pi-model-select:hover { background: var(--surface-3); }
+.pi-model-picker-row #pi-model-select:disabled { cursor: default; opacity: .6; }
+.pi-model-picker-row #pi-model-select:focus-visible,
+.pi-model-dialog button:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+.pi-model-dialog {
+    position: fixed; inset: auto; margin: 0; padding: 0; box-sizing: border-box;
+    width: min(460px, calc(100vw - 24px)); max-width: none;
+    max-height: min(600px, calc(100dvh - 24px));
+    border: 1px solid var(--line-strong); border-radius: 14px;
+    background: var(--surface-2); color: var(--text-main);
+    box-shadow: 0 16px 55px #0004; overflow: hidden;
+}
+.pi-model-dialog[open] { display: flex; flex-direction: column; }
+.pi-model-dialog::backdrop { background: #0002; }
+.pi-model-dialog-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 6px; flex: 0 0 auto; }
+.pi-model-dialog h2 { margin: 0; font-size: 1rem; }
+.pi-model-dialog button { color: inherit; font: inherit; cursor: pointer; }
+.pi-model-close { width: 36px; height: 36px; border: 0; border-radius: 8px; background: transparent; font-size: 24px !important; color: var(--text-muted); }
+.pi-model-search {
+    box-sizing: border-box; flex: 0 0 auto; width: calc(100% - 28px); min-width: 0;
+    margin: 4px 14px 10px; padding: 10px 12px; border: 1px solid var(--line-strong);
+    border-radius: 9px; font: inherit; font-size: 16px; background: var(--surface-1, var(--surface-2)); color: var(--text-main);
+}
+.pi-model-search:focus { outline: 2px solid var(--green); outline-offset: -1px; }
+.pi-model-results { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 0 8px; scrollbar-gutter: stable; }
+.pi-model-group h3 { margin: 12px 10px 5px; color: var(--text-muted); font-size: .72rem; font-weight: 600; overflow-wrap: anywhere; }
+.pi-model-row { display: flex; align-items: center; gap: 2px; border-radius: 9px; margin: 2px 0; }
+.pi-model-row[data-current="true"] { background: var(--green-soft); }
+.pi-model-option { flex: 1; display: flex; align-items: center; gap: 7px; min-width: 0; min-height: 54px; padding: 9px 5px; border: 0; border-radius: 9px; background: transparent; text-align: left; }
+.pi-model-check { flex: 0 0 17px; color: var(--green); text-align: center; }
+.pi-model-copy { min-width: 0; }
+.pi-model-copy strong { display: block; font-size: .86rem; font-weight: 550; overflow-wrap: anywhere; }
+.pi-model-copy small { display: block; margin-top: 3px; font-size: .7rem; line-height: 1.4; color: var(--text-muted); overflow-wrap: anywhere; }
+.pi-model-star { flex: 0 0 40px; align-self: stretch; min-height: 44px; border: 0; border-radius: 9px; background: transparent; font-size: 22px !important; color: var(--text-muted) !important; }
+.pi-model-star[aria-pressed="true"] { color: var(--green) !important; }
+.pi-model-dialog button:hover { background: var(--surface-3); }
+.pi-model-status { margin: 6px 18px; color: var(--text-muted); font-size: .73rem; flex: 0 0 auto; }
+.pi-model-status:empty { display: none; }
+.pi-model-all, .pi-model-more { flex: 0 0 auto; min-height: 42px; padding: 9px 12px; margin: 8px 14px 0; border: 1px solid var(--line); border-radius: 8px; background: transparent; font-size: .8rem !important; }
+.pi-model-all[hidden] { display: none; }
+.pi-model-more { width: calc(100% - 28px); margin-bottom: 8px; }
+.pi-model-hint, .pi-model-empty { margin: 10px 18px 14px; font-size: .72rem; line-height: 1.5; color: var(--text-muted); flex: 0 0 auto; }
+@media (max-width: 900px) {
+    .pi-model-picker-row #pi-model-select { font-size: 16px; }
+}
+@media (max-width: 600px) {
+    .pi-model-dialog { inset: auto 0 0; width: 100%; max-height: min(680px, calc(100dvh - 24px)); border-radius: 18px 18px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+    .pi-model-dialog::backdrop { background: #0005; }
+    .pi-model-dialog-header { padding-top: 10px; }
+    .pi-model-close { width: 44px; height: 44px; }
+    .pi-model-star { flex-basis: 44px; }
+    .pi-model-all { min-height: 44px; }
+}

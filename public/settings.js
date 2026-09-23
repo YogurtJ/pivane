@@ -131,6 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const systemPrompts = window.PiSystemPrompts.create({ apiFetch, currentCwd });
 
     let settingsOpener;
+    let settingsViewEpoch = 0;
     function openSettings(tab = state.activeTab) {
         if (elements.dialog.classList.contains('hidden')) settingsOpener = document.activeElement;
         elements.dialog.classList.remove('hidden');
@@ -139,6 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function closeSettings() {
+        settingsViewEpoch++;
         window.WorkspaceAccess?.closeSettings();
         nativeSettings.close();
         usagePanel.close();
@@ -152,6 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function switchTab(tab) {
+        const viewEpoch = ++settingsViewEpoch;
         window.PiExtensions?.setView(tab);
         state.activeTab = tab;
         if (tab === 'media') void subagentSettings.open();
@@ -167,25 +170,32 @@ document.addEventListener('DOMContentLoaded', () => {
         else updatesPanel.close();
         elements.nav.querySelectorAll('[data-settings-tab]').forEach(button => button.classList.toggle('active', button.dataset.settingsTab === tab));
         elements.panels.forEach(panel => panel.classList.toggle('active', panel.dataset.settingsPanel === tab));
-        if (tab === 'providers' || tab === 'models') loadModels().then(snapshot => {
+        // Settings may have changed outside this page. Read local configuration again;
+        // only explicit configuration actions notify the active session to refresh.
+        if (tab === 'providers' || tab === 'models') loadModels(true, false).then(snapshot => {
+            if (viewEpoch !== settingsViewEpoch || snapshot !== state.modelSnapshot) return;
             if (auxiliaryModels?.acceptSnapshot(snapshot)) {
                 if (tab === 'models') return auxiliaryModels.refresh();
             } else {
                 titleSettings?.setSnapshot(snapshot);
                 if (tab === 'models') return titleSettings?.refresh();
             }
-        }).catch(error => showPanelError(tab, error));
+        }).catch(error => { if (viewEpoch === settingsViewEpoch) showPanelError(tab, error); });
         if (tab === 'packages' || tab === 'skills') loadResources().catch(error => showPanelError(tab, error));
     }
 
     function showPanelError(tab, error) {
+        if (tab === 'models' && auxiliaryModels?.current) {
+            auxiliaryModels.status.textContent = error.message;
+            return;
+        }
         const target = tab === 'providers' ? elements.modelList
             : tab === 'models' ? elements.modelList
                 : tab === 'packages' ? elements.packageList : elements.skillList;
         target.innerHTML = `<div class="settings-empty error"><i class="fa-solid fa-circle-exclamation"></i><span>${escapeHtml(error.message)}</span></div>`;
     }
 
-    async function loadModels(force = false) {
+    async function loadModels(force = false, notify = force) {
         if (state.modelSnapshot && !force) {
             renderProviders();
             renderModels();
@@ -198,7 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(snapshot => {
                 if (state.loadingModels !== loading) return snapshot;
                 state.modelSnapshot = snapshot;
-                if (force) window.dispatchEvent(new CustomEvent('workspace:models-changed'));
+                if (notify) window.dispatchEvent(new CustomEvent('workspace:models-changed'));
                 populateModelProviderFilter();
                 populateMediaAgentControls();
                 renderProviders();

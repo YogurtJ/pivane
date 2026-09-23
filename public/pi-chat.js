@@ -50,6 +50,16 @@ document.addEventListener('DOMContentLoaded', () => {
         connectionBanner: $('pi-connection-banner'),
         connectionText: $('pi-connection-text'),
         modelSelect: $('pi-model-select'),
+        mobileSummary: $('pi-mobile-summary'),
+        mobileTitle: $('pi-mobile-title'),
+        mobileThreadTitle: $('pi-mobile-thread-title'),
+        mobileComposerSummary: $('pi-mobile-composer-summary'),
+        mobileComposerModel: $('pi-mobile-composer-model'),
+        mobileComposerThinking: $('pi-mobile-composer-thinking'),
+        mobileComposerUsage: $('pi-mobile-composer-usage'),
+        mobileContextTrigger: $('pi-mobile-context-trigger'),
+        mobileContextPercent: $('pi-mobile-context-percent'),
+        mobileDialog: $('pi-mobile-session-dialog'),
         modelRefresh: $('pi-model-refresh'),
         modelGuidance: $('pi-model-guidance'),
         modelGuidanceText: $('pi-model-guidance-text'),
@@ -107,6 +117,8 @@ document.addEventListener('DOMContentLoaded', () => {
         controls: $('pi-transcript-modes'),
         scroll: transcriptScroll
     });
+
+    const modelPicker = new window.PiModelPicker({ button: elements.modelSelect, onSelect: changeModel, api: apiFetch });
 
     const RECENT_PROJECTS_KEY = 'pi.web.recentProjects';
     const EXPANDED_PROJECTS_KEY = 'pi.web.expandedProjects';
@@ -204,6 +216,86 @@ document.addEventListener('DOMContentLoaded', () => {
         composerSessionKey: null
     };
 
+    const mobileSheet = (() => {
+        const dialog = elements.mobileDialog;
+        dialog.setAttribute('aria-label', `${translateUi('模型')} · ${translateUi('上下文占用')}`);
+        const head = document.createElement('div'); head.className = 'pi-mobile-sheet-head';
+        const heading = document.createElement('strong'); heading.textContent = dialog.getAttribute('aria-label');
+        const close = document.createElement('button'); close.type = 'button'; close.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+        close.setAttribute('aria-label', translateUi('关闭')); close.addEventListener('click', () => dialog.close());
+        head.append(heading, close);
+        const group = document.createElement('div'); group.className = 'pi-mobile-sheet-group'; dialog.append(head, group);
+        const row = (id, label, icon, action) => {
+            const button = document.createElement('button'); button.type = 'button'; button.id = id; button.className = 'pi-mobile-sheet-row';
+            const symbol = document.createElement('i'); symbol.className = `fa-solid ${icon}`; symbol.setAttribute('aria-hidden', 'true');
+            const name = document.createElement('span'); name.textContent = translateUi(label);
+            const detail = document.createElement('small'); button.append(symbol, name, detail);
+            button.addEventListener('click', () => { dialog.close(); action(); }); group.append(button);
+            return { button, detail };
+        };
+        const model = row('pi-mobile-choose-model', '模型', 'fa-wand-magic-sparkles', () => modelPicker.open());
+        const thinkingRow = document.createElement('label'); thinkingRow.className = 'pi-mobile-sheet-row pi-mobile-thinking';
+        const thinkingIcon = document.createElement('i'); thinkingIcon.className = 'fa-solid fa-brain'; thinkingIcon.setAttribute('aria-hidden', 'true');
+        const thinkingName = document.createElement('span'); thinkingName.textContent = translateUi('思考');
+        const thinking = document.createElement('select'); thinking.id = 'pi-mobile-thinking'; thinking.setAttribute('aria-label', translateUi('思考'));
+        thinking.addEventListener('change', () => { elements.thinkingSelect.value = thinking.value; void changeThinking(); });
+        const thinkingChoice = document.createElement('span'); thinkingChoice.className = 'pi-mobile-thinking-choice';
+        const thinkingChevron = document.createElement('i'); thinkingChevron.className = 'fa-solid fa-chevron-down'; thinkingChevron.setAttribute('aria-hidden', 'true');
+        thinkingChoice.append(thinking, thinkingChevron);
+        thinkingRow.append(thinkingIcon, thinkingName, thinkingChoice); group.append(thinkingRow);
+        const context = row('pi-mobile-context', '上下文占用', 'fa-layer-group', () => sideChat.showPane('details'));
+        const open = () => {
+            if (innerWidth > 680 || dialog.open) return;
+            syncMobileHeader(); dialog.showModal(); close.focus({ preventScroll: true });
+            elements.mobileContextTrigger.setAttribute('aria-expanded', 'true');
+            elements.mobileComposerSummary.setAttribute('aria-expanded', 'true');
+        };
+        elements.mobileContextTrigger.addEventListener('click', open);
+        elements.mobileComposerSummary.addEventListener('click', open);
+        elements.mobileSummary.addEventListener('click', () => elements.projectButton.click());
+        dialog.addEventListener('close', () => {
+            elements.mobileContextTrigger.setAttribute('aria-expanded', 'false');
+            elements.mobileComposerSummary.setAttribute('aria-expanded', 'false');
+        });
+        const modes = $('pi-transcript-modes');
+        const home = document.createComment('message view desktop position'); modes.after(home);
+        const placeModes = () => {
+            if (innerWidth <= 680) $('pi-mobile-view-section').append(modes);
+            else { home.before(modes); if (dialog.open) dialog.close(); }
+        };
+        window.addEventListener('resize', placeModes); placeModes();
+        return { model, thinking, context };
+    })();
+
+    function syncMobileHeader() {
+        const modelName = state.model?.name || state.model?.id || translateUi('等待会话');
+        const thinkingName = state.connected && state.session
+            ? [...elements.thinkingSelect.options].find(option => option.value === state.thinkingLevel)?.textContent || '' : '';
+        const percent = elements.contextPercent.textContent;
+        elements.mobileTitle.textContent = elements.projectName.textContent;
+        elements.mobileThreadTitle.textContent = state.session ? getSessionTitle(state.session)
+            : state.cwd ? translateUi('选择会话开始工作') : translateUi('选择项目会话后开始工作');
+        elements.mobileThreadTitle.title = state.session ? elements.mobileThreadTitle.textContent : '';
+        elements.connectionBanner.toggleAttribute('data-has-session', Boolean(state.session));
+        elements.mobileSummary.title = elements.projectPath.textContent;
+        elements.mobileSummary.setAttribute('aria-label', `${translateUi('切换项目目录')}：${elements.mobileTitle.textContent}`);
+        elements.mobileComposerModel.textContent = modelName;
+        elements.mobileComposerThinking.textContent = thinkingName ? ` · ${thinkingName}` : '';
+        elements.mobileComposerUsage.textContent = percent;
+        elements.mobileComposerSummary.setAttribute('aria-label', `${modelName}${thinkingName ? ` · ${thinkingName}` : ''} · ${translateUi('上下文占用')} ${percent}`);
+        elements.mobileContextPercent.textContent = percent.replace(/%$/, '');
+        const contextLabel = elements.contextButton.title || translateUi('上下文用量暂无统计');
+        elements.mobileContextTrigger.title = contextLabel;
+        elements.mobileContextTrigger.setAttribute('aria-label', `${contextLabel} · ${percent}`);
+        elements.mobileContextTrigger.dataset.level = elements.contextFill.dataset.level || 'unknown';
+        mobileSheet.model.detail.textContent = modelName;
+        mobileSheet.model.button.disabled = elements.modelSelect.disabled;
+        mobileSheet.thinking.replaceChildren(...[...elements.thinkingSelect.options].map(option => option.cloneNode(true)));
+        mobileSheet.thinking.value = state.thinkingLevel;
+        mobileSheet.thinking.disabled = elements.thinkingSelect.disabled;
+        mobileSheet.context.detail.textContent = elements.contextFraction.textContent;
+    }
+
     const shell = new window.PiShell({
         transcript: elements.transcript,
         context: () => ({ text: elements.input.value, enabled: state.userShell, queueModes: state.queueModes, connected: state.connected, streaming: state.streaming,
@@ -225,7 +317,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const listed = (state.projectSessions.get(cwd) || []).find(item => item.id === session.id);
         if (listed) listed.name = name;
         if (state.cwd === cwd && state.session?.id === session.id) {
-            state.session.name = name; updateSessionMeta();
+            state.session.name = name; updateSessionMeta(); syncMobileHeader();
         }
         renderSessions();
     }
@@ -307,10 +399,15 @@ document.addEventListener('DOMContentLoaded', () => {
         addSide: quote => sideChat.open({ quote }), toast
     });
 
-    const turnEdits = new window.PiTurnEdits({
-        transcript: elements.transcript, showPane: mode => sideChat.showPane(mode), copy: copyTextToClipboard, notify: toast,
+    const filesPanel = new window.PiFilesPanel({
+        showPane: mode => sideChat.showPane(mode), copy: copyTextToClipboard, notify: toast,
         api: apiFetch, context: () => ({ cwd: state.cwd, key: JSON.stringify([state.cwd, state.session?.id]), generation: state.socketGeneration })
     });
+    const turnEdits = new window.PiTurnEdits({
+        transcript: elements.transcript, showPane: () => filesPanel.showHistory(), copy: copyTextToClipboard, notify: toast,
+        viewer: filesPanel.viewer, context: () => ({ cwd: state.cwd, key: JSON.stringify([state.cwd, state.session?.id]), generation: state.socketGeneration })
+    });
+    filesPanel.bindHistory(turnEdits);
 
     const nativeControls = new window.PiRuntimeControls({
         connected: () => state.connected,
@@ -488,6 +585,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => elements.tokenInput.focus(), 0);
     }
 
+    const taskProgress = new window.PiTaskProgress(document.getElementById('pi-task-progress'));
     const taskResults = window.PiTaskResults?.create({ root: document.getElementById('pi-task-results'), fetch: apiFetch,
         scope: () => state.session && !state.session.ephemeral ? { cwd: state.cwd, id: state.session.id, generation: state.socketGeneration,
             busy: !state.connected || state.streaming || state.compacting || state.shellBusy || state.pendingUi.size > 0 } : null,
@@ -515,7 +613,8 @@ document.addEventListener('DOMContentLoaded', () => {
             transfer.setEnabled(status.sessionTransfer === true);
             historyView.setEnabled(status.historySearch === true);
             historyView.setCapabilities(status);
-            turnEdits.viewer.setEnabled(status.fileViewer === true);
+            filesPanel.viewer.setEnabled(status.fileViewer === true);
+            filesPanel.setEnabled(status.fileBrowser === true);
             composer.setEnabled(status.composerTools === true);
             state.composerTools = status.composerTools === true;
             state.nativeSettings = status.nativeSettings === true;
@@ -1009,6 +1108,7 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('pi.web.cwd', cwd);
             elements.projectName.textContent = getProjectName(cwd);
             elements.projectPath.textContent = cwd;
+            syncMobileHeader();
             elements.projectInput.value = cwd;
             clearSessionView();
             setConnection('connecting', translateUi("正在读取项目会话"));
@@ -1428,6 +1528,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function openSession(session) {
         if (!session || state.session?.id === session.id && state.connected) return;
         turnEdits.reset();
+        filesPanel.reset();
         const draftKey = JSON.stringify([state.cwd, session.id]);
         if (state.composerSessionKey !== draftKey) {
             state.attachmentEpoch++;
@@ -1442,6 +1543,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderAttachments(); autoResizeInput();
         }
         state.session = session;
+        syncMobileHeader();
         extensionAssistant.update(session);
         workflows.update();
         if (!session.ephemeral) localStorage.setItem(`pi.web.session:${state.cwd}`, session.id);
@@ -1549,6 +1651,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function disconnectSocket(intentional = false) {
+        taskProgress.reset();
         taskResults?.reset();
         titleEditor?.close();
         threadMenu.close(false);
@@ -1682,6 +1785,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderModels();
         renderThinkingLevels();
         renderMessages(snapshot.messages?.messages || []);
+        taskProgress.apply(snapshot.messages?.webProgress);
         restoreLive(snapshot.messages?.webLive);
         state.renderedCompletion = snapshot.completion || null;
         window.PiPageNotifications?.observeCompletion(state.renderedCompletion);
@@ -1752,20 +1856,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderModels() {
-        const groups = new Map();
-        for (const model of state.models) {
-            if (!groups.has(model.provider)) groups.set(model.provider, []);
-            groups.get(model.provider).push(model);
-        }
-        const available = state.models.some(m => m.provider === state.model?.provider && m.id === state.model?.id);
-        const placeholder = available ? '' : `<option value="" disabled selected>${state.models.length ? translateUi("请选择已接入的模型") : translateUi("尚无可用模型")}</option>`;
-        elements.modelSelect.innerHTML = placeholder + [...groups.entries()].map(([provider, models]) => `
-            <optgroup label="${escapeHtml(provider)}">
-                ${models.map(model => `<option value="${escapeHtml(`${model.provider}|||${model.id}`)}">${escapeHtml(model.name || model.id)}</option>`).join('')}
-            </optgroup>
-        `).join('');
-        elements.modelSelect.value = available ? `${state.model.provider}|||${state.model.id}` : '';
-        elements.modelSelect.disabled = !state.connected || !state.models.length || Boolean(state.modelRefreshOp);
+        modelPicker.update(state.models, state.model, elements.modelSelect.disabled);
+        syncMobileHeader();
         syncModelGuidance();
     }
 
@@ -1774,6 +1866,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.thinkingSelect.innerHTML = state.thinkingLevels.map(level => `<option value="${escapeHtml(level)}">${labels[level] || level}</option>`).join('');
         elements.thinkingSelect.value = state.thinkingLevel;
         elements.thinkingSelect.disabled = state.thinkingLevels.length <= 1;
+        syncMobileHeader();
     }
 
     function messageText(content) {
@@ -2158,6 +2251,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function clearSessionView() {
         extensionAssistant.update(null);
         turnEdits.reset();
+        filesPanel.reset();
         state.attachmentEpoch++;
         state.attachmentReads = 0;
         state.attachmentQueue = Promise.resolve();
@@ -2170,10 +2264,10 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.modelGuidance.hidden = true; elements.modelRefresh.disabled = true;
         state.stats = null;
         state.streaming = false;
-        elements.modelSelect.innerHTML = `<option>${translateUi("等待会话")}</option>`;
-        elements.modelSelect.disabled = true;
+        modelPicker.update([], null, true, translateUi('等待会话'));
         elements.thinkingSelect.innerHTML = `<option>${translateUi("关闭")}</option>`;
         elements.thinkingSelect.disabled = true;
+        syncMobileHeader();
         elements.input.disabled = true;
         elements.sendButton.disabled = true;
         elements.compactButton.disabled = true;
@@ -2202,6 +2296,10 @@ document.addEventListener('DOMContentLoaded', () => {
             void refreshActivity();
         }
         switch (event.type) {
+            case 'gateway_progress':
+                state.runtimeRevision++;
+                taskProgress.apply(event.progress);
+                break;
             case 'gateway_session_named':
                 if (event.cwd === state.cwd && event.sessionId === state.session?.id && typeof event.name === 'string') sessionNamed(state.session, event.cwd, event.name);
                 break;
@@ -2605,6 +2703,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (generation !== state.socketGeneration || revision !== state.runtimeRevision || sessionId !== state.session?.id) return;
             if (!state.streaming && !runtime.isStreaming && !runtime.isCompacting) {
                 renderMessages(messageData.messages || []);
+                taskProgress.apply(messageData.webProgress);
                 state.renderedCompletion = messageData.completion || null;
                 window.PiPageNotifications?.observeCompletion(state.renderedCompletion);
                 void acknowledgeRenderedReply();
@@ -2646,10 +2745,11 @@ document.addEventListener('DOMContentLoaded', () => {
         renderCompactionStatus();
         elements.autoCompact.checked = runtime.autoCompactionEnabled !== false;
         if (state.model) {
-            elements.modelSelect.value = state.models.some(m => m.provider === state.model.provider && m.id === state.model.id) ? `${state.model.provider}|||${state.model.id}` : '';
+            renderModels();
             elements.agentDetail.textContent = `${state.model.provider}/${state.model.id}`;
         }
         if (state.thinkingLevel) elements.thinkingSelect.value = state.thinkingLevel;
+        syncMobileHeader();
         setStreaming(state.streaming);
     }
 
@@ -2666,6 +2766,8 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.contextFill.style.width = `${hasUsage ? Math.max(0, Math.min(100, percent)) : 0}%`;
         elements.contextFill.dataset.level = hasUsage ? percent >= 90 ? 'danger' : percent >= 70 ? 'warn' : 'ok' : 'unknown';
         elements.contextFraction.textContent = fraction;
+        elements.mobileContextTrigger.style.setProperty('--pi-context-progress', `${hasUsage ? Math.max(0, Math.min(100, percent)) : 0}%`);
+        syncMobileHeader();
         renderCompactionStatus();
         elements.statInput.textContent = formatTokens(stats?.tokens?.input);
         elements.statOutput.textContent = formatTokens(stats?.tokens?.output);
@@ -2707,13 +2809,14 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.compactButton.disabled = !state.connected || busy || state.pendingUi.size > 0;
         elements.autoCompact.disabled = !state.connected || state.shellBusy;
         elements.autoRetry.disabled = !state.connected || state.shellBusy;
-        elements.modelSelect.disabled = busy || !state.connected || !state.models.length;
+        modelPicker.setDisabled(busy || !state.connected || !state.models.length);
         syncModelGuidance();
         elements.thinkingSelect.disabled = busy || !state.connected || state.thinkingLevels.length <= 1;
         elements.composerStatus.textContent = !state.connected ? translateUi("未打开会话") : state.shellBusy ? translateUi("Shell 正在执行，可继续编辑草稿；停止请使用命令卡片") : state.treeBusy ? translateUi("正在切换对话位置，请在历史页查看进度或取消") : state.resourceRequested ? translateUi("正在重新加载原生资源") : stopping ? translateUi("正在停止 / 取回，请等待确认") : compacting ? translateUi("上下文压缩中") : streaming ? translateUi("Agent 运行中：引导在本轮工具后送达，后续在任务完成后送达") : translateUi("Pi Agent 已就绪");
         historyView.sync();
         workflows.update();
         sideChat.updateParent();
+        syncMobileHeader();
         autoResizeInput();
     }
 
@@ -2776,7 +2879,7 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.input.disabled = true;
             elements.sendButton.disabled = true;
             elements.compactButton.disabled = true;
-            elements.modelSelect.disabled = true;
+            modelPicker.setDisabled(true);
             elements.thinkingSelect.disabled = true;
             elements.currentThreadMenu.disabled = true;
             elements.composerStatus.textContent = translateUi("Pi runtime 已退出");
@@ -2872,8 +2975,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.shellBusy || state.streaming || state.compacting || state.resourceRequested) throw new Error(translateUi("请等待会话空闲后切换模型或思考等级"));
             if (!args) {
                 if (name === 'model' && !state.models.length) { syncModelGuidance(); elements.modelSetup.focus(); toast(translateUi("请先接入聊天模型；命令草稿已保留"), 'info'); return false; }
-                const select = name === 'model' ? elements.modelSelect : elements.thinkingSelect;
-                select.focus(); try { select.showPicker?.(); } catch {} return true;
+                if (name === 'model') modelPicker.open();
+                else { elements.thinkingSelect.focus(); try { elements.thinkingSelect.showPicker?.(); } catch {} }
+                return true;
             }
             if (name === 'model') {
                 const models = state.models.filter(m => `${m.provider}/${m.id}` === args || m.id === args);
@@ -3105,10 +3209,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderCommandMenu() { composer.complete(); }
 
-    async function changeModel() {
-        const [provider, modelId] = elements.modelSelect.value.split('|||');
-        if (!provider || !modelId) return;
-        if (state.modelRefreshOp) return;
+    async function changeModel(selection) {
+        if (elements.modelSelect.disabled || state.modelRefreshOp || !state.connected) return;
+        if (!state.models.some(model => model.provider === selection?.provider && model.id === selection?.id)) return;
+        const { provider, id: modelId } = selection;
         const generation = state.socketGeneration;
         const operation = { generation, kind: 'selection' }; state.modelRefreshOp = operation;
         setStreaming(state.streaming);
@@ -3116,6 +3220,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const model = await requestRpc('set_model', { provider, modelId });
             if (generation !== state.socketGeneration) return;
             state.model = model; state.modelAuthError = false; state.modelRefreshError = '';
+            renderModels();
             const [levels, runtime, stats] = await Promise.all([
                 requestRpc('get_available_thinking_levels'), requestRpc('get_state'), requestRpc('get_session_stats')
             ]);
@@ -3141,14 +3246,21 @@ document.addEventListener('DOMContentLoaded', () => {
     async function changeThinking() {
         const level = elements.thinkingSelect.value;
         elements.thinkingSelect.disabled = true;
+        mobileSheet.thinking.disabled = true;
+        const generation = state.socketGeneration;
         try {
             await requestRpc('set_thinking_level', { level });
+            if (generation !== state.socketGeneration) return;
             state.thinkingLevel = level;
             toast(translateUi("思考等级：{0}", elements.thinkingSelect.selectedOptions[0].textContent), 'success');
         } catch (error) {
-            toast(error.message, 'error');
+            if (generation === state.socketGeneration) toast(error.message, 'error');
         } finally {
-            elements.thinkingSelect.disabled = state.streaming || state.compacting || !state.connected || state.thinkingLevels.length <= 1;
+            if (generation === state.socketGeneration) {
+                elements.thinkingSelect.disabled = state.streaming || state.compacting || !state.connected || state.thinkingLevels.length <= 1;
+                elements.thinkingSelect.value = state.thinkingLevel;
+                syncMobileHeader();
+            }
         }
     }
 
@@ -3530,10 +3642,9 @@ document.addEventListener('DOMContentLoaded', () => {
             else await openSession(session);
         })().catch(error => toast(error.message, 'error'));
     });
-    elements.modelSelect.addEventListener('change', changeModel);
     elements.modelRefresh.addEventListener('click', () => void refreshSessionModels());
     elements.modelSetup.addEventListener('click', () => window.dispatchEvent(new CustomEvent('workspace:open-settings', { detail: { tab: 'providers' } })));
-    elements.modelChoose.addEventListener('click', () => { elements.modelSelect.focus(); try { elements.modelSelect.showPicker?.(); } catch {} });
+    elements.modelChoose.addEventListener('click', () => modelPicker.open());
     window.addEventListener('workspace:models-changed', () => {
         if (!state.modelCatalogSupported) return;
         state.modelRefreshPending = true;
@@ -3702,5 +3813,6 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (state.session && !state.session.ephemeral && !state.connected) void connectSocket(state.session).catch(() => {});
     });
     window.addEventListener('beforeunload', () => { sideChat.disposeAll(); disconnectSocket(true); });
+    syncMobileHeader();
     bootstrap();
 });

@@ -16,6 +16,14 @@
 
 工具结果的可选 `details.pi5ToolProvenance` 包含 `{version:1,toolName,toolCallId,source?:{source,path,scope,origin},skill?:{name,path}}`，由受管 worker 的调用前元数据生成，随原生 toolResult 和原有 WS 工具结果传递。缺失即未知，不通过设置清单补填；前端核对名称与调用 ID，仅作来源显示。扩展助手包确认取消时提供 `details.pi5PackageOperation.status='cancelled'`。不新增 REST 或改动原始正文、错误和用量，详见[执行来源](NATIVE_SETTINGS.md#执行记录中的技能与扩展来源)。
 
+## 任务进度（taskProgress）
+
+`GET /api/pi/status` 的 `taskProgress:true` 表示服务支持内置进度卡。主 WS `open_session` / `open_ephemeral` 的 `messages.webProgress` 与 `get_messages.webProgress` 为 `null` 或 `{version:1,id,plan:[{step,status}],explanation}`；`id` 标识一次已保存的更新。空 `plan` 表示明确清除，不回退到更早计划。每次原生更新或分支恢复广播 `{type:'gateway_progress',progress}`，沿用 `webRuntimeId/webSequence`，初始化按 `messages.webLive` 的边界过滤已包含事件；前端收到进度事件递增运行修订，拒绝较早的异步快照覆盖。
+
+工具 `update_plan({plan,explanation?})` 每次替换完整计划，最多 20 步、每步 1–200 字符，状态为 `pending|in_progress|completed`，至多一项 `in_progress`；说明最多 1000 字符。空白步骤或非法状态拒绝保存。`details.pivaneProgress` 提供该次结果。受管扩展通过 `pi.appendEntry('pivane-task-progress', data)` 保存原生状态，Supervisor 只缓存有界展示投影；不新增独立数据库或计划写入 REST。
+
+恢复读取完整当前 branch 的最新 custom entry，不依赖压缩后的消息列表。最新工具结果离开模型上下文时，扩展通过原生 `context` hook 提供当前计划数据；不启动额外模型请求。正式线程持久，临时线程随运行销毁，侧聊不注册此工具。停止和 `agent_settled` 不改步骤。用户操作见[任务进度卡](USER_GUIDE.md#任务进度卡)。
+
 ## 工作台访问验证（accessControl）
 
 2026-09-09 新后端以 `/api/access/status.accessControl=true` 标记，公开接口仅返回 enabled/authenticated。设置/登录/退出/撤销与全部字段见 [ACCESS_CONTROL.md](ACCESS_CONTROL.md)。配置缺省免认证；开启后所有私人API、WebSocket和静态媒体均需要Cookie或Bearer，不能凭同源Origin或URL Token绕过。非空PI_WEB_TOKEN强制启用；网页配置可由用户修改且要求修订/确认。
@@ -86,6 +94,8 @@
 `historySearch=true` 标记主连接已开放原生历史搜索、分页预览和原生 label 书签。新命令 search_history/get_history_entry/set_history_bookmark 只作用于当前已打开的持久 worker，侧聊和 no-session 拒绝；不增加裸 RPC 透传或独立聊天历史。完整参数、修订和限额见 [HISTORY.md](HISTORY.md)。
 
 `composerTools=true` 标记原生模板 CRUD、内置命令 Web 映射目录、项目文件搜索和主 WS `reload_resources` 已启用。REST 包括 `GET /composer/catalog?cwd`、`GET/PUT/DELETE /composer/template` 与 `GET /composer/files?cwd&q`，复用 token/Origin，响应 no-store。模板写入使用 scope/name/content/expectedRevision，修订冲突 409；重载成功广播 `gateway_commands`。完整字段、限制、命令映射及未接入项见 [COMPOSER_TOOLS.md](COMPOSER_TOOLS.md)。
+
+`fileBrowser=true` 标记项目浏览接口 `GET /files/list?cwd&path&hidden` 和 `GET /files/search?cwd&q&hidden`，可在没有会话 worker 时使用。只返回经项目／私密路径及描述符验证的文件和目录元数据，`entries` 含 `name/path/kind/link`，`partial` 明确扫描是否不完整；目录按需读取，文件名搜索覆盖未展开目录但跳过目录链接及常见依赖／构建目录。2 并发、3 秒扫描预算，目录最多返回 500 项、搜索最多返回 100 项；参数、范围与错误见 [FILE_VIEWER.md](FILE_VIEWER.md#目录与文件名搜索-api)。
 
 `fileViewer=true` 标记已挂载 `GET /files/content?cwd&path`：按当前项目范围读取普通 UTF-8 文件，最大 2MiB、4 并发，返回 cwd/path/absolutePath/content/size/modifiedAt/readAt/revision，响应 no-store/nosniff。复用 token/Origin/realpath/项目根校验，拒绝凭据、越界软链接、非普通文件、二进制与读取中变化；不启动 worker、不写文件或历史。write 记录全文来自原生消息，当前磁盘全文仅用户选择/刷新时请求。字段、错误码及展示契约见 [FILE_VIEWER.md](FILE_VIEWER.md)。
 
@@ -355,6 +365,8 @@ gateway 当前白名单：
 | Session 只读/命名 | `get_entries`, `get_tree`, `get_fork_messages`, `set_session_name` |
 | 资源命令 | `get_commands` |
 
+主连接 `get_messages`（包括打开会话的 messages 快照）返回原生压缩范围内的原始聊天记录，过滤 system 消息；Pi 0.87 的上下文编辑不替换或隐藏这些原文。内部通过同一 worker 的 `get_entries` 和公开 SDK 同步投影，`webLive` / `webProgress` / controls 的事件边界保持一致。原生 Pi RPC 的 `get_messages` 是模型上下文投影，与此网页展示接口不同；完整上下文侧聊使用编辑后投影。`get_entries` 继续保留 `context_edit`、`usage` 和所有分支记录。
+
 `get_tree` 保留原生只读透传；新会话树 UI 使用独立有界 `get_session_tree`，导航只走受控 `navigate_history`。原生 `clear_queue` 仍未作为裸命令开放；主会话改由 `stop_and_recover` 先取回再 abort，`take_queue` 仅取回，`ack_recovery` 按组 ID 移除结果。队列文字、取回列表、停止状态与扩展文字状态以 controls 快照/修订事件同步，详见 [NATIVE_CONTROLS.md](NATIVE_CONTROLS.md)。Pi 0.85.0 abort 允许取消压缩，runtimeControls 启用后压缩期间显示该入口。
 
 浏览器本地分派内置 slash command 到对应 Web 操作，包括 `/model`、`/thinking`、`/settings`、`/session`、`/name`、`/new`、`/resume`、`/fork`、`/clone`、`/compact`、`/copy`、`/quit`、`/reload` 等。`/templates` 打开设置中的 Skills/提示词模板入口；命令/Skill/模板与项目文件直接通过输入框 `/`、`@` 联想，不另开资源面板。加号只协调既有附件选择与延迟发送窗口，不新增业务请求。未接入的分享命令明确标注，不转发给模型；`/tree` 在 sessionTree 启用后打开历史页会话树，只接收无参数入口，不直接导航或调用模型。新后端 `/trust` 打开当前项目的独立信任窗口，`/scoped-models` 打开 Pi 配置并展开常用模型所属分类。项目菜单可直接管理该项目的信任，不切换线程；会话详情按需读取 `get_native_resources`。Skills 页的可恢复启停复用 `/settings/native/resources`，不删除文件。模型高级 JSON 和手写 Skill 编辑器已从网页移除，相关 REST 继续兼容。导入/导出通过项目/线程菜单的 REST 实现；本地 `/import`、`/export` 同样打开对应窗口，不接收参数，不透传终端命令或文件路径。
@@ -541,6 +553,17 @@ Shell仅空闲单项执行，期间消息/压缩/导航/重载及预约投递互
 ## 4. Web 设置 API
 
 所有路径前缀为 `/api/pi/settings`，复用 `/api/pi` 的 Origin 和可选 token 校验。任何 response 都不会包含 API Key、OAuth token、credential 内容、models.json headers 或 inline key。
+
+### 会话常用模型
+
+`GET /model-favorites` 返回 `{version:1,revision,favorites:[{provider,modelId}]}`，保存在实例偏好 `modelFavorites`，跨设备共享；GET 不启动 worker、不读取模型凭据、不写用户会话。接口沿用身份、Origin 与 `no-store`，旧后端不支持时前端保留本地收藏并明确提示同步不可用。
+
+`POST /model-favorites` 接受两种严格请求：
+
+- `{action:"set",model:{provider,modelId},favorite:boolean}`：仅修改一个模型，按服务器处理顺序生效；不同模型的并发操作相互保留，重加已有收藏保持顺序。
+- `{action:"import",migrationId,models:[{provider,modelId}]}`：将旧浏览器收藏一次性合并。migrationId 为 16–80 位字母、数字或连字符；相同回执不重复写入。持久取消标记阻止迟到旧浏览器恢复已取消的模型，用户明确加星仍可重新添加。
+
+模型标识保持原值，供应商最长 300、模型 ID 最长 500 字符，拒绝控制字符和未知字段；收藏、取消标记分别最多 5000 项，导入最多 5000 项、迁移回执最多 1024 个。格式或容量超限返回 400，整次失败不改偏好。写入在同步读改写区使用既有私密原子保存，保留未知及其他偏好字段。revision 递增供前端拒绝迟到快照；POST 返回与 GET 相同的已保存快照，不返回内部迁移标记。不限制模型必须当前可用，暂不可用的收藏保留至目录恢复。最近使用仍为浏览器本地显示偏好。
 
 ### 持久会话用量
 

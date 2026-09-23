@@ -114,7 +114,9 @@ async function run(browser, viewport) {
     if (process.env.PI_FILE_LAYOUT_BASELINE) {
         await page.screenshot({ path: path.join(require('node:os').tmpdir(), `pi-file-panel-${viewport.width}-before.png`) }); await context.close(); return;
     }
-    assert.ok(geometry.fraction >= .66, 'full text must occupy at least two thirds of the inspector');
+    // The project navigation adds one toolbar. Preserve the reader on short
+    // phones while keeping source selection and file controls reachable.
+    assert.ok(geometry.fraction >= (geometry.paneHeight < 620 ? .58 : .66), 'full text retains usable space beneath file navigation');
     assert.ok(Math.abs(geometry.bottomGap) <= 2, 'reader fills the remaining panel height');
     assert.equal(await page.locator('#pi-changes-tab').textContent(), '文件');
     assert.equal(await page.locator('#pi-changes-file-list').evaluate(n => n.open), false, 'file navigation starts collapsed on every viewport');
@@ -154,7 +156,7 @@ async function run(browser, viewport) {
     assert.equal(await page.locator('#pi-changes-title').textContent(), 'src/app.js');
     assert.equal(await page.locator('#pi-changes-title').getAttribute('title'), cwd + '/src/app.js');
     const diffFraction = await page.locator('#pi-changes-diffs').evaluate(n => n.clientHeight / document.querySelector('#pi-inspector').clientHeight);
-    assert.ok(diffFraction >= .72, 'diff also gets the majority of the panel');
+    assert.ok(diffFraction >= (viewport.height < 780 && viewport.width <= 900 ? .64 : .72), 'diff also gets the majority of the panel');
     const count = reads.length; await page.locator('#pi-file-full-tab').click();
     await page.waitForFunction(() => document.querySelector('#pi-file-body').textContent.includes('const title'));
     assert.equal(reads.length, count + 1);

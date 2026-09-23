@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { selectMessageView } = require('./pi-mobile-view-helper.cjs');
 const path = require('node:path');
 const express = require('express');
 const { once } = require('node:events');
@@ -9,7 +10,7 @@ async function run(browser, base, width, locale) {
     const en = locale === 'en';
     const context = await browser.newContext({ viewport: { width, height: 1000 }, locale, isMobile: width < 900, hasTouch: width < 900 });
     const page = await context.newPage(); page.setDefaultTimeout(12000);
-    const errors = [], writes = [], calls = []; let counter = 1, holdNextRead = false, releaseRead;
+    const errors = [], writes = [], calls = []; let counter = 1, holdNextRead = false, releaseRead, holdNextCatalog = false, releaseCatalog;
     const cwd = '/fixture/auxiliary-project';
     const model = { id: 'main', provider: 'fixture', name: 'Main model', input: ['text', 'image'], available: true, thinkingLevels: ['off'], contextWindow: 32000 };
     const helper = { ...model, id: 'cheap/helper-with-a-long-id-for-layout', provider: 'budget', name: 'Budget helper with a long name' };
@@ -31,8 +32,11 @@ async function run(browser, base, width, locale) {
         else if (url.pathname === '/api/pi/projects') data = { projects: [{ cwd, name: 'Fixture', sessionCount: 1 }], roots: ['/fixture'], pinnedProjects: [], hiddenProjects: [] };
         else if (url.pathname === '/api/pi/sessions') data = { sessions: [session] };
         else if (url.pathname === '/api/pi/activity') data = { runtimes: [], replyNotices: [], pinnedProjects: [], hiddenProjects: [] };
-        else if (url.pathname === '/api/pi/settings/models') data = { models, providers: [{ id: 'fixture', name: 'Fixture', configured: true, authMethods: {} }, { id: 'budget', name: 'Budget provider', configured: true, authMethods: {} }],
-            customProviders: [], preferences: { sessionTitles: settings['session-title'], mediaAgent: settings['media-planner'] }, auxiliaryModels: snapshot() };
+        else if (url.pathname === '/api/pi/settings/models') {
+            data = structuredClone({ models, providers: [{ id: 'fixture', name: 'Fixture', configured: true, authMethods: {} }, { id: 'budget', name: 'Budget provider', configured: true, authMethods: {} }],
+                customProviders: [], preferences: { sessionTitles: settings['session-title'], mediaAgent: settings['media-planner'] }, auxiliaryModels: snapshot() });
+            if (holdNextCatalog) { holdNextCatalog = false; await new Promise(resolve => { releaseCatalog = resolve; }); }
+        } else if (url.pathname === '/api/pi/settings/subagents') data = { cwd, revision: 'fixture-revision', plugin: { status: 'ready', version: '0.69.0', installedVersions: ['0.69.0'] }, trust: { effective: true }, defaults: { global: {}, project: {} }, roles: [] };
         else if (url.pathname === '/api/pi/settings/auxiliary-models') {
             if (request.method() === 'GET') {
                 data = snapshot();
@@ -70,6 +74,35 @@ async function run(browser, base, width, locale) {
     assert.equal(await page.locator('#settings-media-agent-form').isVisible(), false);
     assert.equal(await title.locator('select').first().inputValue(), helper.provider);
     assert.equal(await media.locator('select').last().inputValue(), model.id);
+    // External configuration changes must appear on reopening, without dropping a draft
+    // or issuing the network-enabled provider refresh endpoint.
+    await media.locator('select').first().selectOption(helper.provider);
+    const sol = { ...helper, id: 'gpt-6-sol', name: 'New Sol' }, luna = { ...helper, id: 'gpt-6-luna', name: 'New Luna' };
+    models = [...models, sol];
+    await page.locator('#workspace-settings-close').click();
+    await page.locator('#workspace-settings-toggle').click();
+    await page.waitForFunction(() => document.querySelector('[data-purpose="media-planner"] option[value="gpt-6-sol"]'));
+    assert.equal(await media.locator('select').last().inputValue(), helper.id, 'catalog refresh preserves unsaved route');
+    holdNextCatalog = true;
+    await page.locator('[data-settings-tab="providers"]').click();
+    const deadline = Date.now() + 12000;
+    while (!releaseCatalog && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.ok(releaseCatalog, 'old catalog request held');
+    models = [...models, luna];
+    await page.locator('[data-settings-tab="models"]').click();
+    await page.waitForFunction(() => document.querySelector('[data-purpose="media-planner"] option[value="gpt-6-luna"]'));
+    const oldResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/pi/settings/models');
+    releaseCatalog(); await oldResponse;
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    assert.equal(await media.locator('option[value="gpt-6-luna"]').count(), 1, 'late old catalog cannot replace new options');
+    await page.locator('[data-settings-tab="media"]').click();
+    await page.locator('#settings-subagents .sa-model-trigger').click();
+    await page.locator('.sa-picker input').fill('gpt-6');
+    assert.equal(await page.locator('.sa-picker-item').count(), 2, 'subagent picker reads the same updated native catalog');
+    await page.keyboard.press('Escape');
+    await page.locator('[data-settings-tab="models"]').click();
+    await page.waitForFunction(() => document.querySelector('[data-purpose="media-planner"] option[value="gpt-6-luna"]'));
+    assert.equal(await media.locator('select').last().inputValue(), helper.id);
     const save = card.locator('.aux-models-footer .settings-primary-button'), reset = card.locator('.aux-models-footer .settings-secondary-button');
     await title.locator('.aux-model-options').click();
     await title.getByRole('checkbox').uncheck();
@@ -126,7 +159,7 @@ async function run(browser, base, width, locale) {
     await page.locator('#workspace-settings-close').click();
     assert.equal(await page.locator('#pi-input').inputValue(), draft);
     assert.equal(await page.locator('#pi-attachments .pi-attachment-chip').count(), 1);
-    await page.locator('[data-transcript-mode="full"]').click();
+    await selectMessageView(page, 'full');
     assert.ok((await page.locator('.pi-tool-output').textContent()).includes('fixture tool output'));
     if (width < 900) { await page.locator('#pi-toggle-sessions').click(); await page.locator('#pi-toggle-sessions').click(); }
     assert.equal(calls.filter(type => type === 'open_session').length, 1);

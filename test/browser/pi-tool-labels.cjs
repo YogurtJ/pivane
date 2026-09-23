@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { selectMessageView } = require('./pi-mobile-view-helper.cjs');
 const http = require('node:http');
 const path = require('node:path');
 const { once } = require('node:events');
@@ -49,7 +50,7 @@ async function run(browser, base, width, locale) {
     }); });
     await page.goto(base, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => !document.getElementById('pi-input').disabled);
-    await page.locator('[data-transcript-mode="full"]').click();
+    await selectMessageView(page, 'full');
     const row = id => page.locator(`.pi-tool-row[data-tool-id="${id}"]`);
     assert.match(await row('skill').locator('summary > strong').textContent(), locale === 'en' ? /Read skill · slides/ : /读取技能 · slides/);
     assert.match(await row('old').locator('summary > strong').textContent(), /legacy/);

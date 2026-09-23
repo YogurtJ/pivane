@@ -4,6 +4,7 @@ const path = require('path');
 const { INTERNAL_COMMAND_PATTERN, isInternalCommand, privateReply } = require('./pivane-compat');
 const { PiRpcClient } = require('./pi-rpc-client');
 const { PiRuntimeActivity, isCompactionNoop } = require('./pi-runtime-activity');
+const { progressValue } = require('./pi-task-progress');
 const { workerLifecycle } = require('./pi-worker-lifecycle');
 
 const { PiRuntimeControls } = require('./pi-runtime-controls');
@@ -30,6 +31,7 @@ class AgentWorker extends EventEmitter {
         this.modelChangeUncertain = false;
         this.compaction = null;
         this.live = new (require('./pi-live-state').PiLiveState)();
+        this.progress = null;
         this.controls = new PiRuntimeControls();
         this.shell = new PiShellExecution(this);
         this.queueModeRevision = 0;
@@ -117,11 +119,18 @@ class AgentWorker extends EventEmitter {
         if (prompting) this.promptPending++;
         try {
             await this.ensureReady();
-            const data = await this.client.request(type, payload, timeoutMs, undefined, value => {
+            // Pi 0.87 get_messages is the edited provider context. Chat uses the
+            // native raw entries selected by compaction, retaining original text.
+            // Map one get_entries response synchronously at its stdout boundary so
+            // later events cannot be acknowledged by an older transcript snapshot.
+            const transcriptSdk = type === 'get_messages' && this.managed ? await require('./pi-session-store').getSdk() : null;
+            const data = await this.client.request(transcriptSdk ? 'get_entries' : type, transcriptSdk ? {} : payload, timeoutMs, undefined, value => {
+                if (transcriptSdk) value = { messages: transcriptSdk.buildContextEntries(value.entries, value.leafId)
+                    .flatMap(entry => transcriptSdk.sessionEntryToContextMessages(entry)) };
                 if (type === 'get_state') this.live.state(value);
                 if (type === 'get_messages') value = publicMessages(value);
                 if (type === 'get_messages' && this.managed) {
-                    const result = { ...value, webLive: this.live.snapshot() };
+                    const result = { ...value, webProgress: structuredClone(this.progress), webLive: this.live.snapshot() };
                     Object.defineProperty(result, 'webSnapshot', { value: {
                         controls: structuredClone(this.controls.snapshot()), pendingUi: structuredClone(this.getPendingUi()),
                         webCompaction: structuredClone(this.compaction), webShell: this.shell.snapshot(), webNavigation: this.navigation.snapshot()
@@ -480,6 +489,17 @@ class AgentWorker extends EventEmitter {
             try {
                 const result = privateReply(JSON.parse(event.message));
                 if (this.modelCatalog.handle(result)) return;
+                if (result && Object.hasOwn(result, 'pivaneProgress')) {
+                    const update = result.pivaneProgress;
+                    if (this.managed && update && (this.noSession || update.sessionId === this.sessionId)) {
+                        const progress = update.progress === null ? null : progressValue(update.progress);
+                        if (update.progress === null || progress) {
+                            this.progress = progress;
+                            this._broadcast({ type: 'gateway_progress', progress });
+                        }
+                    }
+                    return; // Malformed/foreign bridge records must not become notifications.
+                }
                 if (typeof result.pivaneResources === 'string') {
                     if (this.resourceResults.has(result.pivaneResources)) this.resourceResults.set(result.pivaneResources, result);
                     return; // Including late/unknown private replies.

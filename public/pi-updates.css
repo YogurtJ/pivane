@@ -30,10 +30,34 @@
 .maintenance-check input { width: 18px; height: 18px; flex: 0 0 18px; margin-top: 4px; font-size: 16px; accent-color: var(--accent); }
 .updates-notification-settings { margin: 16px 0; }
 .pi-update-badge { display: inline-block; width: 7px; height: 7px; min-width: 7px; margin-inline-start: 6px; border-radius: 50%; background: var(--accent); overflow: hidden; font-size: 0; vertical-align: middle; }
-.pi-update-badge[hidden], #pi-update-notice[hidden], .updates-notification-settings[hidden] { display: none; }
-#pi-update-notice { position: fixed; top: 66px; right: 16px; width: min(360px, calc(100vw - 32px)); box-sizing: border-box; max-height: calc(100dvh - 100px); overflow: auto; z-index: 90; border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: var(--surface-1); color: var(--text-main); box-shadow: 0 8px 28px #0002; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
-#pi-update-notice p { margin: 8px 0; }
-#pi-update-notice button { white-space: normal; max-width: 100%; min-height: 40px; }
+.pi-update-badge[hidden], .pi-update-card[hidden], .updates-notification-settings[hidden], #updates-notice-preview-area[hidden] { display: none; }
+#pi-update-notice { position: fixed; top: calc(66px + env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); z-index: 90; max-height: calc(100dvh - 100px); overflow: auto; }
+.pi-update-card { position: relative; width: min(352px, calc(100vw - 32px)); max-width: 100%; box-sizing: border-box; padding: 18px 18px 10px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-1); color: var(--text-main); box-shadow: 0 12px 36px #0002, 0 2px 6px #0001; font-family: inherit; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.pi-update-card *, .pi-update-card *::before { box-sizing: border-box; }
+.pi-update-header { display: flex; align-items: center; gap: 12px; padding-right: 25px; }
+.pi-update-icon { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 36px; border: 1px solid color-mix(in srgb, var(--green, var(--accent)) 20%, transparent); border-radius: 11px; background: var(--green-soft, var(--surface-2)); color: var(--green, var(--accent)); font-size: 15px; }
+.pi-update-heading { min-width: 0; }
+.pi-update-heading strong { display: block; font-size: 14px; font-weight: 650; letter-spacing: .01em; }
+.pi-update-versions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 5px; color: var(--text-muted); font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; font-variant-numeric: tabular-nums; }
+.pi-update-from { opacity: .85; }
+.pi-update-to { padding: 1px 7px; border-radius: 5px; background: var(--green-soft, var(--surface-2)); color: var(--green, var(--accent)); font-weight: 700; }
+.pi-update-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
+.pi-update-card button { font-family: inherit; cursor: pointer; transition: background .15s, border-color .15s; }
+.pi-update-card .pi-update-action { min-width: 0; min-height: 36px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--text-main); font-size: 12px; font-weight: 500; line-height: 1.45; white-space: normal; }
+.pi-update-card .pi-update-open { background: #247a68; border-color: #247a68; color: #fff; font-weight: 600; }
+.pi-update-card .pi-update-open:hover { background: #1c6556; border-color: #1c6556; }
+.pi-update-card .pi-update-snooze:hover { background: var(--surface-2); border-color: var(--text-muted); }
+.pi-update-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; color: var(--text-muted); font-size: 11px; }
+.pi-update-card .pi-update-ignore { flex-shrink: 0; min-height: 32px; padding: 5px 0 5px 8px; border: 0; border-radius: 4px; color: var(--text-muted); font-size: 11px; }
+.pi-update-card .pi-update-ignore:hover { color: var(--text-main); text-decoration: underline; text-underline-offset: 3px; }
+.pi-update-card .pi-update-close { position: absolute; top: 8px; right: 8px; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--text-muted); font-size: 14px; }
+.pi-update-card .pi-update-close:hover { color: var(--text-main); background: var(--surface-2); }
+.pi-update-card button:focus-visible { outline: 2px solid var(--green, var(--accent)); outline-offset: 3px; }
+.pi-update-card button:disabled { cursor: wait; opacity: .55; }
+.pi-update-card .pi-update-feedback { margin: 0; font-size: 12px; color: var(--text-muted); }
+.pi-update-card .pi-update-feedback:not(:empty) { margin-top: 6px; padding-bottom: 6px; }
+#updates-notice-preview-area { margin-top: 12px; }
+#updates-notice-preview-area .pi-update-card { box-shadow: none; margin-top: 10px; }
 @media (max-width: 600px) {
     .updates-maintenance, .maintenance-dialog { padding: 14px; }
     .maintenance-dialog button { min-height: 42px; }

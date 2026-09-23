@@ -2,12 +2,10 @@ const fs = require('node:fs/promises');
 const fileIo = require('./pi-file-io');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
-const { getSdk } = require('./pi-session-store');
+const { fileScope, fileError, fail } = require('./pi-file-scope');
 const { descriptorPath } = require('./pi-file-descriptor');
-const { windowsPath, withinCanonical } = require('./pi-platform-path');
+const { windowsPath } = require('./pi-platform-path');
 const policy = require('../public/pi-file-policy');
-const within = withinCanonical;
-const fail = (message, status, code) => Object.assign(new Error(message), { status, code });
 
 class PiFileService {
     constructor(store) { this.store = store; this.reading = 0; }
@@ -21,20 +19,8 @@ class PiFileService {
         this.reading++;
         let handle;
         try {
-            let cwd;
-            try { cwd = this.store.resolveProject(input.cwd); } catch { throw fail('项目目录不可访问', 403, 'FILE_PROJECT'); }
+            const { cwd, check } = await fileScope(this.store, input.cwd);
             const requested = path.resolve(cwd, inputPath);
-            const { getAgentDir } = await getSdk();
-            const privateRoots = await Promise.all([getAgentDir(), process.env.PI_MEDIA_CONFIG_DIR].filter(Boolean).map(async root => {
-                try { return await fs.realpath(root); } catch { return path.resolve(root); }
-            }));
-            const check = (file, lexical = false) => {
-                if (process.platform === 'win32') windowsPath(file);
-                const inProject = lexical && process.platform === 'win32'
-                    ? within(cwd.toLowerCase(), file.toLowerCase()) : within(cwd, file);
-                if (!inProject) throw fail('文件不在当前项目内', 403, 'FILE_OUTSIDE');
-                if (policy.restricted(file) || privateRoots.some(root => within(root, file))) throw fail('此文件不提供网页预览', 403, 'FILE_PRIVATE');
-            };
             check(requested, true);
             const resolved = await fs.realpath(requested); check(resolved);
             // Reject a final symlink/reparse point instead of following a swap.
@@ -68,10 +54,7 @@ class PiFileService {
                 modifiedAt: new Date(Number(after.mtimeMs)).toISOString(), readAt: new Date().toISOString(),
                 revision: createHash('sha256').update(bytes.subarray(0, total)).digest('hex') };
         } catch (error) {
-            if (error.status) throw error;
-            if (['ENOENT', 'ENOTDIR'].includes(error.code)) throw fail('文件不存在或已被移走', 404, 'FILE_MISSING');
-            if (['EACCES', 'EPERM', 'ELOOP'].includes(error.code)) throw fail('文件不可访问', 403, 'FILE_DENIED');
-            throw fail('暂时无法读取文件', 500, 'FILE_READ');
+            throw fileError(error);
         } finally { try { await handle?.close(); } finally { this.reading--; } }
     }
 }

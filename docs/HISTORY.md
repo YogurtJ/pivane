@@ -1,5 +1,7 @@
 # 历史搜索与原生书签
 
+Pi 0.87 的上下文编辑只影响模型后续请求；历史搜索、预览与主聊天保留原始文字。主聊天仍遵循原生压缩范围，压缩前记录从历史面板查询。`context_edit` 与 `usage` 不作为聊天节点或预览的当前位置；恢复到编辑之前的分支时，模型上下文按 Pi 原生规则恢复。
+
 2026-09-10：项目线程栏底部新增跨线程正文搜索入口（sessionSearch标记）。GET /sessions/search独立有界只读扫描原生用户/assistant文字，返回线程与命中片段；打开结果接入本页现有get_history_entry正文预览，不导航分支、不自动发送。当前线程搜索/书签继续经唯一worker执行。跨线程搜索的路径、取消、分页和覆盖限制见 [NATIVE_COMPLETION.md](NATIVE_COMPLETION.md)。
 
 当前线程历史查询需要运行实例的 `/api/pi/status.historySearch=true`。

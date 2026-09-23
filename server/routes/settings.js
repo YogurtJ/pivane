@@ -13,6 +13,8 @@ function mountSettingsRoutes(router, { settingsService, nativeService, auxiliary
             catch (error) { res.status(serviceStatus && error.statusCode || errorStatus).json({ error: error.message }); }
         });
     };
+    route('get', '/settings/model-favorites', () => preferences.getModelFavorites());
+    route('post', '/settings/model-favorites', req => preferences.changeModelFavorites(req.body));
     route('get', '/settings/auxiliary-models', () => auxiliaryModels.snapshot());
     route('put', '/settings/auxiliary-models', req => auxiliaryModels.save(req.body));
     route('get', '/settings/session-titles', () => preferences.getSessionTitles());

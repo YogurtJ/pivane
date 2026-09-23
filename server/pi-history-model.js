@@ -133,7 +133,7 @@ function previewHistory(manager, raw, { settled = false } = {}) {
     if (!doc) throw error('记录不存在或不属于可见历史', 'HISTORY_NOT_FOUND');
     const boundary = index => index > 0 && index < doc.text.length && /[\uD800-\uDBFF]/.test(doc.text[index - 1]) && /[\uDC00-\uDFFF]/.test(doc.text[index]) ? index - 1 : index;
     const offset = boundary(Math.min(input.offset, Math.max(0, doc.text.length - 1))), end = boundary(Math.min(doc.text.length, offset + PAGE_TEXT));
-    const position = manager.getBranch().findLast(e => !['label', 'session_info', 'model_change', 'thinking_level_change', 'custom'].includes(e.type));
+    const position = manager.getBranch().findLast(e => !['label', 'session_info', 'model_change', 'thinking_level_change', 'custom', 'context_edit', 'usage'].includes(e.type));
     return { ...metadata(manager, view, entry, doc), atCurrentPosition: position?.id === entry.id, view: presentation, revision: view.revision, leafId: manager.getLeafId(), navigation: require('./pi-session-tree').navigationKind(entry), text: doc.text.slice(offset, end), offset, totalCharacters: doc.text.length,
         nextOffset: end, previousOffset: boundary(Math.max(0, offset - PAGE_TEXT)), hasMore: end < doc.text.length, pageCharacters: PAGE_TEXT };
 }

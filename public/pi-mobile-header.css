@@ -1,0 +1,184 @@
+.pi-mobile-summary, #pi-mobile-thread-title, .pi-mobile-composer-summary,
+.pi-mobile-context-trigger, .pi-mobile-view-section { display: none; }
+
+#pi-mobile-thread-title {
+    min-width: 0;
+    max-width: 46%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-main);
+    font-size: .72rem;
+    font-weight: 600;
+}
+.pi-connection-banner[data-has-session] #pi-mobile-thread-title { display: block; }
+
+@media (max-width: 680px) {
+    .pi-command-bar {
+        height: 50px;
+        min-height: 50px;
+        flex-basis: 50px;
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        gap: 4px;
+        padding: 3px 8px;
+    }
+    .pi-command-left, .pi-runtime-controls { display: contents; }
+    .pi-project-button, .pi-runtime-controls .pi-control-field,
+    .pi-runtime-controls .pi-context-button { display: none; }
+    .pi-mobile-summary {
+        display: flex;
+        flex: 1 1 0;
+        align-items: center;
+        gap: 7px;
+        min-width: 0;
+        height: 44px;
+        padding: 0 7px;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        color: var(--text-main);
+        text-align: left;
+        cursor: pointer;
+    }
+    .pi-mobile-summary strong {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: .86rem;
+        font-weight: 600;
+        letter-spacing: 0;
+    }
+    .pi-mobile-summary i { flex: 0 0 auto; color: var(--text-muted); font-size: .8rem; }
+    .pi-mobile-summary i:last-child { font-size: .62rem; }
+    #pi-toggle-sessions, .pi-runtime-controls > .icon-btn {
+        flex: 0 0 44px;
+        width: 44px;
+        height: 44px;
+    }
+    .pi-runtime-controls > .icon-btn[hidden] { display: none; }
+    .pi-mobile-summary:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+    .pi-connection-banner { height: 36px; flex-basis: 36px; padding-inline: 12px; }
+    #pi-mobile-thread-title { display: block; flex: 1; max-width: none; font-size: .76rem; }
+    .pi-connection-banner[data-state="connected"] #pi-connection-text,
+    .pi-connection-banner[data-state="idle"] #pi-connection-text { display: none; }
+    .pi-connection-banner:not([data-state="connected"]):not([data-state="idle"]) #pi-mobile-thread-title { display: none; }
+    #pi-current-thread-menu { margin-left: auto; min-width: 40px; min-height: 36px; }
+    .pi-mobile-view-section { display: block; }
+    .pi-mobile-view-section .pi-transcript-modes { margin: 0; width: 100%; box-sizing: border-box; }
+    .pi-mobile-view-section .pi-transcript-modes button { flex: 1; min-height: 44px; }
+
+    .pi-composer { position: relative; flex-wrap: wrap; column-gap: 4px; row-gap: 0; }
+    .pi-composer:focus-within .pi-mobile-composer-summary,
+    .pi-composer[data-running="true"] .pi-mobile-composer-summary { display: flex; }
+    .pi-mobile-composer-summary {
+        flex: 0 0 100%;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+        height: 34px;
+        padding: 0 4px;
+        border: 0;
+        border-bottom: 1px solid var(--line);
+        background: transparent;
+        color: var(--text-muted);
+        font: inherit;
+        font-size: .72rem;
+        text-align: left;
+        cursor: pointer;
+    }
+    .pi-mobile-composer-summary strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--text-main); }
+    .pi-mobile-composer-summary span { flex: 0 0 auto; white-space: nowrap; }
+    .pi-mobile-composer-summary span:last-child { margin-left: auto; font-variant-numeric: tabular-nums; }
+    .pi-composer[data-running="true"] .pi-mobile-composer-summary { padding-right: 96px; }
+    .pi-mobile-composer-summary:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+    .pi-composer-actions.pi-composer-add { flex: 0 0 36px; }
+    .pi-composer textarea { flex: 1 1 96px; width: 0; }
+    .pi-composer-actions.right { flex: 0 0 auto; gap: 4px; }
+    .pi-mobile-context-trigger {
+        --pi-ring: var(--green);
+        --pi-context-progress: 0%;
+        position: relative;
+        display: grid;
+        place-items: center;
+        flex: 0 0 38px;
+        width: 38px;
+        height: 40px;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background: transparent;
+        color: var(--text-main);
+        cursor: pointer;
+    }
+    .pi-mobile-context-trigger::before { content: ''; position: absolute; width: 30px; height: 30px; border-radius: 50%; background: conic-gradient(var(--pi-ring) var(--pi-context-progress), var(--line-strong) 0); }
+    .pi-mobile-context-trigger::after { content: ''; position: absolute; width: 24px; height: 24px; border-radius: 50%; background: var(--surface-2); }
+    .pi-mobile-context-trigger span { position: relative; z-index: 1; font-size: .62rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .pi-mobile-context-trigger[data-level="unknown"] { --pi-ring: var(--text-muted); }
+    .pi-mobile-context-trigger[data-level="warn"] { --pi-ring: var(--amber); }
+    .pi-mobile-context-trigger[data-level="danger"] { --pi-ring: var(--danger); }
+    .pi-mobile-context-trigger:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+    .pi-composer[data-running="true"] #pi-delivery-mode.visible {
+        position: absolute;
+        top: 7px;
+        right: 8px;
+        width: 84px;
+        height: 28px;
+        padding: 0 4px;
+    }
+}
+
+.pi-mobile-session-dialog {
+    position: fixed;
+    box-sizing: border-box;
+    inset: auto 0 0;
+    width: min(460px, 100%);
+    max-width: none;
+    max-height: min(580px, calc(100dvh - 24px));
+    margin: 0 auto;
+    padding: 0 0 env(safe-area-inset-bottom);
+    border: 1px solid var(--line-strong);
+    border-radius: 12px 12px 0 0;
+    background: var(--surface-2);
+    color: var(--text-main);
+    box-shadow: 0 -12px 42px #0005;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+.pi-mobile-session-dialog[open] { display: block; }
+.pi-mobile-session-dialog::backdrop { background: #0006; }
+.pi-mobile-sheet-head { display: flex; align-items: center; justify-content: space-between; min-height: 56px; padding: 4px 14px 4px 20px; border-bottom: 1px solid var(--line); }
+.pi-mobile-sheet-head strong { font-size: .95rem; }
+.pi-mobile-sheet-head button { width: 44px; height: 44px; border: 0; border-radius: 6px; background: transparent; color: var(--text-main); font-size: 1.2rem; }
+.pi-mobile-sheet-group { padding: 8px 12px; }
+.pi-mobile-sheet-row {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-main);
+    font: inherit;
+    font-size: .86rem;
+    text-align: left;
+    cursor: pointer;
+}
+.pi-mobile-sheet-row > i { width: 20px; flex: 0 0 20px; text-align: center; color: var(--text-muted); }
+.pi-mobile-sheet-row > span { min-width: 0; flex: 1; }
+.pi-mobile-sheet-row > small { max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: .78rem; }
+.pi-mobile-sheet-row:hover, .pi-mobile-sheet-head button:hover { background: var(--surface-3); }
+.pi-mobile-sheet-row:disabled { cursor: default; opacity: .5; }
+.pi-mobile-thinking-choice { position: relative; display: flex; align-items: center; width: min(43%, 152px); min-height: 40px; border-radius: 5px; background: var(--surface-3); }
+.pi-mobile-thinking select { appearance: none; width: 100%; min-width: 0; min-height: 40px; border: 0; padding: 0 26px 0 10px; background: transparent; color: var(--text-main); font-size: 16px; cursor: pointer; }
+.pi-mobile-thinking-choice > i { position: absolute; right: 10px; color: var(--text-muted); font-size: .7rem; pointer-events: none; }
+.pi-mobile-thinking-choice:has(select:disabled) { opacity: .55; }
+.pi-mobile-thinking-choice:focus-within { outline: 2px solid var(--green); outline-offset: 1px; }
+.pi-mobile-session-dialog button:focus-visible, .pi-mobile-session-dialog select:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+.pi-mobile-session-dialog .pi-mobile-thinking select:focus-visible { outline: none; }

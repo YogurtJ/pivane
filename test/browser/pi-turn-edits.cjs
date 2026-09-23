@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { selectMessageView } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.PI_EDITS_TEST_URL || 'http://127.0.0.1:3001';
 const cwd = '/srv/turn-edits-fixture';
@@ -177,9 +178,9 @@ async function run(browser, viewport) {
     assert.match(await page.locator('#pi-changes-diffs').textContent(), /原始差异/);
     assert.equal(await page.locator('#pi-changes-diffs button').count(), 0, 'legacy display diff cannot be copied as a patch');
     await page.locator('#pi-close-inspector').click();
-    await page.locator('[data-transcript-mode="full"]').click();
+    await selectMessageView(page, 'full');
     assert.equal(await cards.count(), 2); assert.equal(await cards.last().isVisible(), true);
-    await page.locator('[data-transcript-mode="reading"]').click();
+    await selectMessageView(page, 'reading');
     // Live tail: message_end and agent_end are not a settled round; completed earlier cards stay.
     const tailUser = user('工具完成但回复出错'), tailEdit = edit('live', 'new.txt'), tailAnswer = answer('', 'error');
     busy = true; messages = [...messages, tailUser, ...tailEdit];

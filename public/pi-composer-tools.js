@@ -178,7 +178,15 @@
             this.run(async () => { if (this.enabled) await this.load(); if (this.dialog.open && this.openKey === this.key()) await this.renderPanel(); });
         }
         valid() { if (this.openKey !== this.key()) throw new Error(translateUi("项目或会话已变化，请重新打开模板管理")); }
-        button(text, fn) { const b = node('button', text); b.type = 'button'; b.addEventListener('click', () => this.run(fn)); return b; }
+        button(text, fn, pending = translateUi("正在加载…")) {
+            const b = node('button', text); b.type = 'button';
+            b.addEventListener('click', () => {
+                if (b.disabled) return;
+                const finish = window.PiActionFeedback.begin(b, pending);
+                void this.run(fn).finally(finish);
+            });
+            return b;
+        }
         async renderPanel() {
             this.request++; const query = this.search.value.toLowerCase();
             const restoreSearchFocus = this.body.contains(document.activeElement);
@@ -202,7 +210,7 @@
                         const key = this.key(); await this.host.api('/api/pi/composer/template', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: this.host.context().cwd, scope: t.scope, name: t.name, expectedRevision: t.revision }) });
                         if (key !== this.key()) return;
                         await this.load(); this.host.toast(translateUi("模板已删除；重新加载后从当前命令目录移除"), 'success'); if (this.dialog.open) await this.renderPanel();
-                    })); this.body.append(row);
+                    }, translateUi("正在删除…"))); this.body.append(row);
                 }
                 for (const warning of this.catalog?.warnings || []) this.body.append(node('p', warning, 'pi-composer-help'));
                 if (restoreSearchFocus && !this.search.hidden) this.search.focus();
@@ -219,12 +227,16 @@
             const submit = node('button', translateUi("保存模板")); submit.type = 'submit';
             form.append(nameLabel, scopeLabel, contentLabel, node('p', translateUi("$1、$2 为位置参数，$@ 表示全部参数，${1:-默认值} 为可选参数；由 Pi 原生展开。"), 'pi-composer-help'), submit);
             form.addEventListener('submit', e => { e.preventDefault(); this.run(async () => {
-                this.valid(); const key = this.key(); submit.disabled = true;
+                this.valid(); if (submit.disabled) return;
+                const key = this.key();
+                const finish = window.PiActionFeedback.begin(submit, translateUi("正在保存…"));
+                const controls = [name, scope, content].map(item => [item, item.disabled]);
+                controls.forEach(([item]) => { item.disabled = true; });
                 try {
                     await this.host.api('/api/pi/composer/template', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: this.host.context().cwd, name: name.value, scope: scope.value, content: content.value, expectedRevision: record.revision || null }) });
                     if (key !== this.key()) return;
                     this.host.toast(translateUi("模板已保存。空闲时重新加载当前会话资源后可使用。"), 'success'); this.openTemplates();
-                } finally { submit.disabled = false; }
+                } finally { finish(); controls.forEach(([item, disabled]) => { item.disabled = disabled; }); }
             }); }); this.body.append(form); name.disabled ? content.focus() : name.focus();
         }
         async reload() {

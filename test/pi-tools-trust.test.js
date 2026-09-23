@@ -46,7 +46,7 @@ test('default tools preserve empty, inherited and native defaults, with actual n
         assert.ok((await active(original)).includes('bash'), 'saving cannot alter an existing worker');
         await original.dispose();
         const empty = await supervisor.createEphemeralWorker(cwd);
-        assert.deepEqual(await active(empty), ['fixture_custom'], 'extension tools survive the empty built-in list');
+        assert.deepEqual(await active(empty), ['fixture_custom', 'update_plan'], 'extension tools survive the empty built-in list');
         await empty.dispose();
         await save({ defaultTools: ['read', 'grep'] });
         await trust(true);
@@ -56,7 +56,7 @@ test('default tools preserve empty, inherited and native defaults, with actual n
         assert.deepEqual(snap.settings.defaultTools.value, []);
         await save({ defaultTools: ['ls'] }, 'project');
         const projectWorker = await supervisor.createEphemeralWorker(cwd);
-        assert.deepEqual(await active(projectWorker), ['fixture_custom', 'ls']);
+        assert.deepEqual(await active(projectWorker), ['fixture_custom', 'ls', 'update_plan']);
         await projectWorker.dispose();
         await save({ defaultTools: null }, 'project');
         snap = await service.snapshot(cwd);

@@ -35,6 +35,7 @@
                 document.getElementById('settings-media-agent-form').hidden = false;
                 return false;
             }
+            this.readEpoch++; // A newer catalog invalidates any older preference read.
             this.models = snapshot.models || []; this.providers = snapshot.providers || [];
             if (!this.current) this.current = snapshot.auxiliaryModels;
             this.root.hidden = false;

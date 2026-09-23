@@ -165,7 +165,7 @@ async function run(browser, viewport) {
     assert.equal(commands.length, count, 'unsupported and unknown slash commands cannot become model prompts');
     await input.fill('/model fixture/next'); await input.press('Enter');
     await page.waitForFunction(() => document.querySelector('#pi-input').value === '');
-    assert.equal(await page.locator('#pi-model-select').inputValue(), 'fixture|||next');
+    assert.equal(await page.locator('#pi-model-select .pi-model-trigger-label').textContent(), 'Next fixture');
     await input.fill('/thinking max'); await input.press('Enter');
     await page.waitForFunction(() => document.querySelector('#pi-input').value === '');
     assert.ok(commands.some(c => c.type === 'set_thinking_level' && c.level === 'max'));

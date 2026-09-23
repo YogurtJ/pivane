@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { selectMessageView } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const baseUrl = process.env.PI_SUMMARY_TEST_URL || 'http://127.0.0.1:3001';
 const baseline = process.env.PI_SUMMARY_BASELINE === '1';
@@ -74,7 +75,7 @@ async function run(browser, viewport) {
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
     const checks = [await check('initial')];
     for (const mode of ['full', 'reading']) {
-        await page.locator(`[data-transcript-mode="${mode}"]`).click();
+        await selectMessageView(page, mode);
         checks.push(await check(mode));
     }
     currentSummary += '\n压缩后重新加载的摘要：' + 'continuousPathSegment'.repeat(40);

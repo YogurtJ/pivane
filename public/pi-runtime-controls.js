@@ -78,10 +78,13 @@
             button.addEventListener('click', async () => {
                 if (this.busy) return;
                 const epoch = this.epoch;
-                this.busy = true; button.disabled = true;
+                this.busy = true;
+                const finish = window.PiActionFeedback.begin(button, translateUi("正在处理…"));
+                const controls = [...this.body.querySelectorAll('button')];
+                controls.forEach(item => { item.disabled = true; });
                 try { await handler(); }
                 catch (error) { if (epoch === this.epoch) this.options.toast(error.message, 'error'); }
-                finally { if (epoch === this.epoch) { this.busy = false; if (this.dialog.open) this.renderDialog(); } }
+                finally { finish(); if (epoch === this.epoch) { this.busy = false; if (this.dialog.open) this.renderDialog(); } }
             }); return button;
         }
         renderDialog() {

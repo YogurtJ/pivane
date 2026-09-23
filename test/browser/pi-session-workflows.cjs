@@ -13,6 +13,7 @@ async function run(browser, viewport, historyEnabled = true) {
     const errors = [], writes = [], rpc = [];
     let sessions = [original], messages = structuredClone(initial), leafId = 'leaf-original', stale = false, streaming = false;
     let jobs = [], socket, active = original;
+    let writeGate = null, releaseWrite = null, writeStarted = null;
     const workflow = () => ({ leafId, lastUserId: leafId === 'leaf-retry' ? 'user-retry' : 'user-last', prompts: [
         { entryId: 'user-first', text: '第一条问题', timestamp: 1 },
         { entryId: leafId === 'leaf-retry' ? 'user-retry' : 'user-last', text: leafId === 'leaf-retry' ? '新的提示词' : '上一条问题 <img src=x onerror=alert(1)>', timestamp: 3 }
@@ -21,12 +22,14 @@ async function run(browser, viewport, historyEnabled = true) {
     const reply = (ws, command, data) => ws.send(JSON.stringify({ type: 'response', id: command.id, command: command.type, success: true, data }));
     const stats = { contextUsage: { tokens: 1000, percent: 1, contextWindow: 128000 }, totalMessages: 4 };
     page.on('pageerror', error => errors.push(error.message));
+    await page.route(/https:\/\/(fonts\.googleapis\.com|fonts\.gstatic\.com)\//, route => route.abort());
     await page.addInitScript(({ cwd, id }) => { localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem(`pi.web.session:${cwd}`, id); }, { cwd, id: original.id });
     await page.route('**/api/**', async route => {
         const req = route.request(), url = new URL(req.url()), endpoint = url.pathname;
         const response = (json, status = 200) => route.fulfill({ json, status });
         if (req.method() !== 'GET') {
             const body = req.postDataJSON(); writes.push({ endpoint, body, method: req.method() });
+            if (writeGate) { writeStarted?.(); await writeGate; }
             if (endpoint.endsWith('/fork')) {
                 const session = { ...original, id: `fork-${sessions.length}`, name: '新的分叉线程' }; sessions.push(session);
                 return response({ session, draft: body.entryId ? { message: '上一条问题 <img src=x onerror=alert(1)>', images: [image] } : null }, 201);
@@ -88,6 +91,28 @@ async function run(browser, viewport, historyEnabled = true) {
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
     await page.locator('[data-message-workflow="retry"]').waitFor();
     const close = () => page.locator('#pi-workflow-close').click();
+    const pendingWrite = async (selector, label, confirm = true) => {
+        const before = writes.length;
+        writeGate = new Promise(resolve => { releaseWrite = resolve; });
+        const started = new Promise(resolve => { writeStarted = resolve; });
+        try {
+            await page.locator(selector).click();
+            await started;
+            await page.waitForFunction(selector => document.querySelector(selector)?.getAttribute('aria-busy') === 'true', selector);
+            assert.equal(await page.locator(selector).isDisabled(), true);
+            assert.equal(await page.locator(selector).getAttribute('aria-label'), label);
+            assert.equal(await page.locator('#pi-workflow-close').isDisabled(), true);
+            assert.equal(await page.locator('.pi-action-status').textContent(), label);
+            await page.locator('#pi-workflow-dialog').press('Escape');
+            assert.equal(await page.locator('#pi-workflow-dialog').evaluate(n => n.open), true);
+            if (confirm) await page.locator('#pi-workflow-form').evaluate(n => n.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+            else await page.locator(selector).evaluate(n => n.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+            await page.waitForFunction(() => document.querySelector('#pi-workflow-dialog').open);
+            assert.equal(writes.length, before + 1, 'pending action must submit exactly once');
+            assert.equal(await page.locator('#pi-workflow-dialog').evaluate(n => n.scrollWidth > n.clientWidth + 1), false);
+            await page.screenshot({ path: `/tmp/pi-workflows-${viewport.width}-pending-${confirm ? 'confirm' : 'pause'}.png` });
+        } finally { releaseWrite(); writeGate = null; writeStarted = null; }
+    };
     const inspector = async () => {
         if (!historyEnabled) {
             await closeInspector();
@@ -148,11 +173,33 @@ async function run(browser, viewport, historyEnabled = true) {
     await close();
     assert.equal(writes.length, 0);
     assert.equal(await page.locator('#pi-input').inputValue(), '保留未发送草稿');
+    let releaseRead;
+    const readGate = new Promise(resolve => { releaseRead = resolve; });
+    const delayedPrompt = async route => { await readGate; await route.fallback(); };
+    await page.route('**/prompt/**', delayedPrompt);
+    await page.locator('[data-message-workflow="retry"]').click();
+    await page.locator('#pi-workflow-content[aria-busy="true"]').waitFor({ state: 'attached' });
+    assert.equal(await page.locator('.pi-action-status').isVisible(), true);
+    assert.equal(await page.locator('.pi-action-status').textContent(), '正在加载…');
+    await close();
+    await page.locator('#pi-composer-add-button').click();
+    await page.locator('#pi-schedule-button').click();
+    await page.locator('#pi-workflow-message').fill('保留新面板的编辑');
+    const readResponse = page.waitForResponse(response => response.url().includes('/prompt/'));
+    releaseRead(); await readResponse;
+    await page.waitForFunction(() => !document.querySelector('[data-message-workflow="retry"]').hasAttribute('aria-busy'));
+    assert.equal(await page.locator('#pi-workflow-message').inputValue(), '保留新面板的编辑');
+    assert.equal(await page.locator('#pi-workflow-title').textContent(), '延迟发送');
+    await page.unroute('**/prompt/**', delayedPrompt);
+    await close();
     stale = true;
     await page.locator('[data-message-workflow="retry"]').click();
     await page.locator('#pi-workflow-message').fill('新的提示词');
-    await page.locator('#pi-workflow-submit').click();
+    await pendingWrite('#pi-workflow-submit', '正在回退并发送…');
     await page.locator('#pi-workflow-error:not([hidden])').waitFor();
+    assert.equal(await page.locator('#pi-workflow-submit').getAttribute('aria-busy'), null);
+    assert.equal(await page.locator('#pi-workflow-submit').textContent(), '回退并发送');
+    assert.equal(await page.locator('#pi-workflow-submit').isDisabled(), false);
     assert.equal(await page.locator('#pi-workflow-message').inputValue(), '新的提示词');
     await close(); stale = false;
     await page.locator('#pi-composer-add-button').click();
@@ -160,7 +207,7 @@ async function run(browser, viewport, historyEnabled = true) {
     assert.equal(await page.locator('#pi-workflow-message').inputValue(), '保留未发送草稿');
     await page.locator('#pi-workflow-message').fill('稍后发送的消息');
     await page.locator('#pi-workflow-delay').fill('5');
-    await page.locator('#pi-workflow-submit').click();
+    await pendingWrite('#pi-workflow-submit', '正在预约…');
     await page.waitForFunction(() => !document.querySelector('#pi-workflow-dialog').open);
     assert.equal(jobs.length, 1);
     assert.equal(await page.locator('#pi-input').inputValue(), '');
@@ -173,7 +220,7 @@ async function run(browser, viewport, historyEnabled = true) {
     await page.waitForFunction(() => !document.querySelector('#pi-workflow-dialog').open);
     assert.equal(jobs[0].payload.message, '修改后的延迟消息');
     await page.locator('#pi-deferred-open').click();
-    await page.locator('[data-workflow-action="pause"]').click();
+    await pendingWrite('[data-workflow-action="pause"]', '正在暂停…', false);
     await page.waitForFunction(() => document.querySelector('#pi-workflow-content').textContent.includes('已暂停'));
     await overflow(); await page.screenshot({ path: `/tmp/pi-workflows-${viewport.width}-deferred.png` });
     await close();
@@ -189,7 +236,8 @@ async function run(browser, viewport, historyEnabled = true) {
     await page.locator('#pi-input').fill('原线程独立草稿');
     await inspector(); await historyAction('从历史问题分叉');
     await page.locator('[data-workflow-action="fork"]').first().click();
-    await page.locator('#pi-workflow-submit').click();
+    await page.waitForFunction(() => !document.querySelector('#pi-workflow-submit').disabled);
+    await pendingWrite('#pi-workflow-submit', '正在创建分叉…');
     await page.waitForFunction(() => !document.querySelector('#pi-workflow-dialog').open && document.querySelector('#pi-input').value.includes('上一条问题'));
     assert.equal(sessions.length, 2);
     assert.equal(await page.locator('#pi-attachments img').count(), 1);
@@ -199,7 +247,10 @@ async function run(browser, viewport, historyEnabled = true) {
     await page.locator('#pi-workflow-dialog[open]').waitFor();
     assert.equal(rpc.filter(c => c.type === 'open_session').length, opensBeforeClone, 'opening clone must retain the current connection');
     await page.locator('#pi-workflow-submit').click();
-    await page.waitForFunction(() => !document.querySelector('#pi-workflow-dialog').open && document.querySelector('#pi-input').value === '');
+    await page.waitForFunction(() => !document.querySelector('#pi-workflow-dialog').open && document.querySelector('#pi-input').value === '').catch(async error => {
+        console.error('Clone state', await page.evaluate(() => ({ open: document.querySelector('#pi-workflow-dialog').open, input: document.querySelector('#pi-input').value, error: document.querySelector('#pi-workflow-error').textContent, status: document.querySelector('.pi-action-status').textContent, toasts: document.querySelector('#pi-toast-region').textContent })), { sessions: sessions.length, writes, opens: rpc.filter(c => c.type === 'open_session') });
+        throw error;
+    });
     assert.equal(sessions.length, 3);
     await closeInspector();
     if (viewport.width < 900 && !await page.locator('#pi-session-pane').evaluate(node => node.classList.contains('open'))) await page.locator('#pi-toggle-sessions').click();

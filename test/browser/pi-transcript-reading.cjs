@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { selectMessageView } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 const baseUrl = process.env.PI_READING_TEST_URL || 'http://127.0.0.1:3101';
@@ -90,7 +91,7 @@ async function run(browser, size) {
     });
     const send = event => socket.send(JSON.stringify(event));
     const pause = () => page.waitForTimeout(150);
-    const mode = value => page.locator(`button[data-transcript-mode="${value}"]`).click();
+    const mode = value => selectMessageView(page, value);
     const height = () => page.locator('#pi-transcript').evaluate(el => el.scrollHeight);
     const bottom = () => page.waitForFunction(() => {
         const el = document.getElementById('pi-transcript');
@@ -250,19 +251,26 @@ async function run(browser, size) {
     await bottom();
     assert.equal(await page.locator('.pi-process-group[open]').count(), 0, 'expansion does not leak to a newly opened session');
     assert.equal(await page.evaluate(() => document.body.scrollWidth > document.body.clientWidth), false);
-    const layout = await page.locator('.pi-transcript-modes').boundingBox();
     const banner = await page.locator('#pi-connection-banner').boundingBox();
     const viewport = await page.locator('#pi-transcript').boundingBox();
     assert.equal(await page.locator('.pi-transcript-toolbar').count(), 0, 'no separate toolbar row');
-    assert.ok(Math.abs(banner.y + banner.height - viewport.y) <= 1, 'transcript begins directly after the existing status bar');
-    assert.ok(layout.y >= banner.y && layout.y + layout.height <= banner.y + banner.height, 'mode controls fit within status bar');
-    assert.ok(banner.height <= (size.width < 900 ? 37 : 29), 'status bar has bounded height');
-    const textBox = await page.locator('#pi-connection-text').boundingBox();
-    assert.ok(textBox.x + textBox.width <= layout.x, 'connection text does not overlap controls');
+    assert.ok(Math.abs(banner.y + banner.height - viewport.y) <= 1, 'transcript begins directly after the status bar');
+    assert.ok(banner.height <= (size.width <= 680 ? 36 : size.width < 900 ? 37 : 29), 'status bar has bounded height');
+    if (size.width <= 680) await page.locator('#pi-toggle-inspector').click();
+    const layout = await page.locator('.pi-transcript-modes').boundingBox();
+    if (size.width <= 680) {
+        const pane = await page.locator('#pi-inspector-details').boundingBox();
+        assert.ok(layout.y >= pane.y && layout.y + layout.height <= pane.y + pane.height, 'message view is in details');
+        await page.locator('#pi-close-inspector').click();
+        assert.equal(await page.locator('#pi-mobile-thread-title').textContent(), session.name);
+    } else {
+        assert.ok(layout.y >= banner.y && layout.y + layout.height <= banner.y + banner.height, 'desktop mode controls remain in status bar');
+        const textBox = await page.locator('#pi-connection-text').boundingBox();
+        assert.ok(textBox.x + textBox.width <= layout.x, 'connection text does not overlap controls');
+    }
     const originalStatus = await page.locator('#pi-connection-text').textContent();
     await page.locator('#pi-connection-text').evaluate(el => { el.textContent = '正在连接并同步会话消息'.repeat(40); });
     assert.equal((await page.locator('#pi-connection-banner').boundingBox()).height, banner.height, 'long status cannot increase bar height');
-    assert.equal((await page.locator('.pi-transcript-modes').boundingBox()).width, layout.width, 'long status cannot squeeze controls');
     assert.equal(await page.evaluate(() => document.body.scrollWidth > document.body.clientWidth), false);
     await page.locator('#pi-connection-text').evaluate((el, text) => { el.textContent = text; }, originalStatus);
     await page.locator('#pi-pending-ui-banner').evaluate(el => {

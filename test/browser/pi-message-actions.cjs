@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { selectMessageView } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.PI_MESSAGE_ACTIONS_TEST_URL || 'http://127.0.0.1:3101';
 const cwd = '/srv/message-actions-fixture';
@@ -141,9 +142,9 @@ async function run(browser, viewport, theme) {
     await page.screenshot({ path: `/tmp/pi-message-actions-${viewport.width}-question.png` });
     await replies.last().locator('.pi-message-copy').scrollIntoViewIfNeeded();
     await page.screenshot({ path: `/tmp/pi-message-actions-${viewport.width}-reply.png` });
-    await page.locator('[data-transcript-mode="full"]').click(); await layout();
+    await selectMessageView(page, 'full'); await layout();
     assert.equal(await page.locator('.pi-message-actions').count(), 2);
-    await page.locator('[data-transcript-mode="reading"]').click(); await layout();
+    await selectMessageView(page, 'reading'); await layout();
     await replies.filter({ hasText: '检查当前状态。' }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: `/tmp/pi-message-actions-${viewport.width}-process.png` });
     await users.last().locator('[data-message-workflow="retry"]').click();

@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { selectMessageView } = require('./pi-mobile-view-helper.cjs');
 const express = require('express');
 const path = require('node:path');
 const os = require('node:os');
@@ -90,7 +91,7 @@ async function run(browser, base, width, language) {
     await page.locator('#pi-input').fill('Unsent update discussion');
     await page.locator('#pi-file-input').setInputFiles({ name: 'update-notes.txt', mimeType: 'text/plain', buffer: Buffer.from('synthetic data') });
     await page.locator('#pi-attachments .pi-attachment-chip').first().waitFor();
-    await page.locator('[data-transcript-mode="full"]').click();
+    await selectMessageView(page, 'full');
     assert.equal(await page.locator('.pi-tool-output').textContent(), 'Fixture tool output');
     if (width < 900) { await page.locator('#pi-toggle-sessions').click(); await page.locator('#pi-toggle-sessions').click(); }
     await page.locator('#workspace-settings-toggle').click();

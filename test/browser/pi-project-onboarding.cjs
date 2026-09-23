@@ -14,9 +14,10 @@ assert.match(project||'',/^\/tmp\/pi-onboarding-[^/]+\/project$/);
   const context=await browser.newContext({ locale: 'zh-CN',viewport:{width,height:1000}});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route(/https:\/\/(fonts\.googleapis\.com|fonts\.gstatic\.com)\//,r=>r.abort());
   await page.goto(base,{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>!document.querySelector('#pi-project-button').disabled);
+  const openProjectPicker=async()=>{if(width<=680){await page.locator('#pi-mobile-summary').click()}else await page.locator('#pi-project-button').click()};
   // Existing allowed server cwd may appear as a project, but no browser project is preselected in settings.
   await page.evaluate(()=>localStorage.removeItem('pi.web.cwd'));
-  if(!await page.locator('#pi-project-dialog-close').isVisible())await page.locator('#pi-project-button').click();
+  if(!await page.locator('#pi-project-dialog-close').isVisible())await openProjectPicker();
   await page.waitForFunction(()=>document.querySelector('#pi-project-input').value===document.querySelector('#pi-directory-current').textContent);
   assert.equal(await page.locator('#pi-project-input').inputValue(),status.defaultProject);
   await page.locator('#pi-project-dialog-close').click();await page.locator('#workspace-settings-toggle').click();
@@ -31,11 +32,11 @@ assert.match(project||'',/^\/tmp\/pi-onboarding-[^/]+\/project$/);
   await page.locator('[data-settings-tab=packages]').click();await page.locator('#native-resource-scope').waitFor();assert.equal(await page.locator('#native-resource-scope').inputValue(),'global');
   await page.locator('[data-settings-tab=skills]').click();await page.locator('#native-skills-scope').waitFor();assert.equal(await page.locator('#native-skills-scope').inputValue(),'global');
   assert.ok(!/Project path must be absolute|outside allowed roots/.test(await page.locator('#workspace-settings-dialog').innerText()));
-  await page.locator('#workspace-settings-close').click();await page.locator('#pi-project-button').click();
+  await page.locator('#workspace-settings-close').click();await openProjectPicker();
   // Fill a different real project; selecting a project does not create a runtime.
   await page.locator('#pi-project-input').fill(project);await page.locator('#pi-project-form [type=submit]').click();
   await page.waitForFunction(p=>localStorage.getItem('pi.web.cwd')===p,project);
-  await page.locator('#pi-project-button').click();await page.waitForFunction(p=>document.querySelector('#pi-directory-current').textContent===p,project);
+  await openProjectPicker();await page.waitForFunction(p=>document.querySelector('#pi-directory-current').textContent===p,project);
   await page.locator('#pi-directory-up').click();const parent=project.slice(0,project.lastIndexOf('/'));
   await page.waitForFunction(p=>document.querySelector('#pi-project-input').value===p,parent);
   await page.locator('#pi-directory-list [data-path="'+project+'"]').click();

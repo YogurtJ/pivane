@@ -1,5 +1,32 @@
 (() => {
     const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
+    // Presentation only: callers own request locks and stale-result checks.
+    const pendingButtons = new WeakSet();
+    window.PiActionFeedback = {
+        begin(button, label, { iconOnly = false } = {}) {
+            if (!button || pendingButtons.has(button)) return () => {};
+            pendingButtons.add(button);
+            const children = [...button.childNodes], disabled = button.disabled;
+            const attributes = ['aria-busy', 'aria-label', 'title'].map(name => [name, button.getAttribute(name)]);
+            const spinner = document.createElement('span');
+            spinner.className = 'pi-spinner'; spinner.setAttribute('aria-hidden', 'true');
+            button.replaceChildren(spinner);
+            if (!iconOnly) button.append(document.createTextNode(label));
+            button.classList.add('pi-action-pending'); button.disabled = true;
+            button.setAttribute('aria-busy', 'true'); button.setAttribute('aria-label', label); button.title = label;
+            let finished = false;
+            return () => {
+                if (finished) return;
+                finished = true; pendingButtons.delete(button);
+                button.replaceChildren(...children); button.disabled = disabled;
+                button.classList.remove('pi-action-pending');
+                for (const [name, value] of attributes) {
+                    if (value === null) button.removeAttribute(name); else button.setAttribute(name, value);
+                }
+            };
+        }
+    };
+
     const THEME_KEY = 'pi.workspace.theme';
     const SIDEBAR_KEY = 'pi.workspace.sidebarCollapsed';
     const SPLIT_PREFIX = 'pi.workspace.split:';
@@ -68,8 +95,6 @@
                 button.title = collapsed ? translateUi("展开导航") : translateUi("折叠导航");
                 button.setAttribute('aria-label', button.title);
             }
-            const icon = sidebarToggle?.querySelector('i');
-            if (icon) icon.className = `fa-solid fa-angles-${collapsed ? 'right' : 'left'}`;
             localStorage.setItem(SIDEBAR_KEY, String(collapsed));
             window.setTimeout(() => window.dispatchEvent(new Event('resize')), 180);
         }

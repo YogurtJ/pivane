@@ -1,3 +1,4 @@
+import { registerTaskProgress } from './pi-task-progress-extension.ts';
 import { registerToolProvenance } from './pi-tool-provenance.js';
 import { receiveTaskReturn } from './pi-task-returns.js';
 import { registerAgentThreads, launchAgentTask } from './pi-agent-threads-extension.ts';
@@ -25,6 +26,7 @@ export default function (pi: ExtensionAPI) {
     registerToolProvenance(pi);
     registerExtensionAssistant(pi);
     registerAgentThreads(pi);
+    registerTaskProgress(pi);
     // A managed process is bound to one file. Native replacement must not bypass Supervisor.
     const managed = () => Boolean(process.env.PI_WEB_NAVIGATION_TOKEN);
     const reportTitleEligibility = (_event: unknown, ctx: any) => {

@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { selectMessageView } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const baseUrl = process.env.PI_NATIVE_TEST_URL || 'http://127.0.0.1:3106';
 const cwd = '/srv/native-fixture';
@@ -80,11 +81,11 @@ async function run(browser, viewport) {
     assert.equal(await tool.locator('.pi-tool-raw').getAttribute('open'), null);
     await tool.getByRole('button', { name: '复制 patch' }).click();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), patch);
-    await page.locator('[data-transcript-mode="reading"]').click();
+    await selectMessageView(page, 'reading');
     await page.locator('.pi-process-group > summary').click();
     await tool.locator('.pi-edit-diff').waitFor({ state: 'visible' });
     assert.equal(await tool.locator('.pi-edit-diff').isVisible(), true, 'diff remains available in body view');
-    await page.locator('[data-transcript-mode="full"]').click();
+    await selectMessageView(page, 'full');
     const operators = '@@ -1 +1 @@\n---operator\n+++operator\n';
     event({ type: 'tool_execution_end', toolCallId: 'edit1', toolName: 'edit', result: { content: [], details: { patch: operators } } });
     await page.waitForFunction(() => document.querySelector('.pi-diff-code').textContent.includes('operator'));

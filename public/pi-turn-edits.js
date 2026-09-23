@@ -49,27 +49,13 @@
     }
 
     class PiTurnEdits {
-        constructor({ transcript, showPane, copy, notify, context, api }) {
-            Object.assign(this, { transcript, showPane, copy, notify, context });
-            this.viewer = new window.PiFileViewer({ context, api, copy, notify });
-            this.rounds = new Map(); this.selection = null; this.renderedFile = null; this.external = null;
-            document.addEventListener('click', event => {
-                const link = event.target.closest('a[href]');
-                if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || !link
-                    || !link.closest('#pi-transcript-content .assistant .pi-markdown, #pi-side-messages .assistant .pi-markdown, .pi-file-markdown')) return;
-                const target = window.PiFileViewer.linkTarget(link.getAttribute('href'));
-                if (!target) return;
-                event.preventDefault();
-                this.external = { ...target, edits: [], writes: [] }; this.selection = null; this.returnLink = link;
-                this.closePickers(); this.renderPane(); this.showPane('changes'); $('pi-changes-title').focus({ preventScroll: true });
-            });
+        constructor({ transcript, showPane, copy, notify, context, viewer }) {
+            Object.assign(this, { transcript, showPane, copy, notify, context, viewer });
+            this.active = false;
+            this.rounds = new Map(); this.selection = null; this.renderedFile = null;
             this.pane = $('pi-changes');
-            $('pi-changes-tab').addEventListener('click', () => {
-                this.selection ||= this.rounds.size ? { key: [...this.rounds.keys()].at(-1) } : null;
-                this.renderPane(); this.showPane('changes');
-            });
             $('pi-changes-round').addEventListener('change', event => {
-                this.external = null; this.selection = { key: event.target.value }; this.renderPane();
+                this.selection = { key: event.target.value }; this.renderPane();
             });
             const closeOutside = event => {
                 for (const id of ['pi-changes-file-list', 'pi-file-info']) {
@@ -79,23 +65,17 @@
             };
             document.addEventListener('pointerdown', closeOutside);
             document.addEventListener('focusin', closeOutside);
-            $('pi-close-inspector').addEventListener('click', () => {
-                this.closePickers();
-                if ($('pi-inspector').classList.contains('show-changes')) this.returnFocus();
-            });
-            $('pi-inspector').addEventListener('keydown', event => {
-                if (event.key !== 'Escape' || event.isComposing || !$('pi-inspector').classList.contains('show-changes') || document.querySelector('dialog[open]')) return;
-                event.preventDefault(); event.stopPropagation();
-                const menu = ['pi-file-info', 'pi-changes-file-list'].map($).find(node => node.open);
-                if (menu) { menu.open = false; menu.querySelector('summary').focus({ preventScroll: true }); return; }
-                $('pi-inspector').classList.remove('open'); this.returnFocus();
-            });
+            this.renderPane();
+        }
+        open() {
+            this.active = true;
+            this.selection ||= this.rounds.size ? { key: [...this.rounds.keys()].at(-1) } : null;
             this.renderPane();
         }
         closePickers() { $('pi-changes-file-list').open = false; $('pi-file-info').open = false; }
         reset() {
             this.closePickers();
-            this.viewer.clear(); this.external = null; this.returnLink = null;
+            this.active = false;
             this.rounds.clear(); this.selection = null; this.renderedFile = null; this.returnTarget = null;
             this.renderPane();
         }
@@ -146,9 +126,8 @@
             const note = document.createElement('small'); note.textContent = translateUi("成功编辑 / 写入 · 编辑行数为累计");
             heading.append(title, note); card.append(heading);
             const add = (host, file) => host.append(this.fileButton(file, () => {
-                this.external = null; this.returnLink = null;
                 this.returnTarget = { key: round.key, path: file.path };
-                this.selection = { ...this.returnTarget }; this.closePickers(); this.renderPane(); this.showPane('changes');
+                this.selection = { ...this.returnTarget }; this.closePickers(); this.showPane('changes'); this.renderPane();
                 $('pi-changes-title').focus({ preventScroll: true });
             }));
             round.files.slice(0, 3).forEach(file => add(card, file));
@@ -171,30 +150,25 @@
             return card;
         }
         returnFocus() {
-            if (this.returnLink?.isConnected) { this.returnLink.focus({ preventScroll: true }); return; }
             const card = [...this.transcript.querySelectorAll('.pi-turn-edits')].find(node => node.dataset.editRound === this.returnTarget?.key);
             const button = card && [...card.querySelectorAll('.pi-edit-file')].find(node => node.dataset.editPath === this.returnTarget?.path);
             (button || $('pi-toggle-inspector')).focus({ preventScroll: true });
         }
         renderPane() {
+            if (!this.active) return;
             const picker = $('pi-changes-round');
             const options = [...this.rounds.values()];
             if (picker.options.length !== options.length || options.some((r, i) => picker.options[i]?.value !== r.key || picker.options[i]?.textContent !== r.label)) {
                 picker.replaceChildren(...options.map(round => new Option(round.label, round.key)));
             }
             const round = this.rounds.get(this.selection?.key);
-            const present = Boolean(round || this.external);
+            const present = Boolean(round);
             $('pi-changes-empty').hidden = present;
             $('pi-changes-content').hidden = !present;
-            picker.closest('label').hidden = Boolean(this.external);
-            $('pi-changes-files').hidden = Boolean(this.external);
-            $('pi-changes-file-list').hidden = Boolean(this.external);
+            picker.closest('label').hidden = false;
+            $('pi-changes-files').hidden = false;
+            $('pi-changes-file-list').hidden = false;
             $('pi-changes-file-list').querySelector('summary').textContent = translateUi("切换文件 · {0}", round?.files.length || 0);
-            if (this.external) {
-                $('pi-changes-diffs').replaceChildren(); this.renderedFile = null;
-                this.viewer.setFile({ ...this.external, identity: `link:${this.external.path}:${this.external.line}`, hasDiff: false });
-                return;
-            }
             if (!round) {
                 this.closePickers(); this.viewer.clear();
                 $('pi-changes-files').replaceChildren(); $('pi-changes-diffs').replaceChildren(); this.renderedFile = null;

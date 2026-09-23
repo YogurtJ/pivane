@@ -17,6 +17,9 @@
 
 以上只支持持久会话。临时 `--no-session` 仍然断开即销毁，不提供预约、分叉或回退入口。
 
+打开历史、待发送列表或消息详情时，面板立即显示加载提示；读取期间可关闭，关闭后不会被迟到结果重新打开。确认分叉、复制线程、回退重试、恢复版本、预约/修改预约、立即发送/取消时，按钮显示加载图标及当前动作文字，相关输入、关闭和重复提交暂时禁用。暂停预约也提供等待提示与防重复点击。请求失败会保留编辑内容并显示错误；请求超时继续提示先核对实际结果，不能据此认为操作已取消。操作已成功但列表未刷新时，会单独提示刷新查看。
+
+
 ## 网页入口（2026-09-10）
 
 会话详情仅保留运行状态、上下文占用、累计用量与折叠的运行设置／会话信息／资源／扩展状态。压缩按钮和压缩进度保持直接可见；上下文用量与累计输入／输出分开标注。
@@ -107,7 +110,7 @@ Pi JSONL 仍是唯一聊天历史。队列只保存尚待确认/投递的消息�
 
 ## 分叉与回退
 
-分叉在 source worker 空闲互斥区内读取最新 entries/leaf，使用单独的官方 `SessionManager.open(...).createBranchedSession(...)` 提取选定路径。原 worker 不切换 session，不改变原文件，其他客户端不被带到新线程。新分支保留官方 parentSession；目标之前尚无 assistant 时，沿用 Web 的立即可见空 header 流程，通过公开 append API 保留消息/模型/思考/自定义记录，并保存 `pivane-web-fork-origin` metadata。
+分叉在 source worker 空闲互斥区内读取最新 entries/leaf，使用单独的官方 `SessionManager.open(...).createBranchedSession(...)` 提取选定路径。原 worker 不切换 session，不改变原文件，其他客户端不被带到新线程。新分支保留官方 parentSession；目标之前尚无 assistant 时，仍由原生分支提取保留 entry ID、时间、上下文编辑和压缩引用，再将公开原生 JSONL 导出写入私有临时目录，以不覆盖目标的硬链接发布，立即可见；保存 `pivane-web-fork-origin` metadata。真正空分支沿用立即创建空 header 的流程。
 
 这是 SessionManager 层提取，不会触发原 runtime 的 `session_before_fork/session_shutdown` 钩子，也不执行扩展的代码检查点恢复。它不是直接放开会改变 worker 归属的原生 fork/clone RPC。
 

@@ -28,6 +28,10 @@
             this.submit = $('pi-workflow-submit');
             this.error = $('pi-workflow-error');
             this.inFlight = false;
+            this.panelSequence = 0;
+            this.status = document.createElement('p');
+            this.status.className = 'pi-action-status'; this.status.setAttribute('role', 'status'); this.status.hidden = true;
+            this.error.before(this.status);
             attachments.bindTransfers({ zone: this.content, input: this.content,
                 onFiles: files => this.run(() => this.addFiles(files)), onError: message => this.host.toast(message, 'error') });
             $('pi-schedule-button').addEventListener('click', () => this.run(() => this.openSchedule()));
@@ -42,7 +46,8 @@
             });
             $('pi-transcript-content').addEventListener('click', event => {
                 const button = event.target.closest('[data-message-workflow]');
-                if (!button) return;
+                if (!button || button.getAttribute('aria-busy') === 'true' || this.inFlight) return;
+                const finish = window.PiActionFeedback.begin(button, translateUi("正在加载…"), { iconOnly: true });
                 this.run(async () => {
                     const article = button.closest('article');
                     const key = this.identity();
@@ -57,7 +62,7 @@
                     const candidates = this.snapshot?.prompts.filter(item => item.timestamp === message.timestamp && item.text === this.messageText(message).slice(0, 180)) || [];
                     if (candidates.length !== 1) return this.openList('history');
                     await this.openPrompt(candidates[0].entryId, button.dataset.messageWorkflow);
-                });
+                }).finally(() => { finish(); this.decorate(); });
             });
         }
 
@@ -101,7 +106,7 @@
             if (sequence === this.sequence) this.jobs = deferred.jobs || [];
             if (snapshot && historySequence === this.historySequence) this.snapshot = snapshot;
             this.update();
-            if (this.dialog.open && this.mode === 'deferred' && !this.inFlight) this.renderList();
+            if (this.dialog.open && this.mode === 'deferred' && !this.inFlight && !this.loadingPanel) this.renderList();
         }
 
         messageText(message) { return typeof message.content === 'string' ? message.content : (message.content || []).filter(block => block.type === 'text').map(block => block.text).join(''); }
@@ -121,7 +126,7 @@
                 button.innerHTML = `<i class="fa-solid ${glyph}" aria-hidden="true"></i>`;
                 container.insertBefore(button, container.querySelector('.pi-reply-time'));
             }
-            button.disabled = this.busy();
+            button.disabled = this.busy() || button.getAttribute('aria-busy') === 'true';
         }
         decorate() {
             document.querySelectorAll('#pi-transcript-content article.user').forEach(article => {
@@ -143,25 +148,51 @@
         openReplyFork(reply) {
             if (this.busy()) throw new Error(translateUi("请等待会话空闲后操作"));
             this.entryId = reply.entryId; this.expectedLeafId = this.snapshot.leafId;
-            this.show('reply-fork', translateUi("从此回复后分叉"), translateUi("创建分叉"));
+            if (!this.show('reply-fork', translateUi("从此回复后分叉"), translateUi("创建分叉"))) return;
             this.content.innerHTML = `${this.warning(translateUi("新线程与原线程共享项目文件，不复制目录。"))}<pre class="pi-workflow-preview">${escape(reply.text)}</pre>`;
         }
 
         show(mode, title, command) {
             if (!this.usable()) throw new Error(translateUi("请先打开持久会话"));
+            if (this.inFlight) return false;
+            this.panelSequence++;
+            this.loadingPanel = false; this.content.removeAttribute('aria-busy');
             this.mode = mode;
+            this.editor = null; this.loadingFiles = null;
             this.target = { ...this.context() };
             this.targetKey = this.identity();
             $('pi-workflow-title').textContent = title;
             this.error.hidden = true;
+            this.status.hidden = true; this.status.textContent = '';
             this.content.replaceChildren();
             $('pi-workflow-actions').hidden = !command;
             this.submit.textContent = command || translateUi("确认");
             this.submit.disabled = false;
             if (!this.dialog.open) this.dialog.showModal();
+            return true;
+        }
+        async loadPanel(load) {
+            const sequence = this.panelSequence, key = this.targetKey;
+            this.loadingPanel = true; this.submit.disabled = true;
+            this.content.setAttribute('aria-busy', 'true');
+            this.status.hidden = false; this.status.textContent = translateUi("正在加载…");
+            try {
+                const value = await load();
+                return sequence === this.panelSequence && key === this.identity() && this.dialog.open ? value : null;
+            } catch (error) {
+                if (sequence === this.panelSequence && this.dialog.open) {
+                    this.error.textContent = error.message; this.error.hidden = false;
+                }
+                return null;
+            } finally {
+                if (sequence === this.panelSequence) {
+                    this.loadingPanel = false; this.content.removeAttribute('aria-busy'); this.status.hidden = true;
+                }
+            }
         }
         close() {
             if (this.inFlight) return;
+            this.panelSequence++; this.loadingPanel = false; this.content.removeAttribute('aria-busy');
             this.dialog.close(); this.mode = null; this.editor = null; this.originalDraft = null;
         }
         assertTarget() {
@@ -232,15 +263,18 @@
             return editor.queue;
         }
         async openSchedule(job) {
-            const key = this.identity();
-            if (job) {
-                const data = await this.get('deferred?detail=true');
-                job = data.jobs.find(item => item.id === job.id);
-                if (!job?.payload || terminal.has(job.status) || job.status === 'dispatching') throw new Error(translateUi("消息状态已变化，请刷新"));
-            }
-            if (key !== this.identity()) return;
+            if (this.inFlight) return;
             const originalDraft = job ? null : this.host.getDraft();
-            this.show(job ? 'schedule-edit' : 'schedule', job ? translateUi("修改延迟消息") : translateUi("延迟发送"), job ? translateUi("保存并预约") : translateUi("预约发送"));
+            if (!this.show(job ? 'schedule-edit' : 'schedule', job ? translateUi("修改延迟消息") : translateUi("延迟发送"), job ? translateUi("保存并预约") : translateUi("预约发送"))) return;
+            if (job) {
+                const data = await this.loadPanel(() => this.get('deferred?detail=true'));
+                if (!data) return;
+                job = data.jobs.find(item => item.id === job.id);
+                if (!job?.payload || terminal.has(job.status) || job.status === 'dispatching') {
+                    this.error.textContent = translateUi("消息状态已变化，请刷新"); this.error.hidden = false; return;
+                }
+            }
+            this.submit.disabled = false;
             this.job = job;
             this.scheduleId = uuid();
             this.originalDraft = originalDraft;
@@ -251,28 +285,25 @@
         }
         async openPrompt(entryId, mode) {
             if (this.busy()) throw new Error(translateUi("请等待会话空闲后操作"));
-            const key = this.identity();
-            const payload = await this.get(`prompt/${encodeURIComponent(entryId)}`);
-            if (key !== this.identity()) return;
+            if (!this.show(mode, mode === 'retry' ? translateUi("编辑并重试") : translateUi("从此处分叉"), mode === 'retry' ? translateUi("回退并发送") : translateUi("创建分叉"))) return;
+            const payload = await this.loadPanel(() => this.get(`prompt/${encodeURIComponent(entryId)}`));
+            if (!payload) return;
             this.entryId = entryId; this.expectedLeafId = payload.leafId;
-            this.show(mode, mode === 'retry' ? translateUi("编辑并重试") : translateUi("从此处分叉"), mode === 'retry' ? translateUi("回退并发送") : translateUi("创建分叉"));
+            this.submit.disabled = false;
             if (mode === 'retry') this.editorFields(payload, false);
             else this.content.innerHTML = `${this.warning(translateUi("新线程与原线程共享项目文件，不复制目录。"))}<pre class="pi-workflow-preview">${escape(payload.message || translateUi("图片消息"))}</pre>`;
         }
         async openClone() {
             if (this.busy()) throw new Error(translateUi("请等待会话空闲后操作"));
-            const key = this.identity();
-            await this.refresh(true);
-            if (key !== this.identity() || !this.snapshot) return;
+            if (!this.show('clone', translateUi("复制为新线程"), translateUi("创建线程"))) return;
+            if (!await this.loadPanel(async () => { await this.refresh(true); return this.snapshot; })) return;
             this.expectedLeafId = this.snapshot.leafId;
-            this.show('clone', translateUi("复制为新线程"), translateUi("创建线程"));
+            this.submit.disabled = false;
             this.content.innerHTML = this.warning(translateUi("新线程与原线程共享项目文件，不复制目录。"));
         }
         async openList(mode) {
-            const key = this.identity();
-            await this.refresh(mode !== 'deferred');
-            if (key !== this.identity()) return;
-            this.show(mode, { history: translateUi("历史问题"), versions: translateUi("历史版本"), deferred: translateUi("待发送消息") }[mode]);
+            if (!this.show(mode, { history: translateUi("历史问题"), versions: translateUi("历史版本"), deferred: translateUi("待发送消息") }[mode])) return;
+            if (!await this.loadPanel(async () => { await this.refresh(mode !== 'deferred'); return true; })) return;
             this.renderList();
         }
         renderList() {
@@ -307,13 +338,38 @@
                 this.content.innerHTML = `<pre class="pi-workflow-preview">${escape(job.preview || translateUi("图片消息"))}</pre>${job.status === 'uncertain' && action === 'send' ? `<label class="pi-workflow-check"><input id="pi-workflow-uncertain" type="checkbox" required>${translateUi("已检查会话，确认没有重复消息")}</label>` : ''}`;
                 return;
             }
-            await this.post(`deferred/${id}`, { action, revision: job.revision }, 'PATCH');
-            await this.refresh();
+            this.inFlight = true;
+            const finish = window.PiActionFeedback.begin(button, translateUi("正在暂停…"), { iconOnly: true });
+            const controls = [...this.dialog.querySelectorAll('button')].filter(item => item !== button).map(item => [item, item.disabled]);
+            controls.forEach(([item]) => { item.disabled = true; });
+            this.status.hidden = false; this.status.textContent = translateUi("正在暂停…");
+            try {
+                await this.post(`deferred/${id}`, { action, revision: job.revision }, 'PATCH');
+                this.host.toast(translateUi("已暂停发送"), 'success');
+                try { await this.refresh(); }
+                catch { this.host.toast(translateUi("操作已完成，列表刷新失败，请刷新查看"), 'info'); }
+            } finally {
+                this.inFlight = false; finish(); controls.forEach(([item, disabled]) => { item.disabled = disabled; });
+                this.status.hidden = true;
+                if (this.targetKey !== this.identity()) this.close();
+                else if (this.dialog.open && this.mode === 'deferred') this.renderList();
+            }
         }
         async confirm() {
-            if (this.inFlight || this.editor && this.loadingFiles === this.editor) return;
-            this.inFlight = true; this.submit.disabled = true; this.error.hidden = true;
+            if (this.inFlight || this.loadingPanel || this.submit.disabled || !this.mode || this.editor && this.loadingFiles === this.editor) return;
+            this.inFlight = true; this.error.hidden = true;
             const mode = this.mode;
+            const label = ({
+                schedule: translateUi("正在预约…"), 'schedule-edit': translateUi("正在保存预约…"),
+                retry: translateUi("正在回退并发送…"), restore: translateUi("正在恢复…"),
+                clone: translateUi("正在创建线程…"), fork: translateUi("正在创建分叉…"), 'reply-fork': translateUi("正在创建分叉…"),
+                'job-send': translateUi("正在发送…"), 'job-cancel': translateUi("正在取消…")
+            })[mode];
+            const finish = window.PiActionFeedback.begin(this.submit, label);
+            const controls = [...this.dialog.querySelectorAll('button, input, select, textarea')].filter(item => item !== this.submit).map(item => [item, item.disabled]);
+            controls.forEach(([item]) => { item.disabled = true; });
+            this.status.textContent = label; this.status.hidden = false;
+            let completed = false;
             try {
                 this.assertTarget();
                 const confirmUncertain = $('pi-workflow-uncertain')?.checked;
@@ -331,17 +387,28 @@
                 } else if (['clone', 'fork', 'reply-fork'].includes(mode)) {
                     const result = await this.post('fork', { entryId: mode === 'clone' ? undefined : this.entryId,
                         position: mode === 'reply-fork' ? 'at' : undefined, expectedLeafId: this.expectedLeafId });
+                    completed = true;
                     if (this.targetKey === this.identity()) await this.host.openFork(result);
                 } else if (mode === 'restore') await this.post('restore', { entryId: this.entryId, expectedLeafId: this.expectedLeafId });
                 else if (mode.startsWith('job-')) await this.post(`deferred/${this.job.id}`, { action: mode.slice(4), revision: this.job.revision, confirmUncertain }, 'PATCH');
-                this.inFlight = false; this.close();
-                this.host.toast(mode === 'retry' ? translateUi("已回退并提交新问题") : mode === 'restore' ? translateUi("已恢复历史版本") : ['clone', 'fork', 'reply-fork'].includes(mode) ? translateUi("已创建新线程") : translateUi("延迟消息已更新"), 'success');
-                await this.host.reconcile();
-                await this.refresh(true);
+                completed = true;
+                this.host.toast(mode === 'retry' ? translateUi("已回退并提交新问题") : mode === 'restore' ? translateUi("已恢复历史版本") : ['clone', 'fork', 'reply-fork'].includes(mode) ? translateUi("已创建新线程") : mode === 'schedule' ? translateUi("已预约发送") : translateUi("延迟消息已更新"), 'success');
             } catch (error) {
-                this.error.textContent = error.name === 'TimeoutError' ? translateUi("请求超时，结果不确定，请先查看会话或待发送列表再操作") : error.message; this.error.hidden = false;
-                if (mode === 'retry' || mode === 'restore') void this.host.reconcile();
-            } finally { this.inFlight = false; this.submit.disabled = false; }
+                if (completed) this.host.toast(translateUi("新线程已创建，打开失败，请在线程列表中查看"), 'info');
+                else {
+                    this.error.textContent = error.name === 'TimeoutError' ? translateUi("请求超时，结果不确定，请先查看会话或待发送列表再操作") : error.message; this.error.hidden = false;
+                    if (this.targetKey !== this.identity()) this.host.toast(this.error.textContent, 'error');
+                    if (mode === 'retry' || mode === 'restore') void this.run(() => this.host.reconcile());
+                }
+            } finally {
+                this.inFlight = false; finish(); controls.forEach(([item, disabled]) => { item.disabled = disabled; });
+                this.status.hidden = true;
+                if (completed || this.targetKey !== this.identity()) this.close();
+            }
+            if (completed) {
+                try { await this.host.reconcile(); await this.refresh(true); }
+                catch { this.host.toast(translateUi("操作已完成，列表刷新失败，请刷新查看"), 'info'); }
+            }
         }
     }
     window.PiSessionWorkflows = PiSessionWorkflows;

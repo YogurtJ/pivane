@@ -59,7 +59,7 @@ function validateImport(content) {
         || !text(header.cwd) || !text(header.timestamp) || !Number.isFinite(Date.parse(header.timestamp))) {
         fail('仅支持 Pi v2/v3 会话 JSONL；HTML 和其他 Agent 的记录不能导入');
     }
-    const ids = new Set();
+    const ids = new Map(), references = [];
     const usage = value => {
         if (!object(value) || !object(value.cost)
             || !['input', 'output', 'cacheRead', 'cacheWrite', 'totalTokens'].every(key => Number.isFinite(value[key]) && value[key] >= 0)
@@ -123,6 +123,23 @@ function validateImport(content) {
             case 'custom_message':
                 if (!text(entry.customType) || typeof entry.display !== 'boolean') fail('扩展消息无效');
                 if (!text(entry.content)) contentBlocks(entry.content, ['text', 'image']); break;
+            case 'context_edit': {
+                const target = ids.get(entry.targetId);
+                const role = target?.type === 'custom_message' ? 'custom' : target?.type === 'message'
+                    && ['user', 'assistant', 'toolResult'].includes(target.message.role) ? target.message.role : null;
+                if (!['user', 'assistant', 'toolResult', 'custom'].includes(role)) fail('上下文修改引用了无效的消息');
+                if (entry.replacement !== null) {
+                    if (!object(entry.replacement)) fail('上下文修改替换内容无效');
+                    if (!text(entry.replacement.content)) contentBlocks(entry.replacement.content,
+                        role === 'assistant' ? ['text', 'image', 'thinking', 'toolCall'] : ['text', 'image']);
+                }
+                references.push([entry, entry.targetId]);
+                break;
+            }
+            case 'usage':
+                if (![entry.kind, entry.provider, entry.model].every(text)) fail('用量归属无效');
+                usage(entry.usage);
+                break;
             case 'branch_summary': if (!text(entry.summary) || !text(entry.fromId)) fail('分支摘要无效'); break;
             case 'compaction':
                 if (!text(entry.summary) || !Number.isFinite(entry.tokensBefore)) fail('压缩摘要无效');
@@ -130,12 +147,37 @@ function validateImport(content) {
                 if (entry.retainedTail !== undefined) {
                     if (!Array.isArray(entry.retainedTail)) fail('压缩保留消息无效');
                     entry.retainedTail.forEach(message);
-                } else if (!ids.has(entry.firstKeptEntryId)) fail('压缩摘要引用了缺失的记录');
+                } else if (entry.firstKeptEntryId !== entry.id) {
+                    if (!ids.has(entry.firstKeptEntryId)) fail('压缩摘要引用了缺失的记录');
+                    references.push([entry, entry.firstKeptEntryId]);
+                }
                 break;
             default: fail('不支持的 Pi 会话记录类型');
         }
         if (entry.usage !== undefined) usage(entry.usage);
-        ids.add(entry.id);
+        ids.set(entry.id, entry);
+    }
+    // Check branch-local references in linear time, including deep imported trees.
+    // An earlier ID alone is insufficient: it may belong to an abandoned sibling.
+    if (references.length) {
+        const children = new Map(), ranges = new Map();
+        for (const entry of ids.values()) {
+            if (!children.has(entry.parentId)) children.set(entry.parentId, []);
+            children.get(entry.parentId).push(entry.id);
+        }
+        let order = 0;
+        const stack = (children.get(null) || []).map(id => [id, false]);
+        while (stack.length) {
+            const [id, closing] = stack.pop();
+            if (closing) { ranges.get(id).end = order; continue; }
+            ranges.set(id, { start: order++, end: null });
+            stack.push([id, true]);
+            for (const child of children.get(id) || []) stack.push([child, false]);
+        }
+        for (const [entry, targetId] of references) {
+            const target = ranges.get(targetId), current = ranges.get(entry.id);
+            if (!target || target.start >= current.start || current.start >= target.end) fail('会话引用不在当前分支的祖先记录中');
+        }
     }
     return entries;
 }

@@ -676,6 +676,12 @@ select:focus-visible {
 
 @keyframes pi-spin { to { transform: rotate(360deg); } }
 
+button.pi-action-pending { cursor: progress; }
+button.pi-action-pending .pi-spinner { width: 1em; height: 1em; flex-shrink: 0; vertical-align: -0.12em; border-color: currentColor; border-top-color: transparent; }
+button.pi-action-pending:not(.icon-btn):not(.pi-message-action) .pi-spinner { margin-inline-end: 0.45em; }
+.pi-action-status { color: var(--text-muted); font-size: 0.85rem; line-height: 1.6; margin-top: 12px; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .pi-action-pending .pi-spinner { animation: none; } }
+
 .pi-session-item {
     min-height: 86px;
     margin: 2px 0;
@@ -2072,9 +2078,38 @@ select:focus-visible,
     flex: 0 0 36px;
     display: grid;
     place-items: center;
+    padding: 0;
+    border-radius: 9px;
+    transition: background-color 120ms ease, color 120ms ease;
 }
 
-.sidebar-toggle:hover,
+.sidebar-toggle-icon {
+    width: 20px;
+    height: 20px;
+}
+
+.sidebar-toggle-chevron {
+    transform-origin: 14.5px 12px;
+}
+
+.sidebar-toggle[aria-expanded="false"] .sidebar-toggle-chevron {
+    transform: scaleX(-1);
+}
+
+.sidebar-toggle:hover {
+    border-color: transparent;
+    background: var(--green-soft);
+    color: var(--green);
+}
+
+.sidebar-toggle:active {
+    background: var(--surface-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sidebar-toggle { transition: none; }
+}
+
 .sidebar-tool-button:hover {
     border-color: var(--line);
     background: var(--surface-2);

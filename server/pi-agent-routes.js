@@ -84,6 +84,7 @@ function createPiAgentGateway(options = {}) {
     const preferences = options.workspacePreferencesService || new WorkspacePreferencesService();
     const composer = new (require('./pi-composer-service').PiComposerService)(store);
     const files = new (require('./pi-file-service').PiFileService)(store);
+    const fileBrowser = new (require('./pi-file-browser').PiFileBrowser)(store);
     const usage = new (require('./pi-usage-service').PiUsageService)(store);
     usage.start();
     const sessionSearch = new (require('./pi-session-search').PiSessionSearch)(store, preferences);
@@ -140,6 +141,7 @@ function createPiAgentGateway(options = {}) {
             nativeResources: true,
             agentThreads: true,
             agentTaskResults: true,
+            taskProgress: true,
             extensionAssistant: true,
             nativeSettings: true,
             systemPrompts: true,
@@ -161,6 +163,7 @@ function createPiAgentGateway(options = {}) {
             composerTools: true,
             modelCatalog: true,
             fileViewer: descriptorBackendAvailable(),
+            fileBrowser: descriptorBackendAvailable(),
             usageStats: descriptorBackendAvailable(),
             usageLedger: descriptorBackendAvailable(),
             runtimeControls: true,
@@ -223,6 +226,19 @@ function createPiAgentGateway(options = {}) {
         res.set({ 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
         try { res.json(await files.content(req.query)); }
         catch (error) { res.status(error.status || 500).json({ error: error.message, code: error.code }); }
+    });
+
+    for (const kind of ['list', 'search']) router.get(`/files/${kind}`, async (req, res) => {
+        res.set({ 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+        const controller = new AbortController();
+        const cancel = () => { if (!res.writableEnded) controller.abort(); };
+        res.on('close', cancel);
+        try {
+            const data = await fileBrowser.request(req.query, kind === 'search', controller.signal);
+            if (!controller.signal.aborted) res.json(data);
+        } catch (error) {
+            if (!controller.signal.aborted) res.status(error.status || 500).json({ error: error.message, code: error.code });
+        } finally { res.off('close', cancel); }
     });
 
     const composerRoute = action => async (req, res) => {

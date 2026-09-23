@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { selectMessageView } = require('./pi-mobile-view-helper.cjs');
 const http = require('node:http');
 const path = require('node:path');
 const { once } = require('node:events');
@@ -66,13 +67,13 @@ async function run(browser, base, width, language) {
     const transcript = await page.locator('#pi-transcript-content').innerText();
     assert.ok(transcript.includes('保存') && transcript.includes('设置') && transcript.includes('原始代码：保存'));
     assert.equal(await page.evaluate(() => Boolean(window.i18nXss)), false);
-    assert.equal(await page.locator('#pi-model-select option:checked').textContent(), '模型');
+    assert.equal(await page.locator('#pi-model-select .pi-model-trigger-label').textContent(), '模型');
     assert.equal(await page.locator('#pi-thinking-select option:checked').textContent(), english ? 'Off' : '不启用');
-    await page.locator('[data-transcript-mode="full"]').click();
+    await selectMessageView(page, 'full');
     assert.equal(await page.locator('.pi-tool-status').textContent(), english ? 'Failed' : '失败');
     assert.equal(await page.locator('.pi-tool-output').textContent(), '保存：原始工具输出');
     assert.ok((await page.locator('.pi-tool-args').textContent()).includes('/fixture/中文文件.txt'));
-    await page.locator('[data-transcript-mode="reading"]').click();
+    await selectMessageView(page, 'reading');
     await page.locator('#pi-input').fill('保存 {0} <原始草稿>');
     await page.locator('#pi-file-input').setInputFiles({ name: '中文附件.txt', mimeType: 'text/plain', buffer: Buffer.from('保存\n用户数据') });
     await page.locator('#pi-attachments .pi-attachment-chip').first().waitFor();

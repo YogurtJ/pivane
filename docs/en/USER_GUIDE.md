@@ -9,13 +9,17 @@ Pivane runs on your computer or server. You can open it from another device's br
 1. Follow the [installation guide](INSTALL.md), start your instance and open its URL.
 2. Open **Settings → Providers and models** and check the configuration shared with Pi CLI. Sign in with an API key or OAuth only if usable credentials are missing. If the CLI has models but Pivane does not, check the identity and startup environment using [existing Pi users](INSTALL.md#existing-pi-cli-users). Enter credentials in settings, not in chat. For remote OAuth, a localhost callback refers to the server; use a device code or manual callback if the provider offers one.
 3. Close settings, select an existing server project directory and create a thread. Select its model and thinking level. Open threads refresh the model catalog when idle; if no model is available, follow the settings link in the composer.
+
+On desktop, click the model name in the session header to see favorites, the current model and recently used models. The project picker uses a folder icon, and the status strip shows the thread title alongside connection state, truncating long titles. On phones, tap the compact context ring immediately left of Send for a focused model, thinking and context sheet; the ring shows a number without `%` (`35` means 35%). Tapping Model opens the same searchable picker. When the composer has focus, a compact row shows the current model, thinking level and full context percentage. The folder/project name at the top opens the project picker directly, including the option to add a directory; the status strip shows the thread title or connection state. Files, history and the Reading/Full record view control are in the `i` details pane, not the model sheet. Reading is the default for a new browser; an existing browser retains its saved view choice. Context usage shows `--` when no reliable measurement is available, not a fabricated 0%.
+
+Search names, full IDs or providers across the entire available catalog, or choose **View all models** to browse by provider. Stars only change favorites; clicking a model row switches the session. Favorites are saved on the Pivane instance and shared across devices; up to five recent models remain local to each browser. Existing browser favorites merge once when that browser loads the new picker. Reopening the picker or returning to the page reads the latest favorites; an open picker checks every five seconds. This does not change the global default. On phones and touch devices, the bottom sheet initially focuses its close button, so search input only receives focus when tapped.
 4. Send a simple question. Refresh and reopen the persistent thread to verify that the reply is retained. This request uses your own provider account.
 
 Before selecting a project, you can manage global Pi settings, Packages and Skills. `@` inserts a server project file path. Attachment uploads, paste and drag-and-drop read files supplied by your browser; they are different workflows.
 
 ## Workspace navigation
 
-The colorful π at the top identifies Pivane. Pi Agent uses a conversation icon, and the Media Lab uses a flask; the active entry uses the theme accent color. On desktop, use the arrow beside the Pivane title to collapse navigation. The expand arrow appears below the brand icon when collapsed. Buttons have hover labels, and the browser remembers your choice. Clicking the brand icon remains a shortcut.
+The colorful π at the top identifies Pivane. Pi Agent uses a conversation icon, and the Media Lab uses a flask; the active entry uses the theme accent color. On desktop, use the sidebar panel button beside the Pivane title to collapse navigation. The same button appears below the brand icon when collapsed. A single arrow inside the icon indicates the action direction; hover shows a soft accent background and an action label. The browser remembers your choice. Clicking the brand icon remains a shortcut.
 
 Narrow tablets use an icon rail, with entry names available on hover. Phones use bottom navigation with visible labels. These layouts do not show the desktop collapse button.
 
@@ -71,7 +75,7 @@ On touch devices, Preferences scrolls vertically, with language, automatic title
 
 ## Versions and updates
 
-Open **Settings → Versions and updates** to see the running Pivane and Pi versions and the Pi version bundled with this release. **Check for updates** queries GitHub and npm from the server; results are cached for five minutes. Choose stable Pivane releases or include prereleases. **Automatically check for Pi updates** is enabled by default: while the page is visible, the instance checks stable Pi versions at most once every 24 hours. A dot marks an available update; a light reminder appears once when work is idle. Dismiss it, snooze for three days, or skip that version. Devices share these choices, and network failures back off silently. **Review and update** opens the existing confirmation dialog; automatic checks never install anything.
+Open **Settings → Versions and updates** to see the running Pivane and Pi versions and the Pi version bundled with this release. **Check for updates** queries GitHub and npm from the server; results are cached for five minutes. Choose stable Pivane releases or include prereleases. **Automatically check for Pi updates** is enabled by default: while the page is visible, the instance checks stable Pi versions at most once every 24 hours. A dot marks an available update; a light reminder appears once when work is idle. Dismiss it, snooze for three days, or skip that version. Devices share these choices, and network failures back off silently. **Review and update** opens the existing confirmation dialog; automatic checks never install anything. Use **Preview update reminder** to inspect the card at any time. Its example versions and buttons do not check for updates, change preferences or start an installation.
 
 The page provides **Update Pi**, **Back up only** and **Restart instance**. Click Update Pi, confirm, then view the actual command, stdout/stderr, exit code and resulting version in the output area. Both `node server.js` and `npm start` automatically support this flow; existing service startup commands can stay unchanged after loading the new backend. Pi updates support Node 22 or 24 with the default local Pi installation. Since upstream `pi update` rejects project-local dependencies, Pivane uses an equivalent local npm update and shows the command it actually runs.
 
@@ -93,6 +97,14 @@ In the main composer, `!command` runs server Shell; `!!command` keeps its output
 
 Temporary sessions do not save a session file and end on refresh or disconnect. Unsent drafts and attachments live only in the current page.
 
+## Task progress
+
+When the Agent creates a plan for a substantial task, a **Task progress** card appears above the composer. It shows the completed count and pending, in-progress and completed steps. Click the heading to expand or collapse it; the collapsed card shows the current step, and a completed plan collapses automatically. Long lists scroll inside the card without changing drafts or attachments.
+
+The built-in `update_plan` tool needs no extra package or user prompt configuration. The Agent decides when planning helps; you can also ask it to create and maintain a plan. Progress is reported by the Agent. Stopping, errors or a finished reply do not automatically complete unfinished steps. Ask the Agent to revise or clear the plan when needed.
+
+Persistent threads restore the latest plan from the native Pi session after refresh, reconnect or restart. History navigation and forks follow their selected branch, and compaction preserves the plan. Temporary sessions retain it only during their lifetime; side chat has no progress card. Existing workers need an idle extension reload or runtime restart to acquire the new tool; refreshing the browser alone is insufficient.
+
 ## Archive projects and threads
 
 The sidebar opens in **All**. Choose **Archive project** to move a project into **Archived projects** at the bottom, or **Archive thread** to move one thread into **Archived threads** under its project. Both sections start collapsed. Expand either section to open and read a thread directly; only **Restore project / Restore thread** moves it back to the regular list.
@@ -105,7 +117,7 @@ The thread menu groups **Session tree**, **Search history and bookmarks**, and *
 
 ## Auxiliary models
 
-**Settings → Preferences → Auxiliary models** groups title generation and media planning by purpose. Each row offers provider/model selectors; its gear button opens guidance and implemented options. Click **Save changes** to apply edits. Existing title and media Feature Agent selections are retained without migration.
+**Settings → Preferences → Auxiliary models** groups title generation and media planning by purpose. Each row offers provider/model selectors; its gear button opens guidance and implemented options. Click **Save changes** to apply edits. Existing title and media Feature Agent selections are retained without migration. Reopening this page reads the latest local model catalog while preserving unsaved selections. Subagent and auxiliary settings use native model configuration; models registered only by session extensions must also be configured under **Providers and models** to be available here.
 
 Title generation’s **Auto** follows the current thread model. Media planning’s **Auto** uses its planner defaults, described in the row. Both purposes may share the same inexpensive model. An unavailable or failing dedicated model is not replaced with another model. **Set all to Auto** stages automatic choices for saving while preserving the automatic-title switch.
 
@@ -137,7 +149,11 @@ Use History to search records, manage bookmarks and view the session tree. Navig
 
 HTML exports are for reading. JSONL exports contain the current active branch for import and continuation, not the complete session tree. A complete backup requires stopping the service and preserving the data directories.
 
-Successful edit/write tool records produce a file list for each turn. Diffs and recorded write contents describe those operations. **Current file** reads the current disk file only when requested; use Refresh to update its snapshot. Large code, formulas and diagrams stay in their own viewing areas.
+Open **Files → Project files** to browse the selected project's directory tree or find a file by name or relative path, including folders you have not expanded. Clicking a file reads its current contents. Breadcrumbs, Reveal in project and Copy file path help navigate. Browsing does not call a model or add file contents to its context; refresh directories and files explicitly.
+
+On desktop, **Expand reader** provides more space and shows the tree beside the preview when the panel is wide enough. Narrow screens switch between browsing and reading. The hidden-file toggle retains private-path restrictions. Folder expansion and a bounded set of reading positions stay in this page only.
+
+**Files this turn** retains successful edit/write tool records. Diffs and recorded write contents describe those operations. **Current file** reads the current disk file only when requested; use Refresh to update its snapshot. See [file browsing and viewing](../FILE_VIEWER.md) for preview limits and search scope.
 
 Side chat freezes the main task's effective context when created. With `sideChatTools` enabled, it can read and search current files. Explicit modification requests can use edit, write and command tools after an approval inside side chat; the grant lasts for that reply and is reset afterwards. Main and side agents share files: avoid concurrent edits to the same files, and remember that stopping does not undo completed changes. Tool activity is shown in side chat; selected text can still be explicitly appended to the main draft. This page can retain a limited number of side chats across persistent threads. Refresh, closing the page and signing out end them.
 

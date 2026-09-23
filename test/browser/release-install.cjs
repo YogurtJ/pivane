@@ -71,7 +71,8 @@ async function get(url) { const response = await fetch(base + url); assert.equal
                 await page.waitForFunction(()=>document.querySelector('.settings-model-group')?.textContent.includes('默认'));
                 await page.locator('#workspace-settings-close').click();
             }
-            await page.locator('#pi-project-button').click();
+            if (width<=680) { await page.locator('#pi-mobile-summary').click(); }
+            else await page.locator('#pi-project-button').click();
             await page.locator('#pi-project-input').fill(cwd);
             await page.locator('#pi-project-form [type=submit]').click();
             await page.waitForFunction(()=>document.querySelector('#pi-project-dialog').classList.contains('hidden'));
@@ -82,7 +83,7 @@ async function get(url) { const response = await fetch(base + url); assert.equal
                 await page.locator('[data-filter="all"]').click();
                 await page.locator('.pi-session-main').first().click();
             }
-            await page.waitForFunction(()=>document.querySelector('#pi-model-select')?.value.includes('release-fixture'));
+            await page.waitForFunction(()=>document.querySelector('#pi-model-select')?.title.includes('release-fixture'));
             if (phase==='install' && width===1440) {
                 await page.locator('#pi-input').fill('Only return the rehearsal marker.');
                 await page.locator('#pi-send-button').click();

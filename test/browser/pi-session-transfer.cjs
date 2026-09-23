@@ -137,7 +137,9 @@ async function run(browser, viewport) {
     await page.keyboard.press('Escape');
     // Project selector entry is also available without switching the active session.
     if (viewport.width < 900) await page.locator('#pi-toggle-sessions').click();
-    await page.locator('#pi-project-button').click(); await page.locator('#pi-import-session').click();
+    if (viewport.width <= 680) { await page.locator('#pi-mobile-summary').click(); }
+    else await page.locator('#pi-project-button').click();
+    await page.locator('#pi-import-session').click();
     await dialog.waitFor(); await page.locator('#pi-transfer-project').selectOption('');
     await page.locator('#pi-transfer-path').fill('/srv/custom-project'); await geometry();
     await page.locator('#pi-transfer-file').setInputFiles(fixture); failImport = true;
