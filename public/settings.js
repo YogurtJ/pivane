@@ -81,7 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const response = await (window.WorkspaceAccess?.fetch || fetch)(url, { ...options, headers: apiHeaders(options.headers || {}) });
         let data = null;
         try { data = await response.json(); } catch {}
-        if (!response.ok) throw Object.assign(new Error(translateUi(data?.error || `HTTP ${response.status}`)), { status: response.status });
+        if (!response.ok) throw Object.assign(new Error(translateUi(data?.error || `HTTP ${response.status}`)), { status: response.status, data });
         return data;
     }
 

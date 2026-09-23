@@ -6,7 +6,7 @@ const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 const publicRoot = path.resolve(__dirname, '../../public');
-const evidence = process.env.PI_SHELL_EVIDENCE || '/srv/pivane-maintenance/work/assistant-workspaces/evidence';
+const evidence = process.env.PI_SHELL_EVIDENCE || path.join(require('node:os').tmpdir(), 'pivane-assistant-shell-evidence');
 const cwd = '/fixture/assistant-work';
 const profiles = [
     { id: '11111111-1111-4111-8111-111111111111', name: 'Research', enabled: true, avatar: { kind: 'emoji', value: '✦' } },
@@ -152,7 +152,7 @@ async function main() {
                 await page.waitForFunction(() => document.querySelectorAll('[data-assistant-project-id]').length === 1);
                 assert.equal(await page.locator('[data-assistant-project-id]').first().getAttribute('data-assistant-project-id'), groups[2].id);
                 await page.locator('[data-assistant-project-id] [data-assistant-action="menu"]').click();
-                assert.equal(await page.locator('.pi-thread-menu:not(.hidden)').getByRole('menuitem', { name: /Temporary conversation/ }).count(), 1);
+                assert.equal(await page.locator('.pi-thread-menu:not(.hidden)').getByRole('menuitem', { name: 'Temporary session (not saved)', exact: true }).count(), 1);
                 await page.keyboard.press('Escape');
                 await page.locator('#pi-new-session').click();
                 await page.waitForFunction(() => document.querySelector('.pi-session-item.active')?.dataset.sessionId.startsWith('created-'));

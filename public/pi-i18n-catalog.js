@@ -8419,6 +8419,14 @@
     ,['文档超出字符上限。', 'Document exceeds the character limit.']
     ,['文档未保存', 'Document not saved']
     ,['移除头像', 'Remove avatar']
+    ,['查看档案起草建议', 'Review profile proposal']
+    ,['记忆检索尚未启用。', 'Memory search is not enabled yet.']
+    ,['检索索引需要同步。', 'The search index needs synchronization.']
+    ,['文档已保存；检索索引需要同步。', 'Document saved; the search index needs synchronization.']
+    ,['同步检索索引', 'Synchronize search index']
+    ,['检索索引已同步。', 'Search index synchronized.']
+    ,['尚无起草建议，请先在起草会话中完成讨论。', 'No proposal yet. Finish the discussion in the drafting conversation first.']
+    ,['已读取保存内容', 'Saved content loaded']
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

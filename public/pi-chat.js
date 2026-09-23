@@ -2960,6 +2960,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const profile = state.session?.ephemeral ? null : state.session?.agentProfile;
         const header = $('pi-actual-identity'), composer = $('pi-composer-identity');
         const origin = $('pi-conversation-origin');
+        const authoringReturn = $('pi-profile-authoring-return');
+        authoringReturn.hidden = !state.session?.profileAuthoring || Boolean(state.session?.ephemeral);
+        authoringReturn.querySelector('span').textContent = translateUi('查看档案起草建议');
         const groupId = state.session?.assistantProject?.id || state.assistantGroups.find(group => group.unclassified
             && group.cwd === state.cwd && state.assistantSessions.get(group.id)?.some(item => item.id === state.session?.id))?.id;
         origin.hidden = !state.assistantMode || !state.session || profile?.id === state.assistantProfileId && groupId === state.assistantProjectId;
@@ -3803,6 +3806,12 @@ document.addEventListener('DOMContentLoaded', () => {
         void (async () => { if (group.cwd !== state.cwd) await selectProject(group.cwd); await createSession(); })().catch(error => toast(error.message, 'error'));
     });
     $('pi-assistant-add-project').addEventListener('click', () => projectEditor.open(null, state.assistantRevision, state.cwd));
+    $('pi-profile-authoring-return').addEventListener('click', () => {
+        const session = state.session;
+        if (!session?.profileAuthoring || session.ephemeral) return;
+        window.dispatchEvent(new CustomEvent('workspace:open-settings', { detail: { tab: 'profiles',
+            profileId: session.profileAuthoring.profileId, authoringSession: { cwd: session.cwd || state.cwd, id: session.id } } }));
+    });
     $('pi-conversation-origin').addEventListener('click', () => window.PiWorkspaceRoute?.navigate('chat', { cwd: state.cwd, sessionId: state.session?.id }));
     $('pi-assistant-profile').addEventListener('change', event => {
         state.assistantProjectId = null;

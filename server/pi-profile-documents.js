@@ -42,7 +42,7 @@ async function snapshot(root, target, profile, generation, installed, bundle) {
     if ((readFile(file)?.revision ?? null) !== (data?.revision ?? null)) throw fail('Document changed during read', 409);
     return { version: 1, profileId: profile.id, target, status: 'ready', content,
         revision: revision(data, generation), profileRevision: profileRevision(profile),
-        indexSynced,
+        indexSynced, indexStatus: !profile.memory?.enabled ? 'disabled' : !installed ? 'unsupported' : indexSynced ? 'ready' : 'pending',
         usage: { used: content ? content.trim().split('\n§\n').map(part => part.trim()).filter(Boolean).join('\n§\n').length : 0,
             limit: normalizedMemory(profile.memory)[target === 'user' ? 'userCharLimit' : 'memoryCharLimit'], unit: 'characters' } };
 }
@@ -104,6 +104,7 @@ function mountProfileDocumentRoutes(router, { profiles, getAgentDir, bundlePath 
                 const root = location(agentDir, id, write);
                 if (!write && !fs.existsSync(root)) return { version: 1, profileId: id, target, status: 'ready', content: '',
                     revision: revision(null, 0), profileRevision: profileRevision(profile), indexSynced: Boolean(installed && profile.memory?.enabled),
+                    indexStatus: !profile.memory?.enabled ? 'disabled' : installed ? 'ready' : 'unsupported',
                     usage: { used: 0, limit: normalizedMemory(profile.memory)[target === 'user' ? 'userCharLimit' : 'memoryCharLimit'], unit: 'characters' } };
                 const lock = createMutationLock(root);
                 if (!write) return lock.inspect(generation => snapshot(root, target, profile, generation, installed, bundle));

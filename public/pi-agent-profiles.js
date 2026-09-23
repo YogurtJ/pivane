@@ -94,7 +94,7 @@
                 if (!active()) return;
                 const target = profiles().find(p => p.id === requested);
                 if (target && (!draft || draft.id !== requested)) editProfile(target);
-                if (options.authoringSession && !draft && !requested) editProfile(null);
+                if (options.authoringSession && !requested && (!draft || draft.id)) editProfile(null);
                 if (options.section && draft && (!requested || draft.id === requested)) void openSection(options.section);
                 if (options.authoringSession && draft && (!requested || draft.id === requested)) void loadProposal(options.authoringSession);
             });
@@ -215,6 +215,12 @@
                 if (request === memoryEpoch && active() && id === selected) { memory = { status: 'error', reason: error.message }; showMemory(); }
             }
         }
+        function documentMessage(data, fallback = '') {
+            if (data?.indexSynced !== false) return fallback;
+            const status = data.indexStatus === 'disabled' || data.indexStatus === 'unsupported'
+                ? t('记忆检索尚未启用。') : t('检索索引需要同步。');
+            return fallback ? `${fallback} · ${status}` : status;
+        }
         function renderSection() {
             const form = $('pi-profile-form');
             if (!form) return;
@@ -231,7 +237,7 @@
             if (section === 'user' || section === 'memory') {
                 const state = documents.get(section);
                 const limit = state?.usage?.limit ?? (section === 'user' ? draft.memory.userCharLimit ?? 8000 : draft.memory.memoryCharLimit ?? 16000);
-                documentRoot.innerHTML = `<div class="pi-profile-document"><h4>${section.toUpperCase()}</h4><p id="pi-profile-document-status" role="status">${html(state?.message || t('正在读取…'))}</p><textarea id="pi-profile-document-text" aria-label="${section.toUpperCase()}" spellcheck="false" ${state?.status !== 'ready' || mutation ? 'disabled' : ''}>${html(state?.content ?? '')}</textarea>${state?.serverContent !== undefined ? `<details class="pi-profile-server-version"><summary>${html(t('服务器最新内容'))}</summary><pre>${html(state.serverContent)}</pre></details><label class="pi-profile-check"><input id="pi-profile-document-reviewed" type="checkbox" ${state.reviewed ? 'checked' : ''}>${html(t('已核对服务器最新内容'))}</label>` : ''}<div class="pi-profile-document-footer"><span id="pi-profile-document-usage">${state ? `${state.content.length} / ${limit} ${html(t('字符'))}` : ''}</span><button id="pi-profile-document-refresh" type="button" class="settings-secondary-button">${html(t('刷新核对'))}</button><button id="pi-profile-document-save" type="button" class="settings-primary-button" ${state?.status !== 'ready' || !state.dirty || mutation || state.serverContent !== undefined && !state.reviewed ? 'disabled' : ''}><i class="fa-solid fa-floppy-disk"></i> ${html(t('保存文档'))}</button></div></div>`;
+                documentRoot.innerHTML = `<div class="pi-profile-document"><h4>${section.toUpperCase()}</h4><p id="pi-profile-document-status" role="status">${html(state ? state.message || (state.status === 'ready' ? t('已读取保存内容') : state.status) : t('正在读取…'))}</p><textarea id="pi-profile-document-text" aria-label="${section.toUpperCase()}" spellcheck="false" ${state?.status !== 'ready' || mutation ? 'disabled' : ''}>${html(state?.content ?? '')}</textarea>${state?.serverContent !== undefined ? `<details class="pi-profile-server-version"><summary>${html(t('服务器最新内容'))}</summary><pre>${html(state.serverContent)}</pre></details><label class="pi-profile-check"><input id="pi-profile-document-reviewed" type="checkbox" ${state.reviewed ? 'checked' : ''}>${html(t('已核对服务器最新内容'))}</label>` : ''}<div class="pi-profile-document-footer"><span id="pi-profile-document-usage">${state ? `${state.content.length} / ${limit} ${html(t('字符'))}` : ''}</span><button id="pi-profile-document-refresh" type="button" class="settings-secondary-button">${html(t('刷新核对'))}</button><button id="pi-profile-document-sync" type="button" class="settings-secondary-button" ${state?.status !== 'ready' || state.indexStatus !== 'pending' ? 'hidden' : ''} ${mutation ? 'disabled' : ''}>${html(t('同步检索索引'))}</button><button id="pi-profile-document-save" type="button" class="settings-primary-button" ${state?.status !== 'ready' || !state.dirty || mutation || state.serverContent !== undefined && !state.reviewed ? 'disabled' : ''}><i class="fa-solid fa-floppy-disk"></i> ${html(t('保存文档'))}</button></div></div>`;
             } else if (section === 'projects') {
                 documentRoot.innerHTML = `<div class="pi-profile-projects">${projects?.map(p => `<article><strong>${html(p.name)}</strong><small>${html(p.cwd)}</small><p>${html(p.description || '')}</p></article>`).join('') || `<p class="pi-profile-note">${html(projects === null ? t('正在读取…') : t('没有关联项目'))}</p>`}</div>`;
             } else if (section === 'skills') { renderMemory(); void loadMemory(); }
@@ -257,7 +263,7 @@
                     const data = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/documents?target=${next}`);
                     if (request !== documentEpoch || id !== selected || next !== section || !active()) return;
                     const proposed = proposedDocuments.get(next);
-                    documents.set(next, { ...data, content: proposed ?? data.content ?? '', dirty: proposed !== undefined, message: data.status === 'ready' ? '' : data.status });
+                    documents.set(next, { ...data, content: proposed ?? data.content ?? '', dirty: proposed !== undefined, message: data.status === 'ready' ? documentMessage(data) : data.status });
                     proposedDocuments.delete(next); renderSection();
                 } catch (error) { if (request === documentEpoch && id === selected) { documents.set(next, { status: 'error', content: '', message: error.message }); renderSection(); } }
             } else if (next === 'projects') {
@@ -276,12 +282,35 @@
             try {
                 const result = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/documents`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target, content: state.content, expectedRevision: state.revision, expectedProfileRevision: state.profileRevision }) });
                 if (id !== selected) return;
-                documents.set(target, { ...result, dirty: false, message: t('已保存') });
+                documents.set(target, { ...result, dirty: false, message: documentMessage(result, t('已保存')) });
             } catch (error) {
-                state.status = error.status === 400 ? 'ready' : 'conflict';
-                state.message = error.status === 409 ? t('文档已变化。草稿已保留；刷新档案后核对。') : error.status === 400 ? `${t('文档未保存')}：${error.message}` : t('结果未确认；草稿已保留。请刷新核对。');
+                if (error.data?.documentSaved === true && error.data.document) {
+                    documents.set(target, { ...error.data.document, indexStatus: 'pending', dirty: false,
+                        message: t('文档已保存；检索索引需要同步。') });
+                } else {
+                    state.status = error.status === 400 ? 'ready' : 'conflict';
+                    state.message = error.status === 409 ? t('文档已变化。草稿已保留；刷新档案后核对。') : error.status === 400 ? `${t('文档未保存')}：${error.message}` : t('结果未确认；草稿已保留。请刷新核对。');
+                }
             }
             finally { mutation = null; if (id === selected && section === target) renderSection(); }
+        }
+        async function syncDocumentIndex() {
+            const target = section, id = selected, previous = documents.get(target);
+            if (mutation || previous?.status !== 'ready' || previous.indexStatus !== 'pending') return;
+            mutation = { kind: 'index' }; renderSection();
+            try {
+                const current = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/documents?target=${target}`);
+                const result = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/documents`, { method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target, content: current.content,
+                        expectedRevision: current.revision, expectedProfileRevision: current.profileRevision }) });
+                if (id !== selected) return;
+                const keepDraft = previous.dirty && previous.content !== result.content;
+                documents.set(target, { ...result, content: keepDraft ? previous.content : result.content, dirty: Boolean(keepDraft),
+                    ...(keepDraft ? { serverContent: result.content, reviewed: false } : {}),
+                    message: documentMessage(result, keepDraft ? t('草稿已保留。请对照最新文档核对后再保存。') : t('检索索引已同步。')) });
+            } catch (error) {
+                previous.message = error.message;
+            } finally { mutation = null; if (id === selected && target === section) renderSection(); }
         }
         async function refreshDocument() {
             const target = section, id = selected, previous = documents.get(target), request = ++documentEpoch;
@@ -291,7 +320,7 @@
                 const pending = previous?.dirty && previous.content !== data.content && data.status === 'ready';
                 documents.set(target, { ...data, content: pending ? previous.content : data.content ?? '', dirty: Boolean(pending),
                     ...(pending ? { serverContent: data.content ?? '', reviewed: false } : {}),
-                    message: pending ? t('草稿已保留。请对照最新文档核对后再保存。') : previous?.dirty && data.status === 'ready' ? t('这些修改已保存。') : data.status === 'ready' ? '' : data.status });
+                    message: pending ? t('草稿已保留。请对照最新文档核对后再保存。') : data.status === 'ready' ? documentMessage(data, previous?.dirty ? t('这些修改已保存。') : '') : data.status });
                 renderSection();
             } catch (error) { if (request === documentEpoch && id === selected) $('pi-profile-document-status').textContent = error.message; }
         }
@@ -324,7 +353,7 @@
             mutation = { kind: 'authoring' };
             document.querySelectorAll('#pi-profiles-content [data-profile-assist]').forEach(button => { button.disabled = true; });
             try {
-                const data = await apiFetch('/api/pi/profiles/authoring-sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: cwd() || undefined, profileId: input.id || null, language: globalThis.PiI18n?.locale === 'en' ? 'en' : 'zh-CN', draft: { name: input.name, description: input.description, soul: input.soul, user: documents.get('user')?.content, memory: documents.get('memory')?.content } }) });
+                const data = await apiFetch('/api/pi/profiles/authoring-sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: cwd() || undefined, profileId: input.id || null, language: globalThis.PiI18n?.locale === 'en' ? 'en' : 'zh-CN', draft: { ...(input.name?.trim() ? { name: input.name } : {}), description: input.description, soul: input.soul, user: documents.get('user')?.content, memory: documents.get('memory')?.content } }) });
                 if (id !== selected || !active()) return;
                 if (typeof window.PiChatNavigation?.openSession !== 'function') throw new Error(t('会话导航不可用'));
                 await window.PiChatNavigation.openSession({ cwd: data.session.cwd, sessionId: data.session.id, draft: data.prompt });
@@ -336,7 +365,8 @@
             const id = selected, request = ++proposalEpoch;
             try {
                 const data = await apiFetch(`/api/pi/profiles/authoring-sessions/${encodeURIComponent(session.id)}/draft?cwd=${encodeURIComponent(session.cwd)}`);
-                if (request !== proposalEpoch || !active() || selected !== id || data.status !== 'ready' || data.profileId !== (draft?.id || null)) return;
+                if (request !== proposalEpoch || !active() || selected !== id || data.profileId !== (draft?.id || null)) return;
+                if (data.status !== 'ready') { message(t('尚无起草建议，请先在起草会话中完成讨论。')); return; }
                 proposal = data; showProposal();
             } catch (error) { if (request === proposalEpoch) message(`${t('读取 Agent 草稿失败')}：${error.message}`); }
         }
@@ -344,11 +374,13 @@
             if (!proposal || !draft || proposal.profileId !== (draft.id || null)) return;
             const id = selected, selectedProposal = proposal;
             if (draft.id && proposal.profileRevision) {
-                const saved = profiles().find(p => p.id === draft.id);
-                const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(saved)));
-                const revision = [...new Uint8Array(bytes)].map(b => b.toString(16).padStart(2, '0')).join('');
+                let revision;
+                try {
+                    const current = await apiFetch('/api/pi/profiles');
+                    revision = current.profileRevisions?.[draft.id];
+                } catch (error) { message(error.message); return; }
                 if (id !== selected || selectedProposal !== proposal) return;
-                if (proposal.profileRevision !== revision) { message(t('档案版本已变化；请刷新核对提案。')); return; }
+                if (!revision || proposal.profileRevision !== revision) { message(t('档案版本已变化；请刷新核对提案。')); return; }
             }
             const input = proposal.proposal;
             const form = $('pi-profile-form'), original = JSON.parse(draftOriginal);
@@ -404,6 +436,7 @@
         editor.addEventListener('click', event => {
             if (event.target.closest('#pi-profile-editor-close')) closeEditor();
             if (event.target.closest('[data-profile-assist]')) void assist();
+            if (event.target.closest('#pi-profile-document-sync')) syncDocumentIndex();
             if (event.target.closest('#pi-profile-proposal-apply')) applyProposal();
             if (event.target.closest('#pi-profile-avatar-clear')) {
                 draft.avatar = null; $('pi-profile-form').elements.emoji.value = '';

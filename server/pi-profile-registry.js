@@ -142,7 +142,9 @@ class PiProfileRegistry {
     async list(cwdInput) {
         const cwd = cwdInput === undefined ? null : this.store.resolveProject(cwdInput);
         const { state, revision } = await this.state();
-        return { version: 1, revision, profiles: state.profiles, cwd, defaultProfileId: cwd ? state.defaults[cwd] ?? null : null };
+        return { version: 1, revision, profiles: state.profiles,
+            profileRevisions: Object.fromEntries(state.profiles.map(profile => [profile.id, profileRevision(profile)])),
+            cwd, defaultProfileId: cwd ? state.defaults[cwd] ?? null : null };
     }
 
     // Synchronous from revision comparison through replacement. The lock also
