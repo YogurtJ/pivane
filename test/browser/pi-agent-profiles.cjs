@@ -15,7 +15,7 @@ async function run(browser, base, width, supported = true) {
     const context = await browser.newContext({ locale: 'en-US', viewport: { width, height: 900 }, isMobile: width < 900, hasTouch: width < 900 });
     const page = await context.newPage(), errors = [], writes = [], sessions = [structuredClone(first)];
     let profiles = [structuredClone(sample)], revision = 'r1', defaultProfileId = null, conflict = false, memoryRelease, slowMemory = false, memoryStatus = null;
-    let slowProfiles = false, profilesRelease;
+    let slowProfiles = false, profilesRelease, slowWrite = '', writeRelease, failAfterWrite = false, failRead = false, configHeld = false, configRelease, runtimeMatches = true, runtimeConfirmed = true, activeSessionId = first.id;
     page.on('pageerror', error => errors.push(error.message));
     await page.route(/https:\/\/(fonts\.googleapis\.com|fonts\.gstatic\.com)\//, route => route.abort());
     await page.addInitScript(({ cwd, id }) => { localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem(`pi.web.session:${cwd}`, id); }, { cwd, id: first.id });
@@ -27,9 +27,16 @@ async function run(browser, base, width, supported = true) {
             if (p === '/api/pi/profiles' || p === '/api/pi/profiles/default') {
                 if (conflict || body.expectedRevision !== revision) return response(route, { error: 'Revision changed', code: 'REVISION_CONFLICT' }, 409);
                 revision += 'x';
-                if (p.endsWith('/default')) { defaultProfileId = body.profileId; return response(route, { ok: true, cwd, defaultProfileId, revision }); }
+                if (p.endsWith('/default')) {
+                    defaultProfileId = body.profileId;
+                    if (slowWrite === 'default') await new Promise(r => { writeRelease = r; });
+                    if (failAfterWrite) { failAfterWrite = false; return route.abort('failed'); }
+                    return response(route, { ok: true, cwd, defaultProfileId, revision });
+                }
                 const profile = { ...body.profile, id: body.profile.id || 'p-new', createdAt: '2026-01-01', updatedAt: '2026-01-02' };
                 profiles = [...profiles.filter(row => row.id !== profile.id), profile];
+                if (slowWrite === 'profile') await new Promise(r => { writeRelease = r; });
+                if (failAfterWrite) { failAfterWrite = false; return route.abort('failed'); }
                 return response(route, { ok: true, profile, revision, requiresReload: true });
             }
             if (p === '/api/pi/sessions') {
@@ -41,12 +48,13 @@ async function run(browser, base, width, supported = true) {
             }
             return response(route, { ok: true });
         }
-        if (p === '/api/pi/status') return response(route, { ok: true, agentProfiles: supported, projectRoots: ['/tmp'], defaultProject: cwd });
+        if (p === '/api/pi/status') return response(route, { ok: true, agentProfiles: supported, profileMemory: width === 1440 ? { installed: true, autoLearn: true } : width === 393 ? { installed: true, autoLearn: false } : undefined, runtimeConfiguration: true, projectRoots: ['/tmp'], defaultProject: cwd });
         if (p === '/api/pi/projects') return response(route, { projects: [{ cwd, name: 'Fixture', sessionCount: sessions.length }], roots: ['/tmp'] });
         if (p === '/api/pi/sessions') return response(route, { sessions });
         if (p === '/api/pi/activity') return response(route, { runtimes: [], replyNotices: [] });
         if (p === '/api/pi/profiles') {
             if (!supported) throw new Error('Old backend must not receive profiles request');
+            if (failRead) { failRead = false; return route.abort('failed'); }
             const data = { version: 1, revision, profiles: structuredClone(profiles), cwd: url.searchParams.get('cwd'), defaultProfileId };
             if (slowProfiles) await new Promise(r => { profilesRelease = r; });
             return response(route, data);
@@ -64,7 +72,15 @@ async function run(browser, base, width, supported = true) {
         socket = ws;
         ws.onMessage(raw => {
             const cmd = JSON.parse(raw), runtime = { model, thinkingLevel: 'off', isStreaming: false, isCompacting: false, autoCompactionEnabled: true };
-            if (cmd.type === 'open_session') return reply(ws, cmd, { session: sessions.find(s => s.id === cmd.sessionId), state: runtime, messages: { messages: [] }, stats, models: { models: [model] }, thinkingLevels: { levels: ['off'] }, commands: { commands: [] } });
+            if (cmd.type === 'get_runtime_configuration') {
+                const profile = sessions.find(s => s.id === activeSessionId)?.agentProfile || null;
+                const result = { runtimeId: 'synthetic-runtime', revision: 'cfg1', matchesSavedConfig: true, trust: {}, ephemeral: false, recoveries: 0, drafts: 0,
+                    agentProfile: { saved: profile, savedProfileRevision: profile ? 'p2' : null, loadedProfileId: profile?.id || null,
+                        loadedProfileRevision: profile ? runtimeMatches ? 'p2' : 'p1' : null, loadedConfirmed: runtimeConfirmed, matchesSavedProfile: profile ? runtimeMatches : true } };
+                if (configHeld) { configRelease = () => reply(ws, cmd, result); return; }
+                return reply(ws, cmd, result);
+            }
+            if (cmd.type === 'open_session') { activeSessionId = cmd.sessionId; return reply(ws, cmd, { session: sessions.find(s => s.id === cmd.sessionId), state: runtime, messages: { messages: [] }, stats, models: { models: [model] }, thinkingLevels: { levels: ['off'] }, commands: { commands: [] } }); }
             if (cmd.type === 'get_state') return reply(ws, cmd, runtime);
             if (cmd.type === 'get_messages') return reply(ws, cmd, { messages: [] });
             if (cmd.type === 'get_session_stats') return reply(ws, cmd, stats);
@@ -91,11 +107,21 @@ async function run(browser, base, width, supported = true) {
     await page.locator('[data-settings-tab="profiles"]').click();
     await page.locator('#pi-profile-default-select').waitFor();
     assert.equal(await page.locator('#pi-profile-default-select').inputValue(), '');
+    await page.locator('[data-profile-action="edit"]').first().click();
+    assert.equal(await page.locator('#pi-profile-form [name=autoLearn]').isDisabled(), width !== 1440);
+    assert.equal(await page.locator('.pi-profile-auto-reason').isVisible(), width !== 1440);
+    assert.ok(await page.locator('#pi-profile-form').evaluate(el => el.scrollWidth <= el.clientWidth + 1));
+    await page.locator(width === 1440 ? '#pi-profile-form [name=name]' : '.pi-profile-auto-reason').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `/tmp/pi-agent-profiles-editor-${width}.png` });
+    await page.locator('#pi-profile-editor-close').click();
     await page.locator('#pi-profile-default-select').selectOption(sample.id);
     conflict = true; await page.locator('#pi-profile-default-save').click();
     await page.waitForFunction(() => document.querySelector('#pi-profiles-status').textContent.includes('conflict'));
     assert.equal(await page.locator('#pi-profile-default-select').inputValue(), sample.id);
-    conflict = false; await page.locator('#pi-profile-default-save').click();
+    assert.equal(await page.locator('#pi-profile-default-save').isDisabled(), true);
+    conflict = false; await page.locator('#pi-profiles-refresh').click();
+    await page.waitForFunction(() => !document.querySelector('#pi-profile-default-save').disabled);
+    await page.locator('#pi-profile-default-save').click();
     await page.waitForFunction(() => document.querySelector('#pi-profiles-status').textContent.includes('saved'));
     assert.equal(writes.at(-1).body.profileId, sample.id);
     await page.locator('[data-profile-action="edit"]').first().click();
@@ -107,6 +133,7 @@ async function run(browser, base, width, supported = true) {
     conflict = true; await page.locator('#pi-profile-form [type=submit]').click();
     await page.waitForFunction(() => document.querySelector('#pi-profile-editor-status').textContent.includes('conflict'));
     assert.equal(await page.locator('#pi-profile-form [name=name]').inputValue(), 'Research updated');
+    assert.equal(await page.locator('#pi-profile-form [type=submit]').isDisabled(), true);
     conflict = false;
     await page.locator('#pi-profiles-refresh').click();
     await page.waitForFunction(() => document.querySelector('#pi-profiles-status').textContent === '');
@@ -114,6 +141,34 @@ async function run(browser, base, width, supported = true) {
     await page.locator('#pi-profile-form [type=submit]').click();
     await page.waitForFunction(() => !document.querySelector('#pi-profile-form'));
     assert.equal(profiles.find(p => p.id === sample.id).name, 'Research updated');
+    await page.locator('[data-profile-action="edit"]').first().click();
+    await page.locator('#pi-profile-form [name=description]').fill('Delayed note');
+    slowWrite = 'profile'; writeRelease = null;
+    await page.locator('#pi-profile-form [type=submit]').click();
+    for (let i = 0; !writeRelease && i < 50; i++) await new Promise(r => setTimeout(r, 20));
+    assert.ok(writeRelease, 'delayed profile write started');
+    assert.equal(await page.locator('#pi-profiles-refresh').isDisabled(), true);
+    await page.locator('[data-settings-tab="models"]').click();
+    await page.locator('[data-settings-tab="profiles"]').click();
+    writeRelease(); slowWrite = '';
+    await page.waitForFunction(() => document.querySelector('#pi-profiles-status')?.textContent.includes('already saved'));
+    assert.equal(await page.locator('#pi-profile-form [type=submit]').isDisabled(), true);
+    assert.equal(await page.locator('#pi-profile-form [name=description]').inputValue(), 'Delayed note');
+    assert.match(await page.locator('.pi-profile-row').first().innerText(), /Delayed note/);
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('#pi-profile-editor-close').click();
+    profiles.find(p => p.id === sample.id).memory.autoLearn = true;
+    await page.locator('#pi-profiles-refresh').click();
+    await page.waitForFunction(() => document.querySelector('.pi-profile-row')?.textContent.includes('Delayed note'));
+    await page.locator('[data-profile-action="edit"]').first().click();
+    assert.equal(await page.locator('#pi-profile-form [name=autoLearn]').isChecked(), true);
+    assert.equal(await page.locator('#pi-profile-form [name=autoLearn]').isDisabled(), false);
+    await page.locator('#pi-profile-form [name=autoLearn]').uncheck();
+    await page.locator('#pi-profile-form [name=learnedEnabled]').uncheck();
+    await page.locator('#pi-profile-form [type=submit]').click();
+    await page.waitForFunction(() => !document.querySelector('#pi-profile-form'));
+    assert.deepEqual(profiles.find(p => p.id === sample.id).memory, { enabled: true, autoLearn: false });
+    assert.equal(profiles.find(p => p.id === sample.id).skills.learnedEnabled, false);
     slowProfiles = true;
     await page.locator('#pi-profiles-refresh').click();
     for (let i = 0; !profilesRelease && i < 50; i++) await new Promise(r => setTimeout(r, 20));
@@ -140,6 +195,15 @@ async function run(browser, base, width, supported = true) {
     await page.waitForFunction(() => !document.querySelector('#pi-profile-form'));
     assert.deepEqual(profiles.find(p => p.id === 'p-new').memory, { enabled: false, autoLearn: false });
     assert.equal(profiles.find(p => p.id === 'p-new').skills.learnedEnabled, true);
+    if (width === 1440) {
+        await page.locator('.pi-profile-row').filter({ hasText: 'Writing' }).locator('[data-profile-action=edit]').click();
+        await page.locator('#pi-profile-form [name=memoryEnabled]').check();
+        await page.locator('#pi-profile-form [name=autoLearn]').check();
+        await page.locator('#pi-profile-form [type=submit]').click();
+        await page.waitForFunction(() => !document.querySelector('#pi-profile-form'));
+        assert.equal(profiles.find(p => p.id === 'p-new').memory.autoLearn, true);
+        assert.equal(profiles.find(p => p.id === 'p-new').memory.enabled, true);
+    }
     slowMemory = true; await page.locator('[data-profile-action="view"]').first().click();
     for (let i = 0; !memoryRelease && i < 50; i++) await new Promise(r => setTimeout(r, 20));
     assert.ok(memoryRelease, 'memory request started');
@@ -183,8 +247,9 @@ async function run(browser, base, width, supported = true) {
     await page.locator('#pi-profile-choice-create').click();
     await page.waitForFunction(() => document.querySelector('#pi-session-profile')?.textContent.includes('Research updated'));
     assert.equal(Object.hasOwn(writes.filter(w => w.p === '/api/pi/sessions').at(-1).body, 'profileId'), false);
-    assert.match(await page.locator('#pi-session-profile').getAttribute('title'), /worker-loaded settings are unverified/i);
-    assert.match(await page.locator('#pi-meta-profile').textContent(), /Saved thread profile: Research updated.*Worker-loaded settings are unverified/i);
+    await page.waitForFunction(() => document.querySelector('#pi-session-profile')?.title.includes('Running settings match the saved profile'));
+    assert.match(await page.locator('#pi-session-profile').getAttribute('title'), /Running settings match the saved profile/i);
+    assert.match(await page.locator('#pi-meta-profile').textContent(), /Saved thread profile: Research updated.*Running settings match the saved profile/i);
     if (width < 900 && !await page.locator('#pi-session-pane').evaluate(el => el.classList.contains('open'))) await page.locator('#pi-toggle-sessions').click();
     slowProfiles = true; profilesRelease = null;
     await page.locator('#pi-new-profile-session').click();
@@ -203,9 +268,38 @@ async function run(browser, base, width, supported = true) {
     await page.waitForFunction(() => document.querySelector('#pi-session-profile')?.textContent.includes('Writing updated'));
     assert.equal(writes.filter(w => w.p === '/api/pi/sessions').at(-1).body.profileId, 'p-new');
     assert.equal(defaultProfileId, sample.id);
+    runtimeConfirmed = false;
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('pi:native-config-saved', { detail: { scope: 'global' } })));
+    await page.waitForFunction(() => document.querySelector('#pi-meta-profile')?.textContent.includes('has not been verified'));
+    runtimeConfirmed = true;
+    runtimeMatches = false;
+    await page.evaluate(() => document.querySelector('#pi-runtime-config-check').click());
+    await page.waitForFunction(() => document.querySelector('#pi-meta-profile')?.textContent.includes('reopen the thread'));
+    assert.match(await page.locator('#pi-meta-profile').innerText(), /Running with Older settings for this profile.*reopen the thread/);
+    configHeld = true; configRelease = null;
+    await page.evaluate(() => document.querySelector('#pi-runtime-config-check').click());
+    for (let i = 0; !configRelease && i < 50; i++) await new Promise(r => setTimeout(r, 20));
+    assert.ok(configRelease, 'same-socket stale configuration request started');
+    const staleSameSocket = configRelease;
+    configHeld = false; runtimeMatches = true;
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('pi:native-config-saved', { detail: { scope: 'global' } })));
+    await page.waitForFunction(() => document.querySelector('#pi-meta-profile')?.textContent.includes('Running settings match'));
+    staleSameSocket();
+    await page.waitForTimeout(50);
+    assert.match(await page.locator('#pi-meta-profile').innerText(), /Running settings match the saved profile/);
+    runtimeMatches = false;
+    configHeld = true; configRelease = null;
+    await page.evaluate(() => document.querySelector('#pi-runtime-config-check').click());
+    for (let i = 0; !configRelease && i < 50; i++) await new Promise(r => setTimeout(r, 20));
+    assert.ok(configRelease, 'late worker configuration request started');
+    const lateConfig = configRelease;
+    configHeld = false;
     if (width < 900 && !await page.locator('#pi-session-pane').evaluate(el => el.classList.contains('open'))) await page.locator('#pi-toggle-sessions').click();
     await page.locator(`[data-session-id="${first.id}"] .pi-session-main`).click();
     await page.waitForFunction(() => document.querySelector('#pi-session-profile')?.textContent === 'No profile');
+    lateConfig();
+    await page.waitForTimeout(50);
+    assert.match(await page.locator('#pi-meta-profile').textContent(), /No profile.*Running settings match the saved profile/);
     assert.equal(await page.locator('#pi-input').inputValue(), 'Original draft');
     assert.equal(await page.locator('.pi-attachment-chip').innerText(), attachment);
     await page.locator('#workspace-settings-toggle').click();
@@ -216,6 +310,43 @@ async function run(browser, base, width, supported = true) {
     await page.waitForFunction(() => document.querySelector('#pi-profiles-status').textContent.includes('saved'));
     assert.equal(defaultProfileId, null);
     assert.equal(sessions.find(s => s.id === first.id).agentProfile, null);
+    await page.locator('#pi-profile-default-select').selectOption(sample.id);
+    failAfterWrite = true;
+    await page.locator('#pi-profile-default-save').click();
+    await page.waitForFunction(() => document.querySelector('#pi-profiles-status')?.textContent.includes('unconfirmed'));
+    assert.equal(await page.locator('#pi-profile-default-save').isDisabled(), true);
+    const defaultWrites = writes.filter(w => w.p === '/api/pi/profiles/default').length;
+    failRead = true;
+    await page.locator('#pi-profiles-refresh').click();
+    await page.waitForFunction(() => document.querySelector('#pi-profiles-status')?.textContent.includes('Could not load profiles'));
+    assert.equal(await page.locator('#pi-profile-default-select').inputValue(), sample.id);
+    assert.equal(await page.locator('#pi-profile-default-save').isDisabled(), true);
+    assert.equal(writes.filter(w => w.p === '/api/pi/profiles/default').length, defaultWrites);
+    await page.locator('#pi-profiles-refresh').click();
+    await page.waitForFunction(() => document.querySelector('#pi-profiles-status')?.textContent === '');
+    assert.equal(await page.locator('#pi-profile-default-select').inputValue(), sample.id);
+    assert.equal(await page.locator('#pi-profile-default-save').isDisabled(), true, 'committed default must not be repeated');
+    await page.locator('#pi-profile-default-select').selectOption('');
+    slowWrite = 'default'; writeRelease = null;
+    await page.locator('#pi-profile-default-save').click();
+    for (let i = 0; !writeRelease && i < 50; i++) await new Promise(r => setTimeout(r, 20));
+    assert.ok(writeRelease, 'delayed default write started');
+    const otherProject = '/tmp/profiles-other-project';
+    await page.evaluate(project => { localStorage.setItem('pi.web.cwd', project); window.PiAgentProfilesUI.projectChanged(); }, otherProject);
+    await page.evaluate(project => { localStorage.setItem('pi.web.cwd', project); window.PiAgentProfilesUI.projectChanged(); }, cwd);
+    await page.locator('[data-settings-tab="models"]').click();
+    await page.locator('[data-settings-tab="profiles"]').click();
+    writeRelease(); slowWrite = '';
+    await page.waitForFunction(() => document.querySelector('#pi-profile-default-select')?.value === '' && !document.querySelector('#pi-profiles-status')?.textContent.includes('Loading'));
+    assert.equal(defaultProfileId, null);
+    await page.locator('#pi-profile-default-select').selectOption(sample.id);
+    await page.evaluate(project => { localStorage.setItem('pi.web.cwd', project); window.PiAgentProfilesUI.projectChanged(); }, otherProject);
+    await page.waitForFunction(project => document.querySelector('.pi-profile-default small')?.title === project, otherProject);
+    await page.evaluate(project => { localStorage.setItem('pi.web.cwd', project); window.PiAgentProfilesUI.projectChanged(); }, cwd);
+    await page.waitForFunction(project => document.querySelector('.pi-profile-default small')?.title === project, cwd);
+    assert.equal(await page.locator('#pi-profile-default-select').inputValue(), sample.id, 'unsaved default survives project switch');
+    assert.equal(await page.locator('#pi-profile-default-save').isDisabled(), false);
+    await page.locator('#pi-profile-default-select').selectOption('');
     const widths = await page.evaluate(() => [...document.querySelectorAll('body,.workspace-settings-dialog,.workspace-settings-content,.workspace-settings-panel.active,#pi-profiles-content,.pi-profile-default,.pi-profile-row,#pi-profile-choice')]
         .filter(el => el.getClientRects().length).map(el => ({ name: el.id || el.className, client: el.clientWidth, scroll: el.scrollWidth })));
     assert.ok(widths.every(row => row.scroll <= row.client + 1), JSON.stringify(widths));
@@ -240,6 +371,30 @@ async function run(browser, base, width, supported = true) {
     assert.equal(await page.locator('#pi-profile-choice-select').inputValue(), 'none');
     assert.match(await page.locator('#pi-profile-choice-state').innerText(), /default is unavailable/);
     await page.locator('#pi-profile-choice-cancel').click();
+    await page.locator('#workspace-settings-toggle').click();
+    await page.locator('[data-settings-tab="profiles"]').click();
+    await page.locator('#pi-profile-add').click();
+    await page.locator('#pi-profile-form [name=name]').fill('Uncertain create');
+    failAfterWrite = true;
+    await page.locator('#pi-profile-form [type=submit]').click();
+    await page.waitForFunction(() => document.querySelector('#pi-profile-editor-status')?.textContent.includes('unconfirmed'));
+    assert.equal(await page.locator('#pi-profile-form [type=submit]').isDisabled(), true);
+    const createWrites = writes.filter(w => w.p === '/api/pi/profiles' && !w.body.profile.id).length;
+    failRead = true;
+    await page.locator('#pi-profiles-refresh').click();
+    await page.waitForFunction(() => document.querySelector('#pi-profiles-status')?.textContent.includes('Could not load profiles'));
+    assert.equal(await page.locator('#pi-profile-form [name=name]').inputValue(), 'Uncertain create');
+    assert.equal(await page.locator('#pi-profile-form [type=submit]').isDisabled(), true);
+    await page.locator('#pi-profiles-refresh').click();
+    await page.waitForFunction(() => document.querySelector('#pi-profiles-status')?.textContent.includes('may already be saved'));
+    assert.equal(await page.locator('#pi-profile-form [name=name]').inputValue(), 'Uncertain create');
+    assert.equal(await page.locator('#pi-profile-form [type=submit]').isDisabled(), true);
+    assert.equal(writes.filter(w => w.p === '/api/pi/profiles' && !w.body.profile.id).length, createWrites);
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('#pi-profile-editor-close').click();
+    await page.locator('.pi-profile-row').filter({ hasText: 'Uncertain create' }).locator('[data-profile-action=edit]').click();
+    assert.equal(await page.locator('#pi-profile-form [name=name]').inputValue(), 'Uncertain create');
+    await page.locator('#pi-profile-editor-close').click();
     assert.deepEqual(errors, []);
     console.log(`PASS profiles ${width}: writes=${writes.length}, pageerrors=${errors.length}, widths=${JSON.stringify(widths)}`);
     await context.close();

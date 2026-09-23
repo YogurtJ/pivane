@@ -1,7 +1,7 @@
 (() => {
     const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
     const $ = id => document.getElementById(id);
-    function create({ apiFetch, context, resources, reload, configuration, restart }) {
+    function create({ apiFetch, context, resources, reload, configuration, restart, onConfiguration }) {
         const { node, button } = window.PiNativeUI;
         const dialog = $('pi-project-trust-dialog'), body = $('pi-project-trust-body'), message = $('pi-project-trust-status');
         const section = $('pi-loaded-resources'), content = $('pi-loaded-resources-body'), refresh = $('pi-loaded-resources-refresh'), reloadButton = $('pi-loaded-resources-reload');
@@ -28,6 +28,7 @@
             try {
                 const value = await configuration(); if (n !== configEpoch || parent !== key() || !context().connected) return;
                 configValue = value;
+                onConfiguration?.(value);
                 feedback.textContent = value.matchesSavedConfig === null ? translateUi("无法核对本实例的启动配置；可在空闲时重新打开实例后核对。") : value.matchesSavedConfig ? translateUi("配置文件与本实例启动时一致。资源文件内容修改后，可重新加载资源。") : translateUi("已保存的配置与当前实例不同。重新打开运行实例后应用；仅刷新网页不会生效。");
                 feedback.dataset.state = value.matchesSavedConfig === null ? 'unknown' : value.matchesSavedConfig ? 'current' : 'changed';
                 const trust = value.trust;

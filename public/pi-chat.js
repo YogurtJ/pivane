@@ -642,7 +642,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.nativeResources = status.nativeResources === true;
             extensionAssistant.setEnabled(status.extensionAssistant === true);
             state.systemPrompts = status.systemPrompts === true;
-            window.dispatchEvent(new CustomEvent('workspace:agent-profiles-status', { detail: { enabled: status.agentProfiles === true } }));
+            window.dispatchEvent(new CustomEvent('workspace:agent-profiles-status', { detail: { enabled: status.agentProfiles === true, autoLearn: status.profileMemory?.installed === true && status.profileMemory?.autoLearn === true } }));
             nativeContext.sync();
             state.roots = status.projectRoots || [];
             state.defaultProject = status.defaultProject || state.roots[0] || null;
@@ -1129,6 +1129,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.session = null;
             state.sessions = [];
             localStorage.setItem('pi.web.cwd', cwd);
+            window.PiAgentProfilesUI?.projectChanged();
             elements.projectName.textContent = getProjectName(cwd);
             elements.projectPath.textContent = cwd;
             syncMobileHeader();
@@ -2813,7 +2814,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.metaMessages.textContent = state.stats?.totalMessages ?? state.session?.messageCount ?? '--';
         elements.metaFile.textContent = ephemeral ? translateUi("不保存（pi --no-session）") : state.session?.path || runtime?.sessionFile || '--';
         elements.metaFile.title = ephemeral ? translateUi("临时 runtime 不创建 session 文件") : state.session?.path || runtime?.sessionFile || '';
-        window.PiAgentProfilesUI?.displaySession(state.session, state.connected);
+        window.PiAgentProfilesUI?.displaySession(state.session, state.connected, JSON.stringify([state.cwd, state.session?.id, state.socketGeneration]));
     }
 
     function setStreaming(streaming) {
@@ -3837,6 +3838,8 @@ document.addEventListener('DOMContentLoaded', () => {
             busy: state.treeBusy || state.shellBusy || state.streaming || state.compacting || state.compactRequested || state.controlRequested || state.resourceRequested || state.pendingUi.size > 0 || state.attachmentReads > 0 || state.submittingDrafts.has(state.composerSessionKey) }),
         resources: () => window.PiNativeRuntime.resources(), reload: reloadResources,
         configuration: () => requestRpc('get_runtime_configuration'),
+        onConfiguration: value => window.PiAgentProfilesUI?.setLoadedProfile(value.agentProfile,
+            JSON.stringify([state.cwd, state.session?.id, state.socketGeneration]), state.session, state.connected),
         restart: async value => {
             const generation = state.socketGeneration; state.resourceRequested = true; setStreaming(state.streaming);
             try { await requestRpc('restart_runtime', { runtimeId: value.runtimeId, expectedRevision: value.revision, confirmed: true }); }
