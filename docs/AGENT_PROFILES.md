@@ -63,9 +63,11 @@ Pivane 使用独立的 pi-hermes-memory 适配组件。按[安装说明](PROFILE
 | `POST /api/pi/profiles/:id/avatar` | `{expectedRevision,dataUrl}`，仅最多1 MiB 的受校验 PNG；返回 `{ok,profile,revision}`；保存旧头像直到注册表CAS成功 |
 | `GET /api/pi/profiles/:id/avatar?version=hash` | 只返回注册表当前引用的本档案 PNG；无外部 URL |
 | `POST /api/pi/profiles/authoring-sessions` | `{cwd?,profileId:null|UUID,language:'zh-CN'|'en',draft?}` 创建原生无身份辅助线程并返回 `{session,prompt}`，不会触发模型请求或保存档案 |
-| `GET /api/pi/profiles/authoring-sessions/:id/draft?cwd=` | 返回当前原生分支最后一份经验证草稿；状态 ready/missing，只有用户选择导入后才进入编辑器 |
+| `GET /api/pi/profiles/authoring-sessions/:id/draft?cwd=` | 返回当前原生分支最后一份经验证草稿；状态 ready/missing，只有用户选择导入后才进入编辑器。以完整原生文件身份和修订核对读取，超过64 MiB明确返回413 |
 
 结果不确定时先刷新核对，不自动重试创建。界面保留编辑草稿和项目默认选择；如果刷新后发现同名记录，需核对保存结果再继续，避免重复创建。
+
+辅助会话创建与档案设置保存共用维护互斥；正在停机或维护时拒绝创建，停机会等待已预占的创建完成。头像私有图片写入与档案注册表修订保存也在同一维护预占和注册表互斥内，冲突不会先发布新图片；已保存头像不会因新上传失败而丢失。
 
 `session.agentProfile` 为 null 或 `{id,name,enabled,available}`，只描述保存的身份。WebSocket `get_runtime_configuration.agentProfile` 返回 `saved`、`savedProfileRevision`、`loadedProfileId`、`loadedProfileRevision`、`loadedConfirmed`、`matchesSavedProfile`，区分身份相同但SOUL／设置版本已变化的情况。缺少确认时保持未验证。
 

@@ -6,7 +6,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { PiProfileRegistry } = require('../server/pi-profile-registry');
 const { mountProfileDocumentRoutes } = require('../server/pi-profile-documents');
-const { pendingDocumentIndex } = require('../server/profile-memory/document-index');
+const { documentIndex, pendingDocumentIndex } = require('../server/profile-memory/document-index');
+const { safeFile } = require('../server/profile-memory/management');
 
 const bundle = process.env.PIVANE_TEST_HERMES_BUNDLE;
 test('whole-document edits reconcile only their exact native Markdown facts', { skip: !bundle, timeout: 30000 }, async t => {
@@ -258,4 +259,48 @@ test('interrupted pending plan restores missing retained facts without changing 
     assert.equal(upstream.searchMemories(db, 'Removed', { target: 'user' }).length, 0);
     assert.equal(upstream.searchMemories(db, 'SeparateSqliteFact', { target: 'user' }).length, 1);
     assert.equal(pendingDocumentIndex(root, 'user'), null);
+});
+
+test('unpublished pending plan clears only for a verified old document', { skip: !bundle }, async t => {
+    const base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-document-before-publish-')));
+    t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+    const agent = path.join(base, 'agent'); fs.mkdirSync(agent);
+    process.env.PI_CODING_AGENT_DIR = agent;
+    const upstream = await import(bundle);
+    const profiles = new PiProfileRegistry({ resolveProject: value => value });
+    t.after(() => profiles.dispose());
+    const profile = (await profiles.save({ expectedRevision: (await profiles.state()).revision,
+        profile: { name: 'Interrupted', description: '', soul: '', enabled: true, memory: { enabled: true, autoLearn: false } } })).profile;
+    const root = path.join(agent, 'pivane-profiles', 'data', profile.id), file = path.join(root, 'USER.md');
+    const handlers = new Map(), router = { get: (_name, fn) => handlers.set('GET', fn), put: (_name, fn) => handlers.set('PUT', fn) };
+    mountProfileDocumentRoutes(router, { profiles, getAgentDir: async () => agent, bundlePath: bundle });
+    const request = async (method, body) => {
+        const res = { code: 200, set() { return this; }, status(code) { this.code = code; return this; },
+            json(data) { this.data = data; return this; } };
+        await handlers.get(method)({ params: { id: profile.id }, query: { target: 'user' }, body }, res);
+        return res;
+    };
+    const save = async content => { const before = (await request('GET')).data;
+        return request('PUT', { target: 'user', content, expectedRevision: before.revision,
+            expectedProfileRevision: before.profileRevision }); };
+    assert.equal((await save('Original')).code, 200);
+    const interrupted = await documentIndex(root, 'user', bundle, safeFile(file), 'NeverPublished');
+    interrupted.mark(); interrupted.close();
+    assert.ok(pendingDocumentIndex(root, 'user'));
+    assert.equal((await request('GET')).data.indexSynced, false);
+    const edited = await save('FreshEdit');
+    assert.equal(edited.code, 200, JSON.stringify(edited.data));
+    assert.equal(pendingDocumentIndex(root, 'user'), null);
+    const db = new upstream.DatabaseManager(root);
+    assert.equal(upstream.searchMemories(db, 'Original', { target: 'user' }).length, 0);
+    assert.equal(upstream.searchMemories(db, 'NeverPublished', { target: 'user' }).length, 0);
+    assert.equal(upstream.searchMemories(db, 'FreshEdit', { target: 'user' }).length, 1);
+    db.close();
+
+    const uncertain = await documentIndex(root, 'user', bundle, safeFile(file), 'Proposed');
+    uncertain.mark(); uncertain.close();
+    fs.writeFileSync(file, 'ThirdPartyContent');
+    assert.equal((await save('RefuseUnknown')).code, 409);
+    assert.ok(pendingDocumentIndex(root, 'user'), 'unknown source revision retains the gate');
+    assert.equal((await request('GET')).data.content, 'ThirdPartyContent');
 });

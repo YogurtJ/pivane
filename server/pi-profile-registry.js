@@ -219,14 +219,18 @@ class PiProfileRegistry {
         }));
     }
 
-    saveAvatar(id, expectedRevision, version) {
-        return this.reserve(() => this.mutate(expectedRevision, state => {
-            const index = state.profiles.findIndex(profile => profile.id === id);
-            if (index < 0) throw fail('Profile not found', 404);
-            const record = { ...state.profiles[index], avatar: { kind: 'image', version }, updatedAt: new Date().toISOString() };
-            state.profiles[index] = record;
-            return { ok: true, profile: record };
-        }));
+    saveAvatar(id, expectedRevision, version, prepareAsset) {
+        return this.reserve(async () => {
+            const installAsset = await prepareAsset();
+            return this.mutate(expectedRevision, state => {
+                const index = state.profiles.findIndex(profile => profile.id === id);
+                if (index < 0) throw fail('Profile not found', 404);
+                installAsset();
+                const record = { ...state.profiles[index], avatar: { kind: 'image', version }, updatedAt: new Date().toISOString() };
+                state.profiles[index] = record;
+                return { ok: true, profile: record };
+            });
+        });
     }
 
     saveDefault(input) {

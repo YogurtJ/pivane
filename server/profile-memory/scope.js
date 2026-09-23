@@ -8,6 +8,7 @@ const { descriptorPathSync, assertDescriptorBackend } = require('../pi-file-desc
 
 const PROFILE_ENTRY = 'pivane-agent-profile';
 const MAX_SESSION_BYTES = 8 * 1024 * 1024;
+const MAX_METADATA_BYTES = 256 * 1024;
 const MAX_SCAN_FILES = 5000;
 const stamp = stat => [stat.dev, stat.ino, stat.mode, stat.size, stat.mtimeNs, stat.ctimeNs].map(String).join(':');
 
@@ -146,7 +147,7 @@ function activeBinding(file, context) {
         const consume = () => {
             const text = prefix.toString('utf8');
             if (first || /^\s*\{\s*"type"\s*:\s*"custom"/.test(text)) {
-                if (prefix.length >= 64 * 1024) throw new Error('Oversize session metadata');
+                if (prefix.length >= MAX_METADATA_BYTES) throw new Error('Oversize session metadata');
                 const entry = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(prefix));
                 if (first) { header = entry; first = false; }
                 else if (entry.type === 'custom' && entry.customType === PROFILE_ENTRY && entry.data?.sessionId === context.sessionId) {
@@ -164,11 +165,11 @@ function activeBinding(file, context) {
             let start = 0;
             for (let i = 0; i < n; i++) if (chunk[i] === 10) {
                 const fragment = chunk.subarray(start, i);
-                if (prefix.length < 64 * 1024) prefix = Buffer.concat([prefix, fragment.subarray(0, 64 * 1024 - prefix.length)]);
+                if (prefix.length < MAX_METADATA_BYTES) prefix = Buffer.concat([prefix, fragment.subarray(0, MAX_METADATA_BYTES - prefix.length)]);
                 consume(); start = i + 1;
             }
-            if (start < n && prefix.length < 64 * 1024)
-                prefix = Buffer.concat([prefix, chunk.subarray(start, start + 64 * 1024 - prefix.length)]);
+            if (start < n && prefix.length < MAX_METADATA_BYTES)
+                prefix = Buffer.concat([prefix, chunk.subarray(start, start + MAX_METADATA_BYTES - prefix.length)]);
         }
         if (prefix.length) consume();
         if (header?.type !== 'session' || header.id !== context.sessionId || header.cwd !== context.cwd || matches !== 1) return null;

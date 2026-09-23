@@ -90,7 +90,10 @@ publication returns 503 with `documentSaved:true,indexSynced:false` and the
 current document snapshot, not a false claim that the write was undone. A
 private per-target pending marker blocks affected worker memory search/writes;
 PUT of the same current content and fresh revisions deterministically repairs
-the index before accepting further edits. GET reports `indexSynced:false` while
+the index before accepting further edits. If a process stopped after marking
+but before publishing, a fresh PUT may discard the plan only while the native
+file still matches its verified `before` revision; a published `after` plan or
+an unknown third revision remains gated. GET reports `indexSynced:false` while
 pending. USER editing with memory disabled/unavailable can save the document
 without indexing and returns 202 with explicit index status. This route does
 not write project Markdown, unrelated SQLite-only facts or learned skills.
