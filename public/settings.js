@@ -132,13 +132,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const agentProfiles = window.PiAgentProfiles.create({ apiFetch, currentCwd });
     window.PiAgentProfilesUI = agentProfiles;
 
-    let settingsOpener;
     let settingsViewEpoch = 0;
-    function openSettings(tab = state.activeTab) {
-        if (elements.dialog.classList.contains('hidden')) settingsOpener = document.activeElement;
+    let activeProfileMetadata = null;
+    function openSettings(tab = state.activeTab, metadata = {}) {
         elements.dialog.classList.remove('hidden');
-        switchTab(tab);
-        elements.close.focus({ preventScroll: true });
+        switchTab(tab, metadata);
     }
 
     function closeSettings() {
@@ -152,11 +150,11 @@ document.addEventListener('DOMContentLoaded', () => {
         subagentSettings.close();
         closeEditor();
         elements.dialog.classList.add('hidden');
-        if (settingsOpener?.isConnected && settingsOpener.getClientRects().length) settingsOpener.focus({ preventScroll: true });
         window.dispatchEvent(new CustomEvent('workspace:settings-closed'));
     }
 
-    function switchTab(tab) {
+    function switchTab(tab, metadata = {}) {
+        activeProfileMetadata = tab === 'profiles' ? metadata : null;
         const viewEpoch = ++settingsViewEpoch;
         window.PiExtensions?.setView(tab);
         state.activeTab = tab;
@@ -171,7 +169,7 @@ document.addEventListener('DOMContentLoaded', () => {
         else usagePanel.close();
         if (tab === 'updates') updatesPanel.open();
         else updatesPanel.close();
-        if (tab === 'profiles') agentProfiles.open();
+        if (tab === 'profiles') agentProfiles.open(activeProfileMetadata || {});
         else agentProfiles.close();
         elements.nav.querySelectorAll('[data-settings-tab]').forEach(button => button.classList.toggle('active', button.dataset.settingsTab === tab));
         elements.panels.forEach(panel => panel.classList.toggle('active', panel.dataset.settingsPanel === tab));
@@ -866,7 +864,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.addEventListener('workspace:agent-profiles-status', event => agentProfiles.setEnabled(event.detail?.enabled === true, event.detail?.autoLearn === true));
-    elements.toggle.addEventListener('click', () => openSettings(['extensions', 'packages', 'skills'].includes(state.activeTab) ? 'providers' : state.activeTab));
+    elements.toggle.addEventListener('click', () => window.PiWorkspaceRoute?.navigate('settings', { tab: ['extensions', 'packages', 'skills'].includes(state.activeTab) ? 'providers' : state.activeTab }));
     window.addEventListener('workspace:open-settings', event => {
         const detail = event.detail || {};
         if (detail.setting) nativeSettings.focusSetting(detail.setting);
@@ -877,16 +875,33 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.modelAvailable.checked = false;
         }
         if (detail.showConfigured === false) elements.providerConfigured.checked = false;
-        openSettings(detail.tab || state.activeTab);
-        if (detail.updatePi === true && detail.tab === 'updates') updatesPanel.reviewUpdate();
+        const tab = detail.tab || state.activeTab;
+        const route = tab === 'profiles' ? 'profiles' : ['extensions', 'packages', 'skills'].includes(tab) ? 'extensions' : 'settings';
+        const params = route === 'profiles' ? { profileId: detail.profileId, section: detail.section, authoringSession: detail.authoringSession?.id, authoringCwd: detail.authoringSession?.cwd }
+            : { tab };
+        window.PiWorkspaceRoute?.navigate(route, params);
+        if (detail.updatePi === true && tab === 'updates') updatesPanel.reviewUpdate();
     });
-    elements.close.addEventListener('click', closeSettings);
-    elements.dialog.addEventListener('click', event => { if (event.target === elements.dialog) closeSettings(); });
+    window.addEventListener('workspace:settings-route', event => {
+        const { tab, settingsTab, profileId, section, authoringSession, authoringCwd } = event.detail;
+        if (['profiles', 'extensions', 'settings'].includes(tab)) {
+            openSettings(settingsTab, { profileId, section, authoringSession: authoringSession ? { id: authoringSession, cwd: authoringCwd } : undefined });
+        } else if (!elements.dialog.classList.contains('hidden')) closeSettings();
+    });
+    const initialRoute = window.PiWorkspaceRoute?.current();
+    if (['profiles', 'extensions', 'settings'].includes(initialRoute?.tab)) {
+        openSettings(initialRoute.tab === 'settings' ? initialRoute.params.get('tab') || 'providers' : initialRoute.tab,
+            { profileId: initialRoute.params.get('profileId'), section: initialRoute.params.get('section'),
+                authoringSession: initialRoute.params.get('authoringSession') ? { id: initialRoute.params.get('authoringSession'), cwd: initialRoute.params.get('authoringCwd') } : undefined });
+    }
+    elements.close.addEventListener('click', () => window.PiWorkspaceRoute?.returnToConversation());
     elements.editorClose.addEventListener('click', closeEditor);
     elements.editor.addEventListener('click', event => { if (event.target === elements.editor) closeEditor(); });
     elements.nav.addEventListener('click', event => {
         const button = event.target.closest('[data-settings-tab]');
-        if (button) switchTab(button.dataset.settingsTab);
+        if (button) window.PiWorkspaceRoute?.navigate(button.dataset.settingsTab === 'profiles' ? 'profiles'
+            : ['extensions', 'packages', 'skills'].includes(button.dataset.settingsTab) ? 'extensions' : 'settings',
+        button.dataset.settingsTab === 'profiles' ? {} : { tab: button.dataset.settingsTab });
     });
     document.addEventListener('keydown', event => {
         if (document.querySelector('dialog[open]')) return;
@@ -896,15 +911,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (event.shiftKey && (document.activeElement === first || !elements.editor.contains(document.activeElement))) { event.preventDefault(); last?.focus(); }
             else if (!event.shiftKey && (document.activeElement === last || !elements.editor.contains(document.activeElement))) { event.preventDefault(); first?.focus(); }
         }
-        if (event.key === 'Tab' && elements.editor.classList.contains('hidden') && !elements.dialog.classList.contains('hidden')) {
-            const controls = [...elements.dialog.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], summary')].filter(node => node.getClientRects().length);
-            const first = controls[0], last = controls.at(-1);
-            if (event.shiftKey && (document.activeElement === first || !elements.dialog.contains(document.activeElement))) { event.preventDefault(); last?.focus(); }
-            else if (!event.shiftKey && (document.activeElement === last || !elements.dialog.contains(document.activeElement))) { event.preventDefault(); first?.focus(); }
-        }
-        if (event.key !== 'Escape') return;
-        if (!elements.editor.classList.contains('hidden')) closeEditor();
-        else if (!elements.dialog.classList.contains('hidden')) closeSettings();
+        if (event.key === 'Escape' && !elements.editor.classList.contains('hidden')) closeEditor();
     });
 
     elements.providerSearch.addEventListener('input', renderProviders);
