@@ -22,7 +22,7 @@ if (metadata.name !== 'pi-hermes-memory' || metadata.version !== '0.9.9' || meta
 const esbuild = require(process.env.PIVANE_PROFILE_MEMORY_ESBUILD || 'esbuild');
 const imports = [
     ['DatabaseManager', 'store/db'], ['MemoryStore', 'store/memory-store'], ['SkillStore', 'store/skill-store'],
-    ['parseSessionFile', 'store/session-parser'], ['indexSession', 'store/session-indexer'],
+    ['parseSessionManagerSnapshot', 'store/session-indexer'], ['indexSession', 'store/session-indexer'],
     ['upsertSessionFileMetadata', 'store/session-indexer'], ['searchSessions', 'store/session-search'],
     ['searchMemories', 'store/sqlite-memory-store'], ['registerMemoryTool', 'tools/memory-tool'],
     ['registerMemorySearchTool', 'tools/memory-search-tool'], ['registerSessionSearchTool', 'tools/session-search-tool'],
