@@ -73,12 +73,11 @@ async function run(browser, base, width, locale, noProject = false) {
     if (!noProject) await page.locator('#pi-input').fill('Discovery draft');
     if (width < 900) {
         assert.equal(await page.locator('#workspace-extensions-toggle').isVisible(), false);
-        await page.locator('#pi-toggle-sessions').click();
-        await page.waitForFunction(() => document.getElementById('pi-session-pane').getBoundingClientRect().left >= 0);
-        await page.screenshot({ path: `/tmp/pivane-extensions-drawer-${locale}-${width}.png` });
-        await page.locator('#pi-drawer-extensions').click();
+        await page.locator('#workspace-settings-toggle').click();
+        await page.locator('.workspace-settings-nav [data-settings-tab="extensions"]').click();
     } else await page.locator('#workspace-extensions-toggle').click();
     await page.locator('.extensions-view').waitFor({ state: 'visible' });
+    await page.locator('.extensions-tabs [data-extension-tab="featured"]').click();
     assert.equal(await page.locator('.extensions-card').count(), 6);
     await page.locator('#extension-pi-subagents [data-installation="installed"]').waitFor();
     assert.equal(await page.locator('#extension-pi-web-access [data-installation="installed"]').count(), 1);
@@ -147,7 +146,6 @@ async function run(browser, base, width, locale, noProject = false) {
     }
     await page.locator('#extensions-search').fill('stale-search-fixture');
     await page.locator('#workspace-settings-close').click();
-    if (width < 900) await page.locator('#pi-toggle-sessions').click();
     if (!noProject) assert.equal(await page.locator('#pi-input').inputValue(), 'Discovery draft');
     await page.locator('.extensions-explore-choices button').first().click();
     assert.equal(await page.locator('.extensions-card').count(), 6, 'home shortcuts clear stale search');
@@ -287,6 +285,7 @@ async function run(browser, base, width, locale, noProject = false) {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.getElementById('pi-extension-assistant-add')?.hidden === true);
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('workspace:open-settings', { detail: { tab: 'extensions' } })));
+    await page.locator('.extensions-tabs [data-extension-tab="featured"]').click();
     assert.equal(await page.locator('.extensions-card').count(), 6);
     assert.equal(await page.locator('[data-extension-configure]:enabled').count(), 0);
     assert.equal(await page.locator('#extensions-assistant-unavailable').isVisible(), true);

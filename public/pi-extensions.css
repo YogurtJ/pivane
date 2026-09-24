@@ -1,4 +1,8 @@
 /* Learned skills and curated discovery share the full-page extension destination. */
+.extensions-view .workspace-settings-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+.extensions-view .workspace-settings-nav { display: flex; flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px 20px; gap: 8px; }
+.extensions-view .workspace-settings-nav [data-settings-tab] { display: none; }
+.extensions-view .workspace-settings-nav :is([data-settings-tab="extensions"], [data-settings-tab="packages"], [data-settings-tab="skills"]) { display: flex; flex-direction: row; min-width: 0; }
 .extensions-tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--line); }
 .extensions-tabs button { padding: 10px 14px; border: 0; border-bottom: 2px solid transparent; color: var(--text-muted); background: transparent; font: inherit; cursor: pointer; }
 .extensions-tabs button[aria-current=page] { border-bottom-color: var(--accent); color: var(--text-main); font-weight: 600; }

@@ -179,10 +179,11 @@
         if (!root || root.querySelector('.extensions-explore')) return;
         const section = node('section', null, { class: 'extensions-explore', 'aria-label': text('探索技能', 'Explore skills') });
         const header = node('div', null, { class: 'extensions-explore-heading' });
-        header.append(node('strong', text('探索技能', 'Explore skills')), button(text('查看全部', 'View all'), open));
+        const openFeatured = () => { extensionTab = 'featured'; open(); };
+        header.append(node('strong', text('探索技能', 'Explore skills')), button(text('查看全部', 'View all'), openFeatured));
         const choices = node('div', null, { class: 'extensions-explore-choices' });
         for (const item of entries.slice(0, 3)) choices.append(button(text(...item.title), () => {
-            open();
+            openFeatured();
             const search = document.getElementById('extensions-search');
             if (search?.value) { search.value = ''; search.dispatchEvent(new Event('input')); }
             const card = document.getElementById(`extension-${item.id}`);
