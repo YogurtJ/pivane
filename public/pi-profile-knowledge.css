@@ -1,0 +1,33 @@
+#pi-profiles-memory { min-width: 0; overflow-wrap: anywhere; }
+#pi-profiles-memory [hidden] { display: none !important; }
+.pi-knowledge-head, .pi-knowledge-tools, .pi-knowledge-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.pi-knowledge-head { justify-content: space-between; }
+.pi-knowledge-head h4, .pi-learning h4 { font-size: 1rem; margin: 0; }
+.pi-knowledge-tools input { flex: 1 1 180px; min-width: 0; box-sizing: border-box; }
+.pi-knowledge-tools button { flex: 0 1 auto; }
+.pi-knowledge-status, .pi-knowledge-receipt { font-size: .86rem; line-height: 1.5; overflow-wrap: anywhere; color: var(--text-soft); }
+.pi-knowledge-receipt { padding: 9px 0; border-left: 3px solid var(--accent); padding-left: 10px; }
+.pi-knowledge-receipt button { margin-left: 8px; }
+.pi-knowledge-list { display: grid; border-top: 1px solid var(--line); }
+.pi-knowledge-row { box-sizing: border-box; width: 100%; min-width: 0; background: transparent; color: var(--text-main); padding: 10px 2px; text-align: left; border: 0; border-bottom: 1px solid var(--line); font: inherit; font-size: .87rem; cursor: pointer; overflow-wrap: anywhere; }
+.pi-knowledge-row[aria-current=true], .pi-knowledge-row:hover { background: var(--surface-2); }
+.pi-knowledge-detail, .pi-knowledge-editor, .pi-learning { border-top: 1px solid var(--line); margin: 18px 0; padding-top: 16px; min-width: 0; }
+.pi-knowledge-detail h5, .pi-knowledge-editor h5 { font-size: .95rem; margin: 0 0 8px; }
+.pi-knowledge-detail small, .pi-learning-job small { display: block; color: var(--text-soft); overflow-wrap: anywhere; line-height: 1.5; }
+.pi-knowledge-detail pre, .pi-knowledge-editor pre { max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: .85rem; padding: 10px; background: var(--surface-2); }
+.pi-knowledge-history { margin-top: 12px; }
+.pi-knowledge-history summary { cursor: pointer; font-size: .88rem; }
+.pi-knowledge-version { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 7px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.pi-knowledge-version small { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.pi-knowledge-editor, .pi-learning-settings { display: grid; gap: 12px; }
+.pi-knowledge-editor label, .pi-learning-settings label:not(.pi-profile-check) { display: grid; gap: 5px; min-width: 0; font-size: .88rem; }
+.pi-knowledge-editor :is(input,textarea,select), .pi-learning-settings input[type=number], .pi-knowledge-tools input { width: 100%; min-width: 0; box-sizing: border-box; font: inherit; padding: 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-1); color: var(--text-main); }
+.pi-knowledge-editor textarea { resize: vertical; }
+.pi-learning-job { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.pi-learning-job strong { font-size: .88rem; }
+#pi-profiles-memory button:focus-visible, #pi-profiles-memory summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 680px) {
+    #pi-profiles-memory :is(input,textarea,select) { font-size: 16px; }
+    .pi-knowledge-tools button { flex: 1 1 auto; }
+}
+@media (prefers-reduced-motion: reduce) { #pi-profiles-memory * { scroll-behavior: auto; transition-duration: 0s; animation-duration: 0s; } }

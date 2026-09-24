@@ -13,9 +13,9 @@
         refresh.title = t('刷新助手身份');
         refresh.setAttribute('aria-label', t('刷新助手身份'));
         $('pi-meta-profile-row')?.querySelector('dt')?.replaceChildren(document.createTextNode(t('助手身份')));
-        let enabled = false, autoLearnSupported = false, visible = false, epoch = 0, memoryEpoch = 0, snapshot = null;
-        let draft = null, draftOriginal = '', selected = '', kind = 'memories', query = '', offset = 0, pageOffsets = [0];
-        let memory = null, mutation = null, editorVersion = 0;
+        let enabled = false, autoLearnSupported = false, visible = false, epoch = 0, snapshot = null;
+        let draft = null, draftOriginal = '', selected = '';
+        let mutation = null, editorVersion = 0;
         let section = 'overview', documents = new Map(), documentEpoch = 0, proposalEpoch = 0, projects = null, proposal = null;
         let openEpoch = 0, openOptions = {};
         const proposedDocuments = new Map();
@@ -25,21 +25,11 @@
         root.innerHTML = '<p id="pi-profiles-status" role="status" aria-live="polite"></p><div class="pi-profiles-layout"><aside id="pi-profiles-list"></aside><div class="pi-profile-detail"><div id="pi-profiles-editor"></div><div id="pi-profile-documents"></div><div id="pi-profiles-memory"></div></div></div>';
         const status = $('pi-profiles-status'), list = $('pi-profiles-list');
         const editor = $('pi-profiles-editor'), memoryRoot = $('pi-profiles-memory'), documentRoot = $('pi-profile-documents');
+        const knowledgePanel = window.PiProfileKnowledge.create({ apiFetch, root: memoryRoot });
         const message = text => { status.textContent = text || ''; };
         const profiles = () => snapshot?.profiles || [];
         const cwd = () => currentCwd() || '';
         const active = () => enabled && visible;
-        function memoryLabel(value) {
-            if (value === 'disabled') {
-                const saved = profiles().find(p => p.id === selected);
-                if (!saved) return t('身份不存在');
-                if (!saved.enabled) return t('身份已停用');
-                if (kind === 'memories' && !saved.memory?.enabled) return t('此身份的记忆已停用');
-                if (kind === 'skills' && !saved.skills?.learnedEnabled) return t('此身份的已学习技能已停用');
-                return t('数据不可用');
-            }
-            return ({ missing: t('身份不存在'), ready: t('可读取已保存数据'), unsupported: t('此后端不支持读取'), error: t('读取失败') })[value] || t('读取状态未知');
-        }
 
         function renderList() {
             if (!snapshot) { list.replaceChildren(); return; }
@@ -58,9 +48,7 @@
             if (!active()) return;
             if (mutation) { pendingRefresh = true; message(t('保存结束后请刷新核对。')); return; }
             const request = ++epoch, project = cwd();
-            memoryEpoch++;
-            memory = null;
-            if (section === 'skills' && selected && snapshot && profiles().some(p => p.id === selected)) { renderMemory(); $('pi-profile-memory-status').textContent = t('正在读取已保存数据…'); }
+            if (section === 'skills' && selected && snapshot && profiles().some(p => p.id === selected)) knowledgePanel.close();
             else memoryRoot.replaceChildren();
             message(t('正在读取身份设置…'));
             try {
@@ -78,14 +66,14 @@
                 render(); syncEditorSave(); message(reconcile?.duplicate ? t('可能已保存此身份。请查看列表并编辑已保存的身份，勿重复创建。') : reconcile?.applied ? t('这些修改已保存。关闭草稿后可继续编辑身份。') : '');
                 invalidateLoaded();
                 window.dispatchEvent(new CustomEvent('pi:native-config-saved', { detail: { scope: 'global' } }));
-                if (selected && !profiles().some(p => p.id === selected)) { selected = ''; memoryRoot.replaceChildren(); }
-                else if (selected && section === 'skills') void loadMemory();
+                if (selected && !profiles().some(p => p.id === selected)) { selected = ''; knowledgePanel.close(); memoryRoot.replaceChildren(); }
+                else if (selected && section === 'skills') knowledgePanel.open(selected);
                 return true;
             } catch (error) {
                 if (request !== epoch || !active() || project !== cwd()) return;
                 reconcile ||= { kind: 'read' };
                 if (snapshot?.cwd !== project) snapshot = null;
-                render(); syncEditorSave(); memoryEpoch++; memory = null; memoryRoot.replaceChildren();
+                render(); syncEditorSave(); knowledgePanel.close(); memoryRoot.replaceChildren();
                 message(t('身份设置读取失败：{0}', error.message));
             }
         }
@@ -93,16 +81,9 @@
             const wasEnabled = enabled;
             enabled = value === true;
             autoLearnSupported = capability === true;
-            if (draft && $('pi-profile-form')) {
-                const checkbox = $('pi-profile-form').elements.autoLearn;
-                const reason = $('pi-profile-form').querySelector('.pi-profile-auto-reason');
-                checkbox.disabled = !autoLearnSupported && !draft.memory.autoLearn && !checkbox.checked;
-                checkbox.closest('label').title = checkbox.disabled ? t('自动学习在此服务器上不可用') : '';
-                reason.hidden = !checkbox.disabled;
-            }
             if (nav) nav.hidden = !enabled;
             if (!enabled && wasEnabled) {
-                epoch++; memoryEpoch++; documentEpoch++; proposalEpoch++;
+                epoch++; documentEpoch++; proposalEpoch++; knowledgePanel.close();
                 snapshot = null; render(); syncEditorSave();
                 message(t('此服务暂不支持助手档案，未保存草稿仍保留。'));
                 root.querySelectorAll('[data-profile-assist], #pi-profile-avatar-upload, #pi-profile-document-save, #pi-profile-document-sync').forEach(control => { control.disabled = true; });
@@ -133,7 +114,7 @@
             if (options.section && draft && (!requested || draft.id === requested)) void openSection(options.section);
             if (options.authoringSession && draft && (!requested || draft.id === requested)) void loadProposal(options.authoringSession);
         }
-        function close() { visible = false; openEpoch++; epoch++; memoryEpoch++; documentEpoch++; proposalEpoch++; }
+        function close() { visible = false; openEpoch++; epoch++; documentEpoch++; proposalEpoch++; knowledgePanel.close(); }
         function syncEditorSave() {
             const button = editor.querySelector('#pi-profile-form button[type=submit]');
             if (button) button.disabled = Boolean(mutation || reconcile || !snapshot || (snapshot.cwd || '') !== cwd());
@@ -146,7 +127,7 @@
             draftOriginal = JSON.stringify(draft);
             editorVersion++;
             selected = profile?.id || '';
-            section = 'overview'; documents = new Map(); proposedDocuments.clear(); documentEpoch++; proposalEpoch++; projects = null; proposal = null; renderList();
+            section = 'overview'; knowledgePanel.close(); documents = new Map(); proposedDocuments.clear(); documentEpoch++; proposalEpoch++; projects = null; proposal = null; renderList();
             editor.innerHTML = `<form id="pi-profile-form" class="pi-profile-form"><div class="pi-profile-form-head"><span class="pi-profile-avatar pi-profile-avatar-large">${avatar(draft)}</span><h4>${html(profile ? profile.name : t('新建身份'))}</h4><button type="button" id="pi-profile-editor-close" class="icon-btn subtle" title="${html(t('关闭编辑'))}" aria-label="${html(t('关闭编辑'))}"><i class="fa-solid fa-xmark"></i></button></div>
                 <nav class="pi-profile-tabs" aria-label="${html(t('档案内容'))}">${[['overview', t('概览')], ['soul', 'SOUL'], ['user', 'USER'], ['memory', 'MEMORY'], ['skills', t('学习与技能')], ['projects', t('关联项目')]].map(([id, label]) => `<button type="button" data-profile-section="${id}" aria-current="${section === id ? 'page' : 'false'}">${html(label)}</button>`).join('')}</nav>
                 <div class="pi-profile-overview">
@@ -157,7 +138,7 @@
                 ${draft.avatar ? `<button id="pi-profile-avatar-clear" type="button" class="settings-secondary-button">${html(t('移除头像'))}</button>` : ''}
                 <label class="pi-profile-check"><input name="enabled" type="checkbox" ${draft.enabled ? 'checked' : ''}>${html(t('启用身份'))}</label>
                 <label class="pi-profile-check"><input name="memoryEnabled" type="checkbox" ${draft.memory.enabled ? 'checked' : ''}>${html(t('启用此身份的记忆'))}</label>
-                <label class="pi-profile-check" title="${html(autoLearnSupported || draft.memory.autoLearn ? '' : t('自动学习在此服务器上不可用'))}"><input name="autoLearn" type="checkbox" ${draft.memory.autoLearn ? 'checked' : ''} ${!autoLearnSupported && !draft.memory.autoLearn ? 'disabled' : ''}>${html(t('自动学习'))}<small class="pi-profile-auto-reason" ${autoLearnSupported || draft.memory.autoLearn ? 'hidden' : ''}>${html(t('自动学习在此服务器上不可用'))}</small></label>
+                <input name="autoLearn" type="checkbox" hidden ${draft.memory.autoLearn ? 'checked' : ''}>
                 <label class="pi-profile-check"><input name="learnedEnabled" type="checkbox" ${draft.skills.learnedEnabled ? 'checked' : ''}>${html(t('使用此身份的已学习技能'))}</label>
                 <label>${html(t('MEMORY 字符上限'))}<input type="number" name="memoryCharLimit" min="256" max="65536" required value="${draft.memory.memoryCharLimit ?? 16000}"></label>
                 <label>${html(t('USER 字符上限'))}<input type="number" name="userCharLimit" min="256" max="32768" required value="${draft.memory.userCharLimit ?? 8000}"></label></div>
@@ -180,7 +161,7 @@
         function closeEditor() {
             if (mutation || !draft) return;
             if ((JSON.stringify(readDraft()) !== draftOriginal || [...documents.values()].some(doc => doc.dirty) || proposedDocuments.size) && !confirm(t('放弃未保存的身份修改？'))) return;
-            draft = null; selected = ''; editorVersion++; documentEpoch++; proposalEpoch++; proposedDocuments.clear(); editor.replaceChildren(); documentRoot.replaceChildren(); memoryRoot.replaceChildren(); renderList(); renderEmptyDetail();
+            draft = null; selected = ''; editorVersion++; documentEpoch++; proposalEpoch++; proposedDocuments.clear(); editor.replaceChildren(); documentRoot.replaceChildren(); knowledgePanel.close(); memoryRoot.replaceChildren(); renderList(); renderEmptyDetail();
             if (reconcile?.duplicate || reconcile?.applied) reconcile = null;
         }
         async function saveProfile() {
@@ -224,32 +205,6 @@
                 if (pendingRefresh || request !== epoch || project !== cwd()) { pendingRefresh = false; if (active()) void load(); }
             }
         }
-        function renderMemory() {
-            if (!selected) { memoryRoot.replaceChildren(); return; }
-            const profile = profiles().find(p => p.id === selected);
-            if (!profile) { memoryRoot.replaceChildren(); return; }
-            memoryRoot.innerHTML = `<div class="pi-profile-memory-head"><h4>${html(profile.name)} · ${html(t('已保存数据'))}</h4><button id="pi-profile-memory-close" type="button" class="icon-btn subtle" title="${html(t('关闭浏览'))}" aria-label="${html(t('关闭浏览'))}"><i class="fa-solid fa-xmark"></i></button></div><div class="pi-profile-kinds" role="group" aria-label="${html(t('数据类别'))}"><button data-kind="memories" type="button" aria-pressed="${kind === 'memories'}">${html(t('记忆'))}</button><button data-kind="skills" type="button" aria-pressed="${kind === 'skills'}">${html(t('已学习技能'))}</button></div>
-                <label class="pi-profile-search">${html(t('搜索已保存数据'))}<input id="pi-profile-query" type="search" maxlength="200" value="${html(query)}"></label><p id="pi-profile-memory-status" role="status" aria-live="polite"></p><div id="pi-profile-memory-items"></div><div class="pi-profile-pages"><button id="pi-profile-memory-prev" type="button" class="settings-secondary-button" ${!offset ? 'disabled' : ''}>${html(t('上一页'))}</button><button id="pi-profile-memory-next" type="button" class="settings-secondary-button" disabled>${html(t('下一页'))}</button></div>`;
-            if (memory) showMemory();
-        }
-        function showMemory() {
-            if (!memory || !selected || !$('pi-profile-memory-status')) return;
-            $('pi-profile-memory-status').textContent = `${memoryLabel(memory.status)}${memory.reason ? ` · ${memory.reason}` : ''}`;
-            $('pi-profile-memory-next').disabled = memory.status !== 'ready' || !memory.hasMore || !memory.items?.length;
-            $('pi-profile-memory-items').innerHTML = memory.status === 'ready' ? (memory.items?.length ? memory.items.map(item => `<article class="pi-profile-memory-item"><strong>${html(item.kind === 'skill' ? item.name : item.target)}</strong>${item.description || item.content ? `<p>${html(item.description || item.content)}</p>` : ''}${item.kind === 'skill' ? `<small>${html(item.scope === 'profile' ? t('助手共用') : item.scope === 'project' ? t('项目专属') : t('范围未提供'))} · ${html(item.source === 'profile-owned' ? t('助手技能库') : t('来源未提供'))}</small><details data-skill-id="${html(item.id)}"><summary>${html(t('查看技能正文'))}</summary><pre class="pi-profile-skill-text" role="status"></pre></details>` : item.source?.sessionId ? `<small>${html(t('来源线程'))}: ${html(item.source.sessionId)}</small>` : ''}</article>`).join('') : `<p class="pi-profile-note">${html(t('此页没有已保存数据'))}</p>`) : '';
-        }
-        async function loadMemory() {
-            if (!active() || !selected) return;
-            const request = ++memoryEpoch, id = selected, type = kind, search = query, page = offset;
-            memory = null; renderMemory(); $('pi-profile-memory-status').textContent = t('正在读取已保存数据…');
-            try {
-                const data = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/memory?${new URLSearchParams({ kind: type, query: search, offset: String(page) })}`);
-                if (request !== memoryEpoch || !active() || id !== selected || type !== kind || search !== query || page !== offset) return;
-                memory = data; showMemory();
-            } catch (error) {
-                if (request === memoryEpoch && active() && id === selected) { memory = { status: 'error', reason: error.message }; showMemory(); }
-            }
-        }
         function documentMessage(data, fallback = '') {
             if (data?.indexSynced !== false) return fallback;
             const status = data.indexStatus === 'disabled' || data.indexStatus === 'unsupported'
@@ -264,7 +219,7 @@
             form.querySelector('.pi-profile-soul').hidden = section !== 'soul';
             form.querySelector('.pi-profile-form-actions').hidden = !['overview', 'soul'].includes(section);
             form.querySelectorAll('[data-profile-section]').forEach(button => button.setAttribute('aria-current', String(button.dataset.profileSection === section ? 'page' : 'false')));
-            documentRoot.replaceChildren(); memoryRoot.replaceChildren();
+            documentRoot.replaceChildren(); knowledgePanel.close(); memoryRoot.replaceChildren();
             if (!draft?.id) {
                 if (!['overview', 'soul'].includes(section)) documentRoot.innerHTML = `<p class="pi-profile-note">${html(t('保存身份后可编辑此内容。'))}</p>`;
                 return;
@@ -275,7 +230,7 @@
                 documentRoot.innerHTML = `<div class="pi-profile-document"><h4>${section.toUpperCase()}</h4><p id="pi-profile-document-status" role="status">${html(state ? state.message || (state.status === 'ready' ? t('已读取保存内容') : state.status) : t('正在读取…'))}</p><textarea id="pi-profile-document-text" aria-label="${section.toUpperCase()}" spellcheck="false" ${state?.status !== 'ready' || mutation ? 'disabled' : ''}>${html(state?.content ?? '')}</textarea>${state?.serverContent !== undefined ? `<details class="pi-profile-server-version"><summary>${html(t('服务器最新内容'))}</summary><pre>${html(state.serverContent)}</pre></details><label class="pi-profile-check"><input id="pi-profile-document-reviewed" type="checkbox" ${state.reviewed ? 'checked' : ''}>${html(t('已核对服务器最新内容'))}</label>` : ''}<div class="pi-profile-document-footer"><span id="pi-profile-document-usage">${state ? `${state.content.length} / ${limit} ${html(t('字符'))}` : ''}</span><button id="pi-profile-document-refresh" type="button" class="settings-secondary-button">${html(t('刷新核对'))}</button><button id="pi-profile-document-sync" type="button" class="settings-secondary-button" ${state?.status !== 'ready' || state.indexStatus !== 'pending' ? 'hidden' : ''} ${!enabled || mutation ? 'disabled' : ''}>${html(t('同步检索索引'))}</button><button id="pi-profile-document-save" type="button" class="settings-primary-button" ${!enabled || state?.status !== 'ready' || !state.dirty || mutation || state.serverContent !== undefined && !state.reviewed ? 'disabled' : ''}><i class="fa-solid fa-floppy-disk"></i> ${html(t('保存文档'))}</button></div></div>`;
             } else if (section === 'projects') {
                 documentRoot.innerHTML = `<div class="pi-profile-projects">${projects?.map(p => `<article><strong>${html(p.name)}</strong><small>${html(p.cwd)}</small><p>${html(p.description || '')}</p></article>`).join('') || `<p class="pi-profile-note">${html(projects === null ? t('正在读取…') : t('没有关联项目'))}</p>`}</div>`;
-            } else if (section === 'skills') { renderMemory(); void loadMemory(); }
+            } else if (section === 'skills') { knowledgePanel.open(selected); }
             if (proposal) showProposal();
         }
         function showProposal() {
@@ -290,7 +245,7 @@
         async function openSection(next) {
             if (section === next) return;
             section = next; const request = ++documentEpoch, id = selected;
-            if (next === 'skills') { kind = 'skills'; query = ''; offset = 0; pageOffsets = [0]; memory = null; }
+            if (next === 'skills') knowledgePanel.close();
             if (draft) { draft = readDraft(); renderSection(); }
             if (!active() || !id) return;
             if ((next === 'user' || next === 'memory') && !documents.has(next)) {
@@ -519,33 +474,6 @@
             if (event.target.closest('#pi-profile-document-save')) void saveDocument();
             if (event.target.closest('#pi-profile-document-refresh')) void refreshDocument();
             if (event.target.closest('#pi-profile-document-sync')) void syncDocumentIndex();
-        });
-        memoryRoot.addEventListener('toggle', async event => {
-            const detail = event.target;
-            if (!(detail instanceof HTMLDetailsElement) || !detail.open || !detail.dataset.skillId || !selected) return;
-            const profileId = selected, skillId = detail.dataset.skillId, view = ++memoryEpoch;
-            const text = detail.querySelector('.pi-profile-skill-text');
-            text.textContent = t('正在读取技能正文…');
-            try {
-                const result = await apiFetch(`/api/pi/profiles/${encodeURIComponent(profileId)}/skills/${encodeURIComponent(skillId)}`);
-                if (view !== memoryEpoch || !detail.isConnected || !detail.open || profileId !== selected) return;
-                text.textContent = result.status === 'ready' && result.profileId === profileId && result.item?.id === skillId
-                    && typeof result.item.content === 'string' ? result.item.content : t('技能正文不可用，请刷新档案。');
-            } catch (error) { if (view === memoryEpoch && detail.isConnected) text.textContent = error.message; }
-        }, true);
-        memoryRoot.addEventListener('click', event => {
-            if (event.target.closest('#pi-profile-memory-close')) { clearTimeout(searchTimer); memoryEpoch++; void openSection('overview'); return; }
-            const type = event.target.closest('[data-kind]')?.dataset.kind;
-            if (type && type !== kind) { kind = type; offset = 0; pageOffsets = [0]; void loadMemory(); }
-            if (event.target.closest('#pi-profile-memory-next') && memory?.hasMore && memory.items?.length) { offset += memory.items.length; pageOffsets.push(offset); void loadMemory(); }
-            if (event.target.closest('#pi-profile-memory-prev') && pageOffsets.length > 1) { pageOffsets.pop(); offset = pageOffsets.at(-1); void loadMemory(); }
-        });
-        let searchTimer;
-        memoryRoot.addEventListener('input', event => {
-            if (event.target.id !== 'pi-profile-query') return;
-            const value = event.target.value, profileId = selected, category = kind;
-            clearTimeout(searchTimer);
-            searchTimer = setTimeout(() => { if (!active() || profileId !== selected || category !== kind || value === query) return; query = value; offset = 0; pageOffsets = [0]; void loadMemory(); }, 300);
         });
         return { setEnabled, open, close, displaySession, setLoadedProfile, projectChanged() { epoch++; if (active()) void load(); } };
     }

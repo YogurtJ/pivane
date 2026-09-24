@@ -16,11 +16,11 @@ app.get('/api/pi/profiles/:id/avatar', (_req, res) => res.type('png').send(png))
 app.use(express.static(path.join(root, 'public')));
 app.get('/fixture', (_req, res) => res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>:root {--text-main:#25312c;--text-soft:#5c6560;--text-muted:#64706a;--surface-1:#fff;--surface-2:#edf4ed;--line:#c9d1ca;--line-strong:#a9b7ac;--accent:#137757}body {font:16px system-ui;margin:0;padding:20px;background:#f7f9f7;color:var(--text-main)}.workspace-settings-content {max-width:1100px;margin:auto}.workspace-settings-panel {padding:12px 0}.settings-primary-button,.settings-secondary-button {padding:9px 12px;border:1px solid var(--line);background:#fff;color:var(--text-main);cursor:pointer}.settings-panel-header{display:flex;align-items:center;gap:10px}button{font:inherit}</style>
-<link rel="stylesheet" href="/pi-agent-profiles.css"><link rel="stylesheet" href="/pi-extensions.css"></head><body>
+<link rel="stylesheet" href="/pi-agent-profiles.css"><link rel="stylesheet" href="/pi-profile-knowledge.css"><link rel="stylesheet" href="/pi-extensions.css"></head><body>
 <nav class="workspace-settings-nav"><button id="pi-profiles-nav" hidden><span></span></button><button data-settings-tab="extensions"><span>Extensions</span></button><button data-settings-tab="packages"><span>Packages</span></button><button data-settings-tab="skills"><span>Skills</span></button></nav>
 <div id="workspace-settings-dialog"><div class="workspace-settings-dialog"><h2 id="workspace-settings-title"></h2><button id="workspace-settings-close"></button><div class="workspace-settings-content"><section id="pi-profiles-panel" class="workspace-settings-panel"><div class="settings-panel-header"><i aria-hidden="true"></i><div><h3>Profiles</h3><p></p></div><button id="pi-profiles-refresh">Refresh</button></div><div id="pi-profiles-content"></div></section></div></div></div>
 <span id="pi-session-profile" hidden></span><dl><div id="pi-meta-profile-row" hidden><dt></dt><dd id="pi-meta-profile"></dd></div></dl><div class="pi-empty-state"></div>
-<script src="/pi-agent-profiles.js"></script><script src="/pi-extensions.js"></script>
+<script src="/pi-profile-knowledge.js"></script><script src="/pi-agent-profiles.js"></script><script src="/pi-extensions.js"></script>
 <script>window.addEventListener('DOMContentLoaded', () => { window.fixtureCwd = '/synthetic/project'; window.PiAgentProfilesUI = PiAgentProfiles.create({ apiFetch: window.syntheticFetch, currentCwd: () => window.fixtureCwd }); if (!window.synthetic.deferCapability) window.PiAgentProfilesUI.setEnabled(true, true); PiExtensions.connect({ apiFetch: window.syntheticFetch, currentCwd: () => window.fixtureCwd }); PiExtensions.setAssistantEnabled(true); });</script></body></html>`));
 
 async function main() {
@@ -56,12 +56,20 @@ async function main() {
                         s.avatarUploaded = true; s.profile.avatar = { kind: 'image', version: 'synthetic' }; s.revision = 'r-avatar';
                         return { ok: true, profile: s.profile, revision: s.revision };
                     }
-                    if (/\/skills\/s[12]$/.test(url)) {
+                    if (/\/knowledge\/items\/s[12]$/.test(url)) {
                         if (s.skillHold && url.includes(p.id)) await new Promise(resolve => { s.skillRelease = resolve; });
                         if (s.skillFail) throw new Error('Synthetic read error');
-                        return s.skillStatus === 'ready' ? { version: 1, profileId: url.includes(p.id) ? p.id : other.id, status: 'ready', item: { id: url.endsWith('s1') ? 's1' : 's2', name: 'Check sources', description: 'Use references', scope: 'project', source: 'profile-owned', content: '<img src=x onerror=alert(1)>\n# Real skill text', revision: 's-revision' } } : { version: 1, status: s.skillStatus };
+                        return s.skillStatus === 'ready' ? { version: 1, status: 'ready', item: { id: url.endsWith('s1') ? 's1' : 's2', kind: 'skill', name: 'check-sources', description: 'Use references', scope: 'profile', state: 'active', content: '<img src=x onerror=alert(1)>\n# Real skill text', revision: 's-revision' } } : { version: 1, status: s.skillStatus };
                     }
-                    if (url.includes('/memory?')) return { status: s.memoryStatus || 'ready', items: s.memoryStatus ? [] : [{ kind: 'skill', id: url.includes(p.id) ? 's1' : 's2', name: url.includes(p.id) ? 'Check sources' : 'Draft outline', description: 'Use references', scope: 'project', source: 'profile-owned' }], hasMore: false };
+                    if (url.includes('/knowledge?')) {
+                        const kind = new URL(url, location.origin).searchParams.get('kind');
+                        const status = !s.profile.enabled ? 'disabled' : kind === 'skill' && !s.profile.skills.learnedEnabled || kind === 'memory' && !s.profile.memory.enabled ? 'disabled' : s.memoryStatus || 'ready';
+                        return { version: 1, status, revision: status === 'ready' ? 'a'.repeat(64) : null,
+                            capabilities: { skill: status === 'ready' && s.profile.skills.learnedEnabled, memory: status === 'ready' && s.profile.memory.enabled, projectWrites: false },
+                            items: status === 'ready' && kind === 'skill' ? [{ kind: 'skill', id: url.includes(p.id) ? 's1' : 's2', name: url.includes(p.id) ? 'check-sources' : 'draft-outline', description: 'Use references', scope: 'profile', state: 'active', revision: 's-revision' }] : [],
+                            receipts: [], hasMore: false };
+                    }
+                    if (url.endsWith('/learning')) return { version: 1, status: 'ready', revision: 0, settings: { enabled: false, correctionEnabled: true, reviewEnabled: false, extractionEnabled: false, maxRunsPerDay: 4, maxTokensPerDay: 24000, periodicReviewMinutes: 0 }, jobs: [], recentRuns: [], capabilities: { installed: true } };
                     if (url.startsWith('/api/pi/assistant-projects')) return { projects: [{ id: 'g1', name: 'Notes', cwd: '/synthetic/project' }] };
                     if (url === '/api/pi/profiles' && method === 'PUT') {
                         const updated = { ...body.profile, id: body.profile.id || (s.created.length ? 'dddddddd-dddd-4ddd-dddd-dddddddddddd' : 'cccccccc-cccc-4ccc-cccc-cccccccccccc') };
@@ -187,34 +195,22 @@ async function main() {
             await page.waitForFunction(() => synthetic.document === 'Proposed USER');
             await page.locator('[data-profile-section="overview"]').click();
             await page.locator('[data-profile-section="skills"]').click();
-            await page.evaluate(() => { synthetic.profile.skills.learnedEnabled = false; synthetic.memoryStatus = 'disabled'; PiAgentProfilesUI.projectChanged(); });
-            await page.waitForFunction(() => document.querySelector('#pi-profile-memory-status')?.textContent.includes('已学习技能已停用'));
-            await page.evaluate(() => { synthetic.profile.skills.learnedEnabled = true; synthetic.profile.memory.enabled = false; PiAgentProfilesUI.projectChanged(); });
-            await page.waitForFunction(() => document.querySelector('#pi-profile-memory-status')?.textContent.includes('数据不可用'));
-            await page.locator('[data-kind="memories"]').click();
-            await page.waitForFunction(() => document.querySelector('#pi-profile-memory-status')?.textContent.includes('记忆已停用'));
-            await page.evaluate(() => { synthetic.profile.enabled = false; PiAgentProfilesUI.projectChanged(); });
-            await page.waitForFunction(() => document.querySelector('#pi-profile-memory-status')?.textContent.includes('身份已停用'));
-            await page.evaluate(() => { synthetic.profile.enabled = true; synthetic.profile.memory.enabled = true; synthetic.memoryStatus = null; PiAgentProfilesUI.projectChanged(); });
-            await page.locator('[data-kind="skills"]').click();
-            await page.locator('.pi-profile-memory-item details').first().evaluate(el => { el.open = true; });
-            await page.waitForFunction(() => document.querySelector('.pi-profile-skill-text')?.textContent.includes('# Real skill text'));
-            assert.equal(await page.locator('.pi-profile-memory-item img').count(), 0);
-            await page.locator('.pi-profile-memory-item details').first().evaluate(el => { el.open = false; });
+            await page.locator('.pi-knowledge-row').waitFor();
+            await page.locator('.pi-knowledge-row').click();
+            await page.waitForFunction(() => document.querySelector('.pi-knowledge-detail pre')?.textContent.includes('# Real skill text'));
+            assert.equal(await page.locator('.pi-knowledge-detail img').count(), 0);
             await page.evaluate(() => { synthetic.skillStatus = 'missing'; });
-            await page.locator('.pi-profile-memory-item details').first().evaluate(el => { el.open = true; });
-            await page.waitForFunction(() => document.querySelector('.pi-profile-skill-text')?.textContent.includes('不可用'));
-            await page.locator('.pi-profile-memory-item details').first().evaluate(el => { el.open = false; });
+            await page.locator('.pi-knowledge-row').click();
+            await page.waitForFunction(() => document.querySelector('.pi-knowledge-status')?.textContent.includes('正文不可用'));
             await page.evaluate(() => { synthetic.skillStatus = 'ready'; synthetic.skillFail = true; });
-            await page.locator('.pi-profile-memory-item details').first().evaluate(el => { el.open = true; });
-            await page.waitForFunction(() => document.querySelector('.pi-profile-skill-text')?.textContent.includes('Synthetic read error'));
-            await page.locator('.pi-profile-memory-item details').first().evaluate(el => { el.open = false; });
+            await page.locator('.pi-knowledge-row').click();
+            await page.waitForFunction(() => document.querySelector('.pi-knowledge-status')?.textContent.includes('Synthetic read error'));
             await page.evaluate(() => { synthetic.skillFail = false; synthetic.skillHold = true; });
-            await page.locator('.pi-profile-memory-item details').first().evaluate(el => { el.open = true; });
+            await page.locator('.pi-knowledge-row').click();
             await page.waitForFunction(() => !!synthetic.skillRelease);
             await page.locator('[data-profile-section="overview"]').click();
             await page.evaluate(() => synthetic.skillRelease());
-            assert.equal(await page.locator('.pi-profile-skill-text').count(), 0);
+            assert.equal(await page.locator('.pi-knowledge-detail').count(), 0);
             await page.evaluate(() => PiExtensions.setView('extensions'));
             assert.equal(await page.locator('.workspace-settings-nav [data-settings-tab="extensions"]').isVisible(), true);
             await page.locator('.extensions-card').first().waitFor();

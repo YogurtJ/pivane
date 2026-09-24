@@ -626,6 +626,9 @@ document.addEventListener('DOMContentLoaded', () => {
         scope: () => state.session && !state.session.ephemeral ? { cwd: state.cwd, id: state.session.id, generation: state.socketGeneration,
             busy: !state.connected || state.streaming || state.compacting || state.shellBusy || state.pendingUi.size > 0 } : null,
         link: appendAgentThreadLink, error: message => toast(message, 'error') });
+    const chatKnowledge = window.PiChatKnowledge?.create({ root: document.getElementById('pi-chat-knowledge'), fetch: apiFetch,
+        scope: () => state.connected && state.session?.agentProfile?.id && !state.session.ephemeral && state.profileLearningSupported
+            ? { cwd: state.cwd, sessionId: state.session.id, profileId: state.session.agentProfile.id, generation: state.socketGeneration } : null });
     let accessBootstrapped = false;
     async function bootstrap() {
         await window.WorkspaceAccess?.ready;
@@ -658,6 +661,7 @@ document.addEventListener('DOMContentLoaded', () => {
             extensionAssistant.setEnabled(status.extensionAssistant === true);
             state.systemPrompts = status.systemPrompts === true;
             state.assistantSupported = status.assistantProjects === true && status.agentProfiles === true;
+            state.profileLearningSupported = status.profileLearning === true;
             if (status.agentProfiles === true && !state.assistantMode) {
                 void apiFetch('/api/pi/profiles').then(data => {
                     if (Array.isArray(data?.profiles)) { state.profileInventory = data.profiles; syncActualIdentity(); }
@@ -1736,6 +1740,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.currentThreadMenu.disabled = false;
         transcriptScroll.reset();
         elements.transcript.innerHTML = `<div class="pi-transcript-loading"><span class="pi-spinner"></span><span>${session.ephemeral ? translateUi("正在启动临时 Pi runtime") : translateUi("正在加载 Pi session")}</span></div>`;
+        document.getElementById('pi-chat-knowledge').hidden = true;
         setConnection('connecting', translateUi("正在启动 Pi runtime"));
         setAgentState('connecting', translateUi("正在启动"), getSessionTitle(session));
         const openedCwd = state.cwd;
@@ -1966,6 +1971,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderModels();
         renderThinkingLevels();
         renderMessages(snapshot.messages?.messages || []);
+        chatKnowledge?.update();
         taskProgress.apply(snapshot.messages?.webProgress);
         restoreLive(snapshot.messages?.webLive);
         state.renderedCompletion = snapshot.completion || null;
@@ -2439,6 +2445,7 @@ document.addEventListener('DOMContentLoaded', () => {
         $('pi-attachment-preview').close();
         autoResizeInput();
         transcriptScroll.reset();
+        chatKnowledge?.reset();
         renderEmptySession();
         state.model = null;
         state.models = []; state.modelRefreshOp = null; state.modelRefreshPending = false; state.modelRefreshError = ''; state.modelAuthError = false;
@@ -2515,6 +2522,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
             case 'agent_settled':
                 historyView.changed();
+                void chatKnowledge?.refresh();
                 setStreaming(false);
                 setConnection('connected', translateUi("Pi Agent 已连接"));
                 setAgentState('connected', translateUi("空闲"), state.model?.id || 'Pi Agent');
