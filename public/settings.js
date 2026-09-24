@@ -157,6 +157,8 @@ document.addEventListener('DOMContentLoaded', () => {
         activeProfileMetadata = tab === 'profiles' ? metadata : null;
         const viewEpoch = ++settingsViewEpoch;
         window.PiExtensions?.setView(tab);
+        $('workspace-settings-title').textContent = translateUi(tab === 'profiles' ? '助手档案'
+            : ['extensions', 'packages', 'skills'].includes(tab) ? '扩展' : '工作台设置');
         state.activeTab = tab;
         if (tab === 'media') void subagentSettings.open();
         else subagentSettings.close();

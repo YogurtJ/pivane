@@ -8430,6 +8430,7 @@
     ,['此身份的记忆已停用', 'Memory is disabled for this profile']
     ,['此身份的已学习技能已停用', 'Learned skills are disabled for this profile']
     ,['数据不可用', 'Saved data is unavailable']
+    ,['{0} 个项目', '{0} projects']
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();
