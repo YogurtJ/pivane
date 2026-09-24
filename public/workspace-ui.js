@@ -55,8 +55,19 @@
         const hostLabel = document.getElementById('workspace-host');
         if (hostLabel) hostLabel.textContent = window.location.host;
         const routeTabs = new Set(['chat', 'assistant', 'media', 'profiles', 'extensions', 'settings']);
-        const settingsTabs = new Set(['providers', 'media', 'models', 'system-prompts', 'native', 'access', 'usage', 'packages', 'skills', 'updates', 'extensions', 'profiles']);
+        const settingsTabs = new Set(['providers', 'media', 'models', 'system-prompts', 'native', 'access', 'usage', 'updates']);
+        const extensionTabs = new Set(['extensions', 'packages', 'skills']);
+        const moreTabs = new Set(['media', 'profiles', 'extensions']);
+        const moreToggle = document.getElementById('workspace-more-toggle');
+        const moreMenu = document.getElementById('workspace-more-menu');
         let lastConversation = '#/chat';
+        function closeMoreMenu(restoreFocus = false) {
+            if (!moreMenu) return;
+            const wasOpen = !moreMenu.hidden;
+            moreMenu.hidden = true;
+            moreToggle?.setAttribute('aria-expanded', 'false');
+            if (restoreFocus && wasOpen) moreToggle?.focus({ preventScroll: true });
+        }
         function parseRoute() {
             const match = /^#\/(chat|assistant|media|profiles|extensions|settings)(?:\?(.*))?$/.exec(location.hash);
             if (!match) return { tab: 'chat', params: new URLSearchParams() };
@@ -64,7 +75,14 @@
         }
         function showRoute() {
             const { tab, params } = parseRoute();
+            closeMoreMenu();
             if (tab === 'chat' || tab === 'assistant') lastConversation = location.hash || '#/chat';
+            moreToggle?.classList.toggle('active', moreTabs.has(tab));
+            if (moreTabs.has(tab)) moreToggle?.setAttribute('aria-current', 'page'); else moreToggle?.removeAttribute('aria-current');
+            moreMenu?.querySelectorAll('[data-more-tab]').forEach(button => {
+                if (button.dataset.moreTab === tab) button.setAttribute('aria-current', 'page');
+                else button.removeAttribute('aria-current');
+            });
             document.querySelectorAll('.nav-btn[data-tab]').forEach(button => {
                 const active = button.dataset.tab === tab;
                 button.classList.toggle('active', active);
@@ -73,12 +91,16 @@
             document.querySelectorAll('.tab-content').forEach(panel => panel.classList.toggle('active', panel.id === `${tab === 'assistant' ? 'chat' : tab}-tab`));
             document.getElementById('workspace-settings-dialog')?.classList.toggle('hidden', !['profiles', 'extensions', 'settings'].includes(tab));
             window.dispatchEvent(new CustomEvent('workspace:tabchanged', { detail: { tab, params } }));
-            window.dispatchEvent(new CustomEvent('workspace:settings-route', { detail: { tab, settingsTab: tab === 'settings' && settingsTabs.has(params.get('tab')) ? params.get('tab') : tab === 'extensions' ? (settingsTabs.has(params.get('tab')) ? params.get('tab') : 'extensions') : 'profiles', profileId: params.get('profileId'), section: params.get('section'), authoringSession: params.get('authoringSession'), authoringCwd: params.get('authoringCwd') } }));
+            const settingsTab = tab === 'profiles' ? 'profiles'
+                : tab === 'extensions' ? (extensionTabs.has(params.get('tab')) ? params.get('tab') : 'extensions')
+                    : settingsTabs.has(params.get('tab')) ? params.get('tab') : 'providers';
+            window.dispatchEvent(new CustomEvent('workspace:settings-route', { detail: { tab, settingsTab, profileId: params.get('profileId'), section: params.get('section'), authoringSession: params.get('authoringSession'), authoringCwd: params.get('authoringCwd') } }));
         }
         function routeHash(tab, params = {}) {
             if (!routeTabs.has(tab)) throw new Error('Unknown workspace route');
             const query = new URLSearchParams();
             for (const [key, value] of Object.entries(params)) if (value != null && value !== '') query.set(key, value);
+            if (tab === 'settings' && !settingsTabs.has(query.get('tab'))) query.set('tab', 'providers');
             return `#/${tab}${query.size ? `?${query}` : ''}`;
         }
         function navigate(tab, params = {}, replace = false) {
@@ -99,6 +121,31 @@
         document.querySelectorAll('.nav-btn[data-tab]').forEach(button => {
             button.addEventListener('click', () => navigate(button.dataset.tab));
         });
+        moreToggle?.addEventListener('click', () => {
+            const opening = moreMenu.hidden;
+            closeThemeMenu();
+            moreMenu.hidden = !opening;
+            moreToggle.setAttribute('aria-expanded', String(opening));
+            if (opening) moreMenu.querySelector('button')?.focus({ preventScroll: true });
+        });
+        moreMenu?.addEventListener('click', event => {
+            const button = event.target.closest('[data-more-tab]');
+            if (button) {
+                navigate(button.dataset.moreTab);
+                moreToggle?.focus({ preventScroll: true });
+            }
+        });
+        moreMenu?.addEventListener('keydown', event => {
+            const items = [...moreMenu.querySelectorAll('[data-more-tab]')];
+            const index = items.indexOf(document.activeElement);
+            const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+                : event.key === 'ArrowDown' ? (index + 1) % items.length
+                    : event.key === 'ArrowUp' ? (index + items.length - 1) % items.length : -1;
+            if (next < 0) return;
+            event.preventDefault();
+            items[next].focus();
+        });
+        window.matchMedia('(max-width: 680px)').addEventListener('change', () => closeMoreMenu());
         showRoute();
         const sidebarToggle = document.getElementById('workspace-sidebar-toggle');
         const brandToggle = document.getElementById('workspace-brand-toggle');
@@ -176,6 +223,7 @@
 
         themeToggle?.addEventListener('click', event => {
             event.stopPropagation();
+            closeMoreMenu();
             const opening = themeMenu?.classList.contains('hidden');
             themeMenu?.classList.toggle('hidden', !opening);
             themeToggle.setAttribute('aria-expanded', String(opening));
@@ -192,9 +240,13 @@
 
         document.addEventListener('click', event => {
             if (!event.target.closest('.theme-picker')) closeThemeMenu();
+            if (!event.target.closest('#workspace-more-toggle, #workspace-more-menu')) closeMoreMenu();
         });
         document.addEventListener('keydown', event => {
-            if (event.key === 'Escape') closeThemeMenu();
+            if (event.key === 'Escape') {
+                closeThemeMenu();
+                closeMoreMenu(true);
+            }
         });
 
         document.querySelectorAll('[data-split-handle]').forEach(handle => {

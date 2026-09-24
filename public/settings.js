@@ -866,7 +866,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.addEventListener('workspace:agent-profiles-status', event => agentProfiles.setEnabled(event.detail?.enabled === true, event.detail?.autoLearn === true));
-    elements.toggle.addEventListener('click', () => window.PiWorkspaceRoute?.navigate('settings', { tab: ['extensions', 'packages', 'skills'].includes(state.activeTab) ? 'providers' : state.activeTab }));
+    elements.toggle.addEventListener('click', () => window.PiWorkspaceRoute?.navigate('settings', {
+        tab: ['profiles', 'extensions', 'packages', 'skills'].includes(state.activeTab) ? 'providers' : state.activeTab
+    }));
     window.addEventListener('workspace:open-settings', event => {
         const detail = event.detail || {};
         if (detail.setting) nativeSettings.focusSetting(detail.setting);
@@ -892,9 +894,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     const initialRoute = window.PiWorkspaceRoute?.current();
     if (['profiles', 'extensions', 'settings'].includes(initialRoute?.tab)) {
-        openSettings(initialRoute.tab === 'settings' ? initialRoute.params.get('tab') || 'providers' : initialRoute.tab,
-            { profileId: initialRoute.params.get('profileId'), section: initialRoute.params.get('section'),
-                authoringSession: initialRoute.params.get('authoringSession') ? { id: initialRoute.params.get('authoringSession'), cwd: initialRoute.params.get('authoringCwd') } : undefined });
+        window.PiWorkspaceRoute.navigate(initialRoute.tab, Object.fromEntries(initialRoute.params), true);
     }
     elements.close.addEventListener('click', () => window.PiWorkspaceRoute?.returnToConversation());
     elements.editorClose.addEventListener('click', closeEditor);

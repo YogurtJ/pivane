@@ -50,6 +50,22 @@ async function assertDrawerControls(page, label) {
         `${label} expanded search: ${JSON.stringify(bounds)}`);
 }
 
+async function assertFooterActions(page, label) {
+    await page.locator('#pi-search-conversations').waitFor({ state: 'visible' });
+    const bounds = await page.evaluate(() => {
+        const footer = document.querySelector('#pi-session-pane .pi-pane-footer');
+        const rect = footer.getBoundingClientRect(), padding = getComputedStyle(footer);
+        const count = document.getElementById('pi-session-count').getBoundingClientRect();
+        const search = document.getElementById('pi-search-conversations').getBoundingClientRect();
+        const refresh = document.getElementById('pi-refresh-sessions').getBoundingClientRect();
+        return { innerRight: rect.right - parseFloat(padding.paddingRight), countRight: count.right,
+            searchLeft: search.left, searchRight: search.right, refreshLeft: refresh.left, refreshRight: refresh.right };
+    });
+    assert.ok(bounds.countRight <= bounds.searchLeft && bounds.searchRight <= bounds.refreshLeft &&
+        bounds.refreshLeft - bounds.searchRight <= 8 &&
+        Math.abs(bounds.refreshRight - bounds.innerRight) <= 1, `${label}: ${JSON.stringify(bounds)}`);
+}
+
 async function main() {
     await fs.mkdir(evidence, { recursive: true });
     const server = http.createServer(async (req, res) => {
@@ -64,7 +80,7 @@ async function main() {
     const result = [];
     try {
         for (const width of [1280, 1440, 1920, 393, 375, 320]) {
-            const context = await browser.newContext({ viewport: { width, height: width < 700 ? 852 : 900 }, locale: 'en-US', isMobile: width < 700, hasTouch: width < 700 });
+            const context = await browser.newContext({ viewport: { width, height: width < 700 ? 852 : 900 }, locale: width === 393 ? 'zh-CN' : 'en-US', isMobile: width < 700, hasTouch: width < 700 });
             const page = await context.newPage(), errors = [], writes = [], sockets = [], rpc = [];
             let closedSockets = 0;
             let holdProfile = false, releaseProfile;
@@ -96,7 +112,7 @@ async function main() {
                     return route.fulfill({ json: { current, parent: current === cwd ? '/fixture' : null,
                         directories: current ? [{ name: 'notes', path: `${cwd}/notes` }] : [{ name: 'assistant-work', path: cwd }] } });
                 }
-                if (pathname === '/api/pi/status') return route.fulfill({ json: { ok: true, agentProfiles: true, assistantProjects: true, projectRoots: ['/fixture'], defaultProject: cwd } });
+                if (pathname === '/api/pi/status') return route.fulfill({ json: { ok: true, agentProfiles: true, assistantProjects: true, sessionSearch: true, projectRoots: ['/fixture'], defaultProject: cwd } });
                 if (pathname === '/api/pi/projects') return route.fulfill({ json: { projects: [{ cwd, name: 'Assistant work', sessionCount: sessions.length }], roots: ['/fixture'] } });
                 if (pathname === '/api/pi/profiles') return route.fulfill({ json: { version: 1, revision: 'profiles-1', profiles } });
                 if (pathname === '/api/pi/assistant-projects') {
@@ -132,12 +148,73 @@ async function main() {
             await page.waitForFunction(() => document.querySelectorAll('#pi-attachments .pi-attachment-chip').length === 1 && document.querySelector('#pi-attachments').getAttribute('aria-busy') === 'false');
             assert.equal(await page.locator('#pi-stop-button').isVisible(), true);
             if (width < 700) {
+                assert.equal(await page.locator('#workspace-more-toggle').isVisible(), true);
+                assert.equal(await page.locator('.nav-menu [data-tab="media"]').isVisible(), false);
+                assert.equal(await page.locator('#workspace-profiles-toggle').isVisible(), false);
+                assert.equal(await page.locator('#workspace-extensions-toggle').isVisible(), false);
                 await page.locator('#workspace-settings-toggle').click();
+                assert.match(page.url(), /#\/settings\?tab=providers$/);
+                assert.equal(await page.locator('[data-settings-panel="providers"]').isVisible(), true);
+                await page.locator('#workspace-settings-close').click();
+                await page.locator('#workspace-more-toggle').click();
+                assert.equal(await page.locator('#workspace-more-menu').isVisible(), true);
+                assert.equal(await page.locator('#workspace-more-toggle').getAttribute('aria-expanded'), 'true');
+                assert.equal(await page.evaluate(() => document.activeElement?.dataset.moreTab), 'media');
+                await page.keyboard.press('ArrowDown');
+                assert.equal(await page.evaluate(() => document.activeElement?.dataset.moreTab), 'profiles');
+                const menuBounds = await page.locator('#workspace-more-menu').boundingBox();
+                assert.ok(menuBounds.x >= 0 && menuBounds.x + menuBounds.width <= width + 1 && menuBounds.y >= 0, JSON.stringify(menuBounds));
+                await page.screenshot({ path: path.join(evidence, `shell-more-${width}.png`) });
+                await page.locator('#workspace-more-menu [data-more-tab="profiles"]').click();
+                assert.match(page.url(), /#\/profiles$/);
+                assert.equal(await page.locator('#workspace-more-menu').isVisible(), false);
+                assert.equal(await page.locator('#workspace-more-toggle').getAttribute('aria-current'), 'page');
+                assert.equal(await page.evaluate(() => document.activeElement?.id), 'workspace-more-toggle');
+                await page.locator('#workspace-settings-toggle').click();
+                assert.match(page.url(), /#\/settings\?tab=providers$/, 'settings cannot inherit the profiles route');
+                assert.equal(await page.locator('[data-settings-panel="providers"]').isVisible(), true);
+                await page.locator('#workspace-settings-close').click();
+                await page.locator('#workspace-more-toggle').click();
+                await page.locator('#workspace-more-menu [data-more-tab="extensions"]').click();
+                assert.match(page.url(), /#\/extensions$/);
+                await page.locator('#workspace-settings-toggle').click();
+                assert.match(page.url(), /#\/settings\?tab=providers$/, 'settings cannot inherit the extensions route');
+                await page.locator('#workspace-settings-close').click();
+                await page.locator('#workspace-more-toggle').click();
+                await page.locator('#workspace-more-menu [data-more-tab="media"]').click();
+                assert.match(page.url(), /#\/media$/);
+                await page.locator('#workspace-more-toggle').click();
+                await page.keyboard.press('Escape');
+                assert.equal(await page.locator('#workspace-more-menu').isVisible(), false);
+                assert.equal(await page.locator('#workspace-more-toggle').getAttribute('aria-expanded'), 'false');
+                assert.equal(await page.evaluate(() => document.activeElement?.id), 'workspace-more-toggle');
+                if (width === 393) {
+                    await page.locator('#workspace-more-toggle').click();
+                    await page.mouse.click(width - 8, 150);
+                    assert.equal(await page.locator('#workspace-more-menu').isVisible(), false, 'outside click closes More');
+                    await page.locator('#workspace-more-toggle').click();
+                    await page.locator('#workspace-theme-toggle').click();
+                    assert.equal(await page.locator('#workspace-more-menu').isVisible(), false, 'theme and More do not overlap');
+                    assert.equal(await page.locator('#workspace-theme-menu').isVisible(), true);
+                    await page.locator('#workspace-theme-toggle').click();
+                    await page.locator('#workspace-more-toggle').click();
+                    await page.setViewportSize({ width: 768, height: 852 });
+                    assert.equal(await page.locator('#workspace-more-menu').isVisible(), false, 'leaving mobile closes More');
+                    await page.setViewportSize({ width, height: 852 });
+                }
+                await page.locator('[data-tab="chat"]').click();
+                await page.locator('#workspace-settings-toggle').click();
+                assert.match(page.url(), /#\/settings\?tab=providers$/);
                 assert.equal(await page.locator('#workspace-settings-dialog').isVisible(), true);
                 await page.locator('#workspace-settings-close').click();
             } else {
                 await page.locator('#workspace-profiles-toggle').click();
                 assert.match(page.url(), /#\/profiles/);
+                await page.locator('#workspace-settings-toggle').click();
+                assert.match(page.url(), /#\/settings\?tab=providers$/, 'desktop settings cannot inherit profiles');
+                await page.locator('#workspace-settings-close').click();
+                assert.match(page.url(), /#\/chat/);
+                await page.locator('#workspace-profiles-toggle').click();
                 await page.locator('#workspace-settings-close').click();
                 assert.match(page.url(), /#\/chat/);
             }
@@ -299,6 +376,19 @@ async function main() {
                 await page.locator('#pi-toggle-sessions').click();
                 await page.waitForFunction(() => document.querySelector('#pi-session-pane').classList.contains('open') && document.querySelector('#pi-session-pane').getBoundingClientRect().left >= -1);
                 await assertDrawerControls(page, `${width} assistant`);
+                await assertFooterActions(page, `${width} assistant`);
+                if (width === 393) {
+                    const search = page.locator('#pi-search-conversations');
+                    await search.evaluate(button => { button.hidden = true; });
+                    assert.equal(await search.isVisible(), false);
+                    const flush = await page.evaluate(() => {
+                        const footer = document.querySelector('#pi-session-pane .pi-pane-footer');
+                        return footer.getBoundingClientRect().right - parseFloat(getComputedStyle(footer).paddingRight)
+                            - document.getElementById('pi-refresh-sessions').getBoundingClientRect().right;
+                    });
+                    assert.ok(Math.abs(flush) <= 1, `refresh stays right-aligned without search: ${flush}`);
+                    await search.evaluate(button => { button.hidden = false; });
+                }
                 await page.screenshot({ path: path.join(evidence, `shell-drawer-${width}.png`) });
                 await page.locator('#pi-session-search-toggle').click();
                 await assertDrawerControls(page, `${width} assistant search`);
@@ -315,10 +405,21 @@ async function main() {
                 await page.locator('#pi-toggle-sessions').click();
                 await page.waitForFunction(() => document.querySelector('#pi-session-pane').classList.contains('open') && document.querySelector('#pi-session-pane').getBoundingClientRect().left >= -1);
                 await assertDrawerControls(page, `${width} Pi Agent`);
+                await assertFooterActions(page, `${width} Pi Agent`);
                 await page.locator('#pi-session-search-toggle').click();
                 await assertDrawerControls(page, `${width} Pi Agent search`);
                 await page.locator('#pi-session-search-toggle').click();
                 await page.screenshot({ path: path.join(evidence, `shell-agent-drawer-${width}.png`) });
+                if (width === 393) {
+                    await page.goto(`http://127.0.0.1:${server.address().port}/?direct=settings#/settings`, { waitUntil: 'domcontentloaded' });
+                    await page.waitForFunction(() => document.querySelector('[data-settings-panel="providers"]')?.classList.contains('active'));
+                    assert.match(page.url(), /#\/settings\?tab=providers$/, 'direct settings route is canonical');
+                    assert.equal(await page.locator('#workspace-settings-dialog').isVisible(), true);
+                    await page.goto(`http://127.0.0.1:${server.address().port}/?direct=old-settings#/settings?tab=profiles`, { waitUntil: 'domcontentloaded' });
+                    await page.waitForFunction(() => document.querySelector('[data-settings-panel="providers"]')?.classList.contains('active'));
+                    assert.match(page.url(), /#\/settings\?tab=providers$/, 'legacy profile tab cannot hijack settings');
+                    assert.equal(await page.locator('#workspace-settings-title').innerText(), '工作台设置');
+                }
             }
             assert.deepEqual(errors, [], `${width}: ${errors.join(' | ')}`);
             result.push({ width, shell, errors, writes: writes.length, screenshot: path.join(evidence, `shell-assistant-${width}.png`) });

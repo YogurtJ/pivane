@@ -120,7 +120,12 @@ async function run(browser, base, width, language) {
     await page.locator('#workspace-settings-close').click();
     assert.equal(await page.locator('#pi-input').inputValue(), '保存 {0} <原始草稿>');
     assert.ok((await page.locator('#pi-attachments').innerText()).includes('中文附件.txt'));
-    await page.locator('[data-tab="media"]').click();
+    if (width <= 680) {
+        assert.equal(await page.locator('#workspace-more-toggle span').innerText(), english ? 'More' : '更多功能');
+        await page.locator('#workspace-more-toggle').click();
+        assert.equal(await page.locator('#workspace-more-menu').isVisible(), true);
+        await page.locator('#workspace-more-menu [data-more-tab="media"]').click();
+    } else await page.locator('[data-tab="media"]').click();
     await page.locator('#lab-model option[value="image-fixture"]').waitFor({ state: 'attached' });
     assert.equal(await page.locator('#lab-parameters [data-param="prompt"]').getAttribute('aria-label'), english ? 'Prompt' : '提示词');
     await page.locator('#lab-parameters [data-param="prompt"]').fill('保存 <原始媒体提示词>');

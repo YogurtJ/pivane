@@ -8446,6 +8446,7 @@
     ,['数据不可用', 'Saved data is unavailable']
     ,['{0} 个项目', '{0} projects']
     ,['此服务暂不支持助手档案，未保存草稿仍保留。', 'Assistant profiles are unavailable on this server. Your unsaved draft is kept.']
+    ,['更多功能', 'More']
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

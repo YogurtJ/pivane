@@ -813,8 +813,19 @@ button.pi-action-pending:not(.icon-btn):not(.pi-message-action) .pi-spinner { ma
     font-size: 0.67rem;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
+    gap: 4px;
 }
+
+.pi-pane-footer #pi-session-count {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pi-pane-footer #pi-search-conversations[hidden] { display: none; }
 
 .pi-transcript-shell {
     min-width: 0;
@@ -2134,6 +2145,9 @@ select:focus-visible,
 .nav-btn.active i {
     color: currentColor;
 }
+
+.nav-menu .workspace-more-toggle,
+.workspace-more-menu { display: none; }
 
 .sidebar-footer {
     padding: 0 10px;
@@ -4952,7 +4966,49 @@ body.is-resizing * {
     .workspace-page { position: relative; }
     #workspace-settings-dialog .workspace-settings-dialog { height: 100%; }
     #workspace-settings-dialog .workspace-settings-panel { padding: 16px; }
-    .nav-menu [data-tab="profiles"], .nav-menu [data-tab="extensions"] { display: none; }
+    .nav-menu [data-tab="media"],
+    .nav-menu [data-tab="profiles"],
+    .nav-menu [data-tab="extensions"] { display: none; }
+    .nav-menu .workspace-more-toggle { display: flex; }
+    .workspace-more-menu {
+        position: fixed;
+        left: 50%;
+        bottom: calc(70px + env(safe-area-inset-bottom));
+        z-index: 160;
+        width: min(280px, calc(100vw - 16px));
+        max-height: calc(100dvh - 86px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        padding: 6px;
+        display: grid;
+        gap: 2px;
+        overflow-y: auto;
+        transform: translateX(-50%);
+        border: 1px solid var(--line-strong);
+        border-radius: 8px;
+        background: var(--surface-2);
+        box-shadow: var(--shadow-float);
+    }
+    .workspace-more-menu[hidden] { display: none; }
+    .workspace-more-menu button {
+        min-width: 0;
+        min-height: 48px;
+        padding: 10px 12px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--text-main);
+        text-align: left;
+        font: inherit;
+        font-size: 0.85rem;
+        cursor: pointer;
+    }
+    .workspace-more-menu button i { width: 20px; color: var(--text-muted); text-align: center; }
+    .workspace-more-menu button:hover,
+    .workspace-more-menu button:focus-visible { background: var(--surface-3); outline: 2px solid var(--green); outline-offset: -2px; }
+    .workspace-more-menu button[aria-current="page"] { color: var(--green); }
+    .workspace-more-menu button[aria-current="page"] i { color: currentColor; }
     .pi-assistant-profile-row select, .pi-assistant-project-form :is(input:not([type=checkbox]),textarea) { font-size: 16px; }
     .pi-actual-identity { max-width: 100px; }
     .pi-conversation-origin span { display: none; }
