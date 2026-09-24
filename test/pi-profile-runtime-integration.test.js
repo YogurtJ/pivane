@@ -145,6 +145,9 @@ test('assembled HTTP and real RPC isolate profile memory across projects without
     assert.equal(calls.length, beforeDraftCalls, 'creating a helper never sends a provider request');
     assert.equal(authoring.session.agentProfile, null);
     assert.equal(authoring.session.profileAuthoring.profileId, study.id);
+    const helperList = await call('GET', `/sessions?cwd=${encodeURIComponent(projects[0])}`);
+    assert.equal(helperList.sessions.find(session => session.id === authoring.session.id).profileAuthoring.profileId, study.id,
+        'list refresh preserves the helper return context');
     const helper = await gateway.supervisor.getWorker({ cwd: projects[0], sessionId: authoring.session.id, sessionPath: authoring.session.path });
     assert.ok((await names(helper)).includes('profile_draft'));
     assert.equal((await names(none.worker)).includes('profile_draft'), false);

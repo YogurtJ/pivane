@@ -162,7 +162,8 @@ class PiSessionStore {
         for (const session of sessions) {
             const manager = profiles || projects ? this.profileManager(session, SessionManager) : null;
             result.push(this._serializeSession(session, manager && profiles ? await profiles.describe(manager, profileState) : null,
-                manager && projects ? projects.describe(manager, cwd, projectState) : null));
+                manager && projects ? projects.describe(manager, cwd, projectState) : null,
+                manager ? require('./pi-profile-authoring').readProfileAuthoring(manager) : null));
         }
         return result.sort((a, b) => b.modified.localeCompare(a.modified));
     }
@@ -313,10 +314,11 @@ class PiSessionStore {
         }
     }
 
-    _serializeSession(session, agentProfile = null, assistantProject = null) {
+    _serializeSession(session, agentProfile = null, assistantProject = null, profileAuthoring = null) {
         return {
             agentProfile,
             assistantProject,
+            profileAuthoring,
             id: session.id,
             path: session.path,
             cwd: session.cwd,
