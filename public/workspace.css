@@ -4813,9 +4813,18 @@ body.is-resizing * {
 
 @media (max-width: 900px) {
     .pi-session-pane .pi-session-heading {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 84px;
+        column-gap: 8px;
         height: 60px;
         min-height: 60px;
         padding: 10px 12px;
+    }
+
+    .pi-session-pane .pi-session-heading .pi-pane-actions {
+        display: grid;
+        grid-template-columns: repeat(2, 40px);
+        gap: 4px;
     }
 
     .pi-session-pane .pi-session-heading .pi-search-field { height: 40px; }
@@ -4823,7 +4832,7 @@ body.is-resizing * {
     .pi-session-pane .pi-session-heading .pi-pane-actions .icon-btn {
         width: 40px;
         height: 40px;
-        flex-basis: 40px;
+        flex: none;
     }
 
     .pi-thread-more {

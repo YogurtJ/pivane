@@ -3,6 +3,9 @@
 .workspace-settings-nav #pi-profiles-nav[hidden] { display: none !important; }
 #pi-session-pane .pi-session-heading h3 { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 #pi-session-pane .pi-session-heading .pi-pane-actions .icon-btn { width: 32px; min-width: 32px; height: 32px; padding: 0; }
+@media (max-width: 900px) {
+    #pi-session-pane .pi-session-heading .pi-pane-actions .icon-btn { width: 40px; min-width: 40px; height: 40px; }
+}
 #pi-profiles-panel { min-width: 0; }
 #pi-profiles-panel .settings-panel-header { min-width: 0; }
 #pi-profiles-panel .settings-panel-header h3 { white-space: nowrap; }

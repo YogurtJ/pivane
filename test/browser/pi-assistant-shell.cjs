@@ -25,6 +25,31 @@ const sessions = [thread('agent-original', null, null), thread('reference-one', 
 const model = { provider: 'synthetic', id: 'visual', name: 'Visual fixture', input: ['text'] };
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.woff2': 'font/woff2' };
 
+async function assertDrawerControls(page, label) {
+    const bounds = await page.evaluate(() => {
+        const pane = document.querySelector('#pi-session-pane').getBoundingClientRect();
+        const heading = document.querySelector('#pi-session-pane .pi-session-heading');
+        const header = heading.getBoundingClientRect();
+        const padding = getComputedStyle(heading);
+        const innerLeft = header.left + parseFloat(padding.paddingLeft);
+        const innerRight = header.right - parseFloat(padding.paddingRight);
+        const actions = heading.querySelector('.pi-pane-actions').getBoundingClientRect();
+        const search = heading.querySelector('.pi-search-field');
+        return { paneRight: pane.right, innerLeft, innerRight, actionsLeft: actions.left,
+            searchRight: search.hidden ? null : search.getBoundingClientRect().right,
+            controls: ['pi-session-search-toggle', 'pi-new-session'].map(id => {
+                const button = document.getElementById(id), rect = button.getBoundingClientRect();
+                return { id, left: rect.left, right: rect.right, width: rect.width,
+                    hit: document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)?.closest('button') === button };
+            }) };
+    });
+    assert.ok(bounds.controls.every(button => button.left >= bounds.innerLeft - 1 &&
+        button.right <= bounds.innerRight + 1 && button.right < bounds.paneRight &&
+        button.width >= 39.5 && button.hit), `${label}: ${JSON.stringify(bounds)}`);
+    assert.ok(bounds.searchRight === null || bounds.searchRight <= bounds.actionsLeft - 7,
+        `${label} expanded search: ${JSON.stringify(bounds)}`);
+}
+
 async function main() {
     await fs.mkdir(evidence, { recursive: true });
     const server = http.createServer(async (req, res) => {
@@ -38,7 +63,7 @@ async function main() {
     const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true });
     const result = [];
     try {
-        for (const width of [1280, 1440, 1920, 393, 320]) {
+        for (const width of [1280, 1440, 1920, 393, 375, 320]) {
             const context = await browser.newContext({ viewport: { width, height: width < 700 ? 852 : 900 }, locale: 'en-US', isMobile: width < 700, hasTouch: width < 700 });
             const page = await context.newPage(), errors = [], writes = [], sockets = [], rpc = [];
             let closedSockets = 0;
@@ -273,15 +298,11 @@ async function main() {
             } else {
                 await page.locator('#pi-toggle-sessions').click();
                 await page.waitForFunction(() => document.querySelector('#pi-session-pane').classList.contains('open') && document.querySelector('#pi-session-pane').getBoundingClientRect().left >= -1);
+                await assertDrawerControls(page, `${width} assistant`);
                 await page.screenshot({ path: path.join(evidence, `shell-drawer-${width}.png`) });
-                const controls = await page.evaluate(() => {
-                    const pane = document.querySelector('#pi-session-pane').getBoundingClientRect();
-                    return ['pi-session-search-toggle', 'pi-new-session'].map(id => {
-                        const b = document.getElementById(id).getBoundingClientRect();
-                        return { id, left: b.left, right: b.right, paneLeft: pane.left, paneRight: pane.right };
-                    });
-                });
-                assert.ok(controls.every(item => item.left >= item.paneLeft && item.right <= item.paneRight + 1), JSON.stringify(controls));
+                await page.locator('#pi-session-search-toggle').click();
+                await assertDrawerControls(page, `${width} assistant search`);
+                await page.locator('#pi-session-search-toggle').click();
                 await page.locator('#pi-assistant-add-project').click();
                 const editor = page.locator('.pi-assistant-project-editor[open]');
                 await editor.locator('[data-browse]').click();
@@ -293,14 +314,10 @@ async function main() {
                 await page.locator('[data-tab="chat"]').click();
                 await page.locator('#pi-toggle-sessions').click();
                 await page.waitForFunction(() => document.querySelector('#pi-session-pane').classList.contains('open') && document.querySelector('#pi-session-pane').getBoundingClientRect().left >= -1);
-                const agentControls = await page.evaluate(() => {
-                    const pane = document.querySelector('#pi-session-pane').getBoundingClientRect();
-                    return ['pi-session-search-toggle', 'pi-new-session'].map(id => {
-                        const b = document.getElementById(id).getBoundingClientRect();
-                        return { id, left: b.left, right: b.right, paneLeft: pane.left, paneRight: pane.right };
-                    });
-                });
-                assert.ok(agentControls.every(item => item.left >= item.paneLeft && item.right <= item.paneRight + 1), JSON.stringify(agentControls));
+                await assertDrawerControls(page, `${width} Pi Agent`);
+                await page.locator('#pi-session-search-toggle').click();
+                await assertDrawerControls(page, `${width} Pi Agent search`);
+                await page.locator('#pi-session-search-toggle').click();
                 await page.screenshot({ path: path.join(evidence, `shell-agent-drawer-${width}.png`) });
             }
             assert.deepEqual(errors, [], `${width}: ${errors.join(' | ')}`);
