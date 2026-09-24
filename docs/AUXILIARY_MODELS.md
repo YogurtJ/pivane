@@ -8,9 +8,9 @@
 |---|---|---|
 | 标题生成 | 新线程自动命名、手动重新生成标题 | 使用该线程当前的聊天模型 |
 | 媒体规划 | 实验室图像/视频/语音参数，以及模型接入方案 | 依次参考服务器媒体规划配置、Pi 默认模型及可用模型 |
-| 明确纠错 | 在新完成的原生对话中优先提取用户明确纠正的持久事实 | 无自动模型；未配置专用模型则等待配置 |
-| 增量复盘 | 有新原生内容且空闲时进行可选复盘 | 无自动模型；未配置专用模型则等待配置 |
-| 边界提炼 | 成功压缩或 worker 退出时登记增量提炼 | 无自动模型；未配置专用模型则等待配置 |
+| 明确纠错 | 新完成的原生问答中优先提取明确纠正或“记住以后”的持久偏好 | 无自动模型；未配置专用模型则等待配置 |
+| 增量复盘 | 有新原生内容且空闲时逐轮复盘；明确纠错/偏好不再重复收费 | 无自动模型；未配置专用模型则等待配置 |
+| 边界提炼 | 成功压缩或 worker 退出登记边界前未覆盖的原生问答 | 无自动模型；未配置专用模型则等待配置 |
 
 两类原有用途和三类学习用途可以选择相同模型，也可以分别选择适合各自任务的模型。模型目录来自实际 Pi 配置，只提供已接入且可用的文本模型；被移除或暂不可用的已保存选择仍保留显示，不自动替换为第一项。
 
@@ -63,8 +63,8 @@ Node 用例 `test/pi-auxiliary-models.test.js`、`test/pi-profile-learning-runti
 
 ## 后台学习 REST 与边界
 
-学习开关独立于模型路由，默认关闭。`GET /api/pi/profiles/:id/learning` 返回 `{version:1,status,revision,settings,jobs,recentRuns,capabilities}`。状态根据已安装的知识服务/档案记忆状态给出，不根据 UI 轮次猜测；`capabilities` 明示专用模型、物理 profile/cwd 范围、输入/输出上限与价格报告状态。`PUT` 同路径提交 `{expectedRevision,changes}`；开关为 `enabled`、`correctionEnabled`、`reviewEnabled`、`extractionEnabled`，额度为 `maxRunsPerDay` (1..20)、`maxTokensPerDay` (6000..200000)，可选 `periodicReviewMinutes` (0..10080)。默认 UTC 日额度 4 次、24000 保留 Token；每次预占 6000。保存设置本身不执行作业。
+学习开关独立于模型路由，默认关闭。`GET /api/pi/profiles/:id/learning` 返回 `{version:1,status,revision,settings,jobs,recentRuns,capabilities}`，revision 是整数。`capabilities` 明示可用动作、专用模型、物理 profile/cwd 范围、输入/输出上限、`limits`、`capacity`（队列、游标、动作剩余额度与被阻断的分支）及价格报告状态。`PUT` 同路径提交 `{expectedRevision,changes}`；开关为 `enabled`、`correctionEnabled`、`reviewEnabled`、`extractionEnabled`，额度为 `maxRunsPerDay` (1..20)、`maxTokensPerDay` (6000..200000)，可选 `periodicReviewMinutes` (0..10080)。默认 UTC 日额度 4 次、24000 保留 Token；每次预占 6000。保存设置本身不执行作业。
 
-`POST /api/pi/profiles/:id/learning/actions` 提交 `{requestId,action:'review-now'|'cancel',jobId?}`；取消需要作业 ID。手动复盘必须有已验证的原生来源。返回最新快照；请求 ID 同参幂等，异参冲突。压缩、完成与退出只登记新原生分支的用户/助手 ID，不持久化聊天正文；复盘由独立服务在空闲时读原生分支，双次核验身份、叶节点、正文摘要和知识修订，再交给统一知识服务提交提案。后台模型最多读取本轮 4000 字符，输出限制 220 token、无工具、无 CLI/subagent 回退；取消和超时要求中止但仍等待实际完成，重启后的执行中作业为 `uncertain`，不自动重放。近期作业只返回原因、时间、状态、模型、报告的用量/费用和回执 ID；缺失价格标记 `unknown`，不当作零费用。额度以预占量保守限流，不是供应商账单上限。
+`POST /api/pi/profiles/:id/learning/actions` 提交 `{requestId,action:'review-now'|'cancel',jobId?}`；取消需要作业 ID。手动复盘必须有已验证的原生来源。返回最新快照；请求 ID 同参幂等，异参冲突；动作记录达到 128 项时停止接受新动作，不能静默遗忘旧键。压缩、完成与退出登记每个已完成的原生用户/助手问答引用，不持久化聊天正文；每个用途有持久游标和滑动去重窗口，周期扫描补采已知会话的遗漏。队列最多 64 项，游标最多 128 个；满额不推进未覆盖位置。旧字符串游标升级时保留旧最新 pair 去重并回扫更早问答。无法在窗口内证明安全的深分支改写会阻断该游标，`capacity.blockedBranches` 报告数量；不把旧分支重试成新模型费用。过大（超过 8 MiB）的会话不参与后台学习。复盘由独立服务在空闲时读原生分支，重新核验绑定、问答正文摘要、模型设置、学习开关及知识修订，再由 A 的受信 `mutateFromNative` 提交；内部来源来自原生 entryId，HTTP 不能伪造。后台模型输入限制为最多约 2400 字符摘录，系统提示加摘录不超过 5000 UTF-8 字节，最多 320 输出 token，无工具、无 CLI/subagent 回退；这不是供应商精确 tokenizer 的承诺。取消和超时要求中止但仍等待实际完成，重启后的执行中作业为 `uncertain`，不自动重放。近期作业只返回原因、时间、状态、模型、报告的用量/费用和回执 ID；缺失价格标记 `unknown`，不当作零费用。额度按保留量限流，不是供应商账单上限。明确纠错可在受界限的旧记录中匹配并以 CAS 替代；找不到可靠旧项则只建新项。用户明确描述可复用流程时，辅助模型只能提出不生效的 profile 技能草稿，需另行审查启用；没有受信 A 写接口时不退回无来源写入。
 
-运行中的 worker 在每轮注入前从磁盘重读 profile 和物理 cwd 记忆，原生 `pivane-profile-memory-read` 条目记录已提供的适配器 generation、时间、范围及是否有内容。`get_runtime_configuration.memoryRead` 只返回上一次已记录的提供行为（`last-provided`）、`not-recorded` 或 `unavailable`，不把上次记录当作本轮已遵守或与当前保存修订一致；过大的原生会话返回 `unavailable`。有 A 知识服务时，主 Agent 全局 MEMORY/USER 写工具以同一知识服务 CAS 写入并返回回执、索引与激活状态；项目级记忆和技能工具仍走原有受限适配，防复活/回执合流需整合验证。逻辑助手项目隔离未实现。
+运行中的 worker 在每轮注入前从磁盘重读 profile 和物理 cwd 记忆，原生 `pivane-profile-memory-read` 条目记录已提供的适配器 generation、时间、范围及是否有内容。`get_runtime_configuration.memoryRead` 只返回上一次已记录的提供行为（`last-provided`）、`not-recorded` 或 `unavailable`，不把上次记录当作本轮已遵守或与当前保存修订一致；过大的原生会话返回 `unavailable`。有 A 受信知识服务时，主 Agent 全局/物理项目记忆与 profile-owned 技能创建、删除使用同一 CAS 和 native 来源回执；结构化技能更新尚不支持，明确失败，不回退旧写路径。已安装技能仍只读。逻辑助手项目隔离未实现。

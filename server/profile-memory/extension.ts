@@ -92,8 +92,11 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
                         }
                         if (tool.name === 'skill_manage') assertPrivateSkillTree(skillStore.getGlobalSkillsDir(), skillStore.getProjectSkillsDir());
                         const execute = async () => tool.execute(...args);
-                        const viaKnowledge = knowledgeTools && ['memory_add', 'memory_replace', 'memory_remove'].includes(tool.name)
-                            ? await knowledgeTools(tool.name, args[1], args[2], () => allowed(args[args.length - 1])) : null;
+                        const viaKnowledge = knowledgeTools && (['memory_add', 'memory_replace', 'memory_remove', 'skill_manage'].includes(tool.name))
+                            ? await knowledgeTools(tool.name, args[1], args[2], () => allowed(args[args.length - 1]), args[args.length - 1]) : null;
+                        if (knowledge && tool.name === 'skill_manage' && !viaKnowledge
+                            && !['list', 'read', 'show', 'get'].includes(args[1]?.action))
+                            throw new Error('Unsupported profile skill write action');
                         const result = viaKnowledge || (['memory_add', 'memory_replace', 'memory_remove'].includes(tool.name)
                             ? await memoryMutation.run(args[2], async () => {
                                 await store?.loadFromDisk();

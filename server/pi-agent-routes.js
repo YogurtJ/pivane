@@ -938,8 +938,6 @@ function createPiAgentGateway(options = {}) {
 
     return { mount, attachWebSocket, dispose: async () => {
         sessionSearch.dispose();
-        const stoppingLearning = learning.dispose();
-        await profiles.dispose();
         if (!options.accessService) access.dispose();
         await settingsService.loginService.dispose();
         const stoppingAuxiliaryModels = auxiliaryModels.dispose();
@@ -948,9 +946,12 @@ function createPiAgentGateway(options = {}) {
         const stoppingThreads = agentThreads.dispose();
         const stoppingSide = sideChat.dispose();
         await supervisor.dispose();
+        await learning.flushRegistrations();
+        await learning.dispose();
+        await profiles.dispose();
         await usage.dispose();
         await stoppingThreads;
-        await Promise.all([stoppingDeferred, stoppingSide, stoppingTitles, stoppingAuxiliaryModels, stoppingLearning]);
+        await Promise.all([stoppingDeferred, stoppingSide, stoppingTitles, stoppingAuxiliaryModels]);
     }, store, supervisor, deferred, sideChat, titles, auxiliaryModels, learning, knowledgeService };
 }
 
