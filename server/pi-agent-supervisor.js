@@ -693,6 +693,7 @@ class PiAgentSupervisor extends EventEmitter {
                 await worker.ensureReady();
                 if (this.disposing) throw new Error('Pi supervisor is shutting down');
                 this.workers.set(sessionPath, worker);
+                this.emit('worker', worker);
                 return worker;
             } catch (error) {
                 await worker.dispose();

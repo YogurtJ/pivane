@@ -97,6 +97,7 @@ function createPiAgentGateway(options = {}) {
     const settingsService = new PiSettingsService({ workspacePreferencesService: preferences });
     const titles = new (require('./pi-session-title-service').PiSessionTitleService)({ preferences,
         createModelRuntime: () => settingsService.createModelRuntime() });
+    let learning;
     const auxiliaryModels = new (require('./pi-auxiliary-models-service').PiAuxiliaryModelsService)({ preferences, titles,
         createModelRuntime: () => settingsService.createModelRuntime() });
     settingsService.auxiliaryModelsService = auxiliaryModels;
@@ -114,17 +115,26 @@ function createPiAgentGateway(options = {}) {
     const notifications = new (require('./pi-notification-service').PiNotificationService)({ access, store });
     supervisor.on('attention', event => { void notifications.notify(event); });
     supervisor.on('completion', (notice, worker) => {
-        if (worker) void titles.auto(worker);
+        if (worker) { void titles.auto(worker); void learning?.register(worker, 'settled'); }
         void notifications.notify(notice);
         try { preferences.recordReplyNotice(notice); }
         catch { console.error('Pi reply notice could not be persisted'); }
+    });
+
+    supervisor.on('worker', worker => {
+        worker.subscribe(event => {
+            if (event.type === 'compaction_end' && worker.compaction?.status === 'success')
+                void learning?.register(worker, 'compaction');
+        });
+        worker.once('disposed', () => { void learning?.register(worker, 'exit'); });
+        worker.once('exit', () => { void learning?.register(worker, 'exit'); });
     });
 
     router.use(access.middleware());
     require('./pi-update-service').mountUpdateRoutes(router, undefined, {
         maintenance, preferences,
         idle: () => !profiles.busy && !agentThreads.jobs.size && !agentThreads.catalogIndex.busy && !agentThreads.returns.busy && !settingsService.mutating && !settingsService.loginService.busy && !nativeService.busy && !sessionTransfer.running
-            && !titles.jobs.size && !titles.savingModel && !deferred.running && !sideChat.connections.size && !sideChat.tickets.size
+            && !titles.jobs.size && !titles.savingModel && !learning?.busy && !deferred.running && !sideChat.connections.size && !sideChat.tickets.size
             && ![...sideChat.parents.values()].some(parent => parent.preparing) && supervisor.isIdle()
             && !options.mediaLabService?.inFlight && !options.mediaLabService?.providerService?.busy && !options.mediaLabService?.providerService?.active,
         pause: () => deferred.pauseAll()
@@ -158,9 +168,22 @@ function createPiAgentGateway(options = {}) {
     router.get('/assistant-projects', profileRoute(req => assistantProjects.list(req.query.profileId)));
     router.put('/assistant-projects', profileRoute(req => assistantProjects.save(req.body)));
     router.get('/assistant-projects/:id/sessions', profileRoute(async req => ({ sessions: await assistantProjects.sessions(req.params.id, req.query.profileId) })));
-    const profileResources = { profiles,
-        getAgentDir: async () => fs.realpathSync.native((await require('./pi-session-store').getSdk()).getAgentDir()),
+    const getAgentDir = async () => fs.realpathSync.native((await require('./pi-session-store').getSdk()).getAgentDir());
+    const profileResources = { profiles, getAgentDir,
         bundlePath: async () => (await profileMemory.snapshot()).bundlePath };
+    const knowledgePath = path.join(__dirname, 'profile-memory', 'knowledge-service.js');
+    const knowledgeModule = fs.existsSync(knowledgePath) ? require(knowledgePath) : null;
+    const knowledgeService = options.profileKnowledgeService || (knowledgeModule
+        ? new knowledgeModule.ProfileKnowledgeService(profileResources) : null);
+    if (knowledgeModule) knowledgeModule.mountProfileKnowledgeRoutes(router, { ...profileResources,
+        service: knowledgeService, knowledgeService });
+    learning = new (require('./profile-memory/learning-service').ProfileLearningService)({ profiles, store, preferences,
+        knowledge: knowledgeService, getAgentDir, createModelRuntime: () => settingsService.createModelRuntime(),
+        idle: () => !maintenance.locked && supervisor.isIdle() });
+    learning.resumePromise = learning.resume();
+    router.get('/profiles/:id/learning', profileRoute(req => learning.snapshot(req.params.id)));
+    router.put('/profiles/:id/learning', profileRoute(req => learning.save(req.params.id, req.body)));
+    router.post('/profiles/:id/learning/actions', profileRoute(req => learning.action(req.params.id, req.body)));
     require('./profile-memory/management').mountProfileMemoryRoutes(router, profileResources);
     require('./pi-profile-documents').mountProfileDocumentRoutes(router, profileResources);
     require('./pi-profile-avatar').mountProfileAvatarRoutes(router, profileResources);
@@ -187,6 +210,7 @@ function createPiAgentGateway(options = {}) {
             profileDocuments: true,
             profileAuthoring: true,
             profileMemory: memoryConfiguration.capability,
+            profileLearning: Boolean(knowledgeModule && knowledgeService),
             agentTaskResults: true,
             taskProgress: true,
             extensionAssistant: true,
@@ -380,7 +404,7 @@ function createPiAgentGateway(options = {}) {
 
     router.get('/activity', (req, res) => {
         res.set('Cache-Control', 'no-store');
-        res.json({ agentThreadLaunches: agentThreads.jobs.size, agentTaskIndexing: agentThreads.catalogIndex.busy, agentTaskReturns: agentThreads.returns.busy, archives: archives(), titleRevision: titles.revisionId, titleGenerations: titles.jobs.size, runtimes: supervisor.getActivity(), profilesBusy: profiles.busy, nativeSettingsBusy: nativeService.busy || settingsService.mutating || Boolean(titles.savingModel) || auxiliaryModels.busy, sessionTransfers: sessionTransfer.running, pinnedProjects: pinnedProjects(), hiddenProjects: hiddenProjects(), replyNotices: replyNotices(), deferred: deferred.summary() });
+        res.json({ agentThreadLaunches: agentThreads.jobs.size, agentTaskIndexing: agentThreads.catalogIndex.busy, agentTaskReturns: agentThreads.returns.busy, learningBusy: learning.busy, learningRuns: learning.active.size, archives: archives(), titleRevision: titles.revisionId, titleGenerations: titles.jobs.size, runtimes: supervisor.getActivity(), profilesBusy: profiles.busy, nativeSettingsBusy: nativeService.busy || settingsService.mutating || Boolean(titles.savingModel) || auxiliaryModels.busy, sessionTransfers: sessionTransfer.running, pinnedProjects: pinnedProjects(), hiddenProjects: hiddenProjects(), replyNotices: replyNotices(), deferred: deferred.summary() });
     });
 
     router.patch('/projects/pin', (req, res) => {
@@ -723,6 +747,7 @@ function createPiAgentGateway(options = {}) {
                     if (worker.noSession) await releaseCurrentWorker(true);
                     else await worker.exclusive(async () => {
                         deferred.pauseSession(worker.cwd, worker.sessionId, 'runtime 已退出，请重新确认发送');
+                        await learning.register(worker, 'exit');
                         await releaseCurrentWorker(true);
                     }, { idle: false });
                     safeSend(socket, {
@@ -773,6 +798,8 @@ function createPiAgentGateway(options = {}) {
                     const matchesSavedProfile = source.loadedAgentProfileConfirmed
                         && (savedProfile?.id ?? null) === source.loadedAgentProfileId
                         && (!savedProfile || savedProfileRevision !== null && savedProfileRevision === source.loadedAgentProfileRevision);
+                    const memoryRead = source.noSession ? null
+                        : await require('./profile-memory/learning-service').lastMemoryRead(source, profiles);
                     if (worker !== source || source.disposed) throw new Error('运行实例已变化，请重新核对配置');
                     safeSend(socket, { type: 'response', id: message.id, command: message.type, success: true, data: {
                         actualProjectTrusted: actual.projectTrusted,
@@ -781,6 +808,7 @@ function createPiAgentGateway(options = {}) {
                         agentProfile: { saved: savedProfile, savedProfileRevision,
                             loadedProfileId: source.loadedAgentProfileId, loadedProfileRevision: source.loadedAgentProfileRevision,
                             loadedConfirmed: source.loadedAgentProfileConfirmed, matchesSavedProfile },
+                        memoryRead,
                         assistantProject: { saved: savedProject, savedProjectRevision,
                             loadedProjectId: source.loadedAssistantProjectId, loadedProjectRevision: source.loadedAssistantProjectRevision,
                             loadedConfirmed: source.loadedAssistantProjectConfirmed, matchesSavedProject },
@@ -910,6 +938,7 @@ function createPiAgentGateway(options = {}) {
 
     return { mount, attachWebSocket, dispose: async () => {
         sessionSearch.dispose();
+        const stoppingLearning = learning.dispose();
         await profiles.dispose();
         if (!options.accessService) access.dispose();
         await settingsService.loginService.dispose();
@@ -921,8 +950,8 @@ function createPiAgentGateway(options = {}) {
         await supervisor.dispose();
         await usage.dispose();
         await stoppingThreads;
-        await Promise.all([stoppingDeferred, stoppingSide, stoppingTitles, stoppingAuxiliaryModels]);
-    }, store, supervisor, deferred, sideChat, titles, auxiliaryModels };
+        await Promise.all([stoppingDeferred, stoppingSide, stoppingTitles, stoppingAuxiliaryModels, stoppingLearning]);
+    }, store, supervisor, deferred, sideChat, titles, auxiliaryModels, learning, knowledgeService };
 }
 
 module.exports = { createPiAgentGateway };

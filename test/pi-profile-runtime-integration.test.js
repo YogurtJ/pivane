@@ -63,7 +63,7 @@ test('assembled HTTP and real RPC isolate profile memory across projects without
     fs.writeFileSync(path.join(agentDir, 'pivane-profiles', 'runtime.json'), JSON.stringify({ version: 1, bundlePath: bundle,
         reviewModel: { provider: 'fixture', modelId: 'fixture' } }));
     const configuration = new ProfileMemoryConfiguration();
-    assert.deepEqual((await configuration.snapshot()).capability, { installed: true, autoLearn: true });
+    assert.deepEqual((await configuration.snapshot()).capability, { installed: true, autoLearn: false });
     const gateway = createPiAgentGateway({ accessService: new WorkspaceAccessService({ envToken: () => 'fixture-token' }), deferredFilePath: process.env.PI_WEB_DEFERRED_FILE });
     const app = require('express')(); app.use(require('express').json()); gateway.mount(app);
     const server = http.createServer(app); server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -79,7 +79,7 @@ test('assembled HTTP and real RPC isolate profile memory across projects without
             body: body === undefined ? undefined : JSON.stringify(body) });
         const data = await response.json(); assert.equal(response.ok, true, JSON.stringify(data)); return data;
     };
-    assert.deepEqual((await call('GET', '/status')).profileMemory, { installed: true, autoLearn: true });
+    assert.deepEqual((await call('GET', '/status')).profileMemory, { installed: true, autoLearn: false });
     const createProfile = async name => {
         const { revision } = await call('GET', '/profiles');
         return (await call('PUT', '/profiles', { expectedRevision: revision, profile: { name, description: '', soul: `Fixture ${name}`,

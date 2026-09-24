@@ -33,8 +33,7 @@ class ProfileMemoryConfiguration {
             if (!stat.isFile() || stat.isSymbolicLink() || fs.realpathSync.native(data.bundlePath) !== data.bundlePath) throw new Error('Invalid memory bundle');
             const key = createHash('sha256').update(bytes).update([stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(':')).digest('hex');
             if (this.cached?.key === key && Date.now() - this.cached.at < 5000) return this.cached.value;
-            const capability = profileMemoryCapability({ bundlePath: data.bundlePath,
-                reviewModel: reviewModel ? JSON.stringify(reviewModel) : undefined });
+            const capability = { ...profileMemoryCapability({ bundlePath: data.bundlePath }), autoLearn: false };
             const value = { bundlePath: capability.installed ? data.bundlePath : null, reviewModel, capability };
             this.cached = { key, at: Date.now(), value };
             return value;
@@ -50,8 +49,7 @@ class ProfileMemoryConfiguration {
         const current = await this.snapshot();
         return { ...cleared,
             PIVANE_HERMES_BUNDLE: current.capability.installed ? current.bundlePath : undefined,
-            PIVANE_PROFILE_MEMORY_REVIEW_MODEL: context.memory.enabled && context.memory.autoLearn && current.capability.autoLearn
-                ? JSON.stringify(current.reviewModel) : undefined };
+            PIVANE_PROFILE_MEMORY_REVIEW_MODEL: undefined };
     }
 }
 
