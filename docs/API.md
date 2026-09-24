@@ -46,11 +46,13 @@
 
 ### 可选助手档案
 
-`GET /status.agentProfiles=true` 表示可选助手档案接口可用。`GET /profiles?cwd` 返回档案、修订和所选项目默认身份；`PUT /profiles` 接受 `{expectedRevision,profile}` 创建或更新档案；`PUT /profiles/default` 接受 `{cwd,profileId,expectedRevision}`，`profileId:null` 清除项目默认身份。现有 `POST /sessions` 的可选 `profileId` 省略时使用项目默认，显式 null 创建无档案线程。
+`GET /status.agentProfiles=true` 表示可选助手档案接口可用。`GET /profiles?cwd` 返回档案、注册表修订、`profileRevisions`（档案ID到自身修订的映射）和所选项目默认身份；`PUT /profiles` 接受 `{expectedRevision,profile}` 创建或更新档案；`PUT /profiles/default` 接受 `{cwd,profileId,expectedRevision}`，`profileId:null` 清除项目默认身份。现有 `POST /sessions` 的可选 `profileId` 省略时使用项目默认，显式 null 创建无档案线程。
 
 会话序列化字段 `agentProfile` 是保存的身份投影，不能据此推断 worker 已加载。`get_runtime_configuration.agentProfile` 分别返回 saved、savedProfileRevision、loadedProfileId、loadedProfileRevision、loadedConfirmed 与 matchesSavedProfile。旧会话不因新增项目默认身份而追认归属，网页分叉显式继承源身份，导入不会仅因复制旧会话标记而获得绑定。字段限制、保存与重开语义见[助手档案](AGENT_PROFILES.md)。
 
 `GET /status.profileMemory` 返回 `{installed,autoLearn}`，核对私有配置指向的适配 bundle 与本机 SQLite；autoLearn 表示已配置直接复盘模型，不证明供应商请求已成功。配置失效时返回 false，不隐式切换聊天模型或全局安装插件。`GET /profiles/:id/memory?kind=memories|skills&query=&offset=` 为已挂载的只读档案数据接口，分页每次最多50条；其 ready 是数据可读状态，与当前会话是否加载分开。安装、模型配置与检索限额见[记忆适配](PROFILE_MEMORY.md)。
+
+`GET /status.profileDocuments`、`profileAuthoring` 表示文档编辑及专用起草接口已装配。`GET/PUT /profiles/:id/documents` 使用 `target=user|memory` 和文档／档案双修订；结果区分 `documentSaved`、`indexSynced` 与 `indexStatus`（ready/pending/disabled/unsupported）。202 表示文档已保存但检索未启用；503 可表示保存后的索引部分失败或文件写入结果未知，不能据此自动重放修改。核对最新修订后，提交当前原文可同步待修复的派生索引。头像上传、单条技能正文以及 `/profiles/authoring-sessions` 的字段和限额见[档案接口契约](AGENT_PROFILES.md#接口契约)。起草结果只有在用户导入草稿并保存后才改变档案；`profileRevisions` 供网页核对目标档案，不需要在浏览器重新计算服务端摘要。
 
 ### 逻辑助手项目
 
@@ -61,7 +63,7 @@
 - `GET /assistant-projects/:id/sessions?profileId=UUID` 返回 `{sessions:[...]}`，只返回原生当前会话 ID 的项目绑定和实际档案绑定均匹配的线程；缺少 profileId 或无效 ID 拒绝。不按浏览器选中状态推断身份。
 - `POST /sessions` 可增加 `assistantProjectId`，此时必须同时显式提交关联、启用的 `profileId`，cwd 必须匹配项目且项目未归档。未知 ID、无效身份或 cwd 冲突在原生文件创建前拒绝，不回退到普通线程。省略 assistantProjectId 保持旧调用和项目默认档案行为。
 
-现有 `/sessions?cwd` 仍列出全部原生线程，新增 `assistantProject:null|{id,name,cwd,available}`；不存在的已绑定组仍显示 ID 和 available=false，不能自动归入另一组。旧有档案绑定但无项目标记的线程仍按真实 cwd 保持未分类。项目标记 `pivane-assistant-project` 保存 `{version:1,sessionId,projectId,cwd}`：只认唯一且匹配当前原生 ID/cwd 的标记，复制导入的旧 ID 不生效；网页分叉给新 ID 追加新绑定。保存分组指令不自动重载当前 worker；`get_runtime_configuration.assistantProject` 的 saved 是当前磁盘投影，loadedConfirmed/matchesSavedProject 为 null，表示此版本尚未核实运行中加载的组修订，不能用 saved 冒充运行配置。注册表保存在原生 agentDir 的私有 `pivane-profiles/assistant-projects.json`，项目和档案保存共用设置/维护忙碌互斥；过期修订和占用返回 409，未授权或非法输入按现有访问控制返回错误。
+现有 `/sessions?cwd` 仍列出全部原生线程，新增 `assistantProject:null|{id,name,cwd,available}`；不存在的已绑定组仍显示 ID 和 available=false，不能自动归入另一组。旧有档案绑定但无项目标记的线程仍按真实 cwd 保持未分类。项目标记 `pivane-assistant-project` 保存 `{version:1,sessionId,projectId,cwd}`：只认唯一且匹配当前原生 ID/cwd 的标记，复制导入的旧 ID 不生效；网页分叉给新 ID 追加新绑定。保存分组指令不自动重载当前 worker；`get_runtime_configuration.assistantProject` 分别返回 saved、savedProjectRevision、loadedProjectId、loadedProjectRevision、loadedConfirmed 与 matchesSavedProject。只有当前原生会话的运行实例确认后才标记已加载，保存值不能冒充运行配置。注册表保存在原生 agentDir 的私有 `pivane-profiles/assistant-projects.json`，项目和档案保存共用设置/维护忙碌互斥；过期修订和占用返回 409，未授权或非法输入按现有访问控制返回错误。
 
 ### Agent 任务线程
 

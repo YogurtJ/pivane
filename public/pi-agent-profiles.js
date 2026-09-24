@@ -436,7 +436,6 @@
         editor.addEventListener('click', event => {
             if (event.target.closest('#pi-profile-editor-close')) closeEditor();
             if (event.target.closest('[data-profile-assist]')) void assist();
-            if (event.target.closest('#pi-profile-document-sync')) syncDocumentIndex();
             if (event.target.closest('#pi-profile-proposal-apply')) applyProposal();
             if (event.target.closest('#pi-profile-avatar-clear')) {
                 draft.avatar = null; $('pi-profile-form').elements.emoji.value = '';
@@ -465,7 +464,11 @@
             state.reviewed = event.target.checked;
             $('pi-profile-document-save').disabled = !state.reviewed || !state.dirty || state.status !== 'ready';
         });
-        documentRoot.addEventListener('click', event => { if (event.target.closest('#pi-profile-document-save')) void saveDocument(); if (event.target.closest('#pi-profile-document-refresh')) void refreshDocument(); });
+        documentRoot.addEventListener('click', event => {
+            if (event.target.closest('#pi-profile-document-save')) void saveDocument();
+            if (event.target.closest('#pi-profile-document-refresh')) void refreshDocument();
+            if (event.target.closest('#pi-profile-document-sync')) void syncDocumentIndex();
+        });
         memoryRoot.addEventListener('click', event => {
             if (event.target.closest('#pi-profile-memory-close')) { clearTimeout(searchTimer); memoryEpoch++; void openSection('overview'); return; }
             const type = event.target.closest('[data-kind]')?.dataset.kind;

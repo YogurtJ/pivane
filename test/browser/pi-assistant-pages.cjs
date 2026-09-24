@@ -44,11 +44,11 @@ async function main() {
                         if (s.holdAuthoring) await new Promise(resolve => { s.authoringRelease = resolve; });
                         s.lastAuthoringProfileId = body.profileId; return { session: { id: 'authoring-1', cwd: '/synthetic/project' }, prompt: 'Please discuss my profile' };
                     }
-                    if (url.includes('/documents?')) return { status: 'ready', content: s.document, revision: s.documentRevision, profileRevision: s.revision, usage: { used: s.document.length, limit: 8000, unit: 'characters' } };
+                    if (url.includes('/documents?')) return { status: 'ready', content: s.document, revision: s.documentRevision, profileRevision: s.revision, indexSynced: s.indexSynced !== false, indexStatus: s.indexSynced === false ? 'pending' : 'ready', usage: { used: s.document.length, limit: 8000, unit: 'characters' } };
                     if (url.endsWith('/documents') && method === 'PUT') {
                         if (s.conflict) throw Object.assign(new Error('Conflict'), { status: 409 });
-                        s.document = body.content; s.documentRevision = 'd2';
-                        return { status: 'ready', content: s.document, revision: s.documentRevision, profileRevision: s.revision, usage: { used: s.document.length, limit: 8000, unit: 'characters' } };
+                        s.document = body.content; s.documentRevision = 'd2'; s.indexSynced = true;
+                        return { status: 'ready', content: s.document, revision: s.documentRevision, profileRevision: s.revision, indexSynced: true, indexStatus: 'ready', usage: { used: s.document.length, limit: 8000, unit: 'characters' } };
                     }
                     if (url.endsWith('/avatar') && method === 'POST') {
                         if (!body.dataUrl.startsWith('data:image/png;base64,')) throw new Error('Expected PNG upload');
@@ -82,6 +82,17 @@ async function main() {
             assert.match(await page.locator('.pi-profile-projects article').innerText(), /Notes/);
             await page.locator('[data-profile-section="user"]').click();
             await page.locator('#pi-profile-document-text:not([disabled])').waitFor();
+            await page.evaluate(() => { synthetic.indexSynced = false; });
+            await page.locator('#pi-profile-document-refresh').click();
+            await page.locator('#pi-profile-document-sync:not([hidden])').waitFor();
+            await page.locator('#pi-profile-document-text').fill('Local draft during index repair');
+            await page.locator('#pi-profile-document-sync').click();
+            await page.waitForFunction(() => window.synthetic.indexSynced === true);
+            assert.equal(await page.evaluate(() => synthetic.document), 'Original USER', 'index repair submits stored content, not the unsaved draft');
+            assert.equal(await page.locator('#pi-profile-document-text').inputValue(), 'Local draft during index repair');
+            await page.locator('#pi-profile-document-reviewed').check();
+            await page.locator('#pi-profile-document-save').click();
+            await page.waitForFunction(() => window.synthetic.document === 'Local draft during index repair');
             await page.locator('#pi-profile-document-text').fill('Unsaved USER');
             await page.locator('[data-profile-section="overview"]').click();
             await page.locator('[data-profile-section="user"]').click();

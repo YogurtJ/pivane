@@ -1,6 +1,6 @@
 # 可选助手档案
 
-助手档案用于保存名称、行为说明（SOUL）、记忆和已学习技能设置。它是可选能力：普通项目可以选择“无身份”，继续使用原有项目指令、工具和已配置 Skills。一个档案可以用于多个项目，学科或任务方式不必分别创建档案。
+助手档案用于保存名称、头像、行为说明（SOUL）、记忆和已学习技能设置。Pi Agent 页面新建无身份线程，继续使用原有项目指令、工具和已配置 Skills；助手对话页面从项目栏顶部选择档案，新线程自动使用该档案。一个档案可以用于多个项目，学科或任务方式不必分别创建档案。
 
 本功能属于未发布源码候选。实际实例需完成安装与安全切换；已安装文件、服务支持以及会话已加载是不同状态。
 
@@ -8,7 +8,7 @@
 
 在助手档案页面创建或编辑档案。名称最多80字符，描述500字符，行为说明最多32 KiB UTF-8；最多保存50个档案。可以使用普通新线程向 Agent 讨论草稿，专用 `profile_draft` 工具只生成提案，不自动保存；回到编辑器后由用户确认导入并显式保存。新档案的记忆和自动学习默认关闭，已学习技能默认允许使用。记忆与技能设置独立，开启记忆不会自动开启学习。
 
-新建线程显式选择已启用档案或“无身份”，项目默认身份仍服务于旧版/API省略身份参数的客户端。已有线程的归属不随项目默认变化；要切换身份，请另建线程。旧会话不会自动绑定档案。
+新建按钮旁不再提供身份选择器，临时会话入口在项目菜单中。项目默认身份仍服务于旧版/API省略身份参数的客户端。已有线程的归属不随项目默认变化；要使用另一档案，请进入对应助手区域另建线程。旧会话不会自动绑定档案。
 
 关闭档案保留原有数据，使它不能用于新建或新加载。已运行会话保留其已加载配置，保存不会打断任务。详情页分别核对保存的档案和当前运行实例确认加载的ID、版本；配置已变化时需要空闲后重开运行实例。仅刷新网页可能继续连接原来的 worker；资源重载不能更新进程环境中的设置。
 
@@ -53,7 +53,7 @@ Pivane 使用独立的 pi-hermes-memory 适配组件。按[安装说明](PROFILE
 
 | 接口 | 行为 |
 |---|---|
-| `GET /api/pi/profiles?cwd` | 返回档案、opaque revision、规范项目路径和项目默认身份；不传 cwd 时项目和默认值为 null |
+| `GET /api/pi/profiles?cwd` | 返回档案、opaque revision、profileRevisions（每个档案自身修订）、规范项目路径和项目默认身份；不传 cwd 时项目和默认值为 null |
 | `PUT /api/pi/profiles` | `{expectedRevision,profile:{id?,name,description,soul,enabled,avatar?,memory?,skills?}}`；无ID创建，有ID更新；emoji/null可直接保存，图片只允许保留本档案已上传版本；冲突409 |
 | `PUT /api/pi/profiles/default` | `{cwd,profileId,expectedRevision}`；null清除默认，仅允许已启用的档案 |
 | `POST /api/pi/sessions` | 原接口增加可选 profileId；省略使用项目默认，显式null创建无身份线程，不可用ID失败而非回退 |
@@ -69,8 +69,14 @@ Pivane 使用独立的 pi-hermes-memory 适配组件。按[安装说明](PROFILE
 
 辅助会话创建与档案设置保存共用维护互斥；正在停机或维护时拒绝创建，停机会等待已预占的创建完成。头像私有图片写入与档案注册表修订保存也在同一维护预占和注册表互斥内，冲突不会先发布新图片；已保存头像不会因新上传失败而丢失。
 
-`session.agentProfile` 为 null 或 `{id,name,enabled,available}`，只描述保存的身份。WebSocket `get_runtime_configuration.agentProfile` 返回 `saved`、`savedProfileRevision`、`loadedProfileId`、`loadedProfileRevision`、`loadedConfirmed`、`matchesSavedProfile`，区分身份相同但SOUL／设置版本已变化的情况。缺少确认时保持未验证。
+`session.agentProfile` 为 null 或 `{id,name,avatar,enabled,available}`，只描述保存的身份。WebSocket `get_runtime_configuration.agentProfile` 返回 `saved`、`savedProfileRevision`、`loadedProfileId`、`loadedProfileRevision`、`loadedConfirmed`、`matchesSavedProfile`，区分身份相同但SOUL／设置版本已变化的情况。缺少确认时保持未验证。
 
 Supervisor在启动前核对原生会话身份，向符合条件的worker提供不含凭据的 `PIVANE_AGENT_PROFILE_CONTEXT`，包括version、profileId、sessionId、cwd、sessionPath、profileRoot、sessionsRoot和memory／skills开关。扩展再次验证会话归属，并将SOUL追加到Pi现有提示词；原生会话JSONL仍是唯一对话事实来源。
 
 模块与持久化边界见[档案架构](development/AGENT_PROFILES.md)。
+
+## 起草与检索状态
+
+“与 Agent 起草”会创建一个普通的原生持久会话并填入可见草稿；用户发送后才调用所选模型。会话中的“查看档案起草建议”可返回档案页，提案仅在显式导入后进入未保存草稿。页面使用服务端档案修订核对提案，不依赖局域网 HTTP 上可能不可用的浏览器摘要接口。
+
+USER/MEMORY 页面分别显示内容与检索状态。文档保存成功但索引待同步时，使用“同步检索索引”核对并提交服务器当前内容；此操作保留本地未保存草稿，随后仍需核对差异后保存。关闭记忆或未安装适配器时，可以保存 USER，但不会声称内容已进入检索。长期存储的更新不会抹去已有聊天记录，也不代表当前 worker 的提示词快照已重新加载。
