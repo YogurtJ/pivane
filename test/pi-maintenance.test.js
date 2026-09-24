@@ -186,7 +186,7 @@ test('installation and backup failures retain the original release and never rep
 
 test('application startup failure waits for candidate exit and boots retained release', async t => {
     const root = fixture(t); packageFixture(root);
-    const events = [], launcher = new ManagedLauncher({ root, stageApp: async () => { events.push('stage'); } });
+    const events = [], launcher = new ManagedLauncher({ root, env: {}, stageApp: async () => { events.push('stage'); } });
     launcher.send = () => {}; launcher.child = {};
     launcher.backupInputs = [path.join(root, 'package.json')];
     launcher.stopChild = async () => { events.push('exit'); launcher.child = null; };

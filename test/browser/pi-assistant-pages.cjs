@@ -89,6 +89,16 @@ async function main() {
             }
             await page.evaluate(() => PiAgentProfilesUI.open({ profileId: window.synthetic.profile.id }));
             await page.locator('#pi-profile-form').waitFor();
+            await page.locator('[data-profile-section="overview"]').click();
+            await page.locator('#pi-profile-form [name=description]').fill('Draft kept while capability is unavailable');
+            await page.evaluate(() => PiAgentProfilesUI.setEnabled(false));
+            assert.equal(await page.locator('#pi-profile-form [type=submit]').isDisabled(), true);
+            assert.equal(await page.locator('#pi-profile-form [data-profile-assist]').isDisabled(), true);
+            assert.equal(await page.locator('#pi-profile-form [name=description]').inputValue(), 'Draft kept while capability is unavailable');
+            await page.evaluate(() => PiAgentProfilesUI.setEnabled(true, true));
+            await page.waitForFunction(() => document.querySelector('#pi-profile-form [type=submit]')?.disabled === false);
+            assert.equal(await page.locator('#pi-profile-form [name=description]').inputValue(), 'Draft kept while capability is unavailable');
+            await page.locator('#pi-profile-form [name=description]').fill('Notes');
             if (width === 393) await page.locator('[data-profile-section="overview"]').click();
             if (width === 1440) {
                 await page.evaluate(() => { synthetic.holdProfileReads = true; PiAgentProfilesUI.open({ profileId: synthetic.profile.id, section: 'skills' }); PiAgentProfilesUI.open({ profileId: synthetic.second.id, section: 'overview' }); });

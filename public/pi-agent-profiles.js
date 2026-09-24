@@ -100,11 +100,19 @@
             if (nav) nav.hidden = !enabled;
             if (!enabled && wasEnabled) {
                 epoch++; memoryEpoch++; documentEpoch++; proposalEpoch++;
-                snapshot = null; render(); $('pi-session-profile').hidden = true; $('pi-meta-profile-row').hidden = true;
+                snapshot = null; render(); syncEditorSave();
+                message(t('此服务暂不支持助手档案，未保存草稿仍保留。'));
+                root.querySelectorAll('[data-profile-assist], #pi-profile-avatar-upload, #pi-profile-document-save, #pi-profile-document-sync').forEach(control => { control.disabled = true; });
+                $('pi-session-profile').hidden = true; $('pi-meta-profile-row').hidden = true;
             }
             if (enabled && !wasEnabled && visible) {
                 const request = openEpoch;
-                void load().then(loaded => { if (loaded) applyOpen(request); });
+                void load().then(loaded => {
+                    if (!loaded || request !== openEpoch || !active()) return;
+                    applyOpen(request);
+                    root.querySelectorAll('[data-profile-assist], #pi-profile-avatar-upload').forEach(control => { control.disabled = Boolean(mutation); });
+                    if (section === 'user' || section === 'memory') renderSection();
+                });
             }
         }
         function open(options = {}) {
@@ -260,7 +268,7 @@
             if (section === 'user' || section === 'memory') {
                 const state = documents.get(section);
                 const limit = state?.usage?.limit ?? (section === 'user' ? draft.memory.userCharLimit ?? 8000 : draft.memory.memoryCharLimit ?? 16000);
-                documentRoot.innerHTML = `<div class="pi-profile-document"><h4>${section.toUpperCase()}</h4><p id="pi-profile-document-status" role="status">${html(state ? state.message || (state.status === 'ready' ? t('已读取保存内容') : state.status) : t('正在读取…'))}</p><textarea id="pi-profile-document-text" aria-label="${section.toUpperCase()}" spellcheck="false" ${state?.status !== 'ready' || mutation ? 'disabled' : ''}>${html(state?.content ?? '')}</textarea>${state?.serverContent !== undefined ? `<details class="pi-profile-server-version"><summary>${html(t('服务器最新内容'))}</summary><pre>${html(state.serverContent)}</pre></details><label class="pi-profile-check"><input id="pi-profile-document-reviewed" type="checkbox" ${state.reviewed ? 'checked' : ''}>${html(t('已核对服务器最新内容'))}</label>` : ''}<div class="pi-profile-document-footer"><span id="pi-profile-document-usage">${state ? `${state.content.length} / ${limit} ${html(t('字符'))}` : ''}</span><button id="pi-profile-document-refresh" type="button" class="settings-secondary-button">${html(t('刷新核对'))}</button><button id="pi-profile-document-sync" type="button" class="settings-secondary-button" ${state?.status !== 'ready' || state.indexStatus !== 'pending' ? 'hidden' : ''} ${mutation ? 'disabled' : ''}>${html(t('同步检索索引'))}</button><button id="pi-profile-document-save" type="button" class="settings-primary-button" ${state?.status !== 'ready' || !state.dirty || mutation || state.serverContent !== undefined && !state.reviewed ? 'disabled' : ''}><i class="fa-solid fa-floppy-disk"></i> ${html(t('保存文档'))}</button></div></div>`;
+                documentRoot.innerHTML = `<div class="pi-profile-document"><h4>${section.toUpperCase()}</h4><p id="pi-profile-document-status" role="status">${html(state ? state.message || (state.status === 'ready' ? t('已读取保存内容') : state.status) : t('正在读取…'))}</p><textarea id="pi-profile-document-text" aria-label="${section.toUpperCase()}" spellcheck="false" ${state?.status !== 'ready' || mutation ? 'disabled' : ''}>${html(state?.content ?? '')}</textarea>${state?.serverContent !== undefined ? `<details class="pi-profile-server-version"><summary>${html(t('服务器最新内容'))}</summary><pre>${html(state.serverContent)}</pre></details><label class="pi-profile-check"><input id="pi-profile-document-reviewed" type="checkbox" ${state.reviewed ? 'checked' : ''}>${html(t('已核对服务器最新内容'))}</label>` : ''}<div class="pi-profile-document-footer"><span id="pi-profile-document-usage">${state ? `${state.content.length} / ${limit} ${html(t('字符'))}` : ''}</span><button id="pi-profile-document-refresh" type="button" class="settings-secondary-button">${html(t('刷新核对'))}</button><button id="pi-profile-document-sync" type="button" class="settings-secondary-button" ${state?.status !== 'ready' || state.indexStatus !== 'pending' ? 'hidden' : ''} ${!enabled || mutation ? 'disabled' : ''}>${html(t('同步检索索引'))}</button><button id="pi-profile-document-save" type="button" class="settings-primary-button" ${!enabled || state?.status !== 'ready' || !state.dirty || mutation || state.serverContent !== undefined && !state.reviewed ? 'disabled' : ''}><i class="fa-solid fa-floppy-disk"></i> ${html(t('保存文档'))}</button></div></div>`;
             } else if (section === 'projects') {
                 documentRoot.innerHTML = `<div class="pi-profile-projects">${projects?.map(p => `<article><strong>${html(p.name)}</strong><small>${html(p.cwd)}</small><p>${html(p.description || '')}</p></article>`).join('') || `<p class="pi-profile-note">${html(projects === null ? t('正在读取…') : t('没有关联项目'))}</p>`}</div>`;
             } else if (section === 'skills') { renderMemory(); void loadMemory(); }
@@ -299,7 +307,7 @@
         }
         async function saveDocument() {
             const target = section, state = documents.get(target), id = selected;
-            if (!state?.dirty || state.status !== 'ready' || mutation || state.serverContent !== undefined && !state.reviewed) return;
+            if (!active() || !state?.dirty || state.status !== 'ready' || mutation || state.serverContent !== undefined && !state.reviewed) return;
             if (state.content.length > state.usage?.limit) { state.message = t('文档超出字符上限。'); renderSection(); return; }
             mutation = { kind: 'document' }; renderSection();
             try {
@@ -319,7 +327,7 @@
         }
         async function syncDocumentIndex() {
             const target = section, id = selected, previous = documents.get(target);
-            if (mutation || previous?.status !== 'ready' || previous.indexStatus !== 'pending') return;
+            if (!active() || mutation || previous?.status !== 'ready' || previous.indexStatus !== 'pending') return;
             mutation = { kind: 'index' }; renderSection();
             try {
                 const current = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/documents?target=${target}`);
@@ -348,7 +356,7 @@
             } catch (error) { if (request === documentEpoch && id === selected) $('pi-profile-document-status').textContent = error.message; }
         }
         async function uploadAvatar(file) {
-            if (!file || !draft?.id || mutation) return;
+            if (!active() || !file || !draft?.id || mutation) return;
             if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type) || file.size > 6 * 1024 * 1024) { message(t('仅支持不超过 6 MiB 的 PNG、JPEG、WebP 或 GIF。')); return; }
             const id = selected, revision = snapshot.revision;
             try {
@@ -371,7 +379,7 @@
             finally { mutation = null; }
         }
         async function assist() {
-            if (mutation) return;
+            if (!active() || mutation) return;
             const input = readDraft() || { name: '', description: '', soul: '' }, id = selected;
             mutation = { kind: 'authoring' };
             document.querySelectorAll('#pi-profiles-content [data-profile-assist]').forEach(button => { button.disabled = true; });
