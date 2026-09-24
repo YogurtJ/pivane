@@ -212,7 +212,6 @@
     };
     document.addEventListener('DOMContentLoaded', () => {
         const nav = document.querySelector('.workspace-settings-nav');
-        nav.prepend(button(text('已学习技能', 'Learned skills'), () => {}, { 'data-settings-tab': 'extensions' }));
         for (const [tab, label] of [['packages', text('已安装扩展包', 'Installed packages')], ['skills', text('已安装技能', 'Installed skills')]]) {
             nav.querySelector(`[data-settings-tab="${tab}"] span`).textContent = label;
         }

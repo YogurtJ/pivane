@@ -17,6 +17,7 @@
         let draft = null, draftOriginal = '', selected = '', kind = 'memories', query = '', offset = 0, pageOffsets = [0];
         let memory = null, mutation = null, editorVersion = 0;
         let section = 'overview', documents = new Map(), documentEpoch = 0, proposalEpoch = 0, projects = null, proposal = null;
+        let openEpoch = 0, openOptions = {};
         const proposedDocuments = new Map();
         let reconcile = null, pendingRefresh = false, loadedProfile = null, loadedKey = '';
         let displayedSession = null, displayedConnected = false, displayedKey = '';
@@ -28,7 +29,17 @@
         const profiles = () => snapshot?.profiles || [];
         const cwd = () => currentCwd() || '';
         const active = () => enabled && visible;
-        const memoryLabel = value => ({ missing: t('身份不存在'), disabled: t('身份已停用'), ready: t('可读取已保存数据'), unsupported: t('此后端不支持读取'), error: t('读取失败') })[value] || t('读取状态未知');
+        function memoryLabel(value) {
+            if (value === 'disabled') {
+                const saved = profiles().find(p => p.id === selected);
+                if (!saved) return t('身份不存在');
+                if (!saved.enabled) return t('身份已停用');
+                if (kind === 'memories' && !saved.memory?.enabled) return t('此身份的记忆已停用');
+                if (kind === 'skills' && !saved.skills?.learnedEnabled) return t('此身份的已学习技能已停用');
+                return t('数据不可用');
+            }
+            return ({ missing: t('身份不存在'), ready: t('可读取已保存数据'), unsupported: t('此后端不支持读取'), error: t('读取失败') })[value] || t('读取状态未知');
+        }
 
         function renderList() {
             if (!snapshot) { list.replaceChildren(); return; }
@@ -66,6 +77,7 @@
                 window.dispatchEvent(new CustomEvent('pi:native-config-saved', { detail: { scope: 'global' } }));
                 if (selected && !profiles().some(p => p.id === selected)) { selected = ''; memoryRoot.replaceChildren(); }
                 else if (selected && section === 'skills') void loadMemory();
+                return true;
             } catch (error) {
                 if (request !== epoch || !active() || project !== cwd()) return;
                 reconcile ||= { kind: 'read' };
@@ -75,6 +87,7 @@
             }
         }
         function setEnabled(value, capability = false) {
+            const wasEnabled = enabled;
             enabled = value === true;
             autoLearnSupported = capability === true;
             if (draft && $('pi-profile-form')) {
@@ -85,21 +98,31 @@
                 reason.hidden = !checkbox.disabled;
             }
             if (nav) nav.hidden = !enabled;
-            if (!enabled) { close(); snapshot = null; render(); $('pi-session-profile').hidden = true; $('pi-meta-profile-row').hidden = true; }
+            if (!enabled && wasEnabled) {
+                epoch++; memoryEpoch++; documentEpoch++; proposalEpoch++;
+                snapshot = null; render(); $('pi-session-profile').hidden = true; $('pi-meta-profile-row').hidden = true;
+            }
+            if (enabled && !wasEnabled && visible) {
+                const request = openEpoch;
+                void load().then(loaded => { if (loaded) applyOpen(request); });
+            }
         }
         function open(options = {}) {
             visible = true;
-            const requested = options.profileId;
-            if (enabled) void load().then(() => {
-                if (!active()) return;
-                const target = profiles().find(p => p.id === requested);
-                if (target && (!draft || draft.id !== requested)) editProfile(target);
-                if (options.authoringSession && !draft && !requested) editProfile(null);
-                if (options.section && draft && (!requested || draft.id === requested)) void openSection(options.section);
-                if (options.authoringSession && draft && (!requested || draft.id === requested)) void loadProposal(options.authoringSession);
-            });
+            openOptions = options;
+            const request = ++openEpoch;
+            if (enabled) void load().then(loaded => { if (loaded) applyOpen(request); });
         }
-        function close() { visible = false; epoch++; memoryEpoch++; documentEpoch++; proposalEpoch++; }
+        function applyOpen(request) {
+            if (request !== openEpoch || !active()) return;
+            const options = openOptions, requested = options.profileId;
+            const target = profiles().find(p => p.id === requested);
+            if (target && (!draft || draft.id !== requested)) editProfile(target);
+            if (options.authoringSession && !draft && !requested) editProfile(null);
+            if (options.section && draft && (!requested || draft.id === requested)) void openSection(options.section);
+            if (options.authoringSession && draft && (!requested || draft.id === requested)) void loadProposal(options.authoringSession);
+        }
+        function close() { visible = false; openEpoch++; epoch++; memoryEpoch++; documentEpoch++; proposalEpoch++; }
         function syncEditorSave() {
             const button = editor.querySelector('#pi-profile-form button[type=submit]');
             if (button) button.disabled = Boolean(mutation || reconcile || !snapshot || (snapshot.cwd || '') !== cwd());

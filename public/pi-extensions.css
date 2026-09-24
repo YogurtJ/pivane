@@ -1,5 +1,4 @@
 /* Learned skills and curated discovery share the full-page extension destination. */
-.workspace-settings-nav [data-settings-tab="extensions"] { display: none; }
 .extensions-tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--line); }
 .extensions-tabs button { padding: 10px 14px; border: 0; border-bottom: 2px solid transparent; color: var(--text-muted); background: transparent; font: inherit; cursor: pointer; }
 .extensions-tabs button[aria-current=page] { border-bottom-color: var(--accent); color: var(--text-main); font-weight: 600; }
