@@ -73,6 +73,14 @@ function createMutationLock(root) {
     }
     return {
         inspect: (work, signal) => locked(signal, work, undefined, false),
+        transact: (signal, work) => locked(signal, async current => {
+            let reserved = false;
+            return work(current, async () => {
+                if (reserved) throw new Error('Memory revision already reserved');
+                reserved = true;
+                await bump(current);
+            });
+        }, undefined, false),
         run: (signal, work, expected) => locked(signal, work, expected, true),
     };
 }

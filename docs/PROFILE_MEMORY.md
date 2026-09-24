@@ -109,6 +109,73 @@ and returns `ready`, `missing`, `disabled` or `unsupported`. A ready item adds
 the verified `content` and its file `revision`; no shared installed skill or
 arbitrary path can be read through the route.
 
+## Unified knowledge management (source candidate)
+
+`mountProfileKnowledgeRoutes(router, { service })` mounts same-origin GET
+`/profiles/:id/knowledge?kind=memory|skill&query=&offset=&sessionId=`, GET
+`/profiles/:id/knowledge/items/:itemId`, and POST
+`/profiles/:id/knowledge/mutations`. The service is
+`new ProfileKnowledgeService({ profiles, getAgentDir, bundlePath })` from
+`server/profile-memory/knowledge-service.js`; mount it once and pass the **same
+instance** to background learning and the native tool adapter. The UI does not
+own a second store. GET pages contain at most 50 entries (memory previews up to
+512 characters), 30 recent receipts, and a hash revision; detail content is
+bounded to 65,536 characters and marks truncated legacy entries read-only.
+`offset` is a canonical decimal integer from 0 to 100000 (no leading zeros).
+`capabilities.operations` lists supported commands, and `memory`/`skill` flags
+specify which kind is writable. `projectWrites:false` applies to HTTP; only a
+verified native source can write the physical cwd scope. No logical assistant
+project isolation is claimed. Installed Pi skills are never writable.
+
+POST accepts `{requestId,expectedRevision,operation,kind,...}` with operations
+`create|update|delete|restore|enable|disable|undo`. Create/update require
+explicit content; memory requires category `fact|preference|correction|failure|procedure`.
+Skill names are lowercase slugs of at most 64 characters. Updates and state
+changes require `itemId` and `itemRevision`; undo requires `receiptId` and
+current snapshot revision, not item identity. The receipt reports saved state,
+index readiness, activation timing and an undo token; it does not claim a
+running worker has reloaded. A deleted/replaced memory leaves a tombstone, so
+an automatic or repeated create cannot silently revive it. The older whole-document
+PUT checks the same private ledger under its existing mutation lock: it cannot
+remove managed facts or reintroduce tombstoned ones, while unrelated legacy
+entries remain editable. SQLite-only rows,
+legacy failure entries and oversized records remain visible but read-only,
+with distinct identities from the Markdown they may mirror. Failure records
+are never remapped into the `memory` target.
+
+`service.mutateFromNative(profileId, input, { sessionPath, sessionId, entryId,
+cwd })` is **server/worker-only**. It verifies the opened native JSONL
+header, current-ID profile binding, canonical cwd and existing entry before
+and immediately before publication. It writes only `{sessionId,entryId}` into
+the item and receipt; no conversation text is duplicated. A session larger
+than the verified 8 MiB snapshot bound is not eligible for provenance writes.
+For project scope the service derives `projectKey=sha256(canonical cwd)` and
+writes the profile-owned physical project directory; the caller cannot choose
+an unrelated projectKey. Only this method can create a skill in `draft` state;
+manual enable publishes the validated skill after review. The HTTP mutation
+method rejects all `source`, `projectKey`, and draft state fields. The helper
+`createKnowledgeToolAdapter(service, profileId)` in
+`server/profile-memory/knowledge-tool-adapter.js` maps supported native
+memory add/replace/remove and skill create/update/patch/delete writes into
+this entry. Its `native` argument must be taken from a verified worker and a
+real native entry; it returns `null` for read-only skill view. Legacy failure
+writes cannot be mapped losslessly and fail closed rather than changing a
+normal memory entry. Integrating the helper into the worker is a separate B
+line wiring step; an A-only commit does not change existing worker tools.
+
+The journal and pending publication marker are private profile data protected
+by the same cross-process mutation lock and generation as the Markdown/SQLite
+writer. An uncertain publication returns an error and `snapshot.status=pending`
+until a retry with the identical requestId and input verifies whether the
+file is the expected before or after revision. After publication, that retry
+repairs indexing/metadata; before publication, it safely retries the write.
+A different request cannot pass an unresolved marker. All 200 request IDs
+remain reserved indefinitely within the bounded journal, including after
+retry. Once full, new mutations are refused with `request-journal-full` in
+capabilities; old requests may still resolve. Recovery/archival requires an
+explicit reviewed migration, not silent ID expiration. A saved document is
+not evidence of successful indexing or activation in an already-running worker.
+
 ## Auto-learning
 
 `memory.autoLearn` has no effect unless memory is enabled, a valid bound RPC

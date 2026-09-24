@@ -8,6 +8,7 @@ const { safeFile: readFile } = require('./profile-memory/management');
 const { createMutationLock } = require('./profile-memory/mutation-lock');
 const { profileMemoryCapability } = require('./profile-memory/management');
 const { documentIndex, pendingDocumentIndex, documentIndexSynced } = require('./profile-memory/document-index');
+const { assertKnowledgeDocumentWrite } = require('./profile-memory/knowledge-guard');
 const { normalizedMemory, profileRevision } = require('./pi-profile-registry');
 const { descriptorPathSync } = require('./pi-file-descriptor');
 const io = require('./pi-file-io');
@@ -114,6 +115,7 @@ function mountProfileDocumentRoutes(router, { profiles, getAgentDir, bundlePath 
                     if (current.revision !== req.body.expectedRevision || current.profileRevision !== req.body.expectedProfileRevision)
                         throw fail('Document or profile changed; reload before saving', 409);
                     validateContent(req.body.content, current.usage.limit);
+                    assertKnowledgeDocumentWrite(root, target, req.body.content);
                     const file = path.join(root, target === 'user' ? 'USER.md' : 'MEMORY.md');
                     const old = readFile(file);
                     if (pendingDocumentIndex(root, target) && (!latest.memory.enabled || !installed))
@@ -174,4 +176,4 @@ function mountProfileDocumentRoutes(router, { profiles, getAgentDir, bundlePath 
     router.get('/profiles/:id/documents', handler(false));
     router.put('/profiles/:id/documents', handler(true));
 }
-module.exports = { mountProfileDocumentRoutes, location };
+module.exports = { mountProfileDocumentRoutes, location, publish, validateContent };
