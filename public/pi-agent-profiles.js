@@ -45,12 +45,15 @@
             if (!snapshot) { list.replaceChildren(); return; }
             list.innerHTML = `<div class="pi-profile-toolbar"><h4>${html(t('助手档案'))}</h4><button id="pi-profile-add" class="settings-primary-button" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i> ${html(t('新建'))}</button></div>${profiles().length ? profiles().map(p => `<button class="pi-profile-row" type="button" data-profile-id="${html(p.id)}" aria-current="${selected === p.id}"><span class="pi-profile-avatar">${avatar(p)}</span><span><strong>${html(p.name)}</strong><small>${html(p.enabled ? t('已启用') : t('已停用'))}</small></span></button>`).join('') : `<p class="pi-profile-note">${html(t('尚无助手身份。'))}</p><button type="button" class="settings-secondary-button" data-profile-assist>${html(t('与 Agent 起草'))}</button>`}`;
         }
+        function renderEmptyDetail() {
+            if (!draft && snapshot) editor.innerHTML = `<div class="pi-profile-empty"><i class="fa-regular fa-user" aria-hidden="true"></i><h4>${html(t('选择助手档案'))}</h4><p>${html(t('从左侧选择一个助手档案，或新建档案。'))}</p></div>`;
+        }
         function avatar(p) {
             if (p.avatar?.kind === 'emoji') return html(p.avatar.value);
             if (p.avatar?.kind === 'image') return `<img src="/api/pi/profiles/${encodeURIComponent(p.id)}/avatar?version=${encodeURIComponent(p.avatar.version)}" alt="">`;
             return html(p.name?.trim().slice(0, 1).toUpperCase() || '?');
         }
-        function render() { renderList(); }
+        function render() { renderList(); renderEmptyDetail(); }
         async function load() {
             if (!active()) return;
             if (mutation) { pendingRefresh = true; message(t('保存结束后请刷新核对。')); return; }
@@ -150,7 +153,7 @@
                 <label>${html(t('名称'))}<input name="name" maxlength="80" required value="${html(draft.name)}"></label>
                 <label>${html(t('描述'))}<textarea name="description" maxlength="500" rows="2">${html(draft.description)}</textarea></label>
                 <label>${html(t('头像表情'))}<input name="emoji" maxlength="16" value="${html(draft.avatar?.kind === 'emoji' ? draft.avatar.value : '')}"></label>
-                ${draft.id ? `<label>${html(t('上传头像'))}<input id="pi-profile-avatar-upload" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>` : `<p class="pi-profile-note">${html(t('保存身份后可上传图片头像。'))}</p>`}
+                ${draft.id ? `<label>${html(t('上传头像'))}<input id="pi-profile-avatar-upload" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label><p id="pi-profile-avatar-status" class="pi-profile-note" role="status" aria-live="polite"></p>` : `<p class="pi-profile-note">${html(t('保存身份后可上传图片头像。'))}</p>`}
                 ${draft.avatar ? `<button id="pi-profile-avatar-clear" type="button" class="settings-secondary-button">${html(t('移除头像'))}</button>` : ''}
                 <label class="pi-profile-check"><input name="enabled" type="checkbox" ${draft.enabled ? 'checked' : ''}>${html(t('启用身份'))}</label>
                 <label class="pi-profile-check"><input name="memoryEnabled" type="checkbox" ${draft.memory.enabled ? 'checked' : ''}>${html(t('启用此身份的记忆'))}</label>
@@ -177,10 +180,11 @@
         function closeEditor() {
             if (mutation || !draft) return;
             if ((JSON.stringify(readDraft()) !== draftOriginal || [...documents.values()].some(doc => doc.dirty) || proposedDocuments.size) && !confirm(t('放弃未保存的身份修改？'))) return;
-            draft = null; selected = ''; editorVersion++; documentEpoch++; proposalEpoch++; proposedDocuments.clear(); editor.replaceChildren(); documentRoot.replaceChildren(); memoryRoot.replaceChildren(); renderList();
+            draft = null; selected = ''; editorVersion++; documentEpoch++; proposalEpoch++; proposedDocuments.clear(); editor.replaceChildren(); documentRoot.replaceChildren(); memoryRoot.replaceChildren(); renderList(); renderEmptyDetail();
             if (reconcile?.duplicate || reconcile?.applied) reconcile = null;
         }
         async function saveProfile() {
+            if (mutation?.kind === 'avatar') { const target = $('pi-profile-avatar-status'); if (target) target.textContent = t('请等待头像上传完成。'); return; }
             if (!snapshot || mutation || reconcile || !draft || (snapshot.cwd || '') !== cwd()) return;
             const input = readDraft(), revision = snapshot.revision, project = cwd(), version = editorVersion;
             let savedProfile = null;
@@ -232,7 +236,7 @@
             if (!memory || !selected || !$('pi-profile-memory-status')) return;
             $('pi-profile-memory-status').textContent = `${memoryLabel(memory.status)}${memory.reason ? ` · ${memory.reason}` : ''}`;
             $('pi-profile-memory-next').disabled = memory.status !== 'ready' || !memory.hasMore || !memory.items?.length;
-            $('pi-profile-memory-items').innerHTML = memory.status === 'ready' ? (memory.items?.length ? memory.items.map(item => `<article class="pi-profile-memory-item"><strong>${html(item.kind === 'skill' ? item.name : item.target)}</strong>${item.description || item.content ? `<p>${html(item.description || item.content)}</p>` : ''}${item.kind === 'skill' ? `<small>${html(item.scope === 'profile' ? t('助手共用') : item.scope === 'project' ? t('项目专属') : t('范围未提供'))} · ${html(item.source === 'profile-owned' ? t('助手技能库') : t('来源未提供'))}</small>` : item.source?.sessionId ? `<small>${html(t('来源线程'))}: ${html(item.source.sessionId)}</small>` : ''}</article>`).join('') : `<p class="pi-profile-note">${html(t('此页没有已保存数据'))}</p>`) : '';
+            $('pi-profile-memory-items').innerHTML = memory.status === 'ready' ? (memory.items?.length ? memory.items.map(item => `<article class="pi-profile-memory-item"><strong>${html(item.kind === 'skill' ? item.name : item.target)}</strong>${item.description || item.content ? `<p>${html(item.description || item.content)}</p>` : ''}${item.kind === 'skill' ? `<small>${html(item.scope === 'profile' ? t('助手共用') : item.scope === 'project' ? t('项目专属') : t('范围未提供'))} · ${html(item.source === 'profile-owned' ? t('助手技能库') : t('来源未提供'))}</small><details data-skill-id="${html(item.id)}"><summary>${html(t('查看技能正文'))}</summary><pre class="pi-profile-skill-text" role="status"></pre></details>` : item.source?.sessionId ? `<small>${html(t('来源线程'))}: ${html(item.source.sessionId)}</small>` : ''}</article>`).join('') : `<p class="pi-profile-note">${html(t('此页没有已保存数据'))}</p>`) : '';
         }
         async function loadMemory() {
             if (!active() || !selected) return;
@@ -357,26 +361,42 @@
         }
         async function uploadAvatar(file) {
             if (!active() || !file || !draft?.id || mutation) return;
-            if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type) || file.size > 6 * 1024 * 1024) { message(t('仅支持不超过 6 MiB 的 PNG、JPEG、WebP 或 GIF。')); return; }
+            const target = $('pi-profile-avatar-status');
+            if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type) || file.size > 6 * 1024 * 1024) {
+                if (target) target.textContent = t('仅支持不超过 6 MiB 的 PNG、JPEG、WebP 或 GIF。');
+                return;
+            }
             const id = selected, revision = snapshot.revision;
+            mutation = { kind: 'avatar' }; syncEditorSave();
+            if (target) target.textContent = t('正在处理并上传头像…');
             try {
                 const bitmap = await createImageBitmap(file);
-                const scale = Math.min(1, 1024 / Math.max(bitmap.width, bitmap.height));
-                const canvas = document.createElement('canvas'); canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-                canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height); bitmap.close();
-                const dataUrl = canvas.toDataURL('image/png');
+                let dataUrl;
+                try {
+                    for (const size of [1024, 768, 512, 384, 256]) {
+                        const scale = Math.min(1, size / Math.max(bitmap.width, bitmap.height));
+                        const canvas = document.createElement('canvas');
+                        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+                        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+                        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+                        dataUrl = canvas.toDataURL('image/png');
+                        if (dataUrl.length <= 1.4 * 1024 * 1024) break;
+                    }
+                } finally { bitmap.close(); }
                 if (dataUrl.length > 1.4 * 1024 * 1024) throw new Error(t('转换后的 PNG 超过 1 MiB，请选择较小的图片。'));
-                if (id !== selected) return;
-                mutation = { kind: 'avatar' };
+                if (id !== selected || !active()) return;
                 const result = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/avatar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedRevision: revision, dataUrl }) });
-                if (id !== selected) return;
+                if (id !== selected || !active()) return;
                 snapshot = { ...snapshot, revision: result.revision, profiles: profiles().map(p => p.id === id ? result.profile : p) };
                 draft.avatar = result.profile.avatar; draftOriginal = JSON.stringify({ ...JSON.parse(draftOriginal), avatar: result.profile.avatar });
                 const emoji = $('pi-profile-form')?.elements.emoji; if (emoji) emoji.value = '';
                 const preview = $('pi-profile-form')?.querySelector('.pi-profile-avatar-large'); if (preview) preview.innerHTML = avatar(draft);
-                renderList(); message(t('头像已保存。其他未保存修改仍保留。')); window.dispatchEvent(new CustomEvent('workspace:agent-profiles-changed'));
-            } catch (error) { message(`${t('头像未保存；其他草稿仍在')}：${error.message}`); }
-            finally { mutation = null; }
+                renderList();
+                if (target?.isConnected) target.textContent = t('头像已单独保存；其他修改请点击保存身份。');
+                window.dispatchEvent(new CustomEvent('workspace:agent-profiles-changed'));
+            } catch (error) {
+                if (target?.isConnected) target.textContent = `${t('头像未保存；其他草稿仍在')}：${error.message}`;
+            } finally { mutation = null; syncEditorSave(); }
         }
         async function assist() {
             if (!active() || mutation) return;
@@ -500,6 +520,19 @@
             if (event.target.closest('#pi-profile-document-refresh')) void refreshDocument();
             if (event.target.closest('#pi-profile-document-sync')) void syncDocumentIndex();
         });
+        memoryRoot.addEventListener('toggle', async event => {
+            const detail = event.target;
+            if (!(detail instanceof HTMLDetailsElement) || !detail.open || !detail.dataset.skillId || !selected) return;
+            const profileId = selected, skillId = detail.dataset.skillId, view = ++memoryEpoch;
+            const text = detail.querySelector('.pi-profile-skill-text');
+            text.textContent = t('正在读取技能正文…');
+            try {
+                const result = await apiFetch(`/api/pi/profiles/${encodeURIComponent(profileId)}/skills/${encodeURIComponent(skillId)}`);
+                if (view !== memoryEpoch || !detail.isConnected || !detail.open || profileId !== selected) return;
+                text.textContent = result.status === 'ready' && result.profileId === profileId && result.item?.id === skillId
+                    && typeof result.item.content === 'string' ? result.item.content : t('技能正文不可用，请刷新档案。');
+            } catch (error) { if (view === memoryEpoch && detail.isConnected) text.textContent = error.message; }
+        }, true);
         memoryRoot.addEventListener('click', event => {
             if (event.target.closest('#pi-profile-memory-close')) { clearTimeout(searchTimer); memoryEpoch++; void openSection('overview'); return; }
             const type = event.target.closest('[data-kind]')?.dataset.kind;

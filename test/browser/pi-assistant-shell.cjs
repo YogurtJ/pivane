@@ -66,6 +66,11 @@ async function main() {
                     }
                     return route.fulfill({ json: { ok: true } });
                 }
+                if (pathname === '/api/pi/directories') {
+                    const current = url.searchParams.get('path') || null;
+                    return route.fulfill({ json: { current, parent: current === cwd ? '/fixture' : null,
+                        directories: current ? [{ name: 'notes', path: `${cwd}/notes` }] : [{ name: 'assistant-work', path: cwd }] } });
+                }
                 if (pathname === '/api/pi/status') return route.fulfill({ json: { ok: true, agentProfiles: true, assistantProjects: true, projectRoots: ['/fixture'], defaultProject: cwd } });
                 if (pathname === '/api/pi/projects') return route.fulfill({ json: { projects: [{ cwd, name: 'Assistant work', sessionCount: sessions.length }], roots: ['/fixture'] } });
                 if (pathname === '/api/pi/profiles') return route.fulfill({ json: { version: 1, revision: 'profiles-1', profiles } });
@@ -118,10 +123,37 @@ async function main() {
             assert.equal(await page.locator('#pi-actual-identity').isVisible(), false);
             await page.locator('#workspace-assistant-toggle').click();
             await page.waitForFunction(() => document.querySelectorAll('[data-assistant-project-id]').length === 3);
+            assert.equal(await page.locator('#pi-input').inputValue(), '');
+            assert.equal(await page.locator('#pi-input').isDisabled(), true, 'switching work areas clears the visible session');
+            assert.equal(await page.locator('#pi-transcript-content').innerText().then(text => text.includes('Unsent synthetic draft')), false);
+            if (width === 1440) {
+                await page.locator('[data-tab="chat"]').click();
+                assert.equal(await page.locator('#pi-input').isDisabled(), true);
+                await page.locator('[data-session-id="agent-original"] .pi-session-main').click();
+                await page.waitForFunction(() => document.querySelector('#pi-input')?.disabled === false);
+                assert.equal(await page.locator('#pi-input').inputValue(), 'Unsent synthetic draft');
+                assert.equal(await page.locator('#pi-attachments .pi-attachment-chip').count(), 1);
+                await page.locator('#workspace-assistant-toggle').click();
+                await page.waitForFunction(() => document.querySelectorAll('[data-assistant-project-id]').length === 3);
+            }
             assert.deepEqual(await page.locator('[data-assistant-project-id]').evaluateAll(nodes => nodes.map(n => n.dataset.assistantProjectId)), [groups[0].id, groups[1].id, `unclassified:${cwd}`]);
             assert.equal(await page.locator('[data-assistant-project-id]').first().locator('[data-session-id]').count(), 1);
             assert.equal(await page.locator('[data-assistant-project-id]').nth(1).locator('[data-session-id]').count(), 1);
             if (width === 1280) {
+                await page.locator('#pi-assistant-add-project').click();
+                const dialog = page.locator('.pi-assistant-project-editor[open]');
+                await dialog.waitFor();
+                const bounds = await dialog.boundingBox();
+                assert.ok(Math.abs(bounds.x + bounds.width / 2 - width / 2) < 3, 'project editor centered');
+                await dialog.locator('[data-browse]').click();
+                await dialog.locator('[data-directories] [data-path]').first().waitFor();
+                await page.screenshot({ path: path.join(evidence, 'shell-project-browser-1280.png') });
+                await dialog.locator('[data-directories] [data-path]').first().click();
+                await page.waitForFunction(() => document.querySelector('.pi-assistant-directory-toolbar [data-current]')?.textContent.endsWith('/notes'));
+                await dialog.locator('[data-choose]').click();
+                assert.equal(await dialog.locator('[name=cwd]').inputValue(), `${cwd}/notes`);
+                assert.equal(await dialog.locator('[name=name]').inputValue(), 'notes');
+                await dialog.locator('[data-close]').click();
                 await page.evaluate(({ cwd, profileId }) => window.dispatchEvent(new CustomEvent('workspace:open-settings', { detail: {
                     tab: 'profiles', profileId, section: 'soul', authoringSession: { cwd, id: 'synthetic-helper' }
                 } })), { cwd, profileId: profiles[0].id });
@@ -242,6 +274,34 @@ async function main() {
                 await page.locator('#pi-toggle-sessions').click();
                 await page.waitForFunction(() => document.querySelector('#pi-session-pane').classList.contains('open') && document.querySelector('#pi-session-pane').getBoundingClientRect().left >= -1);
                 await page.screenshot({ path: path.join(evidence, `shell-drawer-${width}.png`) });
+                const controls = await page.evaluate(() => {
+                    const pane = document.querySelector('#pi-session-pane').getBoundingClientRect();
+                    return ['pi-session-search-toggle', 'pi-new-session'].map(id => {
+                        const b = document.getElementById(id).getBoundingClientRect();
+                        return { id, left: b.left, right: b.right, paneLeft: pane.left, paneRight: pane.right };
+                    });
+                });
+                assert.ok(controls.every(item => item.left >= item.paneLeft && item.right <= item.paneRight + 1), JSON.stringify(controls));
+                await page.locator('#pi-assistant-add-project').click();
+                const editor = page.locator('.pi-assistant-project-editor[open]');
+                await editor.locator('[data-browse]').click();
+                await editor.locator('[data-directories] [data-path]').first().waitFor();
+                const bounds = await editor.boundingBox();
+                assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1 && bounds.y >= 0 && bounds.y + bounds.height <= 852, JSON.stringify(bounds));
+                await page.screenshot({ path: path.join(evidence, `shell-project-browser-${width}.png`) });
+                await editor.locator('[data-close]').click();
+                await page.locator('[data-tab="chat"]').click();
+                await page.locator('#pi-toggle-sessions').click();
+                await page.waitForFunction(() => document.querySelector('#pi-session-pane').classList.contains('open') && document.querySelector('#pi-session-pane').getBoundingClientRect().left >= -1);
+                const agentControls = await page.evaluate(() => {
+                    const pane = document.querySelector('#pi-session-pane').getBoundingClientRect();
+                    return ['pi-session-search-toggle', 'pi-new-session'].map(id => {
+                        const b = document.getElementById(id).getBoundingClientRect();
+                        return { id, left: b.left, right: b.right, paneLeft: pane.left, paneRight: pane.right };
+                    });
+                });
+                assert.ok(agentControls.every(item => item.left >= item.paneLeft && item.right <= item.paneRight + 1), JSON.stringify(agentControls));
+                await page.screenshot({ path: path.join(evidence, `shell-agent-drawer-${width}.png`) });
             }
             assert.deepEqual(errors, [], `${width}: ${errors.join(' | ')}`);
             result.push({ width, shell, errors, writes: writes.length, screenshot: path.join(evidence, `shell-assistant-${width}.png`) });

@@ -52,6 +52,7 @@ async function main() {
                     }
                     if (url.endsWith('/avatar') && method === 'POST') {
                         if (!body.dataUrl.startsWith('data:image/png;base64,')) throw new Error('Expected PNG upload');
+                        if (s.avatarHold) await new Promise(resolve => { s.avatarRelease = resolve; });
                         s.avatarUploaded = true; s.profile.avatar = { kind: 'image', version: 'synthetic' }; s.revision = 'r-avatar';
                         return { ok: true, profile: s.profile, revision: s.revision };
                     }
@@ -60,7 +61,7 @@ async function main() {
                         if (s.skillFail) throw new Error('Synthetic read error');
                         return s.skillStatus === 'ready' ? { version: 1, profileId: url.includes(p.id) ? p.id : other.id, status: 'ready', item: { id: url.endsWith('s1') ? 's1' : 's2', name: 'Check sources', description: 'Use references', scope: 'project', source: 'profile-owned', content: '<img src=x onerror=alert(1)>\n# Real skill text', revision: 's-revision' } } : { version: 1, status: s.skillStatus };
                     }
-                    if (url.includes('/memory?')) return { status: s.memoryStatus || 'ready', items: s.memoryStatus ? [] : [{ id: url.includes(p.id) ? 's1' : 's2', name: url.includes(p.id) ? 'Check sources' : 'Draft outline', description: 'Use references', scope: 'project', source: 'profile-owned' }], hasMore: false };
+                    if (url.includes('/memory?')) return { status: s.memoryStatus || 'ready', items: s.memoryStatus ? [] : [{ kind: 'skill', id: url.includes(p.id) ? 's1' : 's2', name: url.includes(p.id) ? 'Check sources' : 'Draft outline', description: 'Use references', scope: 'project', source: 'profile-owned' }], hasMore: false };
                     if (url.startsWith('/api/pi/assistant-projects')) return { projects: [{ id: 'g1', name: 'Notes', cwd: '/synthetic/project' }] };
                     if (url === '/api/pi/profiles' && method === 'PUT') {
                         const updated = { ...body.profile, id: body.profile.id || (s.created.length ? 'dddddddd-dddd-4ddd-dddd-dddddddddddd' : 'cccccccc-cccc-4ccc-cccc-cccccccccccc') };
@@ -75,6 +76,11 @@ async function main() {
                 };
             }, { p: profile, other: second });
             await page.goto(`http://127.0.0.1:${server.address().port}/fixture`);
+            if (width === 1440) {
+                await page.evaluate(() => PiAgentProfilesUI.open());
+                await page.locator('.pi-profile-empty').waitFor();
+                assert.equal(await page.locator('.pi-profiles-layout').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length), 2);
+            }
             if (width === 393) {
                 await page.evaluate(() => PiAgentProfilesUI.open({ profileId: synthetic.profile.id, section: 'user', authoringSession: { id: 'authoring-1', cwd: '/synthetic/project' } }));
                 assert.equal(await page.evaluate(() => synthetic.calls.filter(call => call.url.startsWith('/api/pi/profiles?')).length), 0);
@@ -112,8 +118,16 @@ async function main() {
                 await page.waitForFunction(() => document.querySelector('#pi-profile-form [name=name]')?.value === 'Research');
             }
             const image = await page.evaluate(() => { const canvas = document.createElement('canvas'); canvas.width = canvas.height = 4; canvas.getContext('2d').fillRect(0, 0, 4, 4); return canvas.toDataURL('image/jpeg').split(',')[1]; });
+            if (width === 1440) await page.evaluate(() => { synthetic.avatarHold = true; });
             await page.locator('#pi-profile-avatar-upload').setInputFiles({ name: 'avatar.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(image, 'base64') });
+            if (width === 1440) {
+                await page.waitForFunction(() => !!synthetic.avatarRelease);
+                assert.equal(await page.locator('#pi-profile-form [type=submit]').isDisabled(), true);
+                await page.evaluate(() => synthetic.avatarRelease());
+            }
             await page.waitForFunction(() => synthetic.avatarUploaded === true);
+            await page.waitForFunction(() => document.querySelector('#pi-profile-avatar-status')?.textContent.includes('已单独保存'));
+            assert.equal(await page.locator('#pi-profile-form [type=submit]').isDisabled(), false);
             await page.locator('[data-profile-section="projects"]').click();
             await page.locator('.pi-profile-projects article').waitFor();
             assert.match(await page.locator('.pi-profile-projects article').innerText(), /Notes/);
@@ -182,37 +196,30 @@ async function main() {
             await page.evaluate(() => { synthetic.profile.enabled = false; PiAgentProfilesUI.projectChanged(); });
             await page.waitForFunction(() => document.querySelector('#pi-profile-memory-status')?.textContent.includes('身份已停用'));
             await page.evaluate(() => { synthetic.profile.enabled = true; synthetic.profile.memory.enabled = true; synthetic.memoryStatus = null; PiAgentProfilesUI.projectChanged(); });
-            await page.locator('[data-profile-section="overview"]').click();
-            await page.evaluate(() => PiExtensions.setView('extensions'));
-            assert.equal(await page.locator('.workspace-settings-nav [data-settings-tab="extensions"]').count(), 1);
-            assert.equal(await page.locator('.workspace-settings-nav [data-settings-tab="extensions"]').isVisible(), true);
-            await page.locator('.extensions-learned-row').first().waitFor();
-            await page.locator('#extensions-learned-profile').selectOption(profile.id);
-            await page.locator('.extensions-learned-row').waitFor();
-            assert.equal(await page.locator('.extensions-learned-row img').count(), 0);
-            await page.locator('.extensions-learned-row details').first().evaluate(el => { el.open = true; });
-            await page.waitForFunction(() => document.querySelector('.extensions-skill-detail pre')?.textContent.includes('# Real skill text'));
-            assert.equal(await page.locator('.extensions-skill-detail img').count(), 0);
-            await page.locator('.extensions-learned-row details').first().evaluate(el => { el.open = false; });
+            await page.locator('[data-kind="skills"]').click();
+            await page.locator('.pi-profile-memory-item details').first().evaluate(el => { el.open = true; });
+            await page.waitForFunction(() => document.querySelector('.pi-profile-skill-text')?.textContent.includes('# Real skill text'));
+            assert.equal(await page.locator('.pi-profile-memory-item img').count(), 0);
+            await page.locator('.pi-profile-memory-item details').first().evaluate(el => { el.open = false; });
             await page.evaluate(() => { synthetic.skillStatus = 'missing'; });
-            await page.locator('.extensions-learned-row details').first().evaluate(el => { el.open = true; });
-            await page.waitForFunction(() => document.querySelector('.extensions-skill-detail')?.textContent.includes('已不存在'));
-            await page.locator('.extensions-learned-row details').first().evaluate(el => { el.open = false; });
+            await page.locator('.pi-profile-memory-item details').first().evaluate(el => { el.open = true; });
+            await page.waitForFunction(() => document.querySelector('.pi-profile-skill-text')?.textContent.includes('不可用'));
+            await page.locator('.pi-profile-memory-item details').first().evaluate(el => { el.open = false; });
             await page.evaluate(() => { synthetic.skillStatus = 'ready'; synthetic.skillFail = true; });
-            await page.locator('.extensions-learned-row details').first().evaluate(el => { el.open = true; });
-            await page.waitForFunction(() => document.querySelector('.extensions-skill-detail')?.textContent.includes('Synthetic read error'));
-            await page.locator('.extensions-learned-row details').first().evaluate(el => { el.open = false; });
+            await page.locator('.pi-profile-memory-item details').first().evaluate(el => { el.open = true; });
+            await page.waitForFunction(() => document.querySelector('.pi-profile-skill-text')?.textContent.includes('Synthetic read error'));
+            await page.locator('.pi-profile-memory-item details').first().evaluate(el => { el.open = false; });
             await page.evaluate(() => { synthetic.skillFail = false; synthetic.skillHold = true; });
-            await page.locator('.extensions-learned-row details').first().evaluate(el => { el.open = true; });
+            await page.locator('.pi-profile-memory-item details').first().evaluate(el => { el.open = true; });
             await page.waitForFunction(() => !!synthetic.skillRelease);
-            await page.locator('#extensions-learned-profile').selectOption(second.id);
-            await page.waitForFunction(() => document.querySelector('.extensions-learned-row strong')?.textContent === 'Draft outline');
+            await page.locator('[data-profile-section="overview"]').click();
             await page.evaluate(() => synthetic.skillRelease());
-            assert.equal(await page.locator('.extensions-learned-row .extensions-skill-detail pre').count(), 0);
-            await page.locator('.extensions-tabs [data-extension-tab="featured"]').click();
+            assert.equal(await page.locator('.pi-profile-skill-text').count(), 0);
+            await page.evaluate(() => PiExtensions.setView('extensions'));
+            assert.equal(await page.locator('.workspace-settings-nav [data-settings-tab="extensions"]').isVisible(), true);
             await page.locator('.extensions-card').first().waitFor();
-            await page.locator('.extensions-tabs [data-extension-tab="learned"]').click();
-            const overflow = await page.evaluate(() => [...document.querySelectorAll('body,#pi-profiles-content,.pi-profiles-layout,.pi-profile-detail,#extensions-learned')].filter(el => el.scrollWidth > el.clientWidth + 2).map(el => `${el.tagName}.${el.className}:${el.scrollWidth}/${el.clientWidth}`));
+            assert.equal(await page.locator('#extensions-learned').count(), 0);
+            const overflow = await page.evaluate(() => [...document.querySelectorAll('body,#pi-profiles-content,.pi-profiles-layout,.pi-profile-detail,#extensions-featured')].filter(el => el.scrollWidth > el.clientWidth + 2).map(el => `${el.tagName}.${el.className}:${el.scrollWidth}/${el.clientWidth}`));
             assert.deepEqual(overflow, []);
             assert.deepEqual(errors, []);
             fs.mkdirSync(evidence, { recursive: true });

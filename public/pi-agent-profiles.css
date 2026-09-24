@@ -8,13 +8,22 @@
 #pi-profiles-panel .settings-panel-header h3 { white-space: nowrap; }
 #pi-profiles-panel .settings-panel-header p { overflow-wrap: anywhere; }
 #pi-profiles-panel [hidden] { display: none !important; }
-#pi-profiles-content { max-width: 1220px; min-width: 0; }
-.pi-profiles-layout { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 24px; align-items: start; }
-.pi-profile-detail { min-width: 0; }
+#workspace-settings-dialog .workspace-settings-panel[data-settings-panel="profiles"] > #pi-profiles-content { max-width: none; }
+#pi-profiles-content { min-width: 0; }
+.pi-profiles-layout { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 0; min-height: min(640px, calc(100dvh - 210px)); align-items: stretch; border-top: 1px solid var(--line); }
+#pi-profiles-list { min-width: 0; padding: 18px 16px 18px 0; }
+.pi-profile-detail { min-width: 0; border-left: 1px solid var(--line); padding: 18px 0 18px 28px; }
+.pi-profile-empty { display: grid; justify-items: center; align-content: center; min-height: 400px; text-align: center; color: var(--text-soft); }
+.pi-profile-empty i { font-size: 2rem; }
+.pi-profile-empty h4 { margin: 16px 0 4px; color: var(--text-main); font-size: 1rem; }
+.pi-profile-empty p { margin: 0; font-size: .87rem; }
+.pi-profile-skill-text { max-height: 440px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-2); font: inherit; font-size: .85rem; }
+.pi-profile-memory-item details { margin-top: 8px; }
+.pi-profile-memory-item summary { cursor: pointer; color: var(--accent); }
 #pi-profiles-status, #pi-profile-editor-status, #pi-profile-memory-status, #pi-profile-document-status { min-height: 1.4em; color: var(--text-soft); overflow-wrap: anywhere; }
 .pi-profile-note { color: var(--text-soft); font-size: .86rem; line-height: 1.45; }
 .pi-profile-form input:not([type=checkbox]), .pi-profile-form textarea, .pi-profile-search input { width: 100%; min-width: 0; box-sizing: border-box; padding: 9px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-1); color: var(--text-main); font: inherit; }
-.pi-profile-toolbar, .pi-profile-memory-head, .pi-profile-form-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 20px; }
+.pi-profile-toolbar, .pi-profile-memory-head, .pi-profile-form-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 0; }
 .pi-profile-toolbar h4, .pi-profile-memory-head h4, .pi-profile-form-head h4 { margin: 0; font-size: 1rem; min-width: 0; overflow-wrap: anywhere; }
 .pi-profile-row { display: flex; align-items: center; gap: 10px; padding: 10px; border: 0; border-bottom: 1px solid var(--line); width: 100%; min-width: 0; background: transparent; color: var(--text-main); text-align: left; cursor: pointer; }
 .pi-profile-row:hover, .pi-profile-row[aria-current=true] { background: var(--surface-2); }
@@ -65,7 +74,10 @@
     #pi-profiles-panel .settings-panel-header > :first-child { display: none; }
     #pi-profiles-panel .settings-panel-header > div { min-width: 0; }
     #pi-profiles-panel :is(input:not([type=checkbox]), select, textarea) { font-size: 16px; }
-    .pi-profiles-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    .pi-profiles-layout { grid-template-columns: minmax(0, 1fr); gap: 0; min-height: 0; }
+    #pi-profiles-list { padding: 12px 0; }
+    .pi-profile-detail { border-left: 0; border-top: 1px solid var(--line); padding: 18px 0; }
+    .pi-profile-empty { min-height: 180px; }
     .pi-profile-overview { grid-template-columns: minmax(0, 1fr); }
     .pi-profile-overview > label:nth-child(2) { grid-column: auto; }
     .pi-profile-form-actions button { flex: 1 1 auto; }

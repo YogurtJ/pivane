@@ -133,7 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const state = {
         token: sessionStorage.getItem('pi.web.token') || '',
-        assistantMode: false,
+        assistantMode: window.PiWorkspaceRoute?.current().tab === 'assistant',
         assistantSupported: false,
         assistantProfiles: [],
         profileInventory: [],
@@ -3824,12 +3824,25 @@ document.addEventListener('DOMContentLoaded', () => {
             if (Array.isArray(data?.profiles)) { state.profileInventory = data.profiles; syncActualIdentity(); }
         }).catch(() => {});
     });
+    function clearConversationForWorkspaceSwitch() {
+        if (state.composerSessionKey) state.composerDrafts.set(state.composerSessionKey, { text: elements.input.value, files: state.attachmentFiles });
+        state.composerSessionKey = null;
+        elements.input.value = '';
+        state.attachmentFiles = [];
+        renderAttachments();
+        disconnectSocket(true);
+        state.session = null;
+        clearSessionView();
+        setConnection('idle', translateUi('选择会话开始工作'));
+    }
+
     window.addEventListener('workspace:tabchanged', event => {
         const { tab, params } = event.detail;
         const routeKey = location.hash || '#/chat';
         if (routeKey !== state.routeKey) { state.routeKey = routeKey; state.navigationEpoch++; }
         if (tab !== 'chat' && tab !== 'assistant') { state.assistantEpoch++; return; }
         const wasAssistant = state.assistantMode;
+        if (wasAssistant !== (tab === 'assistant')) clearConversationForWorkspaceSwitch();
         state.assistantMode = tab === 'assistant';
         $('pi-assistant-switcher').hidden = !state.assistantMode;
         elements.sessionFilters.hidden = state.assistantMode;

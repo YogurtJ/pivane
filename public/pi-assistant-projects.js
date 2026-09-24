@@ -37,7 +37,14 @@
         dialog.innerHTML = `<form method="dialog" class="pi-assistant-project-form">
             <header><h2 id="pi-assistant-project-editor-title"></h2><button type="button" data-close class="icon-btn subtle" aria-label="${t('关闭', 'Close')}"><i class="fa-solid fa-xmark"></i></button></header>
             <label>${t('名称', 'Name')}<input name="name" maxlength="80" required></label>
-            <label>${t('项目目录', 'Project directory')}<input name="cwd" required spellcheck="false"></label>
+            <div class="pi-assistant-directory-field"><label for="pi-assistant-cwd">${t('项目目录', 'Project directory')}</label>
+                <div class="pi-assistant-directory-input"><input id="pi-assistant-cwd" name="cwd" required spellcheck="false"><button type="button" data-browse class="settings-secondary-button"><i class="fa-regular fa-folder-open" aria-hidden="true"></i> ${t('浏览目录', 'Browse folders')}</button></div>
+                <small>${t('选择此服务器上的目录；也可输入完整路径。', 'Choose a folder on this server, or enter its full path.')}</small></div>
+            <section class="pi-assistant-directory-browser" aria-label="${t('服务器目录', 'Server folders')}" hidden>
+                <div class="pi-assistant-directory-toolbar"><button type="button" data-up class="icon-btn subtle" title="${t('上级目录', 'Parent folder')}" aria-label="${t('上级目录', 'Parent folder')}"><i class="fa-solid fa-arrow-up"></i></button><span data-current></span><button type="button" data-choose class="settings-secondary-button">${t('选用此目录', 'Use this folder')}</button></div>
+                <input type="search" data-filter placeholder="${t('搜索当前目录', 'Search current folder')}" aria-label="${t('搜索当前目录', 'Search current folder')}">
+                <div class="pi-assistant-directory-list" data-directories></div>
+            </section>
             <label>${t('描述', 'Description')}<textarea name="description" maxlength="500" rows="2"></textarea></label>
             <label>${t('项目附加指令', 'Additional project instructions')}<textarea name="instructions" rows="6" spellcheck="false"></textarea></label>
             <label class="pi-assistant-archive"><input name="archived" type="checkbox">${t('归档项目', 'Archive project')}</label>
@@ -45,7 +52,51 @@
         </form>`;
         document.body.append(dialog);
         const form = dialog.querySelector('form'), status = dialog.querySelector('[data-status]');
-        let project = null, revision = null, saving = false;
+        const browser = dialog.querySelector('.pi-assistant-directory-browser');
+        const directoryList = dialog.querySelector('[data-directories]'), filter = dialog.querySelector('[data-filter]');
+        let project = null, revision = null, saving = false, browseRevision = 0, current = null, parent = null, directories = [];
+        function renderDirectories() {
+            directoryList.replaceChildren();
+            const matches = directories.filter(item => item.name.toLocaleLowerCase().includes(filter.value.trim().toLocaleLowerCase()));
+            for (const item of matches) {
+                const button = document.createElement('button'); button.type = 'button'; button.dataset.path = item.path;
+                const icon = document.createElement('i'); icon.className = 'fa-regular fa-folder'; icon.setAttribute('aria-hidden', 'true');
+                const name = document.createElement('span'); name.textContent = item.name;
+                button.append(icon, name); directoryList.append(button);
+            }
+            if (!matches.length) { const empty = document.createElement('p'); empty.textContent = t('没有匹配的目录', 'No matching folders'); directoryList.append(empty); }
+        }
+        async function browse(path) {
+            const ticket = ++browseRevision;
+            directoryList.textContent = t('正在读取目录…', 'Loading folders…');
+            try {
+                const result = await apiFetch(`/api/pi/directories${path ? `?path=${encodeURIComponent(path)}` : ''}`);
+                if (ticket !== browseRevision || !dialog.open) return;
+                current = result.current; parent = result.parent; directories = result.directories || [];
+                dialog.querySelector('[data-current]').textContent = current || t('可选位置', 'Available locations');
+                dialog.querySelector('[data-current]').title = current || '';
+                dialog.querySelector('[data-up]').disabled = !current;
+                dialog.querySelector('[data-choose]').disabled = !current;
+                filter.value = ''; renderDirectories();
+            } catch (error) {
+                if (ticket !== browseRevision || !dialog.open) return;
+                if (path) { void browse(null); status.textContent = t('无法打开此路径，已显示可选目录。', 'Could not open that path; showing available folders.'); }
+                else directoryList.textContent = error.message;
+            }
+        }
+        function choose(path) {
+            if (!path) return;
+            form.elements.cwd.value = path;
+            if (!form.elements.name.value.trim()) form.elements.name.value = path.split('/').filter(Boolean).at(-1) || path;
+            browser.hidden = true; browseRevision++;
+            form.elements.cwd.focus();
+        }
+        dialog.querySelector('[data-browse]').addEventListener('click', () => { browser.hidden = !browser.hidden; if (!browser.hidden) void browse(form.elements.cwd.value.trim()); else browseRevision++; });
+        dialog.querySelector('[data-up]').addEventListener('click', () => void browse(parent));
+        dialog.querySelector('[data-choose]').addEventListener('click', () => choose(current));
+        directoryList.addEventListener('click', event => { const path = event.target.closest('[data-path]')?.dataset.path; if (path) void browse(path); });
+        filter.addEventListener('input', renderDirectories);
+        dialog.addEventListener('close', () => { browseRevision++; browser.hidden = true; });
         dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close());
         dialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
         form.addEventListener('submit', async event => {
@@ -73,6 +124,8 @@
             form.elements.name.value = project?.name || '';
             form.elements.cwd.value = project?.cwd || cwd;
             form.elements.cwd.readOnly = Boolean(project);
+            dialog.querySelector('[data-browse]').hidden = Boolean(project);
+            browser.hidden = true; browseRevision++;
             form.elements.description.value = project?.description || '';
             form.elements.instructions.value = project?.instructions || '';
             form.elements.archived.checked = Boolean(project?.archived);
