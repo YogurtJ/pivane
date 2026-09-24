@@ -88,7 +88,8 @@ async function main() {
                     rpc.push(command.type);
                     const selected = sessions.find(s => s.id === command.sessionId) || sessions[0];
                     const data = command.type === 'open_session' ? { session: selected,
-                        state: { model, isStreaming: selected.id === 'agent-original', thinkingLevel: 'off' }, messages: { messages: [] }, stats: {},
+                        state: { model, isStreaming: selected.id === 'agent-original', thinkingLevel: 'off' },
+                        messages: { messages: selected.id === 'reference-one' ? [{ role: 'user', timestamp: 1, content: [{ type: 'text', text: 'Archived fixture message visible' }] }] : [] }, stats: {},
                         models: { models: [model] }, thinkingLevels: { levels: ['off'] }, commands: { commands: [] } }
                         : command.type === 'get_state' ? { model, isStreaming: false, thinkingLevel: 'off' } : {};
                     ws.send(JSON.stringify({ type: 'response', id: command.id, command: command.type, success: true, data }));
@@ -207,7 +208,29 @@ async function main() {
                     await page.locator('#pi-refresh-sessions').click();
                     await page.locator('[data-archive-kind="assistant-projects"] summary').waitFor();
                     await page.locator('[data-archive-kind="assistant-projects"] summary').click();
+                    const archived = page.locator(`[data-assistant-project-id="${groups[0].id}"]`);
+                    assert.equal(await archived.locator('[data-session-id="reference-one"]').count(), 1, 'archived group retains its native thread');
+                    assert.equal(await page.locator(`[data-assistant-project-id="${groups[1].id}"] [data-session-id="reference-one"]`).count(), 0, 'shared cwd does not duplicate group membership');
+                    assert.equal(await page.locator('[data-session-id="reference-one"]').count(), 1);
+                    await page.locator('#pi-input').fill('Draft in active group');
+                    await archived.locator('[data-session-id="reference-one"] .pi-session-main').click();
+                    await page.waitForFunction(() => document.querySelector('#pi-meta-id')?.textContent === 'reference-one' && document.querySelector('#pi-input')?.disabled === false);
+                    assert.match(await page.locator('#pi-transcript-content').innerText(), /Archived fixture message visible/);
+                    assert.match(await page.locator('#pi-actual-identity').innerText(), /Research/);
+                    assert.equal(await page.locator('#pi-new-session').isDisabled(), true, 'archived group cannot create a new grouped thread');
+                    await page.screenshot({ path: path.join(evidence, 'shell-archived-open-1920.png') });
+                    const writesBefore = writes.length;
+                    await page.locator('#pi-new-session').evaluate(button => button.click());
+                    assert.equal(writes.length, writesBefore, 'disabled new control does not POST');
+                    await page.locator('#pi-input').fill('Draft in archived thread');
+                    await page.locator(`[data-assistant-project-id="${groups[1].id}"] [data-session-id="draft-one"] .pi-session-main`).click();
+                    await page.waitForFunction(() => document.querySelector('#pi-meta-id')?.textContent === 'draft-one' && document.querySelector('#pi-input')?.disabled === false);
+                    assert.equal(await page.locator('#pi-input').inputValue(), 'Draft in active group');
+                    await archived.locator('[data-session-id="reference-one"] .pi-session-main').click();
+                    await page.waitForFunction(() => document.querySelector('#pi-meta-id')?.textContent === 'reference-one' && document.querySelector('#pi-input')?.disabled === false);
+                    assert.equal(await page.locator('#pi-input').inputValue(), 'Draft in archived thread');
                     await page.locator(`[data-assistant-project-id="${groups[0].id}"] [data-assistant-action="menu"]`).click();
+                    assert.equal(await page.locator('.pi-thread-menu:not(.hidden)').getByRole('menuitem', { name: /New conversation|New thread/ }).count(), 0);
                     await page.locator('.pi-thread-menu:not(.hidden)').getByRole('menuitem', { name: /Edit project/ }).click();
                     assert.equal(await page.locator('.pi-assistant-project-form [name=archived]').isChecked(), true);
                     await page.locator('.pi-assistant-project-form [name=archived]').uncheck();

@@ -25,7 +25,7 @@
                     <button class="pi-project-group-main" type="button" data-assistant-action="select" title="${escape(group.cwd)}"><span class="pi-project-group-copy"><strong>${escape(group.name)}</strong><small>${escape(group.cwd)}</small></span></button>
                     <span class="pi-project-session-count">${list.length}</span>
                     <button class="pi-project-new" type="button" data-assistant-action="menu" aria-haspopup="menu" aria-label="${escape(t('项目操作', 'Project actions'))}" title="${escape(t('项目操作', 'Project actions'))}"><i class="fa-solid fa-ellipsis"></i></button></div>
-                <div class="pi-project-threads">${group.archived ? `<div class="pi-project-empty">${escape(t('编辑项目以恢复', 'Edit project to restore'))}</div>` : list.length ? list.map(session => renderSession(session, group.cwd)).join('') : `<div class="pi-project-empty">${escape(t('暂无线程', 'No conversations yet'))}</div>`}</div>
+                <div class="pi-project-threads">${list.length ? list.map(session => renderSession(session, group.cwd)).join('') : `<div class="pi-project-empty">${escape(group.archived ? t('编辑项目以恢复', 'Edit project to restore') : t('暂无线程', 'No conversations yet'))}</div>`}</div>
             </section>`;
         }).join('');
     }

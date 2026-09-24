@@ -1257,15 +1257,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data?.version !== 1 || !Array.isArray(data.projects) || typeof data.revision !== 'string') throw new Error(translateUi('助手项目数据不可用'));
         const groups = data.projects.filter(group => !group.archived && group.profileIds?.includes(chosen));
         const archivedGroups = data.projects.filter(group => group.archived && group.profileIds?.includes(chosen));
-        const cwds = [...new Set([...state.projects.map(project => project.cwd), ...groups.map(group => group.cwd)])];
+        const listedGroups = [...groups, ...archivedGroups];
+        const cwds = [...new Set([...state.projects.map(project => project.cwd), ...listedGroups.map(group => group.cwd)])];
         const [groupResults, unclassified] = await Promise.all([
-            Promise.all(groups.map(group => apiFetch(`/api/pi/assistant-projects/${encodeURIComponent(group.id)}/sessions?profileId=${encodeURIComponent(chosen)}`))),
+            Promise.all(listedGroups.map(group => apiFetch(`/api/pi/assistant-projects/${encodeURIComponent(group.id)}/sessions?profileId=${encodeURIComponent(chosen)}`))),
             Promise.all(cwds.map(cwd => apiFetch(`/api/pi/sessions?cwd=${encodeURIComponent(cwd)}`)))
         ]);
         if (epoch !== state.assistantEpoch || chosen !== state.assistantProfileId || !state.assistantMode) return;
         state.assistantRevision = data.revision;
         state.assistantGroups = groups;
-        state.assistantSessions = new Map(groups.map((group, index) => [group.id, groupResults[index].sessions || []]));
+        state.assistantSessions = new Map(listedGroups.map((group, index) => [group.id, groupResults[index].sessions || []]));
         for (let i = 0; i < cwds.length; i++) {
             const cwd = cwds[i], rows = unclassified[i].sessions || [];
             state.projectSessions.set(cwd, rows);
@@ -1719,12 +1720,12 @@ document.addEventListener('DOMContentLoaded', () => {
         extensionAssistant.update(session);
         workflows.update();
         if (!session.ephemeral) localStorage.setItem(`pi.web.session:${state.cwd}`, session.id);
-        renderSessions();
-        updateSessionMeta();
         if (state.assistantMode) {
             const groupId = session.assistantProject?.id || state.assistantGroups.find(group => group.unclassified && group.cwd === state.cwd && state.assistantSessions.get(group.id)?.some(item => item.id === session.id))?.id;
             if (groupId) state.assistantProjectId = groupId;
         }
+        renderSessions();
+        updateSessionMeta();
         const routeTab = state.assistantMode ? 'assistant' : 'chat';
         const routeParams = state.assistantMode ? { profileId: state.assistantProfileId, projectId: state.assistantProjectId, sessionId: session.id } : { cwd: state.cwd, sessionId: session.id };
         if (['chat', 'assistant'].includes(window.PiWorkspaceRoute?.current().tab)) window.PiWorkspaceRoute.navigate(routeTab, routeParams);
