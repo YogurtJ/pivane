@@ -292,21 +292,34 @@ test('tool adapter routes global, project and skill mutations through one native
     assert.equal((await service.snapshot(id, { sessionId: native.sessionId })).receipts.length, 6);
 });
 
-test('journal capacity rejects new requests without forgetting earlier idempotency', async t => {
+test('the request journal keeps accepting writes after the active receipt window fills', async t => {
     const { service, root } = setup(t);
     const first = { requestId: 'original-id', expectedRevision: (await service.snapshot(id)).revision,
         operation: 'create', kind: 'skill', name: 'journal-skill', description: 'Journal', content: 'One step.' };
     const saved = await service.mutate(id, first);
-    const ledgerPath = path.join(root, '.pivane-knowledge.json');
-    const data = JSON.parse(fs.readFileSync(ledgerPath, 'utf8'));
-    while (data.receipts.length < 200) data.receipts.push({ requestId: `synthetic-${data.receipts.length}`, id: `synthetic-${data.receipts.length}` });
-    fs.writeFileSync(ledgerPath, JSON.stringify(data));
-    assert.deepEqual((await service.snapshot(id)).capabilities.operations, []);
-    assert.equal((await service.mutate(id, first)).receipt.id, saved.receipt.id);
-    const candidate = { ...first, requestId: 'new-after-full', expectedRevision: (await service.snapshot(id)).revision,
-        name: 'should-not-publish' };
-    await assert.rejects(service.mutate(id, candidate), /journal is full/);
-    assert.equal(fs.existsSync(path.join(root, 'skills', 'should-not-publish')), false);
+    let revision = saved.revision;
+    for (let i = 0; i < 205; i++) {
+        const result = await service.mutate(id, { requestId: `journal-fill-${i}`, expectedRevision: revision,
+            operation: 'create', kind: 'skill', name: `journal-skill-${i}`, description: 'Journal', content: 'One step.' });
+        revision = result.revision;
+    }
+    const data = JSON.parse(fs.readFileSync(path.join(root, '.pivane-knowledge.json'), 'utf8'));
+    assert.equal(data.version, 2);
+    assert.equal(data.receipts.length, 200);
+    assert.equal(data.archive.length, 6);
+    const snapshot = await service.snapshot(id);
+    assert.deepEqual(snapshot.capabilities.operations, ['create', 'update', 'delete', 'restore', 'enable', 'disable', 'undo']);
+    assert.deepEqual({ receipts: snapshot.capabilities.journal.receipts, archived: snapshot.capabilities.journal.archivedReceipts,
+        requests: snapshot.capabilities.journal.requests }, { receipts: 200, archived: 6, requests: 206 });
+    // The oldest request replays from its archive digest: same receipt, no undo.
+    const replayed = await service.mutate(id, first);
+    assert.equal(replayed.receipt.id, saved.receipt.id);
+    assert.equal(replayed.receipt.undoable, false);
+    // New requests keep publishing long after the window filled.
+    const candidate = await service.mutate(id, { ...first, requestId: 'new-after-window',
+        expectedRevision: (await service.snapshot(id)).revision, name: 'should-publish' });
+    assert.equal(candidate.status, 'saved');
+    assert.equal(fs.existsSync(path.join(root, 'skills', 'should-publish', 'SKILL.md')), true);
 });
 
 test('post-publication SQLite failure retains a repairable memory pending receipt', { skip: !bundle }, async t => {
@@ -365,4 +378,88 @@ test('full-document editor cannot revive a tombstone or overwrite a managed fact
     const allowed = await put('Independent legacy fact', await get());
     assert.equal(allowed.code, 200);
     assert.equal(safeFile(path.join(root, 'MEMORY.md')).text, 'Independent legacy fact');
+});
+
+test('expired client request IDs are refused instead of re-executed', async t => {
+    const { service, root } = setup(t);
+    const input = { requestId: 'expiring-request', expectedRevision: (await service.snapshot(id)).revision,
+        operation: 'create', kind: 'skill', name: 'expiring-skill', description: 'Expiry', content: 'Keep once.' };
+    await service.mutate(id, input);
+    const ledgerPath = path.join(root, '.pivane-knowledge.json');
+    const data = JSON.parse(fs.readFileSync(ledgerPath, 'utf8'));
+    data.requests['expiring-request'].at = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    fs.writeFileSync(ledgerPath, JSON.stringify(data));
+    const retry = { ...input, expectedRevision: (await service.snapshot(id)).revision };
+    await assert.rejects(service.mutate(id, retry), /expired/);
+    // The expired ID is remembered as spent, so even a changed payload cannot run.
+    await assert.rejects(service.mutate(id, { ...retry, requestId: 'expiring-request', name: 'second-skill' }), /expired/);
+    assert.equal(fs.existsSync(path.join(root, 'skills', 'expiring-skill', 'SKILL.md')), true);
+    assert.equal(fs.existsSync(path.join(root, 'skills', 'second-skill')), false);
+    const fresh = await service.mutate(id, { requestId: 'fresh-after-expiry',
+        expectedRevision: (await service.snapshot(id)).revision, operation: 'create', kind: 'skill',
+        name: 'after-expiry', description: 'Fresh', content: 'Fresh step.' });
+    assert.equal(fresh.status, 'saved');
+});
+
+test('archived receipts stop being undoable while tombstones keep blocking revival', { skip: !bundle }, async t => {
+    const { service, root } = setup(t);
+    const createdInput = { requestId: 'archive-create', expectedRevision: (await service.snapshot(id)).revision,
+        operation: 'create', kind: 'memory', category: 'fact', content: 'Original managed fact.' };
+    const created = await service.mutate(id, createdInput);
+    const updated = await service.mutate(id, { requestId: 'archive-update', expectedRevision: (await service.snapshot(id)).revision,
+        operation: 'update', kind: 'memory', itemId: created.item.id, itemRevision: created.item.revision,
+        category: 'fact', content: 'Replaced managed fact.' });
+    const ledgerPath = path.join(root, '.pivane-knowledge.json');
+    const data = JSON.parse(fs.readFileSync(ledgerPath, 'utf8'));
+    while (data.receipts.length < 200) data.receipts.push({ requestId: `synthetic-${data.receipts.length}`,
+        id: `synthetic-${data.receipts.length}`, operation: 'create', kind: 'skill', status: 'saved',
+        at: new Date().toISOString(), undoable: false });
+    fs.writeFileSync(ledgerPath, JSON.stringify(data));
+    // Two further writes push both real receipts out of the active window.
+    await service.mutate(id, { requestId: 'archive-flush-1', expectedRevision: (await service.snapshot(id)).revision,
+        operation: 'create', kind: 'memory', category: 'fact', content: 'Flush fact one.' });
+    await service.mutate(id, { requestId: 'archive-flush-2', expectedRevision: (await service.snapshot(id)).revision,
+        operation: 'create', kind: 'memory', category: 'fact', content: 'Flush fact two.' });
+    const journal = (await service.snapshot(id)).capabilities.journal;
+    assert.deepEqual({ receipts: journal.receipts, archived: journal.archivedReceipts }, { receipts: 200, archived: 2 });
+    await assert.rejects(service.mutate(id, { requestId: 'archive-undo', expectedRevision: (await service.snapshot(id)).revision,
+        operation: 'undo', kind: 'memory', receiptId: updated.receipt.id }), /not undoable/);
+    const replayed = await service.mutate(id, createdInput);
+    assert.equal(replayed.receipt.id, created.receipt.id);
+    assert.equal(replayed.receipt.undoable, false);
+    await assert.rejects(service.mutate(id, { requestId: 'revive-after-archive',
+        expectedRevision: (await service.snapshot(id)).revision, operation: 'create', kind: 'memory',
+        category: 'fact', content: 'Original managed fact.' }), /cannot be relearned/);
+});
+
+test('version 1 knowledge metadata upgrades on write and keeps idempotency and tombstones', { skip: !bundle }, async t => {
+    const { service, root } = setup(t);
+    const input = { requestId: 'legacy-request', expectedRevision: (await service.snapshot(id)).revision,
+        operation: 'create', kind: 'memory', category: 'fact', content: 'Legacy managed fact.' };
+    const saved = await service.mutate(id, input);
+    const ledgerPath = path.join(root, '.pivane-knowledge.json');
+    const v2 = JSON.parse(fs.readFileSync(ledgerPath, 'utf8'));
+    assert.equal(v2.version, 2);
+    const revisionBefore = (await service.snapshot(id)).revision;
+    const migratedTombstone = createHash('sha256').update('Never relearn this.').digest('hex');
+    fs.writeFileSync(ledgerPath, JSON.stringify({ version: 1, records: v2.records, receipts: v2.receipts,
+        tombstones: { [migratedTombstone]: { itemId: saved.item.id, at: saved.receipt.at } } }));
+    // Reading version 1 keeps the same revision; the upgrade happens on write.
+    assert.equal((await service.snapshot(id)).revision, revisionBefore);
+    const replayed = await service.mutate(id, input);
+    assert.equal(replayed.receipt.id, saved.receipt.id);
+    const second = await service.mutate(id, { requestId: 'post-migration', expectedRevision: (await service.snapshot(id)).revision,
+        operation: 'update', kind: 'memory', itemId: saved.item.id, itemRevision: saved.item.revision,
+        category: 'fact', content: 'Upgraded managed fact.' });
+    assert.equal(second.status, 'saved');
+    const upgraded = JSON.parse(fs.readFileSync(ledgerPath, 'utf8'));
+    assert.equal(upgraded.version, 2);
+    assert.equal(upgraded.sequence, 2);
+    assert.equal(upgraded.requests['legacy-request'].r, saved.receipt.id);
+    await assert.rejects(service.mutate(id, { requestId: 'revive-migrated',
+        expectedRevision: (await service.snapshot(id)).revision, operation: 'create', kind: 'memory',
+        category: 'fact', content: 'Never relearn this.' }), /cannot be relearned/);
+    await assert.rejects(service.mutate(id, { requestId: 'revive-replaced',
+        expectedRevision: (await service.snapshot(id)).revision, operation: 'create', kind: 'memory',
+        category: 'fact', content: 'Legacy managed fact.' }), /cannot be relearned/);
 });
