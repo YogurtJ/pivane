@@ -180,7 +180,15 @@ async function run(browser, base, width, locale, dark) {
         overflows: [...document.querySelectorAll('main,section,#pi-chat-knowledge,.pi-chat-knowledge-body')].filter(el => el.scrollWidth > el.clientWidth + 1).map(el => el.className || el.id) }));
     assert.ok(dimensions.document <= dimensions.viewport + 1, JSON.stringify(dimensions));
     assert.deepEqual(dimensions.overflows, []);
-    if (width < 900) assert.ok((await page.locator('textarea,input,select').evaluateAll(nodes => nodes.map(el => parseFloat(getComputedStyle(el).fontSize)))).every(size => size >= 16));
+    if (width < 900) {
+        // Form controls are measured while a re-render can still swap transient nodes;
+        // wait until every mounted control settles at the mobile font size, then assert
+        // with per-control detail so a persistent miss identifies the culprit.
+        await page.waitForFunction(() => [...document.querySelectorAll('textarea,input,select')]
+            .every(el => parseFloat(getComputedStyle(el).fontSize) >= 16), undefined, { timeout: 5000 }).catch(() => {});
+        const sizes = await page.locator('textarea,input,select').evaluateAll(nodes => nodes.map(el => [el.tagName.toLowerCase(), el.id || el.className || el.name, parseFloat(getComputedStyle(el).fontSize)]));
+        assert.ok(sizes.every(entry => entry[2] >= 16), `mobile form font sizes: ${JSON.stringify(sizes)}`);
+    }
     assert.deepEqual(errors, []);
     console.log(`PASS knowledge ${width} ${locale} ${dark ? 'dark' : 'light'} ${JSON.stringify(dimensions)}`);
     await context.close();

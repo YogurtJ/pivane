@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { ProfileKnowledgeService, mountProfileKnowledgeRoutes } = require('../server/profile-memory/knowledge-service');
-const { createKnowledgeToolAdapter } = require('../server/profile-memory/knowledge-tool-adapter');
+const { createKnowledgeMemoryTools } = require('../server/profile-memory/tool-mutations');
 const { mountProfileDocumentRoutes } = require('../server/pi-profile-documents');
 const { safeFile } = require('../server/profile-memory/management');
 const privateFiles = require('../server/pi-private-files');
@@ -271,24 +271,29 @@ test('tool adapter routes global, project and skill mutations through one native
         { type: 'custom', id: 'binding', customType: 'pivane-agent-profile', data: { version: 1, sessionId: native.sessionId, profileId: id } },
         { type: 'message', id: native.entryId, message: { role: 'user', content: 'synthetic' } },
     ].map(row => JSON.stringify(row)).join('\n') + '\n');
-    const tool = createKnowledgeToolAdapter(service, id);
-    const global = await tool('memory_add', { target: 'memory', content: 'Global note' }, native);
+    const context = { cwd, sessionManager: { getSessionFile: () => native.sessionPath,
+        getSessionId: () => native.sessionId, getBranch: () => [{ id: native.entryId }] } };
+    const tool = createKnowledgeMemoryTools(service, id);
+    const run = (name, args) => tool(name, args, undefined, () => true, context);
+    const global = await run('memory_add', { target: 'memory', content: 'Global note' });
     assert.equal(global.details.success, true);
-    const local = await tool('memory_add', { target: 'project', content: 'Local note' }, native);
+    const local = await run('memory_add', { target: 'project', content: 'Local note' });
     assert.equal(local.details.receipt.scope, 'project');
-    assert.equal((await tool('memory_replace', { target: 'project', old_text: 'Local note', content: 'Local revision' }, native)).details.success, true);
+    assert.equal((await run('memory_replace', { target: 'project', old_text: 'Local note', content: 'Local revision' })).details.success, true);
     assert.equal(safeFile(path.join(root, 'MEMORY.md')).text, 'Global note');
     assert.equal(safeFile(path.join(root, 'projects', createHash('sha256').update(cwd).digest('hex'), 'MEMORY.md')).text, 'Local revision');
-    const skill = await tool('skill_manage', { action: 'create', scope: 'global', name: 'tool-skill', description: 'Tools',
-        when_to_use: 'Persistent check', procedure_steps: ['Open'], verification_steps: ['Inspect'] }, native);
+    const skill = await run('skill_manage', { action: 'create', scope: 'global', name: 'tool-skill', description: 'Tools',
+        when_to_use: 'Persistent check', procedure_steps: ['Open'], verification_steps: ['Inspect'] });
     assert.equal(skill.details.success, true);
-    const patch = await tool('skill_manage', { action: 'patch', skill_id: 'global:tool-skill',
-        section: 'Procedure', procedure_steps: ['Open', 'Verify'] }, native);
+    const patch = await run('skill_manage', { action: 'patch', skill_id: 'global:tool-skill',
+        section: 'Procedure', procedure_steps: ['Open', 'Verify'] });
     assert.equal(patch.details.success, true);
     assert.match(safeFile(path.join(root, 'skills', 'tool-skill', 'SKILL.md')).text, /2\. Verify/);
-    await tool('skill_manage', { action: 'delete', skill_id: 'global:tool-skill' }, native);
+    await run('skill_manage', { action: 'delete', skill_id: 'global:tool-skill' });
     assert.equal(fs.existsSync(path.join(root, 'skills', 'tool-skill', 'SKILL.md')), false);
-    await assert.rejects(tool('memory_add', { target: 'failure', content: 'Do not misroute' }, native), /read-only/);
+    const misrouted = await run('memory_add', { target: 'failure', content: 'Do not misroute' });
+    assert.equal(misrouted.details.success, false);
+    assert.match(misrouted.details.error, /Invalid memory fields/);
     assert.equal((await service.snapshot(id, { sessionId: native.sessionId })).receipts.length, 6);
 });
 
