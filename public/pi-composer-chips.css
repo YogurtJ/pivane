@@ -1,0 +1,85 @@
+/* Status chips above the composer: collapsed pills in one row, details in a popover. */
+.pi-composer-chips {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    margin: 0 0 8px;
+}
+.pi-composer-chips:not(:has(> .pi-status-chip:not([hidden]))) { display: none; }
+.pi-composer-chips > .pi-status-chip {
+    position: static;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    margin: 0;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface-1);
+    color: var(--text-main);
+    font-size: 12.5px;
+    transition: border-color .15s, background-color .15s;
+}
+.pi-composer-chips > .pi-status-chip[hidden] { display: none; }
+.pi-composer-chips > .pi-status-chip > summary {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    min-height: 32px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    list-style: none;
+    white-space: nowrap;
+    user-select: none;
+}
+.pi-composer-chips > .pi-status-chip > summary::-webkit-details-marker { display: none; }
+.pi-composer-chips > .pi-status-chip > summary:hover { background: var(--surface-2); }
+.pi-composer-chips > .pi-status-chip > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pi-composer-chips > .pi-status-chip > summary > strong { flex-shrink: 0; font-weight: 600; }
+.pi-composer-chips > .pi-status-chip[open] { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: var(--surface-2); }
+.pi-composer-chips > .pi-status-chip > summary > .fa-chevron-up { flex-shrink: 0; margin-left: 2px; font-size: 9px; color: var(--text-muted); transition: transform .15s; }
+.pi-composer-chips > .pi-status-chip[open] > summary > .fa-chevron-up { transform: rotate(180deg); }
+/* The detail floats above the row and never takes transcript height. */
+.pi-composer-chips > .pi-status-chip > summary + * {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 8px);
+    z-index: 30;
+    max-height: min(55dvh, 460px);
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--surface-1);
+    box-shadow: 0 12px 32px rgb(0 0 0 / 22%), 0 2px 6px rgb(0 0 0 / 12%);
+    font-size: 13px;
+    white-space: normal;
+    animation: pi-status-pop .14s ease-out;
+}
+@keyframes pi-status-pop { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) {
+    .pi-composer-chips > .pi-status-chip > summary + * { animation: none; }
+    .pi-composer-chips > .pi-status-chip, .pi-composer-chips > .pi-status-chip > summary > .fa-chevron-up { transition: none; }
+}
+@media (max-width: 600px) {
+    .pi-composer-chips { margin-bottom: 6px; }
+    .pi-composer-chips > .pi-status-chip > summary { min-height: 38px; padding: 6px 11px; gap: 6px; }
+    .pi-composer-chips > .pi-status-chip > summary + * { max-height: min(60dvh, 420px); padding: 10px 11px; }
+}
+/* When both chips compete for one row, the progress preview yields first. */
+.pi-composer-chips > .pi-task-progress { flex-shrink: 3; }
+@media (max-width: 600px) {
+    /* Narrow screens with both chips: counts matter more than the step preview. */
+    .pi-composer-chips:has(> .pi-subagent-runs:not([hidden])) .pi-progress-current { display: none; }
+}
+@media (max-width: 360px) {
+    /* Icon + count identify each chip; the label stays available to assistive technology. */
+    .pi-composer-chips:has(> .pi-status-chip:not([hidden]) ~ .pi-status-chip:not([hidden])) > .pi-status-chip > summary > strong {
+        position: absolute; width: 1px; height: 1px; overflow: hidden; clip: inset(50%); white-space: nowrap;
+    }
+}

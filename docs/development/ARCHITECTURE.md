@@ -82,7 +82,7 @@ POSIX 私密权限和目录刷盘、Windows 受保护 DACL 和写透替换分别
 
 `pi-subagent-runs.js` 拥有输入框上方的子 Agent 面板与操作对话框，只读取当前连接的 controls 投影，经 `subagent_control` 请求并按连接代次丢弃迟到结果；`pi-subagent-notices.js` 只为插件自定义消息补标题、语气和折叠，正文仍经 marked + DOMPurify。
 
-`pi-task-progress.js` 拥有输入框上方的计划卡渲染和展开状态，只接受当前连接快照与进度事件，不解析回复文本、不从运行终态推断步骤完成。
+`pi-composer-chips.js` 拥有输入框上方状态标签行的互斥展开、外部点击和 Esc 收起；两张卡默认收起，详情以浮层显示，不参与聊天区布局。`pi-task-progress.js` 拥有计划卡渲染，只接受当前连接快照与进度事件，不解析回复文本、不从运行终态推断步骤完成。
 
 `pi-task-results.js` 拥有结果面板的请求、渲染和线程代次检查；协调器只提供当前线程、访问接口和已有安全跳转。结果正文使用纯文本，收到结果不改草稿、附件或当前滚动位置。
 

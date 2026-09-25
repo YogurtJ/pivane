@@ -1,28 +1,13 @@
-.pi-subagent-runs {
-    min-width: 0;
-    margin: 0 0 8px;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: var(--surface-1);
-    color: var(--text-main);
-    font-size: 13px;
-}
-.pi-subagent-runs[hidden] { display: none; }
+/* Chip and popover frame: pi-composer-chips.css. */
 .pi-subagent-runs[data-state="active"] { border-color: color-mix(in srgb, var(--blue) 45%, var(--line)); }
 .pi-subagent-runs[data-state="attention"] { border-color: color-mix(in srgb, var(--amber) 55%, var(--line)); }
-.pi-subagent-runs > summary {
-    display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 10px 13px;
-    cursor: pointer; list-style: none; min-width: 0;
-}
-.pi-subagent-runs > summary::-webkit-details-marker { display: none; }
-.pi-subagent-runs > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
-.pi-subagent-runs > summary > .fa-people-group { color: var(--blue); }
-.pi-subagent-runs > summary > strong { flex-shrink: 0; }
+.pi-subagent-runs > summary > .fa-people-group { flex-shrink: 0; color: var(--blue); }
+.pi-subagent-runs[data-state="active"] > summary > .fa-people-group { animation: sa-breathe 2.4s ease-in-out infinite; }
 .sa-runs-count { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.sa-runs-keep { flex-shrink: 0; padding: 2px 8px; border-radius: 999px; background: var(--green-soft); color: var(--green); font-size: 11px; white-space: nowrap; }
-.sa-runs-chevron { margin-left: auto; flex-shrink: 0; font-size: 10px; color: var(--text-muted); }
-.pi-subagent-runs[open] .sa-runs-chevron { transform: rotate(180deg); }
-.sa-runs-body { max-height: min(40dvh, 380px); overflow: auto; overscroll-behavior: contain; padding: 0 13px 10px; }
+.sa-runs-keep { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; padding: 1px 8px; border-radius: 999px; background: var(--green-soft); color: var(--green); font-size: 11px; white-space: nowrap; }
+.sa-runs-keep[hidden] { display: none; }
+.sa-runs-keep-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.sa-runs-body { display: grid; gap: 0; }
 .sa-runs-list { display: grid; gap: 8px; }
 .sa-runs-empty { margin: 4px 0; color: var(--text-muted); }
 .sa-run { min-width: 0; padding: 10px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
@@ -70,12 +55,15 @@
 .sa-runs-cost th:first-child, .sa-runs-cost td:first-child { text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .sa-runs-cost tr.sum td { font-weight: 600; }
 @keyframes sa-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .sa-run[data-tone="active"] .sa-run-state .fa-circle-notch { animation: none; } }
+@keyframes sa-breathe { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .sa-run[data-tone="active"] .sa-run-state .fa-circle-notch, .pi-subagent-runs > summary > .fa-people-group { animation: none; } }
 @media (max-width: 600px) {
-    .pi-subagent-runs > summary { padding: 9px 10px; gap: 7px; }
-    .sa-runs-body { padding: 0 10px 8px; max-height: min(38dvh, 320px); }
     .sa-run-button { min-height: 40px; }
     .sa-runs-field textarea, .sa-runs-field select { font-size: 16px; }
+    /* Keep the badge as a dot; its label stays available to assistive technology. */
+    .sa-runs-keep { padding: 0; background: none; }
+    .sa-runs-keep-dot { width: 8px; height: 8px; }
+    .sa-runs-keep > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: inset(50%); white-space: nowrap; }
 }
 /* pi-subagents custom messages in the transcript */
 .pi-message.pi-subagent-notice { border-left: 3px solid color-mix(in srgb, var(--blue) 55%, transparent); padding-inline-start: 12px; min-width: 0; }

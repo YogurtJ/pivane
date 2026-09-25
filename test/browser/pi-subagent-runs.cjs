@@ -31,6 +31,7 @@ const messages = [
     { role: 'custom', customType: 'subagent-notify', display: true, timestamp: 9, content: longReport },
     { role: 'custom', customType: 'unrelated-extension', display: true, timestamp: 10, content: 'Other extension note' }
 ];
+const innerWidthOf = width => width;
 async function check(browser, base, width, language) {
     const en = language === 'en';
     const context = await browser.newContext({ viewport: { width, height: 900 }, locale: language });
@@ -79,7 +80,20 @@ async function check(browser, base, width, language) {
     await page.locator('#pi-input').fill('Keep my draft');
     const panel = page.locator('#pi-subagent-runs');
     await panel.waitFor({ state: 'visible' });
-    assert.equal(await panel.evaluate(node => node.open), true, 'running work opens the panel');
+    assert.equal(await panel.evaluate(node => node.open), false, 'running work stays collapsed');
+    assert.ok(await panel.evaluate(node => node.getBoundingClientRect().height) <= 42, 'collapsed chip is one line');
+    // With a plan too, both chips share one row; only one popover is open at a time.
+    emit({ type: 'gateway_progress', progress: { version: 1, id: 'plan', explanation: '', plan: [{ step: 'Review the auth flow '.repeat(4), status: 'in_progress' }, { step: 'Ship', status: 'pending' }] } });
+    const progress = page.locator('#pi-task-progress');
+    await progress.waitFor({ state: 'visible' });
+    const rows = await page.locator('#pi-composer-chips > details:not([hidden])').evaluateAll(nodes => nodes.map(node => { const r = node.getBoundingClientRect(); return { top: Math.round(r.top), right: r.right }; }));
+    assert.equal(rows.length, 2); assert.equal(rows[0].top, rows[1].top, 'chips share one row');
+    assert.ok(rows.every(row => row.right <= innerWidthOf(width) + 1), 'chips fit the width');
+    assert.equal(await panel.locator('.sa-runs-count').evaluate(node => node.scrollWidth <= node.clientWidth + 1), true, 'subagent count is not truncated');
+    await progress.locator('summary').click();
+    await panel.locator('summary').click();
+    assert.deepEqual([await panel.evaluate(node => node.open), await progress.evaluate(node => node.open)], [true, false], 'opening one closes the other');
+    await page.screenshot({ path: `/tmp/pivane-composer-status-open-${width}-${language}.png` });
     assert.equal(await panel.locator('.sa-runs-count').textContent(), en ? '1 running' : '1 个运行中');
     assert.equal(await panel.locator('.sa-runs-keep').isVisible(), true);
     assert.equal(await panel.locator('.sa-run').count(), 1);
@@ -182,6 +196,9 @@ async function check(browser, base, width, language) {
     if (width < 900) await page.locator('#pi-toggle-sessions').click();
     await page.locator('[data-session-id="main"] .pi-session-main').click();
     await panel.waitFor({ state: 'visible' });
+    assert.equal(await panel.evaluate(node => node.open), false, 'restored panel stays collapsed');
+    await panel.locator('summary').click();
+    await panel.locator('.sa-run').first().waitFor();
     assert.equal(await panel.locator('.sa-run').count(), 1, 'open_session snapshot restores the panel');
     assert.equal(await page.locator('#pi-input').inputValue(), 'Keep my draft');
     for (const theme of ['daylight', 'dark']) await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);

@@ -28,7 +28,7 @@
     class PiSubagentRuns {
         constructor(root, options) {
             this.root = root; this.options = options; this.epoch = 0; this.busy = false;
-            root.innerHTML = '<summary><i class="fa-solid fa-people-group" aria-hidden="true"></i><strong></strong><span class="sa-runs-count" role="status" aria-live="polite"></span><span class="sa-runs-keep" hidden></span><i class="fa-solid fa-chevron-down sa-runs-chevron" aria-hidden="true"></i></summary><div class="sa-runs-body"><div class="sa-runs-list"></div><div class="sa-runs-footer"></div></div>';
+            root.innerHTML = '<summary><i class="fa-solid fa-people-group" aria-hidden="true"></i><strong></strong><span class="sa-runs-count" role="status" aria-live="polite"></span><span class="sa-runs-keep" hidden><i class="sa-runs-keep-dot" aria-hidden="true"></i><span></span></span><i class="fa-solid fa-chevron-up sa-runs-chevron" aria-hidden="true"></i></summary><div class="sa-runs-body"><div class="sa-runs-list"></div><div class="sa-runs-footer"></div></div>';
             this.list = root.querySelector('.sa-runs-list');
             this.footer = root.querySelector('.sa-runs-footer');
             this.dialog = el('dialog', 'pi-native-dialog sa-runs-dialog');
@@ -48,10 +48,7 @@
             if (!value || typeof value !== 'object') return;
             const signature = JSON.stringify(value);
             if (signature === this.value) return;
-            const hadActive = this.hasActive();
             this.value = signature; this.snapshot = value.snapshot || null; this.background = value.background || null;
-            // Open once when work starts; never reopen after the user collapses it.
-            if (!hadActive && this.hasActive() && this.root.hidden) this.root.open = true;
             this.render();
         }
         render() {
@@ -66,7 +63,7 @@
             this.root.querySelector('.sa-runs-count').textContent = active ? t('{0} 个运行中', active)
                 : runs.length ? t('{0} 个已结束', runs.length) : t('后台工作进行中');
             const keepBadge = this.root.querySelector('.sa-runs-keep');
-            keepBadge.hidden = !keep; keepBadge.textContent = t('会话保持中');
+            keepBadge.hidden = !keep; keepBadge.querySelector('span').textContent = t('会话保持中');
             keepBadge.title = t('后台子 Agent 未结束，Pivane 会保留此会话，以便结果返回后主 Agent 自动继续。');
             if (!this.root.open) return;
             this.list.replaceChildren(...runs.map(run => this.card(run)));

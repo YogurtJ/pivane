@@ -236,8 +236,10 @@
                     <div id="pi-deferred-banner" class="pi-deferred-banner" hidden><button id="pi-deferred-open" type="button"><i class="fa-regular fa-clock" aria-hidden="true"></i><span id="pi-deferred-count"></span></button></div>
                     <div id="pi-queue" class="pi-queue hidden"></div>
                     <div class="pi-composer-wrap">
-                        <details id="pi-subagent-runs" class="pi-subagent-runs" hidden></details>
-                        <details id="pi-task-progress" class="pi-task-progress" hidden></details>
+                        <div id="pi-composer-chips" class="pi-composer-chips">
+                            <details id="pi-subagent-runs" class="pi-subagent-runs pi-status-chip" hidden></details>
+                            <details id="pi-task-progress" class="pi-task-progress pi-status-chip" hidden></details>
+                        </div>
                         <div id="pi-model-guidance" class="pi-model-guidance" role="status" hidden>
                             <span id="pi-model-guidance-text"></span>
                             <div class="pi-model-guidance-actions">
@@ -916,6 +918,8 @@
     <script src="pi-session-transfer.js"></script>
     <script src="pi-selection-actions.js"></script>
     <script src="pi-side-chat.js"></script>
+    <script src="pi-composer-chips.js"></script>
+    <link rel="stylesheet" href="pi-composer-chips.css">
     <script src="pi-subagent-runs.js"></script>
     <script src="pi-subagent-notices.js"></script>
     <link rel="stylesheet" href="pi-subagent-runs.css">
