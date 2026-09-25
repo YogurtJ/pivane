@@ -65,7 +65,8 @@ function listMemories(root, projects) {
         versions.push(`${file}:${data.revision}`);
         let ordinal = 0;
         for (const content of data.text.split('\n§\n').map(part => part.trim()).filter(Boolean)) {
-            items.push({ id: hash(`${file}\0${ordinal++}\0${content}`), kind: 'memory', target, content, updatedAt: data.updatedAt });
+            items.push({ id: hash(`${file}\0${ordinal++}\0${content}`), kind: 'memory', target, content,
+                ...(target === 'project' ? { projectKey: path.basename(dir) } : {}), updatedAt: data.updatedAt });
         }
     }
     return { items, versions };
@@ -122,6 +123,8 @@ function listExtendedMemories(root, bundle) {
         const versions = rows.map(row => JSON.stringify(row));
         return { versions, items: rows.map(row => ({ id: hash(`${dbPath}\0${row.id}`), kind: 'memory',
             target: row.project && row.target === 'memory' ? 'project' : row.target,
+            ...(row.project ? { projectKey: hash(row.project) } : {}),
+            ...(row.category ? { category: row.category } : {}),
             content: row.content, createdAt: row.created, updatedAt: row.last_referenced })) };
     } finally { db.close(); }
 }
@@ -205,4 +208,4 @@ function mountProfileMemoryRoutes(router, { profiles, getAgentDir, bundlePath = 
         } catch { return res.status(409).json({ error: 'Profile skill cannot be read safely' }); }
     });
 }
-module.exports = { mountProfileMemoryRoutes, profileMemoryCapability, safeFile };
+module.exports = { mountProfileMemoryRoutes, profileMemoryCapability, safeFile, listMemories, listSkills, projectRoots, skillFiles, listExtendedMemories, safeDir };

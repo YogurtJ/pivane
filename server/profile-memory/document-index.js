@@ -18,7 +18,9 @@ function pendingDocumentIndex(root, target) {
     if (!data) return null;
     let plan;
     try { plan = JSON.parse(data.text); } catch { throw fail('Invalid pending memory index state'); }
-    if (plan?.version !== 1 || plan.target !== target || !/^[a-f0-9]{64}$/.test(plan.after)
+    if (plan?.version !== 1 || plan.target !== target || !(plan.project === undefined || plan.project === null
+        || typeof plan.project === 'string' && path.isAbsolute(plan.project) && plan.project.length <= 4096)
+        || !/^[a-f0-9]{64}$/.test(plan.after)
         || plan.before !== null && !/^[a-f0-9]{64}$/.test(plan.before)
         || !Array.isArray(plan.old) || !Array.isArray(plan.next)
         || [plan.old, plan.next].some(items => items.length > MAX_ENTRIES || items.some(item =>
@@ -40,9 +42,9 @@ function documentEntries(store, content) {
 }
 
 function checkRows(db, plan) {
-    const rows = db.prepare('SELECT id, category FROM memories WHERE target = ? AND project IS NULL AND content = ?');
+    const rows = db.prepare(`SELECT id, category FROM memories WHERE target = ? AND ${plan.project ? 'project = ?' : 'project IS NULL'} AND content = ?`);
     for (const content of new Set([...plan.old.map(item => item.content), ...plan.next.map(item => item.content)])) {
-        const found = rows.all(plan.target, content);
+        const found = rows.all(plan.target, ...(plan.project ? [plan.project] : []), content);
         if (found.length > 1 || found.some(row => row.category !== null))
             throw fail('Memory search index has ambiguous document facts or conflicting metadata; reconcile before editing');
     }
@@ -55,16 +57,18 @@ function reconcile(dbManager, plan) {
             checkRows(db, plan);
             const old = new Set(plan.old.map(item => item.content));
             const next = new Set(plan.next.map(item => item.content));
-            const remove = db.prepare('DELETE FROM memories WHERE target = ? AND project IS NULL AND category IS NULL AND content = ?');
+            const where = `target = ? AND ${plan.project ? 'project = ?' : 'project IS NULL'} AND category IS NULL AND content = ?`;
+            const params = content => [plan.target, ...(plan.project ? [plan.project] : []), content];
+            const remove = db.prepare(`DELETE FROM memories WHERE ${where}`);
             for (const content of old) if (!next.has(content)) {
-                const removed = remove.run(plan.target, content).changes;
+                const removed = remove.run(...params(content)).changes;
                 if (removed > 1) throw fail('Document index changed during removal');
             }
-            const count = db.prepare('SELECT COUNT(*) AS total FROM memories WHERE target = ? AND project IS NULL AND category IS NULL AND content = ?');
-            const insert = db.prepare('INSERT INTO memories (project, target, category, content, created, last_referenced) VALUES (NULL, ?, NULL, ?, ?, ?)');
-            for (const item of plan.next) if (count.get(plan.target, item.content).total === 0)
-                insert.run(plan.target, item.content, item.created, item.lastReferenced);
-            for (const item of plan.next) if (count.get(plan.target, item.content).total !== 1)
+            const count = db.prepare(`SELECT COUNT(*) AS total FROM memories WHERE ${where}`);
+            const insert = db.prepare('INSERT INTO memories (project, target, category, content, created, last_referenced) VALUES (?, ?, NULL, ?, ?, ?)');
+            for (const item of plan.next) if (count.get(...params(item.content)).total === 0)
+                insert.run(plan.project || null, plan.target, item.content, item.created, item.lastReferenced);
+            for (const item of plan.next) if (count.get(...params(item.content)).total !== 1)
                 throw fail('Document index changed during insertion');
         });
         tx.immediate();
@@ -72,12 +76,12 @@ function reconcile(dbManager, plan) {
     dbManager.withCorruptionRecovery(perform);
 }
 
-async function documentIndexSynced(root, target, bundlePath, content) {
+async function documentIndexSynced(root, target, bundlePath, content, { databaseRoot = root, project = null } = {}) {
     if (pendingDocumentIndex(root, target)) return false;
     const upstream = await import(pathToFileURL(bundlePath).href);
     const store = new upstream.MemoryStore({ memoryDir: root });
     const desired = documentEntries(store, content);
-    const dbPath = path.join(root, 'sessions.db');
+    const dbPath = path.join(databaseRoot, 'sessions.db');
     let stat;
     try { stat = fs.lstatSync(dbPath); }
     catch (error) { if (error.code === 'ENOENT') return desired.length === 0; throw error; }
@@ -86,9 +90,9 @@ async function documentIndexSynced(root, target, bundlePath, content) {
     const Database = createRequire(bundlePath)('better-sqlite3');
     const db = new Database(dbPath, { readonly: true, fileMustExist: true });
     try {
-        const rows = db.prepare('SELECT category FROM memories WHERE target = ? AND project IS NULL AND content = ?');
+        const rows = db.prepare(`SELECT category FROM memories WHERE target = ? AND ${project ? 'project = ?' : 'project IS NULL'} AND content = ?`);
         return desired.every(item => {
-            const matches = rows.all(target, item.content);
+            const matches = rows.all(target, ...(project ? [project] : []), item.content);
             return matches.length === 1 && matches[0].category === null;
         });
     } catch (error) {
@@ -97,10 +101,10 @@ async function documentIndexSynced(root, target, bundlePath, content) {
     } finally { db.close(); }
 }
 
-async function documentIndex(root, target, bundlePath, before, after) {
+async function documentIndex(root, target, bundlePath, before, after, { databaseRoot = root, project = null } = {}) {
     const upstream = await import(pathToFileURL(bundlePath).href);
     const store = new upstream.MemoryStore({ memoryDir: root });
-    const dbManager = new upstream.DatabaseManager(root);
+    const dbManager = new upstream.DatabaseManager(databaseRoot);
     const file = path.join(root, target === 'user' ? 'USER.md' : 'MEMORY.md');
     try {
         let pending = pendingDocumentIndex(root, target);
@@ -111,7 +115,8 @@ async function documentIndex(root, target, bundlePath, before, after) {
             fs.unlinkSync(filename(root, target));
             pending = null;
         }
-        const plan = pending ?? { version: 1, target, before: before?.revision ?? null,
+        if (pending && (pending.project || null) !== project) throw fail('Pending project index changed');
+        const plan = pending ?? { version: 1, target, project, before: before?.revision ?? null,
             after: hash(after), old: documentEntries(store, before?.text ?? ''), next: documentEntries(store, after) };
         if (pending && (before?.revision !== pending.after || hash(after) !== pending.after))
             throw fail('Repair the pending document index before editing again');
