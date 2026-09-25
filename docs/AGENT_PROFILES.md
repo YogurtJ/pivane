@@ -12,9 +12,11 @@
 
 关闭档案保留原有数据，使它不能用于新建或新加载。已运行会话保留其已加载配置，保存不会打断任务。详情页分别核对保存的档案和当前运行实例确认加载的ID、版本；配置已变化时需要空闲后重开运行实例。仅刷新网页可能继续连接原来的 worker；资源重载不能更新进程环境中的设置。
 
-档案的“学习与技能”入口提供该档案记忆与已学习技能的只读浏览，技能可展开查看正文；扩展页只展示精选与原生已安装资源。可对全局 `USER.md`、`MEMORY.md` 显式编辑原生文档（记忆需开启；USER可在新建档案后独立初始化），使用文档和档案双修订避免覆盖 Agent 或其他编辑者的更新。项目记忆、扩展记忆和已学习技能不通过此编辑器修改。保存值不表示当前会话已重新加载。
+档案的“学习与技能”入口浏览并管理此档案的记忆与已学习技能：按类型搜索/翻页、读取受限正文、核对当前修订与未保存草稿，以及查看近期回执的前后版本号；历史正文不由该接口提供，不能把修订号当成可查看的历史全文。可新建、编辑、删除与恢复服务端允许的条目，并通过仍可撤销的回执撤销最近变更。项目范围条目在没有服务端已验证写入能力时只读；技能名称必须以小写字母开头且不超过64位，仅管理档案拥有的技能，原生已安装技能仍在扩展页。存储、检索索引同步和当前会话生效分别显示，任何保存都不证明模型已经遵守。待修复、接口不可用和 revision 缺失时不开放写入；409 冲突保留草稿供核对，网络结果不确定时保留请求 ID 并先查回执，不自动重放。
 
-自动学习只有在服务确认适配组件已安装、并配置专用复盘模型时才能新启用。已有设置为开启但支持暂时失效时，界面保留其保存值并允许关闭，不会声称复盘正在正常执行。费用、频率、检索限额和错误状态见[记忆适配](PROFILE_MEMORY.md)。
+可对全局 `USER.md`、`MEMORY.md` 显式编辑原生文档（记忆需开启；USER 可独立初始化），使用文档和档案双修订避免覆盖 Agent 或其他编辑者的更新。原有文档编辑器与逐项知识管理分别核对修订。学习设置独立于辅助模型路由：可分别设置后台启用、纠错识别、复盘、候选提取、每天次数（1..20）、预留 tokens（6000..200000）和复盘间隔（0..10080 分钟）。保存只更新配置，不启动模型；专用辅助用途没有模型时不回退到主聊天模型。作业状态与费用仅按服务端报告显示，未知费用不是零。聊天中的“纠错与记忆回执”只对当前有档案的持久线程显示；手动纠错不冒充原生聊天来源，线程来源回执仅展示服务端确认且 sessionId 匹配当前线程的记录。撤销使用回执 ID，并再次由服务端核对当前修订。
+
+学习开关在“学习与技能”页单独保存；档案编辑器保留旧 `memory.autoLearn` 字段的兼容读写，但不再显示旧复盘开关。未安装适配组件、未配置相应用途模型时，快照会显示能力缺失，保存设置不触发作业也不会回退主聊天模型。费用、频率、检索限额和错误状态见[记忆适配](PROFILE_MEMORY.md)。
 
 ## 数据与会话归属
 
@@ -33,17 +35,13 @@ Pivane 使用独立的 pi-hermes-memory 适配组件。按[安装说明](PROFILE
 ```json
 {
   "version": 1,
-  "bundlePath": "/absolute/installation/package/profile-memory-bundle.mjs",
-  "reviewModel": {
-    "provider": "your-provider",
-    "modelId": "your-review-model"
-  }
+  "bundlePath": "/absolute/installation/package/profile-memory-bundle.mjs"
 }
 ```
 
-`bundlePath` 为已核对的独立安装 bundle 的绝对路径；`reviewModel` 必须选自当前 Pi 实际模型目录，省略或设置为 null 时不启用自动复盘支持。不要把凭据写入这个文件；模型认证继续由 Pi 管理。此配置只读加载，不通过浏览器接收任意执行文件路径。
+`bundlePath` 为已核对的独立安装 bundle 的绝对路径；不要把凭据写入这个文件，模型认证继续由 Pi 管理。旧 `reviewModel` 配置只读兼容，不再供旧的三轮复盘调用。后台学习需要在“设置 → 辅助模型”按纠错、复盘、提取分别指定可用模型，并在档案的学习设置显式开启；保存两类设置本身均不发送模型请求。此安装配置只读加载，不通过浏览器接收任意执行文件路径。
 
-服务核对 bundle 和本机 SQLite 后，通过 `/api/pi/status.profileMemory` 返回 `{installed,autoLearn}`。`autoLearn` 表示具备适配支持且已配置模型，不证明模型供应商请求成功；实际调用还会检查模型可用性和预算。配置读取失败不会回退到高价聊天模型。
+服务核对 bundle 和本机 SQLite 后，`/api/pi/status.profileMemory` 说明组件安装，`/api/pi/status.profileLearning` 表示新接口已装配；实际可写状态、专用模型、队列与限额来自相应档案的 `/knowledge` 和 `/learning` 快照。组件安装、内容保存、索引同步、当前 worker 加载与模型实际遵守是不同事实。
 
 仅符合条件的持久会话会获得插件环境参数。无档案会话会清除这些参数。不要再全局启用上游默认扩展，其历史扫描范围不同于这里的档案适配。扩展精选区显示“档案适配已安装”时，表示独立组件已核对，不代表原版插件已全局加载。
 
@@ -57,7 +55,12 @@ Pivane 使用独立的 pi-hermes-memory 适配组件。按[安装说明](PROFILE
 | `PUT /api/pi/profiles` | `{expectedRevision,profile:{id?,name,description,soul,enabled,avatar?,memory?,skills?}}`；无ID创建，有ID更新；emoji/null可直接保存，图片只允许保留本档案已上传版本；冲突409 |
 | `PUT /api/pi/profiles/default` | `{cwd,profileId,expectedRevision}`；null清除默认，仅允许已启用的档案 |
 | `POST /api/pi/sessions` | 原接口增加可选 profileId；省略使用项目默认，显式null创建无身份线程，不可用ID失败而非回退 |
-| `GET /api/pi/profiles/:id/memory` | `kind=memories或skills`，可选query、offset；只读分页，状态区分missing、disabled、unsupported、ready、error。技能项含scope、source和可选projectKey，不返回正文 |
+| `GET /api/pi/profiles/:id/knowledge` | `kind=memory|skill`、query、offset 可选；返回有界条目、近期回执、opaque revision 和真实 operations/limits；pending 的 revision 可为 null，禁止写入 |
+| `GET /api/pi/profiles/:id/knowledge/items/:itemId` | 返回受限正文、条目修订与 readOnly/truncated 状态；非本档案 ID 不可读 |
+| `POST /api/pi/profiles/:id/knowledge/mutations` | `{requestId,expectedRevision,operation,kind,...}`；按服务器能力创建、更新、删除、恢复和撤销，undo 仅附 `receiptId` 且 kind 取回执；HTTP 不接受客户端伪造的 source/projectKey |
+| `GET/PUT /api/pi/profiles/:id/learning` | GET 返回整数 revision、设置、任务与 capabilities.actions/limits；PUT `{expectedRevision,changes}` 只保存学习开关与预算，不启动模型 |
+| `POST /api/pi/profiles/:id/learning/actions` | `{requestId,action:'review-now'|'cancel',jobId?}`，按服务端 actions 调用并核对实际作业状态；不确定结果保留 requestId，不自动重放 |
+| `GET /api/pi/profiles/:id/memory` | 旧版兼容只读入口：`kind=memories或skills`，可选 query、offset，页面新管理入口使用 `/knowledge` |
 | `GET /api/pi/profiles/:id/skills/:skillId` | 仅接受技能列表的不透明ID；详情返回正文、修订和scope/source；无任意路径读取 |
 | `GET/PUT /api/pi/profiles/:id/documents` | GET 用 `target=user|memory`；PUT 用 `{target,content,expectedRevision,expectedProfileRevision}` 整篇提交；返回原生原文及 `usage:{used,limit,unit:'characters'}`，冲突409；禁用记忆时 MEMORY 为 disabled。若文档已发布但检索未同步则503携带`documentSaved:true,indexSynced:false`，GET显示待修复；不可盲目重试创建 |
 | `POST /api/pi/profiles/:id/avatar` | `{expectedRevision,dataUrl}`，仅最多1 MiB 的受校验 PNG；返回 `{ok,profile,revision}`；保存旧头像直到注册表CAS成功 |

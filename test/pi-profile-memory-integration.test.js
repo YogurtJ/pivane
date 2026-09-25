@@ -35,6 +35,11 @@ test('isolated Pi 0.87.1 upstream components enforce profile index, recall, skil
     };
     const alphaId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     const betaId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const registryDir = path.join(agent, 'pivane-profiles');
+    fs.mkdirSync(registryDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(registryDir, 'profiles.json'), JSON.stringify({ version: 1, defaults: {},
+        profiles: [alphaId, betaId].map(id => ({ id, name: 'Synthetic', description: '', soul: '', enabled: true,
+            memory: { enabled: true, autoLearn: false }, skills: { learnedEnabled: true } })) }));
     const a = create('a', alphaId, cwdA, '极限 alpha-notes');
     create('none', undefined, cwdA, '极限 none-secret');
     create('foreign', betaId, cwdA, '秩 beta-secret');
@@ -92,6 +97,11 @@ test('isolated Pi 0.87.1 upstream components enforce profile index, recall, skil
         procedure_steps: ['Check input'], verification_steps: ['Check output'] }, undefined, undefined, alpha.ctx);
     assert.equal(skill.details.success, true, JSON.stringify(skill.details));
     assert.ok(fs.existsSync(path.join(alpha.root, 'skills', 'synthetic-proof', 'SKILL.md')));
+    const listed = await alpha.pi.tools.get('skill_manage').execute('call', { action: 'view' }, undefined, undefined, alpha.ctx);
+    assert.ok(JSON.stringify(listed.details).includes('synthetic-proof'), 'view lists profile-owned skills');
+    const viewed = await alpha.pi.tools.get('skill_manage').execute('call', { action: 'view', skill_id: 'global:synthetic-proof' },
+        undefined, undefined, alpha.ctx);
+    assert.equal(viewed.details.success, true, JSON.stringify(viewed.details));
     const sharedSkill = path.join(agent, 'skills', 'shared-synthetic', 'SKILL.md');
     fs.mkdirSync(path.dirname(sharedSkill), { recursive: true });
     fs.writeFileSync(sharedSkill, '# Shared synthetic skill\n');
@@ -135,32 +145,14 @@ test('isolated Pi 0.87.1 upstream components enforce profile index, recall, skil
         same.pi.tools.get('memory_add').execute('call', { target: 'memory', content: 'parallel-beta' }, undefined, undefined, same.ctx),
     ]);
     assert.ok(parallel.every(result => result.details.success), JSON.stringify(parallel.map(result => result.details)));
-    let propose;
-    let entered;
-    const reviewing = new Promise(resolve => { entered = resolve; });
-    same.ctx.modelRegistry = {
-        getModel: () => ({ reasoning: false, cost: { input: 0.1, output: 0.2 } }),
-        getAvailable: async () => [{ provider: 'synthetic', id: 'cheap' }],
-        completeSimple: async () => {
-            entered();
-            return new Promise(resolve => { propose = () => resolve({ stopReason: 'stop', usage: {
-                input: 25, output: 8, cost: { total: 0.001 } },
-                content: [{ type: 'text', text: '{"target":"memory","content":"stale-review-fact"}' }] }); });
-        },
-    };
-    const reviewEvent = { outcome: 'completed', context: { contextMessages: [
-        { role: 'user', content: 'Always use a synthetic verification checklist for this project and record the confirmed steps.' },
-        { role: 'assistant', content: 'I will use a synthetic verification checklist and record the confirmed steps.' },
-    ] } };
-    for (let i = 0; i < 2; i++) await same.pi.emit('agent_before_settle', reviewEvent, same.ctx);
-    const pending = same.pi.emit('agent_before_settle', reviewEvent, same.ctx);
-    await reviewing;
-    assert.equal((await add.execute('call', { target: 'memory', content: 'intervening-runtime-update' }, undefined, undefined, alpha.ctx)).details.success, true);
-    propose();
-    await pending;
-    assert.equal(same.pi.records.at(-1).data.status, 'skipped');
-    assert.equal(same.pi.records.at(-1).data.reason, 'memory-changed');
-    assert.equal(same.pi.records.at(-1).data.usage.input, 25);
+    const beforePrompt = await Promise.all((same.pi.events.get('before_agent_start') || [])
+        .map(fn => fn({ systemPrompt: 'synthetic system' }, same.ctx)));
+    assert.ok(beforePrompt[0]?.systemPrompt.includes('parallel-beta'));
+    const provided = same.pi.records.findLast(item => item.type === 'pivane-profile-memory-read');
+    assert.equal(provided.data.provided, true);
+    assert.equal(provided.data.scope, 'profile-and-physical-cwd');
+    assert.equal((same.pi.events.get('agent_before_settle') || []).length, 0,
+        'background learning is owned by the gateway, not the active worker boundary');
     assert.equal((await same.pi.tools.get('memory_search').execute('call', { query: 'stale-review-fact' }, undefined, undefined, same.ctx)).details.count, 0);
     await alpha.close();
     const remembered = await same.pi.tools.get('memory_search').execute('call', { query: '秩' }, undefined, undefined, same.ctx);

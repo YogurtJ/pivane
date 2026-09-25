@@ -642,6 +642,8 @@ class AgentWorker extends EventEmitter {
                 estimatedTokensAfter: result?.estimatedTokensAfter,
                 willRetry: Boolean(event.willRetry)
             };
+            // Internal observers use this event; browser subscribers alone decide reclaimability.
+            if (this.compaction.status === 'success') this.emit('compaction', this.compaction);
         } else if (event.type === 'summarization_retry_scheduled' && this.activity.compacting) {
             this.compaction = { ...this.compaction, status: 'retrying', attempt: event.attempt, maxAttempts: event.maxAttempts, delayMs: event.delayMs };
         } else if (event.type === 'summarization_retry_attempt_start' && this.activity.compacting) {
@@ -754,6 +756,7 @@ class PiAgentSupervisor extends EventEmitter {
                 await worker.ensureReady();
                 if (this.disposing) throw new Error('Pi supervisor is shutting down');
                 this.workers.set(sessionPath, worker);
+                this.emit('worker', worker);
                 return worker;
             } catch (error) {
                 await worker.dispose();

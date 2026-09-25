@@ -20,6 +20,8 @@
     <link rel="stylesheet" href="workspace-access.css">
     <link rel="stylesheet" href="pi-model-picker.css">
     <link rel="stylesheet" href="pi-agent-profiles.css">
+    <link rel="stylesheet" href="pi-profile-knowledge.css">
+    <link rel="stylesheet" href="pi-chat-knowledge.css">
     <link rel="stylesheet" href="pi-mobile-header.css">
     <link rel="stylesheet" href="pi-usage.css">
     <link rel="stylesheet" href="pi-native-controls.css">
@@ -218,6 +220,7 @@
                         <button id="pi-review-pending-ui" type="button"><!--i18n:s1353-->处理确认</button>
                     </div>
                     <details id="pi-task-results" class="pi-task-results" hidden></details>
+                    <div id="pi-chat-knowledge" hidden></div>
                     <div class="pi-transcript-viewport">
                         <div id="pi-transcript" class="pi-transcript" tabindex="0" role="region" aria-label="会话消息" data-i18n-aria-label="s1354">
                             <div id="pi-transcript-content" class="pi-transcript-content" aria-live="polite">
@@ -882,6 +885,8 @@
     <script src="pi-extensions.js"></script>
     <link rel="stylesheet" href="pi-extensions.css">
     <script src="pi-assistant-projects.js"></script>
+    <script src="pi-profile-knowledge.js"></script>
+    <script src="pi-chat-knowledge.js"></script>
     <script src="pi-agent-profiles.js"></script>
     <script src="settings.js"></script>
     <script src="media-fields.js"></script>

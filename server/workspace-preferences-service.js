@@ -5,7 +5,8 @@ const path = require('path');
 const { createHash } = require('node:crypto');
 
 function auxiliaryRevision(document) {
-    return createHash('sha256').update(JSON.stringify([document.sessionTitles || {}, document.mediaAgent || {}, document.mediaAgentRevision || 0])).digest('hex');
+    return createHash('sha256').update(JSON.stringify([document.sessionTitles || {}, document.mediaAgent || {}, document.mediaAgentRevision || 0,
+        document.memoryModels || {}])).digest('hex');
 }
 
 const DEFAULT_MEDIA_AGENT = Object.freeze({
@@ -85,6 +86,15 @@ class WorkspacePreferencesService {
         return { provider: reference.provider, modelId: reference.modelId };
     }
 
+    getMemoryModels() {
+        const saved = this.readDocument().memoryModels || {};
+        return Object.fromEntries(['memory-correction', 'memory-review', 'memory-extraction'].map(id => {
+            const value = saved[id] || { provider: '', modelId: '' };
+            const reference = validateTitleSettings({ provider: value.provider ?? '', modelId: value.modelId ?? '' });
+            return [id, { provider: reference.provider, modelId: reference.modelId }];
+        }));
+    }
+
     getAuxiliaryModelsRevision() { return auxiliaryRevision(this.readDocument()); }
 
     setAuxiliaryModels(changes, expectedRevision) {
@@ -98,6 +108,13 @@ class WorkspacePreferencesService {
             const reference = validateTitleSettings(changes.mediaAgent);
             document.mediaAgent = { ...document.mediaAgent, provider: reference.provider, modelId: reference.modelId };
             document.mediaAgentRevision = (document.mediaAgentRevision || 0) + 1;
+        }
+        if (changes.memoryModels) {
+            document.memoryModels = { ...document.memoryModels };
+            for (const [id, value] of Object.entries(changes.memoryModels)) {
+                const reference = validateTitleSettings(value);
+                document.memoryModels[id] = { ...document.memoryModels[id], provider: reference.provider, modelId: reference.modelId };
+            }
         }
         this.writeDocument(document);
     }

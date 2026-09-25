@@ -12,12 +12,12 @@ const MAX_SKILL_SCAN = 5000;
 const BUNDLE_SHA256 = '0b2d8dae469077d615f46cb7d96d408663dc66980748718441d137293f9f9faa';
 const hash = data => createHash('sha256').update(data).digest('hex');
 const stamp = s => [s.dev, s.ino, s.mode, s.size, s.mtimeNs, s.ctimeNs].map(String).join(':');
-function safeFile(file) {
+function safeFile(file, maxBytes = MAX_FILE) {
     let fd;
     try {
         assertDescriptorBackend();
         const before = fs.lstatSync(file, { bigint: true });
-        if (!before.isFile() || before.isSymbolicLink() || before.size > BigInt(MAX_FILE)) throw new Error('Unsafe profile file');
+        if (!before.isFile() || before.isSymbolicLink() || before.size > BigInt(maxBytes)) throw new Error('Unsafe profile file');
         fd = io.openReadSync(file);
         const opened = fs.fstatSync(fd, { bigint: true }), identity = io.identity(fd);
         if (!opened.isFile() || stamp(opened) !== stamp(before) || descriptorPathSync(fd) !== file) throw new Error('Changed profile file');
@@ -65,7 +65,8 @@ function listMemories(root, projects) {
         versions.push(`${file}:${data.revision}`);
         let ordinal = 0;
         for (const content of data.text.split('\n§\n').map(part => part.trim()).filter(Boolean)) {
-            items.push({ id: hash(`${file}\0${ordinal++}\0${content}`), kind: 'memory', target, content, updatedAt: data.updatedAt });
+            items.push({ id: hash(`${file}\0${ordinal++}\0${content}`), kind: 'memory', target, content,
+                ...(target === 'project' ? { projectKey: path.basename(dir) } : {}), updatedAt: data.updatedAt });
         }
     }
     return { items, versions };
@@ -122,6 +123,8 @@ function listExtendedMemories(root, bundle) {
         const versions = rows.map(row => JSON.stringify(row));
         return { versions, items: rows.map(row => ({ id: hash(`${dbPath}\0${row.id}`), kind: 'memory',
             target: row.project && row.target === 'memory' ? 'project' : row.target,
+            ...(row.project ? { projectKey: hash(row.project) } : {}),
+            ...(row.category ? { category: row.category } : {}),
             content: row.content, createdAt: row.created, updatedAt: row.last_referenced })) };
     } finally { db.close(); }
 }
@@ -205,4 +208,4 @@ function mountProfileMemoryRoutes(router, { profiles, getAgentDir, bundlePath = 
         } catch { return res.status(409).json({ error: 'Profile skill cannot be read safely' }); }
     });
 }
-module.exports = { mountProfileMemoryRoutes, profileMemoryCapability, safeFile };
+module.exports = { mountProfileMemoryRoutes, profileMemoryCapability, safeFile, listMemories, listSkills, projectRoots, skillFiles, listExtendedMemories, safeDir };

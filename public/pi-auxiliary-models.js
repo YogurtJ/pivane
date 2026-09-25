@@ -7,6 +7,7 @@
         if (className) element.className = className;
         return element;
     };
+    const dedicated = id => ['memory-correction', 'memory-review', 'memory-extraction'].includes(id);
     class AuxiliaryModels {
         constructor({ apiFetch, saved }) {
             this.apiFetch = apiFetch; this.saved = saved; this.root = document.getElementById('settings-auxiliary-models');
@@ -23,7 +24,7 @@
             this.status = node('p', '', 'aux-models-status'); this.status.setAttribute('role', 'status');
             footer.append(this.reset, this.saveButton); this.root.append(footer, this.status);
             this.reset.onclick = () => {
-                for (const purpose of this.current.purposes) this.change(purpose, { ...this.value(purpose), provider: '', modelId: '' });
+                for (const purpose of this.current.purposes) if (!dedicated(purpose.id)) this.change(purpose, { ...this.value(purpose), provider: '', modelId: '' });
                 this.render();
             };
             this.saveButton.onclick = () => this.save();
@@ -109,12 +110,12 @@
                 // Handlers retain this descriptor object; update its current settings after a save/read.
                 Object.assign(row.purpose, purpose);
                 const value = this.value(purpose), models = value.provider ? this.available(value.provider) : [];
-                row.provider.replaceChildren(this.option('', t(purpose.automaticLabel)));
+                row.provider.replaceChildren(this.option('', dedicated(purpose.id) ? t('未配置 · 此用途停用') : t(purpose.automaticLabel || '自动')));
                 for (const id of providerIds) row.provider.append(this.option(id, this.providers.find(provider => provider.id === id)?.name || id));
                 if (value.provider && !providerIds.includes(value.provider)) row.provider.append(this.option(value.provider, t('{0}（不可用）', value.provider)));
                 row.provider.value = value.provider;
                 row.model.replaceChildren();
-                if (!value.provider) row.model.append(this.option('', t(purpose.automaticLabel)));
+                if (!value.provider) row.model.append(this.option('', dedicated(purpose.id) ? t('未配置') : t(purpose.automaticLabel || '自动')));
                 else {
                     for (const model of models) row.model.append(this.option(model.id, model.name || model.id));
                     if (!models.some(model => model.id === value.modelId)) row.model.append(this.option(value.modelId, t('{0}（不可用）', value.modelId || value.provider)));
@@ -122,13 +123,13 @@
                 row.model.value = value.modelId;
                 row.provider.disabled = this.busy; row.model.disabled = this.busy || !value.provider;
                 if (row.enabled) { row.enabled.checked = value.enabled; row.enabled.disabled = this.busy; }
-                row.current.textContent = t('已保存：{0}', purpose.settings.provider ? `${purpose.settings.provider}/${purpose.settings.modelId}` : t(purpose.automaticLabel));
-                row.badge.textContent = purpose.enabledLabel && value.enabled === false ? t('自动命名已关闭，仍可手动生成') : '';
+                row.current.textContent = t('已保存：{0}', purpose.settings.provider ? `${purpose.settings.provider}/${purpose.settings.modelId}` : dedicated(purpose.id) ? t('未配置 · 此用途停用') : t(purpose.automaticLabel || '自动'));
+                row.badge.textContent = dedicated(purpose.id) && !value.provider ? t('不会回退到主聊天模型') : purpose.enabledLabel && value.enabled === false ? t('自动命名已关闭，仍可手动生成') : '';
                 const patch = this.patch(purpose, value);
                 if (patch.provider && !models.some(model => model.id === patch.modelId)) invalid = true;
             }
             this.saveButton.disabled = this.busy || !this.drafts.size || invalid;
-            this.reset.disabled = this.busy || this.current.purposes.every(purpose => !this.value(purpose).provider);
+            this.reset.disabled = this.busy || this.current.purposes.filter(purpose => !dedicated(purpose.id)).every(purpose => !this.value(purpose).provider);
         }
         async save() {
             if (this.busy || !this.drafts.size) return;

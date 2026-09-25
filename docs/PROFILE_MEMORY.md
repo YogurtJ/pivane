@@ -109,34 +109,168 @@ and returns `ready`, `missing`, `disabled` or `unsupported`. A ready item adds
 the verified `content` and its file `revision`; no shared installed skill or
 arbitrary path can be read through the route.
 
-## Auto-learning
+## Unified knowledge management (source candidate)
 
-`memory.autoLearn` has no effect unless memory is enabled, a valid bound RPC
-worker is active, and `PIVANE_PROFILE_MEMORY_REVIEW_MODEL` is configured as
-JSON `{ "provider": "configured-provider", "modelId": "cheap-model-id" }`.
-Select a configured provider/id from the Pi runtime catalogue; no model is
-hardcoded and the current conversation model is never silently substituted.
-The model must resolve as available via `ctx.modelRegistry` and have input
-price at most 1 and output price at most 2 per million tokens. Parent should
-choose a cheaper model explicitly and inspect its actual schema/cost. A review
-runs only after three eligible completed turns, at most once per 15 minutes and
-four attempts per worker session. It reads at most 6,000 characters of the latest user/assistant
-exchange, requests at most 220 output tokens with a supported low reasoning
-level (or no reasoning option for a non-reasoning model), no tools, a 20-second
-abort signal, and no CLI/subagent fallback. Pi awaits
-`agent_before_settle`, so a request still in flight remains owned; timeout
-requests cancellation but the handler awaits actual completion. It applies at
-most one bounded stable fact through the guarded `memory_add` operation. All adapter
-memory add/replace/remove writes across workers acquire the same profile-local
-interprocess mutation lock. The reviewer takes a revision and disk snapshot under
-that lock, releases it for the provider call, then reacquires it to reload, compare
-revision/content and perform the write. A stale proposal is skipped; a busy or
-abandoned lock fails closed and requires operator reconciliation rather than unsafe
-lock stealing. Abort, unavailable model, malformed proposal, conflicting state
-and write uncertainty record non-success. This is not a
-mastery/progress inference engine. Native custom status entries are operational
-records, not additional chat logs. Provider cancellation behavior must be
-verified for each selected provider before real activation.
+`mountProfileKnowledgeRoutes(router, { service })` mounts same-origin GET
+`/profiles/:id/knowledge?kind=memory|skill&query=&offset=&sessionId=`, GET
+`/profiles/:id/knowledge/items/:itemId`, and POST
+`/profiles/:id/knowledge/mutations`. The service is
+`new ProfileKnowledgeService({ profiles, getAgentDir, bundlePath })` from
+`server/profile-memory/knowledge-service.js`; mount it once and pass the **same
+instance** to background learning and the native tool adapter. The UI does not
+own a second store. GET pages contain at most 50 entries (memory previews up to
+512 characters), 30 recent receipts, and a hash revision; detail content is
+bounded to 65,536 characters and marks truncated legacy entries read-only.
+`offset` is a canonical decimal integer from 0 to 100000 (no leading zeros).
+`capabilities.operations` lists supported commands, and `memory`/`skill` flags
+specify which kind is writable. The additive `capabilities.journal` object
+reports live receipt/request/tombstone counts, their windows and real limits.
+`projectWrites:false` applies to HTTP; only a
+verified native source can write the physical cwd scope. No logical assistant
+project isolation is claimed. Installed Pi skills are never writable.
+
+POST accepts `{requestId,expectedRevision,operation,kind,...}` with operations
+`create|update|delete|restore|enable|disable|undo`. Create/update require
+explicit content; memory requires category `fact|preference|correction|failure|procedure`.
+Skill names are lowercase slugs of at most 64 characters. Updates and state
+changes require `itemId` and `itemRevision`; undo requires `receiptId` and
+current snapshot revision, not item identity. The receipt reports saved state,
+index readiness, activation timing and an undo token; it does not claim a
+running worker has reloaded. Undo is only offered while the receipt stays
+inside the active journal window and the target revision is unchanged;
+receipts compacted into the archive report `undoable:false`. A deleted/replaced memory leaves a tombstone, so
+an automatic or repeated create cannot silently revive it. The older whole-document
+PUT checks the same private ledger under its existing mutation lock: it cannot
+remove managed facts or reintroduce tombstoned ones, while unrelated legacy
+entries remain editable. SQLite-only rows,
+legacy failure entries and oversized records remain visible but read-only,
+with distinct identities from the Markdown they may mirror. Failure records
+are never remapped into the `memory` target.
+
+`service.mutateFromNative(profileId, input, { sessionPath, sessionId, entryId,
+cwd })` is **server/worker-only**. Both its first check and the final check
+immediately before publication run a streaming source proof over the opened
+native JSONL: descriptor read with before/after identity checks, header session
+id and canonical cwd, exactly one current-ID profile binding marker, and the
+claimed `entryId` on the current leaf branch. The leaf follows Pi
+`SessionManager` semantics (the last appended entry, walking `parentId` to the
+root), so an entry on an abandoned branch, or a branch switch between the two
+checks, is rejected while same-branch growth is not. The proof retains only
+entry `id`/`parentId` edges, never message bodies, and budgets 64 MiB / 200,000
+entries per session; over-budget sessions fail explicitly with `Native session
+exceeds source proof limits` (413) instead of proving a truncated tree. The
+historical derived index keeps its separate 8 MiB snapshot bound. It writes
+only `{sessionId,entryId}` into the item and receipt; no conversation text is
+duplicated.
+For project scope the service derives `projectKey=sha256(canonical cwd)` and
+writes the profile-owned physical project directory; the caller cannot choose
+an unrelated projectKey. Only this method can create a skill in `draft` state;
+manual enable publishes the validated skill after review. The HTTP mutation
+method rejects all `source`, `projectKey`, and draft state fields. The single
+adapter `createKnowledgeMemoryTools(service, profileId)` in
+`server/profile-memory/tool-mutations.js` (registered by
+`server/profile-memory/extension.ts`) maps native memory add/replace/remove and
+skill create/update/edit/patch/delete writes into this entry. Its native source
+must come from a verified worker and a real native entry, and it returns `null`
+for read-only skill actions, so upstream `view` lists and reads profile-owned skills. Upstream
+project IDs `project:<projectName>:<slug>` resolve by slug inside the verified cwd scope only. Structured skill updates locate exactly
+one active skill by `skill_id`, refuse ambiguous matches and unmanaged
+frontmatter, patch only a uniquely matching `##` section, and keep the
+`itemRevision` CAS between the located snapshot row and the service mutation.
+Deterministic rejections (4xx: name collisions, invalid fields, revision
+conflicts) return a failed tool result (`details.success=false` with a readable
+error) like upstream tools; uncertain outcomes (5xx or publication-unknown
+errors) keep throwing and are never reported as a clean success or failure.
+Legacy failure writes cannot be mapped losslessly and fail closed rather than
+changing a normal memory entry.
+
+The journal and pending publication marker are private profile data protected
+by the same cross-process mutation lock and generation as the Markdown/SQLite
+writer. An uncertain publication returns an error and `snapshot.status=pending`
+until a retry with the identical requestId and input verifies whether the
+file is the expected before or after revision. After publication, that retry
+repairs indexing/metadata; before publication, it safely retries the write.
+A different request cannot pass an unresolved marker. The journal is stored
+as version 2: a monotonic `sequence` feeds the hash revision, so receipt
+compaction never invalidates client revisions. At most 200 recent receipts
+stay active; older receipts are compacted to digest-only archive entries that
+keep their identity, request ID and status but report `undoable:false`. Every
+request ID keeps a minimal idempotent record. Client request IDs have an
+explicit 7-day validity: within it a retry replays the same receipt, after it
+the same ID is refused as expired (`Request ID expired`) and is never
+re-executed. Server-generated IDs (`tool-*`, `learning-*`, reachable only
+through the verified native path) stay replayable while retained and are
+compacted oldest-first. Retired IDs are remembered in a spent hash list, so
+re-execution stays refused even after compaction. Deleted or replaced memory
+content keeps a long-lived tombstone in a compact hash list (32,768 entries).
+Only client request IDs enter the permanent spent list; server IDs never
+recur, so they are dropped when compacted. Undo before-copies are kept only for
+receipts inside the active window and are removed with the receipt that owns
+them. The journal, and the pending marker that also carries the next document,
+must stay inside 8 MiB: when whole skill bodies would exceed that budget, the
+oldest before-copies are dropped first and their receipts become
+`undoable:false`, never silently undoable without data. When a real identity
+limit (tombstones, spent IDs, records) is reached the service refuses the write
+with an explicit journal-full error instead of silently shedding identity. Version 1 metadata still reads with
+the same revision, idempotency and tombstone semantics and upgrades to
+version 2 atomically on the first write; writing continues past the old
+200-receipt cap without any reviewed migration. The learning action journal
+follows the same policy: client action request IDs are valid for 7 days,
+replays inside the window are idempotent, expired reuse is refused without
+re-running the action, and retired IDs stay remembered in a spent hash list;
+learning job IDs are server-generated and never collide with client request
+IDs, and the state file reports its real `maxActions`/`actionValidityDays`
+limits. A saved document is not evidence of successful indexing or activation in an already-running worker.
+
+## Background learning
+
+The old in-worker three-turn reviewer (`memory.autoLearn`,
+`PIVANE_PROFILE_MEMORY_REVIEW_MODEL`, `runtime.json.reviewModel`) is retired:
+those values are still read for compatibility but start no model call, and
+`/status.profileMemory.autoLearn` is always false. Learning now runs in the
+server-side `ProfileLearningService` (`server/profile-memory/learning-service.js`),
+which shares the single `ProfileKnowledgeService` instance with the routes and
+tool adapter.
+
+- **Settings** are per profile (`GET/PUT /profiles/:id/learning`), default off:
+  `enabled`, `correctionEnabled`, `reviewEnabled`, `extractionEnabled`,
+  `periodicReviewMinutes` (0..10080), `maxRunsPerDay` (1..20, default 4),
+  `maxTokensPerDay` (6000..200000, default 24000). Saving never runs a job.
+- **Models** are the auxiliary purposes `memory-correction`, `memory-review`
+  and `memory-extraction` under Settings → Preferences → Auxiliary models. A
+  blank purpose is `waiting-config`; the chat model is never substituted.
+- **Triggers** (a job registered while workers are busy is retried every second
+  until they are idle, not left for the periodic tick): a settled turn, a successful compaction and worker exit/quit
+  register verified native user/assistant pair references (no transcript body
+  is stored). Explicit corrections and "remember from now on" preferences are
+  handled first by the correction purpose; ordinary pairs go to review;
+  compaction/exit boundaries go to extraction of pairs not yet covered.
+  Positive `periodicReviewMinutes` throttles review and lets a periodic scan
+  backfill known sessions. Native sessions above 8 MiB are not learned from.
+- **Writes** go only through `mutateFromNative` with the verified user entry
+  as source, so they carry receipts, CAS, tombstones and the source-proof
+  checks above. A correction may CAS-replace one matching old record;
+  otherwise it creates a new record. A reusable procedure can only become a
+  `draft` profile skill that the user must enable.
+- **Bounds**: UTC daily reservation of 6000 tokens per attempt, at most 2
+  concurrent runs globally and 1 per profile, a ~2400 character excerpt,
+  prompt plus excerpt ≤ 5000 UTF-8 bytes, ≤ 320 output tokens, no tools, no
+  CLI/subagent fallback, 20 s abort followed by waiting for real settlement.
+  Queue 64 jobs, 128 cursors; deep branch rewrites block a cursor and are
+  reported in `capabilities.capacity.blockedBranches`. Manual action IDs
+  (`review-now`, `cancel`) are valid for 7 days; at most 256 active and 1024
+  retired IDs are kept, after which actions fail explicitly.
+- **Outcomes**: jobs report status, reason, model, receipt IDs and only the
+  usage/cost the provider reported (`unknown` is not zero). Jobs running at a
+  restart become `uncertain` and are never replayed. Deterministic trusted-write
+  refusals (including the 413 source-proof limit) are `skipped/knowledge-rejected`.
+
+Each eligible `before_agent_start` re-reads profile and physical-cwd memory
+from disk and appends a native `pivane-profile-memory-read` entry.
+`get_runtime_configuration.memoryRead` reports that last recorded read; it is
+evidence of what was provided, not that the model followed it. This is not a
+mastery/progress inference engine, and provider cancellation behaviour must
+still be verified for each real provider before activation.
 
 ## Source index and bounds
 
@@ -201,7 +335,14 @@ PIVANE_TEST_PI_JITI=/private/fresh-prefix/node_modules/@earendil-works/pi-coding
 ```
 
 These tests require both variables; integration is not silently skipped in the
-parent gate. Keep the prefix and record its bundle, lock and native hashes.
+parent gate.
+`test/browser/pi-memory-learning-e2e.cjs` (requires `PIVANE_TEST_HERMES_BUNDLE`)
+runs the whole loop against the real assembled gateway, real Pi RPC workers and
+a loopback synthetic provider in a throwaway identity: dedicated learning
+models, an explicit Chinese preference learned in a real chat turn, the chat
+card receipt, injection into the next turn, an agent `memory_add` through the
+journal, `skill_manage view`, edit and undo in the management page, exit
+extraction without re-learning, and the 393 px layout. Keep the prefix and record its bundle, lock and native hashes.
 Before enabling a real profile, finish active work and back up
 `<agentDir>/pivane-profiles/` and configuration. Parent activates only reviewed
 new workers under its maintenance flow. Rollback removes the hook/env/router

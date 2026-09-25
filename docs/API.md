@@ -50,7 +50,17 @@
 
 会话序列化字段 `agentProfile` 是保存的身份投影，不能据此推断 worker 已加载。`get_runtime_configuration.agentProfile` 分别返回 saved、savedProfileRevision、loadedProfileId、loadedProfileRevision、loadedConfirmed 与 matchesSavedProfile。旧会话不因新增项目默认身份而追认归属，网页分叉显式继承源身份，导入不会仅因复制旧会话标记而获得绑定。字段限制、保存与重开语义见[助手档案](AGENT_PROFILES.md)。
 
-`GET /status.profileMemory` 返回 `{installed,autoLearn}`，核对私有配置指向的适配 bundle 与本机 SQLite；autoLearn 表示已配置直接复盘模型，不证明供应商请求已成功。配置失效时返回 false，不隐式切换聊天模型或全局安装插件。`GET /profiles/:id/memory?kind=memories|skills&query=&offset=` 为已挂载的只读档案数据接口，分页每次最多50条；其 ready 是数据可读状态，与当前会话是否加载分开。安装、模型配置与检索限额见[记忆适配](PROFILE_MEMORY.md)。
+`GET /status.profileMemory` 返回 `{installed,autoLearn}`，核对私有配置指向的适配 bundle 与本机 SQLite；旧的三轮复盘已停用，`autoLearn` 固定为 false。配置失效时 `installed` 为 false，不隐式切换聊天模型或全局安装插件。`GET /profiles/:id/memory?kind=memories|skills&query=&offset=` 保留为旧版只读兼容接口，分页每次最多50条；其 ready 是数据可读状态，与当前会话是否加载分开。
+
+`GET /status.profileLearning=true` 表示逐项知识管理与后台学习接口已装配（同一 `ProfileKnowledgeService` 实例供路由、后台学习和原生工具共用）。
+
+- `GET /profiles/:id/knowledge?kind=memory|skill&query=&offset=&sessionId=`：每页最多 50 条（记忆预览 512 字符）、30 条近期回执、不透明 revision，以及 `capabilities`（`operations`、`memory`/`skill` 可写性、`projectWrites:false`、`skillNameMaxLength`、`maxContentLength`、`journal` 计数与上限）。`status` 为 `ready|pending|missing|disabled|unsupported|error`；pending 时 revision 为 null，禁止写入。
+- `GET /profiles/:id/knowledge/items/:itemId`：受限正文（最多 65,536 字符）、条目 revision、`readOnly`/`truncated` 与服务端来源 `{sessionId,entryId}`。
+- `POST /profiles/:id/knowledge/mutations`：`{requestId,expectedRevision,operation,kind,...}`，operation 为 `create|update|delete|restore|enable|disable|undo`；记忆需 category `fact|preference|correction|failure|procedure`，undo 只带 `receiptId`。拒绝客户端提交的 `source`、`projectKey` 与草稿状态。确定拒绝为 4xx（409 版本冲突/身份不唯一，413 超出来源证明预算），发布结果不确定为 503 并保持 pending，只能用同一 requestId 与同一输入修复。客户端 requestId 7 天内重放返回原回执，过期后拒绝且不重跑。
+- `GET/PUT /profiles/:id/learning`：GET 返回 `{version:1,status,revision,settings,jobs,recentRuns,capabilities}`，revision 为整数；PUT `{expectedRevision,changes}` 只保存开关与额度，不启动作业。
+- `POST /profiles/:id/learning/actions`：`{requestId,action:'review-now'|'cancel',jobId?}`，按 `capabilities.actions` 调用，返回最新快照；结果不确定时不自动重放。
+
+`GET /activity` 另含 `learningBusy`、`learningRuns`；维护空闲判断包含后台学习。辅助模型用途新增 `memory-correction`、`memory-review`、`memory-extraction`，未配置时等待配置，不回退主模型。字段语义、写入日志容量、限额与验证状态见[记忆适配](PROFILE_MEMORY.md)和[辅助模型](AUXILIARY_MODELS.md)。
 
 `GET /status.profileDocuments`、`profileAuthoring` 表示文档编辑及专用起草接口已装配。`GET/PUT /profiles/:id/documents` 使用 `target=user|memory` 和文档／档案双修订；结果区分 `documentSaved`、`indexSynced` 与 `indexStatus`（ready/pending/disabled/unsupported）。202 表示文档已保存但检索未启用；503 可表示保存后的索引部分失败或文件写入结果未知，不能据此自动重放修改。核对最新修订后，提交当前原文可同步待修复的派生索引。头像上传、单条技能正文以及 `/profiles/authoring-sessions` 的字段和限额见[档案接口契约](AGENT_PROFILES.md#接口契约)。起草结果只有在用户导入草稿并保存后才改变档案；`profileRevisions` 供网页核对目标档案，不需要在浏览器重新计算服务端摘要。
 
@@ -275,7 +285,7 @@ Body：
 
 ### 辅助模型
 
-`/status.auxiliaryModels=true` 表示已启用按用途管理的辅助模型设置。GET `/settings/auxiliary-models` 返回 `{version:1,revision,purposes}`；GET `/settings/models` 同时返回此快照，保留旧 preferences 字段。当前用途为 `session-title`（标题）和 `media-planner`（媒体方案及接入规划）。每项含显示标签、自动规则、说明和当前 settings。
+`/status.auxiliaryModels=true` 表示已启用按用途管理的辅助模型设置。GET `/settings/auxiliary-models` 返回 `{version:1,revision,purposes}`；GET `/settings/models` 同时返回此快照，保留旧 preferences 字段。当前用途为 `session-title`（标题）、`media-planner`（媒体方案及接入规划），以及后台学习的 `memory-correction`、`memory-review`、`memory-extraction`；学习用途双空表示待配置，不使用主模型。每项含显示标签、自动规则、说明和当前 settings。
 
 PUT `/settings/auxiliary-models` 接受 `{expectedRevision,changes}`，changes 按用途 ID 提交成对的 provider/modelId，双空字符串恢复自动；标题额外支持 enabled。只允许已实现用途/字段，不接受任意插件名。一次校验并原子保存所有改动，修订冲突 409；旧标题/媒体设置变化同样会使修订失效。已选专用模型失效不自动回退，标题“自动”与媒体“自动”的规则不同。保存不执行模型任务，校验纳入 nativeSettingsBusy/停机边界。完整参数、存储、兼容与后续接入要求见[辅助模型](AUXILIARY_MODELS.md)。
 
