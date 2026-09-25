@@ -5,9 +5,9 @@ import { pathToFileURL } from 'node:url';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import scope from './scope.js';
 import indexer from './index.js';
-import autoLearn from './auto-learn.js';
 import mutation from './mutation-lock.js';
 import documentIndex from './document-index.js';
+import toolMutations from './tool-mutations.js';
 import { profileMemoryCapability, safeFile } from './management.js';
 
 function assertPrivateSkillTree(...roots: string[]) {
@@ -43,8 +43,17 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
     let sourceIndex: ReturnType<typeof indexer.createIndex> | null = null;
     let activeIdentity: any = null;
     const memoryMutation = mutation.createMutationLock(root);
+    const knowledgePath = path.join(__dirname, 'knowledge-service.js');
+    const registryPath = path.join(context.agentDir, 'pivane-profiles', 'profiles.json');
+    const knowledge = fs.existsSync(knowledgePath) ? new (require(knowledgePath).ProfileKnowledgeService)({
+        profiles: { getProfile: async (id: string) => {
+            if (id !== context.profileId) return null;
+            const registry = require('../pi-profile-registry.js').readRegistry(registryPath);
+            return registry.state.profiles.find((record: any) => record.id === id) || null;
+        } }, getAgentDir: async () => context.agentDir, bundlePath: bundle,
+    }) : null;
+    const knowledgeTools = knowledge ? toolMutations.createKnowledgeMemoryTools(knowledge, context.profileId) : null;
     let coverage = { limited: true, initialSweepComplete: false };
-    const registered = new Map<string, any>();
     const allowed = (ctx: any) => started && !stopped && ctx?.mode === 'rpc'
         && scope.eligibleManager(ctx.sessionManager, context, ctx.cwd)
         && scope.sameActiveFile(ctx.sessionManager.getSessionFile(), activeIdentity);
@@ -68,7 +77,9 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
                 const wrapped = { ...tool,
                     description: tool.name === 'session_search'
                         ? `${tool.description}\n\nProject filters use the full canonical cwd. Results cover only indexed, verified native sessions; backfill may be partial.`
-                        : tool.description,
+                        : knowledge && ['memory_replace', 'memory_remove'].includes(tool.name)
+                            ? `${tool.description}\n\nFor profile MEMORY/USER, old_text must exactly match one complete active memory entry. A knowledge receipt confirms the result; do not retry uncertain writes without checking the receipt.`
+                            : tool.description,
                     promptGuidelines: tool.name === 'skill_manage' ? [ ...(tool.promptGuidelines || []),
                         'After a useful repeated procedure or correction, consider creating or updating a profile-owned skill with verification steps. Never modify shared installed skills. Newly created skills are available after reload.' ] : tool.promptGuidelines,
                     execute: async (...args: any[]) => {
@@ -81,14 +92,19 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
                         }
                         if (tool.name === 'skill_manage') assertPrivateSkillTree(skillStore.getGlobalSkillsDir(), skillStore.getProjectSkillsDir());
                         const execute = async () => tool.execute(...args);
-                        const result = ['memory_add', 'memory_replace', 'memory_remove'].includes(tool.name)
+                        const viaKnowledge = knowledgeTools && (['memory_add', 'memory_replace', 'memory_remove', 'skill_manage'].includes(tool.name))
+                            ? await knowledgeTools(tool.name, args[1], args[2], () => allowed(args[args.length - 1]), args[args.length - 1]) : null;
+                        if (knowledge && tool.name === 'skill_manage' && !viaKnowledge
+                            && !['list', 'read', 'show', 'get'].includes(args[1]?.action))
+                            throw new Error('Unsupported profile skill write action');
+                        const result = viaKnowledge || (['memory_add', 'memory_replace', 'memory_remove'].includes(tool.name)
                             ? await memoryMutation.run(args[2], async () => {
                                 await store?.loadFromDisk();
                                 await projectStore?.loadFromDisk();
                                 if (!allowed(args[args.length - 1])) throw new Error('Profile memory binding changed');
                                 if (await indexUnavailable(args[1]?.target)) throw new Error('Profile document search index needs repair');
                                 return execute();
-                            }) : await execute();
+                            }) : await execute());
                         if (tool.name === 'session_search') {
                             const changed = sourceIndex?.reconcile();
                             if (sourceIndex) coverage = sourceIndex.coverage();
@@ -104,7 +120,6 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
                         return result;
                     },
                 };
-                registered.set(tool.name, wrapped);
                 pi.registerTool(wrapped);
             };
         },
@@ -136,15 +151,22 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
         upstream.registerMemoryTool(guarded, store, () => projectStore, db, () => context.cwd);
         upstream.registerMemorySearchTool(guarded, db);
         upstream.registerSessionSearchTool(guarded, db, { variant: 'legacy' });
-        pi.on('before_agent_start', (event: any, ctx: any) => {
+        pi.on('before_agent_start', async (event: any, ctx: any) => {
             if (!allowed(ctx)) return;
-            const block = [store.formatForSystemPrompt(), projectStore.formatProjectBlock(context.cwd)].filter(Boolean).join('\n\n');
-            if (block) return { systemPrompt: event.systemPrompt + '\n\n' + block };
+            const loaded = await memoryMutation.inspect(async (generation: number) => {
+                await store.loadFromDisk();
+                await projectStore.loadFromDisk();
+                if (!allowed(ctx) || await indexUnavailable()) throw new Error('Profile memory changed or needs repair');
+                const block = [store.formatForSystemPrompt(), projectStore.formatProjectBlock(context.cwd)].filter(Boolean).join('\n\n');
+                return { generation, block };
+            }, ctx.signal);
+            if (!allowed(ctx)) return;
+            const loadedAt = new Date().toISOString();
+            if (typeof pi.appendEntry === 'function') pi.appendEntry('pivane-profile-memory-read', {
+                version: 1, profileId: context.profileId, generation: loaded.generation, loadedAt,
+                scope: 'profile-and-physical-cwd', provided: Boolean(loaded.block) });
+            if (loaded.block) return { systemPrompt: event.systemPrompt + '\n\n' + loaded.block };
         });
-        if (context.memory.autoLearn) {
-            const reviewer = autoLearn.createReviewer(pi, { context, store, projectStore, tools: registered, allowed, mutation: memoryMutation });
-            pi.on('agent_before_settle', reviewer.review);
-        }
     }
     pi.on('session_start', async (_event: any, ctx: any) => {
         if (stopped || ctx.mode !== 'rpc' || !scope.eligibleManager(ctx.sessionManager, context, ctx.cwd)) return;

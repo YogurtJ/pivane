@@ -31,7 +31,8 @@ test('auxiliary registry reads existing preferences without migration and atomic
         sessionTitles: { ...reference(modelB), enabled: false, revision: 7, custom: 'titles' } });
     const before = fs.readFileSync(f.preferences.filePath);
     const initial = f.service.snapshot();
-    assert.deepEqual(initial.purposes.map(purpose => purpose.id), ['session-title', 'media-planner']);
+    assert.deepEqual(initial.purposes.map(purpose => purpose.id), ['session-title', 'media-planner',
+        'memory-correction', 'memory-review', 'memory-extraction']);
     assert.equal(initial.purposes[0].settings.modelId, modelB.id);
     assert.equal(initial.purposes[1].settings.modelId, modelA.id);
     assert.deepEqual(fs.readFileSync(f.preferences.filePath), before);
@@ -54,6 +55,24 @@ test('auxiliary registry reads existing preferences without migration and atomic
     assert.equal(f.preferences.getSessionTitles().provider, ''); assert.equal(f.preferences.getSessionTitles().enabled, false);
     assert.deepEqual(f.preferences.getMediaAgent(), { provider: '', modelId: '' });
     assert.equal(writes, 2);
+    await f.service.dispose();
+});
+
+test('dedicated memory models save together, require explicit routing, and preserve legacy reviewModel untouched', async () => {
+    const f = fixture();
+    f.preferences.writeDocument({ legacy: { reviewModel: 'read-only' } });
+    const initial = f.service.snapshot();
+    assert.equal(initial.purposes[2].settings.provider, '');
+    await f.service.save({ expectedRevision: initial.revision, changes: {
+        'memory-correction': reference(modelB), 'memory-review': reference(modelB),
+        'memory-extraction': reference(modelB) } });
+    assert.equal(f.reads(), 1);
+    assert.equal(f.preferences.readDocument().legacy.reviewModel, 'read-only');
+    assert.deepEqual(f.preferences.getMemoryModels()['memory-correction'], reference(modelB));
+    const revision = f.service.snapshot().revision;
+    await f.service.save({ expectedRevision: revision, changes: { 'memory-review': { provider: '', modelId: '' } } });
+    assert.equal(f.preferences.getMemoryModels()['memory-review'].provider, '');
+    assert.equal(f.reads(), 1);
     await f.service.dispose();
 });
 

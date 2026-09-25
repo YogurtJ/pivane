@@ -9,7 +9,12 @@ const AUXILIARY_PURPOSES = Object.freeze([
         enabledLabel: '自动生成会话标题' }),
     Object.freeze({ id: 'media-planner', storage: 'mediaAgent', label: '媒体规划', description: '图像、视频、语音参数与模型接入方案',
         automaticLabel: '自动 · 媒体规划默认',
-        help: '自动时按服务器媒体规划配置、Pi 默认模型及可用模型选择。只生成可编辑方案，媒体执行仍需单独确认。' })
+        help: '自动时按服务器媒体规划配置、Pi 默认模型及可用模型选择。只生成可编辑方案，媒体执行仍需单独确认。' }),
+    ...[['memory-correction', '明确纠错', '提取用户明确纠正的长期事实'],
+        ['memory-review', '增量复盘', '空闲时复盘新完成的对话'],
+        ['memory-extraction', '边界提炼', '压缩或退出时提取持久信息']].map(([id, label, description]) =>
+        Object.freeze({ id, storage: 'memoryModels', label, description, automaticLabel: '未配置 · 不运行',
+            help: '仅在学习已开启且选择专用模型后运行；不继承主对话模型，保存配置不会触发请求。' }))
 ]);
 
 class PiAuxiliaryModelsService {
@@ -20,7 +25,8 @@ class PiAuxiliaryModelsService {
     snapshot() {
         return { version: 1, revision: this.preferences.getAuxiliaryModelsRevision(), purposes: AUXILIARY_PURPOSES.map(purpose => {
             const { storage, ...descriptor } = purpose;
-            return { ...descriptor, settings: storage === 'sessionTitles' ? this.preferences.getSessionTitles() : this.preferences.getMediaAgent() };
+            return { ...descriptor, settings: storage === 'sessionTitles' ? this.preferences.getSessionTitles()
+                : storage === 'memoryModels' ? this.preferences.getMemoryModels()[purpose.id] : this.preferences.getMediaAgent() };
         }) };
     }
     save(input) {
@@ -36,7 +42,10 @@ class PiAuxiliaryModelsService {
             if (!purpose || !raw || typeof raw !== 'object' || Array.isArray(raw)
                 || Object.keys(raw).some(key => !['provider', 'modelId', ...(purpose.enabledLabel ? ['enabled'] : [])].includes(key))) throw new Error('辅助模型用途或参数无效');
             const patch = validateTitleSettings(raw);
-            changes[purpose.storage] = patch;
+            if (purpose.storage === 'memoryModels' && (!Object.hasOwn(patch, 'provider') || !Object.hasOwn(patch, 'modelId')))
+                throw new Error('记忆辅助模型需要同时指定供应商和模型');
+            if (purpose.storage === 'memoryModels') (changes.memoryModels ||= {})[id] = patch;
+            else changes[purpose.storage] = patch;
             if (patch.provider) references.push({ provider: patch.provider, modelId: patch.modelId });
         }
         if (input.expectedRevision !== this.preferences.getAuxiliaryModelsRevision()) throw Object.assign(new Error('辅助模型设置已变化，请刷新后再保存'), { statusCode: 409 });
