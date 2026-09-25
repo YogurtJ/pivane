@@ -211,6 +211,7 @@ function createPiAgentGateway(options = {}) {
             profileLearning: Boolean(knowledgeModule && knowledgeService),
             agentTaskResults: true,
             taskProgress: true,
+            subagentRuntime: true,
             extensionAssistant: true,
             nativeSettings: true,
             systemPrompts: true,
@@ -269,6 +270,7 @@ function createPiAgentGateway(options = {}) {
     router.get('/settings/subagents', nativeRoute(req => subagentSettings.snapshot(req.query.cwd)));
     router.put('/settings/subagents', nativeRoute(req => subagentSettings.save(req.body), true));
     router.post('/settings/subagents/install', nativeRoute(req => subagentSettings.install(req.body), true));
+    router.post('/settings/subagents/upgrade', nativeRoute(req => subagentSettings.upgrade(req.body), true));
     router.get('/settings/system-prompts', nativeRoute(req => systemPrompts.snapshot(req.query.cwd)));
     router.put('/settings/system-prompts', nativeRoute(req => systemPrompts.save(req.body), true));
     router.get('/settings/native', nativeRoute(req => nativeService.snapshot(req.query.cwd)));
@@ -858,6 +860,13 @@ function createPiAgentGateway(options = {}) {
                 }
                 if (message.type === 'get_native_resources') {
                     const data = await worker.getNativeResources();
+                    safeSend(socket, { type: 'response', id: message.id, command: message.type, success: true, data });
+                    return;
+                }
+                if (message.type === 'subagent_control') {
+                    const source = worker;
+                    const data = await source.subagentRequest({ method: message.method, params: message.params });
+                    if (worker !== source || socketClosed) return;
                     safeSend(socket, { type: 'response', id: message.id, command: message.type, success: true, data });
                     return;
                 }

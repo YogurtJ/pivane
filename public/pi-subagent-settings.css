@@ -103,3 +103,8 @@
     .sa-picker > footer { padding: 10px 14px; }
 }
 @media (prefers-reduced-motion: reduce) { .sa-role > summary > i { transition: none; } }
+.sa-upgrade { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--blue) 40%, var(--line)); border-radius: 10px; background: color-mix(in srgb, var(--blue) 8%, var(--surface-2)); }
+.sa-upgrade > i { color: var(--blue); flex-shrink: 0; }
+.sa-upgrade > p { flex: 1; min-width: 0; margin: 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.sa-upgrade > button { flex-shrink: 0; }
+@media (max-width: 600px) { .sa-upgrade { flex-wrap: wrap; } .sa-upgrade > button { width: 100%; min-height: 40px; } }

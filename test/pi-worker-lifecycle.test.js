@@ -50,8 +50,12 @@ test('supervisor idle includes starting and temporary workers without exposing t
     assert.equal(supervisor.isIdle(), false);
     supervisor.ephemeralWorkers.clear();
     const value = worker();
-    supervisor.workers.set('synthetic', { isIdle: () => workerLifecycle(value).blockers.length === 0, dispose() {} });
+    supervisor.workers.set('synthetic', { isIdle: () => workerLifecycle(value).blockers.length === 0, retainsBackgroundWork: () => Boolean(value.background), dispose() {} });
     assert.equal(supervisor.isIdle(), true);
+    value.background = true;
+    assert.equal(supervisor.isIdle(), false, 'detached subagent work blocks maintenance without making the turn busy');
+    assert.equal(workerLifecycle(value).activity.busy, false);
+    value.background = false;
     value.controls.recoveries.push({ text: 'unsaved' });
     assert.equal(supervisor.isIdle(), false);
     value.controls.recoveries.length = 0;

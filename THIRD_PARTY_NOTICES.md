@@ -33,7 +33,7 @@ Pivane自身的代码使用[ISC许可证](LICENSE)。第三方软件、字体、
 
 ## 默认可选能力
 
-安装流程可从 npm 单独下载 [pi-subagents](https://github.com/nicobailon/pi-subagents) 0.69.0（Nico Bailon，MIT），其依赖与原有许可保留在 Pi 包安装位置。Pivane 源码归档只包含安装清单与适配代码，不包含该插件源码或其依赖；安装失败不影响应用必需依赖。安装范围、跳过和补装见[安装指南](docs/INSTALL_RECOVERY.md#默认可选能力)。
+安装流程可从 npm 单独下载 [pi-subagents](https://github.com/nicobailon/pi-subagents) 0.71.0（Nico Bailon，MIT），其依赖与原有许可保留在 Pi 包安装位置。Pivane 源码归档只包含安装清单与适配代码，不包含该插件源码或其依赖；安装失败不影响应用必需依赖。安装范围、跳过和补装见[安装指南](docs/INSTALL_RECOVERY.md#默认可选能力)。
 
 ## 可选档案记忆组件
 

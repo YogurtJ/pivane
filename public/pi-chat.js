@@ -445,9 +445,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     filesPanel.bindHistory(turnEdits);
 
+    const subagentRuns = new window.PiSubagentRuns(document.getElementById('pi-subagent-runs'), {
+        connected: () => state.connected, toast,
+        request: (method, params, timeoutMs) => requestRpc('subagent_control', { method, params }, timeoutMs)
+    });
     const nativeControls = new window.PiRuntimeControls({
         connected: () => state.connected,
-        changed: () => { state.controlsStopping = Boolean(nativeControls.value?.stopping); editorSuggestions.apply(nativeControls.value); setStreaming(state.streaming); },
+        changed: () => { subagentRuns.apply(nativeControls.value?.subagents); state.controlsStopping = Boolean(nativeControls.value?.stopping); editorSuggestions.apply(nativeControls.value); setStreaming(state.streaming); },
         toast, copy: copyTextToClipboard,
         take: stop => takeRuntimeQueue(stop),
         ack: async recoveryId => {
@@ -1852,6 +1856,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.connected = false;
         state.streaming = false;
         nativeControls.reset();
+        subagentRuns.reset();
         shell.reset(); state.shellBusy = false;
         state.controlRequested = false;
         state.controlsStopping = false;
@@ -2124,9 +2129,9 @@ document.addEventListener('DOMContentLoaded', () => {
         header.appendChild(button);
     }
 
-    function foldLongUserText(text, source) {
+    function foldLongUserText(text, source, limits = { chars: 2400, lines: 30 }) {
         // Deliberately generous: ordinary multi-paragraph prompts remain fully visible.
-        if (source.length <= 2400 && source.split(/\r\n|\r|\n/).length <= 30) return;
+        if (source.length <= limits.chars && source.split(/\r\n|\r|\n/).length <= limits.lines) return;
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'pi-user-text-toggle';
@@ -2184,6 +2189,7 @@ document.addEventListener('DOMContentLoaded', () => {
             article.classList.add('pi-agent-thread-message');
             window.PiTaskResults?.decorate(header, message.details || {}, appendAgentThreadLink);
         }
+        const subagentNotice = role === 'custom' && Boolean(window.PiSubagentNotices?.decorate(article, header, message));
         const responseText = role === 'assistant' ? messageText(message.content).trim() : '';
         if (responseText) state.lastAssistantText = responseText;
         if (role === 'user') {
@@ -2212,10 +2218,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (block.type === 'text') {
                 const text = document.createElement('div');
                 text.className = 'pi-markdown';
-                if (role === 'assistant') text.innerHTML = renderMarkdown(block.text);
+                // pi-subagents notices are Markdown reports; renderMarkdown sanitizes them.
+                if (role === 'assistant' || subagentNotice) text.innerHTML = renderMarkdown(block.text);
                 else window.PiQuotes.renderUser(text, block.text);
                 body.appendChild(text);
                 if (role === 'user') foldLongUserText(text, block.text || '');
+                else if (subagentNotice) foldLongUserText(text, block.text || '', { chars: 1200, lines: 16 });
             } else if (block.type === 'thinking') {
                 body.appendChild(createThinkingBlock(block.thinking));
             } else if (block.type === 'toolCall') {

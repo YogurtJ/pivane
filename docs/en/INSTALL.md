@@ -19,7 +19,7 @@ Use the same ordinary operating-system user as your existing Pi CLI. Pivane norm
 
 ## Optional default capabilities
 
-The current source runs an optional step after `npm ci` to install `pi-subagents@0.69.0` into the selected Pi identity, shared with Pi CLI. Download failure does not fail Pivane installation. Existing versions remain unchanged; recorded attempts are not automatically retried, including after failure, interruption, skipping or later removal. Use **Settings → Models & capabilities → Subagents** to verify and explicitly install a missing plugin.
+The current source runs an optional step after `npm ci` to install `pi-subagents@0.71.0` into the selected Pi identity, shared with Pi CLI. Download failure does not fail Pivane installation. Existing versions remain unchanged; recorded attempts are not automatically retried, including after failure, interruption, skipping or later removal. Use **Settings → Models & capabilities → Subagents** to verify and explicitly install a missing plugin.
 
 For an isolated identity, set `PI_CODING_AGENT_DIR` before running `npm ci`, or prepare the application's `.env` first. Set `PI_SKIP_DEFAULT_CAPABILITIES=1` or `PI_OFFLINE=1` to record a skipped attempt. `npm ci --ignore-scripts` also skips installation but writes no attempt record. Installation does not authorize or start child tasks. The current catalog includes only pi-subagents; additional capability packages require explicit integration in a future version.
 

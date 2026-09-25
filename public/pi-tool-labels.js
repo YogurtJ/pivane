@@ -1,6 +1,32 @@
 (() => {
     const t = (s, ...args) => globalThis.PiI18n?.t ? globalThis.PiI18n.t(s, ...args) : s.replace(/\{(\d+)\}/g, (_, i) => args[i] ?? '');
     const text = (s, limit = 4096) => typeof s === 'string' && s.length <= limit ? s : '';
+    // pi-subagents tools. Titles summarize the call; the raw tool name stays in the detail line.
+    const role = value => {
+        const id = text(value, 128);
+        return id ? globalThis.PiSubagentSettings?.roleName?.(id) || id : '';
+    };
+    const withRole = (label, value) => role(value) ? `${label} · ${role(value)}` : label;
+    const SUBAGENT_ACTIONS = {
+        status: '查看子 Agent 状态', list: '列出子 Agent 角色', get: '查看子 Agent 角色', models: '查看子 Agent 可用模型',
+        steer: '引导子 Agent', resume: '继续子 Agent', stop: '停止子 Agent', interrupt: '中断子 Agent', 'children.list': '列出子 Agent 运行',
+        guide: '读取子 Agent 使用说明', doctor: '诊断子 Agent 环境', validate: '检查子 Agent 工作流', create: '创建子 Agent 角色',
+        update: '修改子 Agent 角色', delete: '删除子 Agent 角色', 'inspector.command': '查看子 Agent 检查命令'
+    };
+    function subagentTitle(name, args) {
+        if (name === 'subagents_enable') return t('启用子 Agent 工具');
+        if (name === 'bg_wait') return args.nonBlocking ? t('订阅后台任务完成提醒') : t('等待后台任务');
+        if (name === 'subagent_supervisor') {
+            return t(({ reply: '回复子 Agent 请示', pending: '查看待回复的子 Agent 请示', status: '查看子 Agent 请示状态', list: '列出子 Agent 请示' })[args.action] || '处理子 Agent 请示');
+        }
+        const action = text(args.action, 80);
+        if (action) return Object.hasOwn(SUBAGENT_ACTIONS, action) ? withRole(t(SUBAGENT_ACTIONS[action]), action === 'status' ? '' : args.agent) : t('子 Agent 操作 · {0}', action);
+        const background = args.async === true;
+        if (args.workflow || args.workflowScript || args.workflowScriptPath) return t(background ? '后台运行子 Agent 工作流' : '运行子 Agent 工作流');
+        if (Array.isArray(args.tasks)) return t(background ? '后台并行运行 {0} 个子 Agent' : '并行运行 {0} 个子 Agent', args.tasks.length);
+        if (Array.isArray(args.chain)) return t(background ? '后台依次运行 {0} 个子 Agent' : '依次运行 {0} 个子 Agent', args.chain.length);
+        return withRole(t(background ? '后台启动子 Agent' : '运行子 Agent'), args.agent);
+    }
     function update(row) {
         const name = row.dataset.toolName || 'tool', args = row._piToolArgs || {}, result = row._piResult;
         const raw = result?.details?.pivaneToolProvenance ?? result?.details?.pi5ToolProvenance;
@@ -14,6 +40,7 @@
             title = t('读取技能文件 · {0}', parts.at(-2) || 'SKILL.md');
             info = t('按文件名识别，未核对技能加载状态。');
         } else if (name === 'update_plan') title = t('更新任务计划');
+        else if (['subagent', 'subagent_supervisor', 'subagents_enable', 'bg_wait'].includes(name)) title = subagentTitle(name, args);
         else if (name === 'extensions_inventory') title = t('检查扩展清单');
         else if (name === 'extensions_package') {
             title = ({ install: t('安装扩展包'), update: t('更新扩展包'), remove: t('移除扩展包') })[args.action] || t('管理扩展包');

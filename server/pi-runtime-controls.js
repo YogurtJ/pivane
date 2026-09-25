@@ -1,4 +1,5 @@
 const { randomUUID } = require('node:crypto');
+const { snapshotWidget } = require('./pi-subagent-runtime');
 
 // Ephemeral presentation state only. Pi remains the owner of the live queue.
 class PiRuntimeControls {
@@ -13,13 +14,21 @@ class PiRuntimeControls {
         this.drafts = [];
         this.draftOverflow = false;
         this.title = '';
+        // pi-subagents host data: structured run snapshot and retention state.
+        this.subagents = { snapshot: null, background: null };
+    }
+
+    setBackgroundWork(value) {
+        if (JSON.stringify(value) === JSON.stringify(this.subagents.background)) return false;
+        this.subagents = { ...this.subagents, background: value };
+        this.changed(); return true;
     }
 
     snapshot() {
         return { runtimeId: this.runtimeId, revision: this.revision, queue: this.queue,
             recoveries: this.recoveries, stopping: this.stopping,
             drafts: this.drafts, draftOverflow: this.draftOverflow,
-            extension: { title: this.title, statuses: [...this.statuses], widgets: [...this.widgets] } };
+            extension: { title: this.title, statuses: [...this.statuses], widgets: [...this.widgets] }, subagents: this.subagents };
     }
 
     changed() { this.revision++; }
@@ -30,6 +39,7 @@ class PiRuntimeControls {
         } else if (event.type === 'extension_ui_request') {
             const text = value => typeof value === 'string' ? value.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').slice(0, 16000) : '';
             const key = value => typeof value === 'string' && value.length <= 256 ? value : null;
+            const projection = event.method === 'setWidget' ? snapshotWidget(event) : undefined;
             if (event.method === 'set_editor_text') {
                 if (typeof event.text !== 'string' || !event.text) return false;
                 if (this.drafts.some(d => d.id === event.id)) return false;
@@ -41,6 +51,9 @@ class PiRuntimeControls {
                 if (name === null) return false;
                 if (event.statusText == null) this.statuses.delete(name);
                 else if (this.statuses.has(name) || this.statuses.size < 64) this.statuses.set(name, text(event.statusText));
+            } else if (projection) {
+                if (projection.ignore) return false;
+                this.subagents = { ...this.subagents, snapshot: projection.snapshot };
             } else if (event.method === 'setWidget') {
                 const name = key(event.widgetKey);
                 if (name === null) return false;

@@ -9,6 +9,7 @@ const { workerLifecycle } = require('./pi-worker-lifecycle');
 
 const { PiRuntimeControls } = require('./pi-runtime-controls');
 const { PiShellExecution } = require('./pi-shell-execution');
+const subagentRuntime = require('./pi-subagent-runtime');
 const DEFAULT_IDLE_MS = 15 * 60 * 1000;
 
 // Pi 0.86 persists prompt/tool checkpoints as role=system messages. They are
@@ -46,6 +47,7 @@ class AgentWorker extends EventEmitter {
         this.contextResults = new Map();
         this.modelCatalog = new (require('./pi-model-catalog').PiModelCatalog)(this);
         this.resourceResults = new Map();
+        this.subagentResults = new Map();
         this.loadedAgentProfileId = null;
         this.loadedAgentProfileRevision = null;
         this.loadedAgentProfileConfirmed = false;
@@ -399,6 +401,42 @@ class AgentWorker extends EventEmitter {
         });
     }
 
+    async subagentRequest(input) {
+        const { method, params } = subagentRuntime.validateControl(input);
+        if (this.noSession) throw new Error('临时会话不支持子 Agent 控制');
+        if (this.disposed || this.operation) throw new Error('会话正在切换或重新加载，请稍后重试');
+        if (this.subagentResults.size >= 2) throw new Error('子 Agent 操作正在进行，请稍后重试');
+        const id = randomUUID();
+        this.subagentResults.set(id, null); // Reserve before awaiting readiness.
+        try {
+            await this.ensureReady();
+            const commands = await this.client.request('get_commands');
+            const command = commands.commands.find(item => item.source === 'extension'
+                && (item.sourceInfo?.path || item.path) === path.join(__dirname, 'pi-web-session-extension.ts')
+                && isInternalCommand(item.name) && item.description?.includes('subagents-v1'));
+            if (!command) throw new Error('当前运行实例尚未加载子 Agent 控制接口，请在任务结束后重新打开会话');
+            if (this.disposed || this.operation) throw new Error('会话正在切换或重新加载，请稍后重试');
+            // Extension commands run before prompt preflight, also while the parent Agent is busy.
+            try {
+                await this.client.request('prompt', { message: `/${command.name} ${JSON.stringify({ mode: 'subagents', method, params, id, token: this.navigationToken })}` }, 50000);
+            } catch (error) {
+                if (!this.subagentResults.get(id) && error.code === 'RPC_TIMEOUT' && !['status', 'cost'].includes(method)) {
+                    throw Object.assign(new Error('未收到子 Agent 操作确认，结果不确定；请刷新状态核对，未自动重试'), { code: 'uncertain' });
+                }
+                if (!this.subagentResults.get(id)) throw error;
+            }
+            const result = this.subagentResults.get(id);
+            if (!result) throw new Error('未收到子 Agent 操作结果，请刷新状态核对');
+            if (!result.success) {
+                const message = { unavailable: '当前会话没有加载 pi-subagents，请在扩展中启用后重新打开会话',
+                    uncertain: '子 Agent 未在时限内确认，结果不确定；请刷新状态核对，未自动重试',
+                    unsupported_method: '当前 pi-subagents 版本不支持此操作' }[result.code];
+                throw Object.assign(new Error(message || String(result.error || '子 Agent 操作失败').slice(0, 2000)), { code: result.code });
+            }
+            return subagentRuntime.controlResult(method, result.data);
+        } finally { this.subagentResults.delete(id); this.lastUsedAt = Date.now(); }
+    }
+
     async captureContext() {
         if (this.contextCapture) return this.contextCapture;
         const capture = (async () => {
@@ -534,6 +572,18 @@ class AgentWorker extends EventEmitter {
                     }
                     return; // Malformed/foreign bridge records must not become notifications.
                 }
+                if (result && Object.hasOwn(result, 'pivaneBackgroundWork')) {
+                    const value = this.managed && !this.noSession ? subagentRuntime.backgroundWork(result.pivaneBackgroundWork, this.sessionId) : null;
+                    if (value) {
+                        if (value.active) this.lastUsedAt = Date.now();
+                        if (this.controls.setBackgroundWork(value)) this.broadcastControls();
+                    }
+                    return; // Private retention signal; never a browser notification.
+                }
+                if (typeof result.pivaneSubagents === 'string') {
+                    if (this.subagentResults.has(result.pivaneSubagents)) this.subagentResults.set(result.pivaneSubagents, result);
+                    return;
+                }
                 if (typeof result.pivaneResources === 'string') {
                     if (this.resourceResults.has(result.pivaneResources)) this.resourceResults.set(result.pivaneResources, result);
                     return; // Including late/unknown private replies.
@@ -646,8 +696,14 @@ class AgentWorker extends EventEmitter {
         return this.lifecycle().blockers.length === 0;
     }
 
+    // Detached pi-subagents work reports completion to this process. Reaping it
+    // would lose the automatic continuation even though the child keeps running.
+    retainsBackgroundWork() {
+        return Boolean(this.controls.subagents.background?.active);
+    }
+
     canEvict(now, idleMs) {
-        return this.isIdle() && this.subscribers.size === 0 && now - this.lastUsedAt >= idleMs;
+        return this.isIdle() && !this.retainsBackgroundWork() && this.subscribers.size === 0 && now - this.lastUsedAt >= idleMs;
     }
 
     async dispose() {
@@ -749,14 +805,14 @@ class PiAgentSupervisor extends EventEmitter {
 
     isIdle() {
         return !this.disposing && !this.starting.size && !this.ephemeralWorkers.size
-            && [...this.workers.values()].every(worker => worker.isIdle());
+            && [...this.workers.values()].every(worker => worker.isIdle() && !worker.retainsBackgroundWork());
     }
 
     getActivity() {
         return [...this.workers.values()]
             .filter(worker => !worker.disposed && worker.sessionId)
             .map(worker => ({ cwd: worker.cwd, sessionId: worker.sessionId, titleGenerating: worker.titleGeneration,
-                ...worker.lifecycle().activity }));
+                ...worker.lifecycle().activity, backgroundWork: worker.retainsBackgroundWork() }));
     }
 
     getActiveWorker(sessionPath) {

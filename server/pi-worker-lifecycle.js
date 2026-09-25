@@ -19,6 +19,7 @@ function workerLifecycle(worker) {
     if (worker.modelChangeUncertain) blockers.push('model-uncertain');
     if (worker.titleGeneration) blockers.push('title-generation');
     if (worker.pendingUi.size) blockers.push('confirmation');
+    if (worker.subagentResults?.size) blockers.push('subagent-control');
     if (worker.controls.recoveries.length || worker.controls.drafts.length) blockers.push('unsaved-controls');
     if (worker.controls.queue.steering.length || worker.controls.queue.followUp.length) blockers.push('queue');
     return {

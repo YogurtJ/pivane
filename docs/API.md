@@ -98,7 +98,7 @@
 
 `browserNotifications=true` 标记设备Web Push订阅与任务通知后端。`GET /notifications`、`POST /notifications/key`、`POST /notifications/status`、`PUT/DELETE /notifications/subscription`、`POST /notifications/test` 复用认证和Origin，响应no-store；只公开VAPID公钥，订阅绑定当前访问身份，关闭/撤销停止后续推送。参数、限额和HTTPS/手机要求见 [NOTIFICATIONS.md](NOTIFICATIONS.md)。
 
-`/settings/subagents` 提供 pi-subagents 专属状态与模型/思考配置，`/settings/subagents/install` 确认后补装固定版本。未安装、停用或版本不匹配时不能保存，ready 不代表已加载进当前 worker。字段、修订、范围与安装限制见[子 Agent 专属设置](NATIVE_SETTINGS.md#子-agent-专属设置)。
+`/settings/subagents` 提供 pi-subagents 专属状态与模型/思考配置，`/settings/subagents/install` 确认后补装固定版本，`/settings/subagents/upgrade` 确认后把默认方式安装的旧兼容版本原位升级到固定版本。未安装、停用或版本不匹配时不能保存，ready 不代表已加载进当前 worker。字段、修订、范围与安装限制见[子 Agent 专属设置](NATIVE_SETTINGS.md#子-agent-专属设置)。
 
 `nativeSettings`、`nativeResources`、`projectTrust`、`modelAdvanced` 标记原生配置增强。设置 `/settings/native`、`/settings/native/trust`、`/settings/native/resources`、`/settings/native/packages`、`/settings/native/skill` 和 `/settings/models/advanced` 的方法、修订、范围和限额见 [NATIVE_SETTINGS.md](NATIVE_SETTINGS.md)。主连接新增 `get_native_resources` 返回当前 worker 的实际 trust/资源来源，不返回系统提示正文或工具 schema；最多3000项/512KiB，不扩展裸 RPC 白名单。`/activity.nativeSettingsBusy` 供空闲部署检查。受管扩展原生换会话或直接导航被取消，网页入口保持。
 
@@ -119,6 +119,8 @@
 `fileBrowser=true` 标记项目浏览接口 `GET /files/list?cwd&path&hidden` 和 `GET /files/search?cwd&q&hidden`，可在没有会话 worker 时使用。只返回经项目／私密路径及描述符验证的文件和目录元数据，`entries` 含 `name/path/kind/link`，`partial` 明确扫描是否不完整；目录按需读取，文件名搜索覆盖未展开目录但跳过目录链接及常见依赖／构建目录。2 并发、3 秒扫描预算，目录最多返回 500 项、搜索最多返回 100 项；参数、范围与错误见 [FILE_VIEWER.md](FILE_VIEWER.md#目录与文件名搜索-api)。
 
 `fileViewer=true` 标记已挂载 `GET /files/content?cwd&path`：按当前项目范围读取普通 UTF-8 文件，最大 2MiB、4 并发，返回 cwd/path/absolutePath/content/size/modifiedAt/readAt/revision，响应 no-store/nosniff。复用 token/Origin/realpath/项目根校验，拒绝凭据、越界软链接、非普通文件、二进制与读取中变化；不启动 worker、不写文件或历史。write 记录全文来自原生消息，当前磁盘全文仅用户选择/刷新时请求。字段、错误码及展示契约见 [FILE_VIEWER.md](FILE_VIEWER.md)。
+
+`subagentRuntime=true` 标记 pi-subagents 运行适配：`webControls`/`gateway_controls` 增加 `subagents:{snapshot,background}`。`snapshot` 为 null 或 `{version:1,generatedAt,runs:[{id,kind,label,state,startedAt?,updatedAt?,endedAt?,activity?,children?}],omitted:{runs,children}}`，由插件的状态快照规范化而来，不再出现在通用扩展 widget 中；`background` 为 null 或 `{supported,active,sources}`，active 表示会话因后台子 Agent 或待送达完成通知而保持。主 WS `subagent_control` 接收 `{method,params}`：`status`（可选 `id`，查看记录需 `id`+`view:'transcript'`+`lines≤500`）、`cost`、`steer`（`id`,`message≤8000`,`mode:'steer'|'follow_up'`，可选 `index`）、`stop`（`id`）、`interrupt`（`id`,可选 `index`）、`resume`（`id`,`message`,可选 `index`）；不开放 spawn、manage、目录或任意参数。响应只含 `text/state/isError/snapshot` 或 `cost`（usage 不含子会话路径）。未收到确认的修改返回“结果不确定”，不自动重试。`/activity.runtimes[].backgroundWork` 与维护空闲检查同步。
 
 `runtimeControls=true` 标记主 WS 已支持 stop_and_recover/take_queue/ack_recovery、get_state.webControls 与 gateway_controls；`extensionStatus=true` 标记扩展文字状态的内存快照。完整契约见 [NATIVE_CONTROLS.md](NATIVE_CONTROLS.md)。
 

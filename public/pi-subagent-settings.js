@@ -90,6 +90,15 @@
             this.refreshButton = button('刷新状态', 'sa-refresh', () => this.open()); this.refreshButton.disabled = this.busy;
             this.refreshButton.prepend(icon('rotate')); toolbar.append(this.refreshButton); this.root.append(toolbar);
             this.message = node('p', '', 'sa-status'); this.message.setAttribute('role', 'status'); this.message.setAttribute('aria-live', 'polite'); this.root.append(this.message);
+            if (data.plugin.upgradeFrom) {
+                const notice = node('div', '', 'sa-upgrade'); notice.append(icon('circle-up'));
+                const text = node('p'); text.textContent = t('当前安装 pi-subagents {0}，可升级到 {1}：新增用量统计、按需加载子 Agent 工具，并修复多项后台运行问题。现有配置保留。', data.plugin.upgradeFrom, data.plugin.version);
+                this.upgradeButton = button('升级', 'settings-secondary-button', () => {
+                    if (window.confirm(t('将 pi-subagents 从 {0} 升级到 {1}，与 Pi CLI 共用。升级后需重新打开会话才会使用新版本；正在运行的子 Agent 不受影响。继续？', data.plugin.upgradeFrom, data.plugin.version))) this.submit('upgrade');
+                });
+                this.upgradeButton.disabled = this.busy || this.needsRefresh;
+                notice.append(text, this.upgradeButton); this.root.append(notice);
+            }
             if (!ready) {
                 const messages = {
                     missing: '尚未安装 pi-subagents，暂时无法设置子 Agent。下载失败不影响 Pivane 的其他功能。',
@@ -98,7 +107,7 @@
                 };
                 const empty = node('div', '', 'sa-empty'); empty.append(icon('puzzle-piece'), node('p', messages[data.plugin.status]));
                 if (data.plugin.canInstall) {
-                    this.installButton = button('安装 pi-subagents', 'settings-primary-button', () => { if (window.confirm(t('将为所有项目安装 pi-subagents 指定版本，安装位置与 Pi CLI 共用。继续？'))) this.submit(true); });
+                    this.installButton = button('安装 pi-subagents', 'settings-primary-button', () => { if (window.confirm(t('将为所有项目安装 pi-subagents 指定版本，安装位置与 Pi CLI 共用。继续？'))) this.submit('install'); });
                     this.installButton.disabled = this.busy || this.needsRefresh; empty.append(this.installButton);
                 }
                 this.root.append(empty);
@@ -135,7 +144,7 @@
                 this.resetButton = button('撤销修改', 'settings-secondary-button', () => { this.drafts.delete(data.cwd + '\0' + this.scope); this.render(); });
                 this.saveButton = node('button', '保存设置', 'settings-primary-button'); this.saveButton.type = 'submit'; this.saveButton.prepend(icon('check'));
                 footer.append(this.dirtyLabel, this.resetButton, this.saveButton); form.append(footer);
-                form.onsubmit = event => { event.preventDefault(); this.submit(false); };
+                form.onsubmit = event => { event.preventDefault(); this.submit('save'); };
                 if (this.scope === 'project' && !data.trust.effective) this.root.append(node('p', '请先信任项目', 'sa-status'));
                 this.updateFooter();
             }
@@ -232,19 +241,20 @@
             dialog.addEventListener('close', () => { if (trigger.isConnected && !trigger.disabled) trigger.focus({ preventScroll: true }); }, { once: true });
             render(); dialog.showModal(); search.focus();
         }
-        async submit(install) {
+        async submit(kind) {
+            const install = kind !== 'save';
             if (this.busy || this.needsRefresh || !install && this.saveButton?.disabled) return;
             const data = this.snapshot, scope = this.scope, changes = { ...this.draft() }, epoch = this.epoch;
             if (!install && !Object.keys(changes).length) return;
-            this.busy = true; this.render(); this.message.textContent = t(install ? '正在安装，请等待结果；关闭页面不会取消安装。' : '正在保存');
+            this.busy = true; this.render(); this.message.textContent = t(kind === 'install' ? '正在安装，请等待结果；关闭页面不会取消安装。' : kind === 'upgrade' ? '正在升级，请等待结果；关闭页面不会取消升级。' : '正在保存');
             try {
-                await this.api('/api/pi/settings/subagents' + (install ? '/install' : ''), { method: install ? 'POST' : 'PUT', headers: { 'Content-Type': 'application/json' },
+                await this.api('/api/pi/settings/subagents' + (install ? '/' + kind : ''), { method: install ? 'POST' : 'PUT', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ cwd: data.cwd, expectedRevision: data.revision, ...(install ? { confirmed: true } : { scope, changes }) }) });
                 if (!install) this.drafts.delete(data.cwd + '\0' + scope);
                 if (epoch === this.epoch) {
                     this.busy = false;
                     const loaded = await this.open();
-                    if (loaded && this.epoch === epoch + 1) this.message.textContent = t('已保存。请在任务结束后重开运行实例以应用配置。');
+                    if (loaded && this.epoch === epoch + 1) this.message.textContent = t(kind === 'upgrade' ? '已升级。请在任务结束后重新打开会话以使用新版本。' : '已保存。请在任务结束后重开运行实例以应用配置。');
                 }
             } catch (error) {
                 if (epoch === this.epoch) {
@@ -254,5 +264,6 @@
             } finally { this.busy = false; if (this.refreshButton?.isConnected) this.refreshButton.disabled = false; }
         }
     }
-    window.PiSubagentSettings = { create: options => new SubagentSettings(options) };
+    window.PiSubagentSettings = { create: options => new SubagentSettings(options),
+        roleName: name => Object.hasOwn(roles, name) ? t(roles[name][0]) : null };
 })();

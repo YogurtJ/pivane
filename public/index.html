@@ -239,6 +239,7 @@
                     <div id="pi-deferred-banner" class="pi-deferred-banner" hidden><button id="pi-deferred-open" type="button"><i class="fa-regular fa-clock" aria-hidden="true"></i><span id="pi-deferred-count"></span></button></div>
                     <div id="pi-queue" class="pi-queue hidden"></div>
                     <div class="pi-composer-wrap">
+                        <details id="pi-subagent-runs" class="pi-subagent-runs" hidden></details>
                         <details id="pi-task-progress" class="pi-task-progress" hidden></details>
                         <div id="pi-model-guidance" class="pi-model-guidance" role="status" hidden>
                             <span id="pi-model-guidance-text"></span>
@@ -920,6 +921,9 @@
     <script src="pi-session-transfer.js"></script>
     <script src="pi-selection-actions.js"></script>
     <script src="pi-side-chat.js"></script>
+    <script src="pi-subagent-runs.js"></script>
+    <script src="pi-subagent-notices.js"></script>
+    <link rel="stylesheet" href="pi-subagent-runs.css">
     <script src="pi-runtime-controls.js"></script>
     <script src="pi-shell.js"></script>
     <script src="pi-tool-labels.js"></script>
@@ -949,6 +953,6 @@
     <script src="pi-task-progress.js"></script>
     <script src="pi-task-results.js"></script>
     <script src="pi-model-picker.js?v=favorites-sync-2"></script>
-    <script src="pi-chat.js?v=assistant-shell-1"></script>
+    <script src="pi-chat.js?v=subagent-runtime-1"></script>
 </body>
 </html>
