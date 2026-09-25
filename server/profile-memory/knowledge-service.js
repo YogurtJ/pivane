@@ -20,26 +20,58 @@ const REQUEST = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/;
 const NAME = /^[a-z][a-z0-9-]{0,63}$/;
 const CATEGORY = new Set(['fact', 'preference', 'correction', 'failure', 'procedure']);
 const OPERATIONS = new Set(['create', 'update', 'delete', 'restore', 'enable', 'disable', 'undo']);
-const MAX_LEDGER = 2 * 1024 * 1024;
+const MAX_LEDGER = 8 * 1024 * 1024;
 const MAX_CONTENT = 65536;
+// Version 2 journal bounds: the active receipt window is small and old receipts
+// are compacted to digests, while request and tombstone identities stay valid
+// far beyond the window so replay and anti-revival guarantees outlive it.
+const RECEIPTS_WINDOW = 200;
+const ARCHIVE_KEEP = 4000;
+const REQUESTS_ACTIVE = 2048;
+const REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const HISTORY_KEEP = 320;
+const MAX_RECORDS = 16384;
+const MAX_TOMBSTONES = 32768;
+const MAX_SPENT = 32768;
 const ledgerFile = root => path.join(root, '.pivane-knowledge.json');
 const pendingFile = root => path.join(root, '.pivane-knowledge.pending');
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const keys = (value, allowed) => Object.keys(value).every(key => allowed.includes(key));
 
-function readJson(file, empty) {
+function readJson(file, empty, versions = [1]) {
     const data = safeFile(file);
     if (!data) return empty;
     if (Buffer.byteLength(data.text) > MAX_LEDGER) throw fail('Knowledge metadata exceeds safety budget', 409);
     let parsed;
     try { parsed = JSON.parse(data.text); } catch { throw fail('Invalid knowledge metadata', 409); }
-    if (parsed?.version !== 1) throw fail('Unsupported knowledge metadata', 409);
+    if (!versions.includes(parsed?.version)) throw fail('Unsupported knowledge metadata', 409);
     return parsed;
 }
+// Version 1 stays readable and is upgraded in memory; the first write persists
+// version 2 atomically. Sequence starts at the old receipt count so existing
+// client revisions keep matching until the next mutation.
+function migrateLedger(value) {
+    const receipts = Array.isArray(value.receipts) ? value.receipts : [];
+    const requests = {};
+    for (const row of receipts) {
+        if (row?.requestId && typeof row.id === 'string' && !requests[row.requestId])
+            requests[row.requestId] = { h: row.inputHash || '', r: row.id, at: row.at || new Date(0).toISOString(), s: false };
+    }
+    return { version: 2, sequence: receipts.length, records: value.records || {}, receipts,
+        archive: [], requests, tombstones: Object.keys(value.tombstones || {}), spent: [] };
+}
+const normalizeLedger = value => value.version === 1 ? migrateLedger(value) : value;
 function ledger(root) {
-    const value = readJson(ledgerFile(root), { version: 1, records: {}, receipts: [], tombstones: {} });
-    if (!value.records || !value.tombstones || !Array.isArray(value.receipts) || value.receipts.length > 200
-        || Object.keys(value.records).length > 2048 || Object.keys(value.tombstones).length > 4096)
+    const raw = readJson(ledgerFile(root), { version: 1, records: {}, receipts: [], tombstones: {} }, [1, 2]);
+    if (raw.version === 1 && (!raw.records || typeof raw.records !== 'object' || !raw.tombstones
+        || typeof raw.tombstones !== 'object' || Array.isArray(raw.tombstones) || !Array.isArray(raw.receipts)))
+        throw fail('Invalid knowledge metadata', 409);
+    const value = normalizeLedger(raw);
+    if (!value.records || !Array.isArray(value.receipts) || !Array.isArray(value.archive) || !value.requests
+        || !Array.isArray(value.tombstones) || !Array.isArray(value.spent) || !Number.isSafeInteger(value.sequence)
+        || value.receipts.length > RECEIPTS_WINDOW || value.archive.length > ARCHIVE_KEEP
+        || Object.keys(value.records).length > MAX_RECORDS || Object.keys(value.requests).length > REQUESTS_ACTIVE
+        || value.tombstones.length > MAX_TOMBSTONES || value.spent.length > MAX_SPENT)
         throw fail('Invalid knowledge metadata', 409);
     return value;
 }
@@ -178,8 +210,10 @@ function publicRecord(record) {
     const { history, target, ...rest } = record;
     return { ...rest, ...(target ? { target } : {}) };
 }
+// The monotonic sequence keeps revisions stable while receipts rotate through
+// the active window and the archive.
 function revision(root, generation, data, items) {
-    return hash(JSON.stringify([generation, data.receipts.length, items.map(item => [item.id, item.revision, item.state]).sort()]));
+    return hash(JSON.stringify([generation, data.sequence, items.map(item => [item.id, item.revision, item.state]).sort()]));
 }
 function publicReceipt(value) {
     if (!value) return value;
@@ -197,10 +231,50 @@ function receipt(input, id, before, after, indexStatus, status = 'saved') {
         ...(after ? { afterRevision: after.revision } : {}), indexStatus,
         activation: after.state === 'draft' ? 'unknown' : input.kind === 'skill' ? 'reload-required' : 'next-turn', undoable: status === 'saved' };
 }
-function append(data, item, result) {
-    if (data.receipts.length >= 200) throw fail('Knowledge request journal is full; reviewed migration required before writing', 409);
-    if (item) data.records[item.id] = item;
+const expiredRequest = entry => Date.now() - Date.parse(entry.at) > REQUEST_TTL_MS;
+function replayReceipt(data, requestId, entry) {
+    return data.receipts.find(row => row.id === entry.r) || data.archive.find(row => row.id === entry.r)
+        || { id: entry.r, requestId, status: 'saved', at: entry.at, undoable: false };
+}
+function addSpent(data, requestId) {
+    const value = hash(requestId);
+    if (data.spent.includes(value)) return;
+    if (data.spent.length >= MAX_SPENT) throw fail('Request expiry journal is full; reviewed migration required before writing', 409);
+    data.spent.push(value);
+}
+function expireRequests(data) {
+    for (const [requestId, entry] of Object.entries(data.requests)) {
+        if (!entry.s && expiredRequest(entry)) {
+            addSpent(data, requestId);
+            delete data.requests[requestId];
+        }
+    }
+}
+function append(data, item, result, server) {
+    if (item) {
+        if (Array.isArray(item.history) && item.history.length > HISTORY_KEEP)
+            item = { ...item, history: item.history.slice(-HISTORY_KEEP) };
+        data.records[item.id] = item;
+    }
+    data.sequence++;
     data.receipts.push(result);
+    while (data.receipts.length > RECEIPTS_WINDOW) {
+        const dropped = data.receipts.shift();
+        data.archive.push({ id: dropped.id, requestId: dropped.requestId, operation: dropped.operation,
+            kind: dropped.kind, itemId: dropped.itemId, status: dropped.status, at: dropped.at, undoable: false });
+    }
+    while (data.archive.length > ARCHIVE_KEEP) data.archive.shift();
+    data.requests[result.requestId] = { h: result.inputHash, r: result.id, at: result.at, s: server };
+    expireRequests(data);
+    while (Object.keys(data.requests).length > REQUESTS_ACTIVE) {
+        const evictable = Object.entries(data.requests).filter(([, entry]) => entry.s || expiredRequest(entry))
+            .sort((left, right) => Date.parse(left[1].at) - Date.parse(right[1].at))[0];
+        if (!evictable) break;
+        addSpent(data, evictable[0]);
+        delete data.requests[evictable[0]];
+    }
+    if (Object.keys(data.requests).length > REQUESTS_ACTIVE)
+        throw fail('Knowledge request journal is full; reviewed migration required before writing', 409);
 }
 function copy(item) { return item ? { ...item, history: undefined } : null; }
 function body(root, item) {
@@ -208,8 +282,16 @@ function body(root, item) {
     if (item.kind === 'memory') return item.content;
     return safeFile(fileFor(root, item))?.text;
 }
+function addTombstone(data, value) {
+    if (data.tombstones.includes(value)) return;
+    if (data.tombstones.length >= MAX_TOMBSTONES) throw fail('Tombstone journal is full; reviewed migration required before writing', 409);
+    data.tombstones.push(value);
+}
+function removeTombstone(data, value) {
+    data.tombstones = data.tombstones.filter(entry => entry !== value);
+}
 function checkTombstone(data, content) {
-    if (data.tombstones[hash(content.trim())]) throw fail('Deleted or replaced memory cannot be relearned without explicit restore', 409);
+    if (data.tombstones.includes(hash(content.trim()))) throw fail('Deleted or replaced memory cannot be relearned without explicit restore', 409);
 }
 function availableSkill(root, item) {
     const ownFile = skillPath(root, item);
@@ -281,8 +363,6 @@ class ProfileKnowledgeService {
             const data = ledger(ctx.root);
             if (safeFile(pendingFile(ctx.root))) return { ...base, status: 'pending', receipts: recent(data, options.sessionId) };
             const items = physical(ctx.root, data, ctx.bundle);
-            const writeCaps = data.receipts.length >= 200
-                ? { ...capabilities, operations: [], reason: 'request-journal-full' } : capabilities;
             const query = (options.query || '').toLocaleLowerCase();
             const matches = items.filter(item => (!options.kind || item.kind === options.kind)
                 && (!query || `${item.name || ''} ${item.content || ''} ${item.description || ''}`.toLocaleLowerCase().includes(query)));
@@ -291,7 +371,11 @@ class ProfileKnowledgeService {
                 revision: revision(ctx.root, generation, data, items), items: matches.slice(offset, offset + 50).map(item => {
                     const { content, ...listed } = item;
                     return item.kind === 'memory' ? { ...listed, content: content?.slice(0, 512) } : listed;
-                }), receipts: recent(data, options.sessionId), hasMore: matches.length > offset + 50, capabilities: writeCaps };
+                }), receipts: recent(data, options.sessionId), hasMore: matches.length > offset + 50,
+                capabilities: { ...capabilities, journal: { receipts: data.receipts.length, receiptsWindow: RECEIPTS_WINDOW,
+                    archivedReceipts: data.archive.length, requests: Object.keys(data.requests).length,
+                    requestsLimit: REQUESTS_ACTIVE, expiredRequests: data.spent.length,
+                    tombstones: data.tombstones.length, tombstonesLimit: MAX_TOMBSTONES, requestValidityDays: 7 } } };
         });
     }
     async getItem(profileId, itemId) {
@@ -376,7 +460,7 @@ class ProfileKnowledgeService {
                             try { index.sync(); } finally { index.close(); }
                         }
                         await reserve();
-                        save(ledgerFile(ctx.root), pending.nextLedger);
+                        save(ledgerFile(ctx.root), normalizeLedger(pending.nextLedger));
                         remove(pendingFile(ctx.root));
                         return { replay: pending.receipt };
                     }
@@ -390,11 +474,20 @@ class ProfileKnowledgeService {
                     remove(pendingFile(ctx.root));
                     unpublishedRetry = true;
                 }
-                const existing = data.receipts.find(entry => entry.requestId === input.requestId);
+                const inputHash = hash(JSON.stringify(input));
+                const existing = data.requests[input.requestId];
                 if (existing) {
-                    if (existing.inputHash !== hash(JSON.stringify(input))) fail('Request ID already used', 409);
-                    return { replay: existing };
+                    // Client request IDs have an explicit validity window; after it
+                    // passes the ID is rejected as expired and never re-executed.
+                    if (!existing.s && expiredRequest(existing)) {
+                        addSpent(data, input.requestId);
+                        delete data.requests[input.requestId];
+                        fail('Request ID expired; re-execution is not allowed', 409);
+                    }
+                    if (existing.h !== inputHash) fail('Request ID already used', 409);
+                    return { replay: replayReceipt(data, input.requestId, existing) };
                 }
+                if (data.spent.includes(hash(input.requestId))) fail('Request ID expired; re-execution is not allowed', 409);
                 if (safeFile(pendingFile(ctx.root))) fail('Knowledge publication needs repair', 409);
                 const items = physical(ctx.root, data, ctx.bundle);
                 if (!unpublishedRetry && revision(ctx.root, generation, data, items) !== input.expectedRevision) fail('Knowledge revision changed', 409);
@@ -467,10 +560,10 @@ class ProfileKnowledgeService {
                     inputHash: hash(JSON.stringify(input)) };
                 history.push({ receiptId: record.id, before: copy(before) });
                 if (input.kind === 'memory' && before?.content && (before.content !== content || state === 'deleted'))
-                    data.tombstones[hash(before.content)] = { itemId: id, at: record.at };
+                    addTombstone(data, hash(before.content));
                 if (input.kind === 'memory' && state === 'active' && ['restore', 'undo'].includes(input.operation))
-                    delete data.tombstones[hash(content)];
-                append(data, changed, record);
+                    removeTombstone(data, hash(content));
+                append(data, changed, record, Boolean(verifySource));
                 if (input.kind === 'memory') {
                     const file = fileFor(ctx.root, after), dir = path.dirname(file);
                     if (itemScope === 'project') {
