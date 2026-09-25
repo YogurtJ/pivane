@@ -76,7 +76,18 @@ test('isolated Pi 0.87.1 upstream components enforce profile index, recall, skil
     assert.ok(alpha.pi.tools.has('memory_add'));
     const add = alpha.pi.tools.get('memory_add');
     const payloads = ['极限推导法', '线性代数的秩', '数据结构栈'];
-    const writes = await Promise.all(payloads.map(content => add.execute('call', { target: 'memory', content }, undefined, undefined, alpha.ctx)));
+    // Concurrent same-base writes race on the profile-local mutation lock; a 409
+    // "Knowledge revision changed" is the documented optimistic-concurrency gate,
+    // and a fresh retry deterministically reconciles (PROFILE_MEMORY.md).
+    const writes = await Promise.all(payloads.map(async content => {
+        for (let attempt = 0; attempt < 8; attempt++) {
+            const result = await add.execute('call', { target: 'memory', content }, undefined, undefined, alpha.ctx);
+            if (result.details.success) return result;
+            if (!/revision/i.test(String(result.details.error || '')) || attempt === 7) return result;
+            await new Promise(resolve => setTimeout(resolve, 40));
+        }
+        throw Error('unreachable');
+    }));
     assert.ok(writes.every(result => result.details.success), JSON.stringify(writes.map(result => result.details)));
     const replaced = await alpha.pi.tools.get('memory_replace').execute('call', {
         target: 'memory', old_text: '极限推导法', content: '极限证明法',
