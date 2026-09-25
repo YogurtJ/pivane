@@ -9,6 +9,10 @@ const { descriptorPathSync, assertDescriptorBackend } = require('../pi-file-desc
 const PROFILE_ENTRY = 'pivane-agent-profile';
 const MAX_SESSION_BYTES = 8 * 1024 * 1024;
 const MAX_METADATA_BYTES = 256 * 1024;
+// Provenance writes must work on long conversations, so their streaming proof
+// budget sits well above the 8 MiB historical index bound and fails explicitly.
+const MAX_SOURCE_BYTES = 64 * 1024 * 1024;
+const MAX_SOURCE_ENTRIES = 200000;
 const MAX_SCAN_FILES = 5000;
 const stamp = stat => [stat.dev, stat.ino, stat.mode, stat.size, stat.mtimeNs, stat.ctimeNs].map(String).join(':');
 
@@ -180,6 +184,82 @@ function activeBinding(file, context) {
     finally { if (fd !== undefined) fs.closeSync(fd); }
 }
 
+// Streams one session line by line like activeBinding, retaining only entry
+// id/parentId edges. Pi SessionManager keeps the leaf at the last appended entry
+// (session-manager.js _buildIndex) and walks parentId to the root (getBranch),
+// so the claimed entry must sit on that path: entries on abandoned branches fail.
+// Over-budget sessions throw instead of proving a truncated tree.
+function sourceProof(file, context, entryId) {
+    let fd;
+    const overBudget = () => { throw Object.assign(new Error('Native session exceeds source proof limits'), { code: 'SOURCE_PROOF_LIMIT' }); };
+    try {
+        assertDescriptorBackend();
+        if (typeof entryId !== 'string' || !entryId || entryId.length > 200) return null;
+        file = path.resolve(file);
+        if (!inside(context.sessionsRoot, file) || path.extname(file) !== '.jsonl'
+            || fs.realpathSync.native(path.dirname(file)) !== path.dirname(file)) return null;
+        const before = fs.lstatSync(file, { bigint: true });
+        if (!before.isFile() || before.isSymbolicLink() || before.size < 20n) return null;
+        if (before.size > BigInt(MAX_SOURCE_BYTES)) overBudget();
+        fd = io.openReadSync(file);
+        const opened = fs.fstatSync(fd, { bigint: true }), identity = io.identity(fd);
+        if (!opened.isFile() || stamp(before) !== stamp(opened) || descriptorPathSync(fd) !== file) return null;
+        if (opened.size > BigInt(MAX_SOURCE_BYTES)) overBudget();
+        const chunk = Buffer.alloc(64 * 1024);
+        const parents = new Map();
+        let fragments = [], header = null, first = true, matches = 0, leafId = null, entries = 0;
+        const consume = () => {
+            const line = fragments.length === 1 ? fragments[0] : Buffer.concat(fragments);
+            fragments = [];
+            if (!line.length) return;
+            const entry = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(line));
+            if (first) { header = entry; first = false; return; }
+            if (entry?.type === 'custom' && entry.customType === PROFILE_ENTRY && entry.data?.sessionId === context.sessionId) {
+                matches++;
+                if (entry.data.version !== 1 || entry.data.profileId !== context.profileId) throw new Error('Wrong binding');
+            }
+            if (entry?.type === 'session') return;
+            if (typeof entry?.id !== 'string' || !entry.id || entry.id.length > 200
+                || entry.parentId != null && typeof entry.parentId !== 'string') throw new Error('Malformed entry');
+            if (++entries > MAX_SOURCE_ENTRIES) overBudget();
+            parents.set(entry.id, entry.parentId || null);
+            leafId = entry.id;
+        };
+        let offset = 0;
+        while (offset < Number(opened.size)) {
+            const n = fs.readSync(fd, chunk, 0, Math.min(chunk.length, Number(opened.size) - offset), offset);
+            if (!n) return null;
+            offset += n;
+            let start = 0;
+            for (let i = 0; i < n; i++) if (chunk[i] === 10) {
+                fragments.push(Buffer.from(chunk.subarray(start, i)));
+                consume(); start = i + 1;
+            }
+            if (start < n) fragments.push(Buffer.from(chunk.subarray(start, n)));
+        }
+        if (fragments.length) consume();
+        if (header?.type !== 'session' || header.id !== context.sessionId || header.cwd !== context.cwd
+            || !path.isAbsolute(header.cwd) || fs.realpathSync.native(header.cwd) !== header.cwd
+            || matches !== 1) return null;
+        const chain = new Set();
+        let current = leafId;
+        while (current) {
+            if (chain.has(current)) return null;
+            chain.add(current);
+            const parent = parents.get(current);
+            current = parent && parents.has(parent) ? parent : null;
+        }
+        if (!chain.has(entryId)) return null;
+        if (stamp(fs.fstatSync(fd, { bigint: true })) !== stamp(opened) || stamp(fs.lstatSync(file, { bigint: true })) !== stamp(opened)
+            || descriptorPathSync(fd) !== file || fs.realpathSync.native(file) !== file || !io.sameIdentityAtPath(file, identity)) return null;
+        return { dev: opened.dev, ino: opened.ino, mode: opened.mode, native: identity };
+    } catch (error) {
+        if (error?.code === 'SOURCE_PROOF_LIMIT') throw error;
+        return null;
+    }
+    finally { if (fd !== undefined) fs.closeSync(fd); }
+}
+
 function verifyNativeSession(context, manager) {
     try {
         if (manager && !eligibleManager(manager, context, context.cwd)) return null;
@@ -205,5 +285,5 @@ function listEligibleFiles(context, cap = 20) {
     return listSessionFiles(context).files.filter(file => eligibleFile(file, context)).slice(0, cap);
 }
 
-module.exports = { parseContext, binding, eligibleManager, eligibleFile, snapshot, verifyNativeSession, sameActiveFile,
-    listSessionFiles, listEligibleFiles, MAX_SESSION_BYTES };
+module.exports = { parseContext, binding, eligibleManager, eligibleFile, snapshot, sourceProof, verifyNativeSession, sameActiveFile,
+    listSessionFiles, listEligibleFiles, MAX_SESSION_BYTES, MAX_SOURCE_BYTES, MAX_SOURCE_ENTRIES };

@@ -323,10 +323,18 @@ class ProfileKnowledgeService {
         const ctx = await this.context(profileId);
         if (!ctx.profile) throw fail('Profile not found', 404);
         const agent = await this.getAgentDir();
+        // Streaming source proof: header, unique current-ID binding and the claimed
+        // entry on the current leaf branch, rechecked immediately before publication.
+        const context = { sessionsRoot: path.join(agent, 'sessions'), profileId,
+            sessionId: native.sessionId, cwd: native.cwd };
         const verify = () => {
-            const proof = scope.snapshot(native.sessionPath, { sessionsRoot: path.join(agent, 'sessions'), profileId });
-            if (!proof || proof.header.id !== native.sessionId || proof.header.cwd !== native.cwd
-                || !proof.entries.some(entry => entry.id === native.entryId)) throw fail('Native source changed or is not bound to this profile', 409);
+            let proof;
+            try { proof = scope.sourceProof(native.sessionPath, context, native.entryId); }
+            catch (error) {
+                if (error?.code === 'SOURCE_PROOF_LIMIT') fail(error.message, 413);
+                throw error;
+            }
+            if (!proof) fail('Native source changed or is not bound to this profile', 409);
         };
         verify();
         const projectKey = hash(native.cwd);

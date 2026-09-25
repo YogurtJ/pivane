@@ -144,11 +144,20 @@ with distinct identities from the Markdown they may mirror. Failure records
 are never remapped into the `memory` target.
 
 `service.mutateFromNative(profileId, input, { sessionPath, sessionId, entryId,
-cwd })` is **server/worker-only**. It verifies the opened native JSONL
-header, current-ID profile binding, canonical cwd and existing entry before
-and immediately before publication. It writes only `{sessionId,entryId}` into
-the item and receipt; no conversation text is duplicated. A session larger
-than the verified 8 MiB snapshot bound is not eligible for provenance writes.
+cwd })` is **server/worker-only**. Both its first check and the final check
+immediately before publication run a streaming source proof over the opened
+native JSONL: descriptor read with before/after identity checks, header session
+id and canonical cwd, exactly one current-ID profile binding marker, and the
+claimed `entryId` on the current leaf branch. The leaf follows Pi
+`SessionManager` semantics (the last appended entry, walking `parentId` to the
+root), so an entry on an abandoned branch, or a branch switch between the two
+checks, is rejected while same-branch growth is not. The proof retains only
+entry `id`/`parentId` edges, never message bodies, and budgets 64 MiB / 200,000
+entries per session; over-budget sessions fail explicitly with `Native session
+exceeds source proof limits` (413) instead of proving a truncated tree. The
+historical derived index keeps its separate 8 MiB snapshot bound. It writes
+only `{sessionId,entryId}` into the item and receipt; no conversation text is
+duplicated.
 For project scope the service derives `projectKey=sha256(canonical cwd)` and
 writes the profile-owned physical project directory; the caller cannot choose
 an unrelated projectKey. Only this method can create a skill in `draft` state;
