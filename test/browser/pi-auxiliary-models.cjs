@@ -5,6 +5,13 @@ const express = require('express');
 const { once } = require('node:events');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const { AUXILIARY_PURPOSES } = require('../../server/pi-auxiliary-models-service');
+const MEMORY_PURPOSES = [
+    ['memory-correction', '明确纠错', '提取用户明确纠正的长期事实'],
+    ['memory-review', '增量复盘', '空闲时复盘新完成的对话'],
+    ['memory-extraction', '边界提炼', '压缩或退出时提取持久信息']
+].map(([id, label, description]) => ({ id, storage: 'memoryModels', label, description,
+    automaticLabel: '未配置 · 不运行', help: '仅在学习已开启且选择专用模型后运行；不继承主对话模型，保存配置不会触发请求。' }));
+const PURPOSES = [...AUXILIARY_PURPOSES, ...MEMORY_PURPOSES.filter(item => !AUXILIARY_PURPOSES.some(purpose => purpose.id === item.id))];
 const root = path.resolve(__dirname, '../..');
 async function run(browser, base, width, locale) {
     const en = locale === 'en';
@@ -17,7 +24,8 @@ async function run(browser, base, width, locale) {
     let models = [model, helper];
     const settings = { 'session-title': { provider: helper.provider, modelId: helper.id, enabled: true, revision: 0 },
         'media-planner': { provider: model.provider, modelId: model.id } };
-    const snapshot = () => ({ version: 1, revision: String(counter).padStart(64, '0'), purposes: AUXILIARY_PURPOSES.map(({ storage, ...descriptor }) => ({ ...descriptor, settings: { ...settings[descriptor.id] } })) });
+    for (const purpose of PURPOSES) settings[purpose.id] ||= { provider: '', modelId: '' };
+    const snapshot = () => ({ version: 1, revision: String(counter).padStart(64, '0'), purposes: PURPOSES.map(({ storage, ...descriptor }) => ({ ...descriptor, settings: { ...settings[descriptor.id] } })) });
     const session = { cwd, id: 'aux-fixture', name: '辅助模型配置讨论', messageCount: 4, modified: '2026-09-12T00:00:00Z' };
     const messages = [{ role: 'user', content: '讨论辅助模型', timestamp: 1 },
         { role: 'assistant', content: [{ type: 'toolCall', id: 't1', name: 'read', arguments: { path: '/fixture/file.txt' } }], stopReason: 'toolUse' },
@@ -69,7 +77,12 @@ async function run(browser, base, width, locale) {
     await page.locator('[data-settings-tab="models"]').click();
     const card = page.locator('#settings-auxiliary-models'); await card.waitFor({ state: 'visible' });
     const title = card.locator('[data-purpose="session-title"]'), media = card.locator('[data-purpose="media-planner"]');
-    assert.equal(await card.locator('.aux-model-row').count(), 2, 'only implemented auxiliary consumers are exposed');
+    assert.equal(await card.locator('.aux-model-row').count(), PURPOSES.length, 'each implemented auxiliary purpose is exposed');
+    for (const purpose of PURPOSES.filter(row => row.id.startsWith('memory-'))) {
+        const row = card.locator(`[data-purpose="${purpose.id}"]`);
+        assert.equal(await row.locator('select').first().inputValue(), '');
+        assert.match(await row.innerText(), en ? /not configured|disabled/i : /未配置|停用/);
+    }
     assert.equal(await page.locator('#settings-session-titles').isVisible(), false);
     assert.equal(await page.locator('#settings-media-agent-form').isVisible(), false);
     assert.equal(await title.locator('select').first().inputValue(), helper.provider);
@@ -111,6 +124,11 @@ async function run(browser, base, width, locale) {
     await save.click(); await page.waitForFunction(() => document.querySelector('#settings-auxiliary-models .aux-models-status').textContent.includes(document.documentElement.lang === 'en' ? 'saved' : '已保存'));
     assert.equal(settings['session-title'].enabled, false); assert.equal(settings['media-planner'].modelId, helper.id);
     assert.deepEqual(writes[0].body.changes, { 'session-title': { enabled: false }, 'media-planner': { provider: helper.provider, modelId: helper.id } });
+    const correction = card.locator('[data-purpose="memory-correction"]');
+    await correction.locator('select').first().selectOption(helper.provider);
+    await save.click(); await page.waitForFunction(() => !document.querySelector('#settings-auxiliary-models select').disabled);
+    assert.deepEqual(writes[1].body.changes, { 'memory-correction': { provider: helper.provider, modelId: helper.id } });
+    assert.equal(settings['memory-correction'].provider, helper.provider);
     await title.locator('select').first().selectOption('fixture'); counter++;
     await save.click();
     await page.waitForFunction(() => !document.querySelector('#settings-auxiliary-models select').disabled);
@@ -119,6 +137,7 @@ async function run(browser, base, width, locale) {
     const writesBeforeReset = writes.length;
     await reset.click(); assert.equal(writes.length, writesBeforeReset);
     assert.equal(await title.locator('select').first().inputValue(), ''); assert.equal(await media.locator('select').first().inputValue(), '');
+    assert.equal(await correction.locator('select').first().inputValue(), helper.provider, 'reset leaves dedicated learning route intact');
     assert.ok((await title.locator('select').first().innerText()).includes(en ? 'current thread' : '当前线程'));
     assert.ok((await media.locator('select').first().innerText()).includes(en ? 'planner defaults' : '媒体规划默认'));
     await save.click(); await page.waitForFunction(() => !document.querySelector('#settings-auxiliary-models select').disabled);
