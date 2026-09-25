@@ -186,7 +186,10 @@ async function run(browser, base, width, locale, dark) {
         // with per-control detail so a persistent miss identifies the culprit.
         await page.waitForFunction(() => [...document.querySelectorAll('textarea,input,select')]
             .every(el => parseFloat(getComputedStyle(el).fontSize) >= 16), undefined, { timeout: 5000 }).catch(() => {});
-        const sizes = await page.locator('textarea,input,select').evaluateAll(nodes => nodes.map(el => [el.tagName.toLowerCase(), el.id || el.className || el.name, parseFloat(getComputedStyle(el).fontSize)]));
+        // Query and measure in one synchronous call: a locator resolves nodes first, so a
+        // re-render in between would hand back detached controls with no computed style.
+        const sizes = await page.evaluate(() => [...document.querySelectorAll('textarea,input,select')]
+            .map(el => [el.tagName.toLowerCase(), el.id || el.className || el.name, parseFloat(getComputedStyle(el).fontSize)]));
         assert.ok(sizes.every(entry => entry[2] >= 16), `mobile form font sizes: ${JSON.stringify(sizes)}`);
     }
     assert.deepEqual(errors, []);

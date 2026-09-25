@@ -13,6 +13,8 @@
     const rejected = error => [400, 403, 404, 413, 422, 429].includes(error?.status);
     function create({ root, fetch, scope }) {
         let key = '', identity = '', epoch = 0, busy = false, snapshot = null, draft = '', uncertain = null, notice = '', latest = null, conflict = false;
+        // Background learning saves after the turn settles; follow queued/running jobs for a bounded time.
+        let learning = false, polls = 0, timer = null;
         const draftsByThread = new Map();
         const keep = () => { if (identity) draftsByThread.set(identity, { draft, uncertain, latest, notice, conflict }); };
         const scopeKey = value => value ? JSON.stringify([value.cwd, value.sessionId, value.profileId, value.generation]) : '';
@@ -33,6 +35,7 @@
             body.append(info);
             const status = el('p', notice || (snapshot ? t('存储状态：{0}', snapshot.status) : t('正在读取…')), 'pi-knowledge-status');
             status.setAttribute('role', 'status'); body.append(status);
+            if (learning) body.append(el('p', t('后台学习正在处理本轮内容…'), 'pi-knowledge-status'));
             if (latest) {
                 const row = el('div', undefined, 'pi-knowledge-receipt');
                 row.textContent = `${t(latest.operation === 'undo' ? '撤销' : '手动纠错')} · ${t(latest.status === 'pending' ? '待同步' : latest.status === 'saved' ? '已保存' : latest.status || '状态未知')}`;
@@ -65,8 +68,12 @@
             const value = scope(); if (!value || !current()) return;
             const request = ++epoch, captured = key;
             try {
-                const data = await fetch(`${base(value)}?${new URLSearchParams({ kind: 'memory' })}`);
+                const [data, jobs] = await Promise.all([fetch(`${base(value)}?${new URLSearchParams({ kind: 'memory', sessionId: value.sessionId })}`),
+                    fetch(`/api/pi/profiles/${encodeURIComponent(value.profileId)}/learning`).catch(() => null)]);
                 if (request !== epoch || !current() || key !== captured) return;
+                learning = Array.isArray(jobs?.jobs) && jobs.jobs.some(job => ['queued', 'running'].includes(job.status));
+                clearTimeout(timer);
+                if (learning && polls < 48) { polls++; timer = setTimeout(() => { if (current() && key === captured) void refresh(); }, 2500); }
                 if (data?.version !== 1 || !Array.isArray(data.receipts) || !Array.isArray(data.items)) throw new Error(t('知识接口不兼容'));
                 snapshot = data;
                 const found = data.receipts.find(row => row.requestId === uncertain?.requestId && row.kind === 'memory');
@@ -110,11 +117,12 @@
                     keep();
                     ({ draft = '', uncertain = null, latest = null, notice = '', conflict = false } = draftsByThread.get(nextIdentity) || {});
                 }
-                key = next; epoch++; snapshot = null; identity = nextIdentity;
+                key = next; epoch++; snapshot = null; identity = nextIdentity; learning = false;
             }
+            polls = 0; clearTimeout(timer);
             render(); if (key) void refresh();
         }
-        return { update, refresh, reset() { keep(); key = identity = ''; epoch++; snapshot = null; latest = null; uncertain = null; conflict = false; draft = ''; notice = ''; render(); } };
+        return { update, refresh, reset() { keep(); clearTimeout(timer); learning = false; key = identity = ''; epoch++; snapshot = null; latest = null; uncertain = null; conflict = false; draft = ''; notice = ''; render(); } };
     }
     globalThis.PiChatKnowledge = Object.freeze({ create });
 })();

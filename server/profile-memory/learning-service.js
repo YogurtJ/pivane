@@ -21,6 +21,8 @@ const MAX_SEEN_PER_CURSOR = 8;
 // Action journal: client request IDs stay replayable for a week, then their
 // slot is retired to a spent hash list that refuses re-execution forever.
 const MAX_ACTIONS = 256;
+const BUSY = Symbol('busy');
+const RETRY_MS = 1000;
 const MAX_ACTION_SPENT = 1024;
 const ACTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const boundedSource = file => {
@@ -95,7 +97,7 @@ const publicJob = ({ id, reason, status, createdAt, startedAt, endedAt, model, u
 class ProfileLearningService {
     constructor({ profiles, store, preferences, knowledge, getAgentDir, createModelRuntime, idle = () => true }) {
         Object.assign(this, { profiles, store, preferences, knowledge, getAgentDir, createModelRuntime, idle });
-        this.active = new Map(); this.closed = false; this.recovering = false; this.pending = new Set(); this.enrolling = new Set();
+        this.active = new Map(); this.closed = false; this.recovering = false; this.pending = new Set(); this.retries = new Map(); this.enrolling = new Set();
         this.mutations = new Set(); this.scans = new Set();
         this.timer = setInterval(() => { void this.tick(); }, 60000);
         this.timer.unref?.();
@@ -404,11 +406,22 @@ class ProfileLearningService {
         this.pending.add(id);
         queueMicrotask(() => { void this.drain(id).then(ran => {
             this.pending.delete(id);
-            if (ran) this.wake(id);
+            if (ran === BUSY) this.retry(id);
+            else if (ran) this.wake(id);
         }, () => this.pending.delete(id)); });
     }
+    // A settled turn usually registers work while the worker is still finishing up; check again
+    // shortly instead of leaving a correction queued until the next periodic tick.
+    retry(id) {
+        if (this.closed || this.retries.has(id)) return;
+        const timer = setTimeout(() => { this.retries.delete(id); this.wake(id); }, RETRY_MS);
+        timer.unref?.();
+        this.retries.set(id, timer);
+    }
     async drain(id) {
-        if (this.closed || this.recovering || !this.idle() || this.active.size >= 2 || [...this.active.values()].some(item => item.profileId === id)) return;
+        if (this.closed || this.recovering) return;
+        if (!this.idle()) return BUSY;
+        if (this.active.size >= 2 || [...this.active.values()].some(item => item.profileId === id)) return;
         try {
             const profile = await this.profile(id), models = this.preferences.getMemoryModels();
             if (!profile.enabled || !profile.memory?.enabled || !this.knowledge) return;
@@ -599,6 +612,8 @@ class ProfileLearningService {
     async dispose() {
         this.closed = true;
         clearInterval(this.timer);
+        for (const timer of this.retries.values()) clearTimeout(timer);
+        this.retries.clear();
         for (const active of this.active.values()) active.abort();
         await Promise.allSettled([this.resumePromise, ...this.scans, ...this.enrolling, ...this.mutations]);
         await Promise.allSettled([...this.active.values()].map(active => active.promise));

@@ -474,3 +474,19 @@ test('a deterministic source-proof rejection is recorded as skipped, not uncerta
     assert.equal(run.status, 'skipped');
     assert.equal(run.error, 'knowledge-rejected');
 });
+
+test('a correction registered while workers are still busy runs as soon as they become idle', async t => {
+    const f = await fixture(t);
+    let idle = false;
+    f.service.idle = () => idle;
+    await f.enable();
+    f.append('纠正一下：不是旧版校验清单，而是新版校验清单，以后都按新版。');
+    await f.service.register(f.session);
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    assert.equal(f.calls(), 0, 'no model call while the supervisor is busy');
+    assert.equal((await f.service.snapshot(profileId)).jobs[0]?.status, 'queued');
+    idle = true;
+    // Well inside the 60 s periodic tick: the busy retry picks the job up.
+    await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1, 5000);
+    assert.equal(f.calls(), 1);
+});

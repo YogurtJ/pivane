@@ -239,7 +239,8 @@ tool adapter.
 - **Models** are the auxiliary purposes `memory-correction`, `memory-review`
   and `memory-extraction` under Settings → Preferences → Auxiliary models. A
   blank purpose is `waiting-config`; the chat model is never substituted.
-- **Triggers**: a settled turn, a successful compaction and worker exit/quit
+- **Triggers** (a job registered while workers are busy is retried every second
+  until they are idle, not left for the periodic tick): a settled turn, a successful compaction and worker exit/quit
   register verified native user/assistant pair references (no transcript body
   is stored). Explicit corrections and "remember from now on" preferences are
   handled first by the correction purpose; ordinary pairs go to review;
@@ -334,7 +335,14 @@ PIVANE_TEST_PI_JITI=/private/fresh-prefix/node_modules/@earendil-works/pi-coding
 ```
 
 These tests require both variables; integration is not silently skipped in the
-parent gate. Keep the prefix and record its bundle, lock and native hashes.
+parent gate.
+`test/browser/pi-memory-learning-e2e.cjs` (requires `PIVANE_TEST_HERMES_BUNDLE`)
+runs the whole loop against the real assembled gateway, real Pi RPC workers and
+a loopback synthetic provider in a throwaway identity: dedicated learning
+models, an explicit Chinese preference learned in a real chat turn, the chat
+card receipt, injection into the next turn, an agent `memory_add` through the
+journal, `skill_manage view`, edit and undo in the management page, exit
+extraction without re-learning, and the 393 px layout. Keep the prefix and record its bundle, lock and native hashes.
 Before enabling a real profile, finish active work and back up
 `<agentDir>/pivane-profiles/` and configuration. Parent activates only reviewed
 new workers under its maintenance flow. Rollback removes the hook/env/router

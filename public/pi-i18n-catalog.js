@@ -8684,6 +8684,8 @@
     ,["未提供","Not provided"]
     ,["版本：{0}","Revision: {0}"]
     ,["类别","Category"]
+    ,["后台学习正在处理本轮内容…", "Background learning is processing this turn…"]
+    ,["只读", "Read-only"]
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

@@ -11,6 +11,8 @@
 .pi-knowledge-list { display: grid; border-top: 1px solid var(--line); }
 .pi-knowledge-row { box-sizing: border-box; width: 100%; min-width: 0; background: transparent; color: var(--text-main); padding: 10px 2px; text-align: left; border: 0; border-bottom: 1px solid var(--line); font: inherit; font-size: .87rem; cursor: pointer; overflow-wrap: anywhere; }
 .pi-knowledge-row[aria-current=true], .pi-knowledge-row:hover { background: var(--surface-2); }
+.pi-knowledge-row-title { display: block; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.pi-knowledge-row-meta { display: block; margin-top: 3px; color: var(--text-muted); font-size: .78rem; }
 .pi-knowledge-detail, .pi-knowledge-editor, .pi-learning { border-top: 1px solid var(--line); margin: 18px 0; padding-top: 16px; min-width: 0; }
 .pi-knowledge-detail h5, .pi-knowledge-editor h5 { font-size: .95rem; margin: 0 0 8px; }
 .pi-knowledge-detail small, .pi-learning-job small { display: block; color: var(--text-soft); overflow-wrap: anywhere; line-height: 1.5; }

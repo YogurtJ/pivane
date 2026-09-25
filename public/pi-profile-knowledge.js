@@ -140,7 +140,15 @@
             if (uncertain && !busy) root.append(button(t('刷新回执核对'), () => void load()));
             if (snapshot?.status === 'ready') {
                 const list = node('div', undefined, 'pi-knowledge-list');
-                for (const item of snapshot.items) { const row = button(`${item.name || t(label[item.category] || item.category || label[kind])} · ${t(label[item.state] || item.state || '')}`, () => choose(item), 'pi-knowledge-row'); row.setAttribute('aria-current', String(selected?.id === item.id)); list.append(row); }
+                for (const item of snapshot.items) {
+                    // Memory rows lead with a bounded content preview so entries are recognizable without opening each one.
+                    const meta = [item.kind === 'memory' ? t(label[item.category] || item.category || label[kind]) : item.description,
+                        t(label[item.state] || item.state || ''), item.scope === 'project' && t('项目'), item.readOnly && t('只读')].filter(Boolean).join(' · ');
+                    const title = item.kind === 'memory' ? String(item.content || '').replace(/\s+/g, ' ').trim().slice(0, 160) : item.name;
+                    const row = button('', () => choose(item), 'pi-knowledge-row');
+                    row.append(node('span', title || t(label[item.category] || item.category || label[kind]), 'pi-knowledge-row-title'), node('small', meta, 'pi-knowledge-row-meta'));
+                    row.setAttribute('aria-current', String(selected?.id === item.id)); list.append(row);
+                }
                 if (!snapshot.items.length) list.append(node('p', t('此页没有已保存数据'), 'pi-profile-note')); root.append(list);
                 const pages = node('div', undefined, 'pi-profile-pages'), prev = button(t('上一页'), () => { offset = Math.max(0, offset - Math.max(1, snapshot.items.length)); void load(); }), next = button(t('下一页'), () => { offset += snapshot.items.length; void load(); });
                 prev.disabled = !offset; next.disabled = !snapshot.hasMore || !snapshot.items.length; pages.append(prev, next); root.append(pages);

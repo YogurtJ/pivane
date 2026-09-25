@@ -203,6 +203,9 @@ test('failure and SQLite-only memories are visible but never mutate the wrong ta
     for (const row of [failure, only]) await assert.rejects(mutate('delete', 'memory', {
         itemId: row.id, itemRevision: row.revision }), /read-only/);
     assert.equal((await service.getItem(id, first.item.id)).item.content, 'Markdown identity');
+    // The managed Markdown entry's own search-index row is listed once, not as a read-only duplicate.
+    assert.equal(rows.filter(item => item.content === 'Markdown identity').length, 1);
+    assert.equal(rows.find(item => item.content === 'Markdown identity').id, first.item.id);
 });
 
 test('native provenance and physical project scope are verified and survive reload', { skip: !bundle }, async t => {

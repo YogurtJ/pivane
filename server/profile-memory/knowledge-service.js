@@ -392,7 +392,9 @@ class ProfileKnowledgeService {
             if (safeFile(pendingFile(ctx.root), MAX_LEDGER)) return { ...base, status: 'pending', receipts: recent(data, options.sessionId) };
             const items = physical(ctx.root, data, ctx.bundle);
             const query = (options.query || '').toLocaleLowerCase();
-            const matches = items.filter(item => (!options.kind || item.kind === options.kind)
+            // A search-index row that mirrors a listed Markdown entry is not a second memory; it
+            // stays in the revision and remains readable by ID, but is not listed twice.
+            const matches = items.filter(item => !item.mirrored && (!options.kind || item.kind === options.kind)
                 && (!query || `${item.name || ''} ${item.content || ''} ${item.description || ''}`.toLocaleLowerCase().includes(query)));
             const offset = options.offset || 0;
             return { ...base, status: 'ready',
