@@ -12,12 +12,12 @@ const MAX_SKILL_SCAN = 5000;
 const BUNDLE_SHA256 = '0b2d8dae469077d615f46cb7d96d408663dc66980748718441d137293f9f9faa';
 const hash = data => createHash('sha256').update(data).digest('hex');
 const stamp = s => [s.dev, s.ino, s.mode, s.size, s.mtimeNs, s.ctimeNs].map(String).join(':');
-function safeFile(file) {
+function safeFile(file, maxBytes = MAX_FILE) {
     let fd;
     try {
         assertDescriptorBackend();
         const before = fs.lstatSync(file, { bigint: true });
-        if (!before.isFile() || before.isSymbolicLink() || before.size > BigInt(MAX_FILE)) throw new Error('Unsafe profile file');
+        if (!before.isFile() || before.isSymbolicLink() || before.size > BigInt(maxBytes)) throw new Error('Unsafe profile file');
         fd = io.openReadSync(file);
         const opened = fs.fstatSync(fd, { bigint: true }), identity = io.identity(fd);
         if (!opened.isFile() || stamp(opened) !== stamp(before) || descriptorPathSync(fd) !== file) throw new Error('Changed profile file');

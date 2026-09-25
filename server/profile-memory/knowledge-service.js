@@ -30,6 +30,8 @@ const ARCHIVE_KEEP = 4000;
 const REQUESTS_ACTIVE = 2048;
 const REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const HISTORY_KEEP = 320;
+// Room left in the ledger budget for the pending file's next document and receipt.
+const HISTORY_HEADROOM = 1024 * 1024;
 const MAX_RECORDS = 16384;
 const MAX_TOMBSTONES = 32768;
 const MAX_SPENT = 32768;
@@ -39,7 +41,7 @@ const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const keys = (value, allowed) => Object.keys(value).every(key => allowed.includes(key));
 
 function readJson(file, empty, versions = [1]) {
-    const data = safeFile(file);
+    const data = safeFile(file, MAX_LEDGER);
     if (!data) return empty;
     if (Buffer.byteLength(data.text) > MAX_LEDGER) throw fail('Knowledge metadata exceeds safety budget', 409);
     let parsed;
@@ -260,6 +262,8 @@ function append(data, item, result, server) {
     data.receipts.push(result);
     while (data.receipts.length > RECEIPTS_WINDOW) {
         const dropped = data.receipts.shift();
+        // Undo is only offered inside the active window, so its before-copy is no longer needed.
+        dropHistory(data, dropped);
         data.archive.push({ id: dropped.id, requestId: dropped.requestId, operation: dropped.operation,
             kind: dropped.kind, itemId: dropped.itemId, status: dropped.status, at: dropped.at, undoable: false });
     }
@@ -270,11 +274,35 @@ function append(data, item, result, server) {
         const evictable = Object.entries(data.requests).filter(([, entry]) => entry.s || expiredRequest(entry))
             .sort((left, right) => Date.parse(left[1].at) - Date.parse(right[1].at))[0];
         if (!evictable) break;
-        addSpent(data, evictable[0]);
+        // Server IDs are generated per call and never resubmitted by a client; only
+        // client IDs need a permanent replay refusal after they leave the table.
+        if (!evictable[1].s) addSpent(data, evictable[0]);
         delete data.requests[evictable[0]];
     }
     if (Object.keys(data.requests).length > REQUESTS_ACTIVE)
         throw fail('Knowledge request journal is full; reviewed migration required before writing', 409);
+    fitHistoryBudget(data);
+}
+function dropHistory(data, receiptRow) {
+    const history = data.records[receiptRow.itemId]?.history;
+    if (!Array.isArray(history)) return 0;
+    const index = history.findIndex(entry => entry.receiptId === receiptRow.id);
+    if (index < 0) return 0;
+    const [removed] = history.splice(index, 1);
+    return Buffer.byteLength(JSON.stringify(removed));
+}
+// Before-copies may hold whole skill bodies. Keep the ledger (and the pending
+// file, which also carries the next document) inside MAX_LEDGER by giving up the
+// oldest undo copies first and saying so on their receipts.
+function fitHistoryBudget(data) {
+    const budget = MAX_LEDGER - HISTORY_HEADROOM;
+    let size = Buffer.byteLength(JSON.stringify(data));
+    for (const row of data.receipts) {
+        if (size <= budget) break;
+        if (!row.undoable) continue;
+        size -= dropHistory(data, row);
+        row.undoable = false;
+    }
 }
 function copy(item) { return item ? { ...item, history: undefined } : null; }
 function body(root, item) {
@@ -361,7 +389,7 @@ class ProfileKnowledgeService {
             return { ...base, status: 'unsupported', capabilities };
         return createMutationLock(ctx.root).inspect(async generation => {
             const data = ledger(ctx.root);
-            if (safeFile(pendingFile(ctx.root))) return { ...base, status: 'pending', receipts: recent(data, options.sessionId) };
+            if (safeFile(pendingFile(ctx.root), MAX_LEDGER)) return { ...base, status: 'pending', receipts: recent(data, options.sessionId) };
             const items = physical(ctx.root, data, ctx.bundle);
             const query = (options.query || '').toLocaleLowerCase();
             const matches = items.filter(item => (!options.kind || item.kind === options.kind)
@@ -386,7 +414,7 @@ class ProfileKnowledgeService {
         if (!ctx.installed && fs.existsSync(path.join(ctx.root, 'sessions.db')))
             return { version: 1, status: 'unsupported' };
         return createMutationLock(ctx.root).inspect(() => {
-            if (safeFile(pendingFile(ctx.root))) return { version: 1, status: 'pending' };
+            if (safeFile(pendingFile(ctx.root), MAX_LEDGER)) return { version: 1, status: 'pending' };
             const item = physical(ctx.root, ledger(ctx.root), ctx.bundle).find(row => row.id === itemId);
             const content = item && body(ctx.root, item);
             return { version: 1, status: item ? 'ready' : 'missing', ...(item ? { item: {
@@ -488,7 +516,7 @@ class ProfileKnowledgeService {
                     return { replay: replayReceipt(data, input.requestId, existing) };
                 }
                 if (data.spent.includes(hash(input.requestId))) fail('Request ID expired; re-execution is not allowed', 409);
-                if (safeFile(pendingFile(ctx.root))) fail('Knowledge publication needs repair', 409);
+                if (safeFile(pendingFile(ctx.root), MAX_LEDGER)) fail('Knowledge publication needs repair', 409);
                 const items = physical(ctx.root, data, ctx.bundle);
                 if (!unpublishedRetry && revision(ctx.root, generation, data, items) !== input.expectedRevision) fail('Knowledge revision changed', 409);
                 const original = input.operation === 'undo'

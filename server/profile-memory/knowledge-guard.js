@@ -10,9 +10,9 @@ const conflict = message => { throw Object.assign(new Error(message), { status: 
 // The legacy full-document editor shares the mutation lock, but has no item
 // receipt. It may not remove managed entries or bypass deletion tombstones.
 function assertKnowledgeDocumentWrite(root, target, next) {
-    if (safeFile(path.join(root, '.pivane-knowledge.pending')))
+    if (safeFile(path.join(root, '.pivane-knowledge.pending'), 8 * 1024 * 1024))
         conflict('Knowledge publication needs repair before editing the document');
-    const file = safeFile(path.join(root, '.pivane-knowledge.json'));
+    const file = safeFile(path.join(root, '.pivane-knowledge.json'), 8 * 1024 * 1024);
     if (!file) return;
     if (Buffer.byteLength(file.text) > 8 * 1024 * 1024) conflict('Invalid knowledge metadata');
     let data;

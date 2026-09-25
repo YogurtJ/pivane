@@ -468,3 +468,39 @@ test('version 1 knowledge metadata upgrades on write and keeps idempotency and t
         expectedRevision: (await service.snapshot(id)).revision, operation: 'create', kind: 'memory',
         category: 'fact', content: 'Legacy managed fact.' }), /cannot be relearned/);
 });
+
+test('large skill histories stay readable beyond 2 MiB and give up the oldest undo copies explicitly', async t => {
+    const { service, root, mutate } = setup(t);
+    // Each update keeps a ~60 KiB before-copy: past 2 MiB (old read limit) and then past the history budget.
+    const body = serial => `${'Detailed procedure step. '.repeat(2400)}\nRevision ${serial}.`;
+    let saved = await mutate('create', 'skill', { name: 'large-proof', description: 'Large synthetic skill', content: body(0) });
+    const first = saved.receipt;
+    for (let i = 1; i <= 140; i++) {
+        const item = (await service.getItem(id, saved.item.id)).item;
+        saved = await mutate('update', 'skill', { itemId: item.id, itemRevision: item.revision, name: 'large-proof',
+            description: 'Large synthetic skill', content: body(i) });
+        assert.equal(saved.status, 'saved');
+    }
+    const ledgerBytes = fs.statSync(path.join(root, '.pivane-knowledge.json')).size;
+    assert.ok(ledgerBytes > 2 * 1024 * 1024, `ledger ${ledgerBytes} should exceed the old read limit`);
+    assert.ok(ledgerBytes <= 8 * 1024 * 1024);
+    const snapshot = await service.snapshot(id, { kind: 'skill' });
+    assert.equal(snapshot.status, 'ready');
+    assert.match((await service.getItem(id, saved.item.id)).item.content, /Revision 140\./);
+    // The newest update is still undoable; copies given up for space are reported as such, never silently kept.
+    const latest = snapshot.receipts[0];
+    assert.equal(latest.id, saved.receipt.id);
+    assert.equal(latest.undoable, true);
+    // The snapshot lists only recent receipts; inspect the journal for the oldest ones.
+    const journal = JSON.parse(fs.readFileSync(path.join(root, '.pivane-knowledge.json'), 'utf8'));
+    const dropped = journal.receipts.filter(row => row.undoable === false);
+    assert.ok(dropped.length > 0, 'oldest copies were dropped to stay within budget');
+    assert.equal(journal.receipts[0].id, first.id);
+    assert.equal(journal.receipts[0].undoable, false);
+    const kept = journal.records[saved.item.id].history.map(entry => entry.receiptId);
+    for (const row of dropped) assert.equal(kept.includes(row.id), false);
+    await assert.rejects(mutate('undo', 'skill', { receiptId: first.id }), /not undoable/);
+    const undone = await mutate('undo', 'skill', { receiptId: latest.id });
+    assert.equal(undone.status, 'saved');
+    assert.match((await service.getItem(id, saved.item.id)).item.content, /Revision 139\./);
+});
