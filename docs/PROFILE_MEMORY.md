@@ -162,15 +162,22 @@ For project scope the service derives `projectKey=sha256(canonical cwd)` and
 writes the profile-owned physical project directory; the caller cannot choose
 an unrelated projectKey. Only this method can create a skill in `draft` state;
 manual enable publishes the validated skill after review. The HTTP mutation
-method rejects all `source`, `projectKey`, and draft state fields. The helper
-`createKnowledgeToolAdapter(service, profileId)` in
-`server/profile-memory/knowledge-tool-adapter.js` maps supported native
-memory add/replace/remove and skill create/update/patch/delete writes into
-this entry. Its `native` argument must be taken from a verified worker and a
-real native entry; it returns `null` for read-only skill view. Legacy failure
-writes cannot be mapped losslessly and fail closed rather than changing a
-normal memory entry. Integrating the helper into the worker is a separate B
-line wiring step; an A-only commit does not change existing worker tools.
+method rejects all `source`, `projectKey`, and draft state fields. The single
+adapter `createKnowledgeMemoryTools(service, profileId)` in
+`server/profile-memory/tool-mutations.js` (registered by
+`server/profile-memory/extension.ts`) maps native memory add/replace/remove and
+skill create/update/edit/patch/delete writes into this entry. Its native source
+must come from a verified worker and a real native entry, and it returns `null`
+for unhandled read-only skill actions. Structured skill updates locate exactly
+one active skill by `skill_id`, refuse ambiguous matches and unmanaged
+frontmatter, patch only a uniquely matching `##` section, and keep the
+`itemRevision` CAS between the located snapshot row and the service mutation.
+Deterministic rejections (4xx: name collisions, invalid fields, revision
+conflicts) return a failed tool result (`details.success=false` with a readable
+error) like upstream tools; uncertain outcomes (5xx or publication-unknown
+errors) keep throwing and are never reported as a clean success or failure.
+Legacy failure writes cannot be mapped losslessly and fail closed rather than
+changing a normal memory entry.
 
 The journal and pending publication marker are private profile data protected
 by the same cross-process mutation lock and generation as the Markdown/SQLite
