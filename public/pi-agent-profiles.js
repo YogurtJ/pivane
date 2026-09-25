@@ -6,8 +6,7 @@
     const html = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 
     function create({ apiFetch, currentCwd }) {
-        const nav = $('pi-profiles-nav'), root = $('pi-profiles-content'), refresh = $('pi-profiles-refresh');
-        if (nav?.querySelector('span')) nav.querySelector('span').textContent = t('助手身份');
+        const root = $('pi-profiles-content'), refresh = $('pi-profiles-refresh');
         $('pi-profiles-panel').querySelector('h3').textContent = t('助手身份');
         $('pi-profiles-panel').querySelector('.settings-panel-header p').textContent = t('保存后已运行的线程不会自动重新加载身份。');
         refresh.title = t('刷新助手身份');
@@ -33,10 +32,10 @@
 
         function renderList() {
             if (!snapshot) { list.replaceChildren(); return; }
-            list.innerHTML = `<div class="pi-profile-toolbar"><h4>${html(t('助手档案'))}</h4><button id="pi-profile-add" class="settings-primary-button" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i> ${html(t('新建'))}</button></div>${profiles().length ? profiles().map(p => `<button class="pi-profile-row" type="button" data-profile-id="${html(p.id)}" aria-current="${selected === p.id}"><span class="pi-profile-avatar">${avatar(p)}</span><span><strong>${html(p.name)}</strong><small>${html(p.enabled ? t('已启用') : t('已停用'))}</small></span></button>`).join('') : `<p class="pi-profile-note">${html(t('尚无助手身份。'))}</p><button type="button" class="settings-secondary-button" data-profile-assist>${html(t('与 Agent 起草'))}</button>`}`;
+            list.innerHTML = `<div class="pi-profile-toolbar"><h4>${html(t('助手身份'))}</h4><button id="pi-profile-add" class="settings-primary-button" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i> ${html(t('新建'))}</button></div>${profiles().length ? profiles().map(p => `<button class="pi-profile-row" type="button" data-profile-id="${html(p.id)}" aria-current="${selected === p.id}"><span class="pi-profile-avatar">${avatar(p)}</span><span><strong>${html(p.name)}</strong><small>${html(p.enabled ? t('已启用') : t('已停用'))}</small></span></button>`).join('') : `<p class="pi-profile-note">${html(t('尚无助手身份。'))}</p><button type="button" class="settings-secondary-button" data-profile-assist>${html(t('与 Agent 起草'))}</button>`}`;
         }
         function renderEmptyDetail() {
-            if (!draft && snapshot) editor.innerHTML = `<div class="pi-profile-empty"><i class="fa-regular fa-user" aria-hidden="true"></i><h4>${html(t('选择助手档案'))}</h4><p>${html(t('从左侧选择一个助手档案，或新建档案。'))}</p></div>`;
+            if (!draft && snapshot) editor.innerHTML = `<div class="pi-profile-empty"><i class="fa-regular fa-user" aria-hidden="true"></i><h4>${html(t('选择助手身份'))}</h4><p>${html(t('从左侧选择一个助手身份，或新建档案。'))}</p></div>`;
         }
         function avatar(p) {
             if (p.avatar?.kind === 'emoji') return html(p.avatar.value);
@@ -81,11 +80,11 @@
             const wasEnabled = enabled;
             enabled = value === true;
             autoLearnSupported = capability === true;
-            if (nav) nav.hidden = !enabled;
+            document.querySelectorAll('[data-manage-route="profiles"]').forEach(item => { item.hidden = !enabled; });
             if (!enabled && wasEnabled) {
                 epoch++; documentEpoch++; proposalEpoch++; knowledgePanel.close();
                 snapshot = null; render(); syncEditorSave();
-                message(t('此服务暂不支持助手档案，未保存草稿仍保留。'));
+                message(t('此服务暂不支持助手身份，未保存草稿仍保留。'));
                 root.querySelectorAll('[data-profile-assist], #pi-profile-avatar-upload, #pi-profile-document-save, #pi-profile-document-sync').forEach(control => { control.disabled = true; });
                 $('pi-session-profile').hidden = true; $('pi-meta-profile-row').hidden = true;
             }

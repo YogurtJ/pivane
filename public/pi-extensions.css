@@ -1,8 +1,20 @@
 /* Curated discovery and installed resources share the full-page extension destination. */
-.extensions-view .workspace-settings-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-.extensions-view .workspace-settings-nav { display: flex; flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px 20px; gap: 8px; }
-.extensions-view .workspace-settings-nav [data-settings-tab] { display: none; }
-.extensions-view .workspace-settings-nav :is([data-settings-tab="extensions"], [data-settings-tab="packages"], [data-settings-tab="skills"]) { display: flex; flex-direction: row; min-width: 0; }
+.extensions-nav { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; padding: 10px 20px; border-bottom: 1px solid var(--line); background: var(--surface-0); }
+.extensions-nav[hidden] { display: none; }
+.extensions-nav-tabs { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.extensions-nav-tab { min-height: 40px; padding: 8px 14px; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--text-muted); font: inherit; font-size: .8rem; cursor: pointer; }
+.extensions-nav-tab:hover { background: var(--surface-2); color: var(--text-main); }
+.extensions-nav-tab.active { background: var(--green-soft); border-color: var(--green); color: var(--text-main); font-weight: 600; }
+.extensions-nav-actions { display: flex; align-items: center; gap: 8px; }
+.extensions-nav-actions .settings-primary-button { min-height: 40px; }
+#workspace-settings-dialog.extensions-view .workspace-settings-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+#workspace-settings-dialog.extensions-view .workspace-settings-nav { display: none; }
+@media (max-width: 680px) {
+    .extensions-nav { padding: 8px 12px; gap: 8px; }
+    .extensions-nav-tab { min-height: 44px; padding: 8px 12px; }
+    .extensions-nav-actions { width: 100%; }
+    .extensions-nav-actions .settings-primary-button { width: 100%; min-height: 44px; }
+}
 #extensions-featured { min-width: 0; max-width: 1040px; }
 #extensions-featured[hidden] { display: none !important; }
 .extensions-intro { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 20px; margin-bottom: 24px; }

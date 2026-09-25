@@ -40,6 +40,14 @@
             title = t('读取技能文件 · {0}', parts.at(-2) || 'SKILL.md');
             info = t('按文件名识别，未核对技能加载状态。');
         } else if (name === 'update_plan') title = t('更新任务计划');
+        else if (name === 'agent_message') {
+            const peer = text(result?.details?.to?.name, 160) || (text(args.to, 160) ? `${args.to.slice(0, 8)}…` : '');
+            title = args.action === 'threads' ? t('查看可联系的线程') : args.action === 'status' ? t('查看消息投递状态')
+                : peer ? t(args.replyTo ? '回复 Agent 消息 · {0}' : '发送 Agent 消息 · {0}', peer) : t('发送 Agent 消息');
+        } else if (name === 'agent_thread') {
+            title = args.action === 'create' && text(args.title, 120) ? t('新建任务线程 · {0}', args.title) : args.action === 'status' ? t('查看任务线程状态')
+                : args.action === 'result' ? t('读取任务结果') : args.action === 'models' ? t('查看可用模型') : title;
+        }
         else if (['subagent', 'subagent_supervisor', 'subagents_enable', 'bg_wait'].includes(name)) title = subagentTitle(name, args);
         else if (name === 'extensions_inventory') title = t('检查扩展清单');
         else if (name === 'extensions_package') {

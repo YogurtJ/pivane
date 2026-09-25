@@ -50,10 +50,7 @@
         const el = node('button', label, { type: 'button', ...attrs });
         el.addEventListener('click', action); return el;
     };
-    let enabled = false, host, generation = 0, view = '', inventory = null, inventoryState = 'unknown', renderCards = () => {};
-    function showExtensionTab() {
-        if (view === 'extensions') void refreshInventory();
-    }
+    let enabled = false, host, generation = 0, view = '', inventory = null, inventoryState = 'unknown', renderCards = () => {}, subnav = null;
     const repositories = { 'ppt-master': 'hugohe3/ppt-master', 'pi-mcp-adapter': 'nicobailon/pi-mcp-adapter', 'pi-web-access': 'nicobailon/pi-web-access', 'pi-computer-use': 'injaneity/pi-computer-use', 'pi-subagents': 'nicobailon/pi-subagents', 'pi-hermes-memory': 'chandra447/pi-hermes-memory' };
     function identity(source) {
         if (typeof source !== 'string') return '';
@@ -129,6 +126,30 @@
         }));
         section.append(header, choices); root.append(section);
     }
+    const extensionTabLabels = {
+        extensions: ['发现', 'Discover'],
+        packages: ['已安装扩展包', 'Installed packages'],
+        skills: ['已安装技能', 'Installed skills']
+    };
+    function mountSubnav() {
+        const dialog = document.getElementById('workspace-settings-dialog');
+        const header = dialog?.querySelector('.workspace-settings-header');
+        if (!dialog || !header || document.getElementById('extensions-nav')) return;
+        subnav = node('nav', null, { class: 'extensions-nav', id: 'extensions-nav', 'aria-label': text('扩展分类', 'Extension categories'), hidden: '' });
+        const tabs = node('div', null, { class: 'extensions-nav-tabs' });
+        for (const [tab, label] of Object.entries(extensionTabLabels)) {
+            const item = button(text(...label), () => window.PiWorkspaceRoute?.navigate('extensions', { tab }), { 'data-extensions-tab': tab, type: 'button' });
+            item.classList.add('extensions-nav-tab');
+            tabs.append(item);
+        }
+        const actions = node('div', null, { class: 'extensions-nav-actions' });
+        const install = button(text('安装扩展包', 'Install package'), () => window.dispatchEvent(new CustomEvent('pi:extensions-install')), { id: 'extensions-install', type: 'button' });
+        install.className = 'settings-primary-button';
+        install.prepend(node('i', '', { class: 'fa-solid fa-plus', 'aria-hidden': 'true' }));
+        actions.append(install);
+        subnav.append(tabs, actions);
+        header.after(subnav);
+    }
     window.PiExtensions = {
         connect(value) { host = value; },
         mountExplore,
@@ -137,23 +158,28 @@
             document.querySelectorAll('[data-extension-configure]').forEach(el => { el.disabled = !enabled; });
             const hint = document.getElementById('extensions-assistant-unavailable'); if (hint) hint.hidden = enabled;
         },
-        setView(tab) {
-            view = tab; generation++;
-            if (tab === 'extensions') showExtensionTab();
-            const extensionView = ['extensions', 'packages', 'skills'].includes(tab);
+        setView(nextView, tab) {
+            const extensionView = nextView === 'extensions';
+            view = extensionView ? (extensionTabLabels[tab] ? tab : 'extensions') : nextView;
+            generation++;
             const dialog = document.getElementById('workspace-settings-dialog');
             dialog?.classList.toggle('extensions-view', extensionView);
-            if (document.getElementById('workspace-settings-title')) document.getElementById('workspace-settings-title').textContent = extensionView ? text('扩展', 'Extensions') : text('设置', 'Settings');
+            if (subnav) {
+                subnav.hidden = !extensionView;
+                subnav.querySelectorAll('[data-extensions-tab]').forEach(item => {
+                    const active = extensionView && item.dataset.extensionsTab === view;
+                    item.classList.toggle('active', active);
+                    if (active) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current');
+                });
+            }
+            if (view === 'extensions') void refreshInventory();
             const close = document.getElementById('workspace-settings-close');
             if (close) close.title = close.ariaLabel = extensionView ? text('关闭扩展', 'Close extensions') : text('关闭设置', 'Close settings');
             document.querySelector('.workspace-settings-nav')?.setAttribute('aria-label', extensionView ? text('扩展分类', 'Extension categories') : text('设置分类', 'Settings categories'));
         }
     };
     document.addEventListener('DOMContentLoaded', () => {
-        const nav = document.querySelector('.workspace-settings-nav');
-        for (const [tab, label] of [['packages', text('已安装扩展包', 'Installed packages')], ['skills', text('已安装技能', 'Installed skills')]]) {
-            nav.querySelector(`[data-settings-tab="${tab}"] span`).textContent = label;
-        }
+        mountSubnav();
         const panel = node('section', null, { class: 'workspace-settings-panel', 'data-settings-panel': 'extensions' });
         const featured = node('section', null, { id: 'extensions-featured' });
         const intro = node('div', null, { class: 'extensions-intro' });

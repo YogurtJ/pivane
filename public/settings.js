@@ -28,16 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
         mediaAgentModel: $('settings-media-agent-model'),
         mediaAgentCurrent: $('settings-media-agent-current'),
         mediaAgentTest: $('settings-media-agent-test'),
-        packageForm: $('settings-package-form'),
-        packageSource: $('settings-package-source'),
-        packageList: $('settings-package-list'),
-        packageProgress: $('settings-package-progress'),
-        resourceSummary: $('settings-resource-summary'),
-        refreshResources: $('settings-refresh-resources'),
-        skillSearch: $('settings-skill-search'),
         skillCommands: $('settings-skill-commands'),
-        skillList: $('settings-skill-list'),
-        skillDiagnostics: $('settings-skill-diagnostics'),
         toastRegion: $('pi-toast-region')
     };
 
@@ -51,9 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const state = {
         activeTab: 'providers',
         modelSnapshot: null,
-        resourceSnapshot: null,
         loadingModels: null,
-        loadingResources: null,
         modelViewKey: null,
         modelGroups: new Map(),
         modelGroupOpen: new Map(),
@@ -111,7 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    window.addEventListener('workspace:access-ready', () => { state.modelSnapshot = null; state.resourceSnapshot = null; });
+    window.addEventListener('workspace:access-ready', () => { state.modelSnapshot = null; });
     const auxiliaryModels = window.PiAuxiliaryModels?.create({ apiFetch, saved: snapshot => {
         if (!state.modelSnapshot) return;
         state.modelSnapshot.auxiliaryModels = snapshot;
@@ -134,6 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let settingsViewEpoch = 0;
     let activeProfileMetadata = null;
+    const extensionTabs = new Set(['extensions', 'packages', 'skills']);
     function openSettings(tab = state.activeTab, metadata = {}) {
         elements.dialog.classList.remove('hidden');
         switchTab(tab, metadata);
@@ -154,11 +144,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function switchTab(tab, metadata = {}) {
-        activeProfileMetadata = tab === 'profiles' ? metadata : null;
+        const extensionTab = extensionTabs.has(tab);
+        const view = tab === 'profiles' ? 'profiles' : extensionTab ? 'extensions' : 'settings';
+        activeProfileMetadata = view === 'profiles' ? metadata : null;
         const viewEpoch = ++settingsViewEpoch;
-        window.PiExtensions?.setView(tab);
-        $('workspace-settings-title').textContent = translateUi(tab === 'profiles' ? '助手档案'
-            : ['extensions', 'packages', 'skills'].includes(tab) ? '扩展' : '工作台设置');
+        window.PiExtensions?.setView(view, extensionTab ? tab : view);
+        $('workspace-settings-title').textContent = translateUi(view === 'profiles' ? '助手身份'
+            : view === 'extensions' ? '扩展' : '工作台设置');
         state.activeTab = tab;
         if (tab === 'media') void subagentSettings.open();
         else subagentSettings.close();
@@ -186,7 +178,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (tab === 'models') return titleSettings?.refresh();
             }
         }).catch(error => { if (viewEpoch === settingsViewEpoch) showPanelError(tab, error); });
-        if (tab === 'packages' || tab === 'skills') loadResources().catch(error => showPanelError(tab, error));
     }
 
     function showPanelError(tab, error) {
@@ -194,9 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
             auxiliaryModels.status.textContent = error.message;
             return;
         }
-        const target = tab === 'providers' ? elements.modelList
-            : tab === 'models' ? elements.modelList
-                : tab === 'packages' ? elements.packageList : elements.skillList;
+        const target = elements.modelList;
         target.innerHTML = `<div class="settings-empty error"><i class="fa-solid fa-circle-exclamation"></i><span>${escapeHtml(error.message)}</span></div>`;
     }
 
@@ -757,91 +746,6 @@ document.addEventListener('DOMContentLoaded', () => {
         finally { setBusy(button, false); }
     }
 
-    async function loadResources(force = false) {
-        const cwd = currentCwd();
-        if (state.resourceSnapshot && state.resourceCwd === cwd && !force) {
-            renderPackages(); renderSkills(); return state.resourceSnapshot;
-        }
-        if (state.loadingResources && state.loadingResourceCwd === cwd && !force) return state.loadingResources;
-        state.resourceSnapshot = null;
-        elements.packageList.innerHTML = `<div class="pi-list-state"><span class="pi-spinner"></span>${translateUi("正在解析 Packages")}</div>`;
-        elements.skillList.innerHTML = `<div class="pi-list-state"><span class="pi-spinner"></span>${translateUi("正在读取 Skills")}</div>`;
-        state.loadingResourceCwd = cwd;
-        const loading = apiFetch(`/api/pi/settings/resources?cwd=${encodeURIComponent(cwd)}`)
-            .then(snapshot => {
-                if (state.loadingResources !== loading || cwd !== currentCwd()) return snapshot;
-                state.resourceSnapshot = snapshot;
-                state.resourceCwd = cwd;
-                renderPackages(); renderSkills(); return snapshot;
-            }).catch(error => {
-                if (state.loadingResources === loading && cwd === currentCwd()) throw error;
-                return null;
-            }).finally(() => { if (state.loadingResources === loading) state.loadingResources = null; });
-        state.loadingResources = loading;
-        return loading;
-    }
-
-    function renderPackages() {
-        if (!state.resourceSnapshot) return;
-        const packages = state.resourceSnapshot.packages;
-        elements.packageList.innerHTML = packages.length ? packages.map(item => `
-            <article class="settings-row package-row" data-package-source="${escapeHtml(item.source)}">
-                <span class="settings-model-icon"><i class="fa-solid fa-box"></i></span>
-                <div class="settings-row-main"><div class="settings-row-title"><strong>${escapeHtml(item.source)}</strong>${item.filtered ? `<span class="settings-badge">${translateUi("已过滤")}</span>` : ''}</div><div class="settings-row-meta"><span>${escapeHtml(item.scope)}</span><span>${item.installed ? translateUi("已安装") : translateUi("配置存在但未安装")}</span></div></div>
-                <div class="settings-row-actions"><button type="button" data-action="update"><i class="fa-solid fa-arrows-rotate"></i> ${translateUi("更新")}</button><button type="button" class="danger" data-action="remove"><i class="fa-solid fa-trash"></i> ${translateUi("删除")}</button></div>
-            </article>
-        `).join('') : `<div class="settings-empty">${translateUi("尚未安装 Pi Package")}</div>`;
-        const resources = state.resourceSnapshot.resources;
-        elements.resourceSummary.innerHTML = [
-            ['Extensions', resources.extensions], ['Package Skills', resources.skills], ['Prompts', resources.prompts], ['Themes', resources.themes]
-        ].map(([label, items]) => `<div><strong>${items.filter(item => item.enabled).length}</strong><span>${label}</span></div>`).join('');
-    }
-
-    async function runPackageAction(action, source, button) {
-        if (action === 'remove' && !confirm(translateUi("删除 Package “{0}”？", source))) return;
-        if (action === 'install' && !confirm(translateUi("安装并信任 Package “{0}”？Packages 可执行任意代码。", source))) return;
-        setBusy(button, true, action === 'install' ? translateUi("安装中") : action === 'remove' ? translateUi("删除中") : translateUi("更新中"));
-        elements.packageProgress.className = 'settings-result';
-        elements.packageProgress.textContent = `${action}: ${source}`;
-        try {
-            const result = await apiFetch('/api/pi/settings/packages/action', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action, source, cwd: currentCwd() })
-            });
-            elements.packageProgress.className = 'settings-result success';
-            elements.packageProgress.textContent = result.progress.map(item => item.message).filter(Boolean).slice(-3).join(' · ') || translateUi("{0} 完成", action);
-            state.resourceSnapshot = null; await loadResources(true);
-            toast(translateUi("Package 配置已更新；重新打开 runtime 后生效"), 'success', 6500);
-        } catch (error) {
-            elements.packageProgress.className = 'settings-result error'; elements.packageProgress.textContent = error.message;
-        } finally { setBusy(button, false); }
-    }
-
-    function renderSkills() {
-        if (!state.resourceSnapshot) return;
-        const query = elements.skillSearch.value.trim().toLowerCase();
-        const skills = state.resourceSnapshot.skills.filter(skill => !query || `${skill.name} ${skill.description} ${skill.source}`.toLowerCase().includes(query));
-        elements.skillCommands.checked = state.resourceSnapshot.settings.enableSkillCommands;
-        elements.skillList.innerHTML = skills.length ? skills.map(skill => `
-            <article class="settings-row skill-row" data-skill-name="${escapeHtml(skill.name)}">
-                <span class="settings-model-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
-                <div class="settings-row-main"><div class="settings-row-title"><strong>${escapeHtml(skill.name)}</strong>${skill.disableModelInvocation ? `<span class="settings-badge">${translateUi("仅手动")}</span>` : ''}</div><p>${escapeHtml(skill.description)}</p><div class="settings-row-meta"><span>${escapeHtml(skill.scope)}</span><span>${escapeHtml(skill.source)}</span><code title="${escapeHtml(skill.filePath)}">${escapeHtml(skill.filePath)}</code></div></div>
-                <div class="settings-row-actions">${skill.manageable ? '<button type="button" class="danger" data-action="delete"><i class="fa-solid fa-trash"></i></button>' : ''}</div>
-            </article>
-        `).join('') : `<div class="settings-empty">${translateUi("没有发现 Skill")}</div>`;
-        elements.skillDiagnostics.innerHTML = state.resourceSnapshot.diagnostics.map(item => `<div class="settings-diagnostic"><i class="fa-solid fa-triangle-exclamation"></i><span>${escapeHtml(item.message)}</span></div>`).join('');
-    }
-
-    async function deleteSkill(name, button) {
-        if (!confirm(translateUi("删除用户 Skill “{0}”？", name))) return;
-        setBusy(button, true);
-        try {
-            await apiFetch(`/api/pi/settings/skills/${encodeURIComponent(name)}`, { method: 'DELETE' });
-            state.resourceSnapshot = null; await loadResources(true); toast(translateUi("Skill 已移入回收站"), 'success');
-        } catch (error) { toast(error.message, 'error'); }
-        finally { setBusy(button, false); }
-    }
-
     function openEditor(title, html) {
         closeEditor();
         state.editorReturnFocus = document.activeElement;
@@ -867,7 +771,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.addEventListener('workspace:agent-profiles-status', event => agentProfiles.setEnabled(event.detail?.enabled === true, event.detail?.autoLearn === true));
     elements.toggle.addEventListener('click', () => window.PiWorkspaceRoute?.navigate('settings', {
-        tab: ['profiles', 'extensions', 'packages', 'skills'].includes(state.activeTab) ? 'providers' : state.activeTab
+        tab: extensionTabs.has(state.activeTab) || state.activeTab === 'profiles' ? 'providers' : state.activeTab
     }));
     window.addEventListener('workspace:open-settings', event => {
         const detail = event.detail || {};
@@ -880,7 +784,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (detail.showConfigured === false) elements.providerConfigured.checked = false;
         const tab = detail.tab || state.activeTab;
-        const route = tab === 'profiles' ? 'profiles' : ['extensions', 'packages', 'skills'].includes(tab) ? 'extensions' : 'settings';
+        const route = tab === 'profiles' ? 'profiles' : extensionTabs.has(tab) ? 'extensions' : 'settings';
         const params = route === 'profiles' ? { profileId: detail.profileId, section: detail.section, authoringSession: detail.authoringSession?.id, authoringCwd: detail.authoringSession?.cwd }
             : { tab };
         window.PiWorkspaceRoute?.navigate(route, params);
@@ -900,10 +804,10 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.editorClose.addEventListener('click', closeEditor);
     elements.editor.addEventListener('click', event => { if (event.target === elements.editor) closeEditor(); });
     elements.nav.addEventListener('click', event => {
+        const manage = event.target.closest('[data-manage-route]');
+        if (manage) { window.PiWorkspaceRoute?.navigate(manage.dataset.manageRoute, {}); return; }
         const button = event.target.closest('[data-settings-tab]');
-        if (button) window.PiWorkspaceRoute?.navigate(button.dataset.settingsTab === 'profiles' ? 'profiles'
-            : ['extensions', 'packages', 'skills'].includes(button.dataset.settingsTab) ? 'extensions' : 'settings',
-        button.dataset.settingsTab === 'profiles' ? {} : { tab: button.dataset.settingsTab });
+        if (button) window.PiWorkspaceRoute?.navigate('settings', { tab: button.dataset.settingsTab });
     });
     document.addEventListener('keydown', event => {
         if (document.querySelector('dialog[open]')) return;
@@ -988,29 +892,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (action === 'delete') deleteModel(provider, modelId, button);
     });
 
-    elements.packageForm.addEventListener('submit', event => {
-        event.preventDefault(); const source = elements.packageSource.value.trim(); if (!source) return;
-        runPackageAction('install', source, elements.packageForm.querySelector('[type=submit]')).then(() => { elements.packageSource.value = ''; });
-    });
-    elements.refreshResources.addEventListener('click', () => { state.resourceSnapshot = null; loadResources(true).catch(error => toast(error.message, 'error')); });
-    elements.packageList.addEventListener('click', event => {
-        const row = event.target.closest('[data-package-source]'); const button = event.target.closest('[data-action]');
-        if (row && button) runPackageAction(button.dataset.action, row.dataset.packageSource, button);
-    });
-
-    elements.skillSearch.addEventListener('input', renderSkills);
     elements.skillCommands.addEventListener('change', async () => {
         try {
             await apiFetch('/api/pi/settings/skill-commands', {
                 method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ enabled: elements.skillCommands.checked, cwd: currentCwd() })
             });
-            if (state.resourceSnapshot) state.resourceSnapshot.settings.enableSkillCommands = elements.skillCommands.checked;
             toast(translateUi("Skill command 设置已保存；重新打开 runtime 后生效"), 'success');
         } catch (error) { elements.skillCommands.checked = !elements.skillCommands.checked; toast(error.message, 'error'); }
-    });
-    elements.skillList.addEventListener('click', event => {
-        const row = event.target.closest('[data-skill-name]'); const button = event.target.closest('[data-action]');
-        if (row && button?.dataset.action === 'delete') deleteSkill(row.dataset.skillName, button);
     });
 });

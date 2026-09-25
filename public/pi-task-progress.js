@@ -4,7 +4,7 @@
     class PiTaskProgress {
         constructor(root) {
             this.root = root;
-            root.innerHTML = '<summary><i class="fa-solid fa-list-check" aria-hidden="true"></i><strong></strong><span class="pi-progress-count" role="status" aria-live="polite" aria-atomic="true"></span><span class="pi-progress-current"></span><i class="fa-solid fa-chevron-down pi-progress-chevron" aria-hidden="true"></i></summary><div class="pi-progress-body"><ol></ol><p class="pi-progress-explanation" hidden></p></div>';
+            root.innerHTML = '<summary><i class="fa-solid fa-list-check" aria-hidden="true"></i><strong></strong><span class="pi-progress-count" role="status" aria-live="polite" aria-atomic="true"></span><span class="pi-progress-current"></span><i class="fa-solid fa-chevron-up pi-progress-chevron" aria-hidden="true"></i></summary><div class="pi-progress-body"><ol></ol><p class="pi-progress-explanation" hidden></p></div>';
             this.reset();
         }
         reset() {
@@ -21,7 +21,7 @@
             const completed = plan.filter(item => item.status === 'completed').length;
             const done = completed === plan.length;
             const previousDone = this.value?.plan.every(item => item.status === 'completed');
-            if (!this.value || previousDone && !done) this.root.open = !done;
+            // Collapsed by default; the user opens it. Finishing closes an open card.
             if (done && !previousDone) this.root.open = false;
             this.value = value;
             this.root.hidden = false;

@@ -107,7 +107,13 @@ async function run(browser, viewport) {
     assert.equal(await page.locator('#pi-context-percent').textContent(), '--');
     assert.equal(await page.locator('#pi-context-tokens').textContent(), '-- / 128k');
     assert.match(await page.locator('#pi-compaction-status').textContent(), /压缩后约 4.5k/);
-    assert.match(await page.locator('#pi-transcript-content').textContent(), /Retained fixture summary/);
+    // The summary notice starts collapsed as one line; opening it shows the retained summary.
+    const notice = page.locator('#pi-transcript-content .pi-summary-notice');
+    assert.equal(await notice.evaluate(node => node.open), false);
+    assert.ok((await notice.evaluate(node => node.getBoundingClientRect().height)) < 60);
+    // The mobile inspector drawer may cover the transcript here; activate the summary directly.
+    await notice.evaluate(node => node.querySelector('summary').click());
+    await page.waitForFunction(() => /Retained fixture summary/.test(document.querySelector('#pi-transcript-content .pi-summary-content')?.textContent || ''));
     assert.equal(await page.locator('#pi-compact-button').isDisabled(), false);
     assert.match(await page.locator('#pi-connection-text').textContent(), /已连接/);
     await page.screenshot({ path: `/tmp/pi-compaction-${viewport.width}-success.png` });
@@ -196,7 +202,9 @@ async function run(browser, viewport) {
     await page.waitForTimeout(100);
     assert.equal(await page.locator('#pi-context-tokens').textContent(), '9.0k / 128k');
     assert.equal(await page.evaluate(() => document.body.scrollWidth > document.body.clientWidth), false);
-    for (const tab of ['media', 'chat']) await page.locator(`[data-tab="${tab}"]`).click();
+    // Narrow layouts reach the media tab through the grouped "more" menu.
+    await require('./pi-mobile-view-helper.cjs').openWorkspaceTab(page, 'media');
+    await page.locator('[data-tab="chat"]').click();
     assert.deepEqual(errors, []);
     assert.deepEqual(writes, []);
     console.log(`PASS ${viewport.width}x${viewport.height}: unknown/zero usage, summary, retry/reconnect, error/cancel, native slash command, controls, stale snapshots; no writes/errors/overflow`);

@@ -55,6 +55,7 @@ class AgentThreadsService {
         this.jobs = new Map();
         this.catalogIndex = new (require('./pi-task-catalog').TaskCatalog)({ store, suspended: isSuspended });
         this.returns = new (require('./pi-task-returns').TaskReturns)({ catalog: this.catalogIndex, supervisor, isSuspended });
+        this.messages = new (require('./pi-agent-messages').AgentMessages)({ catalog: this.catalogIndex, supervisor, isSuspended });
     }
     authenticate(req) {
         const bearer = String(req.headers.authorization || '');
@@ -131,6 +132,7 @@ class AgentThreadsService {
     async dispose() {
         this.stopping = true;
         await this.returns.dispose();
+        await this.messages.dispose();
         await Promise.allSettled([...this.jobs.values()]);
         await this.catalogIndex.dispose();
     }
@@ -202,6 +204,7 @@ function mountAgentThreads(router, options) {
         try { res.json(await service.returns.markRead(req.body.cwd, req.body.sourceSessionId, req.body.deliveryId)); }
         catch (error) { res.status(409).json({ error: error.message, code: error.code }); }
     });
+    require('./pi-agent-messages').mountAgentMessages(router, { service: service.messages });
     for (const action of ['create', 'status', 'models', 'result']) router.post(`/agent-threads/${action}`, async (req, res) => {
         res.set('Cache-Control', 'no-store');
         try {

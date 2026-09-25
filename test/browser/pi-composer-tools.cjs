@@ -99,7 +99,8 @@ async function run(browser, viewport) {
     };
     const openTemplates = async () => {
         await page.locator('#workspace-settings-toggle').click();
-        await page.locator('[data-settings-tab="skills"]').click();
+        await page.locator('[data-manage-route="extensions"]').click();
+        await page.locator('#extensions-nav [data-extensions-tab="skills"]').click();
         if (!await page.locator('#settings-skills-options').evaluate(e => e.open)) await page.locator('#settings-skills-options > summary').click();
         await page.locator('#settings-manage-templates').click();
     };

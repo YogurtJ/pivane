@@ -32,9 +32,9 @@
             });
         };
         async function act(b, fn, statusId) {
-            const n = epoch, cwd = contextCwd(); b.disabled = true;
+            const n = epoch, cwd = contextCwd(); if (b) b.disabled = true;
             try { await fn(); } catch (e) { if (valid(n, cwd)) status(statusId, e.message); }
-            finally { if (b.isConnected) b.disabled = false; }
+            finally { if (b?.isConnected) b.disabled = false; }
         }
         function assistantEntry(cwd, scope, need = '') {
             const row = node('div', undefined, { class: 'native-assistant-entry' });
@@ -250,36 +250,95 @@
             wrap.append(trigger, menu); return wrap;
         }
         window.addEventListener('resize', closeHelp);
+        document.addEventListener('click', event => {
+            for (const menu of document.querySelectorAll('.native-item-menu[open]')) if (!menu.contains(event.target)) menu.open = false;
+        }, true);
         document.addEventListener('keydown', event => {
             if (event.key === 'Escape' && document.querySelector('.native-item-help:popover-open')) { event.preventDefault(); event.stopImmediatePropagation(); closeHelp(true); }
         }, true);
         document.addEventListener('scroll', event => {
             for (const menu of document.querySelectorAll('.native-item-help:popover-open')) if (!menu.contains(event.target) && menu.anchorMoved()) menu.hidePopover();
         }, true);
+        const resourceTypes = [
+            ['extensions', translateUi("扩展"), 'fa-puzzle-piece'],
+            ['skills', 'Skills', 'fa-wand-magic-sparkles'],
+            ['prompts', translateUi("提示词"), 'fa-comment-dots'],
+            ['themes', translateUi("主题"), 'fa-palette']
+        ];
+        const resourceScopeLabel = value => value === 'user' || value === 'global' ? translateUi("全局") : translateUi("项目");
+        function itemMenu(name, items) {
+            const wrap = node('details', undefined, { class: 'native-item-menu' });
+            const trigger = node('summary', '⋯');
+            trigger.setAttribute('aria-label', `${translateUi("更多操作")} · ${name}`);
+            const list = node('div', undefined, { class: 'native-item-menu-list' });
+            for (const item of items) {
+                const control = button(item.label, '', () => { wrap.open = false; void item.action(); });
+                if (item.danger) control.className = 'danger';
+                control.disabled = item.disabled === true;
+                control.setAttribute('aria-label', `${item.label} ${name}`);
+                control.prepend(node('i', undefined, { class: `fa-solid ${item.icon}`, 'aria-hidden': 'true' }));
+                list.append(control);
+            }
+            wrap.append(trigger, list);
+            return wrap;
+        }
+        // Installed packages, resources and skills share one row grammar: icon, name, badges,
+        // an origin disclosure, one inline reversible action and an overflow menu.
+        function resourceRow({ icon, name, description, badges = [], origin, primary, menu = [], extra = [] }) {
+            const row = node('article', undefined, { class: 'native-item-row' });
+            const glyph = node('span', undefined, { class: 'native-item-icon' });
+            glyph.append(node('i', undefined, { class: `fa-solid ${icon}`, 'aria-hidden': 'true' }));
+            const main = node('div', undefined, { class: 'native-item-main' });
+            const title = node('div', undefined, { class: 'native-item-title' });
+            title.append(node('strong', name));
+            for (const badge of badges) {
+                const [label, kind] = Array.isArray(badge) ? badge : [badge, ''];
+                const span = node('span', label, { class: 'native-item-badge' });
+                if (kind) span.dataset.kind = kind;
+                title.append(span);
+            }
+            main.append(title);
+            if (description) main.append(node('p', description));
+            if (origin) {
+                const details = node('details', undefined, { class: 'native-item-origin' });
+                details.append(node('summary', origin.summary));
+                for (const [tag, value] of origin.lines) details.append(tag === 'code' ? node('code', value) : node('small', value));
+                main.append(details);
+            }
+            const actions = node('div', undefined, { class: 'native-item-actions' });
+            if (primary) actions.append(primary);
+            for (const control of extra) actions.append(control);
+            if (menu.length) actions.append(itemMenu(name, menu));
+            row.append(glyph, main, actions);
+            return row;
+        }
         async function loadSkills(n, cwd, scope = $('native-skills-scope')?.value || 'global') {
             const request = ++skillRequest;
-            for (const b of skillPanel.querySelectorAll('.native-skill-row button, #native-skills-search')) b.disabled = true;
+            for (const control of skillPanel.querySelectorAll('button, #native-skills-search')) control.disabled = true;
             const active = () => valid(n, cwd) && request === skillRequest;
             try {
                 const [snapshot, metadata] = await Promise.all([
                     apiFetch(`/api/pi/settings/native/resources?cwd=${encodeURIComponent(cwd)}&scope=${scope}`),
-                    apiFetch('/api/pi/settings/resources?cwd=' + encodeURIComponent(cwd))
+                    apiFetch('/api/pi/settings/resources?cwd=' + encodeURIComponent(cwd)).catch(() => ({ skills: [], settings: null }))
                 ]);
                 if (!active()) return;
+                const commands = $('settings-skill-commands');
+                if (commands && metadata.settings) commands.checked = metadata.settings.enableSkillCommands === true;
                 skillPanel.replaceChildren();
+                const header = node('header', undefined, { class: 'settings-panel-header' });
+                const heading = node('div');
+                heading.append(node('h3', 'Skills'), node('p', translateUi("按需要启用或停用。想增加能力或修改指令，可以直接告诉 Agent。")));
+                const refresh = button(translateUi("刷新"), 'native-skills-refresh', () => void loadSkills(n, cwd, $('native-skills-scope')?.value || scope));
+                refresh.className = 'settings-header-refresh';
+                refresh.prepend(node('i', undefined, { class: 'fa-solid fa-rotate', 'aria-hidden': 'true' }));
+                header.append(node('i', undefined, { class: 'fa-solid fa-wand-magic-sparkles', 'aria-hidden': 'true' }), heading, refresh);
                 const choice = select(availableScopes(), scope, 'native-skills-scope'); choice.setAttribute('aria-label', translateUi("Skill 应用范围"));
                 choice.addEventListener('change', () => void loadSkills(n, cwd, choice.value));
                 const search = node('input', undefined, { type: 'search', placeholder: translateUi("搜索 Skill"), 'aria-label': translateUi("搜索 Skill"), id: 'native-skills-search' });
                 const toolbar = node('div', undefined, { class: 'native-skills-toolbar' });
                 toolbar.append(search, choice);
-                const refresh = button(translateUi("刷新"), 'native-skills-refresh', () => loadSkills(n, cwd, choice.value));
-                refresh.className = 'settings-header-refresh';
-                refresh.prepend(node('i', undefined, { class: 'fa-solid fa-rotate', 'aria-hidden': 'true' }));
-                const header = skillPanel.parentElement.querySelector('.settings-panel-header');
-                header.querySelector('#native-skills-refresh')?.remove();
-                header.append(refresh);
                 const note = node('p', translateUi("停用会保留文件。选择会保存到所选范围，重新加载资源或下次打开会话后生效。"), { class: 'native-help' });
-                skillPanel.append(assistantEntry(cwd, scope), toolbar, note);
+                skillPanel.append(header, assistantEntry(cwd, scope), toolbar, note);
                 const disabled = scope === 'project' && !snapshot.trust.effective;
                 if (disabled) { const hint = node('div', undefined, { class: 'native-scope-hint' }); hint.append(node('span', translateUi("当前项目未信任，暂不能修改此范围。")), trustLink(cwd)); skillPanel.append(hint); }
                 const list = node('div', undefined, { class: 'native-skills-list' });
@@ -289,49 +348,55 @@
                     const info = byPath.get(r.path);
                     return { ...r, name: resourceName(r, byPath), description: info?.description };
                 });
+                async function change(skill, state, control) {
+                    if (!active()) return;
+                    if (state === 'on' && !confirm(translateUi("启用 {0}？Skill 的指令和脚本会影响 Agent 行为。", skill.name))) return;
+                    const controls = [...skillPanel.querySelectorAll('button, select')]; for (const item of controls) item.disabled = true;
+                    await act(control, async () => {
+                        await send('/api/pi/settings/native/resources', 'PUT', { cwd, scope, resourceId: skill.id, state, expectedRevision: snapshot.revision, confirmed: true });
+                        if (!active()) return;
+                        const refreshed = await loadSkills(n, cwd, scope);
+                        if (valid(n, cwd) && $('native-skills-scope')?.value === scope) status('native-skills-status', refreshed ? translateUi("已保存。重新加载资源或下次打开会话后生效。") : translateUi("已保存，但列表读取失败。请刷新核对，不要重复提交。"));
+                    }, 'native-skills-status');
+                    for (const item of controls) if (item.isConnected) item.disabled = item.closest('.native-item-row') ? disabled : false;
+                }
                 let limit = 40;
                 const render = () => {
                     const query = search.value.trim().toLowerCase(), found = skills.filter(s => `${s.name} ${s.description || ''} ${s.path} ${s.source}`.toLowerCase().includes(query));
                     list.replaceChildren();
                     for (const skill of found.slice(0, limit)) {
-                        const row = node('article', undefined, { class: 'native-skill-row', 'data-skill-id': skill.id, 'data-enabled': String(skill.enabled) });
-                        const main = node('div', undefined, { class: 'native-skill-main' }), title = node('div', undefined, { class: 'native-skill-title' });
-                        title.append(node('strong', skill.name), node('span', skill.enabled ? translateUi("已启用") : translateUi("已停用"), { class: 'native-skill-badge' })); main.append(title);
-                        if (skill.description) main.append(node('p', skill.description));
-                        const info = node('details', undefined, { class: 'native-skill-source' }); info.append(node('summary', skill.scope === 'project' ? translateUi("来自项目 · 查看来源") : translateUi("全局资源 · 查看来源")), node('p', skill.source), node('code', skill.path)); main.append(info);
-                        const actions = node('div', undefined, { class: 'native-skill-actions' });
-                        async function change(state, b) {
-                            if (!active()) return;
-                            if (state === 'on' && !confirm(translateUi("启用 {0}？Skill 的指令和脚本会影响 Agent 行为。", skill.name))) return;
-                            const controls = [...skillPanel.querySelectorAll('button, select')]; for (const c of controls) c.disabled = true;
-                            await act(b, async () => {
-                                await send('/api/pi/settings/native/resources', 'PUT', { cwd, scope, resourceId: skill.id, state, expectedRevision: snapshot.revision, confirmed: true });
-                                if (!active()) return;
-                                const refreshed = await loadSkills(n, cwd, scope);
-                                if (valid(n, cwd) && $('native-skills-scope')?.value === scope) status('native-skills-status', refreshed ? translateUi("已保存。重新加载资源或下次打开会话后生效。") : translateUi("已保存，但列表读取失败。请刷新核对，不要重复提交。"));
-                            }, 'native-skills-status');
-                            for (const c of controls) if (c.isConnected) c.disabled = disabled && c.closest('.native-skill-row') !== null;
-                        }
-                        const toggle = button(skill.enabled ? translateUi("停用") : translateUi("启用"), '', () => change(skill.enabled ? 'off' : 'on', toggle)); toggle.className = 'native-skill-toggle'; toggle.setAttribute('aria-label', `${skill.enabled ? translateUi("停用") : translateUi("启用")} ${skill.name}`); toggle.disabled = disabled; actions.append(toggle);
-                        if (scope === 'project' && skill.override !== 'inherit') { const reset = button(translateUi("恢复继承"), '', () => change('inherit', reset)); reset.disabled = disabled; actions.append(reset); }
-                        actions.append(itemHelp(cwd, scope, { kind: 'skill', name: skill.name, path: skill.path, source: skill.source, resourceScope: skill.scope }));
-                        row.append(main, actions); list.append(row);
+                        const primary = button(skill.enabled ? translateUi("停用") : translateUi("启用"), '', () => void change(skill, skill.enabled ? 'off' : 'on', primary));
+                        primary.className = 'native-item-toggle';
+                        primary.disabled = disabled;
+                        primary.setAttribute('aria-label', `${skill.enabled ? translateUi("停用") : translateUi("启用")} ${skill.name}`);
+                        const menu = [];
+                        if (scope === 'project' && skill.override !== 'inherit') menu.push({ label: translateUi("恢复继承"), icon: 'fa-rotate-left', disabled, action: () => change(skill, 'inherit', primary) });
+                        const row = resourceRow({
+                            icon: 'fa-wand-magic-sparkles', name: skill.name, description: skill.description,
+                            badges: [[resourceScopeLabel(skill.scope), 'scope'], [skill.enabled ? translateUi("已启用") : translateUi("已停用"), skill.enabled ? 'on' : 'off']],
+                            origin: { summary: translateUi("查看来源"), lines: [['small', skill.source], ['code', skill.path]] },
+                            primary, menu, extra: [itemHelp(cwd, scope, { kind: 'skill', name: skill.name, path: skill.path, source: skill.source, resourceScope: skill.scope })]
+                        });
+                        row.dataset.skillId = skill.id;
+                        row.dataset.enabled = String(skill.enabled);
+                        list.append(row);
                     }
                     if (!found.length) list.append(node('p', query ? translateUi("没有匹配的 Skill") : translateUi("此范围没有发现 Skill。可以让 Agent 帮你安装或整理。"), { class: 'settings-empty' }));
                     if (found.length > limit) list.append(button(translateUi("显示更多（剩余 {0} 项）", found.length - limit), '', () => { limit += 40; render(); }));
                 };
-                search.addEventListener('input', () => { limit = 40; render(); }); render(); return true;
+                search.addEventListener('input', () => { limit = 40; render(); });
+                render();
+                return true;
             } catch (e) { if (active()) {
-                if (!$('native-skills-status')) skillPanel.replaceChildren(assistantEntry(cwd, scope), node('p', '', { id: 'native-skills-status', role: 'status' }), button(translateUi("重试读取"), '', () => loadSkills(n, cwd, scope)));
+                if (!$('native-skills-status')) skillPanel.replaceChildren(assistantEntry(cwd, scope), node('p', '', { id: 'native-skills-status', role: 'status' }), button(translateUi("重试读取"), '', () => void loadSkills(n, cwd, scope)));
                 skillPanel.querySelector('.native-skills-list')?.replaceChildren(node('p', translateUi("暂时无法读取配置，请刷新核对。")));
                 status('native-skills-status', e.message); return false;
             } }
         }
         async function loadPackages(n, cwd, scope = currentCwd() ? $('native-resource-scope')?.value || 'project' : 'global') {
             const request = ++resourceRequest;
-            for (const b of packagePanel.querySelectorAll('button, .native-resource-row select')) b.disabled = true;
+            for (const control of packagePanel.querySelectorAll('button')) control.disabled = true;
             let snapshot, metadata;
-            const advancedOpen = packagePanel.querySelector('.native-resources-advanced')?.open || false;
             try { [snapshot, metadata] = await Promise.all([
                 apiFetch(`/api/pi/settings/native/resources?cwd=${encodeURIComponent(cwd)}&scope=${scope}`),
                 apiFetch('/api/pi/settings/resources?cwd=' + encodeURIComponent(cwd)).catch(() => ({ skills: [] }))
@@ -344,74 +409,76 @@
             if (!valid(n, cwd) || request !== resourceRequest) return;
             const icon = name => node('i', undefined, { class: `fa-solid ${name}`, 'aria-hidden': 'true' });
             const withIcon = (b, name) => { b.prepend(icon(name)); return b; };
-            const header = node('header', undefined, { class: 'settings-panel-header native-packages-header' });
+            const disabled = scope === 'project' && !snapshot.trust.effective;
+            const header = node('header', undefined, { class: 'settings-panel-header' });
             const heading = node('div'); heading.append(node('h3', translateUi("Packages 与资源")), node('p', translateUi("用 Packages 扩展 Pi 的工具、Skills、提示词与主题。")));
-            const refresh = withIcon(button(translateUi("刷新"), 'native-packages-refresh', () => void loadPackages(n, cwd, choice.value).catch(e => { if (valid(n, cwd) && refresh.isConnected) status('native-resource-status', e.message); })), 'fa-rotate');
+            const refresh = withIcon(button(translateUi("刷新"), 'native-packages-refresh', () => void loadPackages(n, cwd, $('native-resource-scope')?.value || scope).catch(e => { if (valid(n, cwd) && refresh.isConnected) status('native-resource-status', e.message); })), 'fa-rotate');
             refresh.className = 'settings-header-refresh';
-            header.append(icon('fa-box-open'), heading, refresh); packagePanel.replaceChildren(header, assistantEntry(cwd, scope));
+            header.append(icon('fa-box-open'), heading, refresh);
             const choice = select(availableScopes(), scope, 'native-resource-scope'); choice.addEventListener('change', () => void loadPackages(n, cwd, choice.value).catch(e => { if (valid(n, cwd) && choice.isConnected) status('native-resource-status', e.message); }));
             const scopeBar = node('div', undefined, { class: 'native-package-scope' });
-            scopeBar.append(label(translateUi("管理范围"), choice), node('p', translateUi("保存配置后，在会话空闲时重新加载资源。"))); packagePanel.append(scopeBar);
-            if (!snapshot.trust.effective && scope === 'project') { const notice = node('div', undefined, { class: 'native-package-notice' }); notice.append(node('p', translateUi("当前项目未信任，项目写入已禁用；可切换所有项目或管理信任。")), trustLink(cwd)); packagePanel.append(notice); }
-            const disabled = scope === 'project' && !snapshot.trust.effective;
-            const types = [['extensions', translateUi("扩展"), 'fa-puzzle-piece'], ['skills', 'Skills', 'fa-wand-magic-sparkles'], ['prompts', translateUi("提示词"), 'fa-comment-dots'], ['themes', translateUi("主题"), 'fa-palette']];
-            const summary = node('div', undefined, { class: 'native-package-summary', 'aria-label': translateUi("配置中的资源") });
-            for (const [type, caption, glyph] of types) {
-                const items = snapshot.resources.filter(r => r.type === type), card = node('div');
-                card.append(icon(glyph), node('strong', String(items.filter(r => r.enabled).length)), node('span', caption), node('small', translateUi("已启用 / 共 {0} 项", items.length))); summary.append(card);
-            }
-            const add = node('details', undefined, { class: 'native-package-install-card' });
-            add.append(node('summary', translateUi('从链接安装')), node('p', translateUi("支持 npm、Git 和部署机器上的本地路径。")));
-            const source = node('input', undefined, { id: 'native-package-source', placeholder: translateUi("npm:package@version 或 git:https://…"), 'aria-label': translateUi("Package 来源"), spellcheck: 'false', autocapitalize: 'none' });
-            const install = withIcon(button(translateUi("安装"), 'native-package-install', () => packageAction(install, 'install', source.value)), 'fa-plus'); install.disabled = disabled;
-            const addControls = node('div', undefined, { class: 'native-package-install-controls' }); addControls.append(source, install); add.append(addControls);
-            const caution = node('p', undefined, { class: 'native-package-caution' }); caution.append(icon('fa-shield-halved'), document.createTextNode(translateUi("安装或启用的扩展可执行代码，请先审查来源。"))); add.append(caution); packagePanel.append(add);
-            const compatibility = node('details', undefined, { class: 'native-runtime-note' });
-            compatibility.append(node('summary', translateUi("扩展在网页中的兼容范围")), node('p', translateUi("工具、命令、基础确认／选择／输入／编辑窗口，以及文字状态可通过 Pi RPC 使用。安装成功仅代表配置完成，不代表已验证网页兼容。")), node('p', translateUi("终端专用 custom 界面、编辑器、快捷键和组件式 widget 不会自动转换为网页；启动阶段的阻塞交互在当前上游 RPC 中受限。请优先使用声明支持 RPC 的扩展。"))); add.append(compatibility);
+            scopeBar.append(label(translateUi("管理范围"), choice), node('p', translateUi("保存配置后，在会话空闲时重新加载资源。")));
+            packagePanel.replaceChildren(header, assistantEntry(cwd, scope), scopeBar);
+            if (disabled) { const notice = node('div', undefined, { class: 'native-package-notice' }); notice.append(node('p', translateUi("当前项目未信任，项目写入已禁用；可切换所有项目或管理信任。")), trustLink(cwd)); packagePanel.append(notice); }
             packagePanel.append(node('p', '', { id: 'native-resource-status', role: 'status', 'aria-live': 'polite' }));
-            async function packageAction(b, action, source) {
+            async function packageAction(control, action, source) {
                 if (!confirm(translateUi("{0} {1}（{2}）？包操作可能执行代码；失败后请核对配置，不自动重试。", action, source, scope === 'global' ? translateUi("全局") : translateUi("项目")))) return;
-                await act(b, async () => { await send('/api/pi/settings/native/packages', 'POST', { cwd, scope, source, action, expectedRevision: snapshot.revision, confirmed: true }); if (valid(n, cwd) && $('native-resource-scope')?.value === scope) { await loadPackages(n, cwd, scope); status('native-resource-status', translateUi("操作完成；空闲时重新加载资源。")); } }, 'native-resource-status');
+                await act(control, async () => { await send('/api/pi/settings/native/packages', 'POST', { cwd, scope, source, action, expectedRevision: snapshot.revision, confirmed: true }); if (valid(n, cwd) && $('native-resource-scope')?.value === scope) { await loadPackages(n, cwd, scope); status('native-resource-status', translateUi("操作完成；空闲时重新加载资源。")); } }, 'native-resource-status');
             }
-            const packageHeading = node('h4', undefined, { class: 'native-package-section-title' }); packageHeading.append(document.createTextNode('Packages'), node('span', String(snapshot.packages.length))); packagePanel.append(packageHeading);
-            const packages = node('div', undefined, { class: 'native-package-list' }); packagePanel.append(packages);
+            async function changeResource(resource, state, control) {
+                if (!confirm(translateUi("将 {0} 在{1}设为{2}？", resource.path, scope === 'global' ? translateUi("全局") : translateUi("项目"), state === 'on' ? translateUi("启用") : state === 'off' ? translateUi("停用") : translateUi("继承 / 默认")))) return;
+                await act(control, async () => { await send('/api/pi/settings/native/resources', 'PUT', { cwd, scope, resourceId: resource.id, state, expectedRevision: snapshot.revision, confirmed: true }); if (valid(n, cwd) && $('native-resource-scope')?.value === scope) { await loadPackages(n, cwd, scope); status('native-resource-status', translateUi("已保存，空闲时重新加载资源。")); } }, 'native-resource-status');
+            }
+            const packageHeading = node('h4', undefined, { class: 'native-package-section-title' }); packageHeading.append(document.createTextNode('Packages'), node('span', String(snapshot.packages.length)));
+            const packages = node('div', undefined, { class: 'native-package-list' });
             for (const pkg of snapshot.packages) {
-                const row = node('article', undefined, { class: 'native-card native-package-card' });
                 const name = pkg.source.startsWith('npm:') ? pkg.source.slice(4).replace(/@[^/@]+$/, '') : pkg.source.replace(/[\\/]$/, '').split(/[\\/]/).at(-1) || pkg.source;
-                const main = node('div', undefined, { class: 'native-package-main' }); main.append(node('strong', name));
-                const origin = node('details', undefined, { class: 'native-resource-origin' });
-                origin.append(node('summary', translateUi('查看来源')), node('code', pkg.source));
-                const meta = node('div', undefined, { class: 'native-package-meta' });
-                meta.append(node('span', pkg.scope === 'user' ? translateUi("全局") : translateUi("项目")), node('span', pkg.installed ? translateUi("已安装") : translateUi("尚未安装"), { class: 'native-package-badge', 'data-installed': String(pkg.installed) })); main.append(meta);
-                const actions = node('div', undefined, { class: 'native-package-actions' });
-                if (pkg.scope === (scope === 'global' ? 'user' : 'project')) for (const [text, action, glyph] of [[translateUi("更新"), 'update', 'fa-arrows-rotate'], [translateUi("移除"), 'remove', 'fa-trash']]) {
-                    const b = withIcon(button(text, '', () => packageAction(b, action, pkg.source)), glyph); b.dataset.packageAction = action; b.setAttribute('aria-label', `${text} ${pkg.source}`); b.disabled = disabled; actions.append(b);
+                const menu = [];
+                if (pkg.scope === (scope === 'global' ? 'user' : 'project')) {
+                    if (pkg.installed) menu.push({ label: translateUi("更新"), icon: 'fa-arrows-rotate', disabled, action: () => packageAction(null, 'update', pkg.source) });
+                    menu.push({ label: translateUi("移除"), icon: 'fa-trash', danger: true, disabled, action: () => packageAction(null, 'remove', pkg.source) });
                 }
-                const help = itemHelp(cwd, scope, { kind: 'package', name, source: pkg.source, resourceScope: pkg.scope }); help.classList.add('native-package-help');
-                main.append(origin);
-                row.append(icon('fa-box'), main, actions, help); packages.append(row);
+                packages.append(resourceRow({
+                    icon: 'fa-box', name,
+                    badges: [[resourceScopeLabel(pkg.scope), 'scope'], [pkg.installed ? translateUi("已安装") : translateUi("尚未安装"), pkg.installed ? 'on' : 'off']],
+                    origin: { summary: translateUi("查看来源"), lines: [['code', pkg.source]] },
+                    menu, extra: [itemHelp(cwd, scope, { kind: 'package', name, source: pkg.source, resourceScope: pkg.scope })]
+                }));
             }
             if (!snapshot.packages.length) {
                 const empty = node('div', undefined, { class: 'native-package-empty' }); empty.append(icon('fa-box-open'), node('strong', translateUi("还没有配置 Package")), node('p', translateUi("在上方填写可信来源开始安装；独立配置的资源仍会显示在下方。"))); packages.append(empty);
             }
-            const advanced = node('details', undefined, { class: 'native-resources-advanced' }); advanced.open = advancedOpen;
-            const resourceHeading = node('summary'); resourceHeading.append(node('span', translateUi('高级设置')), node('small', translateUi('资源开关 · {0} 项', snapshot.resources.length)));
-            advanced.append(resourceHeading, summary); packagePanel.append(advanced);
+            const resourceHeading = node('h4', undefined, { class: 'native-package-section-title' }); resourceHeading.append(document.createTextNode(translateUi("高级设置")), node('span', String(snapshot.resources.length)));
+            const summary = node('div', undefined, { class: 'native-package-summary', 'aria-label': translateUi("配置中的资源") });
+            for (const [type, caption, glyph] of resourceTypes) {
+                const items = snapshot.resources.filter(r => r.type === type), card = node('div');
+                card.append(icon(glyph), node('strong', String(items.filter(r => r.enabled).length)), node('span', caption), node('small', translateUi("已启用 / 共 {0} 项", items.length))); summary.append(card);
+            }
             const names = new Map((metadata?.skills || []).map(s => [s.filePath, s]));
             const search = node('input', undefined, { type: 'search', placeholder: translateUi("筛选资源名称或来源"), 'aria-label': translateUi("筛选资源") });
-            const searchBar = node('label', undefined, { class: 'native-package-search' }); searchBar.append(icon('fa-magnifying-glass'), search); advanced.append(searchBar);
-            const list = node('div', undefined, { class: 'native-resource-list' }); advanced.append(list); let limit = 40;
+            const searchBar = node('label', undefined, { class: 'native-package-search' }); searchBar.append(icon('fa-magnifying-glass'), search);
+            const list = node('div', undefined, { class: 'native-resource-list' });
+            packagePanel.append(packageHeading, packages, resourceHeading, summary, searchBar, list);
+            let limit = 40;
             const render = () => {
                 list.replaceChildren(); const query = search.value.toLowerCase(), found = snapshot.resources.filter(r => `${resourceName(r, names)} ${names.get(r.path)?.description || ''} ${r.path} ${r.type} ${r.source}`.toLowerCase().includes(query));
                 for (const r of found.slice(0, limit)) {
-                    const row = node('div', undefined, { class: 'native-resource-row', 'data-resource-id': r.id });
-                    const title = node('div', undefined, { class: 'native-resource-main' });
-                    title.append(node('strong', resourceName(r, names)), node('small', `${types.find(([type]) => type === r.type)?.[1] || r.type} · ${r.scope === 'user' ? translateUi("全局") : translateUi("项目")} · ${r.enabled ? translateUi("配置启用") : translateUi("配置停用")}`));
-                    const origin = node('details', undefined, { class: 'native-resource-origin' }); origin.append(node('summary', translateUi("查看来源")), node('code', r.path), node('small', r.source)); title.append(origin);
-                    const value = select([['inherit', translateUi("继承 / 默认")], ['on', translateUi("启用")], ['off', translateUi("停用")]], scope === 'global' ? r.enabled ? 'on' : 'off' : r.override); value.setAttribute('aria-label', r.path + translateUi(" 开关")); value.disabled = disabled;
-                    const save = button(translateUi("保存"), '', () => { if (!confirm(translateUi("将 {0} 在{1}设为{2}？", r.path, scope === 'global' ? translateUi("全局") : translateUi("项目"), value.selectedOptions[0].textContent))) return; void act(save, async () => { await send('/api/pi/settings/native/resources', 'PUT', { cwd, scope, resourceId: r.id, state: value.value, expectedRevision: snapshot.revision, confirmed: true }); if (valid(n, cwd) && $('native-resource-scope')?.value === scope) { await loadPackages(n, cwd, scope); status('native-resource-status', translateUi("已保存，空闲时重新加载资源。")); } }, 'native-resource-status'); });
-                    save.disabled = disabled;
-                    const controls = node('div', undefined, { class: 'native-resource-controls' }); controls.append(value, save); row.append(title, controls); list.append(row);
+                    const primary = button(r.enabled ? translateUi("停用") : translateUi("启用"), '', () => void changeResource(r, r.enabled ? 'off' : 'on', primary));
+                    primary.className = 'native-item-toggle';
+                    primary.disabled = disabled;
+                    primary.setAttribute('aria-label', `${r.enabled ? translateUi("停用") : translateUi("启用")} ${r.path}`);
+                    const menu = [];
+                    if (scope === 'project' && r.override !== 'inherit') menu.push({ label: translateUi("恢复继承"), icon: 'fa-rotate-left', disabled, action: () => changeResource(r, 'inherit', primary) });
+                    const row = resourceRow({
+                        icon: resourceTypes.find(([type]) => type === r.type)?.[2] || 'fa-layer-group',
+                        name: resourceName(r, names),
+                        description: names.get(r.path)?.description,
+                        badges: [[resourceTypes.find(([type]) => type === r.type)?.[1] || r.type, 'type'], [resourceScopeLabel(r.scope), 'scope'], [r.enabled ? translateUi("已启用") : translateUi("已停用"), r.enabled ? 'on' : 'off']],
+                        origin: { summary: translateUi("查看来源"), lines: [['code', r.path], ['small', r.source]] },
+                        primary, menu
+                    });
+                    row.dataset.resourceId = r.id;
+                    list.append(row);
                 }
                 if (found.length > limit) list.append(button(translateUi("显示更多（剩余 {0} 项）", found.length - limit), '', () => { limit += 40; render(); }));
                 if (!found.length) { const empty = node('div', undefined, { class: 'native-package-empty native-resource-empty' }); empty.append(icon('fa-layer-group'), node('p', translateUi("没有匹配资源"))); list.append(empty); }
@@ -430,14 +497,83 @@
                 $('native-settings-nav').hidden = !capabilities.nativeSettings;
                 $('system-prompts-nav').hidden = !capabilities.systemPrompts;
                 if (tab === 'native') { if (!capabilities.nativeSettings) panel.textContent = translateUi("当前后端尚未启用 Pi 配置"); else await loadNative(n, cwd); }
-                if (tab === 'packages' && capabilities.nativeResources) { for (const e of packagePanel.parentElement.children) e.hidden = e !== packagePanel; await loadPackages(n, cwd); }
-                if (tab === 'skills' && capabilities.nativeResources) { $('settings-skills-legacy').hidden = true; skillPanel.hidden = false; await loadSkills(n, cwd); }
-            } catch (e) { if (valid(n, cwd)) { if (tab === 'native') panel.textContent = e.message; else if (tab === 'packages') {
-                packagePanel.hidden = false;
-                packagePanel.replaceChildren(assistantEntry(cwd, 'global'), node('p', e.message), button(translateUi('重试读取'), '', () => open('packages')));
+                if (tab === 'packages' || tab === 'skills') {
+                    if (!capabilities.nativeResources) { (tab === 'packages' ? packagePanel : skillPanel).replaceChildren(node('p', translateUi("暂时无法读取配置，请刷新核对。"))); return; }
+                    if (tab === 'packages') await loadPackages(n, cwd); else await loadSkills(n, cwd);
+                }
+            } catch (e) { if (valid(n, cwd)) { if (tab === 'native') panel.textContent = e.message; else if (tab === 'packages' || tab === 'skills') {
+                (tab === 'packages' ? packagePanel : skillPanel).replaceChildren(assistantEntry(cwd, 'global'), node('p', e.message), button(translateUi('重试读取'), '', () => open(tab)));
             } } }
         }
-        return { open, focusSetting(key) { focusKey = key; }, close() { closeHelp(); epoch++; focusKey = null; } };
+        let installDialog = null;
+        function ensureInstallDialog() {
+            if (installDialog) return installDialog;
+            const dialog = node('dialog', undefined, { id: 'pi-package-install-dialog', class: 'native-install-dialog', 'aria-labelledby': 'pi-package-install-title' });
+            const header = node('header', undefined, { class: 'native-install-header' });
+            const heading = node('div');
+            heading.append(node('h2', translateUi("安装扩展包"), { id: 'pi-package-install-title' }), node('p', translateUi("支持 npm、Git 和部署机器上的本地路径。")));
+            const close = button('×', 'pi-package-install-close', () => dialog.close());
+            close.setAttribute('aria-label', translateUi("关闭"));
+            header.append(heading, close);
+            const body = node('div', undefined, { class: 'native-install-body' });
+            const scope = select(availableScopes(), currentCwd() ? 'project' : 'global', 'pi-package-install-scope');
+            const source = node('input', undefined, { id: 'pi-package-install-source', placeholder: translateUi("npm:package@version 或 git:https://…"), 'aria-label': translateUi("Package 来源"), spellcheck: 'false', autocapitalize: 'none' });
+            body.append(label(translateUi("管理范围"), scope), label(translateUi("Package 来源"), source));
+            const caution = node('p', undefined, { class: 'native-package-caution' });
+            caution.append(node('i', undefined, { class: 'fa-solid fa-shield-halved', 'aria-hidden': 'true' }), document.createTextNode(translateUi("安装或启用的扩展可执行代码，请先审查来源。")));
+            const compatibility = node('details', undefined, { class: 'native-runtime-note' });
+            compatibility.append(node('summary', translateUi("扩展在网页中的兼容范围")), node('p', translateUi("工具、命令、基础确认／选择／输入／编辑窗口，以及文字状态可通过 Pi RPC 使用。安装成功仅代表配置完成，不代表已验证网页兼容。")), node('p', translateUi("终端专用 custom 界面、编辑器、快捷键和组件式 widget 不会自动转换为网页；启动阶段的阻塞交互在当前上游 RPC 中受限。请优先使用声明支持 RPC 的扩展。")));
+            body.append(caution, compatibility);
+            const status = node('p', '', { id: 'pi-package-install-status', role: 'status', 'aria-live': 'polite' });
+            const footer = node('footer', undefined, { class: 'native-install-footer' });
+            const cancel = button(translateUi("取消"), 'pi-package-install-cancel', () => dialog.close());
+            const confirm = button(translateUi("安装"), 'pi-package-install-confirm', () => void submitInstall(confirm));
+            confirm.className = 'settings-primary-button';
+            confirm.prepend(node('i', undefined, { class: 'fa-solid fa-download', 'aria-hidden': 'true' }));
+            confirm.disabled = true;
+            footer.append(cancel, confirm);
+            dialog.append(header, body, status, footer);
+            source.addEventListener('input', () => { confirm.disabled = !source.value.trim(); });
+            dialog.addEventListener('close', () => { status.textContent = ''; source.value = ''; confirm.disabled = true; });
+            document.body.append(dialog);
+            installDialog = dialog;
+            return dialog;
+        }
+        async function submitInstall(control) {
+            const source = $('pi-package-install-source'), scope = $('pi-package-install-scope'), status = $('pi-package-install-status');
+            const cwd = contextCwd(), value = source.value.trim();
+            if (!value || !cwd) return;
+            if (!confirm(translateUi("安装并信任 Package “{0}”？Packages 可执行任意代码。", value))) return;
+            control.disabled = true;
+            status.textContent = translateUi("安装中");
+            try {
+                const latest = await apiFetch(`/api/pi/settings/native/resources?cwd=${encodeURIComponent(cwd)}&scope=${scope.value}`);
+                if (scope.value === 'project' && !latest.trust?.effective) { status.textContent = translateUi("当前项目未信任，项目写入已禁用；可切换所有项目或管理信任。"); return; }
+                await send('/api/pi/settings/native/packages', 'POST', { cwd, scope: scope.value, source: value, action: 'install', expectedRevision: latest.revision, confirmed: true });
+                status.textContent = translateUi("操作完成；空闲时重新加载资源。");
+                source.value = '';
+                refreshResourcePanels(scope.value);
+            } catch (error) { status.textContent = error.message; }
+            finally { if (control.isConnected) control.disabled = !source.value.trim(); }
+        }
+        function refreshResourcePanels(scope) {
+            const dialog = $('workspace-settings-dialog');
+            if (!dialog || dialog.classList.contains('hidden')) return;
+            const active = document.querySelector('.workspace-settings-panel.active')?.dataset.settingsPanel;
+            const n = epoch, cwd = contextCwd();
+            if (!cwd) return;
+            if (active === 'packages') void loadPackages(n, cwd, scope).catch(() => {});
+            else if (active === 'skills') void loadSkills(n, cwd, scope).catch(() => {});
+        }
+        window.addEventListener('pi:extensions-install', () => {
+            const dialog = ensureInstallDialog();
+            const scope = $('pi-package-install-scope');
+            scope.replaceChildren(...availableScopes().map(([value, text]) => node('option', text, { value })));
+            scope.value = currentCwd() ? 'project' : 'global';
+            if (!dialog.open) dialog.showModal();
+            $('pi-package-install-source').focus();
+        });
+        return { open, focusSetting(key) { focusKey = key; }, close() { closeHelp(); installDialog?.open && installDialog.close(); epoch++; focusKey = null; } };
     }
     window.PiNativeSettings = { create };
 })();

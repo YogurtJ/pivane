@@ -1,30 +1,34 @@
-.native-package-help { position: absolute; top: 8px; right: 8px; }
-.native-package-card .native-package-main { padding-right: 28px; }
-.native-package-card .native-package-actions { padding-right: 36px; }
-.native-package-card .native-package-actions:empty { display: none; }
 .native-help-control { display: inline-flex; flex: 0 0 auto; }
 :is(#native-packages, #native-skills) .native-help-trigger { width: 36px; height: 36px; min-height: 36px; padding: 0; border-color: transparent; border-radius: 50%; color: var(--text-muted); font-weight: 600; font-size: .95rem; background: transparent; }
 .native-item-help { position: fixed; inset: auto; margin: 0; padding: 6px; width: 232px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); box-sizing: border-box; overflow: auto; border: 1px solid var(--line); border-radius: 12px; color: var(--text-main); background: var(--surface-1); box-shadow: 0 10px 35px #0002; }
 .native-item-help:popover-open { display: grid; gap: 2px; }
 :is(#native-packages, #native-skills) .native-item-help button { display: flex; gap: 10px; justify-content: flex-start; align-items: center; text-align: start; width: 100%; min-height: 44px; border-color: transparent; background: transparent; }
 .native-item-help i { width: 18px; flex: 0 0 18px; color: var(--text-muted); }
-.native-package-install-card > summary { cursor: pointer; font-size: .82rem; font-weight: 500; }
-#native-packages .native-package-install-card { padding: 14px 16px; background: transparent; }
-#native-packages .native-package-install-card[open] > p { margin-top: 12px; }
-.native-resources-advanced { margin-top: 24px; border-top: 1px solid var(--line); }
-.native-resources-advanced > summary { display: flex; align-items: center; gap: 10px; padding: 18px 0; cursor: pointer; list-style: none; font-size: .82rem; }
-.native-resources-advanced > summary::-webkit-details-marker { display: none; }
-.native-resources-advanced > summary::before { content: '›'; color: var(--text-muted); font-size: 1.2rem; transition: transform .15s; }
-.native-resources-advanced[open] > summary::before { transform: rotate(90deg); }
-.native-resources-advanced > summary small { margin-left: auto; color: var(--text-muted); font-size: .72rem; }
-.native-resources-advanced .native-package-summary { display: flex; flex-wrap: wrap; gap: 12px 24px; margin-bottom: 18px; }
-.native-resources-advanced .native-package-summary > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px; padding: 0; border: 0; background: transparent; }
-.native-resources-advanced .native-package-summary strong { font-size: .85rem; }
-.native-resources-advanced .native-package-summary i { display: none; }
-#native-packages .native-resources-advanced .native-resource-row { padding: 12px 0; }
+/* Installed packages, resources and skills share one row grammar: icon, name, badges,
+   an origin disclosure, one inline reversible action and an overflow menu. */
+.native-item-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: start; gap: 14px; padding: 18px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.native-item-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; background: var(--green-soft); color: var(--accent); font-size: .9rem; }
+.native-item-main { min-width: 0; }
+.native-item-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.native-item-title > strong { font-size: .86rem; font-weight: 600; overflow-wrap: anywhere; }
+.native-item-badge { padding: 3px 7px; border-radius: 5px; background: var(--surface-2); color: var(--text-muted); font-size: .66rem; white-space: nowrap; }
+.native-item-badge[data-kind="on"] { background: var(--green-soft); color: var(--accent); }
+.native-item-main > p { margin: 8px 0 0; font-size: .78rem; }
+.native-item-origin { margin-top: 9px; font-size: .72rem; color: var(--text-muted); }
+.native-item-origin summary { cursor: pointer; }
+.native-item-origin code, .native-item-origin small { display: block; margin-top: 8px; overflow-wrap: anywhere; white-space: normal; font-size: .72rem; }
+.native-item-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.native-item-toggle { min-width: 76px; }
+.native-item-menu { position: relative; }
+.native-item-menu > summary { list-style: none; cursor: pointer; width: 40px; height: 36px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-1); color: var(--text-muted); font-size: 1rem; }
+.native-item-menu > summary::-webkit-details-marker { display: none; }
+.native-item-menu > summary:hover { border-color: var(--accent); background: var(--surface-2); }
+.native-item-menu-list { position: absolute; right: 0; top: calc(100% + 6px); z-index: 6; min-width: 190px; padding: 6px; display: grid; gap: 2px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-1); box-shadow: 0 10px 35px #0002; }
+.native-item-menu-list button { display: flex; align-items: center; justify-content: flex-start; gap: 10px; width: 100%; min-height: 40px; border-color: transparent; background: transparent; }
+.native-item-menu-list button.danger { color: var(--danger); }
+.native-item-menu[open] > summary { border-color: var(--accent); background: var(--surface-2); color: var(--text-main); }
 @media (max-width: 680px) {
     :is(#native-packages, #native-skills) .native-help-trigger { width: 44px; height: 44px; }
-    .native-package-actions { align-items: center; }
 }
 #native-settings-nav[hidden], #native-skills[hidden], #settings-skills-legacy[hidden], #native-packages[hidden], #pi-loaded-resources[hidden], [data-settings-panel="packages"] > [hidden] { display: none !important; }
 #native-settings-panel, #native-skills, #native-packages { min-width: 0; max-width: 100%; color: var(--text-main); }
@@ -61,17 +65,6 @@
 #native-status:empty, #native-skills-status:empty, #pi-project-trust-status:empty { display: none; }
 .native-skills-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 130px; gap: 10px; margin: 20px 0 12px; }
 .native-help { font-size: .77rem; margin-bottom: 18px; }
-.native-skill-row { display: flex; align-items: flex-start; gap: 20px; padding: 20px 0; border-bottom: 1px solid var(--line); }
-.native-skill-main { min-width: 0; flex: 1; }
-.native-skill-title { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.native-skill-title strong { font-size: .9rem; overflow-wrap: anywhere; }
-.native-skill-badge { font-size: .65rem; padding: 3px 7px; border-radius: 5px; color: var(--accent); background: var(--green-soft); white-space: nowrap; }
-.native-skill-row[data-enabled="false"] .native-skill-badge { background: var(--surface-2); color: var(--text-muted); }
-.native-skill-main > p { margin: 8px 0; font-size: .8rem; }
-.native-skill-source { margin-top: 9px; color: var(--text-muted); font-size: .72rem; }
-.native-skill-source summary { cursor: pointer; }
-.native-skill-source code, .native-skill-source p { display: block; overflow-wrap: anywhere; white-space: normal; margin-top: 8px; }
-.native-skill-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex: 0 0 auto; }
 .native-optional { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 16px; font-size: .8rem; color: var(--text-muted); }
 .native-optional > summary { cursor: pointer; margin-bottom: 14px; }
 .native-optional .settings-toggle-line { justify-content: space-between; }
@@ -79,9 +72,6 @@
 .native-card { min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin: 14px 0; overflow-wrap: anywhere; }
 .native-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
 .native-actions input { flex: 1 1 220px; }
-.native-resource-row { display: grid; grid-template-columns: minmax(0, 1fr) 130px auto; gap: 9px; align-items: center; border-bottom: 1px solid var(--line); padding: 14px 0; }
-.native-resource-row > div { min-width: 0; }
-.native-resource-row small { display: block; font-size: .76rem; color: var(--text-muted); overflow-wrap: anywhere; }
 #pi-project-trust-dialog { position: fixed; inset: 0; margin: auto; width: min(480px, calc(100vw - 32px)); max-width: calc(100vw - 32px); max-height: calc(100dvh - 40px); padding: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-1); color: var(--text-main); box-shadow: 0 24px 80px #0003; overflow: auto; }
 #pi-project-trust-dialog::backdrop { background: #0007; backdrop-filter: blur(3px); }
 #pi-project-trust-dialog header { display: flex; align-items: flex-start; gap: 16px; justify-content: space-between; padding: 24px 24px 18px; border-bottom: 1px solid var(--line); }
@@ -135,10 +125,6 @@
 .native-package-install-card { padding: 18px; border: 1px solid var(--line); border-radius: var(--package-radius); background: var(--surface-1); }
 #native-packages h4 { font-size: .88rem; line-height: 1.6; }
 #native-packages .native-package-install-card > p { margin-top: 5px; font-size: .76rem; }
-.native-package-install-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; margin: 14px 0; }
-#native-packages .native-package-install-controls :is(input, button) { min-height: 44px; }
-#native-packages .native-package-install-controls button { background: var(--primary); border-color: var(--primary); color: var(--primary-contrast); padding-inline: 18px; }
-#native-packages .native-package-install-controls button:hover:not(:disabled) { background: var(--primary-hover); }
 .native-package-caution { display: flex; align-items: baseline; gap: 8px; }
 .native-package-caution i { color: var(--amber); flex-shrink: 0; }
 #native-packages .native-runtime-note { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: .75rem; color: var(--text-muted); }
@@ -146,24 +132,11 @@
 #native-packages .native-runtime-note p { margin-top: 10px; }
 #native-packages .native-package-section-title { display: flex; align-items: center; gap: 8px; margin: 24px 0 12px; }
 .native-package-section-title span { color: var(--text-muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 20px; padding: 0 8px; font-size: .72rem; font-weight: 400; }
-.native-package-list { display: grid; gap: 10px; }
-#native-packages .native-package-card { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 12px; margin: 0; padding: 16px; background: var(--surface-1); }
-.native-package-card > i { display: grid; place-items: center; width: 32px; height: 36px; color: var(--accent); background: var(--green-soft); border-radius: 8px; }
-.native-package-main { min-width: 0; }
-.native-package-main > strong { font-size: .83rem; font-weight: 600; overflow-wrap: anywhere; }
-.native-package-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; color: var(--text-muted); font-size: .72rem; }
-.native-package-badge { padding: 3px 7px; border-radius: 5px; background: var(--surface-2); }
-.native-package-badge[data-installed="true"] { background: var(--green-soft); color: var(--accent); }
-.native-package-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-#native-packages [data-package-action="remove"] { color: var(--danger); }
+.native-package-list { display: block; }
 .native-package-empty { display: grid; justify-items: center; gap: 10px; text-align: center; padding: 28px 18px; border: 1px dashed var(--line-strong); border-radius: var(--package-radius); color: var(--text-muted); font-size: .8rem; }
 .native-package-empty > i { font-size: 26px; color: var(--accent); }
 #native-packages .native-package-empty p { max-width: 420px; font-size: .76rem; }
 .native-package-search { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; margin-bottom: 8px; color: var(--text-muted); }
-#native-packages .native-resource-row { grid-template-columns: minmax(0, 1fr) 220px; gap: 18px; padding: 18px 0; }
-.native-resource-main > strong { display: block; overflow-wrap: anywhere; font-size: .83rem; }
-#native-packages .native-resource-row small { margin-top: 5px; font-size: .72rem; }
-.native-resource-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
 .native-resource-origin { margin-top: 9px; font-size: .72rem; color: var(--text-muted); }
 .native-resource-origin summary { cursor: pointer; }
 .native-resource-origin code { display: block; white-space: normal; overflow-wrap: anywhere; margin-top: 8px; font-size: .72rem; }
@@ -174,15 +147,14 @@
 @media (max-width: 680px) {
     .native-package-scope { grid-template-columns: minmax(0, 1fr); gap: 8px; }
     .native-package-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-    .native-package-install-card { padding: 14px; }
-    #native-packages .native-package-card { grid-template-columns: 32px minmax(0, 1fr); padding: 14px; }
-    .native-package-actions { grid-column: 2; }
-    .native-package-card .native-package-actions { padding-right: 0; }
-    #native-packages .native-resource-row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-    #native-packages .native-resource-controls :is(select, button) { min-height: 42px; }
+    .native-item-row { grid-template-columns: minmax(0, 1fr) auto; gap: 10px 12px; }
+    .native-item-icon { grid-row: 1; }
+    .native-item-main { grid-column: 1 / -1; }
+    .native-item-actions { grid-column: 2; grid-row: 1; }
+    .native-item-menu-list { position: static; margin-top: 6px; }
 }
 @media (max-width: 380px) {
-    .native-package-install-controls { grid-template-columns: minmax(0, 1fr); }
+    .native-install-body { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 680px) {
     .native-tool-options { grid-template-columns: minmax(0, 1fr); }
@@ -194,15 +166,36 @@
     .native-scope-row > label { flex: 1 1 130px; }
     .native-skills-toolbar { grid-template-columns: minmax(0, 1fr) auto; }
     .native-skills-toolbar > input { grid-column: 1 / -1; }
-    .native-skill-row { gap: 12px; }
-    .native-skill-actions { max-width: 80px; }
-    .native-resource-row { grid-template-columns: minmax(0, 1fr) auto; }
-    .native-resource-row > div { grid-column: 1 / -1; }
     .native-save-row { align-items: flex-start; }
     .native-save-row button { flex: 0 0 auto; }
+    .native-install-dialog { width: calc(100vw - 20px); }
+    .native-install-header, .native-install-body, .native-install-footer { padding-inline: 16px; }
     :is(#native-settings-panel, #native-skills, #native-packages) :is(input, select, textarea) { font-size: 16px; }
     #pi-project-trust-dialog { width: calc(100vw - 24px); max-width: calc(100vw - 24px); }
     #pi-project-trust-dialog header { padding: 20px 18px 16px; }
     #pi-project-trust-body { padding: 18px; }
     #pi-project-trust-status { margin-inline: 18px; }
 }
+
+/* One install entry for the extension centre: scope, reviewed source, explicit confirmation. */
+.native-install-dialog { position: fixed; inset: 0; margin: auto; width: min(560px, calc(100vw - 32px)); max-width: calc(100vw - 32px); max-height: calc(100dvh - 40px); padding: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-1); color: var(--text-main); box-shadow: 0 24px 80px #0003; overflow: auto; }
+.native-install-dialog::backdrop { background: #0007; backdrop-filter: blur(3px); }
+.native-install-dialog button { padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-1); color: var(--text-main); font: inherit; font-size: .82rem; min-height: 40px; cursor: pointer; }
+.native-install-dialog button:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-2); }
+.native-install-dialog button:disabled { opacity: .48; cursor: default; }
+.native-install-dialog :is(button, input, select, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.native-install-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 22px 24px 16px; border-bottom: 1px solid var(--line); }
+.native-install-header h2 { margin: 0; font-size: 1.02rem; }
+.native-install-header p { margin: 6px 0 0; font-size: .78rem; color: var(--text-muted); }
+.native-install-header button { flex: 0 0 36px; padding: 6px; font-size: 20px; line-height: 1; min-height: 36px; }
+.native-install-body { display: grid; gap: 16px; padding: 20px 24px; }
+.native-install-body label { display: grid; gap: 8px; font-size: .8rem; color: var(--text-muted); min-width: 0; }
+.native-install-body :is(input, select) { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-1); color: var(--text-main); font: inherit; font-size: .84rem; }
+.native-install-dialog .native-package-caution, .native-install-dialog .native-runtime-note { font-size: .76rem; color: var(--text-muted); }
+.native-install-dialog .native-package-caution { margin: 0; }
+.native-install-dialog .native-runtime-note { margin: 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.native-install-dialog .native-runtime-note summary { cursor: pointer; color: var(--text-main); }
+.native-install-dialog .native-runtime-note p { margin-top: 10px; }
+#pi-package-install-status { min-height: 1.2em; margin: 0 24px; font-size: .78rem; color: var(--text-muted); overflow-wrap: anywhere; }
+#pi-package-install-status:empty { display: none; }
+.native-install-footer { display: flex; justify-content: flex-end; align-items: center; gap: 10px; padding: 18px 24px 22px; }

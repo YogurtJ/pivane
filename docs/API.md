@@ -73,6 +73,8 @@
 
 来源忙碌或关闭不丢结果，重开后从原生任务状态和回执恢复；回传不触发新的模型轮次。任务参数、预算、旧任务兼容和失败语义见[Agent 任务线程](AGENT_THREADS.md)。
 
+`GET /status.agentMessages=true` 标记线程间消息。受管持久 Agent 的 `agent_message` 工具通过私有 POST `/agent-messages/threads|send|status` 列出同项目线程、发送或查询投递，身份同样绑定存活源 worker。send 在接收方空闲时经其私有命令保存 `pivane-agent-message` custom message（details 含 messageId、from、conversationId、hop、replyTo、wake、wakeSuppressed、sentAt、bodyOffset），需要唤醒时再追加不显示的 `pivane-agent-message-wake` 并触发一轮；发送方追加 `pivane-agent-message-out` custom entry 作为重启补投记录。不新增工作台身份的写接口。`/activity.agentMessages` 报告投递、补投和唤醒启动。限额与防循环规则见[线程间消息](AGENT_THREADS.md#线程间消息)。
+
 ### `GET /status`
 
 `modelCatalog=true`启用主WS `refresh_models`（仅id/type/token，不接收其他参数）。只在当前worker空闲互斥区刷新本地模型/认证目录并返回`{models}`，广播`gateway_models`同步其他订阅者；不自动选模型、发消息或重载资源。5000项/1MiB安全字段、8秒原生signal/12秒等待，同worker合并，未知/超时关闭该预先空闲worker。普通消息原生缺认证的preflight失败以`errorCode=MODEL_AUTH_REQUIRED`和中文设置引导返回；其他错误保留原分类。完整契约见PROVIDER_SETTINGS.md。
