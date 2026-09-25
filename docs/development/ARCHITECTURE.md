@@ -53,9 +53,11 @@ Pi 0.87 的 `context_edit` 只改变模型上下文。主聊天快照从唯一 w
 - 扩展助手仍是受 Supervisor 管理的原生会话，仅身份标记有效的 worker 获得专用管理凭据。安装与配置复用原生资源服务的锁、修订和 trust。
 - 任务进度由内置 `update_plan` 工具同步写原生 `pivane-task-progress` custom entry，以完整替换形成确定顺序。启动、分支导航和压缩后从完整当前 branch 恢复，Supervisor 只持有有界展示投影，快照沿用 live sequence 边界；不增加 worker 工作类型或外部任务数据库。模型上下文缺少最新工具结果时由 context hook 补入最新计划数据。
 - pi-subagents 适配位于受管会话扩展：worker 在扩展加载时提供其可选的 `@agegr/pi-web/session-liveness/v1` 进程内登记，每 2 秒及回合结束时经私有 notify 报告当前会话的聚合后台状态。Supervisor 把它作为保留状态而非回合忙碌：阻止空闲回收和全局维护，但不延迟任务回执等按回合空闲执行的操作。状态快照 widget 在 Supervisor 侧解析原始行并规范化，不进入通用 widget；控制经私有命令转发到插件的进程内 RPC，方法与参数由 Supervisor 白名单校验，所有权与运行状态仍由插件判断。
+- 档案知识由网关创建的唯一 `ProfileKnowledgeService` 管理：HTTP 管理页、原生工具适配和后台学习共用它的跨进程互斥锁、私有日志（v2 单调序号、回执窗口、请求 ID 与防复活墓碑）和待发布标记。只有服务端原生路径可写物理 cwd 范围；它在发布前后各做一次流式来源证明（会话头、唯一当前 ID 绑定、条目位于当前叶到根路径），只保留 id/parentId，不复制正文。
+- `ProfileLearningService` 是服务端队列，不是 worker 工作类型：Supervisor 在 worker 就绪、回合结束、压缩成功和退出时发出内部事件，服务只登记原生问答引用与游标，按学习设置和专用辅助模型在空闲时调用独立 ModelRuntime，再以原生条目为来源经知识服务提交。队列、预算和动作 ID 写私有学习日志；启动时把执行中的作业标为不确定且不重放。它纳入维护空闲判断，停机时先停 Supervisor、登记退出边界，再中止并等待模型请求结束。
 - 工具来源是调用时捕获的有界展示元数据，绑定调用 ID/工具名；旧记录不按当前清单追认来源，也不把来源标记当成权限验证。
 
-相关契约：[辅助模型](../AUXILIARY_MODELS.md)、[任务线程](../AGENT_THREADS.md)、[侧聊](../SIDE_CHAT.md)、[原生设置](../NATIVE_SETTINGS.md)。
+相关契约：[辅助模型](../AUXILIARY_MODELS.md)、[记忆适配](../PROFILE_MEMORY.md)、[任务线程](../AGENT_THREADS.md)、[侧聊](../SIDE_CHAT.md)、[原生设置](../NATIVE_SETTINGS.md)。
 
 ## 文件、配置与身份
 

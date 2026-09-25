@@ -201,10 +201,16 @@ re-executed. Server-generated IDs (`tool-*`, `learning-*`, reachable only
 through the verified native path) stay replayable while retained and are
 compacted oldest-first. Retired IDs are remembered in a spent hash list, so
 re-execution stays refused even after compaction. Deleted or replaced memory
-content keeps a long-lived tombstone in a compact hash list (32,768 entries)
-and per-item undo history is bounded to 320 entries; when a real limit is
-reached the service refuses the write with an explicit journal-full error
-instead of silently shedding identity. Version 1 metadata still reads with
+content keeps a long-lived tombstone in a compact hash list (32,768 entries).
+Only client request IDs enter the permanent spent list; server IDs never
+recur, so they are dropped when compacted. Undo before-copies are kept only for
+receipts inside the active window and are removed with the receipt that owns
+them. The journal, and the pending marker that also carries the next document,
+must stay inside 8 MiB: when whole skill bodies would exceed that budget, the
+oldest before-copies are dropped first and their receipts become
+`undoable:false`, never silently undoable without data. When a real identity
+limit (tombstones, spent IDs, records) is reached the service refuses the write
+with an explicit journal-full error instead of silently shedding identity. Version 1 metadata still reads with
 the same revision, idempotency and tombstone semantics and upgrades to
 version 2 atomically on the first write; writing continues past the old
 200-receipt cap without any reviewed migration. The learning action journal
@@ -215,36 +221,54 @@ learning job IDs are server-generated and never collide with client request
 IDs, and the state file reports its real `maxActions`/`actionValidityDays`
 limits. A saved document is not evidence of successful indexing or activation in an already-running worker.
 
-## Auto-learning
+## Background learning
 
-`memory.autoLearn` has no effect unless memory is enabled, a valid bound RPC
-worker is active, and `PIVANE_PROFILE_MEMORY_REVIEW_MODEL` is configured as
-JSON `{ "provider": "configured-provider", "modelId": "cheap-model-id" }`.
-Select a configured provider/id from the Pi runtime catalogue; no model is
-hardcoded and the current conversation model is never silently substituted.
-The model must resolve as available via `ctx.modelRegistry` and have input
-price at most 1 and output price at most 2 per million tokens. Parent should
-choose a cheaper model explicitly and inspect its actual schema/cost. A review
-runs only after three eligible completed turns, at most once per 15 minutes and
-four attempts per worker session. It reads at most 6,000 characters of the latest user/assistant
-exchange, requests at most 220 output tokens with a supported low reasoning
-level (or no reasoning option for a non-reasoning model), no tools, a 20-second
-abort signal, and no CLI/subagent fallback. Pi awaits
-`agent_before_settle`, so a request still in flight remains owned; timeout
-requests cancellation but the handler awaits actual completion. It applies at
-most one bounded stable fact through the guarded `memory_add` operation. All adapter
-memory add/replace/remove writes across workers acquire the same profile-local
-interprocess mutation lock. The reviewer takes a revision and disk snapshot under
-that lock, releases it for the provider call, then reacquires it to reload, compare
-revision/content and perform the write. A stale proposal is skipped; a busy or
-abandoned lock fails closed and requires operator reconciliation rather than unsafe
-lock stealing. Abort, unavailable model, malformed proposal, conflicting state
-and write uncertainty record non-success; deterministic trusted-write
-refusals (including the 413 source-proof limit) are recorded as
-skipped/knowledge-rejected, never as uncertain publication. This is not a
-mastery/progress inference engine. Native custom status entries are operational
-records, not additional chat logs. Provider cancellation behavior must be
-verified for each selected provider before real activation.
+The old in-worker three-turn reviewer (`memory.autoLearn`,
+`PIVANE_PROFILE_MEMORY_REVIEW_MODEL`, `runtime.json.reviewModel`) is retired:
+those values are still read for compatibility but start no model call, and
+`/status.profileMemory.autoLearn` is always false. Learning now runs in the
+server-side `ProfileLearningService` (`server/profile-memory/learning-service.js`),
+which shares the single `ProfileKnowledgeService` instance with the routes and
+tool adapter.
+
+- **Settings** are per profile (`GET/PUT /profiles/:id/learning`), default off:
+  `enabled`, `correctionEnabled`, `reviewEnabled`, `extractionEnabled`,
+  `periodicReviewMinutes` (0..10080), `maxRunsPerDay` (1..20, default 4),
+  `maxTokensPerDay` (6000..200000, default 24000). Saving never runs a job.
+- **Models** are the auxiliary purposes `memory-correction`, `memory-review`
+  and `memory-extraction` under Settings → Preferences → Auxiliary models. A
+  blank purpose is `waiting-config`; the chat model is never substituted.
+- **Triggers**: a settled turn, a successful compaction and worker exit/quit
+  register verified native user/assistant pair references (no transcript body
+  is stored). Explicit corrections and "remember from now on" preferences are
+  handled first by the correction purpose; ordinary pairs go to review;
+  compaction/exit boundaries go to extraction of pairs not yet covered.
+  Positive `periodicReviewMinutes` throttles review and lets a periodic scan
+  backfill known sessions. Native sessions above 8 MiB are not learned from.
+- **Writes** go only through `mutateFromNative` with the verified user entry
+  as source, so they carry receipts, CAS, tombstones and the source-proof
+  checks above. A correction may CAS-replace one matching old record;
+  otherwise it creates a new record. A reusable procedure can only become a
+  `draft` profile skill that the user must enable.
+- **Bounds**: UTC daily reservation of 6000 tokens per attempt, at most 2
+  concurrent runs globally and 1 per profile, a ~2400 character excerpt,
+  prompt plus excerpt ≤ 5000 UTF-8 bytes, ≤ 320 output tokens, no tools, no
+  CLI/subagent fallback, 20 s abort followed by waiting for real settlement.
+  Queue 64 jobs, 128 cursors; deep branch rewrites block a cursor and are
+  reported in `capabilities.capacity.blockedBranches`. Manual action IDs
+  (`review-now`, `cancel`) are valid for 7 days; at most 256 active and 1024
+  retired IDs are kept, after which actions fail explicitly.
+- **Outcomes**: jobs report status, reason, model, receipt IDs and only the
+  usage/cost the provider reported (`unknown` is not zero). Jobs running at a
+  restart become `uncertain` and are never replayed. Deterministic trusted-write
+  refusals (including the 413 source-proof limit) are `skipped/knowledge-rejected`.
+
+Each eligible `before_agent_start` re-reads profile and physical-cwd memory
+from disk and appends a native `pivane-profile-memory-read` entry.
+`get_runtime_configuration.memoryRead` reports that last recorded read; it is
+evidence of what was provided, not that the model followed it. This is not a
+mastery/progress inference engine, and provider cancellation behaviour must
+still be verified for each real provider before activation.
 
 ## Source index and bounds
 
