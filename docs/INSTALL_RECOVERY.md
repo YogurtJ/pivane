@@ -91,7 +91,7 @@ curl -fsS http://127.0.0.1:3001/api/pi/status
 
 ## 默认可选能力
 
-当前源码的 `npm ci` 在必需依赖安装后尝试安装 `npm:pi-subagents@0.69.0`，使用 Pi 公开包管理接口写入当前用户的 Pi 配置，与 CLI 共用。下载失败只产生提示，Pivane 仍可安装和运行。默认安装不会自动委派任务。插件按自身 MIT 许可单独下载，不将其源码复制进 Pivane 仓库。
+当前源码的 `npm ci` 在必需依赖安装后尝试安装 `npm:pi-subagents@0.71.0`，使用 Pi 公开包管理接口写入当前用户的 Pi 配置，与 CLI 共用。下载失败只产生提示，Pivane 仍可安装和运行。默认安装不会自动委派任务。插件按自身 MIT 许可单独下载，不将其源码复制进 Pivane 仓库。
 
 如使用独立身份，必须在 `npm ci` **之前**设置 `PI_CODING_AGENT_DIR`（或准备应用 `.env`），避免把可选插件安装到默认身份。已有 Pi 用户保持原来的身份环境。设置 `PI_SKIP_DEFAULT_CAPABILITIES=1`、`PI_OFFLINE=1` 或使用 npm 的 `--ignore-scripts` 可跳过自动安装；前两种方式记录跳过，`--ignore-scripts` 不运行安装器也不写记录。
 

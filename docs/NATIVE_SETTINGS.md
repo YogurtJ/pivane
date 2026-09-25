@@ -2,7 +2,7 @@
 
 ## 子 Agent 专属设置
 
-设置 → **模型与能力** 包含多模态与子 Agent 两个分区，子 Agent 适配 `pi-subagents@0.69.0`。`npm ci` 的可选安装阶段单独下载插件，失败不阻断 Pivane；保留已有版本与配置，失败、跳过或卸载后不自动重放。详见[默认可选能力](INSTALL_RECOVERY.md#默认可选能力)。
+设置 → **模型与能力** 包含多模态与子 Agent 两个分区，子 Agent 适配 `pi-subagents@0.71.0`。`npm ci` 的可选安装阶段单独下载插件，失败不阻断 Pivane；保留已有版本与配置，失败、跳过或卸载后不自动重放。详见[默认可选能力](INSTALL_RECOVERY.md#默认可选能力)。
 
 直接管理全局/项目 settings.json 的 `subagents.defaultModel/defaultThinking` 和 `subagents.agentOverrides.<name>.model/thinking`，只修改提交字段，null 删除本层覆盖，保留工具、提示词、供应商覆盖和未知字段。模型及思考选项来自可用模型目录。本层保存值不是最终运行映射，角色定义、供应商覆盖和单次运行参数仍参与插件优先级。
 
@@ -15,8 +15,9 @@
 | GET | `/api/pi/settings/subagents?cwd` | version/cwd/revision/trust、plugin 状态与版本、defaults、roles；仅返回模型和思考字段 |
 | PUT | `/api/pi/settings/subagents` | `{cwd,scope,expectedRevision,changes}`；changes 为 defaultModel/defaultThinking 或 agentOverrides.角色.model/thinking 的扁平键 |
 | POST | `/api/pi/settings/subagents/install` | `{cwd,expectedRevision,confirmed:true}`；只补装固定来源到全局，不接受任意包或版本 |
+| POST | `/api/pi/settings/subagents/upgrade` | `{cwd,expectedRevision,confirmed:true}`；仅当唯一安装为用户范围 `npm:pi-subagents@<旧兼容版本>` 时，经 Pi `installAndPersist` 原位替换为固定来源，保留包过滤 |
 
-状态为 missing/disabled/unsupported/ready，ready 只表示版本匹配且配置启用，不代表当前 worker 已加载。未就绪时写设置失败；缺失且没有冲突来源时可补装。写入复用 nativeSettingsBusy、身份/Origin、修订和配置互斥；设置保存使用原生 settings 锁、私有备份与原子写入，项目写入要求 trust。
+状态为 missing/disabled/unsupported/ready，ready 只表示版本在兼容列表（0.69.0、0.70.0、0.70.1、0.71.0）且配置启用，不代表当前 worker 已加载。`plugin.upgradeFrom` 为可升级的已装版本或 null；升级需用户确认，安装器不会替用户升级已有插件。未就绪时写设置失败；缺失且没有冲突来源时可补装。写入复用 nativeSettingsBusy、身份/Origin、修订和配置互斥；设置保存使用原生 settings 锁、私有备份与原子写入，项目写入要求 trust。
 
 保存不启动子任务或重启服务，任务结束后显式重开运行实例并从当前加载资源核对。关闭页面不取消安装；失败或结果不确定先刷新核对，不自动重放。当前页草稿按项目/范围保留，冲突刷新仍保留草稿，浏览器刷新会丢失草稿。
 

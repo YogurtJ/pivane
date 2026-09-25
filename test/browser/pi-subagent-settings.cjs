@@ -7,12 +7,12 @@ const root = path.resolve(__dirname, '../..');
 async function run(browser, base, width, locale) {
     const context = await browser.newContext({ viewport: { width, height: width === 320 ? 680 : 1000 }, locale, isMobile: width < 900 });
     const page = await context.newPage(); page.setDefaultTimeout(45000); page.setDefaultNavigationTimeout(45000);
-    const errors = [], writes = []; let status = 'missing', revision = 1, conflict = false, failRead = false, holdRead = false, releaseRead;
+    const errors = [], writes = []; let status = 'missing', installed = '0.69.0', revision = 1, conflict = false, failRead = false, holdRead = false, releaseRead;
     const cwd = '/fixture/project', model = { provider: 'fixture', id: 'reasoner', name: 'Fixture Reasoner', available: true, input: ['text'], thinkingLevels: ['off', 'medium', 'high'] };
     let models = [model, ...Array.from({ length: 550 }, (_, i) => ({ ...model, provider: 'openrouter', id: `vendor/model-${String(i).padStart(3, '0')}`, name: `Research model ${String(i).padStart(3, '0')}` }))];
     const defaults = { global: { model: null, thinking: null }, project: { model: null, thinking: null } };
     const roles = ['delegate', 'evidence-auditor', 'oracle', 'researcher', 'reviewer', 'scout', 'worker', '<custom-role>', 'toString'].map(name => ({ name, global: { model: null, thinking: null }, project: { model: null, thinking: null } }));
-    const snapshot = () => ({ version: 1, cwd, revision: String(revision), trust: { effective: true }, plugin: { status, name: 'pi-subagents', version: '0.69.0', installedVersions: status === 'missing' ? [] : ['0.69.0'], canInstall: status === 'missing' }, defaults, roles });
+    const snapshot = () => ({ version: 1, cwd, revision: String(revision), trust: { effective: true }, plugin: { status, name: 'pi-subagents', version: '0.71.0', installedVersions: status === 'missing' ? [] : [installed], canInstall: status === 'missing', upgradeFrom: status === 'ready' && installed !== '0.71.0' ? installed : null }, defaults, roles });
     page.on('pageerror', error => errors.push(error.message));
     await page.route('https://**', route => route.abort());
     await page.route('**/api/**', async route => {
@@ -22,6 +22,7 @@ async function run(browser, base, width, locale) {
         else if (url.pathname === '/api/pi/projects') data = { projects: [], roots: ['/fixture'] };
         else if (url.pathname === '/api/pi/activity') data = { runtimes: [], replyNotices: [] };
         else if (url.pathname === '/api/pi/settings/subagents/install') { writes.push(req.postDataJSON()); status = 'ready'; revision++; data = { ok: true }; }
+        else if (url.pathname === '/api/pi/settings/subagents/upgrade') { writes.push({ upgrade: req.postDataJSON() }); installed = '0.71.0'; revision++; data = { ok: true, version: '0.71.0' }; }
         else if (url.pathname === '/api/pi/settings/subagents') {
             if (req.method() === 'PUT') {
                 const body = req.postDataJSON(); writes.push(body);
@@ -115,6 +116,19 @@ async function run(browser, base, width, locale) {
     assert.ok(releaseRead); releaseRead(); await page.waitForTimeout(80); assert.equal(await card.locator('form').count(), 0);
     status = 'unsupported'; await card.locator('.sa-refresh').click(); await card.getByText(locale === 'en' ? /not supported by/ : /版本尚未适配/).waitFor();
     status = 'ready'; await card.locator('.sa-refresh').click(); await trigger.waitFor();
+    // Explicit, confirmed upgrade of an older reviewed release; cancelling sends nothing.
+    const upgrade = card.locator('.sa-upgrade');
+    await upgrade.waitFor();
+    assert.match(await upgrade.textContent(), /0\.69\.0.*0\.71\.0/);
+    const beforeUpgrade = writes.length;
+    page.once('dialog', dialog => dialog.dismiss()); await upgrade.locator('button').click();
+    assert.equal(writes.length, beforeUpgrade);
+    page.once('dialog', dialog => dialog.accept()); await upgrade.locator('button').click();
+    await card.getByText(locale === 'en' ? /Upgraded\. Reopen sessions/ : /已升级。请在任务结束后重新打开会话/).waitFor();
+    assert.equal(writes.at(-1).upgrade.confirmed, true);
+    assert.equal(await card.locator('.sa-upgrade').count(), 0);
+    if (width < 700) assert.ok(await card.evaluate(el => el.scrollWidth <= el.clientWidth + 1));
+    installed = '0.69.0';
     if (width < 900) assert.ok(await card.locator('select').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize)) >= 16);
     await reviewer.locator('summary').click(); await dimensions();
     await card.evaluate(el => el.scrollIntoView({ block: 'start' }));

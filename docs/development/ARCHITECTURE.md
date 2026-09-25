@@ -51,6 +51,7 @@ Pi 0.87 的 `context_edit` 只改变模型上下文。主聊天快照从唯一 w
 - 侧聊使用受限内存 SessionManager，冻结主会话背景，历史工具调用转换为引用。工具与逐回复确认由独立侧聊管理，关闭、断线和待确认请求有各自生命周期；共享目录不意味着写入隔离。
 - 扩展助手仍是受 Supervisor 管理的原生会话，仅身份标记有效的 worker 获得专用管理凭据。安装与配置复用原生资源服务的锁、修订和 trust。
 - 任务进度由内置 `update_plan` 工具同步写原生 `pivane-task-progress` custom entry，以完整替换形成确定顺序。启动、分支导航和压缩后从完整当前 branch 恢复，Supervisor 只持有有界展示投影，快照沿用 live sequence 边界；不增加 worker 工作类型或外部任务数据库。模型上下文缺少最新工具结果时由 context hook 补入最新计划数据。
+- pi-subagents 适配位于受管会话扩展：worker 在扩展加载时提供其可选的 `@agegr/pi-web/session-liveness/v1` 进程内登记，每 2 秒及回合结束时经私有 notify 报告当前会话的聚合后台状态。Supervisor 把它作为保留状态而非回合忙碌：阻止空闲回收和全局维护，但不延迟任务回执等按回合空闲执行的操作。状态快照 widget 在 Supervisor 侧解析原始行并规范化，不进入通用 widget；控制经私有命令转发到插件的进程内 RPC，方法与参数由 Supervisor 白名单校验，所有权与运行状态仍由插件判断。
 - 工具来源是调用时捕获的有界展示元数据，绑定调用 ID/工具名；旧记录不按当前清单追认来源，也不把来源标记当成权限验证。
 
 相关契约：[辅助模型](../AUXILIARY_MODELS.md)、[任务线程](../AGENT_THREADS.md)、[侧聊](../SIDE_CHAT.md)、[原生设置](../NATIVE_SETTINGS.md)。
@@ -78,6 +79,8 @@ POSIX 私密权限和目录刷盘、Windows 受保护 DACL 和写透替换分别
 `pi-model-picker.js` 拥有会话模型面板、全目录搜索和设备本地最近记录，以供应商与模型 ID 元组区分身份。常用模型由 `WorkspacePreferencesService` 保存，HTTP 接口提交单项加星／取消操作；旧浏览器导入带持久回执和取消标记，避免全表覆盖与旧数据复活。组件只把明确的模型选择交回 `pi-chat.js`；RPC、忙碌锁、当前模型和 socket 代次继续由协调器管理，不用常用偏好恢复会话模型。
 
 `workspace-ui.js` 提供 `PiActionFeedback`，负责异步按钮的加载图标、动作文字、无障碍属性及恢复；请求互斥、上下文代次与结果归属继续由各功能组件管理。
+
+`pi-subagent-runs.js` 拥有输入框上方的子 Agent 面板与操作对话框，只读取当前连接的 controls 投影，经 `subagent_control` 请求并按连接代次丢弃迟到结果；`pi-subagent-notices.js` 只为插件自定义消息补标题、语气和折叠，正文仍经 marked + DOMPurify。
 
 `pi-task-progress.js` 拥有输入框上方的计划卡渲染和展开状态，只接受当前连接快照与进度事件，不解析回复文本、不从运行终态推断步骤完成。
 

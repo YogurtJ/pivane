@@ -143,7 +143,7 @@ test('activity and pins are protected, root-checked and do not launch workers', 
     await Promise.all([clientClosed, serverClosed]);
     assert.equal(worker.subscribers.size, 0);
     const summary = await (await request('/activity')).json();
-    assert.deepEqual(summary.runtimes, [{ cwd: root, sessionId: session.id, titleGenerating: false, phase: 'running', busy: true }]);
+    assert.deepEqual(summary.runtimes, [{ cwd: root, sessionId: session.id, titleGenerating: false, phase: 'running', busy: true, backgroundWork: false }]);
     assert.equal(worker.canEvict(Date.now() + 100000, 1), false);
     worker.client.emit('event', { type: 'agent_settled' });
     worker.client.emit('event', { type: 'compaction_start' });

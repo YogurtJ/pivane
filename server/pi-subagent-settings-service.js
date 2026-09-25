@@ -7,6 +7,15 @@ const definition = require('./pi-default-capabilities').find(entry => entry.id =
 const roleName = name => typeof name === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(name) && !['constructor', 'prototype', '__proto__'].includes(name);
 const fields = value => ({ model: typeof value?.model === 'string' ? value.model : null,
     thinking: value?.thinking === false ? 'off' : typeof value?.thinking === 'string' ? value.thinking : null });
+// Only a single user-scope pinned npm entry of a reviewed older release is upgraded
+// in place. Project entries, git/local sources and unpinned specs stay user-managed.
+function upgradeSource(ctx) {
+    if (!['ready', 'disabled'].includes(ctx.status) || ctx.packages.length !== 1 || ctx.manifests.length !== 1) return null;
+    const [item] = ctx.packages, version = ctx.manifests[0].manifest.version;
+    if (item.scope !== 'user' || item.source !== `npm:${definition.name}@${version}` || version === definition.version) return null;
+    const rank = value => value.split('.').map(Number).reduce((sum, part) => sum * 1000 + part, 0);
+    return definition.compatibleVersions.includes(version) && rank(version) < rank(definition.version) ? item.source : null;
+}
 class PiSubagentSettingsService {
     constructor(native, resources, settings) { this.native = native; this.resources = resources; this.settings = settings; }
     async context(cwd) {
@@ -16,7 +25,7 @@ class PiSubagentSettingsService {
         const manifests = installed.map(item => ({ item, manifest: json(read(safeFile(item.installedPath, ['package.json']))) }));
         const versions = manifests.map(item => item.manifest.version);
         const enabled = ctx.resources.some(item => item.type === 'extensions' && item.enabled && installed.some(pkg => item.metadata.source === pkg.source));
-        const status = !installed.length ? 'missing' : versions.some(version => version !== definition.version) ? 'unsupported' : !enabled ? 'disabled' : 'ready';
+        const status = !installed.length ? 'missing' : versions.some(version => !definition.compatibleVersions.includes(version)) ? 'unsupported' : !enabled ? 'disabled' : 'ready';
         const revision = createHash('sha256').update(JSON.stringify([ctx.revision, packages, versions, enabled])).digest('hex');
         return { ...ctx, packages, manifests, status, revision, nativeRevision: ctx.revision };
     }
@@ -40,7 +49,8 @@ class PiSubagentSettingsService {
         return { version: 1, cwd: ctx.cwd, revision: ctx.revision, trust: ctx.trust,
             plugin: { name: definition.name, version: definition.version, status: ctx.status,
                 installedVersions: ctx.manifests.map(item => item.manifest.version),
-                canInstall: ctx.status === 'missing' && ctx.packages.every(item => item.scope === 'user' && item.source === definition.source) },
+                canInstall: ctx.status === 'missing' && ctx.packages.every(item => item.scope === 'user' && item.source === definition.source),
+                upgradeFrom: upgradeSource(ctx) ? ctx.manifests[0].manifest.version : null },
             defaults: { global: fields({ model: global.defaultModel, thinking: global.defaultThinking }), project: fields({ model: project.defaultModel, thinking: project.defaultThinking }) },
             roles: [...names].sort().map(name => ({ name, global: fields(global.agentOverrides?.[name]), project: fields(project.agentOverrides?.[name]) })) };
     }
@@ -53,6 +63,18 @@ class PiSubagentSettingsService {
             try { await ctx.manager.installAndPersist(definition.source, { local: false }); }
             catch { throw fail('子 Agent 插件安装未完成，请刷新核对安装状态后再操作'); }
             return { ok: true, requiresRuntimeRestart: true };
+        });
+    }
+    async upgrade(input) {
+        if (!input || Object.keys(input).some(key => !['cwd', 'expectedRevision', 'confirmed'].includes(key)) || input.confirmed !== true) throw fail('请确认升级子 Agent 插件');
+        return this.native.mutate({ cwd: input.cwd, expectedRevision: (await this.native.context(input.cwd)).revision }, async () => {
+            const ctx = await this.context(input.cwd);
+            if (ctx.revision !== input.expectedRevision) throw fail('配置已变化，请刷新', 409);
+            if (!upgradeSource(ctx)) throw fail('当前插件配置不适合自动升级，请通过 Packages 管理');
+            // Same package identity: Pi replaces the pinned source in place and keeps filters.
+            try { await ctx.manager.installAndPersist(definition.source, { local: false }); }
+            catch { throw fail('子 Agent 插件升级未完成，请刷新核对版本后再操作'); }
+            return { ok: true, version: definition.version, requiresRuntimeRestart: true };
         });
     }
     async save(input) {

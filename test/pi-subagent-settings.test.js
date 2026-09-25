@@ -118,3 +118,44 @@ test('subagent HTTP settings enforce authentication, Origin, fixed install sourc
         assert.equal(gateway.supervisor.workers.size, 0);
     } finally { delete process.env.PI_WEB_TOKEN; await gateway.dispose(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });
+
+test('only a confirmed pinned user-scope npm install of an older reviewed release upgrades in place', async () => {
+    const sdk = await import('@earendil-works/pi-coding-agent');
+    const installed = path.join(process.env.PI_CODING_AGENT_DIR, 'npm/node_modules/pi-subagents');
+    const writePackage = version => {
+        fs.mkdirSync(installed, { recursive: true });
+        fs.writeFileSync(path.join(installed, 'index.js'), 'export default function() {}');
+        fs.writeFileSync(path.join(installed, 'package.json'), JSON.stringify({ name: 'pi-subagents', version, pi: { extensions: ['./index.js'] } }));
+    };
+    const original = sdk.DefaultPackageManager.prototype.installAndPersist;
+    const sources = [];
+    sdk.DefaultPackageManager.prototype.installAndPersist = async function (source, options) {
+        sources.push([source, options]); writePackage(definition.version); this.addSourceToSettings(source, options);
+    };
+    try {
+        writePackage('0.69.0');
+        fs.writeFileSync(globalFile, JSON.stringify({ packages: [{ source: 'npm:pi-subagents@0.69.0', skills: [] }], preserved: { sentinel: 5 } }));
+        let snapshot = await service.snapshot(cwd);
+        assert.equal(snapshot.plugin.status, 'ready', 'reviewed older releases remain editable');
+        assert.equal(snapshot.plugin.upgradeFrom, '0.69.0');
+        await assert.rejects(service.upgrade({ cwd, expectedRevision: snapshot.revision }), /确认/);
+        await assert.rejects(service.upgrade({ cwd, expectedRevision: 'stale', confirmed: true }), /变化/);
+        assert.deepEqual(sources, []);
+        assert.deepEqual(await service.upgrade({ cwd, expectedRevision: snapshot.revision, confirmed: true }), { ok: true, version: definition.version, requiresRuntimeRestart: true });
+        assert.deepEqual(sources, [[definition.source, { local: false }]]);
+        const data = JSON.parse(fs.readFileSync(globalFile));
+        assert.deepEqual(data.packages, [{ source: definition.source, skills: [] }], 'same entry, filters kept');
+        assert.equal(data.preserved.sentinel, 5);
+        snapshot = await service.snapshot(cwd);
+        assert.equal(snapshot.plugin.upgradeFrom, null);
+        await assert.rejects(service.upgrade({ cwd, expectedRevision: snapshot.revision, confirmed: true }), /Packages/);
+        for (const source of ['npm:pi-subagents', 'npm:pi-subagents@0.1.0']) {
+            writePackage(source.endsWith('0.1.0') ? '0.1.0' : '0.69.0');
+            fs.writeFileSync(globalFile, JSON.stringify({ packages: [source] }));
+            snapshot = await service.snapshot(cwd);
+            assert.equal(snapshot.plugin.upgradeFrom, null, source);
+            await assert.rejects(service.upgrade({ cwd, expectedRevision: snapshot.revision, confirmed: true }), /Packages/);
+        }
+        assert.equal(sources.length, 1);
+    } finally { sdk.DefaultPackageManager.prototype.installAndPersist = original; fs.rmSync(installed, { recursive: true, force: true }); }
+});
