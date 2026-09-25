@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const privateFiles = require('./pi-private-files');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { safeFile, read, json, atomic, fail } = require('./pi-native-service');
@@ -15,6 +16,14 @@ function upgradeSource(ctx) {
     if (item.scope !== 'user' || item.source !== `npm:${definition.name}@${version}` || version === definition.version) return null;
     const rank = value => value.split('.').map(Number).reduce((sum, part) => sum * 1000 + part, 0);
     return definition.compatibleVersions.includes(version) && rank(version) < rank(definition.version) ? item.source : null;
+}
+// Pi queues settings writes; report success only after the package entry is on disk.
+async function persisted(ctx) {
+    await ctx.settings.flush();
+    const file = safeFile(ctx.agentDir, ['settings.json']);
+    const packages = json(read(file)).packages || [];
+    if (!packages.some(item => (typeof item === 'string' ? item : item?.source) === definition.source)) throw new Error('settings write not confirmed');
+    privateFiles.privateFileMode(file);
 }
 class PiSubagentSettingsService {
     constructor(native, resources, settings) { this.native = native; this.resources = resources; this.settings = settings; }
@@ -60,7 +69,7 @@ class PiSubagentSettingsService {
             const ctx = await this.context(input.cwd);
             if (ctx.revision !== input.expectedRevision) throw fail('配置已变化，请刷新', 409);
             if (ctx.status !== 'missing' || ctx.packages.some(item => item.scope !== 'user' || item.source !== definition.source)) throw fail('已有插件配置，请通过 Packages 管理');
-            try { await ctx.manager.installAndPersist(definition.source, { local: false }); }
+            try { await ctx.manager.installAndPersist(definition.source, { local: false }); await persisted(ctx); }
             catch { throw fail('子 Agent 插件安装未完成，请刷新核对安装状态后再操作'); }
             return { ok: true, requiresRuntimeRestart: true };
         });
@@ -72,7 +81,7 @@ class PiSubagentSettingsService {
             if (ctx.revision !== input.expectedRevision) throw fail('配置已变化，请刷新', 409);
             if (!upgradeSource(ctx)) throw fail('当前插件配置不适合自动升级，请通过 Packages 管理');
             // Same package identity: Pi replaces the pinned source in place and keeps filters.
-            try { await ctx.manager.installAndPersist(definition.source, { local: false }); }
+            try { await ctx.manager.installAndPersist(definition.source, { local: false }); await persisted(ctx); }
             catch { throw fail('子 Agent 插件升级未完成，请刷新核对版本后再操作'); }
             return { ok: true, version: definition.version, requiresRuntimeRestart: true };
         });
