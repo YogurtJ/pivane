@@ -122,10 +122,8 @@ function createPiAgentGateway(options = {}) {
     });
 
     supervisor.on('worker', worker => {
-        worker.subscribe(event => {
-            if (event.type === 'compaction_end' && worker.compaction?.status === 'success')
-                void learning?.register(worker, 'compaction');
-        });
+        // Do not subscribe: a subscriber keeps the worker from being reclaimed.
+        worker.on('compaction', () => { void learning?.register(worker, 'compaction'); });
         worker.once('disposed', () => { void learning?.register(worker, 'exit'); });
         worker.once('exit', () => { void learning?.register(worker, 'exit'); });
     });
