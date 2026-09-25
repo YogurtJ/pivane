@@ -23,7 +23,7 @@ function fixture() {
     add('assistant', [plain('开始检查 B。'.repeat(8)), call('b-1')]);
     add('toolResult', [plain('B failed')], { toolCallId: 'b-1', toolName: 'read', isError: true });
     add('assistant', [plain('B 中间说明，折叠后仍可从摘要展开。'.repeat(4))]);
-    add('assistant', [plain('B 的最后说明')], { stopReason: 'aborted' });
+    add('assistant', [{ type: 'thinking', thinking: '最终回复前的思考。' }, plain('B 的最后说明')], { stopReason: 'aborted' });
     add('user', [plain('检查模块 C')]);
     add('assistant', [plain('开始检查 C'), call('c-1')]);
     add('toolResult', [plain('C output')], { toolCallId: 'c-1', toolName: 'read' });
@@ -107,12 +107,15 @@ async function run(browser, size) {
     const bars = page.locator('.pi-turn-group');
     const firstLabel = await bars.nth(0).locator('.pi-turn-label').textContent();
     assert.ok(firstLabel.includes('用时'), 'summary carries the elapsed time');
-    assert.ok(firstLabel.includes('9m 0s'), `nine minute span formatted compactly, got: ${firstLabel}`);
+    assert.ok(firstLabel.includes('9m') && !firstLabel.includes('9m 0s'), `nine minute span formatted compactly, got: ${firstLabel}`);
     assert.ok(firstLabel.includes('1 次工具调用'), 'summary carries the tool count');
     assert.equal(await bars.nth(0).locator('.pi-turn-status').textContent(), '');
+    const finalB = page.locator('.pi-message.assistant').filter({ hasText: 'B 的最后说明' });
+    assert.equal(await finalB.locator('.pi-process-group').count(), 1, 'final reply B carries its own thinking record');
+    assert.equal(await finalB.locator('.pi-process-group:visible').count(), 0, 'final reply thinking folds into the turn summary');
     assert.equal(await bars.nth(0).evaluate(el => el.classList.contains('has-error')), false);
     const secondLabel = await bars.nth(1).locator('.pi-turn-label').textContent();
-    assert.ok(secondLabel.includes('12m 0s'), `turn span measured from its own user message, got: ${secondLabel}`);
+    assert.ok(secondLabel.includes('12m'), `turn span measured from its own user message, got: ${secondLabel}`);
     const secondStatus = await bars.nth(1).locator('.pi-turn-status').textContent();
     assert.ok(secondStatus.includes('回复已停止'), `aborted turn flagged, got: ${secondStatus}`);
     assert.ok(secondStatus.includes('1 工具失败'), `failed tool flagged, got: ${secondStatus}`);
@@ -134,6 +137,7 @@ async function run(browser, size) {
     assert.equal(await bars.nth(0).evaluate(el => el.open), true);
     assert.equal(await bars.nth(0).locator('summary').getAttribute('aria-expanded'), 'true');
     assert.equal(await page.locator('.pi-markdown').filter({ hasText: '开始检查 A' }).first().isVisible(), true, 'expanding reveals intermediate reply A');
+
     await page.evaluate(() => {
         const article = [...document.querySelectorAll('.pi-message.assistant')]
             .find(el => el.textContent.includes('开始检查 A'));
@@ -144,6 +148,12 @@ async function run(browser, size) {
     await bars.nth(0).locator('summary').click();
     await pause();
     assert.equal(await page.locator('.pi-markdown').filter({ hasText: '开始检查 A' }).first().isVisible(), false, 'collapsing hides the process again');
+    await bars.nth(1).locator('summary').click();
+    await pause();
+    assert.equal(await finalB.locator('.pi-process-group:visible').count(), 1, 'expanding turn B reveals its final thinking record');
+    await bars.nth(1).locator('summary').click();
+    await pause();
+    assert.equal(await finalB.locator('.pi-process-group:visible').count(), 0, 'collapsing turn B folds it again');
 
     // Anchored content stays put when surrounding turns collapse or expand.
     const anchor = page.locator('.pi-markdown').filter({ hasText: '最终回复 A' }).first();
@@ -205,6 +215,8 @@ async function run(browser, size) {
     assert.equal(await page.locator('button[data-transcript-mode="compact"]').getAttribute('aria-pressed'), 'true', 'compact preference persists across reload');
     assert.equal(await visibleTurnBars().count(), 3, 'compact mode reapplies after reload');
     assert.equal(await page.locator('.pi-turn-group').nth(0).evaluate(el => el.open), false, 'turn expansion resets on reload like process groups');
+    await page.waitForTimeout(800);
+    assert.equal(await page.locator('[class*=toast]').filter({ hasText: 'before initialization' }).count(), 0, 'reloading a routed session shows no startup error');
 
     await page.evaluate(() => localStorage.removeItem('pi.web.transcriptMode'));
     for (const theme of ['daylight', 'mint', 'dark']) {

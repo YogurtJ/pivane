@@ -162,7 +162,7 @@
             const minutes = Math.floor((total % 3600) / 60);
             const seconds = total % 60;
             if (hours) return `${hours}h ${minutes}m`;
-            if (minutes) return `${minutes}m ${seconds}s`;
+            if (minutes) return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
             return `${seconds}s`;
         }
 
@@ -212,6 +212,10 @@
                     group = { element, members };
                 }
                 group.members = members;
+                // The final reply's own thinking/tool record belongs to the same turn:
+                // fold it with the process instead of leaving a second summary bar.
+                group.tail = [...(nodes[finalIndex].querySelector(':scope > .pi-message-body')?.children || [])]
+                    .filter(node => node.matches('.pi-process-group'));
                 if (members[0].previousElementSibling !== group.element) members[0].before(group.element);
                 for (const member of members) {
                     member.dataset.turnKey = key;
@@ -271,10 +275,10 @@
             // Turn visibility runs last so a closed turn wins over per-article state.
             // A closed turn hides every member, but an open turn must not override
             // hiding that came from a closed process group.
-            for (const { element, members } of this.turnGroups.values()) {
+            for (const { element, members, tail = [] } of this.turnGroups.values()) {
                 element.hidden = !collapseTurns;
                 element.querySelector('summary').setAttribute('aria-expanded', String(element.open));
-                for (const member of members) {
+                for (const member of [...members, ...tail]) {
                     if (member.hidden || !collapseTurns || element.open) continue;
                     member.hidden = true; member.dataset.turnHidden = '1';
                 }

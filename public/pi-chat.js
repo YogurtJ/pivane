@@ -3871,8 +3871,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
-    const route = window.PiWorkspaceRoute?.current();
-    if (route?.tab === 'assistant' || route?.tab === 'chat') window.dispatchEvent(new CustomEvent('workspace:tabchanged', { detail: route }));
     window.PiChatNavigation = Object.freeze({
         async openSession({ cwd, sessionId, draft }) {
             if (!cwd || !sessionId) throw new Error(translateUi('会话地址无效'));
@@ -4157,5 +4155,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     window.addEventListener('beforeunload', () => { sideChat.disposeAll(); disconnectSocket(true); });
     syncMobileHeader();
+    // Replay the initial route only after every controller above exists; its
+    // listener may open the routed session synchronously.
+    const route = window.PiWorkspaceRoute?.current();
+    if (route?.tab === 'assistant' || route?.tab === 'chat') window.dispatchEvent(new CustomEvent('workspace:tabchanged', { detail: route }));
     bootstrap();
 });
