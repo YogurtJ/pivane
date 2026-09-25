@@ -8549,7 +8549,6 @@
     ,['未提供', 'Not provided']
     ,['版本：{0}', 'Revision: {0}']
     ,['类别', 'Category']
-    ,["排队中", "Queued"]
     ,["部分完成", "Partially complete"]
     ,["未启动", "Not started"]
     ,["{0} 秒", "{0}s"]
