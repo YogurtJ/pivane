@@ -3866,11 +3866,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } else {
             state.assistantEpoch++; renderSessions();
-            if (params.get('cwd') && params.get('sessionId') && state.session?.id !== params.get('sessionId')) {
+            // The startup replay runs before bootstrap(), which restores the session itself;
+            // opening here as well would race it and touch controllers not created yet.
+            if (accessBootstrapped && params.get('cwd') && params.get('sessionId') && state.session?.id !== params.get('sessionId')) {
                 void (async () => { if (params.get('cwd') !== state.cwd) await selectProject(params.get('cwd')); const rows = await loadSessions(); const session = rows.find(item => item.id === params.get('sessionId')); if (session) await openSession(session); })().catch(error => toast(error.message, 'error'));
             }
         }
     });
+    const route = window.PiWorkspaceRoute?.current();
+    if (route?.tab === 'assistant' || route?.tab === 'chat') window.dispatchEvent(new CustomEvent('workspace:tabchanged', { detail: route }));
     window.PiChatNavigation = Object.freeze({
         async openSession({ cwd, sessionId, draft }) {
             if (!cwd || !sessionId) throw new Error(translateUi('会话地址无效'));
@@ -4155,9 +4159,5 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     window.addEventListener('beforeunload', () => { sideChat.disposeAll(); disconnectSocket(true); });
     syncMobileHeader();
-    // Replay the initial route only after every controller above exists; its
-    // listener may open the routed session synchronously.
-    const route = window.PiWorkspaceRoute?.current();
-    if (route?.tab === 'assistant' || route?.tab === 'chat') window.dispatchEvent(new CustomEvent('workspace:tabchanged', { detail: route }));
     bootstrap();
 });
