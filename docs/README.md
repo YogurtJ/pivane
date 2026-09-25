@@ -24,7 +24,7 @@ English: [project overview](../README.en.md) · [installation](en/INSTALL.md) ·
 | 可选助手档案与档案记忆 | [助手档案](AGENT_PROFILES.md) · [记忆适配与安装](PROFILE_MEMORY.md) |
 | 输入、Shell、运行恢复 | [命令与模板](COMPOSER_TOOLS.md) · [Shell](WEB_SHELL.md) · [运行控制](NATIVE_CONTROLS.md) · [运行与配置恢复](NATIVE_COMPLETION.md) |
 | 历史、分叉、导出与侧聊 | [历史](HISTORY.md) · [工作流](SESSION_WORKFLOWS.md) · [导入导出](SESSION_TRANSFER.md) · [侧聊](SIDE_CHAT.md) |
-| 让 Agent 新开线程并立即交办任务 | [Agent 任务线程](AGENT_THREADS.md) |
+| 让 Agent 新开线程并立即交办任务、线程之间直接沟通 | [Agent 任务线程与线程间消息](AGENT_THREADS.md) |
 | 文件与正文 | [文件查看](FILE_VIEWER.md) · [数学公式](MATH.md) · [Mermaid](MERMAID.md) |
 | 用量与朗读 | [用量统计](USAGE.md) · [回复朗读](REPLY_TTS.md) |
 | 媒体服务与生成 | [实验室](MEDIA_LAB.md) · [接入协议](MEDIA_CONNECTIONS.md) · [媒体Agent](MEDIA_AGENT.md) |

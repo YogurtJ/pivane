@@ -1,6 +1,8 @@
 import { registerTaskProgress } from './pi-task-progress-extension.ts';
 import { registerToolProvenance } from './pi-tool-provenance.js';
 import { receiveTaskReturn } from './pi-task-returns.js';
+import { receiveAgentMessages } from './pi-agent-message-format.js';
+import { registerAgentMessages } from './pi-agent-messages-extension.ts';
 import { registerAgentThreads, launchAgentTask } from './pi-agent-threads-extension.ts';
 import { registerExtensionAssistant } from './pi-extension-assistant-extension.ts';
 import { handleTitleRequest } from './pi-session-title-state.js';
@@ -31,6 +33,7 @@ export default async function (pi: ExtensionAPI) {
     registerToolProvenance(pi);
     registerExtensionAssistant(pi);
     registerAgentThreads(pi);
+    registerAgentMessages(pi);
     registerTaskProgress(pi);
     registerSubagentHost(pi);
     registerAgentProfile(pi, getAgentDir);
@@ -63,7 +66,7 @@ export default async function (pi: ExtensionAPI) {
         }
     });
     pi.registerCommand(INTERNAL_COMMAND, {
-        description: `Pivane internal session navigation and context snapshot; managed-v1; task-v1; task-results-v1; title-v1; model-catalog-v1; resources-v1; history-v1; tree-v1; tree-presentation-v1; history-presentation-v1; history-body-v1; system-prompt-v1; subagents-v1; reload-v1:${randomUUID()}`,
+        description: `Pivane internal session navigation and context snapshot; managed-v1; task-v1; task-results-v1; agent-messages-v1; title-v1; model-catalog-v1; resources-v1; history-v1; tree-v1; tree-presentation-v1; history-presentation-v1; history-body-v1; system-prompt-v1; subagents-v1; reload-v1:${randomUUID()}`,
         handler: async (args, ctx) => {
             const request = JSON.parse(args);
             if (ctx.mode !== 'rpc' || request.token !== process.env.PI_WEB_NAVIGATION_TOKEN) throw new Error('Invalid navigation request');
@@ -71,6 +74,11 @@ export default async function (pi: ExtensionAPI) {
             if (request.mode === 'task-result') {
                 try { notify({ success: true, data: receiveTaskReturn(pi, ctx, request.input) }); }
                 catch (error) { notify({ success: false, error: error instanceof Error ? error.message : 'Task receipt failed' }); }
+                return;
+            }
+            if (request.mode === 'agent-message') {
+                try { notify({ success: true, data: receiveAgentMessages(pi, ctx, request.input) }); }
+                catch (error) { notify({ success: false, error: error instanceof Error ? error.message : 'Agent message delivery failed' }); }
                 return;
             }
             if (request.mode === 'subagents') {

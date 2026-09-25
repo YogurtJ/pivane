@@ -2066,6 +2066,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (element && message.role === 'custom') element._piCustomMessage = message;
         if (element && message.timestamp != null) {
             element.dataset.messageKey = JSON.stringify([message.role, message.timestamp, message.toolCallId || '']);
+            if (element.tagName === 'DETAILS') element.dataset.detailKey ||= element.dataset.messageKey;
             element.querySelectorAll('.pi-message-body > *').forEach((block, index) => {
                 block.dataset.readingKey = `${element.dataset.messageKey}:${index}`;
                 if (block.tagName === 'DETAILS') block.dataset.detailKey ||= block.dataset.readingKey;
@@ -2153,8 +2154,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const role = message.role || 'custom';
         if (role === 'toolResult') return createToolResultElement(message);
         if (role === 'bashExecution') return createBashElement(message);
-        if (role === 'compactionSummary' || role === 'branchSummary') return createNoticeElement(role, message.summary || message.content || '');
+        if (role === 'compactionSummary' || role === 'branchSummary') return window.PiAgentCards?.summary(role, message, { markdown: renderMarkdown })
+            || createNoticeElement(role, message.summary || message.content || '');
         if (role === 'custom' && message.display === false) return null;
+        if (window.PiAgentCards?.handles(message)) return window.PiAgentCards.render(message, { link: appendAgentThreadLink, markdown: renderMarkdown });
 
         const article = document.createElement('article');
         article.className = `pi-message ${role}`;
@@ -2164,25 +2167,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const title = role === 'user' ? translateUi("你") : role === 'assistant' ? 'Pi' : translateUi("系统");
         const model = role === 'assistant' && message.model ? `<span>${escapeHtml(message.model)}</span>` : '';
         header.innerHTML = `<strong>${title}</strong>${model}`;
-        if (role === 'custom' && ['pivane-agent-task-message', 'pivane-agent-task-receipt', 'pi5-agent-task-message', 'pi5-agent-task-receipt'].includes(message.customType)) {
-            article.classList.add('pi-agent-thread-message');
-            const receipt = ['pivane-agent-task-receipt', 'pi5-agent-task-receipt'].includes(message.customType);
-            header.querySelector('strong').textContent = translateUi(receipt ? 'Agent 任务线程' : '来自 Agent 的任务');
-            const details = message.details || {};
-            if (receipt) {
-                const meta = document.createElement('span'); meta.className = 'pi-agent-thread-meta';
-                const labels = { saved: '任务已保存，尚未确认启动', submitted: '任务已提交', running: '运行中', tool: '运行中', retrying: '运行中', compacting: '运行中', waiting: '等待处理', completed: '已完成', error: '执行失败', stopped: '已停止', uncertain: '启动状态待核实' };
-                meta.textContent = [details.model?.provider, details.model?.modelId, details.thinkingLevel,
-                    translateUi('创建时状态：{0}', translateUi(typeof details.status === 'string' && Object.hasOwn(labels, details.status) ? labels[details.status] : '启动状态待核实'))]
-                    .filter(value => typeof value === 'string' && value).join(' · ');
-                header.appendChild(meta);
-                appendAgentThreadLink(header, details.session, translateUi('打开任务线程'));
-            } else appendAgentThreadLink(header, { cwd: details.source?.cwd, id: details.source?.sessionId }, translateUi('查看来源线程'));
-        }
-        if (role === 'custom' && message.customType === 'pivane-agent-task-result') {
-            article.classList.add('pi-agent-thread-message');
-            window.PiTaskResults?.decorate(header, message.details || {}, appendAgentThreadLink);
-        }
         const subagentNotice = role === 'custom' && Boolean(window.PiSubagentNotices?.decorate(article, header, message));
         const responseText = role === 'assistant' ? messageText(message.content).trim() : '';
         if (responseText) state.lastAssistantText = responseText;

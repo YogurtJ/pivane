@@ -48,6 +48,7 @@ Pi 0.87 的 `context_edit` 只改变模型上下文。主聊天快照从唯一 w
 - Agent 任务线程是普通原生持久会话，来源、requestId 和任务状态绑定原生身份。创建预占名额；重复 requestId 查询既有结果，不重放。默认模型来自原生设置，不自动继承来源线程模型或全部历史。
 - `TaskCatalog` 对原生会话进行分批只读元数据发现，缓存完整描述符身份和已核实的文件修订；缓存可丢弃，未完成覆盖不能作为创建去重的否定证据。`TaskReturns` 根据原生每轮结果和来源回执协调交付，不维护独立持久任务账本。
 - 来源 worker 的私有命令在空闲互斥区保存结果 custom message 和已读 custom entry，不触发模型、不直接从后台追加活跃 JSONL。来源未打开时不启动 worker，重开后补收；任务读取和交付均纳入维护生命周期。
+- 线程间消息复用 `TaskCatalog` 的项目目录和 worker 私有命令：发送方原生 `pivane-agent-message-out` 是补投记录，接收方 `pivane-agent-message` custom message 是送达回执和唯一展示副本。`AgentMessages` 的内存队列可丢弃，重启后从两者重建；只在接收方空闲互斥区写入，需要时再追加隐藏唤醒消息触发一轮。跳数由发送线程当前轮次的触发来源决定，达到上限或唤醒预算后只留言。关闭的接收方只为唤醒启动唯一受管 worker。
 - 侧聊使用受限内存 SessionManager，冻结主会话背景，历史工具调用转换为引用。工具与逐回复确认由独立侧聊管理，关闭、断线和待确认请求有各自生命周期；共享目录不意味着写入隔离。
 - 扩展助手仍是受 Supervisor 管理的原生会话，仅身份标记有效的 worker 获得专用管理凭据。安装与配置复用原生资源服务的锁、修订和 trust。
 - 任务进度由内置 `update_plan` 工具同步写原生 `pivane-task-progress` custom entry，以完整替换形成确定顺序。启动、分支导航和压缩后从完整当前 branch 恢复，Supervisor 只持有有界展示投影，快照沿用 live sequence 边界；不增加 worker 工作类型或外部任务数据库。模型上下文缺少最新工具结果时由 context hook 补入最新计划数据。

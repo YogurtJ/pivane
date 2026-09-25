@@ -171,7 +171,8 @@
             let current = null;
             for (const child of this.content.children) {
                 if (child.matches(TURN_GROUP_SELECTOR)) continue;
-                if (child.matches('.pi-message.user')) {
+                // Agent handoffs and waking Agent messages start a turn just like a user message.
+                if (child.matches('.pi-message.user, .pi-agent-turn-start')) {
                     current = { user: child, nodes: [] };
                     segments.push(current);
                 } else {
@@ -253,6 +254,9 @@
         refreshVisibility() {
             const collapseProcess = this.mode !== 'full';
             const collapseTurns = this.mode === 'compact';
+            // Undo only hiding that turn folding applied, so leaving compact mode or
+            // dissolving a turn group cannot leave cards, notices or edits hidden.
+            for (const node of this.content.querySelectorAll('[data-turn-hidden]')) { node.hidden = false; delete node.dataset.turnHidden; }
             for (const { element, members } of this.groups.values()) {
                 element.hidden = !collapseProcess;
                 element.querySelector('summary').setAttribute('aria-expanded', String(element.open));
@@ -270,7 +274,10 @@
             for (const { element, members } of this.turnGroups.values()) {
                 element.hidden = !collapseTurns;
                 element.querySelector('summary').setAttribute('aria-expanded', String(element.open));
-                for (const member of members) member.hidden = member.hidden || (collapseTurns && !element.open);
+                for (const member of members) {
+                    if (member.hidden || !collapseTurns || element.open) continue;
+                    member.hidden = true; member.dataset.turnHidden = '1';
+                }
             }
         }
     }

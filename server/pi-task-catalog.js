@@ -4,7 +4,8 @@ const fileIo = require('./pi-file-io');
 const { descriptorPathSync, assertDescriptorBackend } = require('./pi-file-descriptor');
 const { customTypeIs } = require('./pivane-compat');
 const { getSdk } = require('./pi-session-store');
-const LIMITS = { projects: 8, batchBytes: 8 * 1024 * 1024, milliseconds: 100, lineBytes: 32 * 1024 * 1024, files: 50000, metadataBytes: 32 * 1024 * 1024 };
+const { MESSAGE_OUT, MESSAGE_IN, outboundMessage } = require('./pi-agent-message-format');
+const LIMITS = { outboxPerSession: 2000, projects: 8, batchBytes: 8 * 1024 * 1024, milliseconds: 100, lineBytes: 32 * 1024 * 1024, files: 50000, metadataBytes: 32 * 1024 * 1024 };
 const fingerprint = stat => [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].map(String).join(':');
 const failure = (code, message) => Object.assign(new Error(message), { code });
 
@@ -68,6 +69,14 @@ class TaskCatalog {
                 .map(f => ({ session: { id: f.header.id, cwd: project.cwd, path: f.path, name: f.name || '' }, task: f.task,
                     state: f.state, sourceMatches: this.originMatches(f.task, project.cwd), results: [...f.results.values()], receipts: [...f.receipts], read: [...f.read] })) };
     }
+    // Persistent threads in one project, for Agent-to-Agent addressing. Metadata only.
+    threads(project) {
+        return [...project.files.values()].filter(f => f.complete && f.header?.cwd === project.cwd).map(f => ({
+            id: f.header.id, cwd: project.cwd, path: f.path, name: f.name || '', preview: f.preview || '', special: f.special,
+            modified: new Date(Number(f.stat.mtimeNs / 1000000n)).toISOString(),
+            task: f.task && f.task.sessionId === f.header.id && this.originMatches(f.task, project.cwd) ? { sourceSessionId: f.task.source.sessionId, requestId: f.task.requestId } : null,
+            outbox: [...f.outbox.values()], inbox: f.inbox }));
+    }
     async scan(project) {
         assertDescriptorBackend(); project.complete = false; project.error = null;
         try {
@@ -87,7 +96,8 @@ class TaskCatalog {
                 let record = project.files.get(filename);
                 if (!record || fingerprint(record.stat) !== fingerprint(stat)) {
                     record = { path: filename, stat, position: 0, parts: [], pendingBytes: 0, complete: false,
-                        header: null, task: null, state: null, name: '', results: new Map(), receipts: new Set(), read: new Set() };
+                        header: null, task: null, state: null, name: '', results: new Map(), receipts: new Set(), read: new Set(),
+                        preview: '', special: null, outbox: new Map(), inbox: new Set() };
                     project.files.set(filename, record);
                 } else if (record.complete) this.readBatch(project, record, 0, Date.now());
             }
@@ -99,6 +109,10 @@ class TaskCatalog {
                 remaining -= this.readBatch(project, record, remaining, started);
                 await new Promise(resolve => setImmediate(resolve));
             }
+            // Delivered message bodies stay in their native files; keep only routing identity in memory.
+            const delivered = new Set([...project.files.values()].flatMap(record => [...record.inbox]));
+            for (const record of project.files.values()) for (const [id, message] of record.outbox)
+                if (delivered.has(id) && message.text !== undefined) record.outbox.set(id, { ...message, text: undefined });
             // Include all sessions, even non-task parents, for receipt recovery.
             const ids = new Set(); let metadataBytes = 0;
             for (const record of project.files.values()) {
@@ -107,7 +121,7 @@ class TaskCatalog {
                     ids.add(record.header.id);
                 }
                 metadataBytes += Buffer.byteLength(JSON.stringify([record.header, record.task, record.state, record.name,
-                    [...record.results.values()], [...record.receipts], [...record.read]]));
+                    [...record.results.values()], [...record.receipts], [...record.read], record.preview, [...record.outbox.values()], [...record.inbox]]));
             }
             if (metadataBytes > this.limits.metadataBytes) throw failure('TASK_METADATA_LIMIT', 'Task metadata exceeds the cache budget');
             let stable = true;
@@ -199,6 +213,20 @@ class TaskCatalog {
                 record.results.set(entry.data.resultId, entry.data);
         }
         if (entry.type === 'custom_message' && entry.customType === 'pivane-agent-task-result' && typeof entry.details?.deliveryId === 'string') record.receipts.add(entry.details.deliveryId);
+        if (!record.preview && (entry.type === 'message' && entry.message?.role === 'user'
+            || entry.type === 'custom_message' && customTypeIs(entry, 'pivane-agent-task-message'))) {
+            const content = entry.type === 'message' ? entry.message.content : entry.content;
+            const text = typeof content === 'string' ? content : (Array.isArray(content) ? content : [])
+                .filter(block => block?.type === 'text' && typeof block.text === 'string').map(block => block.text).join(' ');
+            record.preview = text.replace(/\s+/g, ' ').trim().slice(0, 120);
+        }
+        if (entry.type === 'custom' && (entry.customType === 'pivane-extension-assistant' || entry.customType === 'pivane-profile-authoring')) record.special = entry.customType;
+        if (entry.type === 'custom' && entry.customType === MESSAGE_OUT) {
+            const message = outboundMessage(entry.data, record.header);
+            if (message && record.outbox.size < this.limits.outboxPerSession) record.outbox.set(message.messageId, message);
+        }
+        if (entry.type === 'custom_message' && entry.customType === MESSAGE_IN && typeof entry.details?.messageId === 'string'
+            && /^[a-f0-9]{64}$/.test(entry.details.messageId)) record.inbox.add(entry.details.messageId);
         if (entry.type === 'custom' && entry.customType === 'pivane-agent-task-read' && typeof entry.data?.deliveryId === 'string') record.read.add(entry.data.deliveryId);
     }
     async source(cwd, sessionId) {
@@ -217,7 +245,8 @@ class TaskCatalog {
         if (!Number.isInteger(offset) || offset < 0 || offset > this.limits.lineBytes) throw new Error('Invalid result offset');
         const project = await this.project(cwd), source = await this.source(cwd, sessionId);
         const record = { path: source.path, stat: fs.lstatSync(source.path, { bigint: true }), position: 0, parts: [], pendingBytes: 0,
-            header: null, task: null, state: null, results: new Map(), receipts: new Set(), read: new Set(), selectEntryId: entryId };
+            header: null, task: null, state: null, results: new Map(), receipts: new Set(), read: new Set(), selectEntryId: entryId,
+            preview: '', special: null, outbox: new Map(), inbox: new Set() };
         const started = Date.now();
         while (record.selectedText === undefined && !record.complete) {
             if (this.stopping || this.suspended() || Date.now() - started > 20000) throw failure('TASK_RESULT_LIMIT', 'Result reading stopped; retry with the same task and result identifiers');

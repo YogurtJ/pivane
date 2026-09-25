@@ -4912,20 +4912,7 @@ body.is-resizing * {
 .pi-task-result small { display: block; margin: 6px 0; }
 .pi-task-result button { font-size: 16px; max-width: 100%; white-space: normal; }
 
-.pi-message.pi-agent-thread-message {
-    border-inline-start: 3px solid var(--accent-color, #6287d8);
-    padding-inline-start: 12px;
-    min-width: 0;
-}
-.pi-agent-thread-message > header { flex-wrap: wrap; gap: 8px; }
-.pi-agent-thread-meta { flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
-.pi-agent-thread-link {
-    max-width: 100%; min-height: 36px; padding: 6px 10px;
-    border: 1px solid currentColor; border-radius: 8px;
-    color: inherit; background: transparent; cursor: pointer;
-    font: inherit; white-space: normal; overflow-wrap: anywhere;
-}
-.pi-agent-thread-message .pi-message-body { overflow-wrap: anywhere; }
+/* Agent thread cards: see pi-agent-cards.css. */
 
 /* Routed workspace shell. Management views are siblings of the workbench, not overlays. */
 .sidebar { width: 184px; flex-basis: 184px; }

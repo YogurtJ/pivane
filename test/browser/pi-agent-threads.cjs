@@ -52,21 +52,30 @@ async function check(browser, base, width, language) {
     const card = page.locator('.pi-agent-thread-message');
     await card.waitFor();
     assert.equal(await card.locator('img').count(), 0);
-    assert.ok((await card.textContent()).includes('<img src=x'));
+    assert.equal(await card.locator('.pi-agent-card-peer').textContent(), 'Task B', 'receipt names the task thread, not the handoff body');
+    assert.ok((await card.evaluate(node => node.getBoundingClientRect().height)) < (width < 400 ? 130 : 80), 'receipt is one compact card');
     const layout = async () => {
         const bad = await page.evaluate(() => [...document.querySelectorAll('.pi-agent-thread-message, .pi-agent-thread-message header, .pi-agent-thread-meta, .pi-agent-thread-link, .pi-agent-thread-message .pi-message-body')]
-            .filter(node => { const box = node.getBoundingClientRect(); return box.width > 0 && (box.right > innerWidth + 1 || box.left < -1 || node.scrollWidth > node.clientWidth + 2); }).map(node => node.className));
+                        // Single-line metadata is truncated with an ellipsis on purpose (full text in its title).
+            .filter(node => { const box = node.getBoundingClientRect(); return box.width > 0 && (box.right > innerWidth + 1 || box.left < -1
+                || node.scrollWidth > node.clientWidth + 2 && getComputedStyle(node).textOverflow !== 'ellipsis'); }).map(node => node.className));
         assert.deepEqual(bad, []);
     };
     await layout();
-    assert.equal(await card.locator('strong').textContent(), language === 'en' ? 'Agent task thread' : 'Agent 任务线程');
+    assert.equal(await card.locator('strong').textContent(), language === 'en' ? 'Task thread created' : '已创建任务线程');
     await card.locator('button').click();
     await page.waitForFunction(() => document.querySelector('.pi-agent-thread-message strong')?.textContent === (document.documentElement.lang === 'en' ? 'Task from an Agent' : '来自 Agent 的任务'));
     assert.equal(opened.at(-1), 'child');
+    const handoff = page.locator('.pi-agent-thread-message');
+    assert.ok((await handoff.locator('.pi-agent-card-preview').textContent()).includes('<img src=x'), 'handoff preview is plain text');
+    assert.equal(await handoff.locator('details').evaluate(node => node.open), false, 'long handoff starts collapsed');
+    await handoff.locator('summary').click();
+    assert.equal(await handoff.locator('img[onerror]').count(), 0);
+    assert.equal(await page.evaluate(() => typeof window.alert), 'function');
     await layout();
     await page.screenshot({ path: `/tmp/pi-agent-threads-${width}-${language}.png` });
     await page.locator('.pi-agent-thread-link').click();
-    await page.waitForFunction(() => document.querySelector('.pi-agent-thread-message strong')?.textContent === (document.documentElement.lang === 'en' ? 'Agent task thread' : 'Agent 任务线程'));
+    await page.waitForFunction(() => document.querySelector('.pi-agent-thread-message strong')?.textContent === (document.documentElement.lang === 'en' ? 'Task thread created' : '已创建任务线程'));
     assert.equal(opened.at(-1), 'source');
     receipt.details.status = 'constructor';
     receipt.details.model.provider = { toString: 'malformed imported metadata' };

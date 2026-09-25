@@ -53,6 +53,9 @@ async function run(browser, viewport) {
         });
     });
     const check = async stage => {
+        // Summary notices start collapsed; open them to measure the wrapped full text.
+        await page.waitForFunction(() => document.querySelectorAll('.pi-summary-notice').length === 2);
+        await page.evaluate(() => document.querySelectorAll('.pi-summary-notice:not([open])').forEach(node => { node.open = true; }));
         await page.waitForFunction(text => document.querySelector('.compactionSummary p')?.textContent === text, currentSummary);
         const metrics = await page.evaluate(() => {
             const selectors = ['body', '#pi-transcript', '#pi-transcript-content', '.compactionSummary', '.compactionSummary > div', '.compactionSummary p', '.branchSummary p'];
