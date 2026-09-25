@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { selectMessageView } = require('./pi-mobile-view-helper.cjs');
+const { selectMessageView, openWorkspaceTab } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 const baseUrl = process.env.PI_READING_TEST_URL || 'http://127.0.0.1:3101';
@@ -200,7 +200,7 @@ async function run(browser, size) {
     assert.equal(await page.locator('[data-tool-id="live-call"]').count(), 1);
     assert.equal(await page.locator('[data-tool-id="live-call"]').evaluate(el => el.open), false);
     assert.ok(Math.abs(await offset(page.locator('.pi-markdown').filter({ hasText: '中途发现 2' }).first()) - paused) <= 2, 'live updates do not move earlier body text');
-    await page.locator('[data-tab="media"]').click();
+    await openWorkspaceTab(page, 'media');
     await settle();
     await page.locator('[data-tab="chat"]').click();
     await pause();

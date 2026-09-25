@@ -8545,6 +8545,16 @@
     ,["将 pi-subagents 从 {0} 升级到 {1}，与 Pi CLI 共用。升级后需重新打开会话才会使用新版本；正在运行的子 Agent 不受影响。继续？", "Upgrade pi-subagents from {0} to {1}? The package is shared with Pi CLI. Reopen sessions to use the new version; running subagents are not affected."]
     ,["正在升级，请等待结果；关闭页面不会取消升级。", "Upgrading. Closing this page does not cancel the upgrade."]
     ,["已升级。请在任务结束后重新打开会话以使用新版本。", "Upgraded. Reopen sessions after current tasks finish to use the new version."]
+    ,["选择助手身份", "Choose an assistant profile"]
+    ,["从左侧选择一个助手身份，或新建档案。", "Choose an assistant profile on the left, or create one."]
+    ,["此服务暂不支持助手身份，未保存草稿仍保留。", "Assistant profiles are unavailable on this server. Your unsaved draft is kept."]
+    ,["正在读取助手身份", "Loading assistant profiles"]
+    ,["助手身份数据不可用", "Assistant profile data is unavailable"]
+    ,["还没有已启用的助手身份", "No enabled assistant profiles yet"]
+    ,["管理助手身份", "Manage assistant profiles"]
+    ,["简洁", "Compact"]
+    ,["只保留每轮最终回复，过程消息和执行记录折叠成一条摘要，点击可展开", "Keeps only the final reply of each turn. Intermediate messages and execution records collapse into one summary; click to expand."]
+    ,["用时 {0}", "Took {0}"]
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

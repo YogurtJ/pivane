@@ -1223,10 +1223,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!state.assistantMode || !accessBootstrapped) return;
         const epoch = ++state.assistantEpoch;
         const status = $('pi-assistant-profile-status');
-        status.textContent = translateUi('正在读取助手档案');
+        status.textContent = translateUi('正在读取助手身份');
         const profiles = await apiFetch('/api/pi/profiles');
         if (epoch !== state.assistantEpoch || !state.assistantMode) return;
-        if (profiles?.version !== 1 || !Array.isArray(profiles.profiles)) throw new Error(translateUi('助手档案数据不可用'));
+        if (profiles?.version !== 1 || !Array.isArray(profiles.profiles)) throw new Error(translateUi('助手身份数据不可用'));
         state.assistantProfiles = profiles.profiles.filter(profile => profile.enabled);
         state.profileInventory = profiles.profiles;
         const selector = $('pi-assistant-profile');
@@ -1244,9 +1244,9 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.newSession.disabled = !chosen || !state.assistantSupported;
         if (!chosen || !state.assistantSupported) {
             state.assistantGroups = []; state.assistantSessions = new Map(); state.assistantProjectId = null;
-            status.replaceChildren(document.createTextNode(!state.assistantSupported ? translateUi('当前服务尚未启用助手项目') : translateUi('还没有已启用的助手档案')));
+            status.replaceChildren(document.createTextNode(!state.assistantSupported ? translateUi('当前服务尚未启用助手项目') : translateUi('还没有已启用的助手身份')));
             const button = document.createElement('button'); button.type = 'button'; button.className = 'settings-secondary-button';
-            button.textContent = translateUi('管理助手档案'); button.addEventListener('click', () => window.PiWorkspaceRoute.navigate('profiles'));
+            button.textContent = translateUi('管理助手身份'); button.addEventListener('click', () => window.PiWorkspaceRoute.navigate('profiles'));
             status.append(' ', button); renderAssistantSessions(); return;
         }
         localStorage.setItem('pi.web.assistantProfile', chosen);
@@ -2420,6 +2420,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!elements.transcript.children.length) renderEmptySession();
         shell.setMessages(messages);
         decorateCodeBlocks(elements.transcript);
+        transcriptView.setTailActive(state.streaming);
         transcriptView.refresh();
         transcriptScroll.restore(readingPosition);
         workflows.decorate();
@@ -2925,6 +2926,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.model = runtime.model || state.model;
         state.thinkingLevel = runtime.thinkingLevel || state.thinkingLevel;
         state.streaming = Boolean(runtime.isStreaming);
+        transcriptView.setTailActive(state.streaming);
         state.compacting = Boolean(runtime.isCompacting);
         if (Object.hasOwn(runtime, 'webNavigation')) historyView.tree.apply(runtime.webNavigation);
         if (Object.hasOwn(runtime, 'webShell')) shell.apply(runtime.webShell);
@@ -2998,6 +3000,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function setStreaming(streaming) {
         state.streaming = streaming;
+        transcriptView.setTailActive(streaming);
         nativeContext.sync();
         const compacting = state.compacting || state.compactRequested;
         const stopping = nativeControls.value?.stopping || state.controlRequested;

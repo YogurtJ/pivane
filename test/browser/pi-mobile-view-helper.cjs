@@ -9,4 +9,14 @@ async function selectMessageView(page, mode) {
         await page.locator(`#pi-transcript-modes [data-transcript-mode="${mode}"]`).click();
     }
 }
-module.exports = { selectMessageView };
+
+// Media/profiles/extensions moved into the "更多功能" menu on narrow screens.
+async function openWorkspaceTab(page, tab) {
+    if (await page.evaluate(() => innerWidth <= 680)) {
+        await page.locator('#workspace-more-toggle').click();
+        await page.locator(`#workspace-more-menu [data-more-tab="${tab}"]`).click();
+    } else {
+        await page.locator(`[data-tab="${tab}"]`).click();
+    }
+}
+module.exports = { selectMessageView, openWorkspaceTab };

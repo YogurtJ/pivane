@@ -73,7 +73,18 @@
             if (!match) return { tab: 'chat', params: new URLSearchParams() };
             return { tab: match[1], params: new URLSearchParams(match[2] || '') };
         }
+        // Bookmarks written before management views left the settings tabs keep working.
+        function normalizeLegacySettingsRoute() {
+            const { tab, params } = parseRoute();
+            if (tab !== 'settings') return;
+            const inner = params.get('tab');
+            if (inner === 'profiles') history.replaceState(null, '', '#/profiles');
+            else if (extensionTabs.has(inner)) history.replaceState(null, '', `#/extensions?tab=${inner}`);
+            else return;
+            window.dispatchEvent(new CustomEvent('workspace:settings-route-normalized', { detail: { from: 'settings', tab: inner } }));
+        }
         function showRoute() {
+            normalizeLegacySettingsRoute();
             const { tab, params } = parseRoute();
             closeMoreMenu();
             if (tab === 'chat' || tab === 'assistant') lastConversation = location.hash || '#/chat';

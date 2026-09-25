@@ -67,14 +67,14 @@
                 <button class="nav-btn workspace-more-toggle" id="workspace-more-toggle" type="button" title="更多功能" aria-label="更多功能" aria-haspopup="menu" aria-expanded="false" aria-controls="workspace-more-menu" data-i18n-title="s2651" data-i18n-aria-label="s2651"><i class="fa-solid fa-layer-group" aria-hidden="true"></i><span><!--i18n:s2651-->更多功能</span></button>
                 <div id="workspace-more-menu" class="workspace-more-menu" role="menu" aria-label="更多功能" data-i18n-aria-label="s2651" hidden>
                     <button type="button" role="menuitem" data-more-tab="media"><i class="fa-solid fa-flask" aria-hidden="true"></i><span><!--i18n:s1318-->多媒体实验室</span></button>
-                    <button type="button" role="menuitem" data-more-tab="profiles"><i class="fa-solid fa-user-gear" aria-hidden="true"></i><span><!--i18n:s2549-->助手档案</span></button>
+                    <button type="button" role="menuitem" data-more-tab="profiles"><i class="fa-solid fa-user-gear" aria-hidden="true"></i><span><!--i18n:s2468-->助手身份</span></button>
                     <button type="button" role="menuitem" data-more-tab="extensions"><i class="fa-solid fa-puzzle-piece" aria-hidden="true"></i><span><!--i18n:s530-->扩展</span></button>
                 </div>
                 <button class="nav-btn" data-tab="media" title="多媒体实验室" data-i18n-title="s1318">
                     <i class="fa-solid fa-flask" aria-hidden="true"></i><span><!--i18n:s1318-->多媒体实验室</span>
                 </button>
                 <span class="workspace-nav-heading"><!--i18n:s2548-->管理</span>
-                <button class="nav-btn" id="workspace-profiles-toggle" data-tab="profiles" type="button" title="助手档案" data-i18n-title="s2549"><i class="fa-solid fa-user-gear" aria-hidden="true"></i><span><!--i18n:s2549-->助手档案</span></button>
+                <button class="nav-btn" id="workspace-profiles-toggle" data-tab="profiles" type="button" title="助手身份" data-i18n-title="s2468"><i class="fa-solid fa-user-gear" aria-hidden="true"></i><span><!--i18n:s2468-->助手身份</span></button>
                 <button class="nav-btn" id="workspace-extensions-toggle" data-tab="extensions" type="button" title="扩展" data-i18n-title="s530"><i class="fa-solid fa-puzzle-piece" aria-hidden="true"></i><span><!--i18n:s530-->扩展</span></button>
             </nav>
             <div class="sidebar-footer">
@@ -208,6 +208,7 @@
                         <button id="pi-current-thread-menu" type="button" title="当前线程操作" aria-label="当前线程操作" aria-haspopup="menu" aria-expanded="false" disabled data-i18n-title="s1347" data-i18n-aria-label="s1347"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>
                         <div id="pi-transcript-modes" class="pi-transcript-modes" role="group" aria-label="消息视图" data-i18n-aria-label="s1348">
                             <button type="button" data-transcript-mode="reading" aria-pressed="true" aria-controls="pi-transcript-content" title="默认正文视图：连续工具调用和思考合并折叠，点击执行记录可展开" data-i18n-title="s1349"><!--i18n:s1350-->正文</button>
+                            <button type="button" data-transcript-mode="compact" aria-pressed="false" aria-controls="pi-transcript-content" title="只保留每轮最终回复，过程消息和执行记录折叠成一条摘要，点击可展开" data-i18n-title="s2758"><!--i18n:s2757-->简洁</button>
                             <button type="button" data-transcript-mode="full" aria-pressed="false" aria-controls="pi-transcript-content" title="逐条显示工具调用和思考；切回正文可合并折叠" data-i18n-title="s1351"><!--i18n:s1352-->完整记录</button>
                         </div>
                     </div>
@@ -603,16 +604,16 @@
                 <nav class="workspace-settings-nav" aria-label="设置分类" data-i18n-aria-label="s1507">
                     <button type="button" class="active" data-settings-tab="providers"><i class="fa-solid fa-key"></i><span><!--i18n:s1508-->供应商与模型</span></button>
                     <button type="button" data-settings-tab="media"><i class="fa-solid fa-photo-film"></i><span>模型与能力</span></button>
-                    <button type="button" id="pi-profiles-nav" data-settings-tab="profiles" hidden><i class="fa-solid fa-user-gear"></i><span>助手身份</span></button>
                     <button type="button" data-settings-tab="models"><i class="fa-solid fa-sliders"></i><span><!--i18n:s1509-->使用偏好</span></button>
                     <button type="button" id="system-prompts-nav" data-settings-tab="system-prompts" hidden><i class="fa-solid fa-file-lines"></i><span data-system-prompts-label></span></button>
                     <button type="button" id="native-settings-nav" data-settings-tab="native" hidden><i class="fa-solid fa-gear"></i><span><!--i18n:s726-->Pi 配置</span></button>
                     <button type="button" id="workspace-access-nav" data-settings-tab="access" hidden><i class="fa-solid fa-lock"></i><span><!--i18n:s1510-->访问控制</span></button>
                     <button type="button" data-settings-tab="usage"><i class="fa-solid fa-chart-column"></i><span><!--i18n:s1511-->用量统计</span></button>
-                    <button type="button" data-settings-tab="extensions"><i class="fa-solid fa-puzzle-piece"></i><span><!--i18n:s530-->扩展</span></button>
-                    <button type="button" data-settings-tab="packages"><i class="fa-solid fa-box-open"></i><span>Packages</span></button>
-                    <button type="button" data-settings-tab="skills"><i class="fa-solid fa-wand-magic-sparkles"></i><span>Skills</span></button>
                     <button type="button" data-settings-tab="updates"><i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i><span><!--i18n:s1931-->版本与更新</span></button>
+                    <div class="workspace-settings-nav-links">
+                        <button type="button" data-manage-route="profiles" hidden><i class="fa-solid fa-user-gear" aria-hidden="true"></i><span><!--i18n:s2468-->助手身份</span><i class="fa-solid fa-arrow-right workspace-settings-nav-arrow" aria-hidden="true"></i></button>
+                        <button type="button" data-manage-route="extensions"><i class="fa-solid fa-puzzle-piece" aria-hidden="true"></i><span><!--i18n:s530-->扩展</span><i class="fa-solid fa-arrow-right workspace-settings-nav-arrow" aria-hidden="true"></i></button>
+                    </div>
                 </nav>
                 <div class="workspace-settings-content">
                     <section class="workspace-settings-panel active" data-settings-panel="providers">
@@ -746,31 +747,11 @@
                         <details class="pi-usage-scope"><summary><!--i18n:s1574-->统计范围与费用说明</summary><p><!--i18n:s1575-->统计已入账的 Pi 持久会话，删除会话后仍保留用量。包含所有分支和有记录的工具／摘要用量；临时会话、侧聊、标题生成、媒体规划、模型测试及首次入账前已删除的记录不包含在内。</p><p><!--i18n:s1576-->原生复制、分叉和导入中保持 ID、时间与内容相同的记录只计一次，保留首次入账的会话归属。每日累计，支持按周和自然月查看；周从周一开始，各周期只包含所选日期范围。</p><p><!--i18n:s1577-->保留原始费用；零或缺失费用在模型 ID 精确匹配时按内置官方目录价补算，包含已知阶梯价。估算不是中转站账单，也不代表消费当日价格；无法确认的型号不猜价。缺少上报的用量仍标为未知。</p></details>
                     </section>
                     <section class="workspace-settings-panel" data-settings-panel="packages">
-                        <div class="settings-panel-header">
-                            <i class="fa-solid fa-box-open" aria-hidden="true"></i>
-                            <div><h3>Pi Packages</h3><p><!--i18n:s1578-->安装包可能执行任意代码；只安装已审查并信任的来源。</p></div>
-                            <button id="settings-refresh-resources" class="settings-secondary-button settings-header-refresh" type="button" title="刷新资源" data-i18n-title="s1579"><i class="fa-solid fa-rotate" aria-hidden="true"></i><span><!--i18n:s718-->刷新</span></button>
-                        </div>
-                        <form id="settings-package-form" class="settings-inline-form">
-                            <input id="settings-package-source" type="text" placeholder="npm:@scope/package@1.0.0 或 git:https://..." data-i18n-placeholder="s1580"><button class="settings-primary-button" type="submit"><i class="fa-solid fa-download"></i><!--i18n:s695--> 安装</button>
-                        </form>
-                        <div id="settings-package-progress" class="settings-result hidden"></div>
-                        <div id="settings-package-list" class="settings-list"><div class="pi-list-state"><!--i18n:s1581-->打开页签后读取 Packages</div></div>
-                        <div id="settings-resource-summary" class="settings-resource-summary"></div>
-                        <div id="native-packages" hidden></div>
+                        <div id="native-packages"></div>
                     </section>
 
                     <section class="workspace-settings-panel" data-settings-panel="skills">
-                        <div class="settings-panel-header">
-                            <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
-                            <div><h3>Skills</h3><p><!--i18n:s1582-->按需要启用或停用。想增加能力或修改指令，可以直接告诉 Agent。</p></div>
-                        </div>
-                        <div id="native-skills" hidden></div>
-                        <div id="settings-skills-legacy">
-                            <div class="settings-toolbar"><label class="settings-search"><i class="fa-solid fa-magnifying-glass"></i><input id="settings-skill-search" type="search" placeholder="搜索 Skill" data-i18n-placeholder="s719"></label></div>
-                            <div id="settings-skill-list" class="settings-list"><div class="pi-list-state"><!--i18n:s1583-->打开页签后读取 Skills</div></div>
-                            <div id="settings-skill-diagnostics" class="settings-diagnostics"></div>
-                        </div>
+                        <div id="native-skills"></div>
                         <details id="settings-skills-options" class="native-optional">
                             <summary><!--i18n:s775-->其他选项</summary>
                             <label class="settings-toggle-line"><span><!--i18n:s1584-->在输入框显示 /skill 命令</span><input id="settings-skill-commands" type="checkbox"></label>

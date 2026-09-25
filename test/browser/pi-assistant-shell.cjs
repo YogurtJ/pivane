@@ -416,9 +416,9 @@ async function main() {
                     assert.match(page.url(), /#\/settings\?tab=providers$/, 'direct settings route is canonical');
                     assert.equal(await page.locator('#workspace-settings-dialog').isVisible(), true);
                     await page.goto(`http://127.0.0.1:${server.address().port}/?direct=old-settings#/settings?tab=profiles`, { waitUntil: 'domcontentloaded' });
-                    await page.waitForFunction(() => document.querySelector('[data-settings-panel="providers"]')?.classList.contains('active'));
-                    assert.match(page.url(), /#\/settings\?tab=providers$/, 'legacy profile tab cannot hijack settings');
-                    assert.equal(await page.locator('#workspace-settings-title').innerText(), '工作台设置');
+                    await page.waitForFunction(() => document.querySelector('[data-settings-panel="profiles"]')?.classList.contains('active'));
+                    assert.match(page.url(), /#\/profiles$/, 'legacy profile tab redirects to the assistant profile destination');
+                    assert.equal(await page.locator('#workspace-settings-title').innerText(), '助手身份');
                 }
             }
             assert.deepEqual(errors, [], `${width}: ${errors.join(' | ')}`);

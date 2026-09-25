@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { openWorkspaceTab } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 const baseUrl = process.env.PI_SCROLL_TEST_URL || 'http://127.0.0.1:3101';
@@ -231,7 +232,7 @@ async function run(browser, size) {
     await expectBottom();
     await scrollTo(1200);
     before = await metrics();
-    await page.locator('[data-tab="media"]').click();
+    await openWorkspaceTab(page, 'media');
     await page.waitForTimeout(100);
     messages.push({ role: 'assistant', timestamp: 9000, content: [{ type: 'text', text: 'Completed while another workspace was visible.' }] });
     await settle();

@@ -17,8 +17,7 @@ app.use(express.static(path.join(root, 'public')));
 app.get('/fixture', (_req, res) => res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>:root {--text-main:#25312c;--text-soft:#5c6560;--text-muted:#64706a;--surface-1:#fff;--surface-2:#edf4ed;--line:#c9d1ca;--line-strong:#a9b7ac;--accent:#137757}body {font:16px system-ui;margin:0;padding:20px;background:#f7f9f7;color:var(--text-main)}.workspace-settings-content {max-width:1100px;margin:auto}.workspace-settings-panel {padding:12px 0}.settings-primary-button,.settings-secondary-button {padding:9px 12px;border:1px solid var(--line);background:#fff;color:var(--text-main);cursor:pointer}.settings-panel-header{display:flex;align-items:center;gap:10px}button{font:inherit}</style>
 <link rel="stylesheet" href="/pi-agent-profiles.css"><link rel="stylesheet" href="/pi-extensions.css"></head><body>
-<nav class="workspace-settings-nav"><button id="pi-profiles-nav" hidden><span></span></button><button data-settings-tab="extensions"><span>Extensions</span></button><button data-settings-tab="packages"><span>Packages</span></button><button data-settings-tab="skills"><span>Skills</span></button></nav>
-<div id="workspace-settings-dialog"><div class="workspace-settings-dialog"><h2 id="workspace-settings-title"></h2><button id="workspace-settings-close"></button><div class="workspace-settings-content"><section id="pi-profiles-panel" class="workspace-settings-panel"><div class="settings-panel-header"><i aria-hidden="true"></i><div><h3>Profiles</h3><p></p></div><button id="pi-profiles-refresh">Refresh</button></div><div id="pi-profiles-content"></div></section></div></div></div>
+<div id="workspace-settings-dialog"><div class="workspace-settings-dialog"><header class="workspace-settings-header"><h2 id="workspace-settings-title"></h2><button id="workspace-settings-close"></button></header><div class="workspace-settings-body"><nav class="workspace-settings-nav" aria-label="设置分类"></nav><div class="workspace-settings-content"><section id="pi-profiles-panel" class="workspace-settings-panel"><div class="settings-panel-header"><i aria-hidden="true"></i><div><h3>Profiles</h3><p></p></div><button id="pi-profiles-refresh">Refresh</button></div><div id="pi-profiles-content"></div></section></div></div></div></div>
 <span id="pi-session-profile" hidden></span><dl><div id="pi-meta-profile-row" hidden><dt></dt><dd id="pi-meta-profile"></dd></div></dl><div class="pi-empty-state"></div>
 <script src="/pi-agent-profiles.js"></script><script src="/pi-extensions.js"></script>
 <script>window.addEventListener('DOMContentLoaded', () => { window.fixtureCwd = '/synthetic/project'; window.PiAgentProfilesUI = PiAgentProfiles.create({ apiFetch: window.syntheticFetch, currentCwd: () => window.fixtureCwd }); if (!window.synthetic.deferCapability) window.PiAgentProfilesUI.setEnabled(true, true); PiExtensions.connect({ apiFetch: window.syntheticFetch, currentCwd: () => window.fixtureCwd }); PiExtensions.setAssistantEnabled(true); });</script></body></html>`));
@@ -215,8 +214,9 @@ async function main() {
             await page.locator('[data-profile-section="overview"]').click();
             await page.evaluate(() => synthetic.skillRelease());
             assert.equal(await page.locator('.pi-profile-skill-text').count(), 0);
-            await page.evaluate(() => PiExtensions.setView('extensions'));
-            assert.equal(await page.locator('.workspace-settings-nav [data-settings-tab="extensions"]').isVisible(), true);
+            await page.evaluate(() => PiExtensions.setView('extensions', 'extensions'));
+            assert.equal(await page.locator('#extensions-nav').isVisible(), true);
+            assert.equal(await page.locator('#extensions-nav [data-extensions-tab="extensions"]').getAttribute('aria-current'), 'page');
             await page.locator('.extensions-card').first().waitFor();
             assert.equal(await page.locator('#extensions-learned').count(), 0);
             const overflow = await page.evaluate(() => [...document.querySelectorAll('body,#pi-profiles-content,.pi-profiles-layout,.pi-profile-detail,#extensions-featured')].filter(el => el.scrollWidth > el.clientWidth + 2).map(el => `${el.tagName}.${el.className}:${el.scrollWidth}/${el.clientWidth}`));

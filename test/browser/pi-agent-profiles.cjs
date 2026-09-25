@@ -94,7 +94,7 @@ async function run(browser, base, width, supported = true) {
     assert.equal(await page.locator('#pi-new-profile-session').isVisible(), supported);
     if (!supported) {
         await page.locator('#workspace-settings-toggle').click();
-        assert.equal(await page.locator('#pi-profiles-nav').isVisible(), false);
+        assert.equal(await page.locator('[data-manage-route="profiles"]').isVisible(), false);
         assert.equal(await page.locator('#pi-session-profile').isVisible(), false);
         assert.deepEqual(errors, []); await context.close(); return;
     }
@@ -104,7 +104,7 @@ async function run(browser, base, width, supported = true) {
     await page.locator('.pi-attachment-chip').waitFor();
     const attachment = await page.locator('.pi-attachment-chip').innerText();
     await page.locator('#workspace-settings-toggle').click();
-    await page.locator('[data-settings-tab="profiles"]').click();
+    await page.locator('[data-manage-route="profiles"]').click();
     await page.locator('#pi-profile-default-select').waitFor();
     assert.equal(await page.locator('#pi-profile-default-select').inputValue(), '');
     await page.locator('[data-profile-action="edit"]').first().click();
@@ -149,7 +149,7 @@ async function run(browser, base, width, supported = true) {
     assert.ok(writeRelease, 'delayed profile write started');
     assert.equal(await page.locator('#pi-profiles-refresh').isDisabled(), true);
     await page.locator('[data-settings-tab="models"]').click();
-    await page.locator('[data-settings-tab="profiles"]').click();
+    await page.locator('[data-manage-route="profiles"]').click();
     writeRelease(); slowWrite = '';
     await page.waitForFunction(() => document.querySelector('#pi-profiles-status')?.textContent.includes('already saved'));
     assert.equal(await page.locator('#pi-profile-form [type=submit]').isDisabled(), true);
@@ -176,7 +176,7 @@ async function run(browser, base, width, supported = true) {
     profiles[0].description = 'New server description';
     await page.locator('[data-settings-tab="models"]').click();
     slowProfiles = false;
-    await page.locator('[data-settings-tab="profiles"]').click();
+    await page.locator('[data-manage-route="profiles"]').click();
     await page.waitForFunction(() => document.querySelector('#pi-profile-default-select'));
     profilesRelease();
     await page.waitForTimeout(50);
@@ -184,7 +184,7 @@ async function run(browser, base, width, supported = true) {
     await page.locator('#pi-profile-add').click();
     await page.locator('#pi-profile-form [name=name]').fill('Unsaved');
     await page.locator('[data-settings-tab="models"]').click();
-    await page.locator('[data-settings-tab="profiles"]').click();
+    await page.locator('[data-manage-route="profiles"]').click();
     await page.locator('#pi-profile-form [name=name]').waitFor();
     assert.equal(await page.locator('#pi-profile-form [name=name]').inputValue(), 'Unsaved');
     page.once('dialog', dialog => dialog.accept());
@@ -303,7 +303,7 @@ async function run(browser, base, width, supported = true) {
     assert.equal(await page.locator('#pi-input').inputValue(), 'Original draft');
     assert.equal(await page.locator('.pi-attachment-chip').innerText(), attachment);
     await page.locator('#workspace-settings-toggle').click();
-    await page.locator('[data-settings-tab="profiles"]').click();
+    await page.locator('[data-manage-route="profiles"]').click();
     await page.locator('#pi-profile-default-select').waitFor();
     await page.locator('#pi-profile-default-select').selectOption('');
     await page.locator('#pi-profile-default-save').click();
@@ -335,7 +335,7 @@ async function run(browser, base, width, supported = true) {
     await page.evaluate(project => { localStorage.setItem('pi.web.cwd', project); window.PiAgentProfilesUI.projectChanged(); }, otherProject);
     await page.evaluate(project => { localStorage.setItem('pi.web.cwd', project); window.PiAgentProfilesUI.projectChanged(); }, cwd);
     await page.locator('[data-settings-tab="models"]').click();
-    await page.locator('[data-settings-tab="profiles"]').click();
+    await page.locator('[data-manage-route="profiles"]').click();
     writeRelease(); slowWrite = '';
     await page.waitForFunction(() => document.querySelector('#pi-profile-default-select')?.value === '' && !document.querySelector('#pi-profiles-status')?.textContent.includes('Loading'));
     assert.equal(defaultProfileId, null);
@@ -372,7 +372,7 @@ async function run(browser, base, width, supported = true) {
     assert.match(await page.locator('#pi-profile-choice-state').innerText(), /default is unavailable/);
     await page.locator('#pi-profile-choice-cancel').click();
     await page.locator('#workspace-settings-toggle').click();
-    await page.locator('[data-settings-tab="profiles"]').click();
+    await page.locator('[data-manage-route="profiles"]').click();
     await page.locator('#pi-profile-add').click();
     await page.locator('#pi-profile-form [name=name]').fill('Uncertain create');
     failAfterWrite = true;

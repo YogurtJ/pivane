@@ -74,7 +74,7 @@ async function run(browser, base, width, locale, noProject = false) {
     if (width < 900) {
         assert.equal(await page.locator('#workspace-extensions-toggle').isVisible(), false);
         await page.locator('#workspace-settings-toggle').click();
-        await page.locator('.workspace-settings-nav [data-settings-tab="extensions"]').click();
+        await page.locator('[data-manage-route="extensions"]').click();
     } else await page.locator('#workspace-extensions-toggle').click();
     await page.locator('.extensions-view').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#extensions-learned').count(), 0, 'learned skills belong to assistant profiles');
@@ -109,7 +109,8 @@ async function run(browser, base, width, locale, noProject = false) {
         assert.equal(await page.locator('#extension-pi-mcp-adapter [data-installation="missing"]').count(), 1, 'late project inventory cannot replace global status');
         projectTrusted = false;
     }
-    assert.equal(await page.locator('.workspace-settings-nav button:visible').count(), 3);
+    assert.equal(await page.locator('#extensions-nav [data-extensions-tab]').count(), 3);
+    assert.equal(await page.locator('.workspace-settings-nav button:visible').count(), 0, 'settings tabs stay out of the extension centre');
     await page.locator('#extensions-search').fill('injaneity');
     assert.equal(await page.locator('.extensions-card').count(), 1);
     await page.locator('.extensions-card summary').click();
@@ -149,7 +150,7 @@ async function run(browser, base, width, locale, noProject = false) {
     if (!noProject) assert.equal(await page.locator('#pi-input').inputValue(), 'Discovery draft');
     await page.locator('.extensions-explore-choices button').first().click();
     assert.equal(await page.locator('.extensions-card').count(), 6, 'home shortcuts clear stale search');
-    await page.locator('[data-settings-tab="skills"]').click();
+    await page.locator('#extensions-nav [data-extensions-tab="skills"]').click();
     await page.locator('#native-skills .native-assistant-entry').waitFor({ state: 'visible' });
     await page.locator('#workspace-settings-close').click();
     assert.equal(writes.length, 0);
@@ -162,46 +163,41 @@ async function run(browser, base, width, locale, noProject = false) {
     };
     const settings = async tab => {
         await page.locator('#workspace-settings-toggle').click();
-        await page.locator(`[data-settings-tab="${tab}"]`).click();
+        await page.locator('[data-manage-route="extensions"]').click();
+        await page.locator(`#extensions-nav [data-extensions-tab="${tab}"]`).click();
         if (tab === 'packages' && !inspected && !failResources) {
             inspected = true;
-            const advanced = page.locator('.native-resources-advanced');
-            await advanced.waitFor({ state: 'visible' });
-            assert.equal(await advanced.evaluate(e => e.open), false);
-            assert.equal(await page.locator('.native-package-install-card').evaluate(e => e.open), false);
-            assert.equal(await page.locator('.native-resource-list').isVisible(), false);
-            assert.equal(await page.locator('.native-package-main > strong').nth(1).textContent(), '@example/document-tools');
+            assert.equal(await page.locator('#pi-package-install-dialog').count(), 0);
+            assert.equal(await page.locator('.native-resource-list').isVisible(), true);
+            assert.equal(await page.locator('.native-item-title > strong').nth(1).textContent(), '@example/document-tools');
             await page.screenshot({ path: `/tmp/pivane-packages-simple-${locale}-${width}.png` });
-            await page.locator('.native-package-help .native-help-trigger').first().click();
+            await page.locator('.native-item-actions .native-help-trigger').first().click();
             await page.locator('.native-item-help:popover-open').waitFor();
             const box = await page.locator('.native-item-help:popover-open').boundingBox();
             assert.ok(box.x >= 0 && box.x + box.width <= width + 1);
             await page.keyboard.press('Escape');
             assert.equal(await page.locator('.native-item-help:popover-open').count(), 0);
-            await page.locator('.native-package-help .native-help-trigger').first().click();
+            await page.locator('.native-item-actions .native-help-trigger').first().click();
             await page.locator('.native-item-help:popover-open [data-help-purpose="explain"]').click();
             const draft = await page.locator('#pi-extension-assistant-need').inputValue();
             assert.match(draft, /npm:fixture/); assert.match(draft, /"resourceScope": "user"/);
             assert.match(draft, locale === 'en' ? /read-only/ : /只读/);
             await page.keyboard.press('Escape');
-            await advanced.locator(':scope > summary').click();
             assert.equal(await page.locator('[data-resource-id="fixture"] strong').textContent(), 'fixture');
             assert.equal(await page.locator('[data-resource-id="second"] strong').textContent(), 'spreadsheet-helper');
             assert.equal(await page.locator('[data-resource-id="extension"] strong').textContent(), 'document-tools');
             await page.locator('.native-package-search input').fill('spreadsheet-helper');
-            assert.equal(await page.locator('.native-resource-row').count(), 1);
+            assert.equal(await page.locator('.native-resource-list .native-item-row').count(), 1);
             await page.locator('.native-package-search input').fill('');
-            const overflow = await advanced.evaluate(root => [...root.querySelectorAll('div, input, select, code')].filter(e => e.getClientRects().length && e.clientWidth && e.scrollWidth > e.clientWidth + 1).map(e => e.className));
+            const overflow = await page.locator('#native-packages').evaluate(root => [...root.querySelectorAll('div, input, select, code')].filter(e => e.getClientRects().length && e.clientWidth && e.scrollWidth > e.clientWidth + 1).map(e => e.className));
             assert.deepEqual(overflow, []);
             await page.screenshot({ path: `/tmp/pivane-packages-advanced-${locale}-${width}.png` });
-            await advanced.locator(':scope > summary').click();
             await page.locator('#native-resource-scope').selectOption('global');
-            await page.locator('.native-package-actions [data-package-action="update"]').first().waitFor({ state: 'visible' });
-            await page.locator('#native-packages .native-packages-header').scrollIntoViewIfNeeded();
+            await page.locator('.native-package-list .native-item-menu').first().locator('> summary').click();
+            await page.locator('.native-package-list .native-item-menu button').first().waitFor({ state: 'visible' });
+            await page.locator('#native-packages .settings-panel-header').scrollIntoViewIfNeeded();
             await page.screenshot({ path: `/tmp/pivane-packages-global-${locale}-${width}.png` });
-            await page.locator('.native-package-help .native-help-trigger').first().click();
-            await page.locator('.native-item-help:popover-open').waitFor();
-            await page.screenshot({ path: `/tmp/pivane-packages-help-${locale}-${width}.png` });
+            await page.locator('.native-package-list .native-item-menu[open] > summary').click();
             await page.keyboard.press('Escape');
         }
         await page.locator(`#native-${tab} .native-assistant-entry button`).click();
