@@ -14,14 +14,17 @@ function assertKnowledgeDocumentWrite(root, target, next) {
         conflict('Knowledge publication needs repair before editing the document');
     const file = safeFile(path.join(root, '.pivane-knowledge.json'));
     if (!file) return;
-    if (Buffer.byteLength(file.text) > 2 * 1024 * 1024) conflict('Invalid knowledge metadata');
+    if (Buffer.byteLength(file.text) > 8 * 1024 * 1024) conflict('Invalid knowledge metadata');
     let data;
     try { data = JSON.parse(file.text); } catch { conflict('Invalid knowledge metadata'); }
-    if (data?.version !== 1 || !data.records || !data.tombstones
-        || typeof data.records !== 'object' || typeof data.tombstones !== 'object') conflict('Invalid knowledge metadata');
+    if (!data || ![1, 2].includes(data.version) || !data.records || !data.tombstones
+        || typeof data.records !== 'object' || typeof data.tombstones !== 'object' && !Array.isArray(data.tombstones))
+        conflict('Invalid knowledge metadata');
+    // Version 2 stores tombstones as a compact hash array; version 1 used a map.
+    const tombstones = new Set(Array.isArray(data.tombstones) ? data.tombstones : Object.keys(data.tombstones));
     const entries = next ? next.split('\n§\n') : [];
     const active = new Set(entries);
-    for (const content of entries) if (Object.hasOwn(data.tombstones, hash(content)))
+    for (const content of entries) if (tombstones.has(hash(content)))
         conflict('A deleted or replaced memory requires explicit restore');
     for (const item of Object.values(data.records)) {
         if (item?.kind !== 'memory' || item.scope !== 'profile' || item.target !== target) continue;

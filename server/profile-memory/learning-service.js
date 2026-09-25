@@ -18,6 +18,11 @@ const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
 const MAX_JOBS = 64;
 const MAX_CURSORS = 128;
 const MAX_SEEN_PER_CURSOR = 8;
+// Action journal: client request IDs stay replayable for a week, then their
+// slot is retired to a spent hash list that refuses re-execution forever.
+const MAX_ACTIONS = 256;
+const MAX_ACTION_SPENT = 1024;
+const ACTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const boundedSource = file => {
     try {
         const stat = fs.lstatSync(file);
@@ -69,7 +74,19 @@ function settingsPatch(changes) {
     if (changes.maxTokensPerDay !== undefined && changes.maxTokensPerDay < 6000) fail('Daily token limit is too low');
     return changes;
 }
-const empty = () => ({ version: 1, revision: 0, settings: { ...DEFAULTS }, cursors: {}, jobs: [], recentRuns: [], actions: {} });
+const empty = () => ({ version: 1, revision: 0, settings: { ...DEFAULTS }, cursors: {}, jobs: [], recentRuns: [], actions: {}, spent: [] });
+const actionExpired = entry => Date.now() - Date.parse(entry.at) > ACTION_TTL_MS;
+const activeActionCount = state => Object.values(state.actions).filter(entry => !actionExpired(entry)).length;
+function retireAction(state, requestId) {
+    delete state.actions[requestId];
+    const value = hash(requestId);
+    if (state.spent.includes(value)) return;
+    if (state.spent.length >= MAX_ACTION_SPENT) fail('Learning action journal is full; reviewed migration required', 409);
+    state.spent.push(value);
+}
+function expireActions(state) {
+    for (const requestId of Object.keys(state.actions)) if (actionExpired(state.actions[requestId])) retireAction(state, requestId);
+}
 const publicJob = ({ id, reason, status, createdAt, startedAt, endedAt, model, usage, costStatus, receiptIds, error }) =>
     ({ id, reason, status, createdAt, ...(startedAt ? { startedAt } : {}), ...(endedAt ? { endedAt } : {}),
         ...(model ? { model } : {}), ...(usage ? { usage } : {}), ...(costStatus ? { costStatus } : {}),
@@ -122,6 +139,16 @@ class ProfileLearningService {
         if (state.version !== 1 || !Number.isSafeInteger(state.revision) || !Array.isArray(state.jobs)
             || !Array.isArray(state.recentRuns) || !state.settings || !state.cursors || !state.actions
             || state.jobs.length > MAX_JOBS || Object.keys(state.cursors).length > MAX_CURSORS) fail('Invalid learning state', 503);
+        // Version 1 action values were bare input hashes; they migrate to
+        // {h, at} on the next write and keep their dedupe meaning.
+        if (!Array.isArray(state.spent)) state.spent = [];
+        for (const [requestId, entry] of Object.entries(state.actions)) {
+            if (typeof entry === 'string') state.actions[requestId] = { h: entry, at: new Date().toISOString() };
+            else if (!entry || typeof entry !== 'object' || typeof entry.h !== 'string' || typeof entry.at !== 'string')
+                fail('Invalid learning state', 503);
+        }
+        if (state.spent.some(value => typeof value !== 'string') || state.spent.length > MAX_ACTION_SPENT
+            || Object.keys(state.actions).length > MAX_ACTIONS) fail('Invalid learning state', 503);
         return state;
     }
     write(file, state) {
@@ -185,16 +212,16 @@ class ProfileLearningService {
                 skillDrafts: installed && canDraft && settings.enabled && (settings.reviewEnabled || settings.extractionEnabled),
                 modelRouting: models, maxSourceBytes: MAX_SOURCE_BYTES, maxInputChars: 2400, maxOutputTokens: 320, reservedTokensPerRun: 6000,
                 settingsWrite: true,
-                actions: ['save', ...(installed && settings.enabled && Object.keys(state.actions).length < 128
+                actions: ['save', ...(installed && settings.enabled && activeActionCount(state) < MAX_ACTIONS
                     && state.jobs.length < MAX_JOBS ? ['review-now'] : []),
-                    ...(Object.keys(state.actions).length < 128 ? ['cancel'] : [])],
+                    ...(activeActionCount(state) < MAX_ACTIONS ? ['cancel'] : [])],
                 capacity: { queued: state.jobs.length, queueLimit: MAX_JOBS,
                     cursorSlotsRemaining: Math.max(0, MAX_CURSORS - Object.keys(state.cursors).length),
-                    actionSlotsRemaining: Math.max(0, 128 - Object.keys(state.actions).length),
+                    actionSlotsRemaining: Math.max(0, MAX_ACTIONS - activeActionCount(state)),
                     blockedBranches: Object.values(state.cursors).filter(cursor => cursor?.blocked === 'branch-diverged').length },
                 limits: { maxRunsPerDay: { min: 1, max: 20 }, maxTokensPerDay: { min: 6000, max: 200000 },
                     periodicReviewMinutes: { min: 0, max: 10080 }, maxJobs: MAX_JOBS, maxCursors: MAX_CURSORS,
-                    dedupeWindowPairs: MAX_SEEN_PER_CURSOR },
+                    maxActions: MAX_ACTIONS, actionValidityDays: 7, dedupeWindowPairs: MAX_SEEN_PER_CURSOR },
                 cost: 'provider-reported-or-unknown', budgetDay: 'UTC', providerValidatedOnSave: true,
                 activation: 'next-turn-or-reload-required' } };
     }
@@ -228,11 +255,20 @@ class ProfileLearningService {
         const key = hash(JSON.stringify(input));
         await this.change(id, state => {
             if (this.closed) fail('Learning service is stopping', 503);
-            if (Object.hasOwn(state.actions, input.requestId)) {
-                if (state.actions[input.requestId] !== key) fail('Request ID reused', 409);
+            const entry = state.actions[input.requestId];
+            if (entry) {
+                // Client action IDs carry an explicit validity window. Reuse after
+                // expiry is refused outright; the action is never re-executed.
+                if (actionExpired(entry)) {
+                    retireAction(state, input.requestId);
+                    fail('Request ID expired; re-execution is not allowed', 409);
+                }
+                if (entry.h !== key) fail('Request ID reused', 409);
                 return false;
             }
-            if (Object.keys(state.actions).length >= 128) fail('Learning action journal is full; reviewed migration required', 409);
+            if (state.spent.includes(hash(input.requestId))) fail('Request ID expired; re-execution is not allowed', 409);
+            expireActions(state);
+            if (activeActionCount(state) >= MAX_ACTIONS) fail('Learning action journal is full; reviewed migration required', 409);
             if (input.action === 'cancel') {
                 const job = state.jobs.find(item => item.id === input.jobId);
                 if (!job) fail('Job not found', 404);
@@ -247,7 +283,7 @@ class ProfileLearningService {
                     .map(key => [key, source[key]])), id: hash(`${id}:${input.requestId}`), reason: 'manual', status: 'queued',
                     createdAt: new Date().toISOString(), requestId: input.requestId });
             }
-            state.actions[input.requestId] = key;
+            state.actions[input.requestId] = { h: key, at: new Date().toISOString() };
         });
         if (input.action === 'cancel') this.active.get(input.jobId)?.abort();
         this.wake(id);
@@ -537,9 +573,14 @@ class ProfileLearningService {
             status = result.receipt?.status === 'saved' ? 'completed' : result.receipt?.status || 'uncertain';
             error = status === 'completed' ? undefined : 'knowledge-write-unconfirmed';
         } catch (failure) {
-            status = commitStarted ? failure?.status === 409 ? 'conflict' : 'uncertain'
+            // 4xx rejections from the trusted write (invalid input, profile
+            // state, or a 413 source-proof limit) are deterministic refusals,
+            // not uncertain publications.
+            const rejected = Number.isInteger(failure?.status) && failure.status >= 400 && failure.status < 500 && failure.status !== 409;
+            status = commitStarted ? failure?.status === 409 ? 'conflict' : rejected ? 'skipped' : 'uncertain'
                 : signal.aborted ? 'cancelled' : 'failed';
-            error = commitStarted ? 'knowledge-write-unconfirmed' : signal.aborted ? 'interrupted' : 'learning-failed';
+            error = commitStarted ? rejected ? 'knowledge-rejected' : 'knowledge-write-unconfirmed'
+                : signal.aborted ? 'interrupted' : 'learning-failed';
         }
         finally {
             try {

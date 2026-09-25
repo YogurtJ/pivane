@@ -440,3 +440,37 @@ test('classifier recognizes explicit corrections and preferences but rejects loc
     assert.equal(preference('以后默认使用新流程。'), true);
     assert.equal(temporary('仅本次按这个步骤，不要记住'), true);
 });
+
+test('expired learning action request IDs refuse re-execution instead of filling the journal', async t => {
+    const f = await fixture(t); await f.enable({ reviewEnabled: true });
+    f.append('记住以后稳定采用合成流程。');
+    await f.service.register(f.session);
+    await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1);
+    const input = { requestId: 'expiring-review-001', action: 'review-now' };
+    const first = await f.service.action(profileId, input);
+    assert.equal([...first.jobs, ...first.recentRuns].filter(job => job.reason === 'manual').length >= 1, true);
+    await f.service.change(profileId, state => {
+        state.actions[input.requestId].at = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    });
+    await assert.rejects(f.service.action(profileId, input), /expired/);
+    // The expired ID is remembered, so a changed payload cannot re-execute either.
+    await assert.rejects(f.service.action(profileId, { ...input, action: 'cancel', jobId: 'f'.repeat(64) }), /expired/);
+    const after = await f.service.snapshot(profileId);
+    assert.equal([...after.jobs, ...after.recentRuns].filter(job => job.reason === 'manual').length, 1);
+    assert.equal(typeof after.capabilities.capacity.actionSlotsRemaining, 'number');
+    const later = await f.service.action(profileId, { requestId: 'expiring-review-002', action: 'review-now' });
+    assert.equal([...later.jobs, ...later.recentRuns].filter(job => job.reason === 'manual').length >= 2, true);
+});
+
+test('a deterministic source-proof rejection is recorded as skipped, not uncertain', async t => {
+    const f = await fixture(t); await f.enable({ reviewEnabled: true });
+    f.knowledge.mutateFromNative = async () => {
+        throw Object.assign(new Error('session exceeds source proof limit'), { status: 413 });
+    };
+    f.append('记住以后稳定采用合成流程。');
+    await f.service.register(f.session);
+    await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1);
+    const run = (await f.service.snapshot(profileId)).recentRuns[0];
+    assert.equal(run.status, 'skipped');
+    assert.equal(run.error, 'knowledge-rejected');
+});
