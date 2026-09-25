@@ -172,7 +172,8 @@ adapter `createKnowledgeMemoryTools(service, profileId)` in
 `server/profile-memory/extension.ts`) maps native memory add/replace/remove and
 skill create/update/edit/patch/delete writes into this entry. Its native source
 must come from a verified worker and a real native entry, and it returns `null`
-for unhandled read-only skill actions. Structured skill updates locate exactly
+for read-only skill actions, so upstream `view` lists and reads profile-owned skills. Upstream
+project IDs `project:<projectName>:<slug>` resolve by slug inside the verified cwd scope only. Structured skill updates locate exactly
 one active skill by `skill_id`, refuse ambiguous matches and unmanaged
 frontmatter, patch only a uniquely matching `##` section, and keep the
 `itemRevision` CAS between the located snapshot row and the service mutation.

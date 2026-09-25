@@ -97,6 +97,11 @@ test('isolated Pi 0.87.1 upstream components enforce profile index, recall, skil
         procedure_steps: ['Check input'], verification_steps: ['Check output'] }, undefined, undefined, alpha.ctx);
     assert.equal(skill.details.success, true, JSON.stringify(skill.details));
     assert.ok(fs.existsSync(path.join(alpha.root, 'skills', 'synthetic-proof', 'SKILL.md')));
+    const listed = await alpha.pi.tools.get('skill_manage').execute('call', { action: 'view' }, undefined, undefined, alpha.ctx);
+    assert.ok(JSON.stringify(listed.details).includes('synthetic-proof'), 'view lists profile-owned skills');
+    const viewed = await alpha.pi.tools.get('skill_manage').execute('call', { action: 'view', skill_id: 'global:synthetic-proof' },
+        undefined, undefined, alpha.ctx);
+    assert.equal(viewed.details.success, true, JSON.stringify(viewed.details));
     const sharedSkill = path.join(agent, 'skills', 'shared-synthetic', 'SKILL.md');
     fs.mkdirSync(path.dirname(sharedSkill), { recursive: true });
     fs.writeFileSync(sharedSkill, '# Shared synthetic skill\n');

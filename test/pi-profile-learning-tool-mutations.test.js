@@ -134,3 +134,26 @@ test('uncertain knowledge outcomes keep throwing instead of reporting a failed w
     await assert.rejects(createKnowledgeMemoryTools(service, profileId)('memory_add',
         { target: 'memory', content: 'maybe' }, undefined, () => true, context), /uncertain/);
 });
+
+test('upstream project skill IDs resolve by slug inside the verified cwd scope only', async () => {
+    const calls = [];
+    const cwdKey = require('node:crypto').createHash('sha256').update('/tmp/synthetic').digest('hex');
+    const rows = [{ id: 'e'.repeat(64), revision: 'd'.repeat(64), kind: 'skill', scope: 'project', projectKey: cwdKey,
+        name: 'release-app', state: 'active' },
+    { id: 'f'.repeat(64), revision: 'd'.repeat(64), kind: 'skill', scope: 'project', projectKey: '0'.repeat(64),
+        name: 'release-app', state: 'active' }];
+    const service = { snapshot: async () => ({ status: 'ready', revision, capabilities: { skill: true }, items: rows, hasMore: false }),
+        mutateFromNative: async (_id, input) => { calls.push(input); return { receipt: { id: 'r', status: 'saved' } }; } };
+    const ctx = { cwd: '/tmp/synthetic', sessionManager: { getSessionFile: () => '/tmp/synthetic.jsonl',
+        getSessionId: () => 'session-1', getBranch: () => [{ id: 'entry-1' }] } };
+    const execute = createKnowledgeMemoryTools(service, profileId);
+    const removed = await execute('skill_manage', { action: 'delete', skill_id: 'project:my-repo:release-app' }, undefined, () => true, ctx);
+    assert.equal(removed.details.success, true);
+    assert.deepEqual([calls[0].itemId, calls[0].scope, calls[0].projectKey], [rows[0].id, 'project', cwdKey]);
+    for (const skill_id of ['global:my-repo:release-app', 'project:a:b:release-app', 'project:bad name:release-app']) {
+        const rejected = await execute('skill_manage', { action: 'delete', skill_id }, undefined, () => true, ctx);
+        assert.equal(rejected.details.success, false, skill_id);
+        assert.match(rejected.details.error, /Invalid skill identity/);
+    }
+    assert.equal(calls.length, 1);
+});

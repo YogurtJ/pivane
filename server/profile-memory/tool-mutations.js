@@ -157,9 +157,12 @@ function createKnowledgeMemoryTools(service, profileId) {
             row = matches[0];
         }
         if (skill && args.action !== 'create') {
-            if (typeof args.skill_id !== 'string' || !/^(global|project):[a-z][a-z0-9-]{0,63}$/.test(args.skill_id))
-                throw reject('Invalid skill identity');
-            const skillName = args.skill_id.split(':')[1];
+            // Upstream lists project skills as `project:<projectName>:<slug>`; the project part is
+            // informational only, since the physical scope always comes from the verified native cwd.
+            const identity = typeof args.skill_id === 'string'
+                && /^(?:global|project(?::[^:\s]{0,200})?):([a-z][a-z0-9-]{0,63})$/.exec(args.skill_id);
+            if (!identity) throw reject('Invalid skill identity');
+            const skillName = identity[1];
             const matches = rows.filter(item => item.scope === scope && (!project || item.projectKey === projectKey)
                 && item.name === skillName && item.state === 'active' && !item.readOnly);
             if (matches.length !== 1) throw reject('Skill identity is missing or ambiguous', 409);
