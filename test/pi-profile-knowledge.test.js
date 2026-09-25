@@ -350,7 +350,11 @@ test('post-publication SQLite failure retains a repairable memory pending receip
     const repaired = await service.mutate(id, input);
     assert.equal(repaired.receipt.indexStatus, 'ready');
     assert.equal((await service.snapshot(id)).status, 'ready');
-    assert.equal((await service.snapshot(id, { query: 'Second fact' })).items.filter(row => row.content === 'Second fact').length, 2);
+    // The repaired search-index row exists, and the listing shows the managed entry once.
+    const check = new Database(path.join(root, 'sessions.db'), { readonly: true });
+    assert.equal(check.prepare('SELECT count(*) AS n FROM memories WHERE content = ?').get('Second fact').n, 1);
+    check.close();
+    assert.equal((await service.snapshot(id, { query: 'Second fact' })).items.filter(row => row.content === 'Second fact').length, 1);
 });
 
 test('full-document editor cannot revive a tombstone or overwrite a managed fact', { skip: !bundle }, async t => {
