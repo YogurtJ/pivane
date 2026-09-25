@@ -123,7 +123,9 @@ own a second store. GET pages contain at most 50 entries (memory previews up to
 bounded to 65,536 characters and marks truncated legacy entries read-only.
 `offset` is a canonical decimal integer from 0 to 100000 (no leading zeros).
 `capabilities.operations` lists supported commands, and `memory`/`skill` flags
-specify which kind is writable. `projectWrites:false` applies to HTTP; only a
+specify which kind is writable. The additive `capabilities.journal` object
+reports live receipt/request/tombstone counts, their windows and real limits.
+`projectWrites:false` applies to HTTP; only a
 verified native source can write the physical cwd scope. No logical assistant
 project isolation is claimed. Installed Pi skills are never writable.
 
@@ -134,7 +136,9 @@ Skill names are lowercase slugs of at most 64 characters. Updates and state
 changes require `itemId` and `itemRevision`; undo requires `receiptId` and
 current snapshot revision, not item identity. The receipt reports saved state,
 index readiness, activation timing and an undo token; it does not claim a
-running worker has reloaded. A deleted/replaced memory leaves a tombstone, so
+running worker has reloaded. Undo is only offered while the receipt stays
+inside the active journal window and the target revision is unchanged;
+receipts compacted into the archive report `undoable:false`. A deleted/replaced memory leaves a tombstone, so
 an automatic or repeated create cannot silently revive it. The older whole-document
 PUT checks the same private ledger under its existing mutation lock: it cannot
 remove managed facts or reintroduce tombstoned ones, while unrelated legacy
@@ -178,12 +182,31 @@ writer. An uncertain publication returns an error and `snapshot.status=pending`
 until a retry with the identical requestId and input verifies whether the
 file is the expected before or after revision. After publication, that retry
 repairs indexing/metadata; before publication, it safely retries the write.
-A different request cannot pass an unresolved marker. All 200 request IDs
-remain reserved indefinitely within the bounded journal, including after
-retry. Once full, new mutations are refused with `request-journal-full` in
-capabilities; old requests may still resolve. Recovery/archival requires an
-explicit reviewed migration, not silent ID expiration. A saved document is
-not evidence of successful indexing or activation in an already-running worker.
+A different request cannot pass an unresolved marker. The journal is stored
+as version 2: a monotonic `sequence` feeds the hash revision, so receipt
+compaction never invalidates client revisions. At most 200 recent receipts
+stay active; older receipts are compacted to digest-only archive entries that
+keep their identity, request ID and status but report `undoable:false`. Every
+request ID keeps a minimal idempotent record. Client request IDs have an
+explicit 7-day validity: within it a retry replays the same receipt, after it
+the same ID is refused as expired (`Request ID expired`) and is never
+re-executed. Server-generated IDs (`tool-*`, `learning-*`, reachable only
+through the verified native path) stay replayable while retained and are
+compacted oldest-first. Retired IDs are remembered in a spent hash list, so
+re-execution stays refused even after compaction. Deleted or replaced memory
+content keeps a long-lived tombstone in a compact hash list (32,768 entries)
+and per-item undo history is bounded to 320 entries; when a real limit is
+reached the service refuses the write with an explicit journal-full error
+instead of silently shedding identity. Version 1 metadata still reads with
+the same revision, idempotency and tombstone semantics and upgrades to
+version 2 atomically on the first write; writing continues past the old
+200-receipt cap without any reviewed migration. The learning action journal
+follows the same policy: client action request IDs are valid for 7 days,
+replays inside the window are idempotent, expired reuse is refused without
+re-running the action, and retired IDs stay remembered in a spent hash list;
+learning job IDs are server-generated and never collide with client request
+IDs, and the state file reports its real `maxActions`/`actionValidityDays`
+limits. A saved document is not evidence of successful indexing or activation in an already-running worker.
 
 ## Auto-learning
 
@@ -209,7 +232,9 @@ that lock, releases it for the provider call, then reacquires it to reload, comp
 revision/content and perform the write. A stale proposal is skipped; a busy or
 abandoned lock fails closed and requires operator reconciliation rather than unsafe
 lock stealing. Abort, unavailable model, malformed proposal, conflicting state
-and write uncertainty record non-success. This is not a
+and write uncertainty record non-success; deterministic trusted-write
+refusals (including the 413 source-proof limit) are recorded as
+skipped/knowledge-rejected, never as uncertain publication. This is not a
 mastery/progress inference engine. Native custom status entries are operational
 records, not additional chat logs. Provider cancellation behavior must be
 verified for each selected provider before real activation.
