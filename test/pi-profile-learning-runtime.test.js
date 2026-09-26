@@ -944,3 +944,38 @@ test('consolidation input size is a setting and sizes the reservation', async t 
     assert.equal(snap.capabilities.consolidation.reservedTokens, 36000);
     assert.deepEqual(snap.capabilities.limits.consolidationInputChars, { min: 4000, max: 40000 });
 });
+
+test('English corrections and custom trigger phrases queue immediate learning; settings validate phrases', async t => {
+    const f = await fixture(t); await f.enable({ correctionEnabled: true, reviewEnabled: false });
+    f.append('No, use the new checklist instead of the old one.');
+    await f.service.register(f.session);
+    await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1);
+    assert.equal(f.calls(), 1);
+    assert.equal(f.mutations[0].category, 'correction');
+    f.append('Nein, benutze die neue Liste.');
+    await f.service.register(f.session);
+    assert.equal((await f.service.snapshot(profileId)).jobs.length, 0, 'no built-in German rule');
+    await assert.rejects(f.enable({ triggerPhrases: { correction: ['x'.repeat(81)] } }), /Invalid learning setting/);
+    await assert.rejects(f.enable({ triggerPhrases: { unknown: [] } }), /Invalid learning setting/);
+    await f.enable({ triggerPhrases: { correction: [' Nein ', 'Nein'], preference: [], temporary: ['nur heute'] } });
+    const saved = (await f.service.snapshot(profileId)).settings.triggerPhrases;
+    assert.deepEqual(saved, { correction: ['Nein'], preference: [], temporary: ['nur heute'], ignore: [] });
+    f.append('Nur heute: nein, benutze die alte Liste.');
+    await f.service.register(f.session);
+    assert.equal((await f.service.snapshot(profileId)).jobs.length, 0, 'custom temporary phrase wins');
+    f.append('Nein, benutze ab sofort die neue Liste.');
+    await f.service.register(f.session);
+    await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 2);
+    assert.equal(f.calls(), 2);
+});
+
+test('a learned entry refused by the content scan is recorded as skipped, not uncertain', async t => {
+    const f = await fixture(t); await f.enable({ correctionEnabled: true, reviewEnabled: false });
+    f.knowledge.mutateFromNative = async () => { throw Object.assign(new Error('Content looks like a credential'), { status: 400,
+        code: 'content-blocked', details: { rule: 'openai_api_key', kind: 'secret' } }); };
+    f.append('纠正：不是旧清单而是新清单，以后都按新版。');
+    await f.service.register(f.session);
+    await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1);
+    const run = (await f.service.snapshot(profileId)).recentRuns[0];
+    assert.deepEqual({ status: run.status, error: run.error }, { status: 'skipped', error: 'content-blocked' });
+});

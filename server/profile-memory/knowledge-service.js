@@ -12,6 +12,7 @@ const { location, publish } = require('../pi-profile-documents');
 const privateFiles = require('../pi-private-files');
 const { replaceFileSync } = require('../pi-win32-native');
 const { normalizedMemory } = require('../pi-profile-registry');
+const { assertSafeKnowledgeContent } = require('./content-scan');
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
@@ -164,6 +165,7 @@ function checkedInput(input, trusted = false, session = false) {
                 || input.scope === 'project' && input.target !== undefined && input.target !== 'project') throw fail('Invalid memory fields');
         } else if (!NAME.test(input.name) || input.target !== undefined || input.category !== undefined)
             throw fail('Invalid skill fields');
+        assertSafeKnowledgeContent(input.content, input.name, input.description);
     } else if (['content', 'name', 'description', 'category', 'target'].some(key => own(input, key))) throw fail('Unexpected mutation fields');
     if (input.state !== undefined && (!trusted || op !== 'create' || input.kind !== 'skill' || input.state !== 'draft'))
         throw fail('Only verified native proposals can create a skill draft');
@@ -183,6 +185,7 @@ function checkedConsolidation(input, verifiedPath) {
     if (typeof input.content !== 'string' || !input.content.trim() || input.content.length > MAX_CONTENT || /\0|\r|\n§\n/.test(input.content))
         throw fail('Invalid knowledge content');
     if (!CATEGORY.has(input.category)) throw fail('Invalid memory fields');
+    assertSafeKnowledgeContent(input.content);
     return input;
 }
 function physical(root, data, bundle) {

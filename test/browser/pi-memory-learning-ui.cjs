@@ -12,7 +12,8 @@ for (const [url, directory] of [['marked', 'marked/lib'], ['dompurify', 'dompuri
     app.use(`/vendor/${url}`, express.static(path.join(root, 'node_modules', directory)));
 app.use(express.static(path.join(root, 'public')));
 const settings = { enabled: false, correctionEnabled: true, reviewEnabled: false, extractionEnabled: false,
-    maxRunsPerDay: 4, maxTokensPerDay: 24000, periodicReviewMinutes: 0, consolidationInputChars: 12000 };
+    maxRunsPerDay: 4, maxTokensPerDay: 24000, periodicReviewMinutes: 0, consolidationInputChars: 12000,
+    triggerPhrases: { correction: [], preference: [], temporary: [], ignore: [] } };
 app.get('/fixture', (_req, res) => res.send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="/pi-profile-knowledge.css"><link rel="stylesheet" href="/pi-chat-knowledge.css">
 <style>:root{--line:#ccc;--text-main:#222;--text-soft:#555;--text-muted:#777;--surface-1:#fff;--surface-2:#eee;--accent:#168a68}body{margin:0;font-family:Arial,sans-serif;background:#f8f8f8;color:#222}main{max-width:720px;padding:12px;margin:auto;min-width:0}button{cursor:pointer}section{min-width:0}#pi-transcript-content{display:grid;gap:6px;padding:8px 0}</style></head><body><main><section id="pi-profiles-memory"></section><div id="pi-chat-knowledge"></div><div id="pi-transcript-content"></div></main>
@@ -75,7 +76,7 @@ async function runFixture(browser, base, width, locale) {
         usage: { memory: { chars: 5000, limit: 16000 }, user: { chars: 7000, limit: 8000 } },
         learningRevision: 1, settings: structuredClone(settings), jobs: [], recentRuns: [],
         health: { state: 'needs-model', missingModels: ['memory-correction', 'memory-extraction'], lastFailure: null, today: { runs: 0, maxRuns: 4, reservedTokens: 0, maxTokens: 24000 } },
-        legacy: null, rejectMemoryFull: false, hintConflict: false,
+        legacy: null, rejectMemoryFull: false, rejectBlocked: false, hintConflict: false, learningPuts: [],
         actions: ['save', 'enable', 'adopt-legacy', 'dismiss-legacy', 'cancel'] };
     const receipts = [
         { id: 'receipt-learning', requestId: 'learning-1', kind: 'memory', operation: 'create', status: 'saved', origin: 'learning', reason: 'extraction',
@@ -102,6 +103,11 @@ async function runFixture(browser, base, width, locale) {
             usage: state.usage, capabilities: { memory: true, skill: true, projectWrites: false, operations: ['create', 'update', 'delete', 'undo'], maxContentLength: 65536 } });
         if (p.endsWith('/knowledge') && req.method() === 'GET') return fulfill(snapshot());
         if (p.endsWith('/learning') && req.method() === 'GET') return fulfill(learning());
+        if (p.endsWith('/learning') && req.method() === 'PUT' && state.learningPuts) {
+            const input = req.postDataJSON(); state.learningPuts.push(input);
+            state.settings = { ...state.settings, ...input.changes }; state.learningRevision++;
+            return fulfill(learning());
+        }
         if (p.endsWith('/learning/actions')) {
             const input = req.postDataJSON();
             if (input.action === 'enable') {
@@ -115,6 +121,8 @@ async function runFixture(browser, base, width, locale) {
         if (p.endsWith('/knowledge/mutations')) {
             const input = req.postDataJSON();
             if (state.hintConflict) { state.hintConflict = false; return fulfill({ error: 'Conflict' }, 409); }
+            if (state.rejectBlocked) { state.rejectBlocked = false; return fulfill({ error: 'Content looks like a credential or secret and cannot be saved to memory or skills',
+                code: 'content-blocked', details: { rule: 'github_token', kind: 'secret' } }, 400); }
             if (state.rejectMemoryFull) { state.rejectMemoryFull = false; return fulfill({ error: 'Memory is full', code: 'memory-full', details: { target: 'memory', chars: 16000, limit: 16000, needed: 16120 } }, 409); }
             return fulfill({ version: 1, status: 'saved', revision: hash('b'), receipt: { id: 'mutated', requestId: input.requestId,
                 kind: input.kind, operation: input.operation, status: 'saved', undoable: false, source: { sessionId: 'thread-one', entryId: 'entry-user-1' } } });
@@ -156,6 +164,24 @@ async function runFixture(browser, base, width, locale) {
     await page.locator('.pi-knowledge-editor button[type=submit]').click();
     await page.waitForFunction(() => Boolean(document.querySelector('.pi-usage-bar.pi-usage-full')));
     assert.ok((await text(managerStatus)).includes(say('记忆已满', 'Memory is full')));
+    // A scanned-out credential is explained without echoing the content, and the draft stays.
+    state.rejectBlocked = true;
+    await page.locator('.pi-knowledge-editor button[type=submit]').click();
+    await page.waitForFunction(expected => (document.querySelector('#pi-profiles-memory .pi-knowledge-status')?.textContent || '').includes(expected),
+        say('内容疑似密钥或凭据', 'looks like a key or credential'));
+    assert.equal(await page.locator('.pi-knowledge-editor textarea').inputValue(), 'A new fact');
+    // Custom trigger phrases: one per line, saved as the only changed setting.
+    await page.locator('.pi-learning-triggers summary').click();
+    const triggerAreas = page.locator('.pi-learning-triggers textarea');
+    assert.equal(await triggerAreas.count(), 4);
+    await triggerAreas.first().fill(' Nein \n\nnope');
+    await page.locator('.pi-learning-settings button[type=submit]').click();
+    await page.waitForFunction(() => document.querySelector('.pi-learning-triggers textarea')?.value === 'Nein\nnope');
+    assert.deepEqual(state.learningPuts.at(-1).changes, { triggerPhrases: { correction: ['Nein', 'nope'], preference: [], temporary: [], ignore: [] } });
+    await triggerAreas.nth(3).fill('x'.repeat(81));
+    await page.locator('.pi-learning-settings button[type=submit]').click();
+    assert.equal(state.learningPuts.length, 1, 'an over-long phrase is refused by form validation');
+    await triggerAreas.nth(3).fill('');
     // U1.2: health dot and one-click enable with the missing-model list and settings link.
     const healthText = await text('.pi-learning-health');
     assert.ok(healthText.includes(say('缺少学习模型配置', 'A learning model is not configured')), healthText);

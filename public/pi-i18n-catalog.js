@@ -8762,7 +8762,15 @@
     ,["只看草稿技能","Only draft skills"]
     ,["显示全部技能","All skills"]
     ,["记忆已满","Memory is full"]
-    ,["整理合并单次最多读取字数（预留 = 字数 + 6000 tokens）","Consolidation input per run in characters (reserves characters + 6000 tokens)"]
+    ,["整理合并单次最多读取字数（预留 = 字数 + 6000 tokens）","Consolidation input per run in characters (reserves characters + 6000 tokens)"]    ,["自定义触发词","Custom trigger phrases"]
+    ,["内置规则已识别常见的中文和英文说法。这里可补充你的习惯用语或其他语言，每行一个短语，不区分大小写。","Built-in rules recognise common Chinese and English phrasing. Add your own wording or other languages here, one phrase per line, case-insensitive."]
+    ,["表示纠正（立即学习）","Corrections (learn immediately)"]
+    ,["表示长期偏好（立即学习）","Lasting preferences (learn immediately)"]
+    ,["表示临时要求（不学习）","Temporary requests (never learned)"]
+    ,["排除（即使命中上面也不算纠正或偏好）","Exclusions (never count as a correction or preference)"]
+    ,["最多 {0} 个短语，每个不超过 {1} 个字符。","At most {0} phrases of up to {1} characters each."]
+    ,["内容疑似密钥或凭据，不能保存到记忆或技能。","This looks like a key or credential and cannot be saved to memory or skills."]
+    ,["内容疑似提示词注入指令，不能保存到记忆或技能。","This looks like a prompt-injection instruction and cannot be saved to memory or skills."]    ,["内容疑似密钥或注入指令，未保存","Looked like a key or injection instruction; not saved"]
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

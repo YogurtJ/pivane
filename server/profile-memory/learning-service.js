@@ -14,7 +14,7 @@ const { validateTitleSettings } = require('../workspace-preferences-service');
 const ID = /^[a-f0-9-]{36}$/;
 const DEFAULTS = Object.freeze({ enabled: false, correctionEnabled: true, reviewEnabled: false,
     extractionEnabled: false, periodicReviewMinutes: 0, maxRunsPerDay: 20, maxTokensPerDay: 200000,
-    consolidationInputChars: 12000 });
+    consolidationInputChars: 12000, triggerPhrases: require('./learning-triggers').EMPTY });
 const LIMIT = 256 * 1024;
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
 const MAX_JOBS = 64;
@@ -74,11 +74,11 @@ const effectiveText = (branch, entry) => {
         content = edit.replacement;
     return content === null ? '' : text({ message: { content } });
 };
-const temporary = value => /(?:仅|只)(?:在|对|限于)?(?:这|本|此)(?:一)?(?:次|轮|回|条|个任务|段对话)|不要记住|别记住|临时(?:要求|用)/u.test(value);
-const correction = value => /(?:不对|错了|纠正|更正|不是.{0,35}而是|应该是|应为|请记住.{0,50}(?:不是|而是))/u.test(value);
-const preference = value => /(?:请|务必)?记住(?:[，,:： ]{0,3})?(?:以后|今后|往后)?|(?:以后|今后|往后)(?:请|要|默认|都|一直|按|使用|用)|(?:请|要).{0,20}(?:记住|默认)/u.test(value);
-const intent = value => !/[?？]\s*$/u.test(value)
-    && !/^(?:比如|例子|引用|假设|如果|反问|举例|原文|示例|他说|她说|你说)[：:,，\s“"'‘]/u.test(value);
+const triggers = require('./learning-triggers');
+const { intent, normalizePhrases } = triggers;
+const temporary = (value, phrases) => triggers.temporary(value, phrases);
+const correction = (value, phrases) => triggers.correction(value, phrases);
+const preference = (value, phrases) => triggers.preference(value, phrases);
 const pairs = branch => {
     const result = [];
     let user;
@@ -98,6 +98,11 @@ function settingsPatch(changes) {
     if (!changes || typeof changes !== 'object' || Array.isArray(changes) || !Object.keys(changes).length
         || Object.keys(changes).some(key => !Object.hasOwn(DEFAULTS, key))) fail('Invalid learning settings');
     for (const [key, value] of Object.entries(changes)) {
+        if (key === 'triggerPhrases') {
+            if (!triggers.validPhrases(value)) fail('Invalid learning setting');
+            changes[key] = Object.fromEntries(triggers.LISTS.map(list => [list, [...new Set((value[list] || []).map(item => item.trim()))]]));
+            continue;
+        }
         if (typeof DEFAULTS[key] === 'boolean' ? typeof value !== 'boolean'
             : !Number.isSafeInteger(value) || value < (key === 'maxRunsPerDay' ? 1 : 0)
                 || value > ({ maxRunsPerDay: 20, maxTokensPerDay: 200000, periodicReviewMinutes: 10080, consolidationInputChars: 40000 }[key])
@@ -385,6 +390,7 @@ class ProfileLearningService {
                     actionSlotsRemaining: Math.max(0, MAX_ACTIONS - activeActionCount(state)),
                     blockedBranches: Object.values(state.cursors).filter(cursor => cursor?.blocked === 'branch-diverged').length },
                 limits: { maxRunsPerDay: { min: 1, max: 20 }, maxTokensPerDay: { min: 6000, max: 200000 }, consolidationInputChars: { min: 4000, max: 40000 },
+                    triggerPhrases: { lists: [...triggers.LISTS], maxPhrases: triggers.MAX_PHRASES, maxLength: triggers.MAX_PHRASE },
                     periodicReviewMinutes: { min: 0, max: 10080 }, maxJobs: MAX_JOBS, maxCursors: MAX_CURSORS,
                     maxActions: MAX_ACTIONS, actionValidityDays: 7, dedupeWindowPairs: MAX_SEEN_PER_CURSOR },
                 cost: 'provider-reported-or-unknown', budgetDay: 'UTC', providerValidatedOnSave: true,
@@ -603,9 +609,10 @@ class ProfileLearningService {
                         const alreadyCovered = kind === 'extraction' && [...state.jobs, ...state.recentRuns].some(job =>
                             job.sessionId === sessionId && job.userId === row.user.id && job.assistantId === row.assistant.id
                             && !['failed', 'skipped', 'cancelled'].includes(job.status));
-                        const eligible = row.userText && !temporary(row.userText) && intent(row.userText) && !alreadyCovered
-                            && (kind === 'correction' ? correction(row.userText) || preference(row.userText)
-                                : kind === 'review' ? !correction(row.userText) && !preference(row.userText) : true);
+                        const phrases = normalizePhrases(settings.triggerPhrases);
+                        const eligible = row.userText && !temporary(row.userText, phrases) && intent(row.userText) && !alreadyCovered
+                            && (kind === 'correction' ? correction(row.userText, phrases) || preference(row.userText, phrases)
+                                : kind === 'review' ? !correction(row.userText, phrases) && !preference(row.userText, phrases) : true);
                         if (eligible) {
                             const jobId = hash(`${context.profileId}:${key}:${row.user.id}:${row.assistant.id}`);
                             if (!cursor.seen.includes(jobId)) {
@@ -715,12 +722,13 @@ class ProfileLearningService {
         if (context?.profileId !== id || !scope.verifyNativeSession(context, manager)) return null;
         const branch = manager.getBranch(), completed = pairs(branch);
         const row = completed.find(pair => pair.user.id === job.userId && pair.assistant.id === job.assistantId);
-        if (!row || temporary(row.userText) || !intent(row.userText)) return null;
+        const phrases = normalizePhrases(this.read(await this.location(id)).settings?.triggerPhrases);
+        if (!row || temporary(row.userText, phrases) || !intent(row.userText)) return null;
         const identity = hash(JSON.stringify([session.path, row.user.id, row.assistant.id, row.userText, row.assistantText]));
         if (job.sourceIdentity && job.sourceIdentity !== identity) return null;
         const excerpt = `user: ${row.userText.slice(0, 1800)}\nassistant: ${row.assistantText.slice(0, 600)}`;
         if (Buffer.byteLength(excerpt) > 3000) return null;
-        return { excerpt, identity, userText: row.userText };
+        return { excerpt, identity, userText: row.userText, phrases };
     }
     // Text-only completion through the runtime's model registry; null when the routed model is unavailable.
     async complete(job, signal, request, maxTokens, timeoutMs) {
@@ -813,7 +821,7 @@ class ProfileLearningService {
                 status = 'skipped'; error = 'knowledge-unavailable'; return;
             }
             const references = [];
-            if (job.reason === 'correction' && correction(before.userText)) {
+            if (job.reason === 'correction' && correction(before.userText, before.phrases)) {
                 let page = snapshot;
                 for (let offset = 0; offset < 200; offset += 50) {
                     if (offset) page = await this.knowledge.snapshot(id, { kind: 'memory', offset });
@@ -856,8 +864,8 @@ class ProfileLearningService {
                     status = 'skipped'; error = 'invalid-skill-draft'; return;
                 }
             } else if (Object.keys(proposal).some(key => !['content', 'replaceId'].includes(key)) || typeof proposal.content !== 'string'
-                || !proposal.content.trim() || proposal.content.length > 300 || temporary(proposal.content)
-                || proposal.replaceId !== undefined && (!correction(before.userText) || !old.some(item => item.id === proposal.replaceId))) {
+                || !proposal.content.trim() || proposal.content.length > 300 || temporary(proposal.content, before.phrases)
+                || proposal.replaceId !== undefined && (!correction(before.userText, before.phrases) || !old.some(item => item.id === proposal.replaceId))) {
                 status = 'skipped'; error = 'invalid-proposal'; return;
             }
             const after = await this.source(id, job);
@@ -886,7 +894,7 @@ class ProfileLearningService {
             } else mutation = { requestId: `learning-${job.id}`, expectedRevision: snapshot.revision,
                 operation: replaced ? 'update' : 'create', kind: 'memory',
                 ...(replaced ? { itemId: replaced.id, itemRevision: replaced.revision } : { scope: 'profile' }),
-                category: replaced ? 'correction' : job.reason === 'correction' && correction(before.userText) ? 'correction'
+                category: replaced ? 'correction' : job.reason === 'correction' && correction(before.userText, before.phrases) ? 'correction'
                     : job.reason === 'correction' ? 'preference' : 'fact',
                 content: proposal.content };
             const trusted = { cwd: job.cwd, sessionId: job.sessionId, sessionPath: job.sessionPath,
@@ -906,9 +914,10 @@ class ProfileLearningService {
             const rejected = Number.isInteger(failure?.status) && failure.status >= 400 && failure.status < 500 && failure.status !== 409;
             // A full memory target is a deterministic refusal: nothing was saved.
             const full = commitStarted && failure?.status === 409 && failure.code === 'memory-full';
+            const blocked = commitStarted && failure?.code === 'content-blocked';
             status = full ? 'skipped' : commitStarted ? failure?.status === 409 ? 'conflict' : rejected ? 'skipped' : 'uncertain'
                 : signal.aborted ? 'cancelled' : 'failed';
-            error = full ? 'memory-full' : commitStarted ? rejected ? 'knowledge-rejected' : 'knowledge-write-unconfirmed'
+            error = full ? 'memory-full' : blocked ? 'content-blocked' : commitStarted ? rejected ? 'knowledge-rejected' : 'knowledge-write-unconfirmed'
                 : signal.aborted ? 'interrupted' : 'learning-failed';
         }
         finally {

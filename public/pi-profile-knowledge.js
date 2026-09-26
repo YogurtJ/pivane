@@ -43,6 +43,7 @@
             const actions = c.actions || c.operations;
             return Array.isArray(actions) && actions.includes(key) || c[key] === true;
         }
+        let triggersOpen = false;
         let snapshot = null, learning = null, learningDraft = null, selected = null, detail = null, draft = null, editing = false, reviewed = true;
         let busy = false, learningBusy = false, learningEpoch = 0, uncertain = null, learningUncertain = null, receipt = null, notice = '', conflict = false;
         let memoryFull = false, revealItem = null, modelCatalog = null, legacyModel = null;
@@ -370,7 +371,10 @@
                     if (error.status === 409 && (error.data?.code === 'memory-full' || error.code === 'memory-full')) {
                         uncertain = null; memoryFull = true; notice = t('记忆已满，新记忆会被拒绝。请整理合并后再试。'); void load();
                     } else if (error.status === 409) { uncertain = null; conflict = true; notice = t('版本冲突；草稿已保留。刷新并核对服务器版本。'); void load(); }
-                    else if (rejected(error)) { uncertain = null; notice = t('提交被服务端拒绝：{0}，草稿已保留。', error.message); }
+                    else if (error.status === 400 && (error.data?.code || error.code) === 'content-blocked') {
+                        uncertain = null; notice = (error.data?.details?.kind || error.details?.kind) === 'secret'
+                            ? t('内容疑似密钥或凭据，不能保存到记忆或技能。') : t('内容疑似提示词注入指令，不能保存到记忆或技能。');
+                    } else if (rejected(error)) { uncertain = null; notice = t('提交被服务端拒绝：{0}，草稿已保留。', error.message); }
                     else { uncertain = { requestId: input.requestId, operation: input.operation, draft: JSON.stringify(draft) }; notice = t('提交结果未确认：{0}。草稿与请求 ID {1} 已保留，勿重复提交。', error.message, input.requestId); }
                 }
             } finally { busy = false; if (current(profileId, generation)) { render(); if (!uncertain && receipt?.requestId === input.requestId) void load(); } }
@@ -572,7 +576,26 @@
                 form.append(field(t(text), input));
             }
             form.append(node('small', t('每次运行最多预留 {0} tokens；费用仅按供应商回报显示，未知费用不代表免费。', learning.capabilities?.reservedTokensPerRun || 6000)));
-            const changes = () => Object.fromEntries(Object.keys(learningDraft || {}).filter(key => Object.hasOwn(settings, key) && learningDraft[key] !== settings[key]).map(key => [key, learningDraft[key]]));
+            if (settings.triggerPhrases && typeof settings.triggerPhrases === 'object') {
+                const limits = learning.capabilities?.limits?.triggerPhrases || {};
+                const phrases = node('details', undefined, 'pi-learning-triggers');
+                phrases.open = triggersOpen; phrases.ontoggle = () => { triggersOpen = phrases.open; };
+                phrases.append(node('summary', t('自定义触发词')), node('small', t('内置规则已识别常见的中文和英文说法。这里可补充你的习惯用语或其他语言，每行一个短语，不区分大小写。')));
+                for (const [list, label] of [['correction', '表示纠正（立即学习）'], ['preference', '表示长期偏好（立即学习）'], ['temporary', '表示临时要求（不学习）'], ['ignore', '排除（即使命中上面也不算纠正或偏好）']]) {
+                    const area = node('textarea'); area.rows = 3; area.value = (learningDraft.triggerPhrases?.[list] || []).join('\n');
+                    area.disabled = learningBusy || !Number.isSafeInteger(learning.revision);
+                    area.oninput = () => {
+                        const lines = area.value.split('\n').map(line => line.trim()).filter(Boolean);
+                        area.setCustomValidity(lines.length > (limits.maxPhrases || 50) || lines.some(line => line.length > (limits.maxLength || 80))
+                            ? t('最多 {0} 个短语，每个不超过 {1} 个字符。', limits.maxPhrases || 50, limits.maxLength || 80) : '');
+                        learningDraft.triggerPhrases = { ...(learningDraft.triggerPhrases || {}), [list]: lines };
+                    };
+                    phrases.append(field(t(label), area));
+                }
+                form.append(phrases);
+            }
+            const same = (a, b) => a === b || typeof a === 'object' && typeof b === 'object' && JSON.stringify(a) === JSON.stringify(b);
+            const changes = () => Object.fromEntries(Object.keys(learningDraft || {}).filter(key => Object.hasOwn(settings, key) && !same(learningDraft[key], settings[key])).map(key => [key, learningDraft[key]]));
             const save = node('button', t('保存学习设置'), 'settings-primary-button'); save.type = 'submit';
             save.disabled = learningBusy || !Number.isSafeInteger(learning.revision) || learning.capabilities?.settingsWrite === false; form.append(save);
             form.onsubmit = async event => {
@@ -601,6 +624,7 @@
                     job.usage?.totalTokens != null ? t('{0} tokens', job.usage.totalTokens) : '',
                     job.costStatus === 'reported' && job.usage?.reportedCostUsd != null ? t('供应商报告费用：${0}', job.usage.reportedCostUsd) : t('费用未知'),
                     job.error === 'memory-full' ? t('记忆已满，未保存') : '',
+                    job.error === 'content-blocked' ? t('内容疑似密钥或注入指令，未保存') : '',
                     job.receiptIds?.length ? t('关联回执：{0}', job.receiptIds.join(', ')) : ''].filter(Boolean).join(' · ')));
                 if (!learningUncertain && job.id && learning.capabilities?.actions?.includes('cancel') && ['queued', 'running', 'pending', 'waiting-config'].includes(job.status)) row.append(button(t('取消作业'), () => void action('cancel', job.id)));
                 box.append(row);

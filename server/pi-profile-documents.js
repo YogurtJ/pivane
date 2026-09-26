@@ -9,6 +9,7 @@ const { createMutationLock } = require('./profile-memory/mutation-lock');
 const { profileMemoryCapability } = require('./profile-memory/management');
 const { documentIndex, pendingDocumentIndex, documentIndexSynced } = require('./profile-memory/document-index');
 const { assertKnowledgeDocumentWrite } = require('./profile-memory/knowledge-guard');
+const { assertSafeKnowledgeContent } = require('./profile-memory/content-scan');
 const { normalizedMemory, profileRevision } = require('./pi-profile-registry');
 const { descriptorPathSync } = require('./pi-file-descriptor');
 const io = require('./pi-file-io');
@@ -116,6 +117,9 @@ function mountProfileDocumentRoutes(router, { profiles, getAgentDir, bundlePath 
                         throw fail('Document or profile changed; reload before saving', 409);
                     validateContent(req.body.content, current.usage.limit);
                     assertKnowledgeDocumentWrite(root, target, req.body.content);
+                    // Only entries this save adds are scanned, so existing content never blocks an edit.
+                    const kept = new Set(String(current.content || '').split('\n\u00a7\n').map(part => part.trim()));
+                    assertSafeKnowledgeContent(...req.body.content.split('\n\u00a7\n').filter(part => !kept.has(part.trim())));
                     const file = path.join(root, target === 'user' ? 'USER.md' : 'MEMORY.md');
                     const old = readFile(file);
                     if (pendingDocumentIndex(root, target) && (!latest.memory.enabled || !installed))
@@ -171,7 +175,8 @@ function mountProfileDocumentRoutes(router, { profiles, getAgentDir, bundlePath 
             const result = write ? await profiles.reserve(work) : await work();
             const { httpStatus, ...body } = result;
             res.status(httpStatus || 200).json(body);
-        } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : 'Profile document unavailable' }); }
+        } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : 'Profile document unavailable',
+            ...(error.status && typeof error.code === 'string' ? { code: error.code } : {}) }); }
     };
     router.get('/profiles/:id/documents', handler(false));
     router.put('/profiles/:id/documents', handler(true));

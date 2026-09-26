@@ -300,6 +300,22 @@ learning job IDs are server-generated and never collide with client request
 IDs, and the state file reports its real `maxActions`/`actionValidityDays`
 limits. A saved document is not evidence of successful indexing or activation in an already-running worker.
 
+## Content scan
+
+Pivane's own write paths do not call the upstream `MemoryStore`/`SkillStore`
+write methods, so they carry the equivalent check themselves.
+`server/profile-memory/content-scan.js` runs on every knowledge `create`,
+`update` and `consolidate` (memory content; skill name, description and body),
+which covers manual web edits, background learning and Agent tool writes routed
+through the knowledge service, and on the entries a full-document editor save
+adds (existing entries never block an edit). It ports upstream 0.9.9
+`content-scanner.ts` (MIT): invisible Unicode, English injection/exfiltration
+phrases and credential shapes, plus Chinese injection phrases and newer key
+prefixes. Unlike upstream, a bare variable name such as `OPENAI_API_KEY` is
+allowed. A refusal is `400 {code:'content-blocked', details:{rule, kind}}` with
+`kind` `secret` or `injection`; the message never echoes the matched text.
+Restoring or undoing an older entry does not re-scan it.
+
 ## Background learning
 
 The old in-worker three-turn reviewer (`memory.autoLearn`,
@@ -312,9 +328,11 @@ tool adapter.
 
 - **Settings** are per profile (`GET/PUT /profiles/:id/learning`), default off:
   `enabled`, `correctionEnabled`, `reviewEnabled`, `extractionEnabled`,
-  `periodicReviewMinutes` (0..10080), `maxRunsPerDay` (1..20, default 4),
-  `maxTokensPerDay` (6000..200000, default 200000; `maxRunsPerDay` defaults to 20),
-  and `consolidationInputChars` (4000..40000, default 12000; a consolidation reserves that plus 6000 tokens). Saving never runs a job.
+  `periodicReviewMinutes` (0..10080), `maxRunsPerDay` (1..20, default 20),
+  `maxTokensPerDay` (6000..200000, default 200000),
+  `consolidationInputChars` (4000..40000, default 12000; a consolidation reserves that plus 6000 tokens),
+  and `triggerPhrases` `{correction,preference,temporary,ignore}` (each at most 50
+  plain phrases of up to 80 characters, no control characters). Saving never runs a job.
 - **Models** are the auxiliary purposes `memory-correction`, `memory-review`
   and `memory-extraction` under Settings → Preferences → Auxiliary models. A
   blank purpose is `waiting-config`; the chat model is never substituted.
@@ -324,6 +342,11 @@ tool adapter.
   register verified native user/assistant pair references (no transcript body
   is stored). Explicit corrections and "remember from now on" preferences are
   handled first by the correction purpose; ordinary pairs go to review;
+  `server/profile-memory/learning-triggers.js` recognises Chinese and English
+  phrasing built in (English follows upstream's strong/weak/negative correction
+  patterns) and adds the profile's `triggerPhrases` as case-insensitive plain
+  substrings; `ignore` suppresses a correction or preference match, `temporary`
+  keeps a turn out of learning, and questions or quoted examples never count;
   compaction/exit boundaries go to extraction of pairs not yet covered.
   Positive `periodicReviewMinutes` throttles review and lets a periodic scan
   backfill known sessions. Native sessions above 8 MiB are not learned from.
@@ -343,7 +366,8 @@ tool adapter.
 - **Outcomes**: jobs report status, reason, model, receipt IDs and only the
   usage/cost the provider reported (`unknown` is not zero). Jobs running at a
   restart become `uncertain` and are never replayed. Deterministic trusted-write
-  refusals (including the 413 source-proof limit) are `skipped/knowledge-rejected`.
+  refusals (including the 413 source-proof limit) are `skipped/knowledge-rejected`;
+  a learned entry refused by the content scan is `skipped/content-blocked`.
 
 Each eligible `before_agent_start` re-reads profile and physical-cwd memory
 from disk and appends a native `pivane-profile-memory-read` entry, which also

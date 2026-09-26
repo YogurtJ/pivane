@@ -19,6 +19,8 @@ const PREFERENCE = '以后默认用 pnpm 安装依赖，不要用 npm。';
 const LEARNED = '安装依赖默认使用 pnpm，不使用 npm。';
 const TOOL_FACT = 'Synthetic service listens on port 4321.';
 const MERGED = '用 pnpm 安装依赖，npm 会遇到 lockfile 冲突。';
+// Synthetic credential assembled at runtime; the content scan must keep it out of every write path.
+const SECRET = 'ghp_' + 'Z'.repeat(36);
 
 async function main() {
     if (!bundle || !fs.existsSync(bundle)) throw new Error('PIVANE_TEST_HERMES_BUNDLE must point to the reviewed read-only bundle');
@@ -61,6 +63,8 @@ async function main() {
                     const ids = offered.filter(row => /pnpm|lockfile/.test(row.content)).map(row => row.id);
                     return sse(res, { content: JSON.stringify({ groups: ids.length >= 2 ? [{ itemIds: ids, content: MERGED, category: 'preference' }] : [] }) }, 'stop');
                 }
+                // An English correction whose learned text carries a credential must be refused by the scan.
+                if (raw.includes('SECRET_LEARN_FIXTURE') && !raw.includes('consolidate')) return sse(res, { content: JSON.stringify({ content: `Deploy with token ${SECRET}.` }) }, 'stop');
                 // Only the explicit preference is durable; anything else yields no proposal.
                 return sse(res, { content: JSON.stringify(raw.includes('pnpm') && !raw.includes(LEARNED) ? { content: LEARNED } : {}) }, 'stop');
             }
@@ -71,6 +75,7 @@ async function main() {
             if (said.includes('MEMORY_TOOL_FIXTURE')) return sse(res, toolCall('memory_add', { target: 'memory', content: TOOL_FACT }), 'tool_calls');
             if (said.includes('FAILURE_TOOL_FIXTURE')) return sse(res, toolCall('memory_add', { target: 'failure', category: 'failure',
                 content: 'npm install failed with a lockfile conflict.' }), 'tool_calls');
+            if (said.includes('SECRET_TOOL_FIXTURE')) return sse(res, toolCall('memory_add', { target: 'memory', content: `Deploy token is ${SECRET}` }), 'tool_calls');
             if (said.includes('SKILL_VIEW_FIXTURE')) return sse(res, toolCall('skill_manage', { action: 'view' }), 'tool_calls');
             return sse(res, { content: '好的，我记下了。' }, 'stop');
         });
@@ -237,6 +242,35 @@ async function main() {
         });
         assert.ok(failureItem.category === 'failure' && failureItem.target === 'memory', JSON.stringify(failureItem));
         step('agent failure memory saved', { category: failureItem.category });
+
+        // 6b. Content scan on every real write path: the agent's tool write, a learned entry from an
+        // English correction, and a manual web write never persist a credential.
+        const toolCount = () => SessionManager.open(session.path).getEntries()
+            .filter(e => e.type === 'message' && e.message.role === 'toolResult' && e.message.toolName === 'memory_add').length;
+        const toolsBefore = toolCount();
+        await send(chatView, 'SECRET_TOOL_FIXTURE: remember the deploy token.');
+        await until('secret tool settled', async () => toolCount() > toolsBefore && chat.at(-1)?.last?.role === 'tool');
+        const secretResult = SessionManager.open(session.path).getEntries()
+            .filter(e => e.type === 'message' && e.message.role === 'toolResult' && e.message.toolName === 'memory_add').at(-1).message;
+        const secretText = JSON.stringify(secretResult.content);
+        assert.ok(secretResult.isError === true || secretResult.details?.success === false, `secret tool write refused: ${secretText}`);
+        assert.ok(/credential|secret/i.test(secretText) && !secretText.includes(SECRET), secretText);
+        const blockedBefore = (await api('GET', `/profiles/${profileId}/learning`)).recentRuns.filter(run => run.error === 'content-blocked').length;
+        await send(chatView, 'No, use SECRET_LEARN_FIXTURE as the deploy token instead.');
+        const blockedRun = await until('learned secret refused', async () => {
+            const runs = (await api('GET', `/profiles/${profileId}/learning`)).recentRuns.filter(run => run.error === 'content-blocked');
+            return runs.length > blockedBefore && runs.at(-1);
+        });
+        assert.deepEqual({ status: blockedRun.status, reason: blockedRun.reason }, { status: 'skipped', reason: 'correction' });
+        const webSecret = await fetch(`${base()}/api/pi/profiles/${profileId}/knowledge/mutations`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requestId: 'e2e-web-secret', expectedRevision: (await api('GET', `/profiles/${profileId}/knowledge?kind=memory`)).revision,
+                operation: 'create', kind: 'memory', category: 'fact', content: `Deploy token ${SECRET}` }) });
+        const webBody = await webSecret.json();
+        assert.deepEqual({ status: webSecret.status, code: webBody.code }, { status: 400, code: 'content-blocked' });
+        assert.ok(!JSON.stringify(webBody).includes(SECRET));
+        const scanned = await api('GET', `/profiles/${profileId}/knowledge?kind=memory`);
+        assert.ok(!JSON.stringify(scanned.items).includes('ghp_'), 'no credential persisted');
+        step('content scan on agent, learning and web writes', { learnedRun: `${blockedRun.reason}:${blockedRun.status}:${blockedRun.error}` });
 
         // 7. skill_manage view is a read action.
         await send(chatView, 'SKILL_VIEW_FIXTURE: list skills.');
