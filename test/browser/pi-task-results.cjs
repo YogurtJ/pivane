@@ -29,7 +29,7 @@ async function check(browser, base, width, language) {
             if (!indexed) { indexed = true; return send({ status: 'indexing', coverage: { files: 54, checked: 10 }, results: [] }); }
             return send({ status: 'ready', results: delivered && url.searchParams.get('sourceSessionId') === 'parent' ? [{ ...result, read }] : [] });
         }
-        if (url.pathname === '/api/pi/agent-threads/read') { read = true; return send({ read: true }); }
+        if (url.pathname === '/api/pi/agent-threads/read') { assert.equal(req.headers()['content-type'], 'application/json'); assert.equal(req.postDataJSON().cwd, cwd); read = true; return send({ read: true }); }
         if (url.pathname.includes('history') || url.pathname === '/api/prompts') return send([]);
         return send({ configured: false });
     });
@@ -146,7 +146,7 @@ async function checkList(browser, base, width, language) {
         if (url.pathname === '/api/pi/activity') return send({ runtimes: [], pinnedProjects: [], hiddenProjects: [], replyNotices: [] });
         if (url.pathname === '/api/pi/agent-threads/results') return send({ status: 'ready',
             results: results.map(r => ({ ...r, read: reads.includes(r.deliveryId) })), tasks: [{ requestId: 'running', status: 'running', session: { ...child, name: 'Frontend' } }] });
-        if (url.pathname === '/api/pi/agent-threads/read') { reads.push(JSON.parse(req.postData()).deliveryId); return send({ read: true }); }
+        if (url.pathname === '/api/pi/agent-threads/read') { assert.equal(req.headers()['content-type'], 'application/json'); assert.equal(req.postDataJSON().cwd, cwd); reads.push(JSON.parse(req.postData()).deliveryId); return send({ read: true }); }
         if (url.pathname.includes('history') || url.pathname === '/api/prompts') return send([]);
         return send({ configured: false });
     });

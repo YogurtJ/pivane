@@ -68,7 +68,7 @@
         async function markRead(current, ids) {
             for (const deliveryId of ids) {
                 if (key(scope()) !== key(current)) return;
-                await fetch('/api/pi/agent-threads/read', { method: 'POST', body: JSON.stringify({ cwd: current.cwd, sourceSessionId: current.id, deliveryId }) });
+                await fetch('/api/pi/agent-threads/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: current.cwd, sourceSessionId: current.id, deliveryId }) });
             }
         }
         async function runMark(current, ids, control) {
