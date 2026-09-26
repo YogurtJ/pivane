@@ -4,7 +4,7 @@
     const $ = id => document.getElementById(id);
     const t = (text, ...args) => globalThis.PiI18n?.t(text, ...args) || text;
     const html = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-    const healthLabel = { ok: '学习正常', off: '学习已关闭', 'needs-model': '缺少学习模型配置', 'quota-exhausted': '今日学习额度已用完', failing: '最近学习连续失败', unavailable: '学习当前不可用' };
+    const healthLabel = { ok: '学习正常', off: '学习已关闭', 'needs-model': '缺少学习模型配置', 'quota-exhausted': '今日学习额度已用完', failing: '最近学习连续失败', unavailable: '学习当前不可用', 'memory-full': '记忆已满' };
     const healthTone = { ok: 'ok', off: 'off', 'needs-model': 'warn', 'quota-exhausted': 'warn', failing: 'bad', unavailable: 'bad' };
 
     function create({ apiFetch, currentCwd }) {
@@ -38,7 +38,13 @@
 
         function renderList() {
             if (!snapshot) { list.replaceChildren(); return; }
-            list.innerHTML = `<div class="pi-profile-toolbar"><h4>${html(t('助手身份'))}</h4><button id="pi-profile-add" class="settings-primary-button" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i> ${html(t('新建'))}</button></div>${profiles().length ? profiles().map(p => `<button class="pi-profile-row" type="button" data-profile-id="${html(p.id)}" aria-current="${selected === p.id}"><span class="pi-profile-avatar">${avatar(p)}</span><span><strong>${html(p.name)}</strong><small>${html(p.enabled ? t('已启用') : t('已停用'))}${healthNote(p.id)}</small></span>${healthDot(p.id)}</button>`).join('') : `<p class="pi-profile-note">${html(t('尚无助手身份。'))}</p><button type="button" class="settings-secondary-button" data-profile-assist>${html(t('与 Agent 起草'))}</button>`}`;
+            list.innerHTML = `<div class="pi-profile-toolbar"><h4>${html(t('助手身份'))}</h4><button id="pi-profile-add" class="settings-primary-button" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i> ${html(t('新建'))}</button></div>${profiles().length ? profiles().map(p => `<button class="pi-profile-row" type="button" data-profile-id="${html(p.id)}" aria-current="${selected === p.id}"><span class="pi-profile-avatar">${avatar(p)}</span><span><strong>${html(p.name)}</strong><small>${html(p.enabled ? t('已启用') : t('已停用'))}${healthNote(p.id)}</small>${draftNote(p.id)}</span>${healthDot(p.id)}</button>`).join('') : `<p class="pi-profile-note">${html(t('尚无助手身份。'))}</p><button type="button" class="settings-secondary-button" data-profile-assist>${html(t('与 Agent 起草'))}</button>`}`;
+        }
+        // Draft learned skills awaiting review (U2.4); clicking the badge filters the skill list.
+        function draftNote(profileId) {
+            const drafts = learningHealth.get(profileId)?.drafts;
+            return Number.isSafeInteger(drafts?.pending) && drafts.pending > 0
+                ? `<span class="pi-profile-drafts">${html(t('{0} 个草稿技能待审', `${drafts.pending}${drafts.capped === true ? '+' : ''}`))}</span>` : '';
         }
         const attentionStates = new Set(['needs-model', 'quota-exhausted', 'failing', 'unavailable']);
         function healthNote(profileId) {
@@ -51,11 +57,13 @@
             const reason = html(t(healthLabel[health.state] || '学习当前不可用'));
             return `<span class="pi-health-dot pi-health-${healthTone[health.state] || 'off'}" title="${reason}" aria-label="${reason}"></span>`;
         }
-        // Health lives in the learning snapshot; absent fields keep the plain list (older backends).
+        // Health and draft counts live in the learning snapshot; absent fields keep the plain list (older backends).
         async function loadLearningHealth() {
             const request = ++healthEpoch, ids = profiles().map(p => p.id);
             const rows = await Promise.all(ids.map(id => apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/learning`)
-                .then(data => [id, data?.health?.state ? { state: String(data.health.state) } : null])
+                .then(data => [id, data?.health?.state || Number.isSafeInteger(data?.drafts?.pending) ? {
+                    state: data?.health?.state ? String(data.health.state) : null,
+                    drafts: Number.isSafeInteger(data?.drafts?.pending) ? { pending: data.drafts.pending, capped: data.drafts.capped === true } : null } : null])
                 .catch(() => [id, null])));
             if (request !== healthEpoch || !active()) return;
             for (const [id, health] of rows) learningHealth.set(id, health);
@@ -65,7 +73,7 @@
             const pending = pendingKnowledge?.profileId === selected ? pendingKnowledge : null;
             if (pending) pendingKnowledge = null;
             knowledgePanel.open(selected, { ...(knowledgeSession ? { sessionId: knowledgeSession } : {}),
-                ...(pending?.project ? { kind: 'memory' } : {}) });
+                ...(pending?.project ? { kind: 'memory' } : {}), ...(pending?.drafts ? { drafts: true } : {}) });
             if (pending?.itemId) knowledgePanel.reveal?.(pending.itemId, pending.kind, pending.sessionId);
         }
         function revealKnowledge(profileId, itemId, kind, sessionId) {
@@ -481,7 +489,12 @@
             const id = event.target.closest('[data-profile-id]')?.dataset.profileId;
             const profile = profiles().find(p => p.id === id);
             if (!profile) return;
+            const drafts = Boolean(event.target.closest('.pi-profile-drafts'));
             editProfile(profile);
+            if (drafts && draft?.id === id) {
+                pendingKnowledge = { profileId: id, drafts: true };
+                if (section === 'skills') openKnowledge(); else void openSection('skills');
+            }
         });
         editor.addEventListener('click', event => {
             if (event.target.closest('#pi-profile-editor-close')) closeEditor();

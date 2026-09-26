@@ -87,3 +87,4 @@
     .pi-profile-document-footer { flex-wrap: wrap; }
     .pi-session-profile { max-width: 95px; }
 }
+.pi-profile-drafts { display: inline-block; justify-self: start; padding: 1px 8px; border: 1px solid var(--line); border-radius: 999px; font-size: .74rem; color: var(--text-soft); white-space: nowrap; }

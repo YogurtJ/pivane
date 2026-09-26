@@ -8757,6 +8757,11 @@
     ,["本项目记忆","Project memory"]
     ,["项目记忆按当前会话目录核实。","Project memory is verified against the current session directory."]
     ,["当前目录范围（按当前会话核实）","Current directory scope (verified per session)"]
+    ,["重载会话","Reload the session"]
+    ,["{0} 个草稿技能待审","{0} draft skills awaiting review"]
+    ,["只看草稿技能","Only draft skills"]
+    ,["显示全部技能","All skills"]
+    ,["记忆已满","Memory is full"]
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

@@ -13,7 +13,7 @@
     const rejected = error => [400, 403, 404, 413, 422, 429].includes(error?.status);
     const statusLabel = { ready: '就绪', pending: '待同步', missing: '缺失', disabled: '未启用', unsupported: '不支持', error: '错误', saved: '已保存' };
     const categoryLabel = { fact: '事实', preference: '偏好', correction: '纠错', failure: '失败经验', procedure: '流程' };
-    const healthLabel = { ok: '学习正常', off: '学习已关闭', 'needs-model': '缺少学习模型配置', 'quota-exhausted': '今日学习额度已用完', failing: '最近学习连续失败', unavailable: '学习当前不可用' };
+    const healthLabel = { ok: '学习正常', off: '学习已关闭', 'needs-model': '缺少学习模型配置', 'quota-exhausted': '今日学习额度已用完', failing: '最近学习连续失败', unavailable: '学习当前不可用', 'memory-full': '记忆已满' };
     const healthTone = { ok: 'ok', off: 'off', 'needs-model': 'warn', 'quota-exhausted': 'warn', failing: 'bad', unavailable: 'bad' };
     function create({ root, fetch, scope, transcript, anchors }) {
         let key = '', identity = '', epoch = 0, busy = false, snapshot = null, draft = '', uncertain = null, notice = '', hintNotice = '', latest = null, conflict = false;
@@ -23,6 +23,9 @@
         let learningSnapshot = null, anchorKeys = null, memoryFull = false;
         // U2.2: the session's next-turn injection (read-only preview), loaded on demand.
         let injectionView = null, injectionEpoch = 0;
+        // U2.4: the session reload button is disabled while the session is busy.
+        let sessionBusy = false;
+        const isBusy = () => sessionBusy || Boolean(scope()?.busy);
         const draftsByThread = new Map();
         const keep = () => { if (identity) draftsByThread.set(identity, { draft, uncertain, latest, notice, conflict, memoryFull, hintNotice }); };
         const scopeKey = value => value ? JSON.stringify([value.cwd, value.sessionId, value.profileId, value.generation]) : '';
@@ -38,12 +41,26 @@
         const hintText = receipt => receipt.kind === 'skill' ? t('已学习技能：{0}', hintPreview(receipt))
             : receipt.origin === 'agent' ? t('Agent 记下：{0}', hintPreview(receipt)) : t('已记住：{0}', hintPreview(receipt));
         const transcriptHost = () => (typeof transcript === 'function' ? transcript() : transcript) || document.getElementById('pi-transcript-content');
+        // U2.4: reload this chat session so a learned skill becomes active. The button only
+        // appears when the current chat is the source session and is disabled while it is busy.
+        function reloadButton(receipt) {
+            const value = scope();
+            if (!value?.sessionId || receipt?.source?.sessionId !== value.sessionId) return null;
+            const reload = button(t('重载会话'), () => globalThis.dispatchEvent?.(new CustomEvent('chat:reload-resources', { detail: { sessionId: value.sessionId } })));
+            reload.disabled = isBusy();
+            reload.classList.add('pi-memory-hint-reload');
+            return reload;
+        }
         function hintBlock(receipt, fallback) {
             const box = el('div', undefined, fallback ? 'pi-memory-hint pi-memory-hint-fallback' : 'pi-memory-hint');
             box.setAttribute('role', 'note');
             if (receipt.kind === 'memory' && receipt.category) box.append(el('span', t(categoryLabel[receipt.category] || receipt.category), 'pi-memory-hint-tag'));
             box.append(el('span', hintText(receipt), 'pi-memory-hint-text'));
-            if (receipt.kind === 'skill') box.append(el('small', t('需重载会话后生效')));
+            if (receipt.kind === 'skill') {
+                box.append(el('small', t('需重载会话后生效')));
+                const reload = reloadButton(receipt);
+                if (reload) box.append(reload);
+            }
             if (receipt.undoable === false) return box;
             const actions = el('div', undefined, 'pi-memory-hint-actions');
             // Project scope is edited through the management page with the verified session;
@@ -175,6 +192,10 @@
                 if (latest.indexStatus === 'pending') row.append(el('small', t('索引待同步')));
                 if (latest.activation === 'reload-required') row.append(el('small', t('当前会话需重载')));
                 else if (latest.activation === 'next-turn') row.append(el('small', t('下次对话可用，模型是否遵守无法保证')));
+                if (latest.kind === 'skill') {
+                    const reload = reloadButton(latest);
+                    if (reload) row.append(reload);
+                }
                 if (latest.undoable && latest.id && writable('undo', latest.kind) && latest.kind === 'memory')
                     row.append(button(t('撤销'), () => void submit('undo', latest)));
                 body.append(row);
@@ -280,7 +301,7 @@
             const captured = key;
             settledTimer = setTimeout(() => { if (current() && key === captured) void refresh(); }, 1500);
         }
-        return { update, decorate, refresh, settled, reset() { clearTimeout(settledTimer); keep(); clearTimeout(timer); learning = false; key = identity = ''; epoch++; snapshot = null; latest = null; uncertain = null; conflict = false; draft = ''; notice = ''; hintNotice = ''; memoryFull = false; anchorKeys = null; learningSnapshot = null; injectionView = null; render(); } };
+        return { update, decorate, refresh, settled, setBusy(value) { const next = Boolean(value); if (next !== sessionBusy) { sessionBusy = next; render(); } }, reset() { clearTimeout(settledTimer); keep(); clearTimeout(timer); learning = false; key = identity = ''; epoch++; snapshot = null; latest = null; uncertain = null; conflict = false; draft = ''; notice = ''; hintNotice = ''; memoryFull = false; anchorKeys = null; learningSnapshot = null; injectionView = null; render(); } };
     }
     globalThis.PiChatKnowledge = Object.freeze({ create });
 })();

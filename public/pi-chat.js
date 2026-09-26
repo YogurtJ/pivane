@@ -624,10 +624,15 @@ document.addEventListener('DOMContentLoaded', () => {
         scope: () => state.session && !state.session.ephemeral ? { cwd: state.cwd, id: state.session.id, generation: state.socketGeneration,
             busy: !state.connected || state.streaming || state.compacting || state.shellBusy || state.pendingUi.size > 0 } : null,
         link: appendAgentThreadLink, error: message => toast(message, 'error') });
+    // The reload button (U2.4) stays disabled while the session is busy, matching reloadResources().
+    function knowledgeBusy() {
+        return !state.connected || state.streaming || state.compacting || state.compactRequested || state.controlRequested
+            || state.resourceRequested || state.pendingUi.size > 0;
+    }
     const chatKnowledge = window.PiChatKnowledge?.create({ root: document.getElementById('pi-chat-knowledge'), fetch: apiFetch,
         transcript: elements.transcript, anchors: () => state.messageAnchors,
         scope: () => state.connected && state.session?.agentProfile?.id && !state.session.ephemeral && state.profileLearningSupported
-            ? { cwd: state.cwd, sessionId: state.session.id, profileId: state.session.agentProfile.id, generation: state.socketGeneration } : null });
+            ? { cwd: state.cwd, sessionId: state.session.id, profileId: state.session.agentProfile.id, generation: state.socketGeneration, busy: knowledgeBusy() } : null });
     let accessBootstrapped = false;
     async function bootstrap() {
         await window.WorkspaceAccess?.ready;
@@ -2990,6 +2995,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function setStreaming(streaming) {
         state.streaming = streaming;
+        chatKnowledge?.setBusy?.(knowledgeBusy());
         transcriptView.setTailActive(streaming);
         nativeContext.sync();
         const compacting = state.compacting || state.compactRequested;
@@ -4002,6 +4008,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if ($('workspace-settings-dialog').classList.contains('hidden')) void refreshSessionModels();
     });
     window.addEventListener('workspace:settings-closed', () => { if (state.modelRefreshPending) void refreshSessionModels(); });
+    // U2.4: a learned skill needs a session reload; the chat card dispatches and this reloads resources.
+    window.addEventListener('chat:reload-resources', event => {
+        const sessionId = event.detail?.sessionId;
+        if (sessionId && state.session?.id && sessionId !== state.session.id) return;
+        reloadResources().catch(error => toast(error.message, 'error'));
+    });
     elements.thinkingSelect.addEventListener('change', changeThinking);
     elements.deliveryMode.addEventListener('change', () => setStreaming(state.streaming));
     elements.sendButton.addEventListener('click', sendMessage);

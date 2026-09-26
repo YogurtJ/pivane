@@ -10,7 +10,7 @@
         active: '启用', draft: '草稿', disabled: '停用', deleted: '已删除', saved: '已保存', pending: '待同步', failed: '失败', conflict: '版本冲突', skipped: '跳过',
         create: '新建', update: '更新', delete: '删除', restore: '恢复条目', enable: '启用', disable: '停用', undo: '撤销', consolidate: '整理合并' };
     const statusLabel = { ready: '就绪', pending: '待同步', missing: '缺失', disabled: '未启用', unsupported: '不支持', error: '错误' };
-    const healthLabel = { ok: '学习正常', off: '学习已关闭', 'needs-model': '缺少学习模型配置', 'quota-exhausted': '今日学习额度已用完', failing: '最近学习连续失败', unavailable: '学习当前不可用' };
+    const healthLabel = { ok: '学习正常', off: '学习已关闭', 'needs-model': '缺少学习模型配置', 'quota-exhausted': '今日学习额度已用完', failing: '最近学习连续失败', unavailable: '学习当前不可用', 'memory-full': '记忆已满' };
     const healthTone = { ok: 'ok', off: 'off', 'needs-model': 'warn', 'quota-exhausted': 'warn', failing: 'bad', unavailable: 'bad' };
     const purposeLabel = { 'memory-correction': '纠错模型', 'memory-review': '复盘模型', 'memory-extraction': '提炼模型' };
     const uuid = () => globalThis.crypto?.randomUUID?.() || `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -21,7 +21,7 @@
     const readyRevision = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
     const rejected = error => [400, 403, 404, 413, 422, 429].includes(error?.status);
     function create({ apiFetch, root }) {
-        let profile = '', kind = 'skill', query = '', offset = 0, serial = 0, active = false;
+        let profile = '', kind = 'skill', query = '', offset = 0, serial = 0, active = false, draftOnly = false;
         // A verified session id (U2.3) unlocks editing the project memory of that session's
         // directory only; without it project entries stay read-only.
         let sessionScope = '';
@@ -65,19 +65,30 @@
             active = true;
             // U2.3: only a caller-verified session id enables project memory writes; without
             // one project entries stay read-only and the old display is kept.
-            if (options && typeof options === 'object') {
-                if (options.sessionId !== undefined) sessionScope = String(options.sessionId || '');
-                if (['memory', 'skill'].includes(options.kind) && options.kind !== kind && discard()) {
-                    kind = options.kind; offset = 0; selected = detail = draft = null; editing = false;
-                }
+            if (options && typeof options === 'object' && options.sessionId !== undefined) sessionScope = String(options.sessionId || '');
+            if (profile === id) {
+                viewOptions(options);
+                render(); if (!snapshot || uncertain) void load(); if (!learning) void loadLearning(); return;
             }
-            if (profile === id) { render(); if (!snapshot || uncertain) void load(); if (!learning) void loadLearning(); return; }
             if (profile) draftsByProfile.set(profile, { kind, query, offset, selected, detail, draft, editing, reviewed, uncertain, learningUncertain, receipt, conflict, learningDraft });
-            profile = id || ''; serial++; learningEpoch++; memoryFull = false; legacyModel = null;
+            profile = id || ''; serial++; learningEpoch++; memoryFull = false; legacyModel = null; draftOnly = false;
             proposalDrafts = new Map(); appliedGroups = new Set(); itemRevisions = new Map(); itemChecks = new Set(); injection = undefined;
             ({ kind = 'skill', query = '', offset = 0, selected = null, detail = null, draft = null, editing = false,
                 reviewed = true, uncertain = null, learningUncertain = null, receipt = null, conflict = false, learningDraft = null } = draftsByProfile.get(profile) || {});
-            snapshot = learning = null; notice = ''; render(); if (profile) { void load(); void loadLearning(); }
+            snapshot = learning = null; notice = '';
+            viewOptions(options);
+            render(); if (profile) { void load(); void loadLearning(); }
+        }
+        // Apply the caller's view request after any saved per-profile state is restored.
+        function viewOptions(options) {
+            if (!options || typeof options !== 'object') return;
+            if (['memory', 'skill'].includes(options.kind) && options.kind !== kind && discard()) {
+                kind = options.kind; offset = 0; selected = detail = draft = null; editing = false;
+            }
+            // U2.4: jump to the learned skills filtered to the draft entries awaiting review.
+            if (options.drafts === true && (kind !== 'skill' || !draftOnly) && discard()) {
+                kind = 'skill'; draftOnly = true; offset = 0; selected = detail = draft = null; editing = false;
+            }
         }
         // Open one entry (from a chat hint): switch to its kind, then select it even when it is
         // not on the first listed page.
@@ -219,12 +230,17 @@
             if (sessionScope) root.append(node('p', t('项目记忆按当前会话目录核实。'), 'pi-profile-note'));
             renderUsage();
             const tabs = node('div', undefined, 'pi-profile-kinds'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', t('知识类别'));
-            for (const key of ['memory', 'skill']) { const tab = button(t(label[key]), () => { if (key === kind || !discard()) return; kind = key; offset = 0; selected = detail = draft = null; editing = false; void load(); }); tab.setAttribute('aria-pressed', String(key === kind)); tabs.append(tab); }
+            for (const key of ['memory', 'skill']) { const tab = button(t(label[key]), () => { if (key === kind || !discard()) return; kind = key; draftOnly = false; offset = 0; selected = detail = draft = null; editing = false; void load(); }); tab.setAttribute('aria-pressed', String(key === kind)); tabs.append(tab); }
             root.append(tabs);
             const tools = node('div', undefined, 'pi-knowledge-tools'), search = node('input'); search.type = 'search'; search.maxLength = 200; search.value = query;
             search.placeholder = t('搜索已保存数据'); search.setAttribute('aria-label', t('搜索已保存数据'));
             search.onchange = () => { if (!discard()) { search.value = query; return; } query = search.value; offset = 0; void load(); };
             const add = button(t('新建{0}', t(label[kind])), () => edit(null), 'settings-primary-button'); add.disabled = busy || !!uncertain || !readyRevision(snapshot?.revision) || !allowed(snapshot, 'create', kind); tools.append(search, add); root.append(tools);
+            if (kind === 'skill') {
+                const filterBar = node('div', undefined, 'pi-knowledge-filter');
+                const filter = button(draftOnly ? t('显示全部技能') : t('只看草稿技能'), () => { if (!discard()) return; draftOnly = !draftOnly; offset = 0; void load(); });
+                filter.setAttribute('aria-pressed', String(draftOnly)); filterBar.append(filter); root.append(filterBar);
+            }
             const message = node('p', notice ? `${notice} · ${t('存储状态：{0}', t(statusLabel[snapshot?.status] || snapshot?.status || '状态未知'))}`
                 : snapshot ? t('已保存数据 · {0}', t(statusLabel[snapshot.status] || snapshot.status || '状态未知')) : t('正在读取…'), 'pi-knowledge-status'); message.setAttribute('role', 'status'); root.append(message);
             if (receipt) {
@@ -236,7 +252,7 @@
             if (uncertain && !busy) root.append(button(t('刷新回执核对'), () => void load()));
             if (snapshot?.status === 'ready') {
                 const list = node('div', undefined, 'pi-knowledge-list');
-                for (const item of snapshot.items) {
+                for (const item of snapshot.items.filter(row => !draftOnly || row.state === 'draft')) {
                     // Memory rows lead with a bounded content preview so entries are recognizable without opening each one.
                     const meta = [item.kind === 'memory' ? t(label[item.category] || item.category || label[kind]) : item.description,
                         t(label[item.state] || item.state || ''), item.scope === 'project' && t('项目'), item.readOnly && t('只读')].filter(Boolean).join(' · ');
@@ -245,7 +261,7 @@
                     row.append(node('span', title || t(label[item.category] || item.category || label[kind]), 'pi-knowledge-row-title'), node('small', meta, 'pi-knowledge-row-meta'));
                     row.setAttribute('aria-current', String(selected?.id === item.id)); list.append(row);
                 }
-                if (!snapshot.items.length) list.append(node('p', t('此页没有已保存数据'), 'pi-profile-note')); root.append(list);
+                if (!snapshot.items.filter(row => !draftOnly || row.state === 'draft').length) list.append(node('p', t('此页没有已保存数据'), 'pi-profile-note')); root.append(list);
                 const pages = node('div', undefined, 'pi-profile-pages'), prev = button(t('上一页'), () => { offset = Math.max(0, offset - Math.max(1, snapshot.items.length)); void load(); }), next = button(t('下一页'), () => { offset += snapshot.items.length; void load(); });
                 prev.disabled = !offset; next.disabled = !snapshot.hasMore || !snapshot.items.length; pages.append(prev, next); root.append(pages);
             }
@@ -521,6 +537,16 @@
             if (missing.length) {
                 box.append(node('p', t('还需要配置：{0}', missing.map(id => t(purposeLabel[id] || id)).join(' / ')), 'pi-knowledge-status'));
                 box.append(button(t('前往设置 → 使用偏好 → 辅助模型'), () => globalThis.dispatchEvent?.(new CustomEvent('workspace:open-settings', { detail: { tab: 'models' } }))));
+            }
+            // U2.4: draft skills awaiting review; clicking filters the learned-skill list to drafts.
+            const pendingDrafts = Number.isSafeInteger(learning.drafts?.pending) ? learning.drafts.pending : 0;
+            if (pendingDrafts > 0) {
+                const wrap = node('div', undefined, 'pi-learning-drafts');
+                wrap.append(button(t('{0} 个草稿技能待审', `${pendingDrafts}${learning.drafts.capped === true ? '+' : ''}`), () => {
+                    if (!discard()) return;
+                    kind = 'skill'; draftOnly = true; offset = 0; selected = detail = draft = null; editing = false; void load();
+                }));
+                box.append(wrap);
             }
             renderLegacy(box);
             const settings = learning.settings, form = node('form', undefined, 'pi-learning-settings');

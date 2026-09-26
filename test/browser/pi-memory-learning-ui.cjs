@@ -23,6 +23,7 @@ window.calls = []; window.events = [];
 window.PiAgentProfilesUI = { revealKnowledge: (profileId, itemId, kind, sessionId) => window.calls.push({ reveal: [profileId, itemId, kind, sessionId] }),
     revealProjectMemory: (profileId, sessionId) => window.calls.push({ revealProject: [profileId, sessionId] }) };
 window.addEventListener('workspace:open-settings', event => window.events.push(event.detail));
+window.addEventListener('chat:reload-resources', event => window.events.push({ reload: event.detail }));
 window.fixtureEntries = { leafId: 'entry-user-2', entries: [
     { id: 'entry-user-1', type: 'message', timestamp: 10, message: { role: 'user', content: 'First question', timestamp: 10 } },
     { id: 'entry-reply-1', type: 'message', timestamp: 11, message: { role: 'assistant', content: [{ type: 'text', text: 'First reply' }], timestamp: 11 } },
@@ -214,8 +215,8 @@ async function runFixture(browser, base, width, locale) {
     await page.locator('.pi-knowledge-entries button').filter({ hasText: say('查看本会话注入内容', "View this session's injected content") }).click();
     await page.waitForFunction(() => Boolean(document.querySelector('.pi-injection-preview .pi-injection-error')));
     assert.ok((await text('.pi-injection-preview')).includes(say('注入内容不可用', 'Injected content is unavailable')), await text('.pi-injection-preview'));
-    // The undoable:false skill hint hides its buttons; the two memory hints keep three each.
-    assert.equal(await page.locator('.pi-memory-hint button').count(), 6);
+    // The undoable:false skill hint keeps only its session-reload button; the two memory hints keep three buttons each.
+    assert.equal(await page.locator('.pi-memory-hint button').count(), 7);
     // Undo posts the receipt identity with the confirmed revision.
     await page.locator('#pi-transcript-content > .pi-memory-hint').first().locator('button').filter({ hasText: say('撤销', 'Undo') }).click();
     await page.waitForFunction(() => window.calls.some(call => call.body && call.body.operation === 'undo'));
@@ -267,12 +268,17 @@ async function runProfiles(browser, base, width, locale) {
         if (p.endsWith('/learning')) {
             const id = p.split('/')[4];
             if (id === 'profile-one') return fulfill({ version: 1, status: 'ready', revision: 1, settings: structuredClone(settings), jobs: [], recentRuns: [],
+                drafts: { pending: 2, capped: false },
                 health: { state: 'needs-model', missingModels: ['memory-review'], lastFailure: null, today: { runs: 0, maxRuns: 4, reservedTokens: 0, maxTokens: 24000 } },
                 capabilities: { installed: true, settingsWrite: true, actions: ['save'] } });
             // Older backends return no health field at all.
             return fulfill({ version: 1, status: 'ready', revision: 1, settings: structuredClone(settings), jobs: [], recentRuns: [],
                 capabilities: { installed: true, settingsWrite: true, actions: ['save'] } });
         }
+        if (p.endsWith('/knowledge') && req.method() === 'GET') return fulfill({ version: 1, status: 'ready', revision: 'a'.repeat(64),
+            items: [{ id: 'b'.repeat(64), kind: 'skill', name: 'draft-skill', description: 'Draft', state: 'draft', scope: 'profile', revision: 'c'.repeat(64) },
+                { id: 'd'.repeat(64), kind: 'skill', name: 'active-skill', description: 'Active', state: 'active', scope: 'profile', revision: 'e'.repeat(64) }],
+            receipts: [], hasMore: false, capabilities: { memory: true, skill: true, operations: ['create', 'update', 'delete', 'undo'], maxContentLength: 65536 } });
         return fulfill({ error: 'missing' }, 404);
     });
     await page.goto(`${base}/profiles-fixture`);
@@ -286,6 +292,13 @@ async function runProfiles(browser, base, width, locale) {
     const plain = page.locator('.pi-profile-row[data-profile-id="profile-two"]');
     assert.equal(await plain.locator('.pi-health-dot').count(), 0, 'absent health keeps the plain list row');
     assert.ok(!(await plain.innerText()).includes(say('缺少学习模型配置', 'A learning model is not configured')));
+    // U2.4: draft skills awaiting review show on the identity row and clicking filters the skills.
+    const badge = warned.locator('.pi-profile-drafts');
+    assert.ok((await badge.innerText()).includes(say('2 个草稿技能待审', '2 draft skills awaiting review')), await badge.innerText());
+    assert.equal(await plain.locator('.pi-profile-drafts').count(), 0, 'absent drafts keep the plain list row');
+    await badge.click();
+    await page.waitForFunction(() => document.querySelectorAll('#pi-profiles-memory .pi-knowledge-row').length === 1);
+    assert.ok((await page.locator('#pi-profiles-memory .pi-knowledge-row').first().innerText()).includes('draft-skill'));
     assert.deepEqual(errors, []);
     console.log(`PASS learning ui profiles ${width} ${locale}`);
     await context.close();
@@ -294,7 +307,7 @@ async function runProfiles(browser, base, width, locale) {
 async function runChat(browser, base, width, locale) {
     // Real chat shell: verifies the pi-chat.js wiring (context anchors and transcript placement).
     const context = await browser.newContext({ viewport: { width, height: 820 }, locale, isMobile: width < 900, hasTouch: width < 900 });
-    const page = await context.newPage(), errors = [], writes = [];
+    const page = await context.newPage(), errors = [], writes = [], reloads = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(cwd => { localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem(`pi.web.session:${cwd}`, 'thread-one'); }, '/tmp/chat-knowledge-fixture');
     await page.route('**/api/**', async route => {
@@ -314,7 +327,10 @@ async function runChat(browser, base, width, locale) {
                     source: { sessionId: 'thread-one', entryId: 'entry-user' } },
                 { id: 'receipt-agent', requestId: 'tool-1', kind: 'memory', operation: 'create', status: 'saved', origin: 'agent',
                     category: 'procedure', preview: '用 pnpm 安装', undoable: true, itemId: 'd'.repeat(64), afterRevision: 'e'.repeat(64),
-                    source: { sessionId: 'thread-one', entryId: 'entry-reply' } } ] });
+                    source: { sessionId: 'thread-one', entryId: 'entry-reply' } },
+                { id: 'receipt-skill', requestId: 'tool-2', kind: 'skill', operation: 'create', status: 'saved', origin: 'learning',
+                    preview: 'pnpm-install — 用 pnpm 安装依赖', undoable: false, itemId: 'f'.repeat(64), afterRevision: 'g'.repeat(64), activation: 'reload-required',
+                    source: { sessionId: 'thread-one', entryId: 'entry-user' } } ] });
         if (endpoint.endsWith('/learning')) return respond({ version: 1, status: 'ready', revision: 1, settings, jobs: [], recentRuns: [],
             health: { state: 'ok', missingModels: [], lastFailure: null, today: { runs: 0, maxRuns: 4, reservedTokens: 0, maxTokens: 24000 } },
             capabilities: { installed: true, settingsWrite: true, actions: ['save'] } });
@@ -333,6 +349,7 @@ async function runChat(browser, base, width, locale) {
     await page.routeWebSocket('**/api/pi/ws', ws => ws.onMessage(raw => {
         const cmd = JSON.parse(raw), model = { provider: 'fixture', id: 'fixture', name: 'Fixture', input: ['text'], contextWindow: 128000 };
         const state = { model, thinkingLevel: 'off', isStreaming: false, isCompacting: false, autoCompactionEnabled: true };
+        if (cmd.type === 'reload_resources') { reloads.push(cmd.type); return reply(ws, cmd, { commands: [] }); }
         if (cmd.type === 'open_session') return reply(ws, cmd, { session: { id: 'thread-one', cwd: '/tmp/chat-knowledge-fixture', name: 'Thread one',
             agentProfile: { id: 'profile-one', name: 'Research', enabled: true, available: true } }, state,
             messages: { messages: [{ role: 'user', content: 'Fixture question', timestamp: 1 },
@@ -353,7 +370,7 @@ async function runChat(browser, base, width, locale) {
     await page.locator('#pi-input:not([disabled])').waitFor();
     const zh = locale.startsWith('zh');
     const say = (source, english) => zh ? source : english;
-    await page.waitForFunction(() => document.querySelectorAll('#pi-transcript-content > .pi-memory-hint').length === 2);
+    await page.waitForFunction(() => document.querySelectorAll('#pi-transcript-content > .pi-memory-hint').length === 3);
     const placed = await page.locator('#pi-transcript-content > .pi-memory-hint').evaluateAll(nodes => nodes.map(node => ({
         text: node.textContent, previous: node.previousElementSibling?.className })));
     // Both hints sit under the turn's user message (tool-call messages fold away), oldest first.
@@ -361,7 +378,12 @@ async function runChat(browser, base, width, locale) {
     assert.match(placed[1].previous || '', /pi-memory-hint/);
     assert.ok(placed.some(row => row.text.includes(say('已记住：记下端口 4321', 'Remembered: 记下端口 4321'))), JSON.stringify(placed));
     assert.ok(placed.some(row => row.text.includes(say('Agent 记下：用 pnpm 安装', 'Agent noted: 用 pnpm 安装'))), JSON.stringify(placed));
-    assert.ok((await page.locator('#pi-chat-knowledge summary').innerText()).includes(say('本会话已记住 2 条', '2 entries remembered in this session')));
+    assert.ok((await page.locator('#pi-chat-knowledge summary').innerText()).includes(say('本会话已记住 3 条', '3 entries remembered in this session')));
+    // U2.4: the learned-skill hint reloads the current chat session through pi-chat.js.
+    await page.locator('#pi-transcript-content > .pi-memory-hint').filter({ hasText: 'pnpm-install' }).locator('button').filter({ hasText: say('重载会话', 'Reload the session') }).click();
+    const reloadEnd = Date.now() + 10000;
+    while (Date.now() < reloadEnd && !reloads.length) await page.waitForTimeout(100);
+    assert.deepEqual(reloads, ['reload_resources'], 'session reload reaches the native runtime');
     await page.locator('#pi-transcript-content > .pi-memory-hint').filter({ hasText: say('已记住：记下端口 4321', 'Remembered: 记下端口 4321') }).locator('button').filter({ hasText: say('撤销', 'Undo') }).click();
     const end = Date.now() + 10000;
     while (Date.now() < end && !writes.some(write => write.body?.operation === 'undo')) await page.waitForTimeout(100);
@@ -388,14 +410,19 @@ async function runWave2(browser, base, width, locale) {
         category, state: 'active', revision: hash(revision), content, updatedAt: '2026-01-01' });
     const items = [item('a', '1', 'First source entry'), item('b', '2', 'Second source entry'), item('c', '3', 'Third source entry', 'preference'),
         { id: hash('p'), kind: 'memory', scope: 'project', target: 'project', projectKey: hash('k'), category: 'fact', state: 'active',
-            revision: hash('r'), content: 'Project entry', updatedAt: '2026-01-01' }];
+            revision: hash('r'), content: 'Project entry', updatedAt: '2026-01-01' },
+        { id: hash('d'), kind: 'skill', name: 'draft-skill', description: 'Draft skill', state: 'draft', scope: 'profile', revision: hash('u'), updatedAt: '2026-01-01' },
+        { id: hash('e'), kind: 'skill', name: 'active-skill', description: 'Active skill', state: 'active', scope: 'profile', revision: hash('v'), updatedAt: '2026-01-01' }];
     const receipts = [
         { id: 'receipt-hint', requestId: 'learning-1', kind: 'memory', operation: 'create', status: 'saved', origin: 'learning',
             category: 'fact', preview: 'First source entry', undoable: true, itemId: hash('a'), afterRevision: hash('1'),
             source: { sessionId: 'thread-one', entryId: 'entry-user-1' } },
         { id: 'receipt-project-hint', requestId: 'learning-2', kind: 'memory', operation: 'create', status: 'saved', origin: 'agent',
             category: 'fact', preview: 'Project entry', undoable: true, itemId: hash('p'), afterRevision: hash('r'), scope: 'project', projectKey: hash('k'),
-            source: { sessionId: 'thread-one', entryId: 'entry-user-2' } } ];
+            source: { sessionId: 'thread-one', entryId: 'entry-user-2' } },
+        { id: 'receipt-skill', requestId: 'tool-9', kind: 'skill', operation: 'create', status: 'saved', origin: 'learning', reason: 'review',
+            preview: 'pnpm-install — 用 pnpm 安装依赖', undoable: false, itemId: hash('s'), afterRevision: hash('t'), activation: 'reload-required',
+            source: { sessionId: 'thread-one', entryId: 'entry-reply-1' } } ];
     const proposal = { id: 'proposal-one', target: 'memory', createdAt: '2026-02-01', model: { provider: 'fixture', modelId: 'review-model' },
         groups: [
             { items: [{ itemId: hash('a'), itemRevision: hash('1'), preview: 'First source entry', category: 'fact' },
@@ -405,13 +432,14 @@ async function runWave2(browser, base, width, locale) {
                 { itemId: hash('b'), itemRevision: hash('2'), preview: 'Second source entry', category: 'fact' }],
                 content: 'Stale merge', category: 'fact' } ] };
     const state = { learningRevision: 1, proposals: undefined, drafts: undefined, usage: { memory: { chars: 13600, limit: 16000 }, user: { chars: 100, limit: 8000 } },
-        settings: structuredClone(settings), actions: ['save', 'propose-consolidation', 'dismiss-proposal'], consolidates: [], undos: [], mutations: [] };
+        settings: structuredClone(settings), actions: ['save', 'propose-consolidation', 'dismiss-proposal'], consolidates: [], undos: [], mutations: [],
+        health: { state: 'ok', missingModels: [], lastFailure: null, today: { runs: 0, maxRuns: 4, reservedTokens: 0, maxTokens: 24000 } } };
     await page.route('**/api/pi/**', async route => {
         const req = route.request(), url = new URL(req.url()), p = url.pathname;
         const fulfill = (body, status = 200) => route.fulfill({ json: body, status });
         const learning = () => ({ version: 1, status: 'ready', revision: state.learningRevision, settings: state.settings,
             jobs: [], recentRuns: [], proposals: state.proposals, drafts: state.drafts,
-            health: { state: 'ok', missingModels: [], lastFailure: null, today: { runs: 0, maxRuns: 4, reservedTokens: 0, maxTokens: 24000 } },
+            health: state.health,
             capabilities: { installed: true, settingsWrite: true, reservedTokensPerRun: 6000, actions: state.actions,
                 limits: { maxRunsPerDay: { min: 1, max: 20 }, maxTokensPerDay: { min: 6000, max: 200000 }, periodicReviewMinutes: { min: 0, max: 10800 } } } });
         const snapshot = () => ({ version: 1, status: 'ready', revision: hash('a'), items, receipts, hasMore: false,
@@ -541,7 +569,7 @@ async function runWave2(browser, base, width, locale) {
     await page.locator('.pi-profile-kinds button').first().click();
     const projectRow = page.locator('.pi-knowledge-row').filter({ hasText: 'Project entry' });
     await projectRow.click();
-    await page.locator('.pi-knowledge-detail pre').waitFor();
+    await page.waitForFunction(() => (document.querySelector('.pi-knowledge-detail')?.textContent || '').includes('r'.repeat(64)));
     const detail = page.locator('.pi-knowledge-detail');
     assert.equal(await detail.locator('button').filter({ hasText: say('编辑', 'Edit') }).count(), 1, 'project entry is editable with a session id');
     assert.equal(await detail.locator('button').filter({ hasText: say('删除', 'Delete') }).count(), 1, 'project entry can be deleted with a session id');
@@ -574,9 +602,32 @@ async function runWave2(browser, base, width, locale) {
     await page.evaluate(() => { window.manager.close(); window.manager.open('profile-one'); });
     await page.locator('.pi-profile-kinds button').first().click();
     await projectRow.click();
-    await page.locator('.pi-knowledge-detail pre').waitFor();
+    await page.waitForFunction(() => (document.querySelector('.pi-knowledge-detail')?.textContent || '').includes('r'.repeat(64)));
     assert.equal(await detail.locator('button').filter({ hasText: say('编辑', 'Edit') }).count(), 0, 'without a session id project entries stay read-only');
     assert.equal(await detail.locator('button').filter({ hasText: say('删除', 'Delete') }).count(), 0, 'without a session id project entries cannot be deleted');
+    // U2.4: skill hints offer a session reload that is disabled while the chat is busy.
+    await page.evaluate(() => { window.current = { ...window.current, busy: true }; window.chat.update(); });
+    const skillHint = page.locator('#pi-transcript-content .pi-memory-hint').filter({ hasText: 'pnpm-install' });
+    assert.ok((await skillHint.innerText()).includes(say('需重载会话后生效', 'Reload the session to apply')));
+    assert.equal(await skillHint.locator('button').filter({ hasText: say('重载会话', 'Reload the session') }).isDisabled(), true);
+    await page.evaluate(() => { window.current = { ...window.current, busy: false }; window.chat.update(); });
+    await skillHint.locator('button').filter({ hasText: say('重载会话', 'Reload the session') }).click();
+    assert.deepEqual(await page.evaluate(() => window.events.at(-1)), { reload: { sessionId: 'thread-one' } });
+    // U2.4: draft skills awaiting review are listed in the learning area and filter the skills.
+    state.drafts = { pending: 2, capped: false };
+    await page.evaluate(() => window.refreshAll());
+    const draftsBadge = page.locator('.pi-learning-drafts button');
+    await draftsBadge.waitFor();
+    assert.ok((await draftsBadge.innerText()).includes(say('2 个草稿技能待审', '2 draft skills awaiting review')), await draftsBadge.innerText());
+    await draftsBadge.click();
+    await page.waitForFunction(() => document.querySelectorAll('.pi-knowledge-row').length === 1);
+    assert.ok((await text('.pi-knowledge-list')).includes('draft-skill'), await text('.pi-knowledge-list'));
+    assert.equal(await page.locator('.pi-knowledge-filter button[aria-pressed="true"]').count(), 1, 'the draft filter is active');
+    // L2.3 health state renders with its reason instead of an untranslated id.
+    state.health = { state: 'memory-full', missingModels: [], lastFailure: null, today: { runs: 1, maxRuns: 4, reservedTokens: 6000, maxTokens: 24000 } };
+    await page.evaluate(() => window.refreshAll());
+    await page.waitForFunction(() => ['记忆已满', 'Memory is full'].some(text => (document.querySelector('.pi-learning-health')?.textContent || '').includes(text)));
+    assert.ok((await text('.pi-learning-health')).includes(say('记忆已满', 'Memory is full')), await text('.pi-learning-health'));
     // Mobile: 16px form controls, no horizontal overflow, no page errors.
     if (width < 900) {
         await page.waitForFunction(() => [...document.querySelectorAll('textarea,input,select')].every(el => parseFloat(getComputedStyle(el).fontSize) >= 16), undefined, { timeout: 5000 }).catch(() => {});
@@ -586,7 +637,7 @@ async function runWave2(browser, base, width, locale) {
     const geometry = await page.evaluate(() => ({ width: innerWidth, body: document.documentElement.scrollWidth }));
     assert.ok(geometry.body <= geometry.width + 1, JSON.stringify(geometry));
     assert.deepEqual(errors, []);
-    console.log(`PASS wave2 consolidate ${width} ${locale}: ${JSON.stringify(geometry)}`);
+    console.log(`PASS wave2 ui ${width} ${locale}: ${JSON.stringify(geometry)}`);
     await context.close();
 }
 

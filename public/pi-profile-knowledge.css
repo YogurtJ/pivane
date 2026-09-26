@@ -58,6 +58,7 @@
 .pi-proposal-body label { display: grid; gap: 5px; font-size: .88rem; min-width: 0; }
 .pi-proposal-body textarea { resize: vertical; }
 .pi-proposal-stale { margin: 0; font-size: .82rem; color: #c0392b; }
+.pi-knowledge-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
 .pi-injection { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 6px; padding: 12px; margin: 10px 0; min-width: 0; }
 .pi-injection h5 { font-size: .95rem; margin: 0; }
 .pi-injection-stats { margin: 0; font-size: .86rem; color: var(--text-soft); }
