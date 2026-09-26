@@ -157,3 +157,71 @@ test('upstream project skill IDs resolve by slug inside the verified cwd scope o
     }
     assert.equal(calls.length, 1);
 });
+
+test('agent failure memories map to profile MEMORY.md with mapped categories and an optional reason', async () => {
+    const calls = [];
+    const rows = [{ id: 'b'.repeat(64), revision: 'c'.repeat(64), kind: 'memory', scope: 'profile', target: 'memory',
+        state: 'active', category: 'preference', content: 'Writable note' },
+    { id: 'd'.repeat(64), revision: 'e'.repeat(64), kind: 'memory', scope: 'profile', target: 'failure',
+        state: 'active', category: 'failure', content: 'Legacy failure', readOnly: true }];
+    const service = { snapshot: async () => ({ status: 'ready', revision, capabilities: { memory: true }, items: rows, hasMore: false }),
+        mutateFromNative: async (_id, input) => { calls.push(input); return { receipt: { id: 'r', status: 'saved' } }; } };
+    const context = { cwd: '/tmp/synthetic', sessionManager: { getSessionFile: () => '/tmp/native.jsonl',
+        getSessionId: () => 'native', getBranch: () => [{ id: 'user-1' }] } };
+    const run = (name, args) => createKnowledgeMemoryTools(service, profileId)(name, args, undefined, () => true, context);
+    const added = await run('memory_add', { target: 'failure', content: ' Build failed ', failure_reason: ' missing env ' });
+    assert.equal(added.details.success, true);
+    assert.deepEqual({ target: calls[0].target, scope: calls[0].scope, category: calls[0].category, content: calls[0].content },
+        { target: 'memory', scope: 'profile', category: 'failure', content: 'Build failed（原因：missing env）' });
+    const expected = { failure: 'failure', 'tool-quirk': 'failure', correction: 'correction', preference: 'preference',
+        convention: 'procedure', insight: 'fact' };
+    for (const [category, mapped] of Object.entries(expected)) {
+        for (const target of ['failure', 'memory']) {
+            await run('memory_add', { target, content: `${category} ${target}`, category });
+            assert.equal(calls.at(-1).category, mapped, `${target}/${category}`);
+            assert.equal(calls.at(-1).target, 'memory');
+        }
+    }
+    await run('memory_add', { target: 'memory', content: 'plain', failure_reason: 'ignored outside failure' });
+    assert.deepEqual([calls.at(-1).category, calls.at(-1).content], ['fact', 'plain']);
+    for (const failure_reason of ['x'.repeat(201), 'two\nlines', 42]) {
+        const rejected = await run('memory_add', { target: 'failure', content: 'Bad reason', failure_reason });
+        assert.equal(rejected.details.success, false);
+        assert.match(rejected.details.error, /Invalid failure_reason/);
+    }
+    const unknown = await run('memory_add', { target: 'memory', content: 'Unknown', category: 'mystery' });
+    assert.match(unknown.details.error, /Invalid memory category/);
+    const count = calls.length;
+    await run('memory_replace', { target: 'memory', old_text: 'Writable note', content: 'Kept category' });
+    assert.equal(calls.at(-1).category, 'preference');
+    await run('memory_replace', { target: 'memory', old_text: 'Writable note', content: 'Explicit', category: 'convention' });
+    assert.equal(calls.at(-1).category, 'procedure');
+    await run('memory_replace', { target: 'failure', old_text: 'Writable note', content: 'Now a failure' });
+    assert.deepEqual([calls.at(-1).operation, calls.at(-1).itemId, calls.at(-1).category], ['update', rows[0].id, 'failure']);
+    await run('memory_replace', { target: 'failure', old_text: 'Writable note', content: 'Insight', category: 'insight' });
+    assert.equal(calls.at(-1).category, 'fact');
+    await run('memory_remove', { target: 'failure', old_text: 'Writable note' });
+    assert.deepEqual([calls.at(-1).operation, calls.at(-1).itemId], ['delete', rows[0].id]);
+    for (const name of ['memory_replace', 'memory_remove']) {
+        const legacy = await run(name, { target: 'failure', old_text: 'Legacy failure', content: 'x' });
+        assert.equal(legacy.details.success, false);
+        assert.equal(legacy.details.status, 409);
+        assert.equal(legacy.details.error, 'Legacy failure entries are read-only');
+    }
+    const missing = await run('memory_remove', { target: 'failure', old_text: 'Nothing here' });
+    assert.match(missing.details.error, /missing or ambiguous/);
+    assert.equal(calls.length, count + 5);
+});
+
+test('memory-full rejections surface a structured code in the failed tool result', async () => {
+    const full = Object.assign(new Error('Memory document limit exceeded'), { status: 409, code: 'memory-full',
+        details: { target: 'memory', chars: 250, limit: 256, needed: 262 } });
+    const service = { snapshot: async () => ({ status: 'ready', revision, capabilities: { memory: true }, items: [], hasMore: false }),
+        mutateFromNative: async () => { throw full; } };
+    const context = { cwd: '/tmp/synthetic', sessionManager: { getSessionFile: () => '/tmp/native.jsonl',
+        getSessionId: () => 'native', getBranch: () => [{ id: 'user-1' }] } };
+    const result = await createKnowledgeMemoryTools(service, profileId)('memory_add',
+        { target: 'memory', content: 'overflow' }, undefined, () => true, context);
+    assert.deepEqual(result.details, { success: false, error: 'Memory document limit exceeded', status: 409,
+        code: 'memory-full', errorDetails: full.details });
+});
