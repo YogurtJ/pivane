@@ -561,7 +561,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showTokenDialog();
             throw new Error(translateUi("需要 Pi Web 访问令牌"));
         }
-        if (!response.ok) throw Object.assign(new Error(translateUi(data?.error || `HTTP ${response.status}`)), { status: response.status });
+        if (!response.ok) throw Object.assign(new Error(translateUi(data?.error || `HTTP ${response.status}`)), { status: response.status, data });
         return data;
     }
 
@@ -625,6 +625,7 @@ document.addEventListener('DOMContentLoaded', () => {
             busy: !state.connected || state.streaming || state.compacting || state.shellBusy || state.pendingUi.size > 0 } : null,
         link: appendAgentThreadLink, error: message => toast(message, 'error') });
     const chatKnowledge = window.PiChatKnowledge?.create({ root: document.getElementById('pi-chat-knowledge'), fetch: apiFetch,
+        transcript: elements.transcript, entries: () => requestRpc('get_entries', {}),
         scope: () => state.connected && state.session?.agentProfile?.id && !state.session.ephemeral && state.profileLearningSupported
             ? { cwd: state.cwd, sessionId: state.session.id, profileId: state.session.agentProfile.id, generation: state.socketGeneration } : null });
     let accessBootstrapped = false;
@@ -2404,6 +2405,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!elements.transcript.children.length) renderEmptySession();
         shell.setMessages(messages);
         decorateCodeBlocks(elements.transcript);
+        chatKnowledge?.decorate();
         transcriptView.setTailActive(state.streaming);
         transcriptView.refresh();
         transcriptScroll.restore(readingPosition);

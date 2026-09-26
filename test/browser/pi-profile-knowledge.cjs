@@ -131,7 +131,7 @@ async function run(browser, base, width, locale, dark) {
     assert.equal(await page.locator('.pi-knowledge-editor textarea').inputValue(), 'A correction draft');
     assert.equal(await page.locator('.pi-knowledge-editor button[type=submit]').isDisabled(), true);
     state.status = 'pending'; await page.locator('.pi-knowledge-head button').click();
-    await page.waitForFunction(() => document.querySelector('.pi-knowledge-status')?.textContent.includes('pending') || document.querySelector('.pi-knowledge-status')?.textContent.includes('待同步'));
+    await page.waitForFunction(() => /pending/i.test(document.querySelector('.pi-knowledge-status')?.textContent || '') || document.querySelector('.pi-knowledge-status')?.textContent.includes('待同步'));
     assert.equal(await page.locator('.pi-knowledge-tools button').isDisabled(), true);
     state.status = 'ready'; state.receipts.unshift({ id:'verified', kind:'memory', operation:'create', requestId:'server', source:{sessionId:'thread-one',entryId:'native-one'}, status:'saved', undoable:false });
     state.receipts.unshift({ id:'other', kind:'memory', operation:'create', requestId:'other', source:{sessionId:'thread-two',entryId:'native-two'}, status:'saved', undoable:false });
