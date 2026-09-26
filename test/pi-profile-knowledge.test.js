@@ -317,7 +317,7 @@ test('the request journal keeps accepting writes after the active receipt window
     assert.equal(data.receipts.length, 200);
     assert.equal(data.archive.length, 6);
     const snapshot = await service.snapshot(id);
-    assert.deepEqual(snapshot.capabilities.operations, ['create', 'update', 'delete', 'restore', 'enable', 'disable', 'undo']);
+    assert.deepEqual(snapshot.capabilities.operations, ['create', 'update', 'delete', 'restore', 'enable', 'disable', 'undo', 'consolidate']);
     assert.deepEqual({ receipts: snapshot.capabilities.journal.receipts, archived: snapshot.capabilities.journal.archivedReceipts,
         requests: snapshot.capabilities.journal.requests }, { receipts: 200, archived: 6, requests: 206 });
     // The oldest request replays from its archive digest: same receipt, no undo.
