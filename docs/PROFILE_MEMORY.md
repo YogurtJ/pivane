@@ -270,8 +270,9 @@ tool adapter.
 - **Models** are the auxiliary purposes `memory-correction`, `memory-review`
   and `memory-extraction` under Settings → Preferences → Auxiliary models. A
   blank purpose is `waiting-config`; the chat model is never substituted.
-- **Triggers** (a job registered while workers are busy is retried every second
-  until they are idle, not left for the periodic tick): a settled turn, a successful compaction and worker exit/quit
+- **Triggers** (a job waits only for its own source session and the maintenance
+  lock; while that session is busy it is retried every second, not left for the
+  periodic tick): a settled turn, a successful compaction and worker exit/quit
   register verified native user/assistant pair references (no transcript body
   is stored). Explicit corrections and "remember from now on" preferences are
   handled first by the correction purpose; ordinary pairs go to review;
