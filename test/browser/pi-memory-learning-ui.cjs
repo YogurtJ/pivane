@@ -43,7 +43,8 @@ window.api = async (url, options) => {
 };
 window.manager = PiProfileKnowledge.create({ apiFetch: window.api, root: document.getElementById('pi-profiles-memory') });
 window.chat = PiChatKnowledge.create({ fetch: window.api, root: document.getElementById('pi-chat-knowledge'),
-    transcript, entries: () => Promise.resolve(window.fixtureEntries), scope: () => window.current });
+    transcript, anchors: () => window.fixtureEntries.entries.map(entry => [entry.id, entry.message.role, entry.message.timestamp, '']),
+    scope: () => window.current });
 window.manager.open('profile-one'); window.chat.update();
 window.refreshAll = () => { window.manager.refresh(); window.chat.refresh(); };
 </script></body></html>`));
@@ -284,7 +285,7 @@ async function runProfiles(browser, base, width, locale) {
 }
 
 async function runChat(browser, base, width, locale) {
-    // Real chat shell: verifies the pi-chat.js wiring (entries lookup and transcript placement).
+    // Real chat shell: verifies the pi-chat.js wiring (context anchors and transcript placement).
     const context = await browser.newContext({ viewport: { width, height: 820 }, locale, isMobile: width < 900, hasTouch: width < 900 });
     const page = await context.newPage(), errors = [], writes = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -328,15 +329,15 @@ async function runChat(browser, base, width, locale) {
         if (cmd.type === 'open_session') return reply(ws, cmd, { session: { id: 'thread-one', cwd: '/tmp/chat-knowledge-fixture', name: 'Thread one',
             agentProfile: { id: 'profile-one', name: 'Research', enabled: true, available: true } }, state,
             messages: { messages: [{ role: 'user', content: 'Fixture question', timestamp: 1 },
-                { role: 'assistant', content: [{ type: 'text', text: 'Fixture reply' }], timestamp: 2 }] },
+                { role: 'assistant', content: [{ type: 'text', text: 'Fixture reply' }], timestamp: 2 }],
+                webAnchors: [['entry-user', 'user', 1, ''], ['entry-reply', 'assistant', 2, '']] },
             stats: { totalMessages: 2, contextUsage: { tokens: 0, percent: 0, contextWindow: 128000 } },
             models: { models: [model] }, thinkingLevels: { levels: ['off'] }, commands: { commands: [] } });
         if (cmd.type === 'get_state') return reply(ws, cmd, state);
-        if (cmd.type === 'get_messages') return reply(ws, cmd, { messages: [] });
+        if (cmd.type === 'get_messages') return reply(ws, cmd, { messages: [{ role: 'user', content: 'Fixture question', timestamp: 1 },
+            { role: 'assistant', content: [{ type: 'text', text: 'Fixture reply' }], timestamp: 2 }],
+            webAnchors: [['entry-user', 'user', 1, ''], ['entry-reply', 'assistant', 2, '']] });
         if (cmd.type === 'get_session_stats') return reply(ws, cmd, { totalMessages: 2 });
-        if (cmd.type === 'get_entries') return reply(ws, cmd, { leafId: 'entry-reply', entries: [
-            { id: 'entry-user', type: 'message', timestamp: 1, message: { role: 'user', content: 'Fixture question', timestamp: 1 } },
-            { id: 'entry-reply', type: 'message', timestamp: 2, message: { role: 'assistant', content: [{ type: 'text', text: 'Fixture reply' }], timestamp: 2 } } ] });
         if (cmd.type === 'get_runtime_configuration') return reply(ws, cmd, { runtimeId: 'fixture-runtime', revision: 'cfg', agentProfile: {
             saved: { id: 'profile-one', name: 'Research', enabled: true, available: true }, loadedProfileId: 'profile-one', loadedConfirmed: true, matchesSavedProfile: true } });
         return reply(ws, cmd, {});
