@@ -1,5 +1,6 @@
 const { randomUUID } = require('crypto');
 const { EventEmitter } = require('events');
+const fs = require('fs');
 const path = require('path');
 const { INTERNAL_COMMAND_PATTERN, isInternalCommand, privateReply } = require('./pivane-compat');
 const { PiRpcClient } = require('./pi-rpc-client');
@@ -811,6 +812,19 @@ class PiAgentSupervisor extends EventEmitter {
     isIdle() {
         return !this.disposing && !this.starting.size && !this.ephemeralWorkers.size
             && [...this.workers.values()].every(worker => worker.isIdle() && !worker.retainsBackgroundWork());
+    }
+
+    // Per-session idleness for background work sourced from one native session.
+    // A worker that is still starting for this file counts as busy.
+    isSessionIdle(sessionPath) {
+        if (this.disposing) return false;
+        if (typeof sessionPath !== 'string' || !sessionPath) return true;
+        const real = file => { try { return fs.realpathSync.native(file); } catch { return null; } };
+        const target = real(sessionPath) ?? sessionPath;
+        const matches = file => file === sessionPath || file === target || real(file) === target;
+        if ([...this.starting.keys()].some(matches)) return false;
+        const worker = [...this.workers].find(([file, item]) => !item.disposed && matches(file))?.[1];
+        return !worker || worker.isIdle() && !worker.retainsBackgroundWork();
     }
 
     getActivity() {

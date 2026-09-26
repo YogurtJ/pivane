@@ -177,7 +177,8 @@ function createPiAgentGateway(options = {}) {
         service: knowledgeService, knowledgeService });
     learning = new (require('./profile-memory/learning-service').ProfileLearningService)({ profiles, store, preferences,
         knowledge: knowledgeService, getAgentDir, createModelRuntime: () => settingsService.createModelRuntime(),
-        idle: () => !maintenance.locked && supervisor.isIdle() });
+        idle: job => !maintenance.locked && (job ? supervisor.isSessionIdle(job.sessionPath) : supervisor.isIdle()),
+        auxiliaryModels, legacyReviewModel: async () => (await profileMemory.snapshot()).reviewModel });
     learning.resumePromise = learning.resume();
     router.get('/profiles/:id/learning', profileRoute(req => learning.snapshot(req.params.id)));
     router.put('/profiles/:id/learning', profileRoute(req => learning.save(req.params.id, req.body)));

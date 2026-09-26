@@ -17,6 +17,22 @@ const AUXILIARY_PURPOSES = Object.freeze([
             help: '仅在学习已开启且选择专用模型后运行；不继承主对话模型，保存配置不会触发请求。' }))
 ]);
 
+const MEMORY_PURPOSES = Object.freeze(AUXILIARY_PURPOSES.filter(purpose => purpose.storage === 'memoryModels').map(purpose => purpose.id));
+
+// The one registry check for auxiliary routes: an authenticated, available,
+// non-batch text model. Settings save and legacy learning adoption share it.
+async function verifyTextModels(createModelRuntime, references) {
+    let available;
+    try {
+        const runtime = await createModelRuntime();
+        available = await runtime.getAvailable(undefined, { signal: AbortSignal.timeout(20000) });
+    } catch { throw Object.assign(new Error('无法验证辅助模型，请检查模型与认证配置'), { code: 'model-unverified' }); }
+    for (const reference of references) {
+        const model = available.find(item => item.provider === reference.provider && item.id === reference.modelId);
+        if (!model || !model.input?.includes('text') || /:batch$/.test(model.id)) throw Object.assign(new Error('请选择已接入且可用的文本模型'), { code: 'model-unavailable' });
+    }
+}
+
 class PiAuxiliaryModelsService {
     constructor({ preferences, titles, createModelRuntime }) {
         this.preferences = preferences; this.titles = titles; this.createModelRuntime = createModelRuntime;
@@ -52,17 +68,7 @@ class PiAuxiliaryModelsService {
         this.busy = true; // Reserve before model/auth lookup, including concurrent browser saves.
         this.pending = (async () => {
             try {
-                if (references.length) {
-                    let runtime, available;
-                    try {
-                        runtime = await this.createModelRuntime();
-                        available = await runtime.getAvailable(undefined, { signal: AbortSignal.timeout(20000) });
-                    } catch { throw new Error('无法验证辅助模型，请检查模型与认证配置'); }
-                    for (const reference of references) {
-                        const model = available.find(item => item.provider === reference.provider && item.id === reference.modelId);
-                        if (!model || !model.input?.includes('text') || /:batch$/.test(model.id)) throw new Error('请选择已接入且可用的文本模型');
-                    }
-                }
+                if (references.length) await verifyTextModels(this.createModelRuntime, references);
                 if (this.closed) throw new Error('服务正在关闭，辅助模型设置未保存');
                 // One private write, with a fresh revision check, preserves all other preferences.
                 this.preferences.setAuxiliaryModels(changes, input.expectedRevision);
@@ -72,6 +78,30 @@ class PiAuxiliaryModelsService {
         })();
         return this.pending;
     }
+    async textModelAvailable(reference) {
+        try { await verifyTextModels(this.createModelRuntime, [reference]); return true; }
+        catch { return false; }
+    }
+    // Legacy auto-learning adoption: fill only learning purposes that still have
+    // no model, after the same registry check as save. Returns the purposes set.
+    assignMissingMemoryModels(reference) {
+        if (this.busy || this.closed) throw Object.assign(new Error('辅助模型设置正在保存或服务正在关闭'), { statusCode: 409 });
+        const patch = validateTitleSettings({ provider: reference?.provider, modelId: reference?.modelId });
+        if (!patch.provider) throw new Error('辅助模型用途或参数无效');
+        this.busy = true;
+        this.pending = (async () => {
+            try {
+                await verifyTextModels(this.createModelRuntime, [{ provider: patch.provider, modelId: patch.modelId }]);
+                if (this.closed) throw new Error('服务正在关闭，辅助模型设置未保存');
+                const current = this.preferences.getMemoryModels();
+                const missing = MEMORY_PURPOSES.filter(id => !current[id]?.provider);
+                if (missing.length) this.preferences.setAuxiliaryModels({ memoryModels: Object.fromEntries(missing.map(id =>
+                    [id, { provider: patch.provider, modelId: patch.modelId }])) }, this.preferences.getAuxiliaryModelsRevision());
+                return missing;
+            } finally { this.busy = false; }
+        })();
+        return this.pending;
+    }
     async dispose() { this.closed = true; await Promise.allSettled([this.pending]); }
 }
-module.exports = { PiAuxiliaryModelsService, AUXILIARY_PURPOSES };
+module.exports = { PiAuxiliaryModelsService, AUXILIARY_PURPOSES, MEMORY_PURPOSES, verifyTextModels };
