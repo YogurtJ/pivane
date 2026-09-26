@@ -72,6 +72,7 @@
             target = details.session; targetLabel = t("打开任务线程");
         } else if (message.customType === RESULT) {
             article.dataset.agentCard = 'result';
+            if (/^[a-f0-9]{64}$/.test(str(details.deliveryId, 64))) article.dataset.deliveryId = details.deliveryId;
             icon.className = 'fa-solid fa-flag-checkered'; title.textContent = t("Agent 任务结果");
             peer = str(details.session?.name, 300) || str(details.requestId, 160);
             meta.push(t(Object.hasOwn(RESULT_LABELS, details.status) ? RESULT_LABELS[details.status] : RESULT_LABELS.uncertain));

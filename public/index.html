@@ -27,6 +27,7 @@
     <link rel="stylesheet" href="pi-native-controls.css">
     <link rel="stylesheet" href="pi-shell.css">
     <link rel="stylesheet" href="pi-task-progress.css">
+    <link rel="stylesheet" href="pi-task-results.css">
     <link rel="stylesheet" href="pi-agent-cards.css">
     <link rel="stylesheet" href="pi-turn-edits.css">
     <link rel="stylesheet" href="pi-file-viewer.css">
@@ -214,7 +215,6 @@
                         <span><i class="fa-solid fa-hand" aria-hidden="true"></i> <span id="pi-pending-ui-count"></span></span>
                         <button id="pi-review-pending-ui" type="button"><!--i18n:s1353-->处理确认</button>
                     </div>
-                    <details id="pi-task-results" class="pi-task-results" hidden></details>
                     <div id="pi-chat-knowledge" hidden></div>
                     <div class="pi-transcript-viewport">
                         <div id="pi-transcript" class="pi-transcript" tabindex="0" role="region" aria-label="会话消息" data-i18n-aria-label="s1354">
@@ -238,6 +238,7 @@
                     <div class="pi-composer-wrap">
                         <div id="pi-composer-chips" class="pi-composer-chips">
                             <details id="pi-subagent-runs" class="pi-subagent-runs pi-status-chip" hidden></details>
+                            <details id="pi-task-results" class="pi-task-results pi-status-chip" hidden></details>
                             <details id="pi-task-progress" class="pi-task-progress pi-status-chip" hidden></details>
                         </div>
                         <div id="pi-model-guidance" class="pi-model-guidance" role="status" hidden>

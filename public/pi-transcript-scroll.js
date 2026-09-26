@@ -106,6 +106,15 @@
             if (this.viewport.clientHeight && !this.following) this.readingAnchor = this.captureAnchor();
         }
 
+        // Bring a node near the top of the viewport and stop following the tail.
+        scrollToNode(node, margin = 16) {
+            this.following = false;
+            this.pendingRestore = null;
+            const top = this.viewport.scrollTop + node.getBoundingClientRect().top - this.viewport.getBoundingClientRect().top - margin;
+            this.setTop(top);
+            this.paint();
+        }
+
         jumpToLatest() {
             this.following = true;
             this.setTop(this.maximum());

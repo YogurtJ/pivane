@@ -623,7 +623,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const taskResults = window.PiTaskResults?.create({ root: document.getElementById('pi-task-results'), fetch: apiFetch,
         scope: () => state.session && !state.session.ephemeral ? { cwd: state.cwd, id: state.session.id, generation: state.socketGeneration,
             busy: !state.connected || state.streaming || state.compacting || state.shellBusy || state.pendingUi.size > 0 } : null,
-        link: appendAgentThreadLink, error: message => toast(message, 'error') });
+        link: appendAgentThreadLink, error: message => toast(message, 'error'), locate: locateTaskResult });
+    // A result chip row jumps to the delivered card: unfold its turn, open its body and scroll to it.
+    function locateTaskResult(deliveryId) {
+        const card = [...elements.transcript.querySelectorAll('.pi-agent-card[data-agent-card="result"]')].find(node => node.dataset.deliveryId === deliveryId);
+        if (!card || !transcriptView.reveal(card)) return false;
+        const body = card.querySelector('.pi-agent-card-body');
+        if (body && !body.open) body.open = true;
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            if (!card.isConnected) return;
+            transcriptScroll.scrollToNode(card);
+            card.classList.remove('pi-agent-card-located'); void card.offsetWidth; card.classList.add('pi-agent-card-located');
+        }));
+        return true;
+    }
     const chatKnowledge = window.PiChatKnowledge?.create({ root: document.getElementById('pi-chat-knowledge'), fetch: apiFetch,
         scope: () => state.connected && state.session?.agentProfile?.id && !state.session.ephemeral && state.profileLearningSupported
             ? { cwd: state.cwd, sessionId: state.session.id, profileId: state.session.agentProfile.id, generation: state.socketGeneration } : null });
