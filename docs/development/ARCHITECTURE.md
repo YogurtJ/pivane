@@ -87,7 +87,7 @@ POSIX 私密权限和目录刷盘、Windows 受保护 DACL 和写透替换分别
 
 `pi-composer-chips.js` 拥有输入框上方状态标签行的互斥展开、外部点击和 Esc 收起；两张卡默认收起，详情以浮层显示，不参与聊天区布局。`pi-task-progress.js` 拥有计划卡渲染，只接受当前连接快照与进度事件，不解析回复文本、不从运行终态推断步骤完成。
 
-`pi-task-results.js` 拥有结果面板的请求、渲染和线程代次检查；协调器只提供当前线程、访问接口和已有安全跳转。结果正文使用纯文本，收到结果不改草稿、附件或当前滚动位置。
+`pi-task-results.js` 拥有输入框上方“任务结果”状态卡的请求、渲染和线程代次检查；协调器只提供当前线程、访问接口、已有安全跳转和按交付标识定位正文结果卡片（`PiTranscriptView.reveal` 展开所在轮次，`PiTranscriptScroll.scrollToNode` 停止跟随并滚动）。结果正文使用纯文本，收到结果不改草稿、附件或当前滚动位置。
 
 快照与有界 live 状态通过 webRuntimeId/webSequence 衔接；agent_settled 后以原生记录校正。迟到响应按线程、socket 代次、revision 和草稿版本过滤。正文模式只改变展示，不改变上下文或会话数据。文件变更来自成功 edit/write 的明确结果，不推算任意 Shell 的净变化或提供虚构回滚。
 

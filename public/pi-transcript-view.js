@@ -284,6 +284,13 @@
             this.turnGroups = active;
         }
 
+        // Make one transcript node visible: open the folded turn that hides it.
+        reveal(node) {
+            const group = node?.dataset?.turnKey ? this.turnGroups.get(node.dataset.turnKey) : null;
+            if (group && this.mode === 'compact' && !group.element.open) { group.element.open = true; this.refreshVisibility(); }
+            return Boolean(node?.isConnected) && !node.hidden;
+        }
+
         refreshVisibility() {
             const collapseProcess = this.mode !== 'full';
             const collapseTurns = this.mode === 'compact';
