@@ -8686,6 +8686,11 @@
     ,["类别","Category"]
     ,["后台学习正在处理本轮内容…", "Background learning is processing this turn…"]
     ,["只读", "Read-only"]
+    ,["消息显示", "Message display"]
+    ,["每轮只留最终回复，过程收进一行“用时 · 工具调用”摘要，点开可回看。", "Keeps only each turn's final reply; the process folds into one “time · tool calls” summary you can expand."]
+    ,["显示每条回复，连续的思考和工具调用合并成一行“执行记录”。", "Shows every reply; consecutive thinking and tool calls merge into one “execution record” row."]
+    ,["逐条展开全部思考和工具调用，适合排查问题。", "Expands every thinking step and tool call; useful for troubleshooting."]
+    ,["消息显示…", "Message display…"]
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

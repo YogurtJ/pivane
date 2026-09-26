@@ -291,13 +291,7 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.mobileContextTrigger.setAttribute('aria-expanded', 'false');
             elements.mobileComposerSummary.setAttribute('aria-expanded', 'false');
         });
-        const modes = $('pi-transcript-modes');
-        const home = document.createComment('message view desktop position'); modes.after(home);
-        const placeModes = () => {
-            if (innerWidth <= 680) $('pi-mobile-view-section').append(modes);
-            else { home.before(modes); if (dialog.open) dialog.close(); }
-        };
-        window.addEventListener('resize', placeModes); placeModes();
+        window.addEventListener('resize', () => { if (innerWidth > 680 && dialog.open) dialog.close(); });
         return { model, thinking, context };
     })();
 
@@ -3598,6 +3592,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (anchor && (!anchor.getClientRects().length || anchor.disabled)) threadMenu.close(false);
     }).observe($('chat-tab'), { attributes: true, subtree: true, attributeFilter: ['hidden', 'class', 'disabled'] });
 
+    // The message display switch lives in Settings; the thread menu is a shortcut to it.
+    function openMessageViewSetting() {
+        window.dispatchEvent(new CustomEvent('workspace:open-settings', { detail: { tab: 'models' } }));
+        requestAnimationFrame(() => {
+            $('settings-message-view')?.scrollIntoView({ block: 'center' });
+            $('pi-transcript-modes')?.querySelector('[aria-pressed="true"]')?.focus({ preventScroll: true });
+        });
+    }
+
     function showThreadMenu(target, point, current = false) {
         const row = target.closest('[data-session-id]');
         const group = target.closest('[data-project-cwd]');
@@ -3628,6 +3631,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ];
             items = [
                 ...(historyItems.length ? [{ label: translateUi('历史与记录'), icon: 'fa-clock-rotate-left', children: historyItems }] : []),
+                ...(current ? [command(translateUi("消息显示…"), 'fa-eye', openMessageViewSetting)] : []),
                 command(translateUi("重命名"), 'fa-pen', () => renameCurrent(session, cwd), { disabled: session.ephemeral }),
                 ...(titleEditor?.enabled ? [command(translateUi('重新生成标题'), 'fa-wand-magic-sparkles', () => titleEditor.open(session, cwd), { disabled: session.ephemeral })] : []),
                 ...(workflows.enabled ? [command(translateUi("复制为新线程"), 'fa-code-branch', async () => {

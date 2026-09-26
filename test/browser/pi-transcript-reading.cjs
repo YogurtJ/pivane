@@ -48,6 +48,7 @@ async function run(browser, size) {
     const current = () => activeId === session.id ? messages : [];
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(({ cwd, id }) => {
+        if (!localStorage.getItem('pi.web.transcriptMode')) localStorage.setItem('pi.web.transcriptMode', 'reading');
         if (!localStorage.getItem('pi.web.cwd')) {
             localStorage.setItem('pi.web.cwd', cwd);
             localStorage.setItem(`pi.web.session:${cwd}`, id);
@@ -256,18 +257,8 @@ async function run(browser, size) {
     assert.equal(await page.locator('.pi-transcript-toolbar').count(), 0, 'no separate toolbar row');
     assert.ok(Math.abs(banner.y + banner.height - viewport.y) <= 1, 'transcript begins directly after the status bar');
     assert.ok(banner.height <= (size.width <= 680 ? 36 : size.width < 900 ? 37 : 29), 'status bar has bounded height');
-    if (size.width <= 680) await page.locator('#pi-toggle-inspector').click();
-    const layout = await page.locator('.pi-transcript-modes').boundingBox();
-    if (size.width <= 680) {
-        const pane = await page.locator('#pi-inspector-details').boundingBox();
-        assert.ok(layout.y >= pane.y && layout.y + layout.height <= pane.y + pane.height, 'message view is in details');
-        await page.locator('#pi-close-inspector').click();
-        assert.equal(await page.locator('#pi-mobile-thread-title').textContent(), session.name);
-    } else {
-        assert.ok(layout.y >= banner.y && layout.y + layout.height <= banner.y + banner.height, 'desktop mode controls remain in status bar');
-        const textBox = await page.locator('#pi-connection-text').boundingBox();
-        assert.ok(textBox.x + textBox.width <= layout.x, 'connection text does not overlap controls');
-    }
+    assert.equal(await page.locator('#pi-connection-banner [data-transcript-mode]').count(), 0, 'message view switch lives in settings, not the status bar');
+    if (size.width <= 680) assert.equal(await page.locator('#pi-mobile-thread-title').textContent(), session.name);
     const originalStatus = await page.locator('#pi-connection-text').textContent();
     await page.locator('#pi-connection-text').evaluate(el => { el.textContent = '正在连接并同步会话消息'.repeat(40); });
     assert.equal((await page.locator('#pi-connection-banner').boundingBox()).height, banner.height, 'long status cannot increase bar height');
@@ -281,7 +272,7 @@ async function run(browser, size) {
     assert.ok(pending.y >= banner.y + banner.height, 'confirmation stays below the status controls');
     assert.ok(pending.y + pending.height <= (await page.locator('#pi-transcript').boundingBox()).y + 1, 'confirmation does not cover transcript');
     await page.locator('#pi-pending-ui-banner').evaluate(el => el.classList.add('hidden'));
-    console.log(`LAYOUT ${size.width}: status ${banner.height}px, controls ${layout.width}x${layout.height}px, no extra row`);
+    console.log(`LAYOUT ${size.width}: status ${banner.height}px, no mode switch in the status bar`);
     assert.deepEqual(errors, []);
     assert.deepEqual(writes, []);
     console.log(`PASS ${size.width}x${size.height}: grouped body/full views, merged tools, failures, images, stream, settled, reconnect, anchors, preferences; no writes/errors/overflow`);

@@ -8,6 +8,7 @@ const fs = require('node:fs'), os = require('node:os');
 const { WorkspacePreferencesService } = require('../../server/workspace-preferences-service');
 const favoritesRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'picker-browser-'));
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const { selectMessageView } = require('./pi-mobile-view-helper.cjs');
 const { BUILTINS } = require('../../server/pi-composer-service');
 const cwd = '/synthetic/model-picker';
 const sessions = [{ cwd, id: 'one', name: 'Model picker' }, { cwd, id: 'two', name: 'Second session' }];
@@ -70,20 +71,16 @@ async function check(browser, base, width, language, theme) {
             await page.locator('#pi-mobile-choose-model').click();
         } else await button.click();
     };
-    const switchView = async mode => {
-        if (width <= 680) await page.locator('#pi-toggle-inspector').click();
-        await page.locator(`[data-transcript-mode="${mode}"]`).click();
-        if (width <= 680) await page.locator('#pi-close-inspector').click();
-    };
+    const switchView = mode => selectMessageView(page, mode);
     await page.waitForFunction(() => !document.querySelector('#pi-model-select').disabled);
     if (width > 680) {
         assert.equal(await page.locator('#pi-mobile-thread-title').textContent(), 'Model picker');
         assert.equal(await page.locator('#pi-project-button .pi-project-mark i').getAttribute('class'), 'fa-solid fa-folder-open');
         const banner = await page.evaluate(() => {
             const box = selector => document.querySelector(selector).getBoundingClientRect();
-            return { title: box('#pi-mobile-thread-title'), status: box('#pi-connection-text'), menu: box('#pi-current-thread-menu'), modes: box('#pi-transcript-modes') };
+            return { title: box('#pi-mobile-thread-title'), status: box('#pi-connection-text'), menu: box('#pi-current-thread-menu'), banner: box('#pi-connection-banner') };
         });
-        assert.ok(banner.title.width > 0 && banner.title.right <= banner.status.left && banner.status.right <= banner.menu.left && banner.menu.right <= banner.modes.left, JSON.stringify(banner));
+        assert.ok(banner.title.width > 0 && banner.title.right <= banner.status.left && banner.status.right <= banner.menu.left && banner.menu.right <= banner.banner.right, JSON.stringify(banner));
         await page.locator('#pi-mobile-thread-title').evaluate(node => { node.textContent = 'Long thread title '.repeat(18); });
         const longTitle = await page.locator('#pi-mobile-thread-title').evaluate(node => ({ scroll: node.scrollWidth, width: node.clientWidth, right: node.getBoundingClientRect().right, statusLeft: document.querySelector('#pi-connection-text').getBoundingClientRect().left }));
         assert.ok(longTitle.scroll > longTitle.width && longTitle.right <= longTitle.statusLeft, JSON.stringify(longTitle));

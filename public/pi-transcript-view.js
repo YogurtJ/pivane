@@ -8,6 +8,13 @@
     // edit round cards and runtime notices.
     const TURN_MEMBER_SELECTOR = '.pi-message.assistant, .pi-message.custom, .pi-tool-row, .pi-bash-message, .pi-turn-edits, .pi-runtime-notice, .pi-event-notice, .pi-process-group';
     const PENDING_STOP_REASONS = new Set(['toolUse', 'pending']);
+    const MODES = new Set(['compact', 'reading', 'full']);
+    // One line under the switch explains the option being hovered/focused, else the chosen one.
+    const MODE_HINTS = {
+        compact: () => translateUi("每轮只留最终回复，过程收进一行“用时 · 工具调用”摘要，点开可回看。"),
+        reading: () => translateUi("显示每条回复，连续的思考和工具调用合并成一行“执行记录”。"),
+        full: () => translateUi("逐条展开全部思考和工具调用，适合排查问题。")
+    };
 
     class PiTranscriptView {
         constructor({ content, controls, scroll }) {
@@ -16,25 +23,46 @@
             this.turnGroups = new Map();
             this.nextControlId = 0;
             this.frame = null;
-            this.mode = 'reading';
+            this.mode = 'compact';
             // The tail segment stays expanded while its turn is still running.
             this.tailActive = false;
             try {
                 const stored = localStorage.getItem(MODE_KEY);
-                if (stored === 'full' || stored === 'compact') this.mode = stored;
+                if (MODES.has(stored)) this.mode = stored;
             } catch {}
+            this.hint = document.getElementById('pi-transcript-mode-hint');
             controls.addEventListener('click', event => {
                 const button = event.target.closest('[data-transcript-mode]');
-                if (!button || button.dataset.transcriptMode === this.mode) return;
-                const position = scroll.capture();
-                this.mode = button.dataset.transcriptMode;
-                try { localStorage.setItem(MODE_KEY, this.mode); } catch {}
-                this.refresh();
-                scroll.restore(position);
+                if (!button) return;
+                this.setMode(button.dataset.transcriptMode, true);
+            });
+            for (const type of ['pointerover', 'focusin']) controls.addEventListener(type, event => {
+                const button = event.target.closest('[data-transcript-mode]');
+                if (button) this.showHint(button.dataset.transcriptMode);
+            });
+            controls.addEventListener('pointerleave', () => this.showHint(this.mode));
+            controls.addEventListener('focusout', event => { if (!controls.contains(event.relatedTarget)) this.showHint(this.mode); });
+            // Another tab changed the preference: follow it without writing back.
+            window.addEventListener('storage', event => {
+                if (event.key === MODE_KEY && MODES.has(event.newValue)) this.setMode(event.newValue, false);
             });
             // Restore group visibility before the scroll controller measures its reading anchor.
             scroll.beforeRestore = () => this.refreshVisibility();
             this.refresh();
+        }
+
+        setMode(mode, persist) {
+            if (!MODES.has(mode) || mode === this.mode) return;
+            const position = this.scroll.capture();
+            this.mode = mode;
+            if (persist) try { localStorage.setItem(MODE_KEY, mode); } catch {}
+            this.refresh();
+            this.scroll.restore(position);
+        }
+
+        showHint(mode) {
+            const text = MODE_HINTS[mode]?.() || '';
+            if (this.hint && this.hint.textContent !== text) this.hint.textContent = text;
         }
 
         setTailActive(active) {
@@ -126,6 +154,7 @@
             for (const button of this.controls.querySelectorAll('[data-transcript-mode]')) {
                 button.setAttribute('aria-pressed', String(button.dataset.transcriptMode === this.mode));
             }
+            this.showHint(this.mode);
             this.refreshVisibility();
         }
 

@@ -1,13 +1,11 @@
+// The message display switch lives in Settings → 使用偏好 on every screen size.
 async function selectMessageView(page, mode) {
-    if (await page.evaluate(() => innerWidth <= 680)) {
-        const detailsOpen = await page.locator('#pi-inspector').evaluate(node => node.classList.contains('open'))
-            && await page.locator('#pi-details-tab').getAttribute('aria-selected') === 'true';
-        if (!detailsOpen) await page.locator('#pi-toggle-inspector').click();
-        await page.locator(`#pi-transcript-modes [data-transcript-mode="${mode}"]`).click();
-        await page.locator('#pi-close-inspector').click();
-    } else {
-        await page.locator(`#pi-transcript-modes [data-transcript-mode="${mode}"]`).click();
-    }
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('workspace:open-settings', { detail: { tab: 'models' } })));
+    const button = page.locator(`#pi-transcript-modes [data-transcript-mode="${mode}"]`);
+    await button.waitFor({ state: 'visible' });
+    await button.click();
+    await page.locator('#workspace-settings-close').click();
+    await page.locator('#workspace-settings-dialog').waitFor({ state: 'hidden' });
 }
 
 // Media/profiles/extensions moved into the "更多功能" menu on narrow screens.

@@ -4649,35 +4649,44 @@ body.is-resizing * {
     white-space: nowrap;
 }
 
+.pi-message-view-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.pi-message-view-head span { color: var(--text-muted); font-size: 0.75rem; }
 .pi-transcript-modes {
-    display: inline-flex;
-    flex-shrink: 0;
-    margin-left: auto;
-    padding: 1px;
-    gap: 2px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding: 3px;
+    gap: 3px;
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--surface-2);
 }
 
 .pi-transcript-modes button {
-    min-height: 24px;
-    padding: 2px 10px;
+    min-width: 0;
+    min-height: 36px;
+    padding: 4px 8px;
     border: 0;
-    border-radius: 4px;
+    border-radius: 6px;
     background: transparent;
     color: var(--text-muted);
     font: inherit;
-    font-size: 0.72rem;
+    font-size: 0.85rem;
     cursor: pointer;
+    overflow-wrap: anywhere;
 }
 
+.pi-transcript-modes button:hover { color: var(--text-main); }
+
 .pi-transcript-modes button[aria-pressed="true"] {
-    background: var(--green-soft);
+    background: var(--surface-1);
     color: var(--green);
     font-weight: 600;
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--green) 35%, transparent), 0 1px 2px #0001;
 }
+
+.pi-message-view-card { align-items: center; }
+.pi-message-view-head { margin-bottom: 0; }
+.pi-transcript-mode-hint { grid-column: 1 / -1; min-height: 1.6em; margin: 0 2px; color: var(--text-muted); font-size: 0.8rem; line-height: 1.6; }
 
 .pi-transcript-modes button:focus-visible,
 .pi-process-group > summary:focus-visible {
@@ -4746,7 +4755,7 @@ body.is-resizing * {
 
 @media (max-width: 900px) {
     .pi-connection-banner { height: 37px; flex-basis: 37px; padding-inline: 14px; }
-    .pi-transcript-modes button { min-height: 32px; }
+    .pi-transcript-modes button { min-height: 44px; }
     .pi-turn-group > summary { min-height: 40px; }
 }
 

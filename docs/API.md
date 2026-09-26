@@ -540,7 +540,7 @@ Gateway 在响应或 timeout 时向订阅者发送 `{ "type": "gateway_ui_resolv
 
 新增 Pi event 支持时，优先保持透传，在 `pi-chat.js` 增加渲染分支。
 
-Web 的“正文 / 完整记录”是纯本地展示模式，不新增 REST/RPC，不影响模型输入或 Pi session。默认正文保留所有普通文字，连续 thinking/tool/bash 收为执行记录；工具结果按 toolCallId 填回调用详情，孤立结果仍可查看。失败工具不强制展开，最终失败/停止提示及待确认请求仍显示。`localStorage.pi.web.transcriptMode` 仅保存模式，展开状态不持久化。
+Web 的“简洁 / 正文 / 完整记录”是纯本地展示模式，不新增 REST/RPC，不影响模型输入或 Pi session。未保存偏好时默认简洁（每轮只显示最终回复，其余收进轮次摘要）；正文保留所有普通文字，连续 thinking/tool/bash 收为执行记录；工具结果按 toolCallId 填回调用详情，孤立结果仍可查看。失败工具不强制展开，最终失败/停止提示及待确认请求仍显示。`localStorage.pi.web.transcriptMode` 仅保存模式（`compact`/`reading`/`full`，其他页签修改后同步），展开状态不持久化。
 
 “本轮文件”的操作记录派生自 get_messages/打开快照：按原生 user 分段，关联成功 edit 的 toolCallId/path 与 details.patch/diff，以及成功 write 的 path/content；实时尾段在 agent_settled 后重读快照才显示。bash、失败或孤立工具结果不计入，原执行记录仍保留。各次编辑行数为累计而非净变化；写入不能无基线标为新建。刷新从仍可用的快照重建，不创建持久文件审计。用户选择“当前文件”时另调用受控 GET `/files/content`，与历史工具内容分开标注；详见 [FILE_VIEWER.md](FILE_VIEWER.md) 和 [NATIVE_CONTROLS.md](NATIVE_CONTROLS.md#本轮编辑记录)。
 

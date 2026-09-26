@@ -88,6 +88,22 @@ async function run(browser, size) {
 
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.pi-turn-group', { state: 'attached' });
+    assert.equal(await page.locator('#pi-transcript-content').getAttribute('data-transcript-mode'), 'compact', 'compact is the default view');
+    assert.equal(await page.locator('#pi-connection-banner [data-transcript-mode]').count(), 0, 'the switch is not in the status bar');
+    // The thread menu is the shortcut into Settings, where one hint line explains the options.
+    await page.locator('#pi-current-thread-menu').click();
+    await page.getByRole('menuitem', { name: '消息显示…' }).click();
+    const modeSwitch = page.locator('#pi-transcript-modes');
+    await modeSwitch.waitFor({ state: 'visible' });
+    const hint = page.locator('#pi-transcript-mode-hint');
+    assert.match(await hint.textContent(), /最终回复/, 'hint explains the chosen option');
+    await modeSwitch.locator('[data-transcript-mode="full"]').focus();
+    assert.match(await hint.textContent(), /排查/, 'hint follows the focused option');
+    await modeSwitch.locator('[data-transcript-mode="reading"]').click();
+    assert.match(await hint.textContent(), /执行记录/, 'hint shows the new choice');
+    assert.equal(await page.locator('#settings-message-view p').count(), 1, 'a single explanatory line');
+    await page.locator('#workspace-settings-close').click();
+    await page.locator('#workspace-settings-dialog').waitFor({ state: 'hidden' });
     assert.equal(await visibleTurnBars().count(), 0, 'reading mode keeps turn summaries hidden');
     assert.equal(await page.locator('.pi-turn-group').count(), 2, 'completed turns with a final reply get a summary');
     assert.equal(await visibleAssistant().count(), 7, 'reading mode keeps every assistant reply visible');

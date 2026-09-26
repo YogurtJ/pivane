@@ -1,5 +1,5 @@
 .pi-mobile-summary, #pi-mobile-thread-title, .pi-mobile-composer-summary,
-.pi-mobile-context-trigger, .pi-mobile-view-section { display: none; }
+.pi-mobile-context-trigger { display: none; }
 
 #pi-mobile-thread-title {
     min-width: 0;
@@ -66,9 +66,6 @@
     .pi-connection-banner[data-state="idle"] #pi-connection-text { display: none; }
     .pi-connection-banner:not([data-state="connected"]):not([data-state="idle"]) #pi-mobile-thread-title { display: none; }
     #pi-current-thread-menu { margin-left: auto; min-width: 40px; min-height: 36px; }
-    .pi-mobile-view-section { display: block; }
-    .pi-mobile-view-section .pi-transcript-modes { margin: 0; width: 100%; box-sizing: border-box; }
-    .pi-mobile-view-section .pi-transcript-modes button { flex: 1; min-height: 44px; }
 
     .pi-composer { position: relative; flex-wrap: wrap; column-gap: 4px; row-gap: 0; }
     .pi-composer:focus-within .pi-mobile-composer-summary,
