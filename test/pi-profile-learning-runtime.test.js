@@ -705,3 +705,230 @@ test('dismissed legacy auto-learning is not offered again and profiles without i
     legacyFixture(plain, { provider: 'fixture', modelId: 'cheap' });
     assert.equal((await plain.service.snapshot(profileId)).legacy, null);
 });
+
+const memoryRow = (n, content, extra = {}) => ({ id: String(n).padStart(64, 'e'), revision: String(n).padStart(64, 'd'),
+    kind: 'memory', scope: 'profile', target: 'memory', category: 'fact', state: 'active', content, ...extra });
+const consolidationReply = groups => ({ stopReason: 'stop', usage: { input: 400, output: 60 },
+    content: [{ type: 'text', text: JSON.stringify({ groups }) }] });
+async function consolidationFixture(t, options) {
+    const f = await fixture(t, options);
+    const rows = [memoryRow(1, '合成环境使用新版校验清单。'), memoryRow(2, '合成环境的校验清单是新版。'),
+        memoryRow(3, '合成部署前先运行隔离检查。'), memoryRow(4, '部署合成环境之前运行隔离检查。'),
+        memoryRow(5, '用户偏好中文回答。', { target: 'user', category: 'preference' }),
+        memoryRow(6, '旧失败记录。', { target: 'failure', readOnly: true })];
+    f.items(rows);
+    const requests = [];
+    let reply = () => consolidationReply([{ itemIds: ['m1', 'm2'], content: '合成环境使用新版校验清单。', category: 'fact' }]);
+    f.runtime.completeSimple = async (_model, request, options) => {
+        requests.push({ request, options });
+        if (options.delay) await options.delay;
+        return reply(request, options);
+    };
+    // Every knowledge write path fails the test: proposals must never write.
+    f.knowledge.mutateFromNative = async () => { throw new Error('consolidation proposals must not write knowledge'); };
+    f.knowledge.mutate = async () => { throw new Error('consolidation proposals must not write knowledge'); };
+    await f.enable({ maxRunsPerDay: 20, maxTokensPerDay: 200000 });
+    return { ...f, rows, requests, reply: value => { reply = value; } };
+}
+const settled = (f, count) => waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === count);
+
+test('propose-consolidation stores a plan from the review model without writing knowledge', async t => {
+    const f = await consolidationFixture(t);
+    f.reply(() => consolidationReply([
+        { itemIds: ['m1', 'm2'], content: '合成环境使用新版校验清单。', category: 'fact' },
+        { itemIds: ['m3', 'm4'], content: '合成部署前运行隔离检查。', category: 'procedure' }]));
+    const input = { requestId: 'consolidate-memory-01', action: 'propose-consolidation', target: 'memory' };
+    const queued = await f.service.action(profileId, input);
+    assert.ok(queued.capabilities.actions.includes('propose-consolidation'));
+    assert.equal(queued.capabilities.consolidation.writesKnowledge, false);
+    await settled(f, 1);
+    let snap = await f.service.snapshot(profileId);
+    const run = snap.recentRuns[0];
+    assert.deepEqual({ reason: run.reason, target: run.target, status: run.status, model: run.model },
+        { reason: 'consolidate', target: 'memory', status: 'completed', model: { provider: 'fixture', modelId: 'cheap' } });
+    assert.equal(snap.health.today.reservedTokens, 18000);
+    assert.equal(f.requests.length, 1);
+    const { request, options } = f.requests[0];
+    assert.deepEqual([options.toolChoice, options.maxRetries, options.maxTokens], ['none', 0, 4000]);
+    const offered = JSON.parse(request.messages[0].content);
+    assert.deepEqual(offered.map(entry => entry.id), ['m1', 'm2', 'm3', 'm4'], 'only writable profile entries of the target');
+    assert.ok(!request.messages[0].content.includes(f.rows[0].id), 'model sees short references, not item IDs');
+    assert.equal(snap.proposals.length, 1);
+    const proposal = snap.proposals[0];
+    assert.deepEqual({ id: proposal.id, target: proposal.target, model: proposal.model }, { id: run.id, target: 'memory',
+        model: { provider: 'fixture', modelId: 'cheap' } });
+    assert.equal(proposal.groups.length, 2);
+    assert.deepEqual(proposal.groups[1], { content: '合成部署前运行隔离检查。', category: 'procedure', items: [
+        { itemId: f.rows[2].id, itemRevision: f.rows[2].revision, preview: f.rows[2].content, category: 'fact' },
+        { itemId: f.rows[3].id, itemRevision: f.rows[3].revision, preview: f.rows[3].content, category: 'fact' }] });
+    assert.equal(f.mutations.length, 0);
+    assert.equal((await f.service.action(profileId, input)).proposals.length, 1, 'replayed request ID queues nothing new');
+    assert.equal(f.requests.length, 1);
+    snap = await f.service.action(profileId, { requestId: 'dismiss-group-0001', action: 'dismiss-proposal',
+        proposalId: proposal.id, groupIndex: 0 });
+    assert.deepEqual(snap.proposals[0].groups.map(group => group.category), ['procedure']);
+    await assert.rejects(f.service.action(profileId, { requestId: 'dismiss-group-0002', action: 'dismiss-proposal',
+        proposalId: proposal.id, groupIndex: 1 }), error => error.status === 404);
+    snap = await f.service.action(profileId, { requestId: 'dismiss-whole-0001', action: 'dismiss-proposal', proposalId: proposal.id });
+    assert.deepEqual(snap.proposals, []);
+    assert.ok(!snap.capabilities.actions.includes('dismiss-proposal'));
+    assert.equal(f.mutations.length, 0);
+});
+
+test('invalid consolidation answers are skipped and nothing is proposed', async t => {
+    const f = await consolidationFixture(t);
+    const answers = [
+        { stopReason: 'stop', content: [{ type: 'text', text: 'not json' }] },
+        consolidationReply([{ itemIds: ['m1'], content: '单条。', category: 'fact' }]),
+        consolidationReply([{ itemIds: ['m1', 'm9'], content: '不存在的条目。', category: 'fact' }]),
+        consolidationReply([{ itemIds: ['m1', 'm5'], content: '跨目标。', category: 'fact' }]),
+        consolidationReply([{ itemIds: ['m1', 'm2'], content: '合成环境使用新版校验清单，并且校验清单一直保持为新版，不再使用旧版清单。', category: 'fact' }]),
+        consolidationReply([{ itemIds: ['m1', 'm2'], content: '新版清单。', category: 'fact' }, { itemIds: ['m2', 'm3'], content: '重叠。', category: 'fact' }]),
+        consolidationReply([{ itemIds: ['m1', 'm2'], content: '新版清单。', category: 'unknown' }]),
+        consolidationReply([{ itemIds: ['m1', 'm2'], content: '分隔\n§\n注入', category: 'fact' }]),
+        consolidationReply(Array.from({ length: 6 }, (_, i) => ({ itemIds: ['m1', 'm2'], content: `${i}`, category: 'fact' }))),
+    ];
+    for (const [index, answer] of answers.entries()) {
+        f.reply(() => answer);
+        await f.service.action(profileId, { requestId: `consolidate-bad-${String(index).padStart(3, '0')}`,
+            action: 'propose-consolidation', target: 'memory' });
+        await settled(f, index + 1);
+        const run = (await f.service.snapshot(profileId)).recentRuns[index];
+        assert.deepEqual({ index, status: run.status, error: run.error }, { index, status: 'skipped', error: 'invalid-proposal' });
+    }
+    f.reply(() => consolidationReply([]));
+    await f.service.action(profileId, { requestId: 'consolidate-none-001', action: 'propose-consolidation', target: 'memory' });
+    await settled(f, answers.length + 1);
+    const snap = await f.service.snapshot(profileId);
+    assert.equal(snap.recentRuns.at(-1).error, 'no-consolidation');
+    assert.deepEqual(snap.proposals, []);
+    assert.equal(f.mutations.length, 0);
+    f.items([memoryRow(5, '用户偏好中文回答。', { target: 'user', category: 'preference' })]);
+    await f.service.action(profileId, { requestId: 'consolidate-user-001', action: 'propose-consolidation', target: 'user' });
+    await settled(f, answers.length + 2);
+    assert.equal((await f.service.snapshot(profileId)).recentRuns.at(-1).error, 'nothing-to-consolidate');
+    assert.equal(f.requests.length, answers.length + 1, 'fewer than two entries never calls the model');
+});
+
+test('entries changed while a proposal is generated keep the proposal, with revisions the UI detects as stale', async t => {
+    let release;
+    const f = await consolidationFixture(t);
+    f.reply(async () => { await new Promise(resolve => { release = resolve; });
+        return consolidationReply([{ itemIds: ['m1', 'm2'], content: '合成环境使用新版校验清单。', category: 'fact' }]); });
+    await f.service.action(profileId, { requestId: 'consolidate-stale-01', action: 'propose-consolidation', target: 'memory' });
+    await waitFor(() => Boolean(release));
+    const edited = { ...f.rows[0], content: '合成环境使用新版校验清单（已编辑）。', revision: 'f'.repeat(64) };
+    f.items([edited, ...f.rows.slice(1)]);
+    f.revision('c'.repeat(64));
+    release();
+    await settled(f, 1);
+    const snap = await f.service.snapshot(profileId);
+    assert.equal(snap.recentRuns[0].status, 'completed');
+    const item = snap.proposals[0].groups[0].items[0];
+    assert.equal(item.itemRevision, f.rows[0].revision);
+    const current = (await f.knowledge.snapshot(profileId)).items.find(row => row.id === item.itemId);
+    assert.notEqual(current.revision, item.itemRevision, 'the stored revision no longer matches the current entry');
+    assert.equal(f.mutations.length, 0);
+});
+
+test('consolidation respects the daily token budget, per-profile concurrency and the maintenance lock', async t => {
+    let release;
+    const f = await consolidationFixture(t);
+    await assert.rejects(f.service.action(profileId, { requestId: 'consolidate-bad-target', action: 'propose-consolidation',
+        target: 'project' }), /Invalid learning action/);
+    await assert.rejects(f.service.action(profileId, { requestId: 'dismiss-bad-proposal', action: 'dismiss-proposal',
+        proposalId: 'not-a-proposal' }), /Invalid learning action/);
+    let locked = true;
+    f.service.idle = () => !locked;
+    await f.service.action(profileId, { requestId: 'consolidate-lock-001', action: 'propose-consolidation', target: 'memory' });
+    await assert.rejects(f.service.action(profileId, { requestId: 'consolidate-lock-002', action: 'propose-consolidation',
+        target: 'memory' }), /already queued/);
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    assert.equal(f.requests.length, 0, 'the maintenance lock holds consolidation back');
+    f.reply(async () => { await new Promise(resolve => { release = resolve; });
+        return consolidationReply([{ itemIds: ['m1', 'm2'], content: '合成环境使用新版校验清单。', category: 'fact' }]); });
+    locked = false;
+    await waitFor(() => Boolean(release));
+    await f.service.action(profileId, { requestId: 'consolidate-user-002', action: 'propose-consolidation', target: 'user' });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(f.requests.length, 1, 'one running job per profile');
+    assert.equal((await f.service.snapshot(profileId)).jobs.find(job => job.target === 'user').status, 'queued');
+    release();
+    await settled(f, 2);
+    assert.equal((await f.service.snapshot(profileId)).recentRuns[1].error, 'nothing-to-consolidate');
+
+    const budgeted = await consolidationFixture(t);
+    await budgeted.enable({ maxTokensPerDay: 12000 });
+    await assert.rejects(budgeted.service.action(profileId, { requestId: 'consolidate-budget-01', action: 'propose-consolidation',
+        target: 'memory' }), error => error.status === 409 && /too low/.test(error.message));
+    await budgeted.enable({ maxTokensPerDay: 24000 });
+    const today = new Date().toISOString();
+    await budgeted.service.change(profileId, state => {
+        state.recentRuns = [0, 1].map(i => ({ id: String(i).repeat(64), reason: 'correction', status: 'completed',
+            createdAt: today, startedAt: today, endedAt: today, reservedTokens: 6000 }));
+    });
+    await budgeted.service.action(profileId, { requestId: 'consolidate-budget-02', action: 'propose-consolidation', target: 'memory' });
+    await new Promise(resolve => setTimeout(resolve, 200));
+    const snap = await budgeted.service.snapshot(profileId);
+    assert.equal(budgeted.requests.length, 0, '12000 reserved + 18000 exceeds the 24000 daily budget');
+    assert.equal(snap.jobs[0].status, 'queued');
+    assert.equal(snap.health.state, 'ok', 'a turn job still fits, so the quota is not exhausted');
+});
+
+test('drafts count pending skill drafts across pages and cap at 200', async t => {
+    const f = await fixture(t); await f.enable();
+    let skills = [];
+    const skill = (n, state) => ({ id: String(n).padStart(64, 'a'), kind: 'skill', name: `draft-${n}`, state, revision: 'r' });
+    f.knowledge.snapshot = async (_id, options = {}) => {
+        const offset = options.offset || 0;
+        const rows = options.kind === 'skill' ? skills : [];
+        return { status: 'ready', revision: 'a'.repeat(64), items: rows.slice(offset, offset + 50), hasMore: rows.length > offset + 50,
+            capabilities: { memory: true, skill: true } };
+    };
+    assert.deepEqual((await f.service.snapshot(profileId)).drafts, { pending: 0 });
+    skills = [...Array.from({ length: 60 }, (_, i) => skill(i, 'active')), ...Array.from({ length: 7 }, (_, i) => skill(100 + i, 'draft'))];
+    assert.deepEqual((await f.service.snapshot(profileId)).drafts, { pending: 7 });
+    skills = Array.from({ length: 230 }, (_, i) => skill(i, 'draft'));
+    assert.deepEqual((await f.service.snapshot(profileId)).drafts, { pending: 200, capped: true });
+    const original = f.knowledge.snapshot;
+    f.knowledge.snapshot = async (id, options) => ({ ...await original(id, options), capabilities: { memory: true, skill: false } });
+    assert.deepEqual((await f.service.snapshot(profileId)).drafts, { pending: 0 }, 'no learned skills, no drafts');
+});
+
+test('health reports memory-full after needs-model and before quota-exhausted', async t => {
+    const f = await fixture(t); await f.enable();
+    let usage = { memory: { chars: 100, limit: 16000 }, user: { chars: 10, limit: 8000 } };
+    const original = f.knowledge.snapshot;
+    f.knowledge.snapshot = async (...args) => ({ ...await original(...args), usage });
+    assert.equal((await f.service.snapshot(profileId)).health.state, 'ok');
+    usage = { memory: { chars: 100, limit: 16000 }, user: { chars: 8000, limit: 8000 } };
+    assert.equal((await f.service.snapshot(profileId)).health.state, 'memory-full');
+    const today = new Date().toISOString();
+    await f.service.change(profileId, state => {
+        state.recentRuns = [0, 1, 2, 3].map(i => ({ id: String(i).repeat(64), reason: 'correction', status: 'completed',
+            createdAt: today, startedAt: today, endedAt: today, reservedTokens: 6000 }));
+    });
+    assert.equal((await f.service.snapshot(profileId)).health.state, 'memory-full', 'memory-full precedes quota-exhausted');
+    usage = { memory: { chars: 15000, limit: 16000 }, user: { chars: 10, limit: 8000 } };
+    assert.equal((await f.service.snapshot(profileId)).health.state, 'quota-exhausted');
+    usage = { memory: { chars: 16001, limit: 16000 }, user: { chars: 10, limit: 8000 } };
+    f.preferences.writeDocument({ memoryModels: {} });
+    assert.equal((await f.service.snapshot(profileId)).health.state, 'needs-model', 'needs-model precedes memory-full');
+});
+
+test('a cancelled consolidation keeps no proposal', async t => {
+    let release;
+    const f = await consolidationFixture(t);
+    f.reply(async () => { await new Promise(resolve => { release = resolve; });
+        return consolidationReply([{ itemIds: ['m1', 'm2'], content: '合成环境使用新版校验清单。', category: 'fact' }]); });
+    await f.service.action(profileId, { requestId: 'consolidate-cancel-1', action: 'propose-consolidation', target: 'memory' });
+    await waitFor(() => Boolean(release));
+    const job = (await f.service.snapshot(profileId)).jobs[0];
+    await f.service.action(profileId, { requestId: 'cancel-consolidate-1', action: 'cancel', jobId: job.id });
+    release();
+    await settled(f, 1);
+    const snap = await f.service.snapshot(profileId);
+    assert.equal(snap.recentRuns[0].status, 'cancelled');
+    assert.deepEqual(snap.proposals, []);
+    assert.equal(f.mutations.length, 0);
+});
