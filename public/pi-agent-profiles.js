@@ -20,6 +20,8 @@
         let section = 'overview', documents = new Map(), documentEpoch = 0, proposalEpoch = 0, projects = null, proposal = null;
         let openEpoch = 0, openOptions = {};
         let healthEpoch = 0, pendingKnowledge = null;
+        // A verified chat session id for the knowledge panel (U2.3); cleared when the page closes.
+        let knowledgeSession = '';
         const learningHealth = new Map();
         const proposedDocuments = new Map();
         let reconcile = null, pendingRefresh = false, loadedProfile = null, loadedKey = '';
@@ -60,11 +62,20 @@
             renderList();
         }
         function openKnowledge() {
-            knowledgePanel.open(selected);
-            if (pendingKnowledge?.profileId === selected) { const { itemId, kind } = pendingKnowledge; pendingKnowledge = null; knowledgePanel.reveal?.(itemId, kind); }
+            const pending = pendingKnowledge?.profileId === selected ? pendingKnowledge : null;
+            if (pending) pendingKnowledge = null;
+            knowledgePanel.open(selected, { ...(knowledgeSession ? { sessionId: knowledgeSession } : {}),
+                ...(pending?.project ? { kind: 'memory' } : {}) });
+            if (pending?.itemId) knowledgePanel.reveal?.(pending.itemId, pending.kind, pending.sessionId);
         }
-        function revealKnowledge(profileId, itemId, kind) {
-            pendingKnowledge = profileId && itemId ? { profileId, itemId, kind } : null;
+        function revealKnowledge(profileId, itemId, kind, sessionId) {
+            pendingKnowledge = profileId && itemId ? { profileId, itemId, kind, sessionId } : null;
+            if (sessionId) knowledgeSession = String(sessionId);
+            if (pendingKnowledge && active() && selected === profileId && section === 'skills') openKnowledge();
+        }
+        function revealProjectMemory(profileId, sessionId) {
+            pendingKnowledge = profileId ? { profileId, project: true, sessionId } : null;
+            if (sessionId) knowledgeSession = String(sessionId);
             if (pendingKnowledge && active() && selected === profileId && section === 'skills') openKnowledge();
         }
         function renderEmptyDetail() {
@@ -147,7 +158,7 @@
             if (options.section && draft && (!requested || draft.id === requested)) void openSection(options.section);
             if (options.authoringSession && draft && (!requested || draft.id === requested)) void loadProposal(options.authoringSession);
         }
-        function close() { visible = false; openEpoch++; epoch++; documentEpoch++; proposalEpoch++; knowledgePanel.close(); }
+        function close() { visible = false; openEpoch++; epoch++; documentEpoch++; proposalEpoch++; knowledgeSession = ''; knowledgePanel.close(); }
         function syncEditorSave() {
             const button = editor.querySelector('#pi-profile-form button[type=submit]');
             if (button) button.disabled = Boolean(mutation || reconcile || !snapshot || (snapshot.cwd || '') !== cwd());
@@ -508,7 +519,7 @@
             if (event.target.closest('#pi-profile-document-refresh')) void refreshDocument();
             if (event.target.closest('#pi-profile-document-sync')) void syncDocumentIndex();
         });
-        return { setEnabled, open, close, displaySession, setLoadedProfile, revealKnowledge, projectChanged() { epoch++; if (active()) void load(); } };
+        return { setEnabled, open, close, displaySession, setLoadedProfile, revealKnowledge, revealProjectMemory, projectChanged() { epoch++; if (active()) void load(); } };
     }
     globalThis.PiAgentProfiles = Object.freeze({ create });
 })();

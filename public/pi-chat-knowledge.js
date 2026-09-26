@@ -44,23 +44,35 @@
             if (receipt.kind === 'memory' && receipt.category) box.append(el('span', t(categoryLabel[receipt.category] || receipt.category), 'pi-memory-hint-tag'));
             box.append(el('span', hintText(receipt), 'pi-memory-hint-text'));
             if (receipt.kind === 'skill') box.append(el('small', t('需重载会话后生效')));
-            if (receipt.scope === 'project' || receipt.undoable === false) return box;
+            if (receipt.undoable === false) return box;
             const actions = el('div', undefined, 'pi-memory-hint-actions');
-            if (writable('undo', receipt.kind)) actions.append(button(t('撤销'), () => void submit('undo', receipt)));
-            if (receipt.kind === 'memory') {
-                if (receipt.afterRevision && writable('delete', 'memory')) actions.append(button(t('不对'), () => {
-                    if (confirm(t('这条记忆不对吗？删除后学习不会再记回来。'))) void submit('delete', receipt);
-                }));
-            } else if (writable('undo', receipt.kind)) actions.append(button(t('不对'), () => void submit('undo', receipt)));
+            // Project scope is edited through the management page with the verified session;
+            // chat keeps only the jump-to-edit entry for it.
+            if (receipt.scope !== 'project') {
+                if (writable('undo', receipt.kind)) actions.append(button(t('撤销'), () => void submit('undo', receipt)));
+                if (receipt.kind === 'memory') {
+                    if (receipt.afterRevision && writable('delete', 'memory')) actions.append(button(t('不对'), () => {
+                        if (confirm(t('这条记忆不对吗？删除后学习不会再记回来。'))) void submit('delete', receipt);
+                    }));
+                } else if (writable('undo', receipt.kind)) actions.append(button(t('不对'), () => void submit('undo', receipt)));
+            }
             actions.append(button(t('编辑'), () => reveal(receipt)));
             box.append(actions);
             return box;
         }
         function reveal(receipt) {
-            const profileId = scope()?.profileId;
+            const value = scope();
+            const profileId = value?.profileId;
+            const sessionId = receipt.source?.sessionId || value?.sessionId;
             if (!profileId || !receipt.itemId) return;
-            globalThis.PiAgentProfilesUI?.revealKnowledge?.(profileId, receipt.itemId, receipt.kind);
+            globalThis.PiAgentProfilesUI?.revealKnowledge?.(profileId, receipt.itemId, receipt.kind, sessionId);
             globalThis.dispatchEvent?.(new CustomEvent('workspace:open-settings', { detail: { tab: 'profiles', profileId, section: 'skills' } }));
+        }
+        function revealProjectMemory() {
+            const value = scope();
+            if (!value?.profileId || !value?.sessionId) return;
+            globalThis.PiAgentProfilesUI?.revealProjectMemory?.(value.profileId, value.sessionId);
+            globalThis.dispatchEvent?.(new CustomEvent('workspace:open-settings', { detail: { tab: 'profiles', profileId: value.profileId, section: 'skills' } }));
         }
         function decorate() {
             ensureAnchors();
@@ -153,7 +165,7 @@
             const status = el('p', notice || hintNotice || (snapshot ? t('存储状态：{0}', t(statusLabel[snapshot.status] || snapshot.status)) : t('正在读取…')), 'pi-knowledge-status');
             status.setAttribute('role', 'status'); body.append(status);
             const entries = el('div', undefined, 'pi-knowledge-entries');
-            entries.append(button(t('查看本会话注入内容'), () => void loadInjection()));
+            entries.append(button(t('查看本会话注入内容'), () => void loadInjection()), button(t('本项目记忆'), () => revealProjectMemory()));
             body.append(entries);
             if (injectionView) body.append(injectionBox());
             if (learning) body.append(el('p', t('后台学习正在处理本轮内容…'), 'pi-knowledge-status'));

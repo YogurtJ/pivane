@@ -8754,6 +8754,9 @@
     ,["已截断，仅显示部分内容","Truncated; only part of the content is shown"]
     ,["注入内容不可用。","Injected content is unavailable."]
     ,["注入内容不可用：{0}","Injected content is unavailable: {0}"]
+    ,["本项目记忆","Project memory"]
+    ,["项目记忆按当前会话目录核实。","Project memory is verified against the current session directory."]
+    ,["当前目录范围（按当前会话核实）","Current directory scope (verified per session)"]
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

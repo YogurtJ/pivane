@@ -18,24 +18,31 @@
         failed: '失败', uncertain: '待核对', skipped: '已跳过', manual: '手动复盘', periodic: '周期复盘', correction: '纠错识别',
         review: '复盘', extraction: '候选提取' };
     const operations = new Set(['create', 'update', 'delete', 'restore', 'enable', 'disable', 'undo', 'consolidate']);
-    const allowed = (snapshot, key, kind, item) => {
-        if (snapshot?.status !== 'ready') return false;
-        const c = snapshot.capabilities;
-        if (!c || typeof c !== 'object') return false;
-        if (operations.has(key)) {
-            if (c[kind] !== true || item?.readOnly || item?.truncated || item?.scope === 'project' && c.projectWrites !== true) return false;
-            if (kind === 'memory' && ['enable', 'disable'].includes(key)) return false;
-            const actions = c.operations?.[kind] || c.actions?.[kind] || c.operations || c.actions;
-            if (Array.isArray(actions) && !actions.includes(key)) return false;
-            return key !== 'update' || !item || item.state === 'active';
-        }
-        const actions = c.actions || c.operations;
-        return Array.isArray(actions) && actions.includes(key) || c[key] === true;
-    };
     const readyRevision = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
     const rejected = error => [400, 403, 404, 413, 422, 429].includes(error?.status);
     function create({ apiFetch, root }) {
         let profile = '', kind = 'skill', query = '', offset = 0, serial = 0, active = false;
+        // A verified session id (U2.3) unlocks editing the project memory of that session's
+        // directory only; without it project entries stay read-only.
+        let sessionScope = '';
+        // Project writes are limited to these operations and need the session verification.
+        const projectOperations = ['create', 'update', 'delete', 'undo'];
+        function allowed(snapshot, key, kind, item) {
+            if (snapshot?.status !== 'ready') return false;
+            const c = snapshot.capabilities;
+            if (!c || typeof c !== 'object') return false;
+            if (operations.has(key)) {
+                if (c[kind] !== true || item?.readOnly || item?.truncated) return false;
+                if (item?.scope === 'project' && c.projectWrites !== true
+                    && !(sessionScope && item.kind === 'memory' && c.projectWritesBySession === true && projectOperations.includes(key))) return false;
+                if (kind === 'memory' && ['enable', 'disable'].includes(key)) return false;
+                const actions = c.operations?.[kind] || c.actions?.[kind] || c.operations || c.actions;
+                if (Array.isArray(actions) && !actions.includes(key)) return false;
+                return key !== 'update' || !item || item.state === 'active';
+            }
+            const actions = c.actions || c.operations;
+            return Array.isArray(actions) && actions.includes(key) || c[key] === true;
+        }
         let snapshot = null, learning = null, learningDraft = null, selected = null, detail = null, draft = null, editing = false, reviewed = true;
         let busy = false, learningBusy = false, learningEpoch = 0, uncertain = null, learningUncertain = null, receipt = null, notice = '', conflict = false;
         let memoryFull = false, revealItem = null, modelCatalog = null, legacyModel = null;
@@ -54,8 +61,16 @@
             ? item.content.slice(`---\nname: ${item.name}\ndescription: ${item.description || ''}\n---\n`.length) : item?.content || '';
         const dirty = () => draft && ['name', 'description', 'content', 'category', 'scope'].some(key => draft[key] !== (key === 'content' ? bodyFor(original()) : original()?.[key] ?? (key === 'category' ? 'fact' : key === 'scope' ? 'profile' : '')));
         const discard = () => !dirty() || confirm(t('放弃未保存的知识草稿？'));
-        function open(id) {
+        function open(id, options = {}) {
             active = true;
+            // U2.3: only a caller-verified session id enables project memory writes; without
+            // one project entries stay read-only and the old display is kept.
+            if (options && typeof options === 'object') {
+                if (options.sessionId !== undefined) sessionScope = String(options.sessionId || '');
+                if (['memory', 'skill'].includes(options.kind) && options.kind !== kind && discard()) {
+                    kind = options.kind; offset = 0; selected = detail = draft = null; editing = false;
+                }
+            }
             if (profile === id) { render(); if (!snapshot || uncertain) void load(); if (!learning) void loadLearning(); return; }
             if (profile) draftsByProfile.set(profile, { kind, query, offset, selected, detail, draft, editing, reviewed, uncertain, learningUncertain, receipt, conflict, learningDraft });
             profile = id || ''; serial++; learningEpoch++; memoryFull = false; legacyModel = null;
@@ -66,7 +81,8 @@
         }
         // Open one entry (from a chat hint): switch to its kind, then select it even when it is
         // not on the first listed page.
-        function reveal(itemId, itemKind) {
+        function reveal(itemId, itemKind, sessionId) {
+            if (sessionId) sessionScope = String(sessionId);
             if (!itemId) return;
             if (['memory', 'skill'].includes(itemKind) && itemKind !== kind) {
                 if (!discard()) return;
@@ -89,7 +105,7 @@
                 if (current(profileId, generation) && result?.status === 'ready' && result.item?.id === itemId) choose(result.item);
             }).catch(() => {});
         }
-        function close() { active = false; serial++; learningEpoch++; snapshot = learning = null; root.replaceChildren(); }
+        function close() { active = false; serial++; learningEpoch++; sessionScope = ''; snapshot = learning = null; root.replaceChildren(); }
         async function load() {
             if (!profile || !active) return;
             const generation = ++serial, profileId = profile; notice = t('正在读取已保存数据…'); render();
@@ -200,6 +216,7 @@
             root.replaceChildren(); if (!active || !profile) return;
             const head = node('div', undefined, 'pi-knowledge-head'); head.append(node('h4', t('助手内的记忆与技能')), button(t('刷新'), () => { void load(); void loadLearning(); })); root.append(head);
             root.append(node('p', t('已学习技能属于此助手；外部安装的成品技能在“扩展 → 已安装技能”管理。保存不代表当前会话已加载或模型一定遵守。'), 'pi-profile-note'));
+            if (sessionScope) root.append(node('p', t('项目记忆按当前会话目录核实。'), 'pi-profile-note'));
             renderUsage();
             const tabs = node('div', undefined, 'pi-profile-kinds'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', t('知识类别'));
             for (const key of ['memory', 'skill']) { const tab = button(t(label[key]), () => { if (key === kind || !discard()) return; kind = key; offset = 0; selected = detail = draft = null; editing = false; void load(); }); tab.setAttribute('aria-pressed', String(key === kind)); tabs.append(tab); }
@@ -212,7 +229,8 @@
                 : snapshot ? t('已保存数据 · {0}', t(statusLabel[snapshot.status] || snapshot.status || '状态未知')) : t('正在读取…'), 'pi-knowledge-status'); message.setAttribute('role', 'status'); root.append(message);
             if (receipt) {
                 const r = node('div', receiptText(receipt), 'pi-knowledge-receipt'); r.setAttribute('role', 'status');
-                if (receipt.undoable && receipt.id && allowed(snapshot, 'undo', receipt.kind)) r.append(button(t('撤销'), () => void mutate('undo', { receiptId: receipt.id, kind: receipt.kind })));
+                if (receipt.undoable && receipt.id && allowed(snapshot, 'undo', receipt.kind, receipt.scope === 'project' ? { kind: receipt.kind, scope: 'project' } : null))
+                    r.append(button(t('撤销'), () => void mutate('undo', { receiptId: receipt.id, kind: receipt.kind, scope: receipt.scope })));
                 root.append(r);
             }
             if (uncertain && !busy) root.append(button(t('刷新回执核对'), () => void load()));
@@ -251,7 +269,7 @@
                         entry.append(node('small', [row.at, t(label[row.operation] || row.operation), t(label[row.status] || row.status),
                             row.beforeRevision && t('之前：{0}', row.beforeRevision), row.afterRevision && t('之后：{0}', row.afterRevision)].filter(Boolean).join(' · ')));
                         if (row.undoable && row.afterRevision === item.revision && allowed(snapshot, 'undo', row.kind, item))
-                            entry.append(button(t('撤销'), () => void mutate('undo', { receiptId: row.id, kind: row.kind })));
+                            entry.append(button(t('撤销'), () => void mutate('undo', { receiptId: row.id, kind: row.kind, scope: item.scope })));
                         history.append(entry);
                     }
                     history.append(node('small', t('历史正文未由此接口提供；仅能对照当前正文与未保存草稿。')));
@@ -269,11 +287,13 @@
                 const category = node('select'); for (const key of ['fact', 'preference', 'correction', 'failure', 'procedure']) category.append(option(key, t(label[key])));
                 category.value = draft.category; category.onchange = () => { draft.category = category.value; }; form.append(field(t('类别'), category));
             }
-            const scope = node('select'); scope.append(option('profile', t('助手范围')));
-            if (draft.scope === 'project') scope.append(option('project', t('当前目录范围（只读）')));
-            scope.value = draft.scope; scope.disabled = true;
-            scope.onchange = () => { draft.scope = scope.value; render(); }; form.append(field(t('范围'), scope));
-            if (draft.scope === 'project') form.append(node('p', t('当前目录范围需要服务端验证；此页不提交未经验证的项目标识。'), 'pi-profile-note'));
+            const scopeSelect = node('select'); scopeSelect.append(option('profile', t('助手范围')));
+            // Project scope is writable only with the verified session id and the K2.3 capability.
+            const projectWritable = kind === 'memory' && Boolean(sessionScope) && snapshot?.capabilities?.projectWritesBySession === true;
+            if (draft.scope === 'project' || projectWritable) scopeSelect.append(option('project', t(projectWritable ? '当前目录范围（按当前会话核实）' : '当前目录范围（只读）')));
+            scopeSelect.value = draft.scope; scopeSelect.disabled = !projectWritable;
+            scopeSelect.onchange = () => { draft.scope = scopeSelect.value; render(); }; form.append(field(t('范围'), scopeSelect));
+            if (draft.scope === 'project') form.append(node('p', projectWritable ? t('项目记忆按当前会话目录核实。') : t('当前目录范围需要服务端验证；此页不提交未经验证的项目标识。'), 'pi-profile-note'));
             const content = node('textarea'); content.required = true; content.maxLength = snapshot?.capabilities?.maxContentLength || 65536; content.rows = 8; content.value = draft.content;
             content.oninput = () => { draft.content = content.value; }; form.append(field(t('正文'), content));
             if (selected) {
@@ -288,22 +308,32 @@
             }
             const actions = node('div', undefined, 'pi-knowledge-actions'), save = node('button', t('保存'), 'settings-primary-button'); save.type = 'submit';
             save.disabled = busy || !!uncertain || !readyRevision(snapshot?.revision) || !allowed(snapshot, selected ? 'update' : 'create', kind, detail?.item || selected)
-                || !reviewed || draft.scope !== 'profile' || !!selected && detail?.item?.revision !== selected.revision;
+                || !reviewed || !(draft.scope === 'profile' || draft.scope === 'project' && projectWritable) || !!selected && detail?.item?.revision !== selected.revision;
             actions.append(save, button(t('取消'), () => { editing = false; draft = null; render(); })); form.append(actions);
             form.onsubmit = event => { event.preventDefault(); if (form.reportValidity()) void mutate(selected ? 'update' : 'create'); }; root.append(form);
         }
         async function mutate(operation, extra = {}) {
             const targetKind = extra.kind || original()?.kind || kind;
-            if (busy || uncertain || !readyRevision(snapshot?.revision) || !allowed(snapshot, operation, targetKind, operation === 'undo' ? null : detail?.item || original())) return;
+            const guarded = operation === 'undo' ? (extra.scope === 'project' ? { kind: targetKind, scope: 'project' } : null) : detail?.item || original();
+            if (busy || uncertain || !readyRevision(snapshot?.revision) || !allowed(snapshot, operation, targetKind, guarded)) return;
             if (operation === 'delete' && !confirm(t('删除此条目？可从已删除记录中恢复。'))) return;
             const item = original();
+            const projectScope = (operation === 'undo' ? extra.scope : item?.scope) === 'project';
             const input = { requestId: uuid(), expectedRevision: snapshot.revision, operation, kind: targetKind,
                 ...(operation !== 'undo' && item ? { itemId: item.id, itemRevision: item.revision } : {}),
-                ...(operation === 'undo' ? { receiptId: extra.receiptId } : {}) };
+                ...(operation === 'undo' ? { receiptId: extra.receiptId } : {}),
+                ...(projectScope ? { scope: 'project', sessionId: sessionScope } : {}) };
             if (operation === 'create' || operation === 'update') {
                 Object.assign(input, { content: draft.content, scope: draft.scope });
                 if (targetKind === 'skill') Object.assign(input, { name: draft.name.trim(), description: draft.description.trim() }); else input.category = draft.category;
-                if (draft.scope === 'project') { notice = t('请选择助手范围；项目范围写入须由服务端提供已验证的项目标识。'); render(); return; }
+                if (draft.scope === 'project') {
+                    // The server derives the project directory from the verified session;
+                    // this page never submits a client-side projectKey.
+                    if (targetKind !== 'memory' || !sessionScope || snapshot?.capabilities?.projectWritesBySession !== true) {
+                        notice = t('请选择助手范围；项目范围写入须由服务端提供已验证的项目标识。'); render(); return;
+                    }
+                    input.sessionId = sessionScope;
+                }
             }
             await runMutation(input, () => { editing = false; draft = null; selected = detail = null; });
         }

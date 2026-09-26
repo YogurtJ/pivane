@@ -20,7 +20,8 @@ app.get('/fixture', (_req, res) => res.send(`<!doctype html><html><head><meta na
 <script>
 window.current = { cwd: '/synthetic', sessionId: 'thread-one', profileId: 'profile-one', generation: 1 };
 window.calls = []; window.events = [];
-window.PiAgentProfilesUI = { revealKnowledge: (profileId, itemId) => window.calls.push({ reveal: [profileId, itemId] }) };
+window.PiAgentProfilesUI = { revealKnowledge: (profileId, itemId, kind, sessionId) => window.calls.push({ reveal: [profileId, itemId, kind, sessionId] }),
+    revealProjectMemory: (profileId, sessionId) => window.calls.push({ revealProject: [profileId, sessionId] }) };
 window.addEventListener('workspace:open-settings', event => window.events.push(event.detail));
 window.fixtureEntries = { leafId: 'entry-user-2', entries: [
     { id: 'entry-user-1', type: 'message', timestamp: 10, message: { role: 'user', content: 'First question', timestamp: 10 } },
@@ -210,7 +211,7 @@ async function runFixture(browser, base, width, locale) {
     // Compat: without the injection endpoint the learning area keeps the old display and
     // the card reports that the injection content is unavailable.
     assert.equal(await page.locator('.pi-injection').count(), 0, 'absent injection keeps the plain display');
-    await page.locator('.pi-knowledge-entries button').click();
+    await page.locator('.pi-knowledge-entries button').filter({ hasText: say('查看本会话注入内容', "View this session's injected content") }).click();
     await page.waitForFunction(() => Boolean(document.querySelector('.pi-injection-preview .pi-injection-error')));
     assert.ok((await text('.pi-injection-preview')).includes(say('注入内容不可用', 'Injected content is unavailable')), await text('.pi-injection-preview'));
     // The undoable:false skill hint hides its buttons; the two memory hints keep three each.
@@ -232,7 +233,7 @@ async function runFixture(browser, base, width, locale) {
     assert.ok(dialogs.some(message => message.includes(say('这条记忆不对吗', 'Is this memory wrong'))), JSON.stringify(dialogs));
     // "编辑" jumps to the identity page memory management and locates the entry.
     await page.locator('#pi-transcript-content > .pi-memory-hint').first().locator('button').filter({ hasText: say('编辑', 'Edit') }).click();
-    assert.deepEqual(await page.evaluate(() => window.calls.at(-1)), { reveal: ['profile-one', hash('a')] });
+    assert.deepEqual(await page.evaluate(() => window.calls.at(-1)), { reveal: ['profile-one', hash('a'), 'memory', 'thread-one'] });
     assert.deepEqual(await page.evaluate(() => window.events.at(-1)), { tab: 'profiles', profileId: 'profile-one', section: 'skills' });
     // A 409 on a hint refreshes and tells the user instead of silently failing.
     state.hintConflict = true;
@@ -385,7 +386,16 @@ async function runWave2(browser, base, width, locale) {
     const zh = locale.startsWith('zh'), say = (source, english) => zh ? source : english;
     const item = (letter, revision, content, category = 'fact') => ({ id: hash(letter), kind: 'memory', scope: 'profile', target: 'memory',
         category, state: 'active', revision: hash(revision), content, updatedAt: '2026-01-01' });
-    const items = [item('a', '1', 'First source entry'), item('b', '2', 'Second source entry'), item('c', '3', 'Third source entry', 'preference')];
+    const items = [item('a', '1', 'First source entry'), item('b', '2', 'Second source entry'), item('c', '3', 'Third source entry', 'preference'),
+        { id: hash('p'), kind: 'memory', scope: 'project', target: 'project', projectKey: hash('k'), category: 'fact', state: 'active',
+            revision: hash('r'), content: 'Project entry', updatedAt: '2026-01-01' }];
+    const receipts = [
+        { id: 'receipt-hint', requestId: 'learning-1', kind: 'memory', operation: 'create', status: 'saved', origin: 'learning',
+            category: 'fact', preview: 'First source entry', undoable: true, itemId: hash('a'), afterRevision: hash('1'),
+            source: { sessionId: 'thread-one', entryId: 'entry-user-1' } },
+        { id: 'receipt-project-hint', requestId: 'learning-2', kind: 'memory', operation: 'create', status: 'saved', origin: 'agent',
+            category: 'fact', preview: 'Project entry', undoable: true, itemId: hash('p'), afterRevision: hash('r'), scope: 'project', projectKey: hash('k'),
+            source: { sessionId: 'thread-one', entryId: 'entry-user-2' } } ];
     const proposal = { id: 'proposal-one', target: 'memory', createdAt: '2026-02-01', model: { provider: 'fixture', modelId: 'review-model' },
         groups: [
             { items: [{ itemId: hash('a'), itemRevision: hash('1'), preview: 'First source entry', category: 'fact' },
@@ -395,7 +405,7 @@ async function runWave2(browser, base, width, locale) {
                 { itemId: hash('b'), itemRevision: hash('2'), preview: 'Second source entry', category: 'fact' }],
                 content: 'Stale merge', category: 'fact' } ] };
     const state = { learningRevision: 1, proposals: undefined, drafts: undefined, usage: { memory: { chars: 13600, limit: 16000 }, user: { chars: 100, limit: 8000 } },
-        settings: structuredClone(settings), actions: ['save', 'propose-consolidation', 'dismiss-proposal'], consolidates: [], undos: [] };
+        settings: structuredClone(settings), actions: ['save', 'propose-consolidation', 'dismiss-proposal'], consolidates: [], undos: [], mutations: [] };
     await page.route('**/api/pi/**', async route => {
         const req = route.request(), url = new URL(req.url()), p = url.pathname;
         const fulfill = (body, status = 200) => route.fulfill({ json: body, status });
@@ -404,7 +414,7 @@ async function runWave2(browser, base, width, locale) {
             health: { state: 'ok', missingModels: [], lastFailure: null, today: { runs: 0, maxRuns: 4, reservedTokens: 0, maxTokens: 24000 } },
             capabilities: { installed: true, settingsWrite: true, reservedTokensPerRun: 6000, actions: state.actions,
                 limits: { maxRunsPerDay: { min: 1, max: 20 }, maxTokensPerDay: { min: 6000, max: 200000 }, periodicReviewMinutes: { min: 0, max: 10800 } } } });
-        const snapshot = () => ({ version: 1, status: 'ready', revision: hash('a'), items, receipts: [], hasMore: false,
+        const snapshot = () => ({ version: 1, status: 'ready', revision: hash('a'), items, receipts, hasMore: false,
             usage: state.usage, capabilities: { memory: true, skill: true, projectWrites: false, projectWritesBySession: true,
                 operations: ['create', 'update', 'delete', 'undo', 'consolidate'], maxContentLength: 65536 } });
         if (p.endsWith('/knowledge/injection') && req.method() === 'GET')
@@ -414,6 +424,10 @@ async function runWave2(browser, base, width, locale) {
                     lastRead: { at: '2026-02-01', generation: 1, provided: true, chars: 30, entries: 4 }, truncated: false }
                 : { version: 1, status: 'ready', block: 'PROFILE BLOCK TEXT', chars: 21, entries: 3,
                     profile: { chars: 21, entries: 3 }, project: null, lastRead: null });
+        if (p.includes('/knowledge/items/') && req.method() === 'GET') {
+            const row = items.find(entry => entry.id === p.split('/').pop());
+            return fulfill(row ? { version: 1, status: 'ready', item: row } : { version: 1, status: 'missing' });
+        }
         if (p.endsWith('/knowledge') && req.method() === 'GET') return fulfill(snapshot());
         if (p.endsWith('/learning') && req.method() === 'GET') return fulfill(learning());
         if (p.endsWith('/learning/actions')) {
@@ -434,6 +448,11 @@ async function runWave2(browser, base, width, locale) {
             }
             if (input.operation === 'undo') { state.undos.push(input); return fulfill({ version: 1, status: 'saved', revision: hash('6'),
                 receipt: { id: 'receipt-undo', requestId: input.requestId, operation: 'undo', kind: input.kind, status: 'saved', undoable: false, summary: 'undo memory' } }); }
+            if (input.operation === 'update' || input.operation === 'delete') {
+                state.mutations.push(input);
+                return fulfill({ version: 1, status: 'saved', revision: hash('7'), receipt: { id: 'receipt-project-write', requestId: input.requestId,
+                    operation: input.operation, kind: input.kind, status: 'saved', undoable: false, scope: 'project', summary: `${input.operation} memory` } });
+            }
             return fulfill({ error: 'unexpected mutation' }, 400);
         }
         return fulfill({ error: 'missing' }, 404);
@@ -508,6 +527,56 @@ async function runWave2(browser, base, width, locale) {
     assert.match(await preview.locator('pre').innerText(), /PROJECT BLOCK/);
     const askedInjection = await page.evaluate(() => window.calls.filter(call => call.url.includes('/knowledge/injection')).at(-1));
     assert.ok(askedInjection.url.includes('sessionId=thread-one'), askedInjection.url);
+    // U2.3: a project hint keeps only the edit entry, and "edit" opens the management page
+    // with the session id; the card's project entry does the same.
+    const projectHint = page.locator('#pi-transcript-content .pi-memory-hint').filter({ hasText: 'Project entry' });
+    assert.equal(await projectHint.locator('button').count(), 1, 'project hints keep only the edit entry');
+    await projectHint.locator('button').filter({ hasText: say('编辑', 'Edit') }).click();
+    assert.deepEqual(await page.evaluate(() => window.calls.at(-1)), { reveal: ['profile-one', hash('p'), 'memory', 'thread-one'] });
+    await page.locator('.pi-knowledge-entries button').filter({ hasText: say('本项目记忆', 'Project memory') }).click();
+    assert.deepEqual(await page.evaluate(() => window.calls.at(-1)), { revealProject: ['profile-one', 'thread-one'] });
+    // The management page unlocks project entries only with the session id.
+    await page.evaluate(() => window.manager.open('profile-one', { sessionId: 'thread-one' }));
+    assert.ok((await text('#pi-profiles-memory')).includes(say('项目记忆按当前会话目录核实。', 'Project memory is verified against the current session directory.')));
+    await page.locator('.pi-profile-kinds button').first().click();
+    const projectRow = page.locator('.pi-knowledge-row').filter({ hasText: 'Project entry' });
+    await projectRow.click();
+    await page.locator('.pi-knowledge-detail pre').waitFor();
+    const detail = page.locator('.pi-knowledge-detail');
+    assert.equal(await detail.locator('button').filter({ hasText: say('编辑', 'Edit') }).count(), 1, 'project entry is editable with a session id');
+    assert.equal(await detail.locator('button').filter({ hasText: say('删除', 'Delete') }).count(), 1, 'project entry can be deleted with a session id');
+    // Undo of the project receipt is offered from the receipt history with the session id.
+    await detail.locator('details summary').filter({ hasText: say('近期版本回执', 'Recent version receipts') }).click();
+    await detail.locator('.pi-knowledge-version button').filter({ hasText: say('撤销', 'Undo') }).click();
+    await page.waitForFunction(() => window.calls.some(call => call.body && call.body.operation === 'undo'));
+    const projectUndo = state.undos.at(-1);
+    assert.deepEqual(Object.keys(projectUndo).sort(), ['expectedRevision', 'kind', 'operation', 'receiptId', 'requestId', 'scope', 'sessionId']);
+    assert.equal(projectUndo.scope, 'project'); assert.equal(projectUndo.sessionId, 'thread-one');
+    // Writes carry scope:'project' with the session id and never a client-side projectKey.
+    await projectRow.click();
+    await detail.locator('button').filter({ hasText: say('编辑', 'Edit') }).click();
+    await page.locator('.pi-knowledge-editor textarea').fill('Project entry updated');
+    assert.ok((await text('.pi-knowledge-editor')).includes(say('当前目录范围（按当前会话核实）', 'Current directory scope (verified per session)')));
+    assert.ok((await text('.pi-knowledge-editor')).includes(say('项目记忆按当前会话目录核实。', 'Project memory is verified against the current session directory.')));
+    await page.locator('.pi-knowledge-editor button[type=submit]').click();
+    await page.waitForFunction(() => window.calls.some(call => call.body && call.body.operation === 'update'));
+    const update = state.mutations.at(-1);
+    assert.deepEqual(Object.keys(update).sort(), ['category', 'content', 'expectedRevision', 'itemId', 'itemRevision', 'kind', 'operation', 'requestId', 'scope', 'sessionId']);
+    assert.equal(update.scope, 'project'); assert.equal(update.sessionId, 'thread-one'); assert.equal(update.projectKey, undefined);
+    assert.equal(update.itemId, hash('p')); assert.equal(update.itemRevision, hash('r'));
+    await projectRow.click();
+    await detail.locator('button').filter({ hasText: say('删除', 'Delete') }).click();
+    await page.waitForFunction(() => window.calls.some(call => call.body && call.body.operation === 'delete'));
+    const removal = state.mutations.at(-1);
+    assert.deepEqual(Object.keys(removal).sort(), ['expectedRevision', 'itemId', 'itemRevision', 'kind', 'operation', 'requestId', 'scope', 'sessionId']);
+    assert.equal(removal.scope, 'project'); assert.equal(removal.sessionId, 'thread-one');
+    // Without the session id project memory stays read-only.
+    await page.evaluate(() => { window.manager.close(); window.manager.open('profile-one'); });
+    await page.locator('.pi-profile-kinds button').first().click();
+    await projectRow.click();
+    await page.locator('.pi-knowledge-detail pre').waitFor();
+    assert.equal(await detail.locator('button').filter({ hasText: say('编辑', 'Edit') }).count(), 0, 'without a session id project entries stay read-only');
+    assert.equal(await detail.locator('button').filter({ hasText: say('删除', 'Delete') }).count(), 0, 'without a session id project entries cannot be deleted');
     // Mobile: 16px form controls, no horizontal overflow, no page errors.
     if (width < 900) {
         await page.waitForFunction(() => [...document.querySelectorAll('textarea,input,select')].every(el => parseFloat(getComputedStyle(el).fontSize) >= 16), undefined, { timeout: 5000 }).catch(() => {});
