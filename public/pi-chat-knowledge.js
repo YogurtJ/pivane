@@ -66,11 +66,19 @@
             const host = transcriptHost();
             if (host) for (const node of host.querySelectorAll('.pi-memory-hint')) node.remove();
             const fallback = [];
-            for (const receipt of hintReceipts()) {
+            // Oldest first, each placed after any hints already under the same message.
+            for (const receipt of [...hintReceipts()].reverse()) {
                 const anchorKey = anchorKeys?.get(receipt.source.entryId);
-                const target = anchorKey && host ? [...host.querySelectorAll('[data-message-key]')].find(node => node.dataset.messageKey === anchorKey) : null;
-                if (target) target.after(hintBlock(receipt));
-                else fallback.push(receipt);
+                let target = anchorKey && host ? [...host.querySelectorAll('[data-message-key]')].find(node => node.dataset.messageKey === anchorKey) : null;
+                // Hints sit under the turn's user message: process messages (tool calls) fold away in
+                // compact views, while the user message of every turn stays visible.
+                while (target && target.parentElement && target.parentElement !== host) target = target.parentElement;
+                while (target && !target.matches('.pi-message.user') && target.previousElementSibling) target = target.previousElementSibling;
+                if (target && !target.matches('.pi-message.user')) target = null;
+                if (!target) { fallback.push(receipt); continue; }
+                let after = target;
+                while (after.nextElementSibling?.classList.contains('pi-memory-hint')) after = after.nextElementSibling;
+                after.after(hintBlock(receipt));
             }
             const list = root.querySelector('.pi-memory-hint-list');
             if (list) list.replaceChildren(...fallback.map(receipt => hintBlock(receipt, true)));
@@ -88,7 +96,7 @@
             if (!key) return;
             const panel = el('details', undefined, 'pi-chat-knowledge');
             // Collapsed by default; the summary always reports what this session has remembered.
-            panel.open = Boolean(wasOpen || uncertain);
+            panel.open = Boolean(wasOpen || uncertain?.operation === 'create');
             const summary = el('summary');
             const health = learningSnapshot?.health;
             if (health?.state) summary.append(el('span', undefined, `pi-health-dot pi-health-${healthTone[health.state] || 'off'}`));
@@ -117,7 +125,7 @@
                 body.append(row);
             }
             const hinted = new Set(hintReceipts());
-            for (const receipt of sessionReceipts().filter(r => r.kind === 'memory' && !hinted.has(r)).slice(0, 10)) {
+            for (const receipt of sessionReceipts().filter(r => r.kind === 'memory' && !hinted.has(r) && !r.superseded).slice(0, 10)) {
                 const row = el('div', undefined, 'pi-chat-knowledge-receipt');
                 row.append(el('strong', `${t('已核对线程来源')} · ${t(receipt.status === 'saved' ? '已保存' : receipt.status === 'pending' ? '待同步' : statusLabel[receipt.status] || receipt.status || '状态未知')}`));
                 row.append(el('small', [receipt.source.entryId && t('原生记录：{0}', receipt.source.entryId), receipt.summary,

@@ -238,6 +238,11 @@ async function main() {
         // 7b. The agent's own write is hinted under its assistant message; "不对" deletes it with a tombstone.
         const agentHint = chatView.page.locator('#pi-transcript .pi-memory-hint').filter({ hasText: `Agent 记下：${TOOL_FACT}` });
         await agentHint.waitFor({ timeout: 20000 });
+        assert.equal(await agentHint.evaluate(node => { let prev = node.previousElementSibling;
+            while (prev?.classList.contains('pi-memory-hint')) prev = prev.previousElementSibling;
+            return prev?.textContent.includes('MEMORY_TOOL_FIXTURE') && prev.matches('.pi-message.user'); }), true,
+            'agent hint sits under the user message of its turn');
+        assert.ok(await agentHint.isVisible(), 'agent hint stays visible in the compact view');
         chatView.page.once('dialog', dialog => dialog.accept());
         await agentHint.locator('button').filter({ hasText: '不对' }).click();
         await until('agent fact rejected', async () => !(await api('GET', `/profiles/${profileId}/knowledge?kind=memory`)).items

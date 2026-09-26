@@ -349,12 +349,13 @@ async function runChat(browser, base, width, locale) {
     await page.waitForFunction(() => document.querySelectorAll('#pi-transcript-content > .pi-memory-hint').length === 2);
     const placed = await page.locator('#pi-transcript-content > .pi-memory-hint').evaluateAll(nodes => nodes.map(node => ({
         text: node.textContent, previous: node.previousElementSibling?.className })));
-    assert.ok(placed[0].text.includes(say('已记住：记下端口 4321', 'Remembered: 记下端口 4321')), JSON.stringify(placed));
+    // Both hints sit under the turn's user message (tool-call messages fold away), oldest first.
     assert.match(placed[0].previous || '', /pi-message user/);
-    assert.ok(placed[1].text.includes(say('Agent 记下：用 pnpm 安装', 'Agent noted: 用 pnpm 安装')), JSON.stringify(placed));
-    assert.match(placed[1].previous || '', /pi-message assistant/);
+    assert.match(placed[1].previous || '', /pi-memory-hint/);
+    assert.ok(placed.some(row => row.text.includes(say('已记住：记下端口 4321', 'Remembered: 记下端口 4321'))), JSON.stringify(placed));
+    assert.ok(placed.some(row => row.text.includes(say('Agent 记下：用 pnpm 安装', 'Agent noted: 用 pnpm 安装'))), JSON.stringify(placed));
     assert.ok((await page.locator('#pi-chat-knowledge summary').innerText()).includes(say('本会话已记住 2 条', '2 entries remembered in this session')));
-    await page.locator('#pi-transcript-content > .pi-memory-hint').first().locator('button').filter({ hasText: say('撤销', 'Undo') }).click();
+    await page.locator('#pi-transcript-content > .pi-memory-hint').filter({ hasText: say('已记住：记下端口 4321', 'Remembered: 记下端口 4321') }).locator('button').filter({ hasText: say('撤销', 'Undo') }).click();
     const end = Date.now() + 10000;
     while (Date.now() < end && !writes.some(write => write.body?.operation === 'undo')) await page.waitForTimeout(100);
     const undo = writes.filter(write => write.body?.operation === 'undo').at(-1);
