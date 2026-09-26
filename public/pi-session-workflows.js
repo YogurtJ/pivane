@@ -57,7 +57,7 @@
                     if (button.dataset.messageWorkflow === 'reply-fork') {
                         const candidates = this.matchReplies(message);
                         if (candidates.length !== 1) throw new Error(translateUi("无法定位这条回复，请刷新后重试"));
-                        return this.openReplyFork(candidates[0]);
+                        return this.openReplyFork(candidates[0], message);
                     }
                     const candidates = this.snapshot?.prompts.filter(item => item.timestamp === message.timestamp && item.text === this.messageText(message).slice(0, 180)) || [];
                     if (candidates.length !== 1) return this.openList('history');
@@ -109,7 +109,7 @@
             if (this.dialog.open && this.mode === 'deferred' && !this.inFlight && !this.loadingPanel) this.renderList();
         }
 
-        messageText(message) { return typeof message.content === 'string' ? message.content : (message.content || []).filter(block => block.type === 'text').map(block => block.text).join(''); }
+        messageText(message, separator = '') { return typeof message.content === 'string' ? message.content : (message.content || []).filter(block => block.type === 'text').map(block => block.text).join(separator); }
         matchReplies(message) {
             if (!message) return [];
             const text = (typeof message.content === 'string' ? message.content : (message.content || []).filter(block => block.type === 'text').map(block => block.text).join('\n')).trim();
@@ -145,11 +145,15 @@
             });
         }
 
-        openReplyFork(reply) {
+        sourcePreview(text, label) {
+            return `<section class="pi-workflow-source"><div class="pi-workflow-source-label"><i class="fa-regular fa-file-lines" aria-hidden="true"></i>${escape(label)}</div><pre class="pi-workflow-preview" tabindex="0">${escape(text)}</pre></section>`;
+        }
+
+        openReplyFork(reply, message) {
             if (this.busy()) throw new Error(translateUi("请等待会话空闲后操作"));
             this.entryId = reply.entryId; this.expectedLeafId = this.snapshot.leafId;
             if (!this.show('reply-fork', translateUi("从此回复后分叉"), translateUi("创建分叉"))) return;
-            this.content.innerHTML = `${this.warning(translateUi("新线程与原线程共享项目文件，不复制目录。"))}<pre class="pi-workflow-preview">${escape(reply.text)}</pre>`;
+            this.content.innerHTML = `${this.warning(translateUi("新线程与原线程共享项目文件，不复制目录。"))}${this.sourcePreview(message ? this.messageText(message, '\n') : reply.text, translateUi('原回复 · 分叉将保留到此处'))}`;
         }
 
         show(mode, title, command) {
@@ -291,7 +295,7 @@
             this.entryId = entryId; this.expectedLeafId = payload.leafId;
             this.submit.disabled = false;
             if (mode === 'retry') this.editorFields(payload, false);
-            else this.content.innerHTML = `${this.warning(translateUi("新线程与原线程共享项目文件，不复制目录。"))}<pre class="pi-workflow-preview">${escape(payload.message || translateUi("图片消息"))}</pre>`;
+            else this.content.innerHTML = `${this.warning(translateUi("新线程与原线程共享项目文件，不复制目录。"))}${this.sourcePreview(payload.message || translateUi("图片消息"), translateUi('原问题 · 将填入新线程草稿'))}`;
         }
         async openClone() {
             if (this.busy()) throw new Error(translateUi("请等待会话空闲后操作"));

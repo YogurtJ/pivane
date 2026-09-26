@@ -184,6 +184,10 @@ async function run(browser, viewport, theme) {
     await replies.first().locator('[data-message-workflow="reply-fork"]').click();
     await page.waitForFunction(() => document.querySelector('#pi-workflow-dialog').open && document.querySelector('#pi-workflow-title').textContent === '从此回复后分叉');
     assert.ok((await page.locator('#pi-workflow-content').textContent()).includes('两个方案'));
+    assert.equal(await page.locator('.pi-workflow-source .pi-workflow-preview').textContent(), firstReply);
+    assert.match(await page.locator('.pi-workflow-source-label').textContent(), /原回复/);
+    assert.equal(await page.locator('.pi-workflow-source').evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+    await page.screenshot({ path: `/tmp/pi-fork-preview-${viewport.width}-${theme}.png` });
     await page.locator('#pi-workflow-submit').click();
     await page.locator('#pi-workflow-error:not([hidden])').waitFor();
     assert.equal(sessions.length, 1);

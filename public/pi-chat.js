@@ -147,6 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
         navigationEpoch: 0,
         routeKey: null,
         creatingSession: false,
+        deletedSessions: new Set(),
         projects: [],
         pinnedProjects: [],
         hiddenProjects: [],
@@ -1206,7 +1207,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (options.render !== false) renderSessions();
         try {
             const data = await apiFetch(`/api/pi/sessions?cwd=${encodeURIComponent(cwd)}`);
-            const sessions = data.sessions || [];
+            const sessions = (data.sessions || []).filter(session => !state.deletedSessions.has(JSON.stringify([cwd, session.id])));
             if (titleRevision !== titleUiRevision) {
                 for (const session of sessions) {
                     const current = (state.projectSessions.get(cwd) || []).find(item => item.id === session.id);
@@ -1287,9 +1288,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (epoch !== state.assistantEpoch || chosen !== state.assistantProfileId || !state.assistantMode) return;
         state.assistantRevision = data.revision;
         state.assistantGroups = groups;
-        state.assistantSessions = new Map(listedGroups.map((group, index) => [group.id, groupResults[index].sessions || []]));
+        state.assistantSessions = new Map(listedGroups.map((group, index) => [group.id, (groupResults[index].sessions || []).filter(session => !state.deletedSessions.has(JSON.stringify([group.cwd, session.id])))]));
         for (let i = 0; i < cwds.length; i++) {
-            const cwd = cwds[i], rows = unclassified[i].sessions || [];
+            const cwd = cwds[i], rows = (unclassified[i].sessions || []).filter(session => !state.deletedSessions.has(JSON.stringify([cwd, session.id])));
             state.projectSessions.set(cwd, rows);
             if (cwd === state.cwd) state.sessions = rows;
             const orphaned = rows.filter(session => session.agentProfile?.id === chosen && !session.assistantProject && !session.ephemeral);
@@ -1691,31 +1692,86 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function deleteOneSession(session = state.session, cwd = session?.cwd || state.cwd) {
-        if (!session || session.ephemeral || !cwd) return;
-        if (!window.confirm(translateUi("删除会话“{0}”？\n会先尝试将会话文件移入回收站；回收站不可用时将永久删除。", getSessionTitle(session)))) return;
-        try {
-            const result = await apiFetch(`/api/pi/sessions/${encodeURIComponent(session.id)}?cwd=${encodeURIComponent(cwd)}`, {
-                method: 'DELETE'
-            });
-            sideChat.forget(JSON.stringify([cwd, session.id]));
-            const wasCurrent = state.cwd === cwd && state.session?.id === session.id;
-            if (wasCurrent) {
-                disconnectSocket(true);
-                state.session = null;
-                clearSessionView();
-            }
-            const nextSessions = (state.projectSessions.get(cwd) || []).filter(item => item.id !== session.id);
-            state.projectSessions.set(cwd, nextSessions);
-            if (state.cwd === cwd) state.sessions = nextSessions;
-            const project = state.projects.find(item => item.cwd === cwd);
-            if (project) project.sessionCount = nextSessions.length;
-            renderProjects();
-            renderSessions();
-            toast(result?.trashed === true ? translateUi("会话已移入回收站") : result?.trashed === false ? translateUi("会话已永久删除") : translateUi("会话已删除"), 'success');
-        } catch (error) {
-            toast(error.message, 'error');
+    let sessionDeleteDialog = null;
+    function forgetDeletedSession(session, cwd) {
+        const key = JSON.stringify([cwd, session.id]);
+        state.deletedSessions.add(key);
+        sideChat.forget(key);
+        state.composerDrafts.delete(key); state.uncertainDrafts.delete(key);
+        state.recentlyOpened.delete(activityKey(cwd, session.id));
+        if (localStorage.getItem(`pi.web.session:${cwd}`) === session.id) localStorage.removeItem(`pi.web.session:${cwd}`);
+        if (state.cwd === cwd && state.session?.id === session.id) {
+            disconnectSocket(true);
+            state.session = null;
+            state.composerSessionKey = null;
+            elements.input.value = ''; clearAttachments();
+            clearSessionView(); workflows.update();
+            setConnection('idle', translateUi("选择会话开始工作"));
+            const tab = state.assistantMode ? 'assistant' : 'chat';
+            const params = state.assistantMode ? { profileId: state.assistantProfileId, projectId: state.assistantProjectId } : { cwd };
+            if (window.PiWorkspaceRoute?.current().tab === tab) window.PiWorkspaceRoute.navigate(tab, params);
         }
+        const nextSessions = (state.projectSessions.get(cwd) || []).filter(item => item.id !== session.id);
+        state.projectSessions.set(cwd, nextSessions);
+        for (const [id, sessions] of state.assistantSessions) state.assistantSessions.set(id, sessions.filter(item => item.id !== session.id || item.cwd !== cwd));
+        if (state.cwd === cwd) state.sessions = nextSessions;
+        const project = state.projects.find(item => item.cwd === cwd);
+        if (project) project.sessionCount = nextSessions.length;
+        renderProjects(); renderSessions();
+    }
+
+    async function deleteOneSession(session = state.session, cwd = session?.cwd || state.cwd) {
+        if (!session || session.ephemeral || !cwd || sessionDeleteDialog) return;
+        const dialog = document.createElement('dialog');
+        sessionDeleteDialog = dialog;
+        dialog.className = 'pi-workflow-dialog pi-session-delete-dialog';
+        dialog.setAttribute('aria-labelledby', 'pi-session-delete-title');
+        dialog.innerHTML = `<div class="pi-request-heading"><h3 id="pi-session-delete-title">${translateUi('删除线程')}</h3><button type="button" class="icon-btn subtle" data-close aria-label="${translateUi('关闭')}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div><p class="pi-delete-name"></p><p class="pi-delete-description"></p><p class="pi-action-status" role="status" hidden></p><p class="pi-workflow-error" role="alert" hidden></p><div class="pi-request-actions"><button type="button" class="pi-request-cancel" data-close>${translateUi('取消')}</button><button type="button" class="primary-btn pi-delete-confirm">${translateUi('删除线程')}</button></div>`;
+        dialog.querySelector('.pi-delete-name').textContent = getSessionTitle(session);
+        const description = dialog.querySelector('.pi-delete-description');
+        description.textContent = translateUi('会先停止此线程的运行并取消待发送消息，再尝试移入回收站；回收站不可用时将永久删除。项目文件不受影响。');
+        const submit = dialog.querySelector('.pi-delete-confirm');
+        const status = dialog.querySelector('[role="status"]');
+        const errorBox = dialog.querySelector('[role="alert"]');
+        const closeButtons = [...dialog.querySelectorAll('[data-close]')];
+        let pending = false;
+        const close = () => { if (!pending) { dialog.close(); dialog.remove(); sessionDeleteDialog = null; } };
+        closeButtons.forEach(button => button.addEventListener('click', close));
+        dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
+        submit.addEventListener('click', async () => {
+            if (pending) return;
+            pending = true; errorBox.hidden = true;
+            closeButtons.forEach(button => { button.disabled = true; });
+            const finish = window.PiActionFeedback.begin(submit, translateUi('正在删除…'));
+            status.hidden = false; status.textContent = translateUi('正在停止运行并删除线程，请稍候…');
+            if (state.cwd === cwd && state.session?.id === session.id) disconnectSocket(true);
+            try {
+                const result = await apiFetch(`/api/pi/sessions/${encodeURIComponent(session.id)}?cwd=${encodeURIComponent(cwd)}`, { method: 'DELETE', signal: AbortSignal.timeout(150000) });
+                forgetDeletedSession(session, cwd);
+                dialog.querySelector('h3').textContent = translateUi('线程已删除');
+                description.textContent = result?.trashed === true ? translateUi('会话已移入回收站') : result?.trashed === false ? translateUi('会话已永久删除') : translateUi('会话已删除');
+                dialog.classList.add('is-complete');
+                submit.hidden = true;
+                closeButtons[1].textContent = translateUi('完成');
+            } catch (error) {
+                errorBox.hidden = false;
+                errorBox.textContent = translateUi('删除未确认：{0}。请刷新线程列表核对结果后再试。', error.message);
+                if (state.cwd === cwd && state.session?.id === session.id) {
+                    try {
+                        const sessions = await loadSessions(cwd);
+                        if (state.cwd === cwd && state.session?.id === session.id) {
+                            if (sessions.some(item => item.id === session.id)) void connectSocket(session).catch(() => {});
+                            else { forgetDeletedSession(session, cwd); submit.hidden = true; }
+                        }
+                    } catch { /* Keep the result unconfirmed; do not enter a reconnect loop. */ }
+                }
+            } finally {
+                pending = false; finish(); status.hidden = true;
+                closeButtons.forEach(button => { button.disabled = false; });
+                closeButtons[1].focus();
+            }
+        });
+        document.body.appendChild(dialog); dialog.showModal(); closeButtons[1].focus();
     }
 
     async function openSession(session) {
@@ -1761,7 +1817,8 @@ document.addEventListener('DOMContentLoaded', () => {
         setConnection('connecting', translateUi("正在启动 Pi runtime"));
         setAgentState('connecting', translateUi("正在启动"), getSessionTitle(session));
         const openedCwd = state.cwd;
-        await connectSocket(session);
+        const connected = await connectSocket(session);
+        if (!connected) return;
         if (!session.ephemeral && state.cwd === openedCwd && state.session?.id === session.id) {
             const key = activityKey(openedCwd, session.id);
             state.recentlyOpened.delete(key);
@@ -1788,7 +1845,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const payload = { token: state.token, cwd: state.cwd };
                     if (!session.ephemeral) payload.sessionId = session.id;
                     const snapshot = await requestRpc(openCommand, payload, 180000);
-                    if (generation !== state.socketGeneration) return reject(new Error('Session changed'));
+                    if (generation !== state.socketGeneration) return resolve(false);
                     state.connected = true;
                     applySnapshot(snapshot);
                     const buffered = state.bootstrapEvents || []; state.bootstrapEvents = null;
@@ -1799,8 +1856,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             || event.type === 'extension_error' || event.type === 'extension_ui_request' && event.method === 'notify') handlePiEvent(event);
                     }
                     setConnection(state.shellBusy || state.compacting || state.streaming ? 'working' : 'connected', state.shellBusy ? translateUi("Shell 正在执行") : state.compacting ? translateUi("正在压缩上下文") : state.streaming ? translateUi("Pi 正在执行") : translateUi("Pi Agent 已连接"));
-                    resolve();
+                    resolve(true);
                 } catch (error) {
+                    if (generation !== state.socketGeneration || state.socket !== socket) return resolve(false);
                     if (generation === state.socketGeneration && state.socket === socket) {
                         if (['STARTUP_UI_UNSUPPORTED', 'RPC_STARTUP_FAILED'].includes(error.errorCode)) {
                             state.intentionalClose = true;
@@ -1822,7 +1880,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (generation === state.socketGeneration && state.socket === socket) handleSocketRecord(event.data);
             });
             socket.addEventListener('close', event => {
-                if (generation !== state.socketGeneration) return;
+                if (generation !== state.socketGeneration) return resolve(false);
+                if (event.code === 4004) {
+                    forgetDeletedSession(session, session.cwd || state.cwd);
+                    resolve(false); return;
+                }
                 sideChat.parentDisconnected();
                 state.connected = false;
                 nativeControls.disconnected();
@@ -1943,6 +2005,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 pending.reject(Object.assign(new Error(translateUi(message)), { errorCode: record.errorCode, deliveryUnknown: /timed out|timeout|exited|closed|EPIPE|ECONNRESET|not running/i.test(message) }));
             }
             return;
+        }
+        if (record.type === 'gateway_session_deleted' || record.type === 'gateway_session_removing') {
+            handlePiEvent(record); return;
         }
         if (state.bootstrapEvents) {
             state.bootstrapBytes += raw.length;
@@ -2492,6 +2557,17 @@ document.addEventListener('DOMContentLoaded', () => {
             void refreshActivity();
         }
         switch (event.type) {
+            case 'gateway_session_removing':
+                state.connected = false;
+                nativeControls.disconnected(); workflows.update();
+                setConnection('connecting', translateUi('正在停止运行并删除线程，请稍候…'));
+                elements.input.disabled = true; elements.sendButton.disabled = true;
+                break;
+            case 'gateway_session_deleted': {
+                forgetDeletedSession({ id: event.sessionId }, event.cwd);
+                toast(event.trashed === true ? translateUi('会话已移入回收站') : event.trashed === false ? translateUi('会话已永久删除') : translateUi('会话已删除'), 'success');
+                break;
+            }
             case 'gateway_progress':
                 state.runtimeRevision++;
                 taskProgress.apply(event.progress);
@@ -2742,7 +2818,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const duplicate = [...elements.transcript.querySelectorAll(`[data-message-key="${CSS.escape(key)}"]`)].some(element => JSON.stringify(element._piUserMessage?.content) === JSON.stringify(message.content));
             if (duplicate) return;
             const images = Array.isArray(message.content) ? message.content.filter(block => block.type === 'image') : [];
-            const optimistic = [...elements.transcript.querySelectorAll('.optimistic')].find(element => element._piExpectedText === messageText(message.content) && element._piExpectedImages === JSON.stringify(images));
+            const optimistic = [...elements.transcript.querySelectorAll('.optimistic')].find(element => element._piExpectedText === messageText(message.content) && element._piExpectedImages === imageIdentity(images));
             const element = createMessageElement(message);
             elements.transcript.querySelector('.pi-empty-state')?.remove();
             if (optimistic) optimistic.replaceWith(element);
@@ -3315,6 +3391,11 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally { state.submittingDrafts.delete(draft.key); autoResizeInput(); workflows.update(); }
     }
 
+    function imageIdentity(images) {
+        // RPC decoding can reorder fields or add metadata. Compare image content, not object serialization.
+        return JSON.stringify(images.map(image => [image.mimeType, image.data]));
+    }
+
     function appendOptimisticUser(text, images, expectedText) {
         elements.transcript.querySelector('.pi-empty-state')?.remove();
         const content = [];
@@ -3323,7 +3404,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const element = createMessageElement({ role: 'user', content });
         element.classList.add('optimistic');
         element._piExpectedText = expectedText;
-        element._piExpectedImages = JSON.stringify(images);
+        element._piExpectedImages = imageIdentity(images);
         elements.transcript.appendChild(element);
         scrollTranscript();
         return element;

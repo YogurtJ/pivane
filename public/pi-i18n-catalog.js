@@ -8771,6 +8771,12 @@
     ,["最多 {0} 个短语，每个不超过 {1} 个字符。","At most {0} phrases of up to {1} characters each."]
     ,["内容疑似密钥或凭据，不能保存到记忆或技能。","This looks like a key or credential and cannot be saved to memory or skills."]
     ,["内容疑似提示词注入指令，不能保存到记忆或技能。","This looks like a prompt-injection instruction and cannot be saved to memory or skills."]    ,["内容疑似密钥或注入指令，未保存","Looked like a key or injection instruction; not saved"]
+    ,['会先停止此线程的运行并取消待发送消息，再尝试移入回收站；回收站不可用时将永久删除。项目文件不受影响。', 'This stops the thread and cancels scheduled messages, then tries to move it to the trash. If the trash is unavailable, it is permanently deleted. Project files are unaffected.']
+    ,['正在停止运行并删除线程，请稍候…', 'Stopping and deleting the thread. Please wait…']
+    ,['线程已删除', 'Thread deleted']
+    ,['删除未确认：{0}。请刷新线程列表核对结果后再试。', 'Deletion was not confirmed: {0}. Refresh the thread list to check the result before trying again.']
+    ,['原回复 · 分叉将保留到此处', 'Original reply · the fork includes this reply']
+    ,['原问题 · 将填入新线程草稿', 'Original question · copied into the new thread draft']
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

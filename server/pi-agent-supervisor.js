@@ -743,6 +743,7 @@ class PiAgentSupervisor extends EventEmitter {
         this.workers = new Map();
         this.disposing = false;
         this.starting = new Map();
+        this.removing = new Map();
         this.ephemeralWorkers = new Set();
         this.sweepTimer = setInterval(() => this._sweep(), Math.min(this.idleMs, 60000));
         this.sweepTimer.unref?.();
@@ -750,6 +751,9 @@ class PiAgentSupervisor extends EventEmitter {
 
     async getWorker({ cwd, sessionPath, sessionId }) {
         if (this.disposing) throw new Error('Pi supervisor is shutting down');
+        if (this.removing.has(sessionPath)) throw new Error('Session is being deleted');
+        // A caller may have resolved the session before a completed deletion.
+        if (!fs.existsSync(sessionPath)) throw new Error('Session file no longer exists');
         const existing = this.workers.get(sessionPath);
         if (existing && !existing.disposed && !existing.restarting) return existing;
         if (this.starting.has(sessionPath)) return this.starting.get(sessionPath);
@@ -822,7 +826,7 @@ class PiAgentSupervisor extends EventEmitter {
     }
 
     isIdle() {
-        return !this.disposing && !this.starting.size && !this.ephemeralWorkers.size
+        return !this.disposing && !this.starting.size && !this.removing.size && !this.ephemeralWorkers.size
             && [...this.workers.values()].every(worker => worker.isIdle() && !worker.retainsBackgroundWork());
     }
 
@@ -834,7 +838,7 @@ class PiAgentSupervisor extends EventEmitter {
         const real = file => { try { return fs.realpathSync.native(file); } catch { return null; } };
         const target = real(sessionPath) ?? sessionPath;
         const matches = file => file === sessionPath || file === target || real(file) === target;
-        if ([...this.starting.keys()].some(matches)) return false;
+        if ([...this.removing.keys()].some(matches) || [...this.starting.keys()].some(matches)) return false;
         const worker = [...this.workers].find(([file, item]) => !item.disposed && matches(file))?.[1];
         return !worker || worker.isIdle() && !worker.retainsBackgroundWork();
     }
@@ -848,6 +852,20 @@ class PiAgentSupervisor extends EventEmitter {
 
     getActiveWorker(sessionPath) {
         return this.workers.get(sessionPath);
+    }
+
+    async withSessionRemoval(sessionPath, operation) {
+        if (this.disposing) throw new Error('Pi supervisor is shutting down');
+        if (this.removing.has(sessionPath)) throw new Error('Session is being deleted');
+        // Reserve before awaiting startup or shutdown; reconnects must not recreate the worker.
+        const removal = Promise.resolve().then(async () => {
+            await this.starting.get(sessionPath);
+            const worker = this.workers.get(sessionPath);
+            return worker ? worker.exclusive(() => operation(worker), { idle: false }) : operation(null);
+        });
+        this.removing.set(sessionPath, removal);
+        try { return await removal; }
+        finally { this.removing.delete(sessionPath); }
     }
 
     async stopSession(sessionPath) {
@@ -870,7 +888,7 @@ class PiAgentSupervisor extends EventEmitter {
     async dispose() {
         this.disposing = true;
         clearInterval(this.sweepTimer);
-        await Promise.allSettled([...this.starting.values()]);
+        await Promise.allSettled([...this.starting.values(), ...this.removing.values()]);
         const workers = [...this.workers.values(), ...this.ephemeralWorkers];
         this.workers.clear();
         this.ephemeralWorkers.clear();

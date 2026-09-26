@@ -513,18 +513,28 @@ function createPiAgentGateway(options = {}) {
         }
     });
 
+    const sessionRemovalListeners = new Set();
+    supervisor.on('sessionRemoval', event => {
+        for (const listener of sessionRemovalListeners) listener(event);
+    });
     router.delete('/sessions/:id', async (req, res) => {
         try {
             const session = await store.getSession(req.query.cwd, req.params.id);
-            const worker = await supervisor.getWorker({ cwd: session.cwd, sessionId: session.id, sessionPath: session.path });
-            const deleted = await worker.exclusive(async () => {
+            const deleted = await supervisor.withSessionRemoval(session.path, async worker => {
                 deferred.cancelSession(session.cwd, session.id);
                 await sideChat.releaseSource(session.cwd, session.id, 'deleted');
-                worker._broadcast({ type: 'gateway_reconnect' });
-                await supervisor.stopSession(session.path);
-                await usage.preserveSession(session.path);
-                return store.deleteSession(req.query.cwd, req.params.id);
-            }, { idle: false });
+                worker?._broadcast({ type: 'gateway_session_removing' });
+                try {
+                    await supervisor.stopSession(session.path);
+                    await usage.preserveSession(session.path);
+                    const result = await store.deleteSession(req.query.cwd, req.params.id);
+                    supervisor.emit('sessionRemoval', { ...session, deleted: true, result });
+                    return result;
+                } catch (error) {
+                    supervisor.emit('sessionRemoval', { ...session, deleted: false });
+                    throw error;
+                }
+            });
             preferences.clearReplyNotice(session.cwd, session.id);
             res.json(deleted);
         } catch (error) {
@@ -579,6 +589,12 @@ function createPiAgentGateway(options = {}) {
             let unsubscribe = null;
             let authenticated = false;
             let socketClosed = false;
+            const sessionRemoval = event => {
+                if (event.path !== workerSessionPath) return;
+                if (event.deleted) safeSend(socket, { type: 'gateway_session_deleted', cwd: event.cwd, sessionId: event.id, trashed: event.result.trashed });
+                socket.close(event.deleted ? 4004 : 1012, event.deleted ? 'Session deleted' : 'Session deletion failed');
+            };
+            sessionRemovalListeners.add(sessionRemoval);
             const authTimer = setTimeout(() => socket.close(4401, 'Authentication timeout'), 10000);
             authTimer.unref?.();
 
@@ -929,6 +945,7 @@ function createPiAgentGateway(options = {}) {
             }
 
             socket.on('close', () => {
+                sessionRemovalListeners.delete(sessionRemoval);
                 socketClosed = true;
                 clearTimeout(authTimer);
                 void sideConnection?.dispose();

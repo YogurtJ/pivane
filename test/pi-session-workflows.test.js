@@ -185,7 +185,25 @@ test('native session workflows preserve original forks, retry context, versions,
     const delayedWorker = gateway.supervisor.getActiveWorker(fromFirst.data.session.path);
     assert.equal(delayedWorker.subscribers.size, 0);
     await waitFor(async () => !(await delayedWorker.request('get_state')).isStreaming);
+    const removalEvents = [];
+    const deletionClient = new WebSocket(`${base.replace('http:', 'ws:')}/ws`);
+    await once(deletionClient, 'open');
+    deletionClient.on('message', raw => removalEvents.push(JSON.parse(raw)));
+    deletionClient.send(JSON.stringify({ id: 'delete-open', type: 'open_session', token: 'workflow-test-token', cwd: root, sessionId: session.id }));
+    await waitFor(() => removalEvents.some(event => event.id === 'delete-open'));
+    const closed = once(deletionClient, 'close');
     const cancelled = await api(`${prefix}?cwd=${encodeURIComponent(root)}`, { cwd: root }, 'DELETE');
     assert.equal(cancelled.status, 200, JSON.stringify(cancelled));
+    assert.equal((await closed)[0], 4004);
+    assert.ok(removalEvents.some(event => event.type === 'gateway_session_removing'));
+    assert.ok(removalEvents.some(event => event.type === 'gateway_session_deleted' && event.sessionId === session.id && event.trashed === cancelled.data.trashed));
+    assert.equal(fs.existsSync(session.path), false);
+    assert.equal(gateway.supervisor.getActiveWorker(session.path), undefined);
     assert.equal(gateway.deferred.jobs[0].status, 'cancelled');
+    // Removing a closed thread must not boot Pi just to stop it again.
+    const closedSession = await gateway.store.createSession(root, 'Closed delete');
+    const started = [];
+    gateway.supervisor.on('worker', worker => started.push(worker.sessionId));
+    assert.equal((await api(`/sessions/${closedSession.id}?cwd=${encodeURIComponent(root)}`, { cwd: root }, 'DELETE')).status, 200);
+    assert.equal(started.includes(closedSession.id), false);
 });

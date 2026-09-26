@@ -55,6 +55,12 @@ async function run(browser, viewport) {
                 if (mode === 'reject') return reject(ws, command, 'fixture: rejected');
                 if (mode === 'timeout') return reject(ws, command, 'Pi RPC command timed out: prompt');
                 if (mode === 'disconnect') return ws.close({ code: 1011, reason: 'fixture disconnect' });
+                if (mode === 'echo') {
+                    const message = { role: 'user', timestamp: 1800000000000 + prompts.length,
+                        content: [{ type: 'text', text: command.message }, ...command.images.map(image => ({ type: 'image', data: image.data, mimeType: image.mimeType }))] };
+                    // Native RPC images have a different field order from the upload payload.
+                    for (let i = 0; i < 2; i++) ws.send(JSON.stringify({ type: 'message_end', message }));
+                }
                 return reply(ws, command, {});
             }
             throw new Error(`Unexpected RPC ${command.type}`);
@@ -168,6 +174,19 @@ async function run(browser, viewport) {
     assert.equal(await input.inputValue(), 'network draft'); await count(1);
     page.once('dialog', dialog => dialog.accept()); mode = 'accept'; await input.press('Enter');
     await page.waitForFunction(() => document.querySelector('#pi-input').value === ''); await count(0);
+    // Image acknowledgement replaces its optimistic card; repeated events don't duplicate it.
+    // An intentional second send with identical content must remain a separate user message.
+    mode = 'echo';
+    const echoStart = prompts.length;
+    for (let i = 1; i <= 2; i++) {
+        await input.fill('image acknowledgement regression'); await select([imageFile]); await count(1);
+        await input.press('Enter');
+        await page.waitForFunction(() => document.querySelector('#pi-input').value === ''); await count(0);
+        assert.equal(prompts.length, echoStart + i);
+        assert.equal(await page.locator('article.user').filter({ hasText: 'image acknowledgement regression' }).count(), i);
+        assert.equal(await page.locator('article.user.optimistic').filter({ hasText: 'image acknowledgement regression' }).count(), 0);
+    }
+    mode = 'accept';
     // Workflows use the same clipboard/drop and binary validation without REST writes.
     await input.fill('scheduled draft'); await page.locator('#pi-composer-add-button').click(); await page.locator('#pi-schedule-button').click();
     await transfer('paste', '#pi-workflow-message', [{ name: 'clipboard.png', type: 'image/png', image: png }]);

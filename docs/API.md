@@ -301,13 +301,15 @@ POST `/sessions/:id/title` 接受 `{cwd}`，使用请求开始时冻结的标题
 
 ### `DELETE /sessions/:id?cwd=<absolute-path>`
 
-停止 worker 后删除。成功：
+先预占 Supervisor 的会话删除互斥，等待此文件已有启动流程，在 worker 的独占区内取消预约、释放侧聊、停止 worker，完成用量保留检查后删除。未打开的会话不为删除启动 worker；删除期间禁止重连或其他请求创建新 worker。重复删除请求返回错误，不重复执行。服务全局停机会等待删除结束。成功：
 
 ```json
 { "id": "01...", "trashed": true }
 ```
 
-`trashed=false` 表示 `gio trash` 失败后永久删除。
+`trashed=false` 表示 `gio trash` 失败后永久删除。失败返回 HTTP 400；失败前已经停止的 worker 或已取消的预约不会自动恢复，请核对实际状态。
+
+已订阅的浏览器先收到 `gateway_session_removing`，仅表示删除进行中；只有文件操作成功才发送 `gateway_session_deleted {cwd,sessionId,trashed}` 并以 close code `4004` 关闭连接。失败用 `1012` 关闭，客户端可重连。删除成功不得当作 runtime 重启反复重连。旧后端缺少 `trashed` 时，界面只报告“已删除”，不推断是否进入回收站。
 
 ### 会话工作流 REST
 

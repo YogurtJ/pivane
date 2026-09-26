@@ -24,7 +24,7 @@ flowchart TD
 
 - `server.js` 装配访问验证、网关、媒体适配与静态资源，再监听 HTTP。旧媒体执行器仍在此入口，修改这些旧适配器时逐项迁移职责，不向入口添加新的业务存储。
 - `pi-agent-routes` 负责网关装配、项目/会话 HTTP 和连接协议。`server/routes/settings`、`server/routes/media` 只适配 HTTP；配置锁、修订、票据和持久化仍由服务拥有。
-- `PiAgentSupervisor` 拥有 worker 注册表、启动互斥、重开和回收。路由使用其生命周期接口，不复制 worker 内部字段清单。
+- `PiAgentSupervisor` 拥有 worker 注册表、启动互斥、重开和回收。删除通过 `withSessionRemoval` 在 await 前预占规范会话路径，等待已有启动，在 worker 独占区停止并执行文件删除；删除未结束前禁止 `getWorker` 重建 worker，并计入全局停机等待。路由使用其生命周期接口，不复制 worker 内部字段清单。
 - worker 拥有 RPC、事件、导航、Shell、控制队列和私有响应槽。`pi-worker-lifecycle` 集中投影这些工作；界面活动、维护空闲、无人订阅后的回收使用明确的不同条件。后台标题生成会阻止维护，但不占用主 prompt 操作；未处理草稿、队列和不确定操作不能因 agent_settled 被遗忘。
 - 功能服务依赖已注入的 store、supervisor、preferences 或公开 Pi SDK。跨服务操作的互斥在 await 前预占，完成后再释放；接口不能把超时当成实际终止。
 
