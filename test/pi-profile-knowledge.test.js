@@ -648,3 +648,17 @@ test('agent failure memories are writable in MEMORY.md while legacy failures.md 
     assert.equal(safeFile(path.join(root, 'MEMORY.md')).text, '');
     assert.equal(safeFile(path.join(root, 'failures.md')).text, '[failure] Legacy entry');
 });
+
+test('receipts are marked superseded once a later receipt changes the same item', { skip: !bundle }, async t => {
+    const { service, mutate } = setup(t);
+    const created = await mutate('create', 'memory', { category: 'preference', content: 'Prefer short answers.' });
+    const other = await mutate('create', 'memory', { category: 'fact', content: 'An unrelated fact.' });
+    let receipts = (await service.snapshot(id)).receipts;
+    assert.equal(receipts.some(row => row.superseded), false);
+    await mutate('undo', 'memory', { receiptId: created.receipt.id });
+    receipts = (await service.snapshot(id)).receipts;
+    assert.equal(receipts.find(row => row.id === created.receipt.id).superseded, true);
+    assert.equal(receipts.find(row => row.id === other.receipt.id).superseded, undefined);
+    assert.equal(receipts[0].operation, 'undo');
+    assert.equal(receipts[0].superseded, undefined);
+});

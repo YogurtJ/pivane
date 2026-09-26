@@ -56,12 +56,30 @@
                 reviewed = true, uncertain = null, learningUncertain = null, receipt = null, conflict = false, learningDraft = null } = draftsByProfile.get(profile) || {});
             snapshot = learning = null; notice = ''; render(); if (profile) { void load(); void loadLearning(); }
         }
-        function reveal(itemId) {
-            revealItem = itemId || null;
-            if (revealItem && snapshot?.status === 'ready') {
-                const target = snapshot.items.find(row => row.id === revealItem);
-                if (target) { revealItem = null; choose(target); }
+        // Open one entry (from a chat hint): switch to its kind, then select it even when it is
+        // not on the first listed page.
+        function reveal(itemId, itemKind) {
+            if (!itemId) return;
+            if (['memory', 'skill'].includes(itemKind) && itemKind !== kind) {
+                if (!discard()) return;
+                kind = itemKind; query = ''; offset = 0; selected = detail = draft = null; editing = false;
+                revealItem = itemId; void load(); return;
             }
+            revealItem = itemId;
+            if (snapshot?.status === 'ready') revealLoaded(snapshot);
+        }
+        function revealLoaded(data) {
+            const itemId = revealItem; revealItem = null;
+            const target = data.items.find(row => row.id === itemId);
+            if (target) {
+                choose(target);
+                requestAnimationFrame(() => root.querySelector('.pi-knowledge-row[aria-current="true"]')?.scrollIntoView({ block: 'nearest' }));
+                return;
+            }
+            const profileId = profile, generation = serial;
+            apiFetch(`${base()}/knowledge/items/${encodeURIComponent(itemId)}`).then(result => {
+                if (current(profileId, generation) && result?.status === 'ready' && result.item?.id === itemId) choose(result.item);
+            }).catch(() => {});
         }
         function close() { active = false; serial++; learningEpoch++; snapshot = learning = null; root.replaceChildren(); }
         async function load() {
@@ -94,13 +112,7 @@
                         : conflict ? t('版本冲突；草稿已保留。刷新并核对服务器版本。')
                             : memoryFull ? t('记忆已满，新记忆会被拒绝。请整理合并后再试。') : '';
                 render();
-                if (revealItem) {
-                    const target = data.items.find(row => row.id === revealItem);
-                    if (target) {
-                        revealItem = null; choose(target);
-                        requestAnimationFrame(() => root.querySelector('.pi-knowledge-row[aria-current="true"]')?.scrollIntoView({ block: 'nearest' }));
-                    }
-                }
+                if (revealItem && data.status === 'ready') revealLoaded(data);
             } catch (error) { if (current(profileId, generation)) { notice = t('读取失败：{0}', error.message); render(); } }
         }
         async function loadLearning() {
@@ -388,7 +400,7 @@
                 box.append(node('p', t('作业请求 {0} 结果未确认；请先核对作业列表，勿重复提交。', learningUncertain.requestId), 'pi-knowledge-status'));
                 box.append(button(t('已核对作业列表'), () => { learningUncertain = null; render(); }));
             }
-            if (!learningUncertain && canEnable(learning)) box.append(button(t('一键开启自学习'), () => void action('enable'), 'settings-primary-button'));
+            if (!learningUncertain && canEnable(learning) && learning.settings?.enabled !== true) box.append(button(t('一键开启自学习'), () => void action('enable'), 'settings-primary-button'));
             if (!learningUncertain && learning.capabilities?.actions?.includes('review-now')) box.append(button(t('立即复盘'), () => void action('review-now')));
             for (const job of [...(learning.jobs || []), ...(learning.recentRuns || [])].slice(0, 20)) {
                 const row = node('div', undefined, 'pi-learning-job'); row.append(node('strong', `${t(jobLabel[job.reason] || job.reason || job.id)} · ${t(jobLabel[job.status] || job.status || '状态未知')}`));

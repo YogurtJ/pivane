@@ -61,10 +61,10 @@
         }
         function openKnowledge() {
             knowledgePanel.open(selected);
-            if (pendingKnowledge?.profileId === selected) { const item = pendingKnowledge.itemId; pendingKnowledge = null; knowledgePanel.reveal?.(item); }
+            if (pendingKnowledge?.profileId === selected) { const { itemId, kind } = pendingKnowledge; pendingKnowledge = null; knowledgePanel.reveal?.(itemId, kind); }
         }
-        function revealKnowledge(profileId, itemId) {
-            pendingKnowledge = profileId && itemId ? { profileId, itemId } : null;
+        function revealKnowledge(profileId, itemId, kind) {
+            pendingKnowledge = profileId && itemId ? { profileId, itemId, kind } : null;
             if (pendingKnowledge && active() && selected === profileId && section === 'skills') openKnowledge();
         }
         function renderEmptyDetail() {

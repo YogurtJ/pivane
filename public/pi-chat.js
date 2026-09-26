@@ -625,7 +625,7 @@ document.addEventListener('DOMContentLoaded', () => {
             busy: !state.connected || state.streaming || state.compacting || state.shellBusy || state.pendingUi.size > 0 } : null,
         link: appendAgentThreadLink, error: message => toast(message, 'error') });
     const chatKnowledge = window.PiChatKnowledge?.create({ root: document.getElementById('pi-chat-knowledge'), fetch: apiFetch,
-        transcript: elements.transcript, entries: () => requestRpc('get_entries', {}),
+        transcript: elements.transcript, anchors: () => state.messageAnchors,
         scope: () => state.connected && state.session?.agentProfile?.id && !state.session.ephemeral && state.profileLearningSupported
             ? { cwd: state.cwd, sessionId: state.session.id, profileId: state.session.agentProfile.id, generation: state.socketGeneration } : null });
     let accessBootstrapped = false;
@@ -1970,6 +1970,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderSessions();
         renderModels();
         renderThinkingLevels();
+        state.messageAnchors = snapshot.messages?.webAnchors || null;
         renderMessages(snapshot.messages?.messages || []);
         chatKnowledge?.update();
         taskProgress.apply(snapshot.messages?.webProgress);
@@ -2511,7 +2512,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
             case 'agent_settled':
                 historyView.changed();
-                void chatKnowledge?.refresh();
+                if (chatKnowledge?.settled) chatKnowledge.settled(); else void chatKnowledge?.refresh();
                 setStreaming(false);
                 setConnection('connected', translateUi("Pi Agent 已连接"));
                 setAgentState('connected', translateUi("空闲"), state.model?.id || 'Pi Agent');
@@ -2880,6 +2881,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ]);
             if (generation !== state.socketGeneration || revision !== state.runtimeRevision || sessionId !== state.session?.id) return;
             if (!state.streaming && !runtime.isStreaming && !runtime.isCompacting) {
+                state.messageAnchors = messageData.webAnchors || null;
                 renderMessages(messageData.messages || []);
                 taskProgress.apply(messageData.webProgress);
                 state.renderedCompletion = messageData.completion || null;

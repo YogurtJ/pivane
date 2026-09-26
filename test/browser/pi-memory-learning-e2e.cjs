@@ -188,10 +188,15 @@ async function main() {
         step('correction learned', { category: learnedItem.category, learnerCalls: learner.length,
             run: runs[0] && { status: runs[0].status, reason: runs[0].reason, costStatus: runs[0].costStatus ?? runs[0].cost?.status } });
 
-        // 4. The chat card shows this thread's receipt.
-        await chatView.page.locator('.pi-chat-knowledge summary').click();
-        await chatView.page.locator('.pi-chat-knowledge-receipt').first().waitFor({ timeout: 20000 });
-        step('chat card receipt', { count: await chatView.page.locator('.pi-chat-knowledge-receipt').count() });
+        // 4. The learned preference is shown under the user message that taught it (display only).
+        const learnedHint = chatView.page.locator('#pi-transcript .pi-memory-hint').filter({ hasText: `已记住：${LEARNED}` });
+        await learnedHint.waitFor({ timeout: 20000 });
+        const hintAnchor = await learnedHint.evaluate(node => { const prev = node.previousElementSibling;
+            return prev?.dataset.messageKey ? JSON.parse(prev.dataset.messageKey)[0] : null; });
+        assert.equal(hintAnchor, 'user', 'learned hint sits under the teaching user message');
+        assert.match(await chatView.page.locator('.pi-chat-knowledge summary').innerText(), /本会话已记住 1 条/);
+        assert.ok(!fs.readFileSync(session.path, 'utf8').includes('已记住：'), 'hints are never written to the session');
+        step('in-chat remembered hint', { anchor: hintAnchor });
         await chatView.page.screenshot({ path: path.join(screenshots, 'chat-card-1440.png'), fullPage: true });
 
         // 5. Next turn: memory is injected, and the agent's own memory tool uses the trusted journal.
@@ -229,6 +234,23 @@ async function main() {
             .filter(e => e.type === 'message' && e.message.role === 'toolResult' && e.message.toolName === 'skill_manage').at(-1).message;
         assert.notEqual(view.isError, true, `skill view: ${JSON.stringify(view.content)}`);
         step('skill view');
+
+        // 7b. The agent's own write is hinted under its assistant message; "不对" deletes it with a tombstone.
+        const agentHint = chatView.page.locator('#pi-transcript .pi-memory-hint').filter({ hasText: `Agent 记下：${TOOL_FACT}` });
+        await agentHint.waitFor({ timeout: 20000 });
+        chatView.page.once('dialog', dialog => dialog.accept());
+        await agentHint.locator('button').filter({ hasText: '不对' }).click();
+        await until('agent fact rejected', async () => !(await api('GET', `/profiles/${profileId}/knowledge?kind=memory`)).items
+            .some(item => item.content === TOOL_FACT && item.state === 'active'));
+        await agentHint.waitFor({ state: 'detached', timeout: 20000 });
+        step('agent hint rejected with 不对');
+        assert.ok(!fs.readFileSync(session.path, 'utf8').includes('Agent 记下：'), 'hints are never written to the session');
+        await chatView.page.screenshot({ path: path.join(screenshots, 'chat-hints-1440.png'), fullPage: true });
+
+        // 7c. "编辑" opens the profile's knowledge page on that entry.
+        await learnedHint.locator('button').filter({ hasText: '编辑' }).click();
+        await chatView.page.locator('.pi-knowledge-detail pre').filter({ hasText: 'pnpm' }).waitFor({ timeout: 20000 });
+        step('hint edit opens the entry');
         assert.deepEqual(chatView.errors, []);
         await chatView.context.close();
 

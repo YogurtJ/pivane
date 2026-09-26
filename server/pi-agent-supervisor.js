@@ -137,8 +137,20 @@ class AgentWorker extends EventEmitter {
             // later events cannot be acknowledged by an older transcript snapshot.
             const transcriptSdk = type === 'get_messages' && this.managed ? await require('./pi-session-store').getSdk() : null;
             const data = await this.client.request(transcriptSdk ? 'get_entries' : type, transcriptSdk ? {} : payload, timeoutMs, undefined, value => {
-                if (transcriptSdk) value = { messages: transcriptSdk.buildContextEntries(value.entries, value.leafId)
-                    .flatMap(entry => transcriptSdk.sessionEntryToContextMessages(entry)) };
+                if (transcriptSdk) {
+                    // webAnchors maps each native message entry of the current context to the
+                    // rendered message key, so receipts can point at their source message
+                    // without the browser downloading raw entries of every branch.
+                    const messages = [], webAnchors = [];
+                    for (const entry of transcriptSdk.buildContextEntries(value.entries, value.leafId)) {
+                        const mapped = transcriptSdk.sessionEntryToContextMessages(entry);
+                        const first = mapped[0];
+                        if (entry.type === 'message' && typeof entry.id === 'string' && first?.timestamp != null)
+                            webAnchors.push([entry.id, first.role, first.timestamp, first.toolCallId || '']);
+                        messages.push(...mapped);
+                    }
+                    value = { messages, webAnchors };
+                }
                 if (type === 'get_state') this.live.state(value);
                 if (type === 'get_messages') value = publicMessages(value);
                 if (type === 'get_messages' && this.managed) {

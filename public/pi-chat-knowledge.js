@@ -15,12 +15,12 @@
     const categoryLabel = { fact: '事实', preference: '偏好', correction: '纠错', failure: '失败经验', procedure: '流程' };
     const healthLabel = { ok: '学习正常', off: '学习已关闭', 'needs-model': '缺少学习模型配置', 'quota-exhausted': '今日学习额度已用完', failing: '最近学习连续失败', unavailable: '学习当前不可用' };
     const healthTone = { ok: 'ok', off: 'off', 'needs-model': 'warn', 'quota-exhausted': 'warn', failing: 'bad', unavailable: 'bad' };
-    function create({ root, fetch, scope, transcript, entries }) {
+    function create({ root, fetch, scope, transcript, anchors }) {
         let key = '', identity = '', epoch = 0, busy = false, snapshot = null, draft = '', uncertain = null, notice = '', hintNotice = '', latest = null, conflict = false;
         // Background learning saves after the turn settles; follow queued/running jobs for a bounded time.
         let learning = false, polls = 0, timer = null;
         // Contract fields (origin/preview/health) arrive later; absent fields keep the old card display.
-        let learningSnapshot = null, anchorKeys = null, anchorsBusy = false, memoryFull = false;
+        let learningSnapshot = null, anchorKeys = null, memoryFull = false;
         const draftsByThread = new Map();
         const keep = () => { if (identity) draftsByThread.set(identity, { draft, uncertain, latest, notice, conflict, memoryFull, hintNotice }); };
         const scopeKey = value => value ? JSON.stringify([value.cwd, value.sessionId, value.profileId, value.generation]) : '';
@@ -31,7 +31,7 @@
             && /^[a-f0-9]{64}$/.test(snapshot.revision || '');
         const sessionReceipts = () => (snapshot?.receipts || []).filter(r => r.source?.sessionId === scope()?.sessionId);
         // Only server-verified learning/agent receipts with a native source entry become "remembered" hints.
-        const hintReceipts = () => sessionReceipts().filter(r => r.status === 'saved' && ['learning', 'agent'].includes(r.origin) && r.source?.entryId);
+        const hintReceipts = () => sessionReceipts().filter(r => r.status === 'saved' && !r.superseded && ['learning', 'agent'].includes(r.origin) && r.source?.entryId);
         const hintPreview = receipt => receipt.preview || receipt.summary || '';
         const hintText = receipt => receipt.kind === 'skill' ? t('已学习技能：{0}', hintPreview(receipt))
             : receipt.origin === 'agent' ? t('Agent 记下：{0}', hintPreview(receipt)) : t('已记住：{0}', hintPreview(receipt));
@@ -57,10 +57,11 @@
         function reveal(receipt) {
             const profileId = scope()?.profileId;
             if (!profileId || !receipt.itemId) return;
-            globalThis.PiAgentProfilesUI?.revealKnowledge?.(profileId, receipt.itemId);
+            globalThis.PiAgentProfilesUI?.revealKnowledge?.(profileId, receipt.itemId, receipt.kind);
             globalThis.dispatchEvent?.(new CustomEvent('workspace:open-settings', { detail: { tab: 'profiles', profileId, section: 'skills' } }));
         }
         function decorate() {
+            ensureAnchors();
             for (const node of root.querySelectorAll('.pi-memory-hint-fallback')) node.remove();
             const host = transcriptHost();
             if (host) for (const node of host.querySelectorAll('.pi-memory-hint')) node.remove();
@@ -74,31 +75,12 @@
             const list = root.querySelector('.pi-memory-hint-list');
             if (list) list.replaceChildren(...fallback.map(receipt => hintBlock(receipt, true)));
         }
-        // entryId -> [role, timestamp, toolCallId] matches the transcript's data-message-key.
-        async function ensureAnchors() {
-            if (typeof entries !== 'function') { anchorKeys = null; return; }
-            const wanted = hintReceipts().map(receipt => receipt.source.entryId);
-            if (!wanted.length) return;
-            if (anchorKeys && wanted.every(entryId => anchorKeys.has(entryId))) return;
-            if (anchorsBusy) return;
-            anchorsBusy = true;
-            try {
-                const data = await entries();
-                const rows = Array.isArray(data) ? data : Array.isArray(data?.entries) ? data.entries : [];
-                const map = new Map();
-                for (const entry of rows) {
-                    if (!entry || typeof entry.id !== 'string') continue;
-                    const role = entry.type === 'custom_message' ? 'custom' : entry.type === 'compaction' ? 'compactionSummary'
-                        : entry.type === 'branch_summary' ? 'branchSummary' : entry.type === 'message' ? entry.message?.role : null;
-                    if (!role) continue;
-                    const message = entry.type === 'message' ? entry.message || {} : {};
-                    const timestamp = message.timestamp ?? entry.timestamp;
-                    if (timestamp == null) continue;
-                    map.set(entry.id, JSON.stringify([role, timestamp, message.toolCallId || '']));
-                }
-                anchorKeys = map;
-            } catch { anchorKeys = null; }
-            finally { anchorsBusy = false; }
+        // entryId -> [role, timestamp, toolCallId] matches the transcript's data-message-key. The server
+        // sends these anchors with the current context; entries outside it fall back to the card.
+        function ensureAnchors() {
+            const rows = typeof anchors === 'function' ? anchors() : null;
+            anchorKeys = Array.isArray(rows) ? new Map(rows.filter(row => Array.isArray(row) && typeof row[0] === 'string')
+                .map(([entryId, role, timestamp, toolCallId]) => [entryId, JSON.stringify([role, timestamp, toolCallId || ''])])) : null;
         }
         function render() {
             const wasOpen = root.querySelector('details')?.open;
@@ -177,8 +159,6 @@
                 }
                 notice = uncertain ? t('提交结果未确认；请求 ID {0} 已保留，请勿重复提交。', uncertain.requestId)
                     : conflict ? t('版本冲突；草稿已保留。刷新并核对服务器版本。') : memoryFull ? t('记忆已满，新记忆会被拒绝。请整理合并后再试。') : '';
-                await ensureAnchors();
-                if (request !== epoch || !current() || key !== captured) return;
                 render();
             } catch (error) { if (request === epoch && current()) { notice = t('读取失败：{0}', error.message); render(); } }
         }
@@ -228,7 +208,16 @@
             polls = 0; clearTimeout(timer);
             render(); if (key) void refresh();
         }
-        return { update, decorate, refresh, reset() { keep(); clearTimeout(timer); learning = false; key = identity = ''; epoch++; snapshot = null; latest = null; uncertain = null; conflict = false; draft = ''; notice = ''; hintNotice = ''; memoryFull = false; anchorKeys = null; learningSnapshot = null; render(); } };
+        // A settled turn registers learning on the server concurrently with this refresh; look
+        // once more shortly after so a just-queued job starts the bounded follow-up.
+        let settledTimer = null;
+        function settled() {
+            polls = 0; clearTimeout(settledTimer);
+            void refresh();
+            const captured = key;
+            settledTimer = setTimeout(() => { if (current() && key === captured) void refresh(); }, 1500);
+        }
+        return { update, decorate, refresh, settled, reset() { clearTimeout(settledTimer); keep(); clearTimeout(timer); learning = false; key = identity = ''; epoch++; snapshot = null; latest = null; uncertain = null; conflict = false; draft = ''; notice = ''; hintNotice = ''; memoryFull = false; anchorKeys = null; learningSnapshot = null; render(); } };
     }
     globalThis.PiChatKnowledge = Object.freeze({ create });
 })();

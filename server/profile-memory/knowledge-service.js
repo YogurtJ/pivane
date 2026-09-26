@@ -242,8 +242,13 @@ function publicReceipt(value) {
     const { inputHash, ...rest } = value;
     return rest;
 }
+// A receipt is superseded once a later receipt (from any origin, e.g. a manual undo or
+// delete) changed the same item; chat hints for it are then no longer actionable.
 function recent(data, sessionId) {
-    return data.receipts.filter(receipt => !sessionId || receipt.source?.sessionId === sessionId).slice(-30).reverse().map(publicReceipt);
+    const latest = new Map();
+    for (const row of data.receipts) if (row.itemId) latest.set(row.itemId, row.id);
+    return data.receipts.filter(receipt => !sessionId || receipt.source?.sessionId === sessionId).slice(-30).reverse()
+        .map(row => ({ ...publicReceipt(row), ...(row.itemId && latest.get(row.itemId) !== row.id ? { superseded: true } : {}) }));
 }
 // Receipt preview: the memory body after the change (the removed body on delete),
 // or the skill name with the start of its description.
