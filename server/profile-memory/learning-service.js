@@ -791,13 +791,13 @@ class ProfileLearningService {
         Object.assign(outcome, { status: 'completed', error: undefined, proposal });
     }
     async run(id, job, signal) {
-        let status = 'failed', error = 'learning-failed', usage, receiptIds = [], commitStarted = false, proposal;
+        let status = 'failed', error = 'learning-failed', usage, receiptIds = [], commitStarted = false, plan;
         try {
             if (job.reason === 'consolidate') {
                 const outcome = {};
                 try { await this.consolidation(id, job, signal, outcome); }
                 finally { usage = outcome.usage; }
-                ({ status, error, proposal } = outcome);
+                ({ status, error, proposal: plan } = outcome);
                 return;
             }
             const before = await this.source(id, job);
@@ -915,10 +915,10 @@ class ProfileLearningService {
                     const run = { ...item, status, error, usage, receiptIds,
                         costStatus: usage?.reportedCostUsd !== undefined ? 'reported' : 'unknown', endedAt: new Date().toISOString() };
                     // A proposal is kept only if its job was not cancelled meanwhile, in the same journal write.
-                    if (proposal && item.status !== 'running') Object.assign(run, { status: 'cancelled', error: 'interrupted' });
+                    if (plan && item.status !== 'running') Object.assign(run, { status: 'cancelled', error: 'interrupted' });
                     state.recentRuns.push(run);
                     state.recentRuns = state.recentRuns.slice(-64);
-                    if (proposal && item.status === 'running' && !storeProposal(state, proposal))
+                    if (plan && item.status === 'running' && !storeProposal(state, plan))
                         Object.assign(run, { status: 'skipped', error: 'proposal-too-large' });
                 });
             } catch { /* Running journal is recovered as uncertain; never replay a charged request. */ }
