@@ -8762,6 +8762,7 @@
     ,["只看草稿技能","Only draft skills"]
     ,["显示全部技能","All skills"]
     ,["记忆已满","Memory is full"]
+    ,["整理合并单次最多读取字数（预留 = 字数 + 6000 tokens）","Consolidation input per run in characters (reserves characters + 6000 tokens)"]
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

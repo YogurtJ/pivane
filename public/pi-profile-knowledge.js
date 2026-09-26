@@ -563,7 +563,8 @@
                 max.disabled = learningBusy || !Number.isSafeInteger(learning.revision); max.oninput = () => { learningDraft.maxRunsPerDay = Number(max.value); };
                 form.append(field(t('每天最多运行次数'), max));
             }
-            for (const [key, text, min, max] of [['maxTokensPerDay', '每天最多预留 tokens', 6000, 200000], ['periodicReviewMinutes', '复盘间隔（分钟，0 为关闭）', 0, 10080]]) {
+            for (const [key, text, min, max] of [['maxTokensPerDay', '每天最多预留 tokens', 6000, 200000], ['periodicReviewMinutes', '复盘间隔（分钟，0 为关闭）', 0, 10080],
+                ['consolidationInputChars', '整理合并单次最多读取字数（预留 = 字数 + 6000 tokens）', 4000, 40000]]) {
                 if (!Object.hasOwn(settings, key)) continue;
                 const limit = learning.capabilities?.limits?.[key];
                 const input = node('input'); input.type = 'number'; input.min = limit?.min ?? min; input.max = limit?.max ?? max; input.step = 1; input.value = learningDraft[key];

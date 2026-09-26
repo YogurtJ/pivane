@@ -313,7 +313,8 @@ tool adapter.
 - **Settings** are per profile (`GET/PUT /profiles/:id/learning`), default off:
   `enabled`, `correctionEnabled`, `reviewEnabled`, `extractionEnabled`,
   `periodicReviewMinutes` (0..10080), `maxRunsPerDay` (1..20, default 4),
-  `maxTokensPerDay` (6000..200000, default 24000). Saving never runs a job.
+  `maxTokensPerDay` (6000..200000, default 200000; `maxRunsPerDay` defaults to 20),
+  and `consolidationInputChars` (4000..40000, default 12000; a consolidation reserves that plus 6000 tokens). Saving never runs a job.
 - **Models** are the auxiliary purposes `memory-correction`, `memory-review`
   and `memory-extraction` under Settings → Preferences → Auxiliary models. A
   blank purpose is `waiting-config`; the chat model is never substituted.

@@ -582,8 +582,8 @@ test('health reports off, unavailable, needs-model, quota, failing and ok in pre
     const f = await fixture(t);
     let snap = await f.service.snapshot(profileId);
     assert.equal(snap.health.state, 'off');
-    assert.deepEqual(snap.health.today, { runs: 0, maxRuns: 4, reservedTokens: 0, maxTokens: 24000 });
-    await f.enable({ reviewEnabled: true });
+    assert.deepEqual(snap.health.today, { runs: 0, maxRuns: 20, reservedTokens: 0, maxTokens: 200000 });
+    await f.enable({ reviewEnabled: true, maxRunsPerDay: 4, maxTokensPerDay: 24000 });
     assert.equal((await f.service.snapshot(profileId)).health.state, 'ok');
     f.preferences.writeDocument({ memoryModels: { 'memory-correction': { provider: 'fixture', modelId: 'cheap' } } });
     snap = await f.service.snapshot(profileId);
@@ -896,7 +896,7 @@ test('drafts count pending skill drafts across pages and cap at 200', async t =>
 });
 
 test('health reports memory-full after needs-model and before quota-exhausted', async t => {
-    const f = await fixture(t); await f.enable();
+    const f = await fixture(t); await f.enable({ maxRunsPerDay: 4, maxTokensPerDay: 24000 });
     let usage = { memory: { chars: 100, limit: 16000 }, user: { chars: 10, limit: 8000 } };
     const original = f.knowledge.snapshot;
     f.knowledge.snapshot = async (...args) => ({ ...await original(...args), usage });
@@ -931,4 +931,16 @@ test('a cancelled consolidation keeps no proposal', async t => {
     assert.equal(snap.recentRuns[0].status, 'cancelled');
     assert.deepEqual(snap.proposals, []);
     assert.equal(f.mutations.length, 0);
+});
+
+test('consolidation input size is a setting and sizes the reservation', async t => {
+    const f = await fixture(t);
+    assert.equal((await f.service.snapshot(profileId)).settings.consolidationInputChars, 12000);
+    await assert.rejects(f.enable({ consolidationInputChars: 3999 }), /Invalid learning setting/);
+    await assert.rejects(f.enable({ consolidationInputChars: 40001 }), /Invalid learning setting/);
+    await f.enable({ consolidationInputChars: 30000 });
+    const snap = await f.service.snapshot(profileId);
+    assert.equal(snap.capabilities.consolidation.maxInputChars, 30000);
+    assert.equal(snap.capabilities.consolidation.reservedTokens, 36000);
+    assert.deepEqual(snap.capabilities.limits.consolidationInputChars, { min: 4000, max: 40000 });
 });

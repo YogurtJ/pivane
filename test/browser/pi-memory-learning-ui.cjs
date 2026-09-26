@@ -12,7 +12,7 @@ for (const [url, directory] of [['marked', 'marked/lib'], ['dompurify', 'dompuri
     app.use(`/vendor/${url}`, express.static(path.join(root, 'node_modules', directory)));
 app.use(express.static(path.join(root, 'public')));
 const settings = { enabled: false, correctionEnabled: true, reviewEnabled: false, extractionEnabled: false,
-    maxRunsPerDay: 4, maxTokensPerDay: 24000, periodicReviewMinutes: 0 };
+    maxRunsPerDay: 4, maxTokensPerDay: 24000, periodicReviewMinutes: 0, consolidationInputChars: 12000 };
 app.get('/fixture', (_req, res) => res.send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="/pi-profile-knowledge.css"><link rel="stylesheet" href="/pi-chat-knowledge.css">
 <style>:root{--line:#ccc;--text-main:#222;--text-soft:#555;--text-muted:#777;--surface-1:#fff;--surface-2:#eee;--accent:#168a68}body{margin:0;font-family:Arial,sans-serif;background:#f8f8f8;color:#222}main{max-width:720px;padding:12px;margin:auto;min-width:0}button{cursor:pointer}section{min-width:0}#pi-transcript-content{display:grid;gap:6px;padding:8px 0}</style></head><body><main><section id="pi-profiles-memory"></section><div id="pi-chat-knowledge"></div><div id="pi-transcript-content"></div></main>
