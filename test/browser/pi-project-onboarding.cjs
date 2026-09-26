@@ -29,8 +29,7 @@ assert.match(project||'',/^\/tmp\/pi-onboarding-[^/]+\/project$/);
    await page.locator('#native-settings-save').click();await page.waitForFunction(()=>document.querySelector('#native-status').textContent.includes('已保存'));
    assert.equal(await page.evaluate(()=>localStorage.getItem('pi.web.cwd')),null,'global settings must not select a project');
   }
-  await page.locator('[data-settings-tab=packages]').click();await page.locator('#native-resource-scope').waitFor();assert.equal(await page.locator('#native-resource-scope').inputValue(),'global');
-  await page.locator('[data-settings-tab=skills]').click();await page.locator('#native-skills-scope').waitFor();assert.equal(await page.locator('#native-skills-scope').inputValue(),'global');
+  await page.locator('[data-manage-route=extensions]').click();await page.locator('#extensions-nav [data-extensions-tab=installed]').click();await page.locator('#native-installed-scope').waitFor();assert.equal(await page.locator('#native-installed-scope').inputValue(),'global');
   assert.ok(!/Project path must be absolute|outside allowed roots/.test(await page.locator('#workspace-settings-dialog').innerText()));
   await page.locator('#workspace-settings-close').click();await openProjectPicker();
   // Fill a different real project; selecting a project does not create a runtime.

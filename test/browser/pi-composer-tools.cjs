@@ -100,7 +100,7 @@ async function run(browser, viewport) {
     const openTemplates = async () => {
         await page.locator('#workspace-settings-toggle').click();
         await page.locator('[data-manage-route="extensions"]').click();
-        await page.locator('#extensions-nav [data-extensions-tab="skills"]').click();
+        await page.locator('#extensions-nav [data-extensions-tab="installed"]').click();
         if (!await page.locator('#settings-skills-options').evaluate(e => e.open)) await page.locator('#settings-skills-options > summary').click();
         await page.locator('#settings-manage-templates').click();
     };
@@ -260,7 +260,7 @@ async function run(browser, viewport) {
     try { for (const viewport of [{ width: 1440, height: 1000 }, { width: 393, height: 852 }, { width: 320, height: 740 }].filter(v => !process.env.PI_COMPOSER_VIEWPORT || v.width === Number(process.env.PI_COMPOSER_VIEWPORT))) await run(browser, viewport); }
     catch (error) {
         await debugPage.screenshot({ path: '/tmp/pi-composer-plus-failure.png', timeout: 5000 }).catch(() => {});
-        console.log(await debugPage.evaluate(() => ['#workspace-settings-close', '#workspace-settings-dialog', '.workspace-settings-dialog', '[data-settings-panel="skills"]', '#settings-manage-templates', '#pi-template-dialog'].map(s => { const n = document.querySelector(s), box = n.getBoundingClientRect(); return { selector: s, x: box.x, y: box.y, width: box.width, height: box.height, scroll: n.scrollTop, focused: document.activeElement?.id }; })).catch(() => []));
+        console.log(await debugPage.evaluate(() => ['#workspace-settings-close', '#workspace-settings-dialog', '.workspace-settings-dialog', '[data-settings-panel="installed"]', '#settings-manage-templates', '#pi-template-dialog'].map(s => { const n = document.querySelector(s), box = n.getBoundingClientRect(); return { selector: s, x: box.x, y: box.y, width: box.width, height: box.height, scroll: n.scrollTop, focused: document.activeElement?.id }; })).catch(() => []));
         console.log(await debugPage.evaluate(async () => {
             const samples = [];
             for (let i = 0; i < 12; i++) { await new Promise(requestAnimationFrame); const b = document.querySelector('#workspace-settings-close'), h = b.parentElement, s = getComputedStyle(b); samples.push({ y: b.getBoundingClientRect().y, x: b.getBoundingClientRect().x, header: h.getBoundingClientRect().height, transform: s.transform, animation: s.animationName }); }

@@ -128,8 +128,7 @@
     }
     const extensionTabLabels = {
         extensions: ['发现', 'Discover'],
-        packages: ['已安装扩展包', 'Installed packages'],
-        skills: ['已安装技能', 'Installed skills']
+        installed: ['已安装', 'Installed']
     };
     function mountSubnav() {
         const dialog = document.getElementById('workspace-settings-dialog');

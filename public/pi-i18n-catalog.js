@@ -8691,6 +8691,8 @@
     ,["显示每条回复，连续的思考和工具调用合并成一行“执行记录”。", "Shows every reply; consecutive thinking and tool calls merge into one “execution record” row."]
     ,["逐条展开全部思考和工具调用，适合排查问题。", "Expands every thinking step and tool call; useful for troubleshooting."]
     ,["消息显示…", "Message display…"]
+    ,["资源", "Resources"]
+    ,["类型", "Type"]
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

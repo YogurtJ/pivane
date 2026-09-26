@@ -1,8 +1,8 @@
 .native-help-control { display: inline-flex; flex: 0 0 auto; }
-:is(#native-packages, #native-skills) .native-help-trigger { width: 36px; height: 36px; min-height: 36px; padding: 0; border-color: transparent; border-radius: 50%; color: var(--text-muted); font-weight: 600; font-size: .95rem; background: transparent; }
+#native-installed .native-help-trigger { width: 36px; height: 36px; min-height: 36px; padding: 0; border-color: transparent; border-radius: 50%; color: var(--text-muted); font-weight: 600; font-size: .95rem; background: transparent; }
 .native-item-help { position: fixed; inset: auto; margin: 0; padding: 6px; width: 232px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); box-sizing: border-box; overflow: auto; border: 1px solid var(--line); border-radius: 12px; color: var(--text-main); background: var(--surface-1); box-shadow: 0 10px 35px #0002; }
 .native-item-help:popover-open { display: grid; gap: 2px; }
-:is(#native-packages, #native-skills) .native-item-help button { display: flex; gap: 10px; justify-content: flex-start; align-items: center; text-align: start; width: 100%; min-height: 44px; border-color: transparent; background: transparent; }
+#native-installed .native-item-help button { display: flex; gap: 10px; justify-content: flex-start; align-items: center; text-align: start; width: 100%; min-height: 44px; border-color: transparent; background: transparent; }
 .native-item-help i { width: 18px; flex: 0 0 18px; color: var(--text-muted); }
 /* Installed packages, resources and skills share one row grammar: icon, name, badges,
    an origin disclosure, one inline reversible action and an overflow menu. */
@@ -28,16 +28,16 @@
 .native-item-menu-list button.danger { color: var(--danger); }
 .native-item-menu[open] > summary { border-color: var(--accent); background: var(--surface-2); color: var(--text-main); }
 @media (max-width: 680px) {
-    :is(#native-packages, #native-skills) .native-help-trigger { width: 44px; height: 44px; }
+    #native-installed .native-help-trigger { width: 44px; height: 44px; }
 }
-#native-settings-nav[hidden], #native-skills[hidden], #settings-skills-legacy[hidden], #native-packages[hidden], #pi-loaded-resources[hidden], [data-settings-panel="packages"] > [hidden] { display: none !important; }
-#native-settings-panel, #native-skills, #native-packages { min-width: 0; max-width: 100%; color: var(--text-main); }
-:is(#native-settings-panel, #native-skills, #native-packages, #pi-project-trust-dialog, #pi-loaded-resources) p { color: var(--text-muted); line-height: 1.65; overflow-wrap: anywhere; }
-:is(#native-settings-panel, #native-skills, #native-packages, #pi-project-trust-dialog, #pi-loaded-resources) button { padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-1); color: var(--text-main); font: inherit; font-size: .82rem; cursor: pointer; min-height: 36px; }
-:is(#native-settings-panel, #native-skills, #native-packages, #pi-project-trust-dialog, #pi-loaded-resources) button:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-2); }
-:is(#native-settings-panel, #native-skills, #native-packages, #pi-project-trust-dialog, #pi-loaded-resources) button:disabled { opacity: .48; cursor: default; }
-:is(#native-settings-panel, #native-skills, #native-packages, #pi-project-trust-dialog, #pi-loaded-resources) :is(button, input, select, textarea, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-:is(#native-settings-panel, #native-skills, #native-packages) :is(input, select, textarea) { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-1); color: var(--text-main); font: inherit; font-size: .84rem; }
+#native-settings-nav[hidden], #settings-skills-legacy[hidden], #pi-loaded-resources[hidden], [data-settings-panel="installed"] > [hidden] { display: none !important; }
+#native-settings-panel, #native-installed { min-width: 0; max-width: 100%; color: var(--text-main); }
+:is(#native-settings-panel, #native-installed, #pi-project-trust-dialog, #pi-loaded-resources) p { color: var(--text-muted); line-height: 1.65; overflow-wrap: anywhere; }
+:is(#native-settings-panel, #native-installed, #pi-project-trust-dialog, #pi-loaded-resources) button { padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-1); color: var(--text-main); font: inherit; font-size: .82rem; cursor: pointer; min-height: 36px; }
+:is(#native-settings-panel, #native-installed, #pi-project-trust-dialog, #pi-loaded-resources) button:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-2); }
+:is(#native-settings-panel, #native-installed, #pi-project-trust-dialog, #pi-loaded-resources) button:disabled { opacity: .48; cursor: default; }
+:is(#native-settings-panel, #native-installed, #pi-project-trust-dialog, #pi-loaded-resources) :is(button, input, select, textarea, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+:is(#native-settings-panel, #native-installed) :is(input, select, textarea) { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-1); color: var(--text-main); font: inherit; font-size: .84rem; }
 .native-scope-row { display: flex; gap: 18px; align-items: center; margin: 20px 0 24px; padding: 16px; background: var(--surface-2); border-radius: 10px; }
 #native-refresh { flex: 0 0 auto; width: auto; }
 .native-scope-row > label { display: grid; gap: 8px; font-size: .78rem; flex: 0 0 180px; }
@@ -54,16 +54,15 @@
 .native-group-caption small, .native-setting-count { color: var(--text-muted); font-size: .74rem; line-height: 1.5; }
 .native-setting-count { white-space: nowrap; }
 .native-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; padding: 20px 18px; border-top: 1px solid var(--line); min-width: 0; }
-.native-grid label, #native-packages > label { display: flex; flex-direction: column; gap: 8px; min-width: 0; font-size: .82rem; }
+.native-grid label, #native-installed > label { display: flex; flex-direction: column; gap: 8px; min-width: 0; font-size: .82rem; }
 .native-grid small { font-size: .73rem; color: var(--text-muted); line-height: 1.6; overflow-wrap: anywhere; }
 .native-grid textarea { resize: vertical; }
 .native-save-row { display: flex; gap: 12px; justify-content: space-between; align-items: center; margin-top: 22px; }
 .native-save-row small { color: var(--text-muted); font-size: .76rem; }
 #native-settings-save, #pi-project-trust-dialog .native-trust-primary { color: var(--surface-0); background: var(--accent); border-color: var(--accent); font-weight: 600; }
 #native-settings-save:hover:not(:disabled), #pi-project-trust-dialog .native-trust-primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
-#native-status, #native-resource-status, #native-skills-status, #pi-project-trust-status { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; line-height: 1.65; }
-#native-status:empty, #native-skills-status:empty, #pi-project-trust-status:empty { display: none; }
-.native-skills-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 130px; gap: 10px; margin: 20px 0 12px; }
+#native-status, #native-resource-status, #pi-project-trust-status { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; line-height: 1.65; }
+#native-status:empty, #pi-project-trust-status:empty { display: none; }
 .native-help { font-size: .77rem; margin-bottom: 18px; }
 .native-optional { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 16px; font-size: .8rem; color: var(--text-muted); }
 .native-optional > summary { cursor: pointer; margin-bottom: 14px; }
@@ -109,40 +108,40 @@
 .native-tool-field > small { display: block; margin-top: 6px; }
 .native-tool-options:disabled { opacity: .6; }
 .native-setting-help { margin: 0; font-size: .78rem; }
-#native-packages { --package-radius: 12px; }
-#native-packages h3, #native-packages h4, #native-packages p { margin: 0; }
-#native-packages button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; max-width: 100%; overflow-wrap: anywhere; }
+#native-installed { --package-radius: 12px; }
+#native-installed h3, #native-installed h4, #native-installed p { margin: 0; }
+#native-installed button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; max-width: 100%; overflow-wrap: anywhere; }
 .native-package-scope { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr); align-items: end; gap: 16px; margin-bottom: 18px; }
 .native-package-scope label { display: grid; gap: 7px; font-size: .76rem; color: var(--text-muted); min-width: 0; }
-#native-packages .native-package-scope p { padding-bottom: 8px; font-size: .75rem; }
-#native-packages :is(.native-package-scope, .native-resource-controls) select { width: 0; min-width: 100%; max-width: 100%; }
+.native-installed-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.native-installed-filters button { min-height: 36px; padding: 6px 12px; border-radius: 999px; }
+.native-installed-filters button.active { background: var(--green-soft); border-color: var(--green); color: var(--text-main); font-weight: 600; }
+#native-installed .native-package-scope p { padding-bottom: 8px; font-size: .75rem; }
+#native-installed :is(.native-package-scope) select { width: 0; min-width: 100%; max-width: 100%; }
 .native-package-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 22px; }
 .native-package-summary > div { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; padding: 14px; background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--package-radius); }
 .native-package-summary i { grid-column: 2; grid-row: 1 / 3; color: var(--accent); font-size: 15px; align-self: center; }
 .native-package-summary strong { grid-column: 1; grid-row: 1; font-size: 1.35rem; font-variant-numeric: tabular-nums; }
 .native-package-summary span { grid-column: 1; font-size: .78rem; }
 .native-package-summary small { grid-column: 1 / -1; color: var(--text-muted); font-size: .7rem; }
-.native-package-install-card { padding: 18px; border: 1px solid var(--line); border-radius: var(--package-radius); background: var(--surface-1); }
-#native-packages h4 { font-size: .88rem; line-height: 1.6; }
-#native-packages .native-package-install-card > p { margin-top: 5px; font-size: .76rem; }
+#native-installed h4 { font-size: .88rem; line-height: 1.6; }
 .native-package-caution { display: flex; align-items: baseline; gap: 8px; }
 .native-package-caution i { color: var(--amber); flex-shrink: 0; }
-#native-packages .native-runtime-note { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: .75rem; color: var(--text-muted); }
-#native-packages .native-runtime-note summary { cursor: pointer; color: var(--text-main); }
-#native-packages .native-runtime-note p { margin-top: 10px; }
-#native-packages .native-package-section-title { display: flex; align-items: center; gap: 8px; margin: 24px 0 12px; }
+#native-installed .native-runtime-note { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: .75rem; color: var(--text-muted); }
+#native-installed .native-runtime-note summary { cursor: pointer; color: var(--text-main); }
+#native-installed .native-runtime-note p { margin-top: 10px; }
+#native-installed .native-package-section-title { display: flex; align-items: center; gap: 8px; margin: 24px 0 12px; }
 .native-package-section-title span { color: var(--text-muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 20px; padding: 0 8px; font-size: .72rem; font-weight: 400; }
-.native-package-list { display: block; }
 .native-package-empty { display: grid; justify-items: center; gap: 10px; text-align: center; padding: 28px 18px; border: 1px dashed var(--line-strong); border-radius: var(--package-radius); color: var(--text-muted); font-size: .8rem; }
 .native-package-empty > i { font-size: 26px; color: var(--accent); }
-#native-packages .native-package-empty p { max-width: 420px; font-size: .76rem; }
-.native-package-search { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; margin-bottom: 8px; color: var(--text-muted); }
+#native-installed .native-package-empty p { max-width: 420px; font-size: .76rem; }
+.native-installed-search { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; margin-bottom: 8px; color: var(--text-muted); }
 .native-resource-origin { margin-top: 9px; font-size: .72rem; color: var(--text-muted); }
 .native-resource-origin summary { cursor: pointer; }
 .native-resource-origin code { display: block; white-space: normal; overflow-wrap: anywhere; margin-top: 8px; font-size: .72rem; }
 .native-resource-empty { margin-top: 12px; }
-#native-packages .native-package-notice { padding: 14px; margin-bottom: 16px; background: var(--amber-soft, var(--surface-2)); border-left: 3px solid var(--amber); border-radius: 8px; font-size: .78rem; }
-#native-packages .native-package-notice button { margin-top: 10px; }
+#native-installed .native-package-notice { padding: 14px; margin-bottom: 16px; background: var(--amber-soft, var(--surface-2)); border-left: 3px solid var(--amber); border-radius: 8px; font-size: .78rem; }
+#native-installed .native-package-notice button { margin-top: 10px; }
 #native-resource-status:not(:empty) { padding: 12px 14px; margin-top: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-1); }
 @media (max-width: 680px) {
     .native-package-scope { grid-template-columns: minmax(0, 1fr); gap: 8px; }
@@ -164,13 +163,12 @@
     .native-setting-count { font-size: .66rem; }
     .native-scope-row { gap: 12px; flex-wrap: wrap; padding: 14px; }
     .native-scope-row > label { flex: 1 1 130px; }
-    .native-skills-toolbar { grid-template-columns: minmax(0, 1fr) auto; }
-    .native-skills-toolbar > input { grid-column: 1 / -1; }
+    .native-installed-filters button { min-height: 40px; padding: 6px 10px; }
     .native-save-row { align-items: flex-start; }
     .native-save-row button { flex: 0 0 auto; }
     .native-install-dialog { width: calc(100vw - 20px); }
     .native-install-header, .native-install-body, .native-install-footer { padding-inline: 16px; }
-    :is(#native-settings-panel, #native-skills, #native-packages) :is(input, select, textarea) { font-size: 16px; }
+    :is(#native-settings-panel, #native-installed) :is(input, select, textarea) { font-size: 16px; }
     #pi-project-trust-dialog { width: calc(100vw - 24px); max-width: calc(100vw - 24px); }
     #pi-project-trust-dialog header { padding: 20px 18px 16px; }
     #pi-project-trust-body { padding: 18px; }

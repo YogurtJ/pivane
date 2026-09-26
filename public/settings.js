@@ -123,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let settingsViewEpoch = 0;
     let activeProfileMetadata = null;
-    const extensionTabs = new Set(['extensions', 'packages', 'skills']);
+    const extensionTabs = new Set(['extensions', 'installed']);
     function openSettings(tab = state.activeTab, metadata = {}) {
         elements.dialog.classList.remove('hidden');
         switchTab(tab, metadata);
@@ -156,7 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
         else subagentSettings.close();
         if (tab === 'access') window.WorkspaceAccess?.openSettings();
         else window.WorkspaceAccess?.closeSettings();
-        void nativeSettings.open(tab);
+        void nativeSettings.open(tab, extensionTab ? { type: metadata.resourceType } : {});
         if (tab === 'system-prompts') void systemPrompts.open();
         else systemPrompts.close();
         if (tab === 'usage') usagePanel.open();
@@ -791,9 +791,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (detail.updatePi === true && tab === 'updates') updatesPanel.reviewUpdate();
     });
     window.addEventListener('workspace:settings-route', event => {
-        const { tab, settingsTab, profileId, section, authoringSession, authoringCwd } = event.detail;
+        const { tab, settingsTab, profileId, section, authoringSession, authoringCwd, resourceType } = event.detail;
         if (['profiles', 'extensions', 'settings'].includes(tab)) {
-            openSettings(settingsTab, { profileId, section, authoringSession: authoringSession ? { id: authoringSession, cwd: authoringCwd } : undefined });
+            const metadata = { profileId, section, authoringSession: authoringSession ? { id: authoringSession, cwd: authoringCwd } : undefined };
+            if (resourceType) metadata.resourceType = resourceType;
+            openSettings(settingsTab, metadata);
         } else if (!elements.dialog.classList.contains('hidden')) closeSettings();
     });
     const initialRoute = window.PiWorkspaceRoute?.current();

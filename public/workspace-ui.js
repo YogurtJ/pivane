@@ -56,7 +56,7 @@
         if (hostLabel) hostLabel.textContent = window.location.host;
         const routeTabs = new Set(['chat', 'assistant', 'media', 'profiles', 'extensions', 'settings']);
         const settingsTabs = new Set(['providers', 'media', 'models', 'system-prompts', 'native', 'access', 'usage', 'updates']);
-        const extensionTabs = new Set(['extensions', 'packages', 'skills']);
+        const extensionTabs = new Set(['extensions', 'installed']);
         const moreTabs = new Set(['media', 'profiles', 'extensions']);
         const moreToggle = document.getElementById('workspace-more-toggle');
         const moreMenu = document.getElementById('workspace-more-menu');
@@ -73,15 +73,18 @@
             if (!match) return { tab: 'chat', params: new URLSearchParams() };
             return { tab: match[1], params: new URLSearchParams(match[2] || '') };
         }
-        // Bookmarks written before management views left the settings tabs keep working.
+        // Bookmarks written before installed packages and skills merged into one page keep working.
         function normalizeLegacySettingsRoute() {
             const { tab, params } = parseRoute();
-            if (tab !== 'settings') return;
+            if (tab !== 'settings' && tab !== 'extensions') return;
             const inner = params.get('tab');
-            if (inner === 'profiles') history.replaceState(null, '', '#/profiles');
-            else if (extensionTabs.has(inner)) history.replaceState(null, '', `#/extensions?tab=${inner}`);
-            else return;
-            window.dispatchEvent(new CustomEvent('workspace:settings-route-normalized', { detail: { from: 'settings', tab: inner } }));
+            let target = '';
+            if (inner === 'profiles') target = '#/profiles';
+            else if (inner === 'packages' || inner === 'skills') target = `#/extensions?tab=installed&type=${inner}`;
+            else if (inner && extensionTabs.has(inner)) target = `#/extensions?tab=${inner}`;
+            if (!target) return;
+            history.replaceState(null, '', target);
+            window.dispatchEvent(new CustomEvent('workspace:settings-route-normalized', { detail: { from: tab, tab: inner } }));
         }
         function showRoute() {
             normalizeLegacySettingsRoute();
@@ -105,7 +108,7 @@
             const settingsTab = tab === 'profiles' ? 'profiles'
                 : tab === 'extensions' ? (extensionTabs.has(params.get('tab')) ? params.get('tab') : 'extensions')
                     : settingsTabs.has(params.get('tab')) ? params.get('tab') : 'providers';
-            window.dispatchEvent(new CustomEvent('workspace:settings-route', { detail: { tab, settingsTab, profileId: params.get('profileId'), section: params.get('section'), authoringSession: params.get('authoringSession'), authoringCwd: params.get('authoringCwd') } }));
+            window.dispatchEvent(new CustomEvent('workspace:settings-route', { detail: { tab, settingsTab, profileId: params.get('profileId'), section: params.get('section'), authoringSession: params.get('authoringSession'), authoringCwd: params.get('authoringCwd'), resourceType: params.get('type') } }));
         }
         function routeHash(tab, params = {}) {
             if (!routeTabs.has(tab)) throw new Error('Unknown workspace route');
