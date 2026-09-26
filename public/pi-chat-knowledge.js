@@ -16,13 +16,13 @@
     const healthLabel = { ok: '学习正常', off: '学习已关闭', 'needs-model': '缺少学习模型配置', 'quota-exhausted': '今日学习额度已用完', failing: '最近学习连续失败', unavailable: '学习当前不可用' };
     const healthTone = { ok: 'ok', off: 'off', 'needs-model': 'warn', 'quota-exhausted': 'warn', failing: 'bad', unavailable: 'bad' };
     function create({ root, fetch, scope, transcript, entries }) {
-        let key = '', identity = '', epoch = 0, busy = false, snapshot = null, draft = '', uncertain = null, notice = '', latest = null, conflict = false;
+        let key = '', identity = '', epoch = 0, busy = false, snapshot = null, draft = '', uncertain = null, notice = '', hintNotice = '', latest = null, conflict = false;
         // Background learning saves after the turn settles; follow queued/running jobs for a bounded time.
         let learning = false, polls = 0, timer = null;
         // Contract fields (origin/preview/health) arrive later; absent fields keep the old card display.
         let learningSnapshot = null, anchorKeys = null, anchorsBusy = false, memoryFull = false;
         const draftsByThread = new Map();
-        const keep = () => { if (identity) draftsByThread.set(identity, { draft, uncertain, latest, notice, conflict, memoryFull }); };
+        const keep = () => { if (identity) draftsByThread.set(identity, { draft, uncertain, latest, notice, conflict, memoryFull, hintNotice }); };
         const scopeKey = value => value ? JSON.stringify([value.cwd, value.sessionId, value.profileId, value.generation]) : '';
         const current = () => scopeKey(scope()) === key && Boolean(key);
         const base = value => `/api/pi/profiles/${encodeURIComponent(value.profileId)}/knowledge`;
@@ -121,7 +121,7 @@
                     el('span', t(healthLabel[health.state] || '学习当前不可用')));
                 body.append(line);
             }
-            const status = el('p', notice || (snapshot ? t('存储状态：{0}', t(statusLabel[snapshot.status] || snapshot.status)) : t('正在读取…')), 'pi-knowledge-status');
+            const status = el('p', notice || hintNotice || (snapshot ? t('存储状态：{0}', t(statusLabel[snapshot.status] || snapshot.status)) : t('正在读取…')), 'pi-knowledge-status');
             status.setAttribute('role', 'status'); body.append(status);
             if (learning) body.append(el('p', t('后台学习正在处理本轮内容…'), 'pi-knowledge-status'));
             if (latest) {
@@ -197,7 +197,7 @@
                 const data = await fetch(`${base(value)}/mutations`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
                 if (!current() || captured !== key) return;
                 if (data?.version !== 1 || data.receipt?.requestId !== input.requestId) throw new Error(t('回执未确认'));
-                latest = data.receipt; uncertain = null; conflict = false; memoryFull = false;
+                latest = data.receipt; uncertain = null; conflict = false; memoryFull = false; hintNotice = '';
                 if (['saved', 'pending'].includes(latest.status) && operation === 'create') draft = '';
                 notice = latest.status === 'conflict' ? t('版本冲突；草稿已保留。刷新并核对服务器版本。') : '';
                 snapshot = null; void refresh();
@@ -205,10 +205,11 @@
                 if (!current() || captured !== key) return;
                 if (error.status === 409 && (error.data?.code === 'memory-full' || error.code === 'memory-full')) {
                     uncertain = null; memoryFull = true;
-                    notice = t('记忆已满，新记忆会被拒绝。请整理合并后再试。'); void refresh();
+                    hintNotice = t('记忆已满，新记忆会被拒绝。请整理合并后再试。'); void refresh();
                 } else if (error.status === 409) {
-                    uncertain = null; conflict = true;
-                    notice = operation === 'create' ? t('版本冲突；草稿已保留。刷新并核对服务器版本。') : t('版本冲突；已刷新数据，请核对后再试。');
+                    uncertain = null;
+                    if (operation === 'create') { conflict = true; notice = t('版本冲突；草稿已保留。刷新并核对服务器版本。'); }
+                    else hintNotice = t('版本冲突；已刷新数据，请核对后再试。');
                     void refresh();
                 }
                 else if (rejected(error)) { uncertain = null; notice = t('提交被服务端拒绝：{0}，草稿已保留。', error.message); }
@@ -220,14 +221,14 @@
             if (next !== key) {
                 if (nextIdentity !== identity) {
                     keep();
-                    ({ draft = '', uncertain = null, latest = null, notice = '', conflict = false, memoryFull = false } = draftsByThread.get(nextIdentity) || {});
+                    ({ draft = '', uncertain = null, latest = null, notice = '', conflict = false, memoryFull = false, hintNotice = '' } = draftsByThread.get(nextIdentity) || {});
                 }
                 key = next; epoch++; snapshot = null; identity = nextIdentity; learning = false; anchorKeys = null;
             }
             polls = 0; clearTimeout(timer);
             render(); if (key) void refresh();
         }
-        return { update, decorate, refresh, reset() { keep(); clearTimeout(timer); learning = false; key = identity = ''; epoch++; snapshot = null; latest = null; uncertain = null; conflict = false; draft = ''; notice = ''; memoryFull = false; anchorKeys = null; learningSnapshot = null; render(); } };
+        return { update, decorate, refresh, reset() { keep(); clearTimeout(timer); learning = false; key = identity = ''; epoch++; snapshot = null; latest = null; uncertain = null; conflict = false; draft = ''; notice = ''; hintNotice = ''; memoryFull = false; anchorKeys = null; learningSnapshot = null; render(); } };
     }
     globalThis.PiChatKnowledge = Object.freeze({ create });
 })();
