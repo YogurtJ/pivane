@@ -207,6 +207,12 @@ async function runFixture(browser, base, width, locale) {
     assert.ok((await fallback.innerText()).includes(say('Agent 记下：', 'Agent noted: ')));
     assert.ok((await text('#pi-chat-knowledge summary')).includes(say('本会话已记住 3 条', '3 entries remembered in this session')));
     assert.equal(await page.locator('.pi-chat-knowledge-receipt').count(), 1, 'old receipts keep the previous card rows');
+    // Compat: without the injection endpoint the learning area keeps the old display and
+    // the card reports that the injection content is unavailable.
+    assert.equal(await page.locator('.pi-injection').count(), 0, 'absent injection keeps the plain display');
+    await page.locator('.pi-knowledge-entries button').click();
+    await page.waitForFunction(() => Boolean(document.querySelector('.pi-injection-preview .pi-injection-error')));
+    assert.ok((await text('.pi-injection-preview')).includes(say('注入内容不可用', 'Injected content is unavailable')), await text('.pi-injection-preview'));
     // The undoable:false skill hint hides its buttons; the two memory hints keep three each.
     assert.equal(await page.locator('.pi-memory-hint button').count(), 6);
     // Undo posts the receipt identity with the confirmed revision.
@@ -401,6 +407,13 @@ async function runWave2(browser, base, width, locale) {
         const snapshot = () => ({ version: 1, status: 'ready', revision: hash('a'), items, receipts: [], hasMore: false,
             usage: state.usage, capabilities: { memory: true, skill: true, projectWrites: false, projectWritesBySession: true,
                 operations: ['create', 'update', 'delete', 'undo', 'consolidate'], maxContentLength: 65536 } });
+        if (p.endsWith('/knowledge/injection') && req.method() === 'GET')
+            return fulfill(url.searchParams.get('sessionId')
+                ? { version: 1, status: 'ready', block: 'PROFILE BLOCK\nPROJECT BLOCK', chars: 40, entries: 5,
+                    profile: { chars: 21, entries: 3 }, project: { chars: 19, entries: 2 },
+                    lastRead: { at: '2026-02-01', generation: 1, provided: true, chars: 30, entries: 4 }, truncated: false }
+                : { version: 1, status: 'ready', block: 'PROFILE BLOCK TEXT', chars: 21, entries: 3,
+                    profile: { chars: 21, entries: 3 }, project: null, lastRead: null });
         if (p.endsWith('/knowledge') && req.method() === 'GET') return fulfill(snapshot());
         if (p.endsWith('/learning') && req.method() === 'GET') return fulfill(learning());
         if (p.endsWith('/learning/actions')) {
@@ -477,6 +490,24 @@ async function runWave2(browser, base, width, locale) {
     state.usage = { memory: { chars: 100, limit: 16000 }, user: { chars: 100, limit: 8000 } };
     await page.evaluate(() => window.refreshAll());
     await page.waitForFunction(() => document.querySelectorAll('.pi-usage-bars button').length === 0);
+    // U2.2: the learning area shows the identity-level injection counts and the raw block.
+    const injection = page.locator('.pi-injection');
+    await injection.waitFor();
+    assert.ok((await injection.innerText()).includes(say('身份记忆：3 条 / 21 字', 'Profile memory: 3 entries / 21 chars')), await injection.innerText());
+    assert.ok((await injection.innerText()).includes(say('注入不代表模型一定遵守。', 'Injection does not prove the model will follow it.')));
+    await injection.locator('summary').click();
+    assert.match(await injection.locator('pre').innerText(), /PROFILE BLOCK TEXT/);
+    // The chat card can show this session's injection including the project block and last read.
+    await page.locator('#pi-chat-knowledge summary').click();
+    await page.locator('.pi-knowledge-entries button').filter({ hasText: say('查看本会话注入内容', "View this session's injected content") }).click();
+    await page.waitForFunction(() => Boolean(document.querySelector('.pi-injection-preview pre')));
+    const preview = page.locator('.pi-injection-preview');
+    assert.ok((await preview.innerText()).includes(say('项目记忆：2 条 / 19 字', 'Project memory: 2 entries / 19 chars')), await preview.innerText());
+    assert.ok((await preview.innerText()).includes(say('上一轮已注入 4 条 / 30 字', 'The previous turn received 4 entries / 30 chars')), await preview.innerText());
+    await preview.locator('summary').click();
+    assert.match(await preview.locator('pre').innerText(), /PROJECT BLOCK/);
+    const askedInjection = await page.evaluate(() => window.calls.filter(call => call.url.includes('/knowledge/injection')).at(-1));
+    assert.ok(askedInjection.url.includes('sessionId=thread-one'), askedInjection.url);
     // Mobile: 16px form controls, no horizontal overflow, no page errors.
     if (width < 900) {
         await page.waitForFunction(() => [...document.querySelectorAll('textarea,input,select')].every(el => parseFloat(getComputedStyle(el).fontSize) >= 16), undefined, { timeout: 5000 }).catch(() => {});

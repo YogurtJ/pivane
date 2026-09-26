@@ -21,6 +21,8 @@
         let learning = false, polls = 0, timer = null;
         // Contract fields (origin/preview/health) arrive later; absent fields keep the old card display.
         let learningSnapshot = null, anchorKeys = null, memoryFull = false;
+        // U2.2: the session's next-turn injection (read-only preview), loaded on demand.
+        let injectionView = null, injectionEpoch = 0;
         const draftsByThread = new Map();
         const keep = () => { if (identity) draftsByThread.set(identity, { draft, uncertain, latest, notice, conflict, memoryFull, hintNotice }); };
         const scopeKey = value => value ? JSON.stringify([value.cwd, value.sessionId, value.profileId, value.generation]) : '';
@@ -90,6 +92,43 @@
             anchorKeys = Array.isArray(rows) ? new Map(rows.filter(row => Array.isArray(row) && typeof row[0] === 'string')
                 .map(([entryId, role, timestamp, toolCallId]) => [entryId, JSON.stringify([role, timestamp, toolCallId || ''])])) : null;
         }
+        async function loadInjection() {
+            const value = scope();
+            if (!current() || !value) return;
+            const request = ++injectionEpoch, captured = key;
+            injectionView = { loading: true };
+            render();
+            try {
+                const data = await fetch(`${base(value)}/knowledge/injection?${new URLSearchParams({ sessionId: value.sessionId })}`);
+                if (request !== injectionEpoch || !current() || key !== captured) return;
+                injectionView = data?.version === 1 && typeof data.block === 'string' ? data : { error: t('注入内容不可用。') };
+            } catch (error) {
+                if (request !== injectionEpoch || !current() || key !== captured) return;
+                injectionView = { error: t('注入内容不可用：{0}', error.message) };
+            }
+            render();
+        }
+        function injectionBox() {
+            const view = injectionView;
+            const box = el('div', undefined, 'pi-injection-preview');
+            if (!view || view.loading) { box.append(el('p', t('正在读取…'), 'pi-knowledge-status')); return box; }
+            if (view.error) { box.append(el('p', view.error, 'pi-knowledge-status pi-injection-error')); return box; }
+            const profile = view.profile && typeof view.profile === 'object' ? view.profile : view;
+            box.append(el('p', t('身份记忆：{0} 条 / {1} 字', Number.isFinite(profile.entries) ? profile.entries : '—',
+                Number.isFinite(profile.chars) ? profile.chars : '—'), 'pi-injection-stats'));
+            if (view.project && typeof view.project === 'object')
+                box.append(el('p', t('项目记忆：{0} 条 / {1} 字', Number.isFinite(view.project.entries) ? view.project.entries : '—',
+                    Number.isFinite(view.project.chars) ? view.project.chars : '—'), 'pi-injection-stats'));
+            if (view.lastRead && typeof view.lastRead === 'object')
+                box.append(el('p', t('上一轮已注入 {0} 条 / {1} 字', Number.isFinite(view.lastRead.entries) ? view.lastRead.entries : '—',
+                    Number.isFinite(view.lastRead.chars) ? view.lastRead.chars : '—'), 'pi-injection-stats'));
+            const details = el('details', undefined, 'pi-injection-body');
+            details.append(el('summary', t('查看注入原文')), el('pre', String(view.block || '')));
+            box.append(details);
+            if (view.truncated === true) box.append(el('p', t('已截断，仅显示部分内容'), 'pi-profile-note'));
+            box.append(el('p', t('注入不代表模型一定遵守。'), 'pi-profile-note'));
+            return box;
+        }
         function render() {
             const wasOpen = root.querySelector('details')?.open;
             root.replaceChildren(); root.hidden = !key;
@@ -113,6 +152,10 @@
             }
             const status = el('p', notice || hintNotice || (snapshot ? t('存储状态：{0}', t(statusLabel[snapshot.status] || snapshot.status)) : t('正在读取…')), 'pi-knowledge-status');
             status.setAttribute('role', 'status'); body.append(status);
+            const entries = el('div', undefined, 'pi-knowledge-entries');
+            entries.append(button(t('查看本会话注入内容'), () => void loadInjection()));
+            body.append(entries);
+            if (injectionView) body.append(injectionBox());
             if (learning) body.append(el('p', t('后台学习正在处理本轮内容…'), 'pi-knowledge-status'));
             if (latest) {
                 const row = el('div', undefined, 'pi-knowledge-receipt');
@@ -211,7 +254,7 @@
                     keep();
                     ({ draft = '', uncertain = null, latest = null, notice = '', conflict = false, memoryFull = false, hintNotice = '' } = draftsByThread.get(nextIdentity) || {});
                 }
-                key = next; epoch++; snapshot = null; identity = nextIdentity; learning = false; anchorKeys = null;
+                key = next; epoch++; snapshot = null; identity = nextIdentity; learning = false; anchorKeys = null; injectionView = null; injectionEpoch++;
             }
             polls = 0; clearTimeout(timer);
             render(); if (key) void refresh();
@@ -225,7 +268,7 @@
             const captured = key;
             settledTimer = setTimeout(() => { if (current() && key === captured) void refresh(); }, 1500);
         }
-        return { update, decorate, refresh, settled, reset() { clearTimeout(settledTimer); keep(); clearTimeout(timer); learning = false; key = identity = ''; epoch++; snapshot = null; latest = null; uncertain = null; conflict = false; draft = ''; notice = ''; hintNotice = ''; memoryFull = false; anchorKeys = null; learningSnapshot = null; render(); } };
+        return { update, decorate, refresh, settled, reset() { clearTimeout(settledTimer); keep(); clearTimeout(timer); learning = false; key = identity = ''; epoch++; snapshot = null; latest = null; uncertain = null; conflict = false; draft = ''; notice = ''; hintNotice = ''; memoryFull = false; anchorKeys = null; learningSnapshot = null; injectionView = null; render(); } };
     }
     globalThis.PiChatKnowledge = Object.freeze({ create });
 })();

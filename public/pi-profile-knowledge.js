@@ -44,6 +44,8 @@
         let proposalDrafts = new Map(), appliedGroups = new Set();
         // itemId -> current revision (null when verified missing) used for proposal staleness.
         let itemRevisions = new Map(), itemChecks = new Set();
+        // Next-turn injection preview (K2.2): null when the backend does not provide it yet.
+        let injection;
         const draftsByProfile = new Map();
         const base = () => `/api/pi/profiles/${encodeURIComponent(profile)}`;
         const current = (profileId, generation) => active && root.isConnected && profile === profileId && serial === generation;
@@ -57,7 +59,7 @@
             if (profile === id) { render(); if (!snapshot || uncertain) void load(); if (!learning) void loadLearning(); return; }
             if (profile) draftsByProfile.set(profile, { kind, query, offset, selected, detail, draft, editing, reviewed, uncertain, learningUncertain, receipt, conflict, learningDraft });
             profile = id || ''; serial++; learningEpoch++; memoryFull = false; legacyModel = null;
-            proposalDrafts = new Map(); appliedGroups = new Set(); itemRevisions = new Map(); itemChecks = new Set();
+            proposalDrafts = new Map(); appliedGroups = new Set(); itemRevisions = new Map(); itemChecks = new Set(); injection = undefined;
             ({ kind = 'skill', query = '', offset = 0, selected = null, detail = null, draft = null, editing = false,
                 reviewed = true, uncertain = null, learningUncertain = null, receipt = null, conflict = false, learningDraft = null } = draftsByProfile.get(profile) || {});
             snapshot = learning = null; notice = ''; render(); if (profile) { void load(); void loadLearning(); }
@@ -130,7 +132,18 @@
                 if (!active || !root.isConnected || profileId !== profile || generation !== learningEpoch) return;
                 if (data?.version !== 1 || !Number.isSafeInteger(data.revision) || !data.settings) throw new Error(t('学习接口不兼容'));
                 learning = data; if (!learningDraft) learningDraft = { ...data.settings }; render();
+                if (injection === undefined) void loadInjection();
             } catch (error) { if (active && profileId === profile && generation === learningEpoch) { learning = { error: error.message }; render(); } }
+        }
+        // Read-only injection preview; a backend without the contract endpoint keeps the old display.
+        async function loadInjection() {
+            const profileId = profile, generation = learningEpoch;
+            try {
+                const data = await apiFetch(`${base()}/knowledge/injection`);
+                if (profileId !== profile || generation !== learningEpoch || !active) return;
+                injection = data?.version === 1 && typeof data.block === 'string' && data.profile && typeof data.profile === 'object' ? data : null;
+            } catch { injection = null; }
+            if (active && root.isConnected && profileId === profile) render();
         }
         function choose(item) {
             if (!discard()) return;
@@ -402,6 +415,21 @@
             }
             box.append(section);
         }
+        // U2.2: next-turn injection preview for the identity-level block.
+        function renderInjection(box) {
+            if (!injection || typeof injection !== 'object') return;
+            const profileStats = injection.profile || {};
+            const section = node('section', undefined, 'pi-injection');
+            section.append(node('h5', t('下一轮注入预览')));
+            section.append(node('p', t('身份记忆：{0} 条 / {1} 字', Number.isFinite(profileStats.entries) ? profileStats.entries : '—',
+                Number.isFinite(profileStats.chars) ? profileStats.chars : '—'), 'pi-injection-stats'));
+            const details = node('details', undefined, 'pi-injection-body');
+            details.append(node('summary', t('查看注入原文')), node('pre', String(injection.block || '')));
+            section.append(details);
+            if (injection.truncated === true) section.append(node('p', t('已截断，仅显示部分内容'), 'pi-profile-note'));
+            section.append(node('p', t('注入不代表模型一定遵守。'), 'pi-profile-note'));
+            box.append(section);
+        }
         const canEnable = data => Boolean(data?.health) || Array.isArray(data?.capabilities?.actions) && data.capabilities.actions.includes('enable');
         async function loadModelCatalog() {
             if (modelCatalog) return;
@@ -502,6 +530,7 @@
                 finally { learningBusy = false; if (profileId === profile && generation === learningEpoch && active) render(); }
             }; box.append(form);
             renderProposals(box);
+            renderInjection(box);
             if (learningUncertain) {
                 box.append(node('p', t('作业请求 {0} 结果未确认；请先核对作业列表，勿重复提交。', learningUncertain.requestId), 'pi-knowledge-status'));
                 box.append(button(t('已核对作业列表'), () => { learningUncertain = null; render(); }));

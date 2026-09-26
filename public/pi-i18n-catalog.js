@@ -8744,6 +8744,16 @@
     ,["（无预览）","(no preview)"]
     ,["整理方案生成中；完成后显示在学习区。","Generating the consolidation proposal; it appears in the learning section when ready."]
     ,["已忽略该整理建议。","The consolidation suggestion was dismissed."]
+    ,["下一轮注入预览","Next-turn injection preview"]
+    ,["身份记忆：{0} 条 / {1} 字","Profile memory: {0} entries / {1} chars"]
+    ,["项目记忆：{0} 条 / {1} 字","Project memory: {0} entries / {1} chars"]
+    ,["上一轮已注入 {0} 条 / {1} 字","The previous turn received {0} entries / {1} chars"]
+    ,["查看注入原文","View the injected text"]
+    ,["注入不代表模型一定遵守。","Injection does not prove the model will follow it."]
+    ,["查看本会话注入内容","View this session's injected content"]
+    ,["已截断，仅显示部分内容","Truncated; only part of the content is shown"]
+    ,["注入内容不可用。","Injected content is unavailable."]
+    ,["注入内容不可用：{0}","Injected content is unavailable: {0}"]
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

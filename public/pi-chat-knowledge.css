@@ -21,6 +21,11 @@
 .pi-memory-hint-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .pi-memory-hint-actions button { font-size: .8rem; padding: 4px 9px; }
 .pi-memory-hint-fallback { border-left-color: var(--line); }
+.pi-knowledge-entries { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.pi-injection-preview { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 6px; padding: 12px; min-width: 0; }
+.pi-injection-preview p { margin: 0; font-size: .86rem; color: var(--text-soft); }
+.pi-injection-preview summary { cursor: pointer; font-size: .88rem; }
+.pi-injection-preview pre { max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: .85rem; padding: 10px; background: var(--surface-2); margin: 8px 0 0; }
 .pi-health-dot { display: inline-block; flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--text-soft); }
 .pi-health-ok { background: #1f9d55; }
 .pi-health-off { background: #9aa0a6; }
