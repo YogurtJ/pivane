@@ -75,7 +75,7 @@ async function main() {
         fs.writeFileSync(path.join(agentDir, 'models.json'), JSON.stringify({ providers: { fixture: {
             api: 'openai-completions', baseUrl: `http://127.0.0.1:${provider.address().port}/v1`, apiKey: 'synthetic',
             models: [model('fixture', 'Local chat fixture'), model('learner', 'Local learning fixture')] } } }));
-        fs.writeFileSync(path.join(agentDir, 'pivane-profiles', 'runtime.json'), JSON.stringify({ version: 1, bundlePath: bundle }));
+        fs.writeFileSync(path.join(agentDir, 'pivane-profiles', 'runtime.json'), JSON.stringify({ version: 1, bundlePath: bundle, reviewModel: { provider: 'fixture', modelId: 'learner' } }));
         access = new WorkspaceAccessService({ envToken: () => '' });
         gateway = createPiAgentGateway({ accessService: access, deferredFilePath: process.env.PI_WEB_DEFERRED_FILE });
         const app = express(); access.mount(app); app.use(express.json({ limit: '32mb' })); gateway.mount(app);
@@ -177,7 +177,14 @@ async function main() {
         // Receipts filtered by sessionId only include writes whose verified native source is this thread.
         assert.ok(learned.receipts.some(receipt => receipt.itemId === learnedItem.id), `learned memory receipt belongs to this thread: ${JSON.stringify({ item: learnedItem, receipts: learned.receipts })}`);
         assert.ok(learner.length >= 1 && learner.every(call => call.tools === 0), 'learning calls used no tools');
-        const runs = (await api('GET', `/profiles/${profileId}/learning`)).recentRuns;
+        const learnedReceipt = learned.receipts.find(receipt => receipt.itemId === learnedItem.id);
+        assert.deepEqual({ origin: learnedReceipt.origin, reason: learnedReceipt.learningReason, preview: learnedReceipt.preview,
+            category: learnedReceipt.category }, { origin: 'learning', reason: 'correction', preview: LEARNED, category: 'preference' });
+        assert.ok(learned.usage?.memory?.chars >= LEARNED.length && learned.usage.memory.limit > 0, `usage: ${JSON.stringify(learned.usage)}`);
+        const learningSnap = await api('GET', `/profiles/${profileId}/learning`);
+        assert.equal(learningSnap.health?.state, 'ok', JSON.stringify(learningSnap.health));
+        assert.equal(learningSnap.legacy, null, 'a profile created without legacy auto-learning has no migration prompt');
+        const runs = learningSnap.recentRuns;
         step('correction learned', { category: learnedItem.category, learnerCalls: learner.length,
             run: runs[0] && { status: runs[0].status, reason: runs[0].reason, costStatus: runs[0].costStatus ?? runs[0].cost?.status } });
 
@@ -196,7 +203,8 @@ async function main() {
             const snap = await api('GET', `/profiles/${profileId}/knowledge?kind=memory`);
             return snap.items.find(item => item.content === TOOL_FACT) && snap;
         });
-        assert.ok(withTool.receipts.some(r => r.kind === 'memory' && r.operation === 'create'), 'tool write has a receipt');
+        assert.ok(withTool.receipts.some(r => r.kind === 'memory' && r.operation === 'create' && r.origin === 'agent'
+            && r.preview === TOOL_FACT && r.category === 'fact'), 'tool write has an agent receipt');
         const read = SessionManager.open(session.path).getEntries().filter(e => e.type === 'custom' && e.customType === 'pivane-profile-memory-read');
         assert.ok(read.length >= 2 && read.at(-1).data.provided === true, 'memory read recorded per turn');
         step('memory injected and agent tool write journaled', { memoryReadEntries: read.length });
@@ -207,8 +215,11 @@ async function main() {
         const toolResults = SessionManager.open(session.path).getEntries()
             .filter(e => e.type === 'message' && e.message.role === 'toolResult' && e.message.toolName === 'memory_add');
         const failureResult = toolResults.at(-1).message;
-        report.findings.push({ case: 'memory_add target=failure', success: failureResult.details?.success,
-            text: failureResult.content?.[0]?.text?.slice(0, 160), isError: failureResult.isError });
+        assert.equal(failureResult.details?.success, true, `failure write: ${JSON.stringify(failureResult.content)}`);
+        const failureItem = (await api('GET', `/profiles/${profileId}/knowledge?kind=memory&query=lockfile`)).items
+            .find(item => item.content === 'npm install failed with a lockfile conflict.' && !item.readOnly);
+        assert.ok(failureItem && failureItem.category === 'failure' && failureItem.target === 'memory', JSON.stringify(failureItem));
+        step('agent failure memory saved', { category: failureItem.category });
 
         // 7. skill_manage view is a read action.
         await send(chatView, 'SKILL_VIEW_FIXTURE: list skills.');
@@ -252,7 +263,23 @@ async function main() {
         const final = await api('GET', `/profiles/${profileId}/knowledge?kind=memory`);
         assert.equal(final.items.filter(item => item.content === LEARNED).length, 1, 'no duplicate learned memory');
 
-        // 10. Mobile management layout with real data.
+        // 10. Legacy auto-learning: a profile saved with autoLearn is offered adoption, never enabled silently.
+        const registry = await api('GET', '/profiles');
+        const legacyProfile = (await api('PUT', '/profiles', { expectedRevision: registry.revision, profile: { name: 'Legacy Fixture',
+            description: '', soul: '', enabled: true, memory: { enabled: true, autoLearn: true, memoryCharLimit: 16000, userCharLimit: 8000 },
+            skills: { learnedEnabled: true } } })).profile.id;
+        const legacySnap = await api('GET', `/profiles/${legacyProfile}/learning`);
+        assert.equal(legacySnap.settings.enabled, false, 'legacy profile is not enabled by the upgrade');
+        assert.deepEqual({ reviewModel: legacySnap.legacy?.reviewModel, available: legacySnap.legacy?.reviewModelAvailable,
+            purposes: legacySnap.legacy?.purposes }, { reviewModel: { provider: 'fixture', modelId: 'learner' }, available: true, purposes: [] });
+        const learnerBeforeAdopt = learner.length;
+        const adopted = await api('POST', `/profiles/${legacyProfile}/learning/actions`, { requestId: 'e2e-adopt-legacy-1', action: 'adopt-legacy' });
+        assert.deepEqual({ enabled: adopted.settings.enabled, review: adopted.settings.reviewEnabled, legacy: adopted.legacy },
+            { enabled: true, review: true, legacy: null });
+        assert.equal(learner.length, learnerBeforeAdopt, 'adoption made no model request');
+        step('legacy adoption', { health: adopted.health.state });
+
+        // 11. Mobile management layout with real data.
         const mobile = await open(393, '#/profiles');
         await mobile.page.locator(`[data-profile-id="${profileId}"]`).click();
         await mobile.page.locator('[data-profile-section="skills"]').click();
