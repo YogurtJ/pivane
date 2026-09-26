@@ -18,6 +18,7 @@ const sourceRequire = createRequire(path.join(sourceRoot, 'package.json'));
 const PREFERENCE = '以后默认用 pnpm 安装依赖，不要用 npm。';
 const LEARNED = '安装依赖默认使用 pnpm，不使用 npm。';
 const TOOL_FACT = 'Synthetic service listens on port 4321.';
+const MERGED = '用 pnpm 安装依赖，npm 会遇到 lockfile 冲突。';
 
 async function main() {
     if (!bundle || !fs.existsSync(bundle)) throw new Error('PIVANE_TEST_HERMES_BUNDLE must point to the reviewed read-only bundle');
@@ -54,6 +55,12 @@ async function main() {
             const raw = JSON.stringify(body.messages || []);
             if (body.model === 'learner') {
                 learner.push({ tools: body.tools?.length || 0, raw });
+                if (raw.includes('consolidate duplicate or overlapping')) {
+                    // Merge the pnpm preference and the npm failure into one shorter record.
+                    const offered = JSON.parse(body.messages.filter(m => m.role === 'user').at(-1).content);
+                    const ids = offered.filter(row => /pnpm|lockfile/.test(row.content)).map(row => row.id);
+                    return sse(res, { content: JSON.stringify({ groups: ids.length >= 2 ? [{ itemIds: ids, content: MERGED, category: 'preference' }] : [] }) }, 'stop');
+                }
                 // Only the explicit preference is durable; anything else yields no proposal.
                 return sse(res, { content: JSON.stringify(raw.includes('pnpm') && !raw.includes(LEARNED) ? { content: LEARNED } : {}) }, 'stop');
             }
@@ -75,7 +82,7 @@ async function main() {
         fs.writeFileSync(path.join(agentDir, 'models.json'), JSON.stringify({ providers: { fixture: {
             api: 'openai-completions', baseUrl: `http://127.0.0.1:${provider.address().port}/v1`, apiKey: 'synthetic',
             models: [model('fixture', 'Local chat fixture'), model('learner', 'Local learning fixture')] } } }));
-        fs.writeFileSync(path.join(agentDir, 'pivane-profiles', 'runtime.json'), JSON.stringify({ version: 1, bundlePath: bundle }));
+        fs.writeFileSync(path.join(agentDir, 'pivane-profiles', 'runtime.json'), JSON.stringify({ version: 1, bundlePath: bundle, reviewModel: { provider: 'fixture', modelId: 'learner' } }));
         access = new WorkspaceAccessService({ envToken: () => '' });
         gateway = createPiAgentGateway({ accessService: access, deferredFilePath: process.env.PI_WEB_DEFERRED_FILE });
         const app = express(); access.mount(app); app.use(express.json({ limit: '32mb' })); gateway.mount(app);
@@ -136,7 +143,8 @@ async function main() {
             changes: { 'memory-correction': route, 'memory-review': route, 'memory-extraction': route } });
         const learning0 = await api('GET', `/profiles/${profileId}/learning`);
         await api('PUT', `/profiles/${profileId}/learning`, { expectedRevision: learning0.revision,
-            changes: { enabled: true, correctionEnabled: true, reviewEnabled: false, extractionEnabled: true } });
+            changes: { enabled: true, correctionEnabled: true, reviewEnabled: false, extractionEnabled: true,
+                maxRunsPerDay: 20, maxTokensPerDay: 200000 } });
         assert.equal(chat.length + learner.length, 0, 'saving settings made no model request');
         step('settings saved without model calls');
 
@@ -177,14 +185,27 @@ async function main() {
         // Receipts filtered by sessionId only include writes whose verified native source is this thread.
         assert.ok(learned.receipts.some(receipt => receipt.itemId === learnedItem.id), `learned memory receipt belongs to this thread: ${JSON.stringify({ item: learnedItem, receipts: learned.receipts })}`);
         assert.ok(learner.length >= 1 && learner.every(call => call.tools === 0), 'learning calls used no tools');
-        const runs = (await api('GET', `/profiles/${profileId}/learning`)).recentRuns;
+        const learnedReceipt = learned.receipts.find(receipt => receipt.itemId === learnedItem.id);
+        assert.deepEqual({ origin: learnedReceipt.origin, reason: learnedReceipt.learningReason, preview: learnedReceipt.preview,
+            category: learnedReceipt.category }, { origin: 'learning', reason: 'correction', preview: LEARNED, category: 'preference' });
+        assert.ok(learned.usage?.memory?.chars >= LEARNED.length && learned.usage.memory.limit > 0, `usage: ${JSON.stringify(learned.usage)}`);
+        const learningSnap = await api('GET', `/profiles/${profileId}/learning`);
+        assert.equal(learningSnap.health?.state, 'ok', JSON.stringify(learningSnap.health));
+        assert.equal(learningSnap.legacy, null, 'a profile created without legacy auto-learning has no migration prompt');
+        const runs = learningSnap.recentRuns;
         step('correction learned', { category: learnedItem.category, learnerCalls: learner.length,
             run: runs[0] && { status: runs[0].status, reason: runs[0].reason, costStatus: runs[0].costStatus ?? runs[0].cost?.status } });
 
-        // 4. The chat card shows this thread's receipt.
-        await chatView.page.locator('.pi-chat-knowledge summary').click();
-        await chatView.page.locator('.pi-chat-knowledge-receipt').first().waitFor({ timeout: 20000 });
-        step('chat card receipt', { count: await chatView.page.locator('.pi-chat-knowledge-receipt').count() });
+        // 4. The learned preference is shown under the user message that taught it (display only).
+        const learnedHint = chatView.page.locator('#pi-transcript-content > .pi-memory-hint').filter({ hasText: `已记住：${LEARNED}` });
+        await learnedHint.waitFor({ timeout: 20000 });
+        const hintAnchor = await chatView.page.evaluate(text => { const node = [...document.querySelectorAll('#pi-transcript-content > .pi-memory-hint')]
+            .find(item => item.textContent.includes(text)); const prev = node?.previousElementSibling;
+            return prev?.dataset.messageKey ? JSON.parse(prev.dataset.messageKey)[0] : null; }, `已记住：${LEARNED}`);
+        assert.equal(hintAnchor, 'user', 'learned hint sits under the teaching user message');
+        assert.match(await chatView.page.locator('.pi-chat-knowledge summary').innerText(), /本会话已记住 1 条/);
+        assert.ok(!fs.readFileSync(session.path, 'utf8').includes('已记住：'), 'hints are never written to the session');
+        step('in-chat remembered hint', { anchor: hintAnchor });
         await chatView.page.screenshot({ path: path.join(screenshots, 'chat-card-1440.png'), fullPage: true });
 
         // 5. Next turn: memory is injected, and the agent's own memory tool uses the trusted journal.
@@ -196,7 +217,8 @@ async function main() {
             const snap = await api('GET', `/profiles/${profileId}/knowledge?kind=memory`);
             return snap.items.find(item => item.content === TOOL_FACT) && snap;
         });
-        assert.ok(withTool.receipts.some(r => r.kind === 'memory' && r.operation === 'create'), 'tool write has a receipt');
+        assert.ok(withTool.receipts.some(r => r.kind === 'memory' && r.operation === 'create' && r.origin === 'agent'
+            && r.preview === TOOL_FACT && r.category === 'fact'), 'tool write has an agent receipt');
         const read = SessionManager.open(session.path).getEntries().filter(e => e.type === 'custom' && e.customType === 'pivane-profile-memory-read');
         assert.ok(read.length >= 2 && read.at(-1).data.provided === true, 'memory read recorded per turn');
         step('memory injected and agent tool write journaled', { memoryReadEntries: read.length });
@@ -207,8 +229,14 @@ async function main() {
         const toolResults = SessionManager.open(session.path).getEntries()
             .filter(e => e.type === 'message' && e.message.role === 'toolResult' && e.message.toolName === 'memory_add');
         const failureResult = toolResults.at(-1).message;
-        report.findings.push({ case: 'memory_add target=failure', success: failureResult.details?.success,
-            text: failureResult.content?.[0]?.text?.slice(0, 160), isError: failureResult.isError });
+        assert.equal(failureResult.details?.success, true, `failure write: ${JSON.stringify(failureResult.content)}`);
+        // A concurrent learning write can leave the listing briefly pending; read until ready.
+        const failureItem = await until('failure memory listed', async () => {
+            const snap = await api('GET', `/profiles/${profileId}/knowledge?kind=memory&query=lockfile`);
+            return snap.status === 'ready' && snap.items.find(item => item.content === 'npm install failed with a lockfile conflict.' && !item.readOnly);
+        });
+        assert.ok(failureItem.category === 'failure' && failureItem.target === 'memory', JSON.stringify(failureItem));
+        step('agent failure memory saved', { category: failureItem.category });
 
         // 7. skill_manage view is a read action.
         await send(chatView, 'SKILL_VIEW_FIXTURE: list skills.');
@@ -218,6 +246,29 @@ async function main() {
             .filter(e => e.type === 'message' && e.message.role === 'toolResult' && e.message.toolName === 'skill_manage').at(-1).message;
         assert.notEqual(view.isError, true, `skill view: ${JSON.stringify(view.content)}`);
         step('skill view');
+
+        // 7b. The agent's own write is hinted under its assistant message; "不对" deletes it with a tombstone.
+        const agentHint = chatView.page.locator('#pi-transcript-content > .pi-memory-hint').filter({ hasText: `Agent 记下：${TOOL_FACT}` });
+        await agentHint.waitFor({ timeout: 20000 });
+        // Query and inspect in one synchronous page call: hints are rebuilt on every render.
+        await chatView.page.waitForFunction(fact => [...document.querySelectorAll('#pi-transcript-content > .pi-memory-hint')]
+            .filter(node => node.textContent.includes(fact)).some(node => { let prev = node.previousElementSibling;
+                while (prev?.classList.contains('pi-memory-hint')) prev = prev.previousElementSibling;
+                return Boolean(prev?.matches('.pi-message.user') && prev.textContent.includes('MEMORY_TOOL_FIXTURE')); }), TOOL_FACT, { timeout: 20000 });
+        assert.ok(await agentHint.isVisible(), 'agent hint stays visible in the compact view');
+        chatView.page.once('dialog', dialog => dialog.accept());
+        await agentHint.locator('button').filter({ hasText: '不对' }).click();
+        await until('agent fact rejected', async () => !(await api('GET', `/profiles/${profileId}/knowledge?kind=memory`)).items
+            .some(item => item.content === TOOL_FACT && item.state === 'active'));
+        await agentHint.waitFor({ state: 'detached', timeout: 20000 });
+        step('agent hint rejected with 不对');
+        assert.ok(!fs.readFileSync(session.path, 'utf8').includes('Agent 记下：'), 'hints are never written to the session');
+        await chatView.page.screenshot({ path: path.join(screenshots, 'chat-hints-1440.png'), fullPage: true });
+
+        // 7c. "编辑" opens the profile's knowledge page on that entry.
+        await learnedHint.locator('button').filter({ hasText: '编辑' }).click();
+        await chatView.page.locator('.pi-knowledge-detail pre').filter({ hasText: 'pnpm' }).waitFor({ timeout: 20000 });
+        step('hint edit opens the entry');
         assert.deepEqual(chatView.errors, []);
         await chatView.context.close();
 
@@ -236,6 +287,54 @@ async function main() {
         await page.locator('.pi-knowledge-receipt button').first().click();
         await until('undo applied', async () => (await api('GET', `/profiles/${profileId}/knowledge/items/${learnedItem.id}`)).item.content === LEARNED);
         step('edit and undo in management page');
+
+        // 8b. Consolidation: the review model proposes a merge (plan only), the page applies it
+        // as one batch, and one undo restores every original entry.
+        const memoryBefore = (await api('GET', `/profiles/${profileId}/knowledge?kind=memory`)).items
+            .filter(item => item.state === 'active' && !item.readOnly).map(item => item.content).sort();
+        await api('POST', `/profiles/${profileId}/learning/actions`, { requestId: 'e2e-consolidate-1', action: 'propose-consolidation', target: 'memory' });
+        const proposed = await until('consolidation proposal', async () => {
+            const snap = await api('GET', `/profiles/${profileId}/learning`);
+            return snap.proposals?.length === 1 && snap;
+        });
+        assert.deepEqual((await api('GET', `/profiles/${profileId}/knowledge?kind=memory`)).items
+            .filter(item => item.state === 'active' && !item.readOnly).map(item => item.content).sort(), memoryBefore, 'a proposal writes nothing');
+        assert.equal(proposed.proposals[0].groups[0].items.length, 2);
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.locator(`[data-profile-id="${profileId}"]`).click();
+        await page.locator('[data-profile-section="skills"]').click();
+        const group = page.locator('.pi-proposal-group').first();
+        await group.waitFor({ timeout: 20000 });
+        await group.locator('button').filter({ hasText: '应用' }).click();
+        const merged = await until('consolidation applied', async () => {
+            const snap = await api('GET', `/profiles/${profileId}/knowledge?kind=memory`);
+            const active = snap.items.filter(item => item.state === 'active' && !item.readOnly).map(item => item.content);
+            return active.includes(MERGED) && !active.includes(LEARNED) && snap;
+        });
+        const consolidated = merged.receipts.find(r => r.operation === 'consolidate');
+        assert.ok(consolidated?.undoable && consolidated.consolidated?.length === 2 && consolidated.origin === 'manual', JSON.stringify(consolidated));
+        await page.locator('.pi-knowledge-receipt button').filter({ hasText: '撤销' }).first().click();
+        await until('consolidation undone', async () => JSON.stringify((await api('GET', `/profiles/${profileId}/knowledge?kind=memory`)).items
+            .filter(item => item.state === 'active' && !item.readOnly).map(item => item.content).sort()) === JSON.stringify(memoryBefore));
+        step('consolidation proposed, applied and undone');
+        await page.screenshot({ path: path.join(screenshots, 'consolidation-1440.png'), fullPage: true });
+
+        // 8c. Injection preview matches what the last turn loaded; project memory is editable
+        // only through a verified session, never with a client project key.
+        const preview = await api('GET', `/profiles/${profileId}/knowledge/injection?sessionId=${session.id}`);
+        assert.ok(preview.status === 'ready' && preview.block.includes(LEARNED) && preview.lastRead?.provided === true
+            && preview.lastRead.chars > 0, JSON.stringify({ ...preview, block: preview.block?.slice(0, 200) }));
+        const knowledgeRevision = async () => (await api('GET', `/profiles/${profileId}/knowledge?kind=memory`)).revision;
+        const forged = await fetch(`${base()}/api/pi/profiles/${profileId}/knowledge/mutations`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requestId: 'e2e-forged-project', expectedRevision: await knowledgeRevision(), operation: 'create', kind: 'memory',
+                category: 'fact', scope: 'project', sessionId: session.id, projectKey: 'a'.repeat(64), content: 'Forged project note.' }) });
+        assert.equal(forged.status, 400, 'a client project key is refused');
+        const projectWrite = await api('POST', `/profiles/${profileId}/knowledge/mutations`, { requestId: 'e2e-project-note', expectedRevision: await knowledgeRevision(),
+            operation: 'create', kind: 'memory', category: 'procedure', scope: 'project', sessionId: session.id, content: 'Run tests with pnpm test in this folder.' });
+        assert.ok(projectWrite.receipt.scope === 'project' && projectWrite.receipt.source?.sessionId === session.id, JSON.stringify(projectWrite.receipt));
+        const projectPreview = await api('GET', `/profiles/${profileId}/knowledge/injection?sessionId=${session.id}`);
+        assert.ok(projectPreview.project?.entries >= 1 && projectPreview.block.includes('pnpm test'), JSON.stringify(projectPreview.project));
+        step('injection preview and session-verified project memory', { chars: projectPreview.chars, entries: projectPreview.entries });
         await page.screenshot({ path: path.join(screenshots, 'knowledge-1440.png'), fullPage: true });
         assert.deepEqual(desktop.errors, []);
         await desktop.context.close();
@@ -252,7 +351,23 @@ async function main() {
         const final = await api('GET', `/profiles/${profileId}/knowledge?kind=memory`);
         assert.equal(final.items.filter(item => item.content === LEARNED).length, 1, 'no duplicate learned memory');
 
-        // 10. Mobile management layout with real data.
+        // 10. Legacy auto-learning: a profile saved with autoLearn is offered adoption, never enabled silently.
+        const registry = await api('GET', '/profiles');
+        const legacyProfile = (await api('PUT', '/profiles', { expectedRevision: registry.revision, profile: { name: 'Legacy Fixture',
+            description: '', soul: '', enabled: true, memory: { enabled: true, autoLearn: true, memoryCharLimit: 16000, userCharLimit: 8000 },
+            skills: { learnedEnabled: true } } })).profile.id;
+        const legacySnap = await api('GET', `/profiles/${legacyProfile}/learning`);
+        assert.equal(legacySnap.settings.enabled, false, 'legacy profile is not enabled by the upgrade');
+        assert.deepEqual({ reviewModel: legacySnap.legacy?.reviewModel, available: legacySnap.legacy?.reviewModelAvailable,
+            purposes: legacySnap.legacy?.purposes }, { reviewModel: { provider: 'fixture', modelId: 'learner' }, available: true, purposes: [] });
+        const learnerBeforeAdopt = learner.length;
+        const adopted = await api('POST', `/profiles/${legacyProfile}/learning/actions`, { requestId: 'e2e-adopt-legacy-1', action: 'adopt-legacy' });
+        assert.deepEqual({ enabled: adopted.settings.enabled, review: adopted.settings.reviewEnabled, legacy: adopted.legacy },
+            { enabled: true, review: true, legacy: null });
+        assert.equal(learner.length, learnerBeforeAdopt, 'adoption made no model request');
+        step('legacy adoption', { health: adopted.health.state });
+
+        // 11. Mobile management layout with real data.
         const mobile = await open(393, '#/profiles');
         await mobile.page.locator(`[data-profile-id="${profileId}"]`).click();
         await mobile.page.locator('[data-profile-section="skills"]').click();

@@ -294,10 +294,11 @@ test('tool adapter routes global, project and skill mutations through one native
     assert.match(safeFile(path.join(root, 'skills', 'tool-skill', 'SKILL.md')).text, /2\. Verify/);
     await run('skill_manage', { action: 'delete', skill_id: 'global:tool-skill' });
     assert.equal(fs.existsSync(path.join(root, 'skills', 'tool-skill', 'SKILL.md')), false);
-    const misrouted = await run('memory_add', { target: 'failure', content: 'Do not misroute' });
-    assert.equal(misrouted.details.success, false);
-    assert.match(misrouted.details.error, /Invalid memory fields/);
-    assert.equal((await service.snapshot(id, { sessionId: native.sessionId })).receipts.length, 6);
+    const failure = await run('memory_add', { target: 'failure', content: 'Failure note' });
+    assert.equal(failure.details.success, true);
+    assert.equal(failure.details.receipt.category, 'failure');
+    assert.equal(safeFile(path.join(root, 'MEMORY.md')).text, 'Global note\n\u00a7\nFailure note');
+    assert.equal((await service.snapshot(id, { sessionId: native.sessionId })).receipts.length, 7);
 });
 
 test('the request journal keeps accepting writes after the active receipt window fills', async t => {
@@ -316,7 +317,7 @@ test('the request journal keeps accepting writes after the active receipt window
     assert.equal(data.receipts.length, 200);
     assert.equal(data.archive.length, 6);
     const snapshot = await service.snapshot(id);
-    assert.deepEqual(snapshot.capabilities.operations, ['create', 'update', 'delete', 'restore', 'enable', 'disable', 'undo']);
+    assert.deepEqual(snapshot.capabilities.operations, ['create', 'update', 'delete', 'restore', 'enable', 'disable', 'undo', 'consolidate']);
     assert.deepEqual({ receipts: snapshot.capabilities.journal.receipts, archived: snapshot.capabilities.journal.archivedReceipts,
         requests: snapshot.capabilities.journal.requests }, { receipts: 200, archived: 6, requests: 206 });
     // The oldest request replays from its archive digest: same receipt, no undo.
@@ -510,4 +511,154 @@ test('large skill histories stay readable beyond 2 MiB and give up the oldest un
     const undone = await mutate('undo', 'skill', { receiptId: latest.id });
     assert.equal(undone.status, 'saved');
     assert.match((await service.getItem(id, saved.item.id)).item.content, /Revision 139\./);
+});
+
+function nativeSession(agent, name) {
+    const cwd = fs.mkdtempSync(path.join(agent, `${name}-cwd-`));
+    const sessions = path.join(agent, 'sessions', name);
+    fs.mkdirSync(sessions, { recursive: true });
+    const native = { sessionId: `${name}-session`, entryId: 'user-1', cwd, sessionPath: path.join(sessions, `${name}.jsonl`) };
+    fs.writeFileSync(native.sessionPath, [
+        { type: 'session', id: native.sessionId, cwd, timestamp: '2026-01-01' },
+        { type: 'custom', id: 'binding', customType: 'pivane-agent-profile', data: { version: 1, sessionId: native.sessionId, profileId: id } },
+        { type: 'message', id: native.entryId, message: { role: 'user', content: 'synthetic' } },
+    ].map(row => JSON.stringify(row)).join('\n') + '\n');
+    return native;
+}
+
+test('receipts carry origin, preview and category; origin cannot come from raw input', { skip: !bundle }, async t => {
+    const { service, agent, root, mutate } = setup(t);
+    const native = nativeSession(agent, 'origin');
+    const long = `${'长'.repeat(150)}${'x'.repeat(40)}`;
+    const manual = await mutate('create', 'memory', { category: 'preference', content: long });
+    assert.deepEqual({ origin: manual.receipt.origin, category: manual.receipt.category, preview: manual.receipt.preview },
+        { origin: 'manual', category: 'preference', preview: long.slice(0, 160) });
+    assert.equal(manual.receipt.preview.length, 160);
+    assert.equal(manual.receipt.summary, 'create memory');
+    const nativeInput = async (requestId, fields) => ({ requestId, expectedRevision: (await service.snapshot(id)).revision, ...fields });
+    const agentSaved = await service.mutateFromNative(id, await nativeInput('agent-write',
+        { operation: 'create', kind: 'memory', category: 'fact', content: 'Agent fact' }), native);
+    assert.equal(agentSaved.receipt.origin, 'agent');
+    assert.equal(Object.hasOwn(agentSaved.receipt, 'learningReason'), false);
+    const learned = await service.mutateFromNative(id, await nativeInput('learning-write',
+        { operation: 'create', kind: 'memory', category: 'correction', content: 'Learned correction' }), native,
+    { origin: 'learning', reason: 'correction' });
+    assert.deepEqual([learned.receipt.origin, learned.receipt.learningReason, learned.receipt.category],
+        ['learning', 'correction', 'correction']);
+    const removed = await mutate('delete', 'memory', { itemId: learned.item.id, itemRevision: learned.item.revision });
+    assert.deepEqual([removed.receipt.origin, removed.receipt.preview], ['manual', 'Learned correction']);
+    const skill = await service.mutateFromNative(id, await nativeInput('agent-skill', { operation: 'create', kind: 'skill',
+        name: 'preview-skill', description: 'd'.repeat(130), content: 'Steps.' }), native, { origin: 'agent' });
+    assert.equal(skill.receipt.preview, `preview-skill \u2014 ${'d'.repeat(120)}`);
+    assert.equal(Object.hasOwn(skill.receipt, 'category'), false);
+    const bare = await mutate('create', 'skill', { name: 'bare-skill', description: '', content: 'Steps.' });
+    assert.equal(bare.receipt.preview, 'bare-skill');
+    const forged = { operation: 'create', kind: 'memory', category: 'fact', content: 'Forged' };
+    await assert.rejects(service.mutateFromNative(id, { ...await nativeInput('forged-raw', forged), origin: 'learning' }, native),
+        /Invalid knowledge mutation/);
+    await assert.rejects(service.mutate(id, { ...await nativeInput('forged-http', forged), origin: 'agent' }), /Invalid knowledge mutation/);
+    for (const options of [{ origin: 'manual' }, { origin: 'agent', reason: 'review' }, { origin: 'learning', reason: 'other' },
+        { origin: 'learning', extra: true }, null])
+        await assert.rejects(service.mutateFromNative(id, await nativeInput('bad-origin', forged), native, options), /Invalid mutation origin/);
+    const listed = (await service.snapshot(id)).receipts.map(row => row.origin);
+    assert.deepEqual(listed, ['manual', 'agent', 'manual', 'learning', 'agent', 'manual']);
+    // Compaction to the archive keeps origin but drops the preview text.
+    const ledgerPath = path.join(root, '.pivane-knowledge.json');
+    const data = JSON.parse(fs.readFileSync(ledgerPath, 'utf8'));
+    while (data.receipts.length < 200) data.receipts.push({ requestId: `filler-${data.receipts.length}`,
+        id: `filler-${data.receipts.length}`, operation: 'create', kind: 'skill', status: 'saved',
+        at: new Date().toISOString(), undoable: false });
+    fs.writeFileSync(ledgerPath, JSON.stringify(data));
+    await mutate('create', 'memory', { category: 'fact', content: 'Flush one' });
+    const archived = JSON.parse(fs.readFileSync(ledgerPath, 'utf8')).archive;
+    assert.equal(archived.length, 1);
+    assert.equal(archived[0].id, manual.receipt.id);
+    assert.equal(archived[0].origin, 'manual');
+    assert.equal(Object.hasOwn(archived[0], 'preview'), false);
+    assert.ok((await service.snapshot(id)).receipts.filter(row => !row.id.startsWith('filler-'))
+        .every(row => typeof row.preview === 'string'));
+});
+
+test('usage matches the write-time limit and memory-full is structured in service, HTTP and tool', { skip: !bundle }, async t => {
+    const { agent, root } = setup(t);
+    const profile = { id, enabled: true, memory: { enabled: true, memoryCharLimit: 256, userCharLimit: 300 },
+        skills: { learnedEnabled: true } };
+    const limited = new ProfileKnowledgeService({ profiles: { getProfile: async () => profile, reserve: work => work() },
+        getAgentDir: async () => agent, bundlePath: bundle });
+    const empty = await limited.snapshot(id);
+    assert.deepEqual(empty.usage, { memory: { chars: 0, limit: 256 }, user: { chars: 0, limit: 300 } });
+    const write = async (requestId, content, target) => limited.mutate(id, { requestId, expectedRevision: (await limited.snapshot(id)).revision,
+        operation: 'create', kind: 'memory', category: 'fact', content, ...(target ? { target } : {}) });
+    await write('fill-1', 'a'.repeat(120));
+    await write('fill-2', 'b'.repeat(120));
+    await write('user-1', 'u'.repeat(40), 'user');
+    fs.writeFileSync(path.join(root, 'failures.md'), '[failure] Legacy');
+    const used = await limited.snapshot(id);
+    assert.deepEqual(used.usage, { memory: { chars: 243, limit: 256 }, user: { chars: 40, limit: 300 },
+        failure: { chars: '[failure] Legacy'.length, readOnly: true } });
+    assert.equal(used.usage.memory.chars, safeFile(path.join(root, 'MEMORY.md')).text.length);
+    const expected = { target: 'memory', chars: 243, limit: 256, needed: 243 + 3 + 20 };
+    const error = await write('overflow', 'c'.repeat(20)).catch(value => value);
+    assert.deepEqual({ status: error.status, code: error.code, details: error.details, message: error.message },
+        { status: 409, code: 'memory-full', details: expected, message: 'Memory document limit exceeded' });
+    const router = { handlers: {}, get(url, fn) { this.handlers[url] = fn; }, post(url, fn) { this.handlers[url] = fn; } };
+    mountProfileKnowledgeRoutes(router, { service: limited });
+    const response = { set() { return this; }, status(code) { this.code = code; return this; }, json(value) { this.value = value; return this; } };
+    await router.handlers['/profiles/:id/knowledge/mutations']({ params: { id }, body: { requestId: 'overflow-http',
+        expectedRevision: (await limited.snapshot(id)).revision, operation: 'create', kind: 'memory', category: 'fact',
+        content: 'c'.repeat(20) } }, response);
+    assert.equal(response.code, 409);
+    assert.deepEqual(response.value, { error: 'Memory document limit exceeded', code: 'memory-full', details: expected });
+    const native = nativeSession(agent, 'full');
+    const context = { cwd: native.cwd, sessionManager: { getSessionFile: () => native.sessionPath,
+        getSessionId: () => native.sessionId, getBranch: () => [{ id: native.entryId }] } };
+    const tool = await createKnowledgeMemoryTools(limited, id)('memory_add', { target: 'memory', content: 'c'.repeat(20) },
+        undefined, () => true, context);
+    assert.deepEqual(tool.details, { success: false, error: 'Memory document limit exceeded', status: 409,
+        code: 'memory-full', errorDetails: expected });
+    // A write that lands exactly on the limit is accepted, and usage reports the same length.
+    await write('exact-fit', 'd'.repeat(10));
+    assert.equal((await limited.snapshot(id)).usage.memory.chars, 256);
+});
+
+test('agent failure memories are writable in MEMORY.md while legacy failures.md stays read-only', { skip: !bundle }, async t => {
+    const { service, agent, root } = setup(t);
+    const native = nativeSession(agent, 'failure');
+    const context = { cwd: native.cwd, sessionManager: { getSessionFile: () => native.sessionPath,
+        getSessionId: () => native.sessionId, getBranch: () => [{ id: native.entryId }] } };
+    const run = (name, args) => createKnowledgeMemoryTools(service, id)(name, args, undefined, () => true, context);
+    const added = await run('memory_add', { target: 'failure', content: 'npm ci failed', category: 'tool-quirk',
+        failure_reason: 'lockfile drift' });
+    assert.equal(added.details.success, true);
+    assert.deepEqual([added.details.receipt.origin, added.details.receipt.category, added.details.receipt.preview],
+        ['agent', 'failure', 'npm ci failed（原因：lockfile drift）']);
+    assert.equal(safeFile(path.join(root, 'MEMORY.md')).text, 'npm ci failed（原因：lockfile drift）');
+    const item = (await service.snapshot(id, { kind: 'memory' })).items.find(row => row.target === 'memory');
+    assert.equal(item.category, 'failure');
+    const replaced = await run('memory_replace', { target: 'failure', old_text: 'npm ci failed（原因：lockfile drift）',
+        content: 'npm ci needs a fresh lockfile' });
+    assert.equal(replaced.details.success, true);
+    assert.equal(replaced.details.receipt.category, 'failure');
+    fs.appendFileSync(path.join(root, 'failures.md'), '[failure] Legacy entry');
+    const legacy = await run('memory_remove', { target: 'failure', old_text: '[failure] Legacy entry' });
+    assert.deepEqual([legacy.details.success, legacy.details.status, legacy.details.error],
+        [false, 409, 'Legacy failure entries are read-only']);
+    const removed = await run('memory_remove', { target: 'failure', old_text: 'npm ci needs a fresh lockfile' });
+    assert.equal(removed.details.success, true);
+    assert.equal(safeFile(path.join(root, 'MEMORY.md')).text, '');
+    assert.equal(safeFile(path.join(root, 'failures.md')).text, '[failure] Legacy entry');
+});
+
+test('receipts are marked superseded once a later receipt changes the same item', { skip: !bundle }, async t => {
+    const { service, mutate } = setup(t);
+    const created = await mutate('create', 'memory', { category: 'preference', content: 'Prefer short answers.' });
+    const other = await mutate('create', 'memory', { category: 'fact', content: 'An unrelated fact.' });
+    let receipts = (await service.snapshot(id)).receipts;
+    assert.equal(receipts.some(row => row.superseded), false);
+    await mutate('undo', 'memory', { receiptId: created.receipt.id });
+    receipts = (await service.snapshot(id)).receipts;
+    assert.equal(receipts.find(row => row.id === created.receipt.id).superseded, true);
+    assert.equal(receipts.find(row => row.id === other.receipt.id).superseded, undefined);
+    assert.equal(receipts[0].operation, 'undo');
+    assert.equal(receipts[0].superseded, undefined);
 });

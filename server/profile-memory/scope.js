@@ -7,6 +7,9 @@ const io = require('../pi-file-io');
 const { descriptorPathSync, assertDescriptorBackend } = require('../pi-file-descriptor');
 
 const PROFILE_ENTRY = 'pivane-agent-profile';
+const MEMORY_READ_ENTRY = 'pivane-profile-memory-read';
+const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
+const MAX_LOOKUP_ENTRIES = 20000;
 const MAX_SESSION_BYTES = 8 * 1024 * 1024;
 const MAX_METADATA_BYTES = 256 * 1024;
 // Provenance writes must work on long conversations, so their streaming proof
@@ -134,30 +137,31 @@ function listSessionFiles(context, startAfter = '', cap = MAX_SCAN_FILES) {
     return { files, limited };
 }
 
-// Inspect only metadata lines of the active descriptor; message bodies are never retained.
-function activeBinding(file, context) {
+// Inspect only metadata lines (the header and custom entries) of one opened
+// descriptor; message bodies are never retained. `maxBytes` makes an oversize
+// session fail explicitly instead of returning a partial answer.
+function streamSessionMetadata(file, sessionsRoot, visit, maxBytes) {
     let fd;
     try {
         assertDescriptorBackend();
-        if (!file || !inside(context.sessionsRoot, file) || path.extname(file) !== '.jsonl'
+        if (!file || !inside(sessionsRoot, file) || path.extname(file) !== '.jsonl'
             || fs.realpathSync.native(path.dirname(file)) !== path.dirname(file)) return null;
         const before = fs.lstatSync(file, { bigint: true });
         if (!before.isFile() || before.isSymbolicLink() || before.size < 20n) return null;
+        if (maxBytes !== undefined && before.size > BigInt(maxBytes))
+            throw Object.assign(new Error('Native session exceeds source proof limits'), { code: 'SOURCE_PROOF_LIMIT' });
         fd = io.openReadSync(file);
         const opened = fs.fstatSync(fd, { bigint: true }), identity = io.identity(fd);
         if (stamp(before) !== stamp(opened) || descriptorPathSync(fd) !== file) return null;
         const chunk = Buffer.alloc(64 * 1024);
-        let prefix = Buffer.alloc(0), header = null, matches = 0, first = true;
+        let prefix = Buffer.alloc(0), header = null, first = true;
         const consume = () => {
             const text = prefix.toString('utf8');
             if (first || /^\s*\{\s*"type"\s*:\s*"custom"/.test(text)) {
                 if (prefix.length >= MAX_METADATA_BYTES) throw new Error('Oversize session metadata');
                 const entry = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(prefix));
                 if (first) { header = entry; first = false; }
-                else if (entry.type === 'custom' && entry.customType === PROFILE_ENTRY && entry.data?.sessionId === context.sessionId) {
-                    matches++;
-                    if (entry.data.version !== 1 || entry.data.profileId !== context.profileId) throw new Error('Wrong binding');
-                }
+                else if (entry.type === 'custom') visit(entry);
             }
             prefix = Buffer.alloc(0);
         };
@@ -176,12 +180,89 @@ function activeBinding(file, context) {
                 prefix = Buffer.concat([prefix, chunk.subarray(start, start + MAX_METADATA_BYTES - prefix.length)]);
         }
         if (prefix.length) consume();
-        if (header?.type !== 'session' || header.id !== context.sessionId || header.cwd !== context.cwd || matches !== 1) return null;
         if (stamp(fs.fstatSync(fd, { bigint: true })) !== stamp(opened) || stamp(fs.lstatSync(file, { bigint: true })) !== stamp(opened)
             || descriptorPathSync(fd) !== file || fs.realpathSync.native(file) !== file || !io.sameIdentityAtPath(file, identity)) return null;
-        return { dev: opened.dev, ino: opened.ino, mode: opened.mode, native: identity };
+        return { header, identity: { dev: opened.dev, ino: opened.ino, mode: opened.mode, native: identity } };
+    } catch (error) {
+        if (error?.code === 'SOURCE_PROOF_LIMIT') throw error;
+        return null;
+    }
+    finally { if (fd !== undefined) fs.closeSync(fd); }
+}
+
+function activeBinding(file, context) {
+    let matches = 0;
+    const scanned = streamSessionMetadata(file, context.sessionsRoot, entry => {
+        if (entry.customType === PROFILE_ENTRY && entry.data?.sessionId === context.sessionId) {
+            matches++;
+            if (entry.data.version !== 1 || entry.data.profileId !== context.profileId) throw new Error('Wrong binding');
+        }
+    });
+    const header = scanned?.header;
+    if (header?.type !== 'session' || header.id !== context.sessionId || header.cwd !== context.cwd || matches !== 1) return null;
+    return scanned.identity;
+}
+
+// The session ID lives in the header line, not in the file name (Pi names files
+// `<timestamp>_<fileId>.jsonl` with an unrelated ID). Only the first line of each
+// file is read; callers must still prove the header and binding of the single match.
+const HEADER_BYTES = 64 * 1024;
+const lookupCache = new Map();
+function headerSessionId(file) {
+    let fd;
+    try {
+        fd = io.openReadSync(file);
+        const buffer = Buffer.alloc(HEADER_BYTES);
+        const length = fs.readSync(fd, buffer, 0, HEADER_BYTES, 0);
+        const end = buffer.subarray(0, length).indexOf(0x0a);
+        if (end < 0) return null;
+        const header = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, end)));
+        return header?.type === 'session' && typeof header.id === 'string' ? header.id : null;
     } catch { return null; }
     finally { if (fd !== undefined) fs.closeSync(fd); }
+}
+function sessionFilesById(sessionsRoot, sessionId) {
+    if (typeof sessionId !== 'string' || !SESSION_ID.test(sessionId)) return [];
+    const cached = lookupCache.get(`${sessionsRoot}\0${sessionId}`);
+    if (cached && inside(sessionsRoot, cached) && headerSessionId(cached) === sessionId) return [cached];
+    const files = [];
+    let scanned = 0;
+    for (const directory of fs.readdirSync(sessionsRoot, { withFileTypes: true })) {
+        if (!directory.isDirectory() || directory.isSymbolicLink()) continue;
+        const dir = path.join(sessionsRoot, directory.name);
+        if (fs.realpathSync.native(dir) !== dir) continue;
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue;
+            if (++scanned > MAX_LOOKUP_ENTRIES)
+                throw Object.assign(new Error('Session lookup exceeds scan limit'), { code: 'SOURCE_PROOF_LIMIT' });
+            const file = path.join(dir, entry.name);
+            if (headerSessionId(file) === sessionId) files.push(file);
+        }
+    }
+    if (files.length === 1) {
+        if (lookupCache.size >= 256) lookupCache.delete(lookupCache.keys().next().value);
+        lookupCache.set(`${sessionsRoot}\0${sessionId}`, files[0]);
+    }
+    return files;
+}
+
+// Server-side proof that a native session file is bound to one profile, taking
+// the canonical cwd from its own header (never from a client). It also returns
+// the data of the latest memory-read entry recorded for that profile.
+function profileSession(file, { sessionsRoot, profileId, sessionId }) {
+    let matches = 0, lastRead = null;
+    const scanned = streamSessionMetadata(file, sessionsRoot, entry => {
+        if (entry.customType === PROFILE_ENTRY && entry.data?.sessionId === sessionId) {
+            matches++;
+            if (entry.data.version !== 1 || entry.data.profileId !== profileId) throw new Error('Wrong binding');
+        } else if (entry.customType === MEMORY_READ_ENTRY && entry.data?.profileId === profileId) lastRead = entry.data;
+    }, MAX_SOURCE_BYTES);
+    const header = scanned?.header;
+    try {
+        if (header?.type !== 'session' || header.id !== sessionId || typeof header.cwd !== 'string' || !path.isAbsolute(header.cwd)
+            || fs.realpathSync.native(header.cwd) !== header.cwd || matches !== 1) return null;
+    } catch { return null; }
+    return { file, cwd: header.cwd, identity: scanned.identity, lastRead };
 }
 
 // Streams one session line by line like activeBinding, retaining only entry
@@ -286,4 +367,4 @@ function listEligibleFiles(context, cap = 20) {
 }
 
 module.exports = { parseContext, binding, eligibleManager, eligibleFile, snapshot, sourceProof, verifyNativeSession, sameActiveFile,
-    listSessionFiles, listEligibleFiles, MAX_SESSION_BYTES, MAX_SOURCE_BYTES, MAX_SOURCE_ENTRIES };
+    listSessionFiles, listEligibleFiles, sessionFilesById, profileSession, MAX_SESSION_BYTES, MAX_SOURCE_BYTES, MAX_SOURCE_ENTRIES };

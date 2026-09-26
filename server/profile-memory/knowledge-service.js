@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
+const { pathToFileURL } = require('node:url');
 const scope = require('./scope');
 const { safeFile, safeDir, projectRoots, listMemories, listSkills, listExtendedMemories, profileMemoryCapability } = require('./management');
 const { createMutationLock } = require('./mutation-lock');
@@ -19,7 +20,13 @@ const HEX = /^[a-f0-9]{64}$/;
 const REQUEST = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/;
 const NAME = /^[a-z][a-z0-9-]{0,63}$/;
 const CATEGORY = new Set(['fact', 'preference', 'correction', 'failure', 'procedure']);
-const OPERATIONS = new Set(['create', 'update', 'delete', 'restore', 'enable', 'disable', 'undo']);
+const OPERATIONS = new Set(['create', 'update', 'delete', 'restore', 'enable', 'disable', 'undo', 'consolidate']);
+// Web edits of a session's physical-cwd project memory (the cwd comes from the verified session header).
+const SESSION_OPERATIONS = new Set(['create', 'update', 'delete', 'undo']);
+const SESSION = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
+const CONSOLIDATE_MIN = 2;
+const CONSOLIDATE_MAX = 20;
+const MAX_INJECTION_BYTES = 64 * 1024;
 const MAX_LEDGER = 8 * 1024 * 1024;
 const MAX_CONTENT = 65536;
 // Version 2 journal bounds: the active receipt window is small and old receipts
@@ -128,18 +135,24 @@ function skillContent(name, description, content) {
     if (!result.startsWith(header) || Buffer.byteLength(result) > MAX_CONTENT) throw fail('Skill frontmatter must match name and description');
     return result;
 }
-function checkedInput(input, trusted = false) {
+// `trusted` is the verified native path; `session` is a manual web write whose
+// projectKey the server derived from a verified session header.
+function checkedInput(input, trusted = false, session = false) {
     if (!input || typeof input !== 'object' || Array.isArray(input)
-        || !keys(input, ['requestId', 'expectedRevision', 'operation', 'kind', 'itemId', 'itemRevision', 'receiptId', 'content', 'name', 'description', 'category', 'scope', 'projectKey', 'source', 'target', 'state']))
+        || !keys(input, ['requestId', 'expectedRevision', 'operation', 'kind', 'itemId', 'itemRevision', 'receiptId', 'content', 'name', 'description', 'category', 'scope', 'projectKey', 'source', 'target', 'state', 'items', ...(session ? ['sessionId'] : [])]))
         throw fail('Invalid knowledge mutation');
     if (!REQUEST.test(input.requestId) || typeof input.expectedRevision !== 'string' || !HEX.test(input.expectedRevision)
         || !OPERATIONS.has(input.operation) || !['memory', 'skill'].includes(input.kind)) throw fail('Invalid knowledge mutation');
     const op = input.operation;
+    if (op === 'consolidate') return checkedConsolidation(input, trusted || session);
+    if (own(input, 'items')) throw fail('Unexpected mutation fields');
     if (op === 'create' ? own(input, 'itemId') || own(input, 'itemRevision') || own(input, 'receiptId')
         : op === 'undo' ? !REQUEST.test(input.receiptId) || own(input, 'itemId') || own(input, 'itemRevision')
             : !HEX.test(input.itemId) || !HEX.test(input.itemRevision) || own(input, 'receiptId')) throw fail('Invalid mutation identity');
     if (own(input, 'source') && !trusted) throw fail('Unverified source is not accepted');
-    if (!trusted && (input.scope !== undefined && input.scope !== 'profile' || own(input, 'projectKey'))) throw fail('Project writes require verified cwd');
+    if (session && (input.scope !== 'project' || !HEX.test(input.projectKey) || input.kind !== 'memory' || !SESSION_OPERATIONS.has(op)
+        || typeof input.sessionId !== 'string' || !SESSION.test(input.sessionId))) throw fail('Invalid session project mutation');
+    if (!trusted && !session && (input.scope !== undefined && input.scope !== 'profile' || own(input, 'projectKey'))) throw fail('Project writes require verified cwd');
     if (trusted && (input.scope === 'project' ? !HEX.test(input.projectKey) : own(input, 'projectKey') || input.scope !== undefined && input.scope !== 'profile')) throw fail('Invalid project scope');
     if (op === 'create' || op === 'update') {
         if (typeof input.content !== 'string' || !input.content.trim() || input.content.length > MAX_CONTENT || /\0|\r|\n§\n/.test(input.content))
@@ -155,6 +168,21 @@ function checkedInput(input, trusted = false) {
     if (input.state !== undefined && (!trusted || op !== 'create' || input.kind !== 'skill' || input.state !== 'draft'))
         throw fail('Only verified native proposals can create a skill draft');
     if (input.kind === 'memory' && ['enable', 'disable'].includes(op)) throw fail('Memory cannot be enabled or disabled');
+    return input;
+}
+// Consolidation is a manual profile MEMORY/USER batch: 2-20 distinct items become one entry.
+function checkedConsolidation(input, verifiedPath) {
+    if (verifiedPath) throw fail('Consolidation is only available to manual edits');
+    if (!keys(input, ['requestId', 'expectedRevision', 'operation', 'kind', 'target', 'items', 'content', 'category', 'scope'])
+        || input.kind !== 'memory' || !['memory', 'user'].includes(input.target) || input.scope !== undefined && input.scope !== 'profile')
+        throw fail('Invalid consolidation');
+    if (!Array.isArray(input.items) || input.items.length < CONSOLIDATE_MIN || input.items.length > CONSOLIDATE_MAX
+        || input.items.some(item => !item || typeof item !== 'object' || Array.isArray(item) || !keys(item, ['itemId', 'itemRevision'])
+            || !HEX.test(item.itemId) || !HEX.test(item.itemRevision))
+        || new Set(input.items.map(item => item.itemId)).size !== input.items.length) throw fail('Invalid consolidation items');
+    if (typeof input.content !== 'string' || !input.content.trim() || input.content.length > MAX_CONTENT || /\0|\r|\n§\n/.test(input.content))
+        throw fail('Invalid knowledge content');
+    if (!CATEGORY.has(input.category)) throw fail('Invalid memory fields');
     return input;
 }
 function physical(root, data, bundle) {
@@ -217,19 +245,74 @@ function publicRecord(record) {
 function revision(root, generation, data, items) {
     return hash(JSON.stringify([generation, data.sequence, items.map(item => [item.id, item.revision, item.state]).sort()]));
 }
+// Global document usage, measured like the write-time limit check (chunks joined by the separator).
+function memoryUsage(root, memory) {
+    const limits = normalizedMemory(memory);
+    const chars = name => (safeDir(root) && safeFile(path.join(root, name))?.text || '').length;
+    const failures = safeDir(root) ? safeFile(path.join(root, 'failures.md')) : null;
+    return { memory: { chars: chars('MEMORY.md'), limit: limits.memoryCharLimit },
+        user: { chars: chars('USER.md'), limit: limits.userCharLimit },
+        ...(failures ? { failure: { chars: failures.text.length, readOnly: true } } : {}) };
+}
+const ORIGINS = new Set(['agent', 'learning']);
+const LEARNING_REASONS = new Set(['correction', 'review', 'extraction', 'manual']);
+function nativeOrigin(options) {
+    if (options === undefined) return { origin: 'agent' };
+    if (!options || typeof options !== 'object' || Array.isArray(options) || !keys(options, ['origin', 'reason']))
+        throw fail('Invalid mutation origin');
+    const origin = options.origin === undefined ? 'agent' : options.origin;
+    if (!ORIGINS.has(origin) || options.reason !== undefined && (origin !== 'learning' || !LEARNING_REASONS.has(options.reason)))
+        throw fail('Invalid mutation origin');
+    return { origin, ...(options.reason !== undefined ? { reason: options.reason } : {}) };
+}
+// The latest `pivane-profile-memory-read` entry data, reduced to its documented fields.
+function memoryRead(data) {
+    if (!data || typeof data.loadedAt !== 'string' || data.loadedAt.length > 64 || !Number.isSafeInteger(data.generation)
+        || typeof data.provided !== 'boolean') return null;
+    return { at: data.loadedAt, generation: data.generation, provided: data.provided,
+        ...(Number.isSafeInteger(data.chars) && data.chars >= 0 ? { chars: data.chars } : {}),
+        ...(Number.isSafeInteger(data.entries) && data.entries >= 0 ? { entries: data.entries } : {}) };
+}
+// Loads an upstream MemoryStore only from an existing canonical directory whose
+// Markdown files pass the private-file checks, and confirms they did not change
+// during the load. A missing directory yields an empty store without creating it.
+async function loadedStore(upstream, config) {
+    const store = new upstream.MemoryStore(config);
+    if (!safeDir(config.memoryDir)) return store;
+    const revisions = () => ['MEMORY.md', 'USER.md', 'failures.md']
+        .map(name => safeFile(path.join(config.memoryDir, name))?.revision ?? null).join(':');
+    const before = revisions();
+    await store.loadFromDisk();
+    if (revisions() !== before) fail('Profile memory changed during preview', 409);
+    return store;
+}
 function publicReceipt(value) {
     if (!value) return value;
     const { inputHash, ...rest } = value;
     return rest;
 }
+// A receipt is superseded once a later receipt (from any origin, e.g. a manual undo or
+// delete) changed the same item; chat hints for it are then no longer actionable.
 function recent(data, sessionId) {
-    return data.receipts.filter(receipt => !sessionId || receipt.source?.sessionId === sessionId).slice(-30).reverse().map(publicReceipt);
+    const latest = new Map();
+    for (const row of data.receipts) for (const itemId of [row.itemId, ...(row.consolidated || [])]) if (itemId) latest.set(itemId, row.id);
+    return data.receipts.filter(receipt => !sessionId || receipt.source?.sessionId === sessionId).slice(-30).reverse()
+        .map(row => ({ ...publicReceipt(row), ...(row.itemId && latest.get(row.itemId) !== row.id ? { superseded: true } : {}) }));
 }
-function receipt(input, id, before, after, indexStatus, status = 'saved') {
+// Receipt preview: the memory body after the change (the removed body on delete),
+// or the skill name with the start of its description.
+function receiptPreview(after) {
+    if (after.kind === 'memory') return String(after.content || '').slice(0, 160);
+    return after.description ? `${after.name} \u2014 ${after.description.slice(0, 120)}` : after.name;
+}
+function receipt(input, id, before, after, indexStatus, provenance, status = 'saved') {
     return { id: randomUUID(), requestId: input.requestId, operation: input.operation, kind: input.kind,
         itemId: id, status, at: new Date().toISOString(), summary: `${input.operation} ${input.kind}`,
+        origin: provenance.origin, ...(provenance.reason ? { learningReason: provenance.reason } : {}),
+        preview: receiptPreview(after), ...(after.kind === 'memory' && after.category ? { category: after.category } : {}),
         scope: after.scope, ...(after.projectKey ? { projectKey: after.projectKey } : {}),
-        ...(input.source ? { source: input.source } : {}), ...(before ? { beforeRevision: before.revision } : {}),
+        ...(input.source ? { source: input.source } : provenance.sessionId ? { source: { sessionId: provenance.sessionId } } : {}),
+        ...(before ? { beforeRevision: before.revision } : {}),
         ...(after ? { afterRevision: after.revision } : {}), indexStatus,
         activation: after.state === 'draft' ? 'unknown' : input.kind === 'skill' ? 'reload-required' : 'next-turn', undoable: status === 'saved' };
 }
@@ -252,20 +335,23 @@ function expireRequests(data) {
         }
     }
 }
+function putRecord(data, item) {
+    if (Array.isArray(item.history) && item.history.length > HISTORY_KEEP)
+        item = { ...item, history: item.history.slice(-HISTORY_KEEP) };
+    data.records[item.id] = item;
+}
 function append(data, item, result, server) {
-    if (item) {
-        if (Array.isArray(item.history) && item.history.length > HISTORY_KEEP)
-            item = { ...item, history: item.history.slice(-HISTORY_KEEP) };
-        data.records[item.id] = item;
-    }
+    if (item) putRecord(data, item);
     data.sequence++;
     data.receipts.push(result);
     while (data.receipts.length > RECEIPTS_WINDOW) {
         const dropped = data.receipts.shift();
         // Undo is only offered inside the active window, so its before-copy is no longer needed.
         dropHistory(data, dropped);
+        // Archive digests keep identity and origin but not the preview text.
         data.archive.push({ id: dropped.id, requestId: dropped.requestId, operation: dropped.operation,
-            kind: dropped.kind, itemId: dropped.itemId, status: dropped.status, at: dropped.at, undoable: false });
+            kind: dropped.kind, itemId: dropped.itemId, status: dropped.status, at: dropped.at,
+            ...(dropped.origin ? { origin: dropped.origin } : {}), undoable: false });
     }
     while (data.archive.length > ARCHIVE_KEEP) data.archive.shift();
     data.requests[result.requestId] = { h: result.inputHash, r: result.id, at: result.at, s: server };
@@ -283,13 +369,18 @@ function append(data, item, result, server) {
         throw fail('Knowledge request journal is full; reviewed migration required before writing', 409);
     fitHistoryBudget(data);
 }
+// A consolidation receipt owns one before-copy on the merged item and on each source item.
 function dropHistory(data, receiptRow) {
-    const history = data.records[receiptRow.itemId]?.history;
-    if (!Array.isArray(history)) return 0;
-    const index = history.findIndex(entry => entry.receiptId === receiptRow.id);
-    if (index < 0) return 0;
-    const [removed] = history.splice(index, 1);
-    return Buffer.byteLength(JSON.stringify(removed));
+    let bytes = 0;
+    for (const itemId of [receiptRow.itemId, ...(Array.isArray(receiptRow.consolidated) ? receiptRow.consolidated : [])]) {
+        const history = data.records[itemId]?.history;
+        if (!Array.isArray(history)) continue;
+        const index = history.findIndex(entry => entry.receiptId === receiptRow.id);
+        if (index < 0) continue;
+        const [removed] = history.splice(index, 1);
+        bytes += Buffer.byteLength(JSON.stringify(removed));
+    }
+    return bytes;
 }
 // Before-copies may hold whole skill bodies. Keep the ledger (and the pending
 // file, which also carries the next document) inside MAX_LEDGER by giving up the
@@ -351,6 +442,116 @@ function removeSkill(root, item) {
     if (safeFile(file)?.revision !== item.revision) throw fail('Skill changed', 409);
     remove(file);
 }
+// One memory document publication: remove exact entries, append new ones, check
+// the saved cap and derived index, then write pending marker -> document -> index.
+// The pending marker carries the whole next ledger, so a batch repairs like one item.
+async function publishMemory(ctx, { target, itemScope, projectKey, projectCwd, remove: removed, add, input, data, record, verifySource, reserve }) {
+    const file = fileFor(ctx.root, { kind: 'memory', scope: itemScope, target, projectKey }), dir = path.dirname(file);
+    if (itemScope === 'project') {
+        privateFiles.privateDirectory(path.dirname(dir));
+        privateFiles.privateDirectory(dir);
+        if (!safeDir(dir)) fail('Unsafe project directory', 409);
+    }
+    const previous = safeFile(file);
+    const chunks = previous?.text ? previous.text.split('\n\u00a7\n') : [];
+    for (const content of removed) {
+        const index = chunks.findIndex(part => part.trim() === content);
+        if (index < 0 || chunks.filter(part => part.trim() === content).length !== 1) fail('Memory document changed', 409);
+        chunks.splice(index, 1);
+    }
+    chunks.push(...add);
+    const next = chunks.join('\n\u00a7\n');
+    const limit = normalizedMemory(ctx.profile.memory)[target === 'user' ? 'userCharLimit' : 'memoryCharLimit'];
+    if (next.length > limit) throw Object.assign(new Error('Memory document limit exceeded'), { status: 409,
+        code: 'memory-full', details: { target, chars: (previous?.text || '').length, limit, needed: next.length } });
+    const indexTarget = target === 'project' ? 'memory' : target;
+    const project = itemScope === 'project' ? projectCwd : null;
+    if (pendingDocumentIndex(dir, indexTarget)
+        || !await documentIndexSynced(dir, indexTarget, ctx.bundle, previous?.text || '', { databaseRoot: ctx.root, project }))
+        fail('Document index needs repair', 409);
+    const index = await documentIndex(dir, indexTarget, ctx.bundle, previous, next, { databaseRoot: ctx.root, project });
+    try {
+        verifySource?.();
+        await reserve();
+        save(pendingFile(ctx.root), { version: 1, requestId: input.requestId, kind: 'memory', target,
+            projectKey, projectCwd: project,
+            before: previous?.revision ?? null, after: hash(next), next, nextLedger: data, receipt: record });
+        index.mark();
+        publish(dir, indexTarget, next, previous?.revision);
+        index.sync();
+    } finally { index.close(); }
+}
+// The deleted-state record of a memory item; its revision is deterministic so a
+// later undo can verify that the item has not changed since.
+function retiredMemory(item, updatedAt) {
+    return { id: item.id, kind: 'memory', scope: item.scope, ...(item.projectKey ? { projectKey: item.projectKey } : {}),
+        target: item.target, ...(item.category ? { category: item.category } : {}), ...(item.source ? { source: item.source } : {}),
+        content: item.content, revision: hash(`deleted\0${item.content}`), state: 'deleted', updatedAt };
+}
+// consolidate: every source must be an active, writable profile entry of the
+// requested target at its stated revision; otherwise nothing is written.
+function consolidation(root, data, items, input, provenance) {
+    const target = input.target;
+    const sources = input.items.map(ref => {
+        const item = items.find(row => row.id === ref.itemId);
+        if (!item || item.kind !== 'memory' || item.readOnly || item.mirrored || item.state !== 'active' || item.scope !== 'profile'
+            || item.target !== target || item.revision !== ref.itemRevision) fail('Consolidation items changed or are not writable', 409);
+        return item;
+    });
+    const content = input.content.trim();
+    if (sources.some(item => item.content === content)) fail('Consolidated content must differ from its sources');
+    checkTombstone(data, content);
+    const remaining = items.filter(row => !row.readOnly && row.kind === 'memory' && row.state === 'active'
+        && row.scope === 'profile' && row.target === target && !sources.includes(row));
+    if (remaining.some(row => row.content === content)) fail('Knowledge already exists', 409);
+    const id = hash(`${path.join(root, target === 'user' ? 'USER.md' : 'MEMORY.md')}\0${remaining.length}\0${content}`);
+    if (items.some(row => row.id === id)) fail('Knowledge already exists', 409);
+    const at = new Date().toISOString();
+    const merged = { id, kind: 'memory', scope: 'profile', target, category: input.category, content,
+        revision: hash(content), state: 'active', updatedAt: at };
+    const record = { ...receipt(input, id, null, merged, 'ready', provenance), consolidated: sources.map(item => item.id),
+        inputHash: hash(JSON.stringify(input)) };
+    for (const item of sources) {
+        putRecord(data, { ...retiredMemory(item, at),
+            history: [...(data.records[item.id]?.history || []), { receiptId: record.id, before: copy(item) }] });
+        addTombstone(data, hash(item.content));
+    }
+    return { target, remove: sources.map(item => item.content), add: [content], record,
+        item: { ...merged, history: [{ receiptId: record.id, before: null }] } };
+}
+// Undo of a consolidation restores every source entry and retires the merged one
+// in one publication, after checking all of their current revisions.
+function undoConsolidation(data, items, input, original, provenance) {
+    const merged = items.find(row => row.id === original.itemId);
+    if (!merged || merged.readOnly || merged.state !== 'active' || merged.revision !== original.afterRevision
+        || !Array.isArray(original.consolidated)) fail('Undo target changed', 409);
+    if (!data.records[merged.id]?.history?.some(entry => entry.receiptId === original.id)) fail('Undo history unavailable', 409);
+    const restored = original.consolidated.map(itemId => {
+        const before = data.records[itemId]?.history?.find(entry => entry.receiptId === original.id)?.before;
+        if (!before || typeof before.content !== 'string') fail('Undo history unavailable', 409);
+        const current = items.find(row => row.id === itemId);
+        if (!current || current.state !== 'deleted' || current.revision !== hash(`deleted\0${before.content}`)) fail('Undo target changed', 409);
+        return before;
+    });
+    const others = items.filter(row => !row.readOnly && row.kind === 'memory' && row.state === 'active'
+        && row.scope === 'profile' && row.target === merged.target && row.id !== merged.id);
+    if (restored.some(before => others.some(row => row.content === before.content))) fail('Knowledge already exists', 409);
+    const at = new Date().toISOString();
+    const after = retiredMemory(merged, at);
+    // Redoing a consolidation is a new consolidate request, so this receipt is not undoable.
+    const record = { ...receipt(input, merged.id, merged, after, 'ready', provenance), undoable: false,
+        inputHash: hash(JSON.stringify(input)) };
+    for (const before of restored) {
+        putRecord(data, { id: before.id, kind: 'memory', scope: 'profile', target: before.target,
+            ...(before.category ? { category: before.category } : {}), ...(before.source ? { source: before.source } : {}),
+            content: before.content, revision: hash(before.content), state: 'active', updatedAt: at,
+            history: data.records[before.id].history });
+        removeTombstone(data, hash(before.content));
+    }
+    addTombstone(data, hash(merged.content));
+    return { target: merged.target, remove: [merged.content], add: restored.map(before => before.content), record,
+        item: { ...after, history: data.records[merged.id].history } };
+}
 
 class ProfileKnowledgeService {
     constructor({ profiles, getAgentDir, bundlePath } = {}) {
@@ -375,16 +576,19 @@ class ProfileKnowledgeService {
             || options.offset !== undefined && (!Number.isSafeInteger(options.offset) || options.offset < 0 || options.offset > 100000)) fail('Invalid knowledge query');
         const ctx = await this.context(profileId);
         const base = { version: 1, profileId, status: 'missing', revision: null, items: [], receipts: [], hasMore: false,
-            capabilities: { memory: false, skill: false, projectWrites: false, nativeProjectWrites: false,
+            capabilities: { memory: false, skill: false, projectWrites: false, projectWritesBySession: false, nativeProjectWrites: false,
                 installedSkillsWrite: false, operations: [], skillNameMaxLength: 64, maxContentLength: MAX_CONTENT } };
         if (!ctx.profile) return base;
         if (!ctx.profile.enabled) return { ...base, status: 'disabled' };
         const capabilities = { memory: Boolean(ctx.installed && ctx.profile.memory?.enabled),
             skill: Boolean(ctx.profile.skills?.learnedEnabled), projectWrites: false,
+            // projectWrites stays false: without a verified session the web cannot write project memory.
+            projectWritesBySession: Boolean(ctx.installed && ctx.profile.memory?.enabled),
             nativeProjectWrites: Boolean(ctx.installed && ctx.profile.memory?.enabled || ctx.profile.skills?.learnedEnabled), installedSkillsWrite: false,
             operations: ctx.installed && ctx.profile.memory?.enabled || ctx.profile.skills?.learnedEnabled
                 ? [...OPERATIONS] : [], skillNameMaxLength: 64, maxContentLength: MAX_CONTENT };
-        if (!fs.existsSync(ctx.root)) return { ...base, status: 'ready', revision: hash(JSON.stringify([0, 0, []])), capabilities };
+        if (!fs.existsSync(ctx.root)) return { ...base, status: 'ready', revision: hash(JSON.stringify([0, 0, []])), capabilities,
+            ...(capabilities.memory ? { usage: memoryUsage(ctx.root, ctx.profile.memory) } : {}) };
         if (!ctx.installed && fs.existsSync(path.join(ctx.root, 'sessions.db')))
             return { ...base, status: 'unsupported', capabilities };
         return createMutationLock(ctx.root).inspect(async generation => {
@@ -402,6 +606,7 @@ class ProfileKnowledgeService {
                     const { content, ...listed } = item;
                     return item.kind === 'memory' ? { ...listed, content: content?.slice(0, 512) } : listed;
                 }), receipts: recent(data, options.sessionId), hasMore: matches.length > offset + 50,
+                ...(capabilities.memory ? { usage: memoryUsage(ctx.root, ctx.profile.memory) } : {}),
                 capabilities: { ...capabilities, journal: { receipts: data.receipts.length, receiptsWindow: RECEIPTS_WINDOW,
                     archivedReceipts: data.archive.length, requests: Object.keys(data.requests).length,
                     requestsLimit: REQUESTS_ACTIVE, expiredRequests: data.spent.length,
@@ -425,11 +630,103 @@ class ProfileKnowledgeService {
             } } : {}) };
         });
     }
+    // Read-only preview of the next turn's memory block, rendered by the same upstream
+    // MemoryStore formatting as extension.ts. With sessionId, the project block uses
+    // the physical cwd from that session's verified header, never a client value.
+    async injection(profileId, options = {}) {
+        if (!options || typeof options !== 'object' || !keys(options, ['sessionId'])
+            || options.sessionId !== undefined && (typeof options.sessionId !== 'string' || !SESSION.test(options.sessionId)))
+            fail('Invalid injection query');
+        const ctx = await this.context(profileId);
+        const empty = { version: 1, block: '', chars: 0, entries: 0, profile: { chars: 0, entries: 0 }, project: null, lastRead: null };
+        if (!ctx.profile) return { ...empty, status: 'missing' };
+        if (!ctx.profile.enabled || !ctx.profile.memory?.enabled) return { ...empty, status: 'disabled' };
+        if (!ctx.installed) return { ...empty, status: 'unsupported' };
+        const session = options.sessionId ? await this.#sessionSource(profileId, options.sessionId) : null;
+        const lastRead = session ? memoryRead(session.lastRead) : null;
+        const limits = normalizedMemory(ctx.profile.memory);
+        const config = { memoryMode: 'legacy-inject', memoryCharLimit: limits.memoryCharLimit, userCharLimit: limits.userCharLimit,
+            memoryOverflowStrategy: 'reject', autoConsolidate: false, failureInjectionEnabled: false };
+        const render = async () => {
+            if (safeFile(pendingFile(ctx.root), MAX_LEDGER)) return null;
+            const upstream = await import(pathToFileURL(ctx.bundle).href);
+            const store = await loadedStore(upstream, { ...config, memoryDir: ctx.root });
+            const profileBlock = store.formatForSystemPrompt();
+            const profile = { chars: profileBlock.length,
+                entries: profileBlock ? store.getMemoryEntries().length + store.getUserEntries().length : 0 };
+            let projectBlock = '', project = null;
+            if (session) {
+                const projectStore = await loadedStore(upstream, { ...config, memoryDir: path.join(ctx.root, 'projects', hash(session.cwd)) });
+                projectBlock = projectStore.formatProjectBlock(session.cwd);
+                project = { chars: projectBlock.length, entries: projectBlock ? projectStore.getMemoryEntries().length : 0 };
+            }
+            return { block: [profileBlock, projectBlock].filter(Boolean).join('\n\n'), profile, project };
+        };
+        const loaded = fs.existsSync(ctx.root) ? await createMutationLock(ctx.root).inspect(render) : await render();
+        if (!loaded) return { ...empty, status: 'pending', lastRead };
+        session?.verify();
+        const bytes = Buffer.from(loaded.block);
+        let end = bytes.length;
+        if (end > MAX_INJECTION_BYTES) {
+            end = MAX_INJECTION_BYTES;
+            while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--;
+        }
+        return { version: 1, status: 'ready', block: end < bytes.length ? bytes.subarray(0, end).toString('utf8') : loaded.block,
+            ...(end < bytes.length ? { truncated: true } : {}), chars: loaded.block.length,
+            entries: loaded.profile.entries + (loaded.project?.entries || 0), profile: loaded.profile, project: loaded.project, lastRead };
+    }
     async mutate(profileId, raw) {
-        return this.#mutateValidated(profileId, checkedInput(raw));
+        if (raw && typeof raw === 'object' && !Array.isArray(raw) && own(raw, 'sessionId')) {
+            // Web project memory: the session is found and proven server-side; its header cwd
+            // is the only project identity, and a client projectKey is never accepted.
+            if (own(raw, 'projectKey')) fail('Project writes require verified cwd');
+            if (typeof raw.sessionId !== 'string' || !SESSION.test(raw.sessionId) || raw.scope !== 'project' || raw.kind !== 'memory'
+                || !SESSION_OPERATIONS.has(raw.operation)) fail('Invalid session project mutation');
+            checkedInput({ ...raw, projectKey: hash(raw.sessionId) }, false, true);
+            const session = await this.#sessionSource(profileId, raw.sessionId);
+            const input = checkedInput({ ...raw, projectKey: hash(session.cwd) }, false, true);
+            return this.#mutateValidated(profileId, input, session.verify, session.cwd, { origin: 'manual', sessionId: raw.sessionId });
+        }
+        return this.#mutateValidated(profileId, checkedInput(raw), undefined, undefined, { origin: 'manual' });
+    }
+    // Finds the unique native file named for sessionId and proves its binding to this
+    // profile. `verify` repeats the proof (same file identity and cwd) before publication.
+    async #sessionSource(profileId, sessionId) {
+        if (typeof sessionId !== 'string' || !SESSION.test(sessionId)) fail('Invalid session id');
+        const agent = await this.getAgentDir();
+        const sessionsRoot = path.join(agent, 'sessions');
+        const lookup = () => {
+            try {
+                if (!safeDir(sessionsRoot)) return [];
+                return scope.sessionFilesById(sessionsRoot, sessionId);
+            } catch (error) {
+                if (error?.code === 'SOURCE_PROOF_LIMIT') fail(error.message, 413);
+                throw error;
+            }
+        };
+        const files = lookup();
+        if (files.length !== 1) fail(files.length ? 'Session identity is ambiguous' : 'Session not found', files.length ? 409 : 404);
+        const read = () => {
+            try { return scope.profileSession(files[0], { sessionsRoot, profileId, sessionId }); }
+            catch (error) {
+                if (error?.code === 'SOURCE_PROOF_LIMIT') fail(error.message, 413);
+                throw error;
+            }
+        };
+        const first = read();
+        if (!first) fail('Session is not bound to this profile', 409);
+        const verify = () => {
+            const again = read(), current = lookup();
+            if (!again || current.length !== 1 || current[0] !== first.file || again.cwd !== first.cwd
+                || again.identity.dev !== first.identity.dev || again.identity.ino !== first.identity.ino
+                || again.identity.mode !== first.identity.mode) fail('Session changed or is not bound to this profile', 409);
+        };
+        return { file: first.file, cwd: first.cwd, lastRead: first.lastRead, verify };
     }
     // Internal-only provenance. The HTTP route calls mutate(), which rejects source and projectKey.
-    async mutateFromNative(profileId, raw, native) {
+    // The origin comes only from the server-side options argument, never from raw input.
+    async mutateFromNative(profileId, raw, native, options) {
+        const provenance = nativeOrigin(options);
         if (!native || !keys(native, ['sessionPath', 'sessionId', 'entryId', 'cwd'])
             || !['sessionPath', 'sessionId', 'entryId', 'cwd'].every(key => typeof native[key] === 'string'
                 && native[key].length > 0 && native[key].length <= (key === 'cwd' || key === 'sessionPath' ? 4096 : 200)))
@@ -456,9 +753,9 @@ class ProfileKnowledgeService {
             throw fail('Project key does not match native cwd', 409);
         const input = checkedInput({ ...raw, ...(raw.scope === 'project' ? { projectKey } : {}),
             source: { sessionId: native.sessionId, entryId: native.entryId } }, true);
-        return this.#mutateValidated(profileId, input, verify, native.cwd);
+        return this.#mutateValidated(profileId, input, verify, native.cwd, provenance);
     }
-    async #mutateValidated(profileId, input, verifySource, projectCwd) {
+    async #mutateValidated(profileId, input, verifySource, projectCwd, provenance) {
         const ctx = await this.context(profileId, true);
         if (!ctx.profile) fail('Profile not found', 404);
         if (!ctx.profile.enabled || input.kind === 'memory' && (!ctx.profile.memory?.enabled || !ctx.installed)
@@ -525,10 +822,23 @@ class ProfileKnowledgeService {
                     ? data.receipts.find(row => row.id === input.receiptId && row.kind === input.kind)
                     : null;
                 if (input.operation === 'undo' && (!original || !original.undoable)) fail('Receipt is not undoable', 409);
+                if (provenance.sessionId && original && original.scope !== 'project') fail('Session edits are limited to its project memory', 409);
+                if (input.operation === 'consolidate' || original?.operation === 'consolidate') {
+                    if (provenance.origin !== 'manual' || provenance.sessionId) fail('Consolidation is only available to manual edits', 409);
+                    const plan = input.operation === 'consolidate' ? consolidation(ctx.root, data, items, input, provenance)
+                        : undoConsolidation(data, items, input, original, provenance);
+                    append(data, plan.item, plan.record, false);
+                    await publishMemory(ctx, { target: plan.target, itemScope: 'profile', remove: plan.remove, add: plan.add,
+                        input, data, record: plan.record, verifySource, reserve });
+                    save(ledgerFile(ctx.root), data);
+                    remove(pendingFile(ctx.root));
+                    return { receipt: plan.record, item: publicRecord(plan.item) };
+                }
                 let before = (input.operation === 'create' ? null : items.find(item => item.id === (original?.itemId || input.itemId)));
                 if (before?.kind === 'skill' && before.state === 'active') before = { ...before, content: body(ctx.root, before) };
                 if (input.operation !== 'create' && (!before || before.kind !== input.kind || before.readOnly
                     || input.operation !== 'undo' && before.revision !== input.itemRevision)) fail('Item revision changed or is read-only', 409);
+                if (provenance.sessionId && before && before.scope !== 'project') fail('Session edits are limited to its project memory', 409);
                 if (before?.scope === 'project' && (!verifySource || before.projectKey !== input.projectKey)) fail('Project writes require verified cwd', 409);
                 if (input.operation === 'undo' && before.revision !== original.afterRevision) fail('Undo target changed', 409);
                 if (input.operation === 'restore' && before.state !== 'deleted' || input.operation === 'enable' && !['disabled', 'draft'].includes(before.state)
@@ -586,47 +896,19 @@ class ProfileKnowledgeService {
                 if (input.kind === 'skill' && state === 'active') availableSkill(ctx.root, after);
                 const history = [...(data.records[id]?.history || [])];
                 const changed = { ...after, history };
-                const record = { ...receipt(input, id, before, after, input.kind === 'memory' ? 'ready' : 'not-applicable'),
+                const record = { ...receipt(input, id, before, after, input.kind === 'memory' ? 'ready' : 'not-applicable', provenance),
                     inputHash: hash(JSON.stringify(input)) };
                 history.push({ receiptId: record.id, before: copy(before) });
                 if (input.kind === 'memory' && before?.content && (before.content !== content || state === 'deleted'))
                     addTombstone(data, hash(before.content));
                 if (input.kind === 'memory' && state === 'active' && ['restore', 'undo'].includes(input.operation))
                     removeTombstone(data, hash(content));
-                append(data, changed, record, Boolean(verifySource));
+                // Client request IDs (HTTP, including session-verified web edits) keep the 7-day validity rule.
+                append(data, changed, record, provenance.origin !== 'manual');
                 if (input.kind === 'memory') {
-                    const file = fileFor(ctx.root, after), dir = path.dirname(file);
-                    if (itemScope === 'project') {
-                        privateFiles.privateDirectory(path.dirname(dir));
-                        privateFiles.privateDirectory(dir);
-                        if (!safeDir(dir)) fail('Unsafe project directory', 409);
-                    }
-                    const previous = safeFile(file);
-                    const chunks = previous?.text ? previous.text.split('\n§\n') : [];
-                    if (before?.state === 'active') {
-                        const index = chunks.findIndex(part => part.trim() === before.content);
-                        if (index < 0 || chunks.filter(part => part.trim() === before.content).length !== 1) fail('Memory document changed', 409);
-                        chunks.splice(index, 1);
-                    }
-                    if (state === 'active') chunks.push(content);
-                    const next = chunks.join('\n§\n');
-                    if (next.length > normalizedMemory(ctx.profile.memory)[target === 'user' ? 'userCharLimit' : 'memoryCharLimit']) fail('Memory document limit exceeded');
-                    if (pendingDocumentIndex(dir, target === 'project' ? 'memory' : target)
-                        || !await documentIndexSynced(dir, target === 'project' ? 'memory' : target, ctx.bundle,
-                            previous?.text || '', { databaseRoot: ctx.root, project: itemScope === 'project' ? projectCwd : null }))
-                        fail('Document index needs repair', 409);
-                    const index = await documentIndex(dir, target === 'project' ? 'memory' : target, ctx.bundle,
-                        previous, next, { databaseRoot: ctx.root, project: itemScope === 'project' ? projectCwd : null });
-                    try {
-                        verifySource?.();
-                        await reserve();
-                        save(pendingFile(ctx.root), { version: 1, requestId: input.requestId, kind: 'memory', target,
-                            projectKey, projectCwd: itemScope === 'project' ? projectCwd : null,
-                            before: previous?.revision ?? null, after: hash(next), next, nextLedger: data, receipt: record });
-                        index.mark();
-                        publish(dir, target === 'project' ? 'memory' : target, next, previous?.revision);
-                        index.sync();
-                    } finally { index.close(); }
+                    await publishMemory(ctx, { target, itemScope, projectKey, projectCwd,
+                        remove: before?.state === 'active' ? [before.content] : [], add: state === 'active' ? [content] : [],
+                        input, data, record, verifySource, reserve });
                 } else {
                     verifySource?.();
                     await reserve();
@@ -655,7 +937,12 @@ function mountProfileKnowledgeRoutes(router, deps = {}) {
     const handle = callback => async (req, res) => {
         res.set('Cache-Control', 'no-store');
         try { return res.json(await callback(req)); }
-        catch (error) { return res.status(error.status || 500).json({ error: error.status ? error.message : 'Profile knowledge unavailable' }); }
+        catch (error) {
+            if (!error.status) return res.status(500).json({ error: 'Profile knowledge unavailable' });
+            return res.status(error.status).json({ error: error.message,
+                ...(typeof error.code === 'string' ? { code: error.code } : {}),
+                ...(error.details && typeof error.details === 'object' ? { details: error.details } : {}) });
+        }
     };
     router.get('/profiles/:id/knowledge', handle(req => {
         const options = { ...req.query };
@@ -666,6 +953,7 @@ function mountProfileKnowledgeRoutes(router, deps = {}) {
         }
         return service.snapshot(req.params.id, options);
     }));
+    router.get('/profiles/:id/knowledge/injection', handle(req => service.injection(req.params.id, { ...req.query })));
     router.get('/profiles/:id/knowledge/items/:itemId', handle(req => service.getItem(req.params.id, req.params.itemId)));
     router.post('/profiles/:id/knowledge/mutations', handle(req => service.mutate(req.params.id, req.body)));
     return service;

@@ -162,6 +162,9 @@ test('isolated Pi 0.87.1 upstream components enforce profile index, recall, skil
     const provided = same.pi.records.findLast(item => item.type === 'pivane-profile-memory-read');
     assert.equal(provided.data.provided, true);
     assert.equal(provided.data.scope, 'profile-and-physical-cwd');
+    // The read entry records the injected block size and its rendered entry count.
+    assert.equal(provided.data.chars, beforePrompt[0].systemPrompt.length - 'synthetic system\n\n'.length);
+    assert.ok(Number.isSafeInteger(provided.data.entries) && provided.data.entries >= 2, JSON.stringify(provided.data));
     assert.equal((same.pi.events.get('agent_before_settle') || []).length, 0,
         'background learning is owned by the gateway, not the active worker boundary');
     assert.equal((await same.pi.tools.get('memory_search').execute('call', { query: 'stale-review-fact' }, undefined, undefined, same.ctx)).details.count, 0);

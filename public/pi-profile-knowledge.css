@@ -23,10 +23,47 @@
 .pi-knowledge-version small { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
 .pi-knowledge-editor, .pi-learning-settings { display: grid; gap: 12px; }
 .pi-knowledge-editor label, .pi-learning-settings label:not(.pi-profile-check) { display: grid; gap: 5px; min-width: 0; font-size: .88rem; }
-.pi-knowledge-editor :is(input,textarea,select), .pi-learning-settings input[type=number], .pi-knowledge-tools input { width: 100%; min-width: 0; box-sizing: border-box; font: inherit; padding: 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-1); color: var(--text-main); }
+.pi-profile-check { display: flex; align-items: center; gap: 9px; min-width: 0; font-size: .88rem; }
+.pi-usage-bars { display: grid; gap: 8px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 12px 0; margin: 12px 0; }
+.pi-usage-bars h4 { margin: 0; font-size: .92rem; }
+.pi-usage-row { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
+.pi-usage-label { font-size: .78rem; font-weight: 600; letter-spacing: .04em; }
+.pi-usage-count { font-size: .82rem; color: var(--text-soft); }
+.pi-usage-bar { flex: 1 1 140px; min-width: 90px; height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.pi-usage-fill { height: 100%; border-radius: inherit; background: #1f9d55; }
+.pi-usage-near .pi-usage-fill { background: #d98a00; }
+.pi-usage-full .pi-usage-fill { background: #c0392b; }
+.pi-usage-note { margin: 0; font-size: .82rem; }
+.pi-usage-note.pi-usage-near { color: #a06a00; }
+.pi-usage-note.pi-usage-full { color: #c0392b; }
+.pi-learning-health { display: flex; align-items: center; gap: 8px; margin: 0; font-size: .86rem; color: var(--text-soft); }
+.pi-learning-legacy { display: grid; gap: 8px; border-left: 3px solid #d98a00; background: var(--surface-2); padding: 12px 14px; margin: 10px 0; min-width: 0; }
+.pi-learning-legacy p { margin: 0; font-size: .86rem; line-height: 1.5; }
+.pi-learning-legacy label { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: .86rem; min-width: 0; }
+.pi-learning-legacy select { min-width: 0; flex: 1 1 140px; }
+.pi-knowledge-editor :is(input,textarea,select), .pi-learning-settings input[type=number], .pi-knowledge-tools input, .pi-proposal-body :is(input,textarea,select) { width: 100%; min-width: 0; box-sizing: border-box; font: inherit; padding: 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-1); color: var(--text-main); }
 .pi-knowledge-editor textarea { resize: vertical; }
 .pi-learning-job { padding: 10px 0; border-bottom: 1px solid var(--line); }
 .pi-learning-job strong { font-size: .88rem; }
+.pi-proposals { display: grid; gap: 12px; border-top: 1px solid var(--line); margin: 18px 0; padding-top: 16px; min-width: 0; }
+.pi-proposals h5 { font-size: .95rem; margin: 0; }
+.pi-proposal-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; border: 1px solid var(--line); border-radius: 6px; padding: 12px; min-width: 0; }
+.pi-proposal-meta { grid-column: 1 / -1; margin: 0; font-size: .8rem; color: var(--text-soft); overflow-wrap: anywhere; }
+.pi-proposal-items { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.pi-proposal-items small { color: var(--text-muted); }
+.pi-proposal-item { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0; font-size: .82rem; min-width: 0; }
+.pi-proposal-item-text { min-width: 0; overflow-wrap: anywhere; }
+.pi-proposal-tag { flex: none; font-style: normal; font-size: .74rem; padding: 1px 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--text-soft); }
+.pi-proposal-body { display: grid; gap: 10px; min-width: 0; }
+.pi-proposal-body label { display: grid; gap: 5px; font-size: .88rem; min-width: 0; }
+.pi-proposal-body textarea { resize: vertical; }
+.pi-proposal-stale { margin: 0; font-size: .82rem; color: #c0392b; }
+.pi-knowledge-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.pi-injection { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 6px; padding: 12px; margin: 10px 0; min-width: 0; }
+.pi-injection h5 { font-size: .95rem; margin: 0; }
+.pi-injection-stats { margin: 0; font-size: .86rem; color: var(--text-soft); }
+.pi-injection-body summary { cursor: pointer; font-size: .88rem; }
+.pi-injection-body pre { max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: .85rem; padding: 10px; background: var(--surface-2); margin: 8px 0 0; }
 #pi-profiles-memory button:focus-visible, #pi-profiles-memory summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 680px) {
     #pi-profiles-memory :is(input,textarea,select) { font-size: 16px; }

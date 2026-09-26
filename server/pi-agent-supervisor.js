@@ -1,5 +1,6 @@
 const { randomUUID } = require('crypto');
 const { EventEmitter } = require('events');
+const fs = require('fs');
 const path = require('path');
 const { INTERNAL_COMMAND_PATTERN, isInternalCommand, privateReply } = require('./pivane-compat');
 const { PiRpcClient } = require('./pi-rpc-client');
@@ -136,8 +137,20 @@ class AgentWorker extends EventEmitter {
             // later events cannot be acknowledged by an older transcript snapshot.
             const transcriptSdk = type === 'get_messages' && this.managed ? await require('./pi-session-store').getSdk() : null;
             const data = await this.client.request(transcriptSdk ? 'get_entries' : type, transcriptSdk ? {} : payload, timeoutMs, undefined, value => {
-                if (transcriptSdk) value = { messages: transcriptSdk.buildContextEntries(value.entries, value.leafId)
-                    .flatMap(entry => transcriptSdk.sessionEntryToContextMessages(entry)) };
+                if (transcriptSdk) {
+                    // webAnchors maps each native message entry of the current context to the
+                    // rendered message key, so receipts can point at their source message
+                    // without the browser downloading raw entries of every branch.
+                    const messages = [], webAnchors = [];
+                    for (const entry of transcriptSdk.buildContextEntries(value.entries, value.leafId)) {
+                        const mapped = transcriptSdk.sessionEntryToContextMessages(entry);
+                        const first = mapped[0];
+                        if (entry.type === 'message' && typeof entry.id === 'string' && first?.timestamp != null)
+                            webAnchors.push([entry.id, first.role, first.timestamp, first.toolCallId || '']);
+                        messages.push(...mapped);
+                    }
+                    value = { messages, webAnchors };
+                }
                 if (type === 'get_state') this.live.state(value);
                 if (type === 'get_messages') value = publicMessages(value);
                 if (type === 'get_messages' && this.managed) {
@@ -811,6 +824,19 @@ class PiAgentSupervisor extends EventEmitter {
     isIdle() {
         return !this.disposing && !this.starting.size && !this.ephemeralWorkers.size
             && [...this.workers.values()].every(worker => worker.isIdle() && !worker.retainsBackgroundWork());
+    }
+
+    // Per-session idleness for background work sourced from one native session.
+    // A worker that is still starting for this file counts as busy.
+    isSessionIdle(sessionPath) {
+        if (this.disposing) return false;
+        if (typeof sessionPath !== 'string' || !sessionPath) return true;
+        const real = file => { try { return fs.realpathSync.native(file); } catch { return null; } };
+        const target = real(sessionPath) ?? sessionPath;
+        const matches = file => file === sessionPath || file === target || real(file) === target;
+        if ([...this.starting.keys()].some(matches)) return false;
+        const worker = [...this.workers].find(([file, item]) => !item.disposed && matches(file))?.[1];
+        return !worker || worker.isIdle() && !worker.retainsBackgroundWork();
     }
 
     getActivity() {
