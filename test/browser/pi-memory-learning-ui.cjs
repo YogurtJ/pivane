@@ -47,6 +47,24 @@ window.chat = PiChatKnowledge.create({ fetch: window.api, root: document.getElem
 window.manager.open('profile-one'); window.chat.update();
 window.refreshAll = () => { window.manager.refresh(); window.chat.refresh(); };
 </script></body></html>`));
+app.get('/profiles-fixture', (_req, res) => res.send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/pi-agent-profiles.css"><link rel="stylesheet" href="/pi-profile-knowledge.css"><link rel="stylesheet" href="/pi-chat-knowledge.css">
+<style>:root{--line:#ccc;--text-main:#222;--text-soft:#555;--text-muted:#777;--surface-1:#fff;--surface-2:#eee;--accent:#168a68}body{margin:0;font-family:Arial,sans-serif;background:#f8f8f8;color:#222}main{max-width:720px;padding:12px;margin:auto;min-width:0}button{cursor:pointer}</style></head><body><main>
+<div id="pi-profiles-panel"><h3></h3><div class="settings-panel-header"><p></p></div></div>
+<div id="pi-profiles-content"></div><button id="pi-profiles-refresh" type="button"></button>
+<dl id="pi-meta-profile-row"><dt></dt><dd id="pi-meta-profile"></dd></dl><div id="pi-session-profile"></div>
+</main>
+<script src="/pi-i18n-catalog.js"></script><script src="/pi-i18n.js"></script><script src="/pi-profile-knowledge.js"></script><script src="/pi-agent-profiles.js"></script>
+<script>
+window.api = async (url, options) => {
+    const response = await fetch(url, options);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw Object.assign(new Error(data.error || response.statusText), { status: response.status, data });
+    return data;
+};
+window.profiles = PiAgentProfiles.create({ apiFetch: window.api, currentCwd: () => '/synthetic' });
+window.profiles.setEnabled(true, true); window.profiles.open();
+</script></body></html>`));
 
 async function runFixture(browser, base, width, locale) {
     const context = await browser.newContext({ viewport: { width, height: 900 }, locale });
@@ -103,6 +121,9 @@ async function runFixture(browser, base, width, locale) {
                 { provider: 'fixture', id: 'batch-1:batch', name: 'Batch', available: true, input: ['text'] },
                 { provider: 'fixture', id: 'vision-model', name: 'Vision model', available: true, input: ['image'] },
                 { provider: 'fixture', id: 'down-model', name: 'Down model', available: false, input: ['text'] }] });
+        if (p === '/api/pi/profiles' && req.method() === 'GET') return fulfill({ version: 1, revision: 'p1', cwd: '/synthetic',
+            profiles: [{ id: 'profile-one', name: 'Research', enabled: true, memory: { enabled: true }, skills: { learnedEnabled: true } },
+                { id: 'profile-two', name: 'Archive', enabled: false, memory: { enabled: true }, skills: { learnedEnabled: true } }] });
         return fulfill({ error: 'missing' }, 404);
     });
     await page.goto(`${base}/fixture`);
@@ -224,6 +245,44 @@ async function runFixture(browser, base, width, locale) {
     await context.close();
 }
 
+async function runProfiles(browser, base, width, locale) {
+    // Identity list: health dots come from each profile's learning snapshot; absent health keeps the plain row.
+    const context = await browser.newContext({ viewport: { width, height: 800 }, locale });
+    const page = await context.newPage(), errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.route('**/api/pi/**', async route => {
+        const req = route.request(), url = new URL(req.url()), p = url.pathname;
+        const fulfill = (body, status = 200) => route.fulfill({ json: body, status });
+        if (p === '/api/pi/profiles') return fulfill({ version: 1, revision: 'p1', cwd: '/synthetic',
+            profiles: [{ id: 'profile-one', name: 'Research', enabled: true, memory: { enabled: true }, skills: { learnedEnabled: true } },
+                { id: 'profile-two', name: 'Archive', enabled: false, memory: { enabled: true }, skills: { learnedEnabled: true } }] });
+        if (p.endsWith('/learning')) {
+            const id = p.split('/')[4];
+            if (id === 'profile-one') return fulfill({ version: 1, status: 'ready', revision: 1, settings: structuredClone(settings), jobs: [], recentRuns: [],
+                health: { state: 'needs-model', missingModels: ['memory-review'], lastFailure: null, today: { runs: 0, maxRuns: 4, reservedTokens: 0, maxTokens: 24000 } },
+                capabilities: { installed: true, settingsWrite: true, actions: ['save'] } });
+            // Older backends return no health field at all.
+            return fulfill({ version: 1, status: 'ready', revision: 1, settings: structuredClone(settings), jobs: [], recentRuns: [],
+                capabilities: { installed: true, settingsWrite: true, actions: ['save'] } });
+        }
+        return fulfill({ error: 'missing' }, 404);
+    });
+    await page.goto(`${base}/profiles-fixture`);
+    await page.locator('.pi-profile-row').first().waitFor();
+    await page.waitForFunction(() => Boolean(document.querySelector('.pi-profile-row .pi-health-dot')));
+    const zh = locale.startsWith('zh'), say = (source, english) => zh ? source : english;
+    const warned = page.locator('.pi-profile-row[data-profile-id="profile-one"]');
+    assert.ok((await warned.locator('.pi-health-dot').getAttribute('class')).includes('pi-health-warn'));
+    assert.equal(await warned.locator('.pi-health-dot').getAttribute('title'), say('缺少学习模型配置', 'A learning model is not configured'));
+    assert.ok((await warned.innerText()).includes(say('已启用 · 缺少学习模型配置', 'Enabled · A learning model is not configured')));
+    const plain = page.locator('.pi-profile-row[data-profile-id="profile-two"]');
+    assert.equal(await plain.locator('.pi-health-dot').count(), 0, 'absent health keeps the plain list row');
+    assert.ok(!(await plain.innerText()).includes(say('缺少学习模型配置', 'A learning model is not configured')));
+    assert.deepEqual(errors, []);
+    console.log(`PASS learning ui profiles ${width} ${locale}`);
+    await context.close();
+}
+
 async function runChat(browser, base, width, locale) {
     // Real chat shell: verifies the pi-chat.js wiring (entries lookup and transcript placement).
     const context = await browser.newContext({ viewport: { width, height: 820 }, locale, isMobile: width < 900, hasTouch: width < 900 });
@@ -313,6 +372,7 @@ async function runChat(browser, base, width, locale) {
     const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', headless: true });
     try {
         for (const [width, locale] of [[393, 'zh-CN'], [1440, 'en-US']]) await runFixture(browser, base, width, locale);
+        for (const [width, locale] of [[393, 'zh-CN'], [1440, 'en-US']]) await runProfiles(browser, base, width, locale);
         for (const [width, locale] of [[393, 'zh-CN'], [1440, 'en-US']]) await runChat(browser, base, width, locale);
     } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

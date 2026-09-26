@@ -36,7 +36,12 @@
 
         function renderList() {
             if (!snapshot) { list.replaceChildren(); return; }
-            list.innerHTML = `<div class="pi-profile-toolbar"><h4>${html(t('助手身份'))}</h4><button id="pi-profile-add" class="settings-primary-button" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i> ${html(t('新建'))}</button></div>${profiles().length ? profiles().map(p => `<button class="pi-profile-row" type="button" data-profile-id="${html(p.id)}" aria-current="${selected === p.id}"><span class="pi-profile-avatar">${avatar(p)}</span><span><strong>${html(p.name)}</strong><small>${html(p.enabled ? t('已启用') : t('已停用'))}</small></span>${healthDot(p.id)}</button>`).join('') : `<p class="pi-profile-note">${html(t('尚无助手身份。'))}</p><button type="button" class="settings-secondary-button" data-profile-assist>${html(t('与 Agent 起草'))}</button>`}`;
+            list.innerHTML = `<div class="pi-profile-toolbar"><h4>${html(t('助手身份'))}</h4><button id="pi-profile-add" class="settings-primary-button" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i> ${html(t('新建'))}</button></div>${profiles().length ? profiles().map(p => `<button class="pi-profile-row" type="button" data-profile-id="${html(p.id)}" aria-current="${selected === p.id}"><span class="pi-profile-avatar">${avatar(p)}</span><span><strong>${html(p.name)}</strong><small>${html(p.enabled ? t('已启用') : t('已停用'))}${healthNote(p.id)}</small></span>${healthDot(p.id)}</button>`).join('') : `<p class="pi-profile-note">${html(t('尚无助手身份。'))}</p><button type="button" class="settings-secondary-button" data-profile-assist>${html(t('与 Agent 起草'))}</button>`}`;
+        }
+        const attentionStates = new Set(['needs-model', 'quota-exhausted', 'failing', 'unavailable']);
+        function healthNote(profileId) {
+            const health = learningHealth.get(profileId);
+            return health?.state && attentionStates.has(health.state) ? ` · ${t(healthLabel[health.state] || '学习当前不可用')}` : '';
         }
         function healthDot(profileId) {
             const health = learningHealth.get(profileId);
