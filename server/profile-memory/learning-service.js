@@ -9,6 +9,7 @@ const { privateDirectory, writePrivateFileSync, privateFileMode } = require('../
 const { replaceFileSync } = require('../pi-win32-native');
 const scope = require('./scope');
 const { skillBody } = require('./tool-mutations');
+const { validateTitleSettings } = require('../workspace-preferences-service');
 
 const ID = /^[a-f0-9-]{36}$/;
 const DEFAULTS = Object.freeze({ enabled: false, correctionEnabled: true, reviewEnabled: false,
@@ -22,6 +23,11 @@ const MAX_SEEN_PER_CURSOR = 8;
 // slot is retired to a spent hash list that refuses re-execution forever.
 const MAX_ACTIONS = 256;
 const BUSY = Symbol('busy');
+const PURPOSES = Object.freeze({ correctionEnabled: 'memory-correction', reviewEnabled: 'memory-review', extractionEnabled: 'memory-extraction' });
+const FAILED_RUN = new Set(['failed', 'uncertain', 'conflict']);
+// Per-action optional fields; every action also carries requestId.
+const ACTION_FIELDS = Object.freeze({ 'review-now': [], cancel: ['jobId'], enable: ['review', 'extraction'],
+    'adopt-legacy': ['model'], 'dismiss-legacy': [] });
 const RETRY_MS = 1000;
 const MAX_ACTION_SPENT = 1024;
 const ACTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -77,6 +83,31 @@ function settingsPatch(changes) {
     return changes;
 }
 const empty = () => ({ version: 1, revision: 0, settings: { ...DEFAULTS }, cursors: {}, jobs: [], recentRuns: [], actions: {}, spent: [] });
+// Today's UTC usage shared by drain admission and the health summary.
+function budget(state, settings) {
+    const today = new Date().toISOString().slice(0, 10);
+    const runs = [...state.jobs, ...state.recentRuns].filter(item => item.startedAt?.startsWith(today));
+    const reservedTokens = runs.reduce((sum, item) => sum + (item.reservedTokens || 6000), 0);
+    return { runs: runs.length, reservedTokens,
+        exhausted: runs.length >= settings.maxRunsPerDay || reservedTokens + 6000 > settings.maxTokensPerDay };
+}
+// First matching state wins: off, unavailable, needs-model, quota-exhausted, failing, ok.
+function health(state, settings, models, knowledgeStatus, installed) {
+    const missingModels = Object.entries(PURPOSES).filter(([key, purpose]) => settings[key] && !models[purpose]?.provider)
+        .map(([, purpose]) => purpose);
+    const usage = budget(state, settings);
+    const recent = state.recentRuns;
+    const failure = [...recent].reverse().find(run => !['completed', 'skipped'].includes(run.status));
+    const lastThree = recent.slice(-3);
+    const summary = !settings.enabled ? 'off'
+        : knowledgeStatus !== 'ready' || !installed ? 'unavailable'
+            : missingModels.length ? 'needs-model'
+                : usage.exhausted ? 'quota-exhausted'
+                    : lastThree.length === 3 && lastThree.every(run => FAILED_RUN.has(run.status)) ? 'failing' : 'ok';
+    return { state: summary, missingModels,
+        lastFailure: failure ? { at: failure.endedAt ?? null, reason: failure.reason, error: failure.error ?? null } : null,
+        today: { runs: usage.runs, maxRuns: settings.maxRunsPerDay, reservedTokens: usage.reservedTokens, maxTokens: settings.maxTokensPerDay } };
+}
 const actionExpired = entry => Date.now() - Date.parse(entry.at) > ACTION_TTL_MS;
 const activeActionCount = state => Object.values(state.actions).filter(entry => !actionExpired(entry)).length;
 function retireAction(state, requestId) {
@@ -89,14 +120,53 @@ function retireAction(state, requestId) {
 function expireActions(state) {
     for (const requestId of Object.keys(state.actions)) if (actionExpired(state.actions[requestId])) retireAction(state, requestId);
 }
+// True when this request ID already ran with the same payload; throws on reuse,
+// expiry or a full journal. Otherwise the caller executes and records it.
+function journalReplay(state, input, key) {
+    const entry = state.actions[input.requestId];
+    if (entry) {
+        // Client action IDs carry an explicit validity window. Reuse after
+        // expiry is refused outright; the action is never re-executed.
+        if (actionExpired(entry)) {
+            retireAction(state, input.requestId);
+            fail('Request ID expired; re-execution is not allowed', 409);
+        }
+        if (entry.h !== key) fail('Request ID reused', 409);
+        return true;
+    }
+    if (state.spent.includes(hash(input.requestId))) fail('Request ID expired; re-execution is not allowed', 409);
+    expireActions(state);
+    if (activeActionCount(state) >= MAX_ACTIONS) fail('Learning action journal is full; reviewed migration required', 409);
+    return false;
+}
+function validAction(input) {
+    if (!input || typeof input !== 'object' || Array.isArray(input) || !Object.hasOwn(ACTION_FIELDS, input.action)
+        || Object.keys(input).some(key => !['requestId', 'action', ...ACTION_FIELDS[input.action]].includes(key))
+        || typeof input.requestId !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{7,99}$/.test(input.requestId)
+        || input.action === 'cancel' && (typeof input.jobId !== 'string' || !/^[a-f0-9]{64}$/.test(input.jobId))
+        || input.action === 'enable' && ['review', 'extraction'].some(key => input[key] !== undefined && typeof input[key] !== 'boolean')) return false;
+    if (input.action !== 'adopt-legacy' || input.model === undefined) return true;
+    const model = input.model;
+    if (!model || typeof model !== 'object' || Array.isArray(model)
+        || Object.keys(model).some(key => !['provider', 'modelId'].includes(key))) return false;
+    try {
+        const patch = validateTitleSettings({ provider: model.provider, modelId: model.modelId });
+        return Boolean(patch.provider) && patch.provider === model.provider && patch.modelId === model.modelId;
+    } catch { return false; }
+}
 const publicJob = ({ id, reason, status, createdAt, startedAt, endedAt, model, usage, costStatus, receiptIds, error }) =>
     ({ id, reason, status, createdAt, ...(startedAt ? { startedAt } : {}), ...(endedAt ? { endedAt } : {}),
         ...(model ? { model } : {}), ...(usage ? { usage } : {}), ...(costStatus ? { costStatus } : {}),
         ...(receiptIds ? { receiptIds } : {}), ...(error ? { error } : {}) });
 
 class ProfileLearningService {
-    constructor({ profiles, store, preferences, knowledge, getAgentDir, createModelRuntime, idle = () => true }) {
-        Object.assign(this, { profiles, store, preferences, knowledge, getAgentDir, createModelRuntime, idle });
+    // idle(job): with a job, its source session and the maintenance lock must be
+    // free; without one, the whole service must be idle.
+    // auxiliaryModels and legacyReviewModel serve legacy auto-learning adoption.
+    constructor({ profiles, store, preferences, knowledge, getAgentDir, createModelRuntime, idle = () => true,
+        auxiliaryModels = null, legacyReviewModel = async () => null }) {
+        Object.assign(this, { profiles, store, preferences, knowledge, getAgentDir, createModelRuntime, idle,
+            auxiliaryModels, legacyReviewModel });
         this.active = new Map(); this.closed = false; this.recovering = false; this.pending = new Set(); this.retries = new Map(); this.enrolling = new Set();
         this.mutations = new Set(); this.scans = new Set();
         this.timer = setInterval(() => { void this.tick(); }, 60000);
@@ -151,6 +221,9 @@ class ProfileLearningService {
         }
         if (state.spent.some(value => typeof value !== 'string') || state.spent.length > MAX_ACTION_SPENT
             || Object.keys(state.actions).length > MAX_ACTIONS) fail('Invalid learning state', 503);
+        // Legacy auto-learning decision: recorded here, never in profiles.json.
+        if (state.legacy !== undefined && (!state.legacy || typeof state.legacy !== 'object'
+            || !['adopted', 'dismissed'].includes(state.legacy.status) || typeof state.legacy.at !== 'string')) fail('Invalid learning state', 503);
         return state;
     }
     write(file, state) {
@@ -204,8 +277,10 @@ class ProfileLearningService {
         }
         const installed = knowledgeStatus === 'ready' && canWrite;
         const settings = { ...DEFAULTS, ...state.settings };
+        const legacy = await this.legacy(profile, state, models);
         return { version: 1, status: installed ? 'ready' : knowledgeStatus === 'ready' ? 'unsupported' : knowledgeStatus, revision: state.revision,
-            settings, jobs: state.jobs.slice(-32).map(publicJob),
+            settings, health: health(state, settings, models, knowledgeStatus, installed), legacy,
+            jobs: state.jobs.slice(-32).map(publicJob),
             recentRuns: state.recentRuns.slice(-32).map(publicJob), capabilities: {
                 installed, background: installed && settings.enabled, scope: 'physical-profile-and-cwd',
                 correction: installed && settings.enabled && settings.correctionEnabled && Boolean(models['memory-correction'].provider),
@@ -216,7 +291,8 @@ class ProfileLearningService {
                 settingsWrite: true,
                 actions: ['save', ...(installed && settings.enabled && activeActionCount(state) < MAX_ACTIONS
                     && state.jobs.length < MAX_JOBS ? ['review-now'] : []),
-                    ...(activeActionCount(state) < MAX_ACTIONS ? ['cancel'] : [])],
+                    ...(activeActionCount(state) < MAX_ACTIONS ? ['cancel', 'enable',
+                        ...(legacy ? ['adopt-legacy', 'dismiss-legacy'] : [])] : [])],
                 capacity: { queued: state.jobs.length, queueLimit: MAX_JOBS,
                     cursorSlotsRemaining: Math.max(0, MAX_CURSORS - Object.keys(state.cursors).length),
                     actionSlotsRemaining: Math.max(0, MAX_ACTIONS - activeActionCount(state)),
@@ -226,6 +302,17 @@ class ProfileLearningService {
                     maxActions: MAX_ACTIONS, actionValidityDays: 7, dedupeWindowPairs: MAX_SEEN_PER_CURSOR },
                 cost: 'provider-reported-or-unknown', budgetDay: 'UTC', providerValidatedOnSave: true,
                 activation: 'next-turn-or-reload-required' } };
+    }
+    // Pending legacy auto-learning (raw profiles.json memory.autoLearn) that was
+    // neither adopted nor dismissed. The public profile API always reports false.
+    async legacy(profile, state, models = this.preferences.getMemoryModels()) {
+        if (profile.memory?.autoLearn !== true || state.legacy) return null;
+        let reviewModel = null;
+        try { reviewModel = await this.legacyReviewModel(); } catch { reviewModel = null; }
+        const reviewModelAvailable = Boolean(reviewModel && this.auxiliaryModels
+            && await this.auxiliaryModels.textModelAvailable(reviewModel));
+        return { autoLearn: true, reviewModel: reviewModel || null, reviewModelAvailable,
+            purposes: Object.values(PURPOSES).filter(purpose => !models[purpose]?.provider) };
     }
     save(id, input) {
         if (this.closed) return Promise.reject(Object.assign(new Error('Learning service is stopping'), { status: 503 }));
@@ -248,34 +335,24 @@ class ProfileLearningService {
         return this.track(this._action(id, input));
     }
     async _action(id, input) {
-        await this.profile(id);
-        if (!input || Object.keys(input).some(key => !['requestId', 'action', 'jobId'].includes(key))
-            || typeof input.requestId !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{7,99}$/.test(input.requestId)
-            || !['review-now', 'cancel'].includes(input.action)
-            || input.action === 'cancel' && (typeof input.jobId !== 'string' || !/^[a-f0-9]{64}$/.test(input.jobId))
-            || input.action === 'review-now' && input.jobId !== undefined) fail('Invalid learning action');
+        const profile = await this.profile(id);
+        if (!validAction(input)) fail('Invalid learning action');
         const key = hash(JSON.stringify(input));
+        if (input.action === 'adopt-legacy') return this.adoptLegacy(id, profile, input, key);
         await this.change(id, state => {
             if (this.closed) fail('Learning service is stopping', 503);
-            const entry = state.actions[input.requestId];
-            if (entry) {
-                // Client action IDs carry an explicit validity window. Reuse after
-                // expiry is refused outright; the action is never re-executed.
-                if (actionExpired(entry)) {
-                    retireAction(state, input.requestId);
-                    fail('Request ID expired; re-execution is not allowed', 409);
-                }
-                if (entry.h !== key) fail('Request ID reused', 409);
-                return false;
-            }
-            if (state.spent.includes(hash(input.requestId))) fail('Request ID expired; re-execution is not allowed', 409);
-            expireActions(state);
-            if (activeActionCount(state) >= MAX_ACTIONS) fail('Learning action journal is full; reviewed migration required', 409);
+            if (journalReplay(state, input, key)) return false;
             if (input.action === 'cancel') {
                 const job = state.jobs.find(item => item.id === input.jobId);
                 if (!job) fail('Job not found', 404);
                 if (job.status === 'running' || job.status === 'cancelling') job.status = 'cancelling';
                 else if (['queued', 'waiting-config'].includes(job.status)) job.status = 'cancelled';
+            } else if (input.action === 'enable') {
+                // Switches only; model routing stays in the auxiliary model settings.
+                state.settings = { ...DEFAULTS, ...state.settings, enabled: true, correctionEnabled: true,
+                    ...(input.review ? { reviewEnabled: true } : {}), ...(input.extraction ? { extractionEnabled: true } : {}) };
+            } else if (input.action === 'dismiss-legacy') {
+                state.legacy ||= { status: 'dismissed', at: new Date().toISOString() };
             } else {
                 if (!state.settings.enabled) fail('Learning is disabled', 409);
                 const source = [...state.jobs, ...state.recentRuns].reverse().find(job => job.sessionId && job.userId && job.assistantId);
@@ -288,6 +365,38 @@ class ProfileLearningService {
             state.actions[input.requestId] = { h: key, at: new Date().toISOString() };
         });
         if (input.action === 'cancel') this.active.get(input.jobId)?.abort();
+        this.wake(id);
+        return this.snapshot(id);
+    }
+    // Model assignment runs outside the journal lock (registry verification may
+    // take seconds); the journal check runs before it and again when recording.
+    async adoptLegacy(id, profile, input, key) {
+        let replay = false, pending = false;
+        await this.change(id, state => {
+            if (this.closed) fail('Learning service is stopping', 503);
+            replay = journalReplay(state, input, key);
+            pending = profile.memory?.autoLearn === true && !state.legacy;
+            return false;
+        });
+        if (replay) return this.snapshot(id);
+        if (!pending) fail('No legacy auto-learning is pending', 409);
+        let model = input.model;
+        if (!model) { try { model = await this.legacyReviewModel(); } catch { model = null; } }
+        if (!model || !this.auxiliaryModels) throw Object.assign(new Error('Legacy review model is unavailable'), { status: 409, code: 'legacy-model-unavailable' });
+        try { await this.auxiliaryModels.assignMissingMemoryModels({ provider: model.provider, modelId: model.modelId }); }
+        catch (error) {
+            if (['model-unavailable', 'model-unverified'].includes(error.code)) throw Object.assign(new Error('Legacy review model is unavailable'),
+                { status: 409, code: 'legacy-model-unavailable' });
+            throw error;
+        }
+        await this.change(id, state => {
+            if (this.closed) fail('Learning service is stopping', 503);
+            if (journalReplay(state, input, key)) return false;
+            if (state.legacy) fail('No legacy auto-learning is pending', 409);
+            state.settings = { ...DEFAULTS, ...state.settings, enabled: true, correctionEnabled: true, reviewEnabled: true };
+            state.legacy = { status: 'adopted', at: new Date().toISOString() };
+            state.actions[input.requestId] = { h: key, at: new Date().toISOString() };
+        });
         this.wake(id);
         return this.snapshot(id);
     }
@@ -420,33 +529,34 @@ class ProfileLearningService {
     }
     async drain(id) {
         if (this.closed || this.recovering) return;
-        if (!this.idle()) return BUSY;
         if (this.active.size >= 2 || [...this.active.values()].some(item => item.profileId === id)) return;
         try {
             const profile = await this.profile(id), models = this.preferences.getMemoryModels();
             if (!profile.enabled || !profile.memory?.enabled || !this.knowledge) return;
+            let busy = false;
             const { result: job } = await this.change(id, state => {
                 const settings = { ...DEFAULTS, ...state.settings };
                 if (!settings.enabled) return false;
-                const today = new Date().toISOString().slice(0, 10);
-                const runs = [...state.jobs, ...state.recentRuns].filter(item => item.startedAt?.startsWith(today));
-                const spent = runs.reduce((sum, item) => sum + (item.reservedTokens || 6000), 0);
                 const eligible = state.jobs.filter(item => ['queued', 'waiting-config'].includes(item.status)
                     && (item.reason === 'manual' || settings[`${item.reason}Enabled`]));
                 eligible.sort((a, b) => (a.reason === 'correction' ? 0 : a.reason === 'extraction' ? 1 : 2)
                     - (b.reason === 'correction' ? 0 : b.reason === 'extraction' ? 1 : 2));
-                const candidate = eligible.find(item => models[`memory-${item.reason === 'manual' ? 'review' : item.reason}`]?.provider);
-                if (!candidate) {
+                const routed = eligible.filter(item => models[`memory-${item.reason === 'manual' ? 'review' : item.reason}`]?.provider);
+                if (!routed.length) {
                     if (eligible[0]?.status === 'queued') { eligible[0].status = 'waiting-config'; return null; }
                     return false;
                 }
+                if (budget(state, settings).exhausted) return false;
+                // Only jobs whose source session is idle; a busy session waits for the retry.
+                const candidate = routed.find(item => this.idle(item));
+                if (!candidate) { busy = true; return false; }
                 const purpose = `memory-${candidate.reason === 'manual' ? 'review' : candidate.reason}`;
                 const model = models[purpose];
-                if (runs.length >= settings.maxRunsPerDay || spent + 6000 > settings.maxTokensPerDay) return false;
                 candidate.status = 'running'; candidate.startedAt = new Date().toISOString(); candidate.reservedTokens = 6000;
                 candidate.model = model; candidate.costStatus = 'unknown';
                 return { ...candidate };
             });
+            if (busy) return BUSY;
             if (!job) return;
             const controller = new AbortController();
             const active = { profileId: id, abort: () => controller.abort(), promise: null };
@@ -581,7 +691,7 @@ class ProfileLearningService {
                 status = 'skipped'; error = 'trusted-write-unavailable'; return;
             }
             commitStarted = true;
-            const result = await this.knowledge.mutateFromNative(id, mutation, trusted);
+            const result = await this.knowledge.mutateFromNative(id, mutation, trusted, { origin: 'learning', reason: job.reason });
             receiptIds = result.receipt?.id ? [result.receipt.id] : [];
             status = result.receipt?.status === 'saved' ? 'completed' : result.receipt?.status || 'uncertain';
             error = status === 'completed' ? undefined : 'knowledge-write-unconfirmed';
@@ -590,9 +700,11 @@ class ProfileLearningService {
             // state, or a 413 source-proof limit) are deterministic refusals,
             // not uncertain publications.
             const rejected = Number.isInteger(failure?.status) && failure.status >= 400 && failure.status < 500 && failure.status !== 409;
-            status = commitStarted ? failure?.status === 409 ? 'conflict' : rejected ? 'skipped' : 'uncertain'
+            // A full memory target is a deterministic refusal: nothing was saved.
+            const full = commitStarted && failure?.status === 409 && failure.code === 'memory-full';
+            status = full ? 'skipped' : commitStarted ? failure?.status === 409 ? 'conflict' : rejected ? 'skipped' : 'uncertain'
                 : signal.aborted ? 'cancelled' : 'failed';
-            error = commitStarted ? rejected ? 'knowledge-rejected' : 'knowledge-write-unconfirmed'
+            error = full ? 'memory-full' : commitStarted ? rejected ? 'knowledge-rejected' : 'knowledge-write-unconfirmed'
                 : signal.aborted ? 'interrupted' : 'learning-failed';
         }
         finally {
