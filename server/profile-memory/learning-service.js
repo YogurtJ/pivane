@@ -79,10 +79,15 @@ const { intent, normalizePhrases } = triggers;
 const temporary = (value, phrases) => triggers.temporary(value, phrases);
 const correction = (value, phrases) => triggers.correction(value, phrases);
 const preference = (value, phrases) => triggers.preference(value, phrases);
+// History before a `pivane-learning-baseline` custom entry (written when older
+// conversations are imported) is kept for reading and continuing, never learned
+// from. Any baseline on the branch counts, so a fork does not re-open old history.
+const LEARNING_BASELINE = 'pivane-learning-baseline';
 const pairs = branch => {
-    const result = [];
+    let result = [];
     let user;
     for (const entry of branch) {
+        if (entry.type === 'custom' && entry.customType === LEARNING_BASELINE) { result = []; user = null; continue; }
         if (entry.type !== 'message') continue;
         if (entry.message?.role === 'user') user = entry;
         if (entry.message?.role === 'assistant' && user && effectiveText(branch, entry)

@@ -979,3 +979,22 @@ test('a learned entry refused by the content scan is recorded as skipped, not un
     const run = (await f.service.snapshot(profileId)).recentRuns[0];
     assert.deepEqual({ status: run.status, error: run.error }, { status: 'skipped', error: 'content-blocked' });
 });
+
+test('imported history before a learning baseline is never queued; turns after it are learned', async t => {
+    const f = await fixture(t); await f.enable({ correctionEnabled: true, reviewEnabled: true, extractionEnabled: true });
+    f.append('不对，应该用旧版校验清单。');
+    f.append('以后都用旧版流程。');
+    const { SessionManager } = await import('@earendil-works/pi-coding-agent');
+    SessionManager.open(f.session.sessionPath).appendCustomEntry('pivane-learning-baseline', { version: 1, source: 'import' });
+    await f.service.register(f.session, 'compaction');
+    await f.service.register(f.session);
+    await pause(); await pause();
+    let snap = await f.service.snapshot(profileId);
+    assert.equal(snap.jobs.length + snap.recentRuns.length, 0, 'nothing before the baseline is learned, even at a boundary');
+    f.append('不对，应该用新版校验清单。');
+    await f.service.register(f.session);
+    await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1);
+    snap = await f.service.snapshot(profileId);
+    assert.equal(snap.recentRuns[0].reason, 'correction');
+    assert.equal(f.calls(), 1);
+});

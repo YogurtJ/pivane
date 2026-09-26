@@ -350,6 +350,9 @@ tool adapter.
   compaction/exit boundaries go to extraction of pairs not yet covered.
   Positive `periodicReviewMinutes` throttles review and lets a periodic scan
   backfill known sessions. Native sessions above 8 MiB are not learned from.
+  Pairs before the last `pivane-learning-baseline` custom entry on the branch
+  (written when older conversations are imported) are never learned from, in
+  any kind or at a boundary; forks keep the baseline.
 - **Writes** go only through `mutateFromNative` with the verified user entry
   as source, so they carry receipts, CAS, tombstones and the source-proof
   checks above. A correction may CAS-replace one matching old record;
