@@ -15,7 +15,7 @@ async function waitFor(check) {
     for (let i = 0; i < 100; i++) { if (await check()) return; await pause(); }
     throw new Error('Learning job did not settle');
 }
-async function fixture(t, { delay } = {}) {
+async function fixture(t, { delay, autoLearn = true } = {}) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'learning-runtime-'));
     const agentDir = path.join(root, 'agent'), cwd = path.join(root, 'workspace');
     fs.mkdirSync(agentDir); fs.mkdirSync(cwd);
@@ -24,7 +24,7 @@ async function fixture(t, { delay } = {}) {
     t.after(() => fs.rmSync(root, { recursive: true, force: true }));
     const { PiSessionStore } = require('../server/pi-session-store');
     const store = new PiSessionStore();
-    const profile = { id: profileId, enabled: true, memory: { enabled: true, autoLearn: true } };
+    const profile = { id: profileId, enabled: true, memory: { enabled: true, autoLearn } };
     const profiles = {
         getProfile: async id => id === profileId ? profile : null,
         state: async () => ({ state: { profiles: [profile] } }),
@@ -50,10 +50,11 @@ async function fixture(t, { delay } = {}) {
     const models = Object.fromEntries(['memory-correction', 'memory-review', 'memory-extraction'].map(id => [id, { provider: 'fixture', modelId: 'cheap' }]));
     preferences.writeDocument({ memoryModels: models });
     let revision = 'a'.repeat(64), calls = 0, mutations = [], snapshotItems = [];
+    const writeOptions = [];
     const knowledge = {
         snapshot: async () => ({ status: 'ready', revision, items: snapshotItems, hasMore: false, capabilities: { memory: true } }),
-        mutateFromNative: async (_id, value, native) => { assert.equal(native.sessionId, session.id);
-            assert.ok(native.entryId); mutations.push(value); revision = 'b'.repeat(64);
+        mutateFromNative: async (_id, value, native, options) => { assert.equal(native.sessionId, session.id);
+            assert.ok(native.entryId); mutations.push(value); writeOptions.push(options); revision = 'b'.repeat(64);
             return { receipt: { id: 'receipt-1', status: 'saved' } }; },
         mutate: async () => { throw new Error('Untrusted mutation path'); }
     };
@@ -71,7 +72,7 @@ async function fixture(t, { delay } = {}) {
     const enable = async changes => service.save(profileId, { expectedRevision: (await service.snapshot(profileId)).revision,
         changes: { enabled: true, ...changes } });
     return { service, profiles, store, session: { ...session, sessionId: session.id, sessionPath: session.path }, cwd, append, preferences, knowledge, runtime, enable,
-        calls: () => calls, mutations, revision: value => { revision = value; }, items: value => { snapshotItems = value; } };
+        calls: () => calls, mutations, writeOptions, profile, revision: value => { revision = value; }, items: value => { snapshotItems = value; } };
 }
 
 test('Chinese corrections take priority, temporary instructions never persist, duplicate native events share a cursor', async t => {
@@ -417,6 +418,14 @@ test('learning REST is authenticated, revisioned, bounded and does not start a w
     assert.equal((await fetch(url, { method: 'PUT', headers, body: JSON.stringify({ expectedRevision: initial.revision,
         changes: { enabled: true } }) })).status, 409);
     assert.equal(gateway.supervisor.workers.size, 0);
+    assert.equal(initial.health.state, 'off');
+    assert.equal(initial.legacy, null);
+    const actions = `${url}/actions`;
+    const enabled = await fetch(actions, { method: 'POST', headers, body: JSON.stringify({ requestId: 'http-enable-001', action: 'enable' }) });
+    assert.equal(enabled.status, 200);
+    assert.deepEqual((await enabled.json()).health.missingModels, ['memory-correction']);
+    const adopt = await fetch(actions, { method: 'POST', headers, body: JSON.stringify({ requestId: 'http-adopt-001', action: 'adopt-legacy' }) });
+    assert.equal(adopt.status, 409, 'a profile without legacy auto-learning has nothing to adopt');
     const activity = await (await fetch(url.replace(`/profiles/${profileId}/learning`, '/activity'), { headers })).json();
     assert.equal(typeof activity.learningBusy, 'boolean');
 });
@@ -489,4 +498,210 @@ test('a correction registered while workers are still busy runs as soon as they 
     // Well inside the 60 s periodic tick: the busy retry picks the job up.
     await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1, 5000);
     assert.equal(f.calls(), 1);
+});
+
+// Mirrors the route wiring: idle(job) checks the source session and maintenance lock.
+function sessionIdle(f, t) {
+    const { PiAgentSupervisor } = require('../server/pi-agent-supervisor');
+    const supervisor = new PiAgentSupervisor();
+    t.after(() => supervisor.dispose());
+    const maintenance = { locked: false };
+    const busy = new Set();
+    const worker = file => ({ isIdle: () => !busy.has(file), retainsBackgroundWork: () => false, dispose() {} });
+    const other = path.join(path.dirname(f.session.sessionPath), 'other-session.jsonl');
+    fs.writeFileSync(other, '');
+    for (const file of [f.session.sessionPath, other]) supervisor.workers.set(fs.realpathSync.native(file), worker(file));
+    f.service.idle = job => !maintenance.locked && (job ? supervisor.isSessionIdle(job.sessionPath) : supervisor.isIdle());
+    return { maintenance, busy, other };
+}
+
+test('another busy session does not hold back this session correction', async t => {
+    const f = await fixture(t); const idle = sessionIdle(f, t);
+    idle.busy.add(idle.other);
+    await f.enable();
+    f.append('纠正一下：不是旧版校验清单，而是新版校验清单，以后都按新版。');
+    await f.service.register(f.session);
+    await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1);
+    assert.equal(f.calls(), 1);
+    assert.deepEqual(f.writeOptions[0], { origin: 'learning', reason: 'correction' });
+});
+
+test('a busy source session waits, then its correction runs about one second after it becomes idle', async t => {
+    const f = await fixture(t); const idle = sessionIdle(f, t);
+    idle.busy.add(f.session.sessionPath);
+    await f.enable();
+    f.append('纠正一下：不是旧版校验清单，而是新版校验清单，以后都按新版。');
+    await f.service.register(f.session);
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    assert.equal(f.calls(), 0, 'no model call while the source session is busy');
+    assert.equal((await f.service.snapshot(profileId)).jobs[0]?.status, 'queued');
+    const freed = Date.now();
+    idle.busy.delete(f.session.sessionPath);
+    await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1);
+    assert.ok(Date.now() - freed < 1800, 'the busy retry picks the job up well before the periodic tick');
+    assert.equal(f.calls(), 1);
+});
+
+test('the maintenance lock blocks every learning job even when its session is idle', async t => {
+    const f = await fixture(t); const idle = sessionIdle(f, t);
+    idle.maintenance.locked = true;
+    await f.enable();
+    f.append('纠正一下：不是旧版校验清单，而是新版校验清单，以后都按新版。');
+    await f.service.register(f.session);
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    assert.equal(f.calls(), 0);
+    assert.equal((await f.service.snapshot(profileId)).jobs[0]?.status, 'queued');
+    idle.maintenance.locked = false;
+    await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1);
+    assert.equal(f.calls(), 1);
+});
+
+test('a memory-full refusal is recorded as skipped memory-full, not a conflict', async t => {
+    const f = await fixture(t); await f.enable({ reviewEnabled: true });
+    const options = [];
+    f.knowledge.mutateFromNative = async (_id, _value, _native, value) => {
+        options.push(value);
+        throw Object.assign(new Error('Memory limit reached'), { status: 409, code: 'memory-full',
+            details: { target: 'memory', chars: 15990, limit: 16000, needed: 16030 } });
+    };
+    f.append('记住以后稳定采用合成流程。');
+    await f.service.register(f.session);
+    await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1);
+    const snap = await f.service.snapshot(profileId);
+    assert.deepEqual({ status: snap.recentRuns[0].status, error: snap.recentRuns[0].error }, { status: 'skipped', error: 'memory-full' });
+    assert.deepEqual(options[0], { origin: 'learning', reason: 'correction' });
+    assert.equal(snap.health.lastFailure, null, 'a skipped run is not a failure');
+    f.knowledge.mutateFromNative = async () => { throw Object.assign(new Error('changed'), { status: 409 }); };
+    f.append('记住以后稳定采用另一合成流程。');
+    await f.service.register(f.session);
+    await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 2);
+    assert.equal((await f.service.snapshot(profileId)).recentRuns[1].status, 'conflict');
+});
+
+test('health reports off, unavailable, needs-model, quota, failing and ok in precedence order', async t => {
+    const f = await fixture(t);
+    let snap = await f.service.snapshot(profileId);
+    assert.equal(snap.health.state, 'off');
+    assert.deepEqual(snap.health.today, { runs: 0, maxRuns: 4, reservedTokens: 0, maxTokens: 24000 });
+    await f.enable({ reviewEnabled: true });
+    assert.equal((await f.service.snapshot(profileId)).health.state, 'ok');
+    f.preferences.writeDocument({ memoryModels: { 'memory-correction': { provider: 'fixture', modelId: 'cheap' } } });
+    snap = await f.service.snapshot(profileId);
+    assert.deepEqual({ state: snap.health.state, missing: snap.health.missingModels }, { state: 'needs-model', missing: ['memory-review'] });
+    const original = f.knowledge.snapshot;
+    f.knowledge.snapshot = async () => ({ status: 'error' });
+    assert.equal((await f.service.snapshot(profileId)).health.state, 'unavailable');
+    f.knowledge.snapshot = original;
+    f.preferences.writeDocument({ memoryModels: Object.fromEntries(['memory-correction', 'memory-review', 'memory-extraction']
+        .map(id => [id, { provider: 'fixture', modelId: 'cheap' }])) });
+    const now = new Date().toISOString();
+    await f.service.change(profileId, state => {
+        state.recentRuns = ['completed', 'failed', 'uncertain', 'conflict'].map((status, i) => ({ id: String(i).repeat(64),
+            reason: 'review', status, error: status === 'completed' ? undefined : `${status}-error`,
+            createdAt: now, startedAt: '2000-01-01T00:00:00.000Z', endedAt: `2000-01-01T00:00:0${i}.000Z` }));
+    });
+    snap = await f.service.snapshot(profileId);
+    assert.equal(snap.health.state, 'failing');
+    assert.deepEqual(snap.health.lastFailure, { at: '2000-01-01T00:00:03.000Z', reason: 'review', error: 'conflict-error' });
+    await f.service.change(profileId, state => {
+        state.recentRuns.push(...[0, 1, 2, 3].map(i => ({ id: String(i + 4).repeat(64), reason: 'review', status: 'completed',
+            createdAt: now, startedAt: now, endedAt: now, reservedTokens: 6000 })));
+    });
+    snap = await f.service.snapshot(profileId);
+    assert.equal(snap.health.state, 'quota-exhausted');
+    assert.deepEqual(snap.health.today, { runs: 4, maxRuns: 4, reservedTokens: 24000, maxTokens: 24000 });
+    assert.equal(snap.health.lastFailure.error, 'conflict-error');
+});
+
+test('enable action switches learning on atomically, keeps model routing and is idempotent', async t => {
+    const f = await fixture(t);
+    f.preferences.writeDocument({ memoryModels: {} });
+    const before = f.preferences.readDocument();
+    const input = { requestId: 'enable-request-001', action: 'enable', review: true };
+    const snap = await f.service.action(profileId, input);
+    assert.deepEqual([snap.settings.enabled, snap.settings.correctionEnabled, snap.settings.reviewEnabled, snap.settings.extractionEnabled],
+        [true, true, true, false]);
+    assert.equal(snap.health.state, 'needs-model');
+    assert.deepEqual(snap.health.missingModels, ['memory-correction', 'memory-review']);
+    assert.deepEqual(f.preferences.readDocument(), before, 'enable does not modify model settings');
+    const again = await f.service.action(profileId, input);
+    assert.equal(again.revision, snap.revision);
+    await assert.rejects(f.service.action(profileId, { ...input, extraction: true }), error => error.status === 409);
+    await assert.rejects(f.service.action(profileId, { requestId: 'enable-request-002', action: 'enable', review: 'yes' }),
+        /Invalid learning action/);
+    await assert.rejects(f.service.action(profileId, { requestId: 'enable-request-003', action: 'enable', jobId: 'f'.repeat(64) }),
+        /Invalid learning action/);
+    const extra = await f.service.action(profileId, { requestId: 'enable-request-004', action: 'enable', review: false, extraction: true });
+    assert.deepEqual([extra.settings.reviewEnabled, extra.settings.extractionEnabled], [true, true], 'false leaves a switch unchanged');
+});
+
+function legacyFixture(f, reviewModel) {
+    const { PiAuxiliaryModelsService } = require('../server/pi-auxiliary-models-service');
+    f.service.auxiliaryModels = new PiAuxiliaryModelsService({ preferences: f.preferences, titles: { settingsChanged() {} },
+        createModelRuntime: async () => f.runtime });
+    f.service.legacyReviewModel = async () => reviewModel;
+}
+
+test('legacy auto-learning is adopted with its available old model, filling only unconfigured purposes', async t => {
+    const f = await fixture(t);
+    f.preferences.writeDocument({ memoryModels: { 'memory-correction': { provider: 'fixture', modelId: 'kept' } } });
+    legacyFixture(f, { provider: 'fixture', modelId: 'cheap' });
+    let snap = await f.service.snapshot(profileId);
+    assert.deepEqual(snap.legacy, { autoLearn: true, reviewModel: { provider: 'fixture', modelId: 'cheap' },
+        reviewModelAvailable: true, purposes: ['memory-review', 'memory-extraction'] });
+    assert.ok(snap.capabilities.actions.includes('adopt-legacy'));
+    assert.equal(snap.settings.enabled, false, 'nothing is enabled until the user adopts');
+    const input = { requestId: 'adopt-legacy-0001', action: 'adopt-legacy' };
+    snap = await f.service.action(profileId, input);
+    assert.equal(snap.legacy, null);
+    assert.deepEqual([snap.settings.enabled, snap.settings.correctionEnabled, snap.settings.reviewEnabled, snap.settings.extractionEnabled],
+        [true, true, true, false]);
+    assert.deepEqual(f.preferences.getMemoryModels(), { 'memory-correction': { provider: 'fixture', modelId: 'kept' },
+        'memory-review': { provider: 'fixture', modelId: 'cheap' }, 'memory-extraction': { provider: 'fixture', modelId: 'cheap' } });
+    assert.equal(f.profile.memory.autoLearn, true, 'the profile autoLearn field is not rewritten');
+    const replay = await f.service.action(profileId, input);
+    assert.equal(replay.revision, snap.revision, 'the same request ID replays without a second write');
+    await assert.rejects(f.service.action(profileId, { requestId: 'adopt-legacy-0002', action: 'adopt-legacy' }),
+        error => error.status === 409);
+    assert.equal(f.calls(), 0, 'adoption never calls a model');
+});
+
+test('an unavailable legacy model is refused with 409 until a registry-verified model is supplied', async t => {
+    const f = await fixture(t);
+    f.preferences.writeDocument({ memoryModels: {} });
+    legacyFixture(f, { provider: 'fixture', modelId: 'retired' });
+    assert.equal((await f.service.snapshot(profileId)).legacy.reviewModelAvailable, false);
+    await assert.rejects(f.service.action(profileId, { requestId: 'adopt-legacy-0003', action: 'adopt-legacy' }),
+        error => error.status === 409 && error.code === 'legacy-model-unavailable');
+    await assert.rejects(f.service.action(profileId, { requestId: 'adopt-legacy-0004', action: 'adopt-legacy',
+        model: { provider: 'fixture', modelId: 'missing' } }), error => error.code === 'legacy-model-unavailable');
+    let snap = await f.service.snapshot(profileId);
+    assert.equal(snap.settings.enabled, false);
+    assert.deepEqual(snap.legacy.purposes, ['memory-correction', 'memory-review', 'memory-extraction']);
+    await assert.rejects(f.service.action(profileId, { requestId: 'adopt-legacy-0005', action: 'adopt-legacy',
+        model: { provider: 'fixture', modelId: 'cheap', extra: true } }), /Invalid learning action/);
+    snap = await f.service.action(profileId, { requestId: 'adopt-legacy-0006', action: 'adopt-legacy',
+        model: { provider: 'fixture', modelId: 'cheap' } });
+    assert.equal(snap.legacy, null);
+    assert.equal(snap.settings.reviewEnabled, true);
+    assert.deepEqual(Object.values(f.preferences.getMemoryModels()), Array(3).fill({ provider: 'fixture', modelId: 'cheap' }));
+});
+
+test('dismissed legacy auto-learning is not offered again and profiles without it show no banner', async t => {
+    const f = await fixture(t);
+    legacyFixture(f, { provider: 'fixture', modelId: 'cheap' });
+    const before = f.preferences.readDocument();
+    assert.ok((await f.service.snapshot(profileId)).legacy);
+    const input = { requestId: 'dismiss-legacy-01', action: 'dismiss-legacy' };
+    const snap = await f.service.action(profileId, input);
+    assert.equal(snap.legacy, null);
+    assert.equal(snap.settings.enabled, false);
+    assert.ok(!snap.capabilities.actions.includes('adopt-legacy'));
+    assert.deepEqual(f.preferences.readDocument(), before);
+    assert.equal((await f.service.action(profileId, input)).revision, snap.revision);
+    await assert.rejects(f.service.action(profileId, { requestId: 'adopt-legacy-0007', action: 'adopt-legacy' }),
+        error => error.status === 409);
+    const plain = await fixture(t, { autoLearn: false });
+    legacyFixture(plain, { provider: 'fixture', modelId: 'cheap' });
+    assert.equal((await plain.service.snapshot(profileId)).legacy, null);
 });

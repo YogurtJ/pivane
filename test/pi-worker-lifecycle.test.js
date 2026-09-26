@@ -62,3 +62,31 @@ test('supervisor idle includes starting and temporary workers without exposing t
     value.disposed = true;
     assert.equal(supervisor.isIdle(), false);
 });
+
+test('isSessionIdle checks only the realpath-matched worker of one native session', async t => {
+    const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'session-idle-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const own = path.join(root, 'own.jsonl'), other = path.join(root, 'other.jsonl'), alias = path.join(root, 'alias.jsonl');
+    fs.writeFileSync(own, ''); fs.writeFileSync(other, ''); fs.symlinkSync(own, alias);
+    const supervisor = new PiAgentSupervisor();
+    t.after(() => supervisor.dispose());
+    assert.equal(supervisor.isSessionIdle(own), true, 'no worker for this session counts as idle');
+    const state = { own: false, other: false, background: false };
+    supervisor.workers.set(fs.realpathSync.native(own), { isIdle: () => !state.own, retainsBackgroundWork: () => state.background, dispose() {} });
+    supervisor.workers.set(fs.realpathSync.native(other), { isIdle: () => !state.other, retainsBackgroundWork: () => false, dispose() {} });
+    state.other = true;
+    assert.equal(supervisor.isIdle(), false);
+    assert.equal(supervisor.isSessionIdle(own), true, 'another busy session does not block this one');
+    assert.equal(supervisor.isSessionIdle(alias), true);
+    state.own = true;
+    assert.equal(supervisor.isSessionIdle(own), false);
+    assert.equal(supervisor.isSessionIdle(alias), false, 'a symlinked request path resolves to the same worker');
+    state.own = false; state.background = true;
+    assert.equal(supervisor.isSessionIdle(own), false, 'detached background work keeps the session busy');
+    state.background = false;
+    supervisor.starting.set(fs.realpathSync.native(own), Promise.resolve());
+    assert.equal(supervisor.isSessionIdle(own), false, 'a worker still starting for this session is busy');
+    supervisor.starting.clear();
+    assert.equal(supervisor.isSessionIdle(own), true);
+});
