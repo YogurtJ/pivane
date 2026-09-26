@@ -113,7 +113,7 @@ arbitrary path can be read through the route.
 
 `mountProfileKnowledgeRoutes(router, { service })` mounts same-origin GET
 `/profiles/:id/knowledge?kind=memory|skill&query=&offset=&sessionId=`, GET
-`/profiles/:id/knowledge/items/:itemId`, and POST
+`/profiles/:id/knowledge/items/:itemId`, GET `/profiles/:id/knowledge/injection?sessionId=`, and POST
 `/profiles/:id/knowledge/mutations`. The service is
 `new ProfileKnowledgeService({ profiles, getAgentDir, bundlePath })` from
 `server/profile-memory/knowledge-service.js`; mount it once and pass the **same
@@ -125,12 +125,14 @@ bounded to 65,536 characters and marks truncated legacy entries read-only.
 `capabilities.operations` lists supported commands, and `memory`/`skill` flags
 specify which kind is writable. The additive `capabilities.journal` object
 reports live receipt/request/tombstone counts, their windows and real limits.
-`projectWrites:false` applies to HTTP; only a
-verified native source can write the physical cwd scope. No logical assistant
+`projectWrites:false` still means HTTP cannot write project memory without a
+session; `projectWritesBySession:true` (memory enabled and installed) means it can
+with a verified `sessionId` (below). Only a verified native source or a verified
+session can write the physical cwd scope. No logical assistant
 project isolation is claimed. Installed Pi skills are never writable.
 
 POST accepts `{requestId,expectedRevision,operation,kind,...}` with operations
-`create|update|delete|restore|enable|disable|undo`. Create/update require
+`create|update|delete|restore|enable|disable|undo|consolidate`. Create/update require
 explicit content; memory requires category `fact|preference|correction|failure|procedure`.
 Skill names are lowercase slugs of at most 64 characters. Updates and state
 changes require `itemId` and `itemRevision`; undo requires `receiptId` and
@@ -163,6 +165,51 @@ profile cap. A write that would exceed the cap is refused with 409
 `code: 'memory-full'` and `details: {target, chars, limit, needed}` (`needed` is
 the length after the write); the HTTP JSON error body carries `code` and
 `details` next to `error`.
+
+`operation:'consolidate'` (HTTP `mutate()` only; `mutateFromNative` and the agent
+tools refuse it) takes `{kind:'memory', target:'memory'|'user', items:[{itemId,
+itemRevision}], content, category}` with 2–20 distinct items. Every item must be
+active, writable, profile scope, of the requested target and at its stated
+revision, otherwise the whole batch is refused with 409 and nothing is written.
+`content`/`category` are validated like create, and the merged body must differ
+from every source. One document publication removes all sources and appends the
+merged entry; the cap is checked on the merged document (`memory-full` as above).
+Each source body becomes a tombstone, so learning cannot write it back. The
+receipt has `operation:'consolidate'`, `origin:'manual'`, `itemId` (the merged
+entry), `consolidated` (the source IDs) and the merged `preview`; the earlier
+receipts of the sources are marked `superseded`. Undo of that receipt checks the
+merged entry and every source's current revision, restores all sources and
+retires the merged entry in one publication, lifts the sources' tombstones and
+tombstones the merged body; this undo receipt is itself `undoable:false`. The
+before-copies of a consolidation are held on the merged and each source record;
+when the history budget gives them up the receipt becomes `undoable:false`.
+Publication uses the same pending marker (it carries the whole next journal), so
+a failure after publication is repaired by retrying the same requestId and input.
+
+HTTP project memory edits use `scope:'project', sessionId` with `kind:'memory'`
+and `create|update|delete|undo`; a client `projectKey` is still refused. The
+service finds the unique native file `*_<sessionId>.jsonl` under the sessions
+root, streams its header and custom entries (64 MiB budget, 413 beyond it), and
+requires exactly one current-ID binding to this profile and a canonical header
+cwd. The server derives `projectKey=sha256(cwd)` and repeats the proof (same file
+identity, cwd and binding) immediately before publication, so a session rebound
+to another profile or moved to another cwd in between is refused. These edits
+only touch that cwd's project items; their receipts are `origin:'manual'` with
+`source:{sessionId}` (no `entryId`), and their request IDs follow the client
+7-day validity rule. Consolidation and restore are not available this way.
+
+`GET /profiles/:id/knowledge/injection` is read-only. It renders the next turn's
+block with the bundle `MemoryStore.formatForSystemPrompt` and, with `sessionId`,
+`formatProjectBlock(cwd)` for the physical cwd proven from that session as above
+(never a client cwd), joined exactly like the extension. Stores are loaded only
+from existing canonical directories whose Markdown passes the private-file
+checks before and after loading; missing directories are not created. It returns
+`{version:1, status, block, chars, entries, profile:{chars,entries},
+project:{chars,entries}|null, lastRead}`; `status` is `ready`, `pending`,
+`disabled`, `missing` or `unsupported`; `block` is cut at 64 KiB on a UTF-8
+character boundary with `truncated:true` while `chars` stays the full length.
+`lastRead` is the latest `pivane-profile-memory-read` entry for this profile in
+that session: `{at, generation, provided, chars?, entries?}`, or null.
 
 `service.mutateFromNative(profileId, input, { sessionPath, sessionId, entryId,
 cwd }, { origin, reason }?)` is **server/worker-only**. The optional fourth
@@ -298,7 +345,9 @@ tool adapter.
   refusals (including the 413 source-proof limit) are `skipped/knowledge-rejected`.
 
 Each eligible `before_agent_start` re-reads profile and physical-cwd memory
-from disk and appends a native `pivane-profile-memory-read` entry.
+from disk and appends a native `pivane-profile-memory-read` entry, which also
+records `chars` (the injected block length) and `entries` (rendered MEMORY/USER
+plus project entries).
 `get_runtime_configuration.memoryRead` reports that last recorded read; it is
 evidence of what was provided, not that the model followed it. This is not a
 mastery/progress inference engine, and provider cancellation behaviour must

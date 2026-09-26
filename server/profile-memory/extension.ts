@@ -157,14 +157,19 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
                 await store.loadFromDisk();
                 await projectStore.loadFromDisk();
                 if (!allowed(ctx) || await indexUnavailable()) throw new Error('Profile memory changed or needs repair');
-                const block = [store.formatForSystemPrompt(), projectStore.formatProjectBlock(context.cwd)].filter(Boolean).join('\n\n');
-                return { generation, block };
+                const profileBlock = store.formatForSystemPrompt(), projectBlock = projectStore.formatProjectBlock(context.cwd);
+                const block = [profileBlock, projectBlock].filter(Boolean).join('\n\n');
+                // Entry count as rendered: profile MEMORY/USER entries plus this cwd's project entries.
+                const entries = (profileBlock ? store.getMemoryEntries().length + store.getUserEntries().length : 0)
+                    + (projectBlock ? projectStore.getMemoryEntries().length : 0);
+                return { generation, block, entries };
             }, ctx.signal);
             if (!allowed(ctx)) return;
             const loadedAt = new Date().toISOString();
             if (typeof pi.appendEntry === 'function') pi.appendEntry('pivane-profile-memory-read', {
                 version: 1, profileId: context.profileId, generation: loaded.generation, loadedAt,
-                scope: 'profile-and-physical-cwd', provided: Boolean(loaded.block) });
+                scope: 'profile-and-physical-cwd', provided: Boolean(loaded.block),
+                chars: loaded.block.length, entries: loaded.entries });
             if (loaded.block) return { systemPrompt: event.systemPrompt + '\n\n' + loaded.block };
         });
     }
