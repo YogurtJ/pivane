@@ -8,37 +8,51 @@
     const option = (value, label) => { const e = node('option', label); e.value = value; return e; };
     const label = { memory: '记忆', skill: '已学习技能', fact: '事实', preference: '偏好', correction: '纠错', failure: '失败经验', procedure: '流程',
         active: '启用', draft: '草稿', disabled: '停用', deleted: '已删除', saved: '已保存', pending: '待同步', failed: '失败', conflict: '版本冲突', skipped: '跳过',
-        create: '新建', update: '更新', delete: '删除', restore: '恢复条目', enable: '启用', disable: '停用', undo: '撤销' };
+        create: '新建', update: '更新', delete: '删除', restore: '恢复条目', enable: '启用', disable: '停用', undo: '撤销', consolidate: '整理合并' };
     const statusLabel = { ready: '就绪', pending: '待同步', missing: '缺失', disabled: '未启用', unsupported: '不支持', error: '错误' };
-    const healthLabel = { ok: '学习正常', off: '学习已关闭', 'needs-model': '缺少学习模型配置', 'quota-exhausted': '今日学习额度已用完', failing: '最近学习连续失败', unavailable: '学习当前不可用' };
+    const healthLabel = { ok: '学习正常', off: '学习已关闭', 'needs-model': '缺少学习模型配置', 'quota-exhausted': '今日学习额度已用完', failing: '最近学习连续失败', unavailable: '学习当前不可用', 'memory-full': '记忆已满' };
     const healthTone = { ok: 'ok', off: 'off', 'needs-model': 'warn', 'quota-exhausted': 'warn', failing: 'bad', unavailable: 'bad' };
     const purposeLabel = { 'memory-correction': '纠错模型', 'memory-review': '复盘模型', 'memory-extraction': '提炼模型' };
     const uuid = () => globalThis.crypto?.randomUUID?.() || `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const jobLabel = { queued: '排队中', running: '运行中', 'waiting-config': '等待模型配置', cancelling: '取消中', cancelled: '已取消', completed: '已完成',
         failed: '失败', uncertain: '待核对', skipped: '已跳过', manual: '手动复盘', periodic: '周期复盘', correction: '纠错识别',
         review: '复盘', extraction: '候选提取' };
-    const operations = new Set(['create', 'update', 'delete', 'restore', 'enable', 'disable', 'undo']);
-    const allowed = (snapshot, key, kind, item) => {
-        if (snapshot?.status !== 'ready') return false;
-        const c = snapshot.capabilities;
-        if (!c || typeof c !== 'object') return false;
-        if (operations.has(key)) {
-            if (c[kind] !== true || item?.readOnly || item?.truncated || item?.scope === 'project' && c.projectWrites !== true) return false;
-            if (kind === 'memory' && ['enable', 'disable'].includes(key)) return false;
-            const actions = c.operations?.[kind] || c.actions?.[kind] || c.operations || c.actions;
-            if (Array.isArray(actions) && !actions.includes(key)) return false;
-            return key !== 'update' || !item || item.state === 'active';
-        }
-        const actions = c.actions || c.operations;
-        return Array.isArray(actions) && actions.includes(key) || c[key] === true;
-    };
+    const operations = new Set(['create', 'update', 'delete', 'restore', 'enable', 'disable', 'undo', 'consolidate']);
     const readyRevision = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
     const rejected = error => [400, 403, 404, 413, 422, 429].includes(error?.status);
     function create({ apiFetch, root }) {
-        let profile = '', kind = 'skill', query = '', offset = 0, serial = 0, active = false;
+        let profile = '', kind = 'skill', query = '', offset = 0, serial = 0, active = false, draftOnly = false;
+        // A verified session id (U2.3) unlocks editing the project memory of that session's
+        // directory only; without it project entries stay read-only.
+        let sessionScope = '';
+        // Project writes are limited to these operations and need the session verification.
+        const projectOperations = ['create', 'update', 'delete', 'undo'];
+        function allowed(snapshot, key, kind, item) {
+            if (snapshot?.status !== 'ready') return false;
+            const c = snapshot.capabilities;
+            if (!c || typeof c !== 'object') return false;
+            if (operations.has(key)) {
+                if (c[kind] !== true || item?.readOnly || item?.truncated) return false;
+                if (item?.scope === 'project' && c.projectWrites !== true
+                    && !(sessionScope && item.kind === 'memory' && c.projectWritesBySession === true && projectOperations.includes(key))) return false;
+                if (kind === 'memory' && ['enable', 'disable'].includes(key)) return false;
+                const actions = c.operations?.[kind] || c.actions?.[kind] || c.operations || c.actions;
+                if (Array.isArray(actions) && !actions.includes(key)) return false;
+                return key !== 'update' || !item || item.state === 'active';
+            }
+            const actions = c.actions || c.operations;
+            return Array.isArray(actions) && actions.includes(key) || c[key] === true;
+        }
         let snapshot = null, learning = null, learningDraft = null, selected = null, detail = null, draft = null, editing = false, reviewed = true;
         let busy = false, learningBusy = false, learningEpoch = 0, uncertain = null, learningUncertain = null, receipt = null, notice = '', conflict = false;
         let memoryFull = false, revealItem = null, modelCatalog = null, legacyModel = null;
+        // Consolidation proposals (learning) are applied through the knowledge mutations;
+        // group drafts and applied groups live only in this page.
+        let proposalDrafts = new Map(), appliedGroups = new Set();
+        // itemId -> current revision (null when verified missing) used for proposal staleness.
+        let itemRevisions = new Map(), itemChecks = new Set();
+        // Next-turn injection preview (K2.2): null when the backend does not provide it yet.
+        let injection;
         const draftsByProfile = new Map();
         const base = () => `/api/pi/profiles/${encodeURIComponent(profile)}`;
         const current = (profileId, generation) => active && root.isConnected && profile === profileId && serial === generation;
@@ -47,18 +61,39 @@
             ? item.content.slice(`---\nname: ${item.name}\ndescription: ${item.description || ''}\n---\n`.length) : item?.content || '';
         const dirty = () => draft && ['name', 'description', 'content', 'category', 'scope'].some(key => draft[key] !== (key === 'content' ? bodyFor(original()) : original()?.[key] ?? (key === 'category' ? 'fact' : key === 'scope' ? 'profile' : '')));
         const discard = () => !dirty() || confirm(t('放弃未保存的知识草稿？'));
-        function open(id) {
+        function open(id, options = {}) {
             active = true;
-            if (profile === id) { render(); if (!snapshot || uncertain) void load(); if (!learning) void loadLearning(); return; }
+            // U2.3: only a caller-verified session id enables project memory writes; without
+            // one project entries stay read-only and the old display is kept.
+            if (options && typeof options === 'object' && options.sessionId !== undefined) sessionScope = String(options.sessionId || '');
+            if (profile === id) {
+                viewOptions(options);
+                render(); if (!snapshot || uncertain) void load(); if (!learning) void loadLearning(); return;
+            }
             if (profile) draftsByProfile.set(profile, { kind, query, offset, selected, detail, draft, editing, reviewed, uncertain, learningUncertain, receipt, conflict, learningDraft });
-            profile = id || ''; serial++; learningEpoch++; memoryFull = false; legacyModel = null;
+            profile = id || ''; serial++; learningEpoch++; memoryFull = false; legacyModel = null; draftOnly = false;
+            proposalDrafts = new Map(); appliedGroups = new Set(); itemRevisions = new Map(); itemChecks = new Set(); injection = undefined;
             ({ kind = 'skill', query = '', offset = 0, selected = null, detail = null, draft = null, editing = false,
                 reviewed = true, uncertain = null, learningUncertain = null, receipt = null, conflict = false, learningDraft = null } = draftsByProfile.get(profile) || {});
-            snapshot = learning = null; notice = ''; render(); if (profile) { void load(); void loadLearning(); }
+            snapshot = learning = null; notice = '';
+            viewOptions(options);
+            render(); if (profile) { void load(); void loadLearning(); }
+        }
+        // Apply the caller's view request after any saved per-profile state is restored.
+        function viewOptions(options) {
+            if (!options || typeof options !== 'object') return;
+            if (['memory', 'skill'].includes(options.kind) && options.kind !== kind && discard()) {
+                kind = options.kind; offset = 0; selected = detail = draft = null; editing = false;
+            }
+            // U2.4: jump to the learned skills filtered to the draft entries awaiting review.
+            if (options.drafts === true && (kind !== 'skill' || !draftOnly) && discard()) {
+                kind = 'skill'; draftOnly = true; offset = 0; selected = detail = draft = null; editing = false;
+            }
         }
         // Open one entry (from a chat hint): switch to its kind, then select it even when it is
         // not on the first listed page.
-        function reveal(itemId, itemKind) {
+        function reveal(itemId, itemKind, sessionId) {
+            if (sessionId) sessionScope = String(sessionId);
             if (!itemId) return;
             if (['memory', 'skill'].includes(itemKind) && itemKind !== kind) {
                 if (!discard()) return;
@@ -81,7 +116,7 @@
                 if (current(profileId, generation) && result?.status === 'ready' && result.item?.id === itemId) choose(result.item);
             }).catch(() => {});
         }
-        function close() { active = false; serial++; learningEpoch++; snapshot = learning = null; root.replaceChildren(); }
+        function close() { active = false; serial++; learningEpoch++; sessionScope = ''; snapshot = learning = null; root.replaceChildren(); }
         async function load() {
             if (!profile || !active) return;
             const generation = ++serial, profileId = profile; notice = t('正在读取已保存数据…'); render();
@@ -91,6 +126,7 @@
                 if (data?.version !== 1 || !Array.isArray(data.items) || !['ready', 'pending', 'missing', 'disabled', 'unsupported', 'error'].includes(data.status)
                     || data.revision !== null && typeof data.revision !== 'string') throw new Error(t('知识接口不兼容'));
                 snapshot = data;
+                if (data.status === 'ready') for (const row of data.items) if (row?.id) itemRevisions.set(row.id, row.revision ?? null);
                 if (selected && data.status === 'ready') {
                     const newer = data.items.find(row => row.id === selected.id);
                     if (newer && newer.revision !== selected.revision) {
@@ -123,7 +159,18 @@
                 if (!active || !root.isConnected || profileId !== profile || generation !== learningEpoch) return;
                 if (data?.version !== 1 || !Number.isSafeInteger(data.revision) || !data.settings) throw new Error(t('学习接口不兼容'));
                 learning = data; if (!learningDraft) learningDraft = { ...data.settings }; render();
+                if (injection === undefined) void loadInjection();
             } catch (error) { if (active && profileId === profile && generation === learningEpoch) { learning = { error: error.message }; render(); } }
+        }
+        // Read-only injection preview; a backend without the contract endpoint keeps the old display.
+        async function loadInjection() {
+            const profileId = profile, generation = learningEpoch;
+            try {
+                const data = await apiFetch(`${base()}/knowledge/injection`);
+                if (profileId !== profile || generation !== learningEpoch || !active) return;
+                injection = data?.version === 1 && typeof data.block === 'string' && data.profile && typeof data.profile === 'object' ? data : null;
+            } catch { injection = null; }
+            if (active && root.isConnected && profileId === profile) render();
         }
         function choose(item) {
             if (!discard()) return;
@@ -143,13 +190,17 @@
         }
         function receiptText(r) {
             return [t(label[r.operation] || r.operation), t(label[r.status] || r.status), r.indexStatus === 'pending' ? t('索引待同步') : '',
-                r.activation === 'reload-required' ? t('当前会话需重载') : r.activation === 'next-turn' ? t('下次对话可用，模型是否遵守无法保证') : '', r.summary || ''].filter(Boolean).join(' · ');
+                r.activation === 'reload-required' ? t('当前会话需重载') : r.activation === 'next-turn' ? t('下次对话可用，模型是否遵守无法保证') : '', r.preview || '', r.summary || ''].filter(Boolean).join(' · ');
         }
         function meta(item) {
             const source = item.source && typeof item.source === 'object' ? [item.source.sessionId && t('来源线程：{0}', item.source.sessionId),
                 item.source.entryId && t('原生记录：{0}', item.source.entryId)].filter(Boolean).join(' · ') : '';
             return [t(label[item.state] || item.state || '未确认'), item.scope === 'project' ? t('目录范围：{0}', item.projectKey || t('未提供')) : t('助手范围'),
                 item.revision && t('版本：{0}', item.revision), item.updatedAt, source].filter(Boolean).join(' · ');
+        }
+        function proposalsSupported() {
+            // Contract fields arrive with the L2 backend; older snapshots keep the plain display.
+            return Array.isArray(learning?.proposals) || learning?.capabilities?.actions?.includes('propose-consolidation') === true;
         }
         function renderUsage() {
             const usage = snapshot?.usage;
@@ -167,6 +218,8 @@
                 row.append(bar); box.append(row);
                 if (level === 'full') box.append(node('p', t('已满，新记忆会被拒绝'), 'pi-usage-note pi-usage-full'));
                 else if (level === 'near') box.append(node('p', t('接近上限，下一步可整理合并'), 'pi-usage-note pi-usage-near'));
+                if (level !== 'ok' && proposalsSupported() && !learningUncertain)
+                    box.append(button(t('整理合并'), () => void action('propose-consolidation', undefined, { target: key }), 'settings-primary-button'));
             }
             root.append(box);
         }
@@ -174,25 +227,32 @@
             root.replaceChildren(); if (!active || !profile) return;
             const head = node('div', undefined, 'pi-knowledge-head'); head.append(node('h4', t('助手内的记忆与技能')), button(t('刷新'), () => { void load(); void loadLearning(); })); root.append(head);
             root.append(node('p', t('已学习技能属于此助手；外部安装的成品技能在“扩展 → 已安装技能”管理。保存不代表当前会话已加载或模型一定遵守。'), 'pi-profile-note'));
+            if (sessionScope) root.append(node('p', t('项目记忆按当前会话目录核实。'), 'pi-profile-note'));
             renderUsage();
             const tabs = node('div', undefined, 'pi-profile-kinds'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', t('知识类别'));
-            for (const key of ['memory', 'skill']) { const tab = button(t(label[key]), () => { if (key === kind || !discard()) return; kind = key; offset = 0; selected = detail = draft = null; editing = false; void load(); }); tab.setAttribute('aria-pressed', String(key === kind)); tabs.append(tab); }
+            for (const key of ['memory', 'skill']) { const tab = button(t(label[key]), () => { if (key === kind || !discard()) return; kind = key; draftOnly = false; offset = 0; selected = detail = draft = null; editing = false; void load(); }); tab.setAttribute('aria-pressed', String(key === kind)); tabs.append(tab); }
             root.append(tabs);
             const tools = node('div', undefined, 'pi-knowledge-tools'), search = node('input'); search.type = 'search'; search.maxLength = 200; search.value = query;
             search.placeholder = t('搜索已保存数据'); search.setAttribute('aria-label', t('搜索已保存数据'));
             search.onchange = () => { if (!discard()) { search.value = query; return; } query = search.value; offset = 0; void load(); };
             const add = button(t('新建{0}', t(label[kind])), () => edit(null), 'settings-primary-button'); add.disabled = busy || !!uncertain || !readyRevision(snapshot?.revision) || !allowed(snapshot, 'create', kind); tools.append(search, add); root.append(tools);
+            if (kind === 'skill') {
+                const filterBar = node('div', undefined, 'pi-knowledge-filter');
+                const filter = button(draftOnly ? t('显示全部技能') : t('只看草稿技能'), () => { if (!discard()) return; draftOnly = !draftOnly; offset = 0; void load(); });
+                filter.setAttribute('aria-pressed', String(draftOnly)); filterBar.append(filter); root.append(filterBar);
+            }
             const message = node('p', notice ? `${notice} · ${t('存储状态：{0}', t(statusLabel[snapshot?.status] || snapshot?.status || '状态未知'))}`
                 : snapshot ? t('已保存数据 · {0}', t(statusLabel[snapshot.status] || snapshot.status || '状态未知')) : t('正在读取…'), 'pi-knowledge-status'); message.setAttribute('role', 'status'); root.append(message);
             if (receipt) {
                 const r = node('div', receiptText(receipt), 'pi-knowledge-receipt'); r.setAttribute('role', 'status');
-                if (receipt.undoable && receipt.id && allowed(snapshot, 'undo', receipt.kind)) r.append(button(t('撤销'), () => void mutate('undo', { receiptId: receipt.id, kind: receipt.kind })));
+                if (receipt.undoable && receipt.id && allowed(snapshot, 'undo', receipt.kind, receipt.scope === 'project' ? { kind: receipt.kind, scope: 'project' } : null))
+                    r.append(button(t('撤销'), () => void mutate('undo', { receiptId: receipt.id, kind: receipt.kind, scope: receipt.scope })));
                 root.append(r);
             }
             if (uncertain && !busy) root.append(button(t('刷新回执核对'), () => void load()));
             if (snapshot?.status === 'ready') {
                 const list = node('div', undefined, 'pi-knowledge-list');
-                for (const item of snapshot.items) {
+                for (const item of snapshot.items.filter(row => !draftOnly || row.state === 'draft')) {
                     // Memory rows lead with a bounded content preview so entries are recognizable without opening each one.
                     const meta = [item.kind === 'memory' ? t(label[item.category] || item.category || label[kind]) : item.description,
                         t(label[item.state] || item.state || ''), item.scope === 'project' && t('项目'), item.readOnly && t('只读')].filter(Boolean).join(' · ');
@@ -201,7 +261,7 @@
                     row.append(node('span', title || t(label[item.category] || item.category || label[kind]), 'pi-knowledge-row-title'), node('small', meta, 'pi-knowledge-row-meta'));
                     row.setAttribute('aria-current', String(selected?.id === item.id)); list.append(row);
                 }
-                if (!snapshot.items.length) list.append(node('p', t('此页没有已保存数据'), 'pi-profile-note')); root.append(list);
+                if (!snapshot.items.filter(row => !draftOnly || row.state === 'draft').length) list.append(node('p', t('此页没有已保存数据'), 'pi-profile-note')); root.append(list);
                 const pages = node('div', undefined, 'pi-profile-pages'), prev = button(t('上一页'), () => { offset = Math.max(0, offset - Math.max(1, snapshot.items.length)); void load(); }), next = button(t('下一页'), () => { offset += snapshot.items.length; void load(); });
                 prev.disabled = !offset; next.disabled = !snapshot.hasMore || !snapshot.items.length; pages.append(prev, next); root.append(pages);
             }
@@ -225,7 +285,7 @@
                         entry.append(node('small', [row.at, t(label[row.operation] || row.operation), t(label[row.status] || row.status),
                             row.beforeRevision && t('之前：{0}', row.beforeRevision), row.afterRevision && t('之后：{0}', row.afterRevision)].filter(Boolean).join(' · ')));
                         if (row.undoable && row.afterRevision === item.revision && allowed(snapshot, 'undo', row.kind, item))
-                            entry.append(button(t('撤销'), () => void mutate('undo', { receiptId: row.id, kind: row.kind })));
+                            entry.append(button(t('撤销'), () => void mutate('undo', { receiptId: row.id, kind: row.kind, scope: item.scope })));
                         history.append(entry);
                     }
                     history.append(node('small', t('历史正文未由此接口提供；仅能对照当前正文与未保存草稿。')));
@@ -243,11 +303,13 @@
                 const category = node('select'); for (const key of ['fact', 'preference', 'correction', 'failure', 'procedure']) category.append(option(key, t(label[key])));
                 category.value = draft.category; category.onchange = () => { draft.category = category.value; }; form.append(field(t('类别'), category));
             }
-            const scope = node('select'); scope.append(option('profile', t('助手范围')));
-            if (draft.scope === 'project') scope.append(option('project', t('当前目录范围（只读）')));
-            scope.value = draft.scope; scope.disabled = true;
-            scope.onchange = () => { draft.scope = scope.value; render(); }; form.append(field(t('范围'), scope));
-            if (draft.scope === 'project') form.append(node('p', t('当前目录范围需要服务端验证；此页不提交未经验证的项目标识。'), 'pi-profile-note'));
+            const scopeSelect = node('select'); scopeSelect.append(option('profile', t('助手范围')));
+            // Project scope is writable only with the verified session id and the K2.3 capability.
+            const projectWritable = kind === 'memory' && Boolean(sessionScope) && snapshot?.capabilities?.projectWritesBySession === true;
+            if (draft.scope === 'project' || projectWritable) scopeSelect.append(option('project', t(projectWritable ? '当前目录范围（按当前会话核实）' : '当前目录范围（只读）')));
+            scopeSelect.value = draft.scope; scopeSelect.disabled = !projectWritable;
+            scopeSelect.onchange = () => { draft.scope = scopeSelect.value; render(); }; form.append(field(t('范围'), scopeSelect));
+            if (draft.scope === 'project') form.append(node('p', projectWritable ? t('项目记忆按当前会话目录核实。') : t('当前目录范围需要服务端验证；此页不提交未经验证的项目标识。'), 'pi-profile-note'));
             const content = node('textarea'); content.required = true; content.maxLength = snapshot?.capabilities?.maxContentLength || 65536; content.rows = 8; content.value = draft.content;
             content.oninput = () => { draft.content = content.value; }; form.append(field(t('正文'), content));
             if (selected) {
@@ -262,30 +324,46 @@
             }
             const actions = node('div', undefined, 'pi-knowledge-actions'), save = node('button', t('保存'), 'settings-primary-button'); save.type = 'submit';
             save.disabled = busy || !!uncertain || !readyRevision(snapshot?.revision) || !allowed(snapshot, selected ? 'update' : 'create', kind, detail?.item || selected)
-                || !reviewed || draft.scope !== 'profile' || !!selected && detail?.item?.revision !== selected.revision;
+                || !reviewed || !(draft.scope === 'profile' || draft.scope === 'project' && projectWritable) || !!selected && detail?.item?.revision !== selected.revision;
             actions.append(save, button(t('取消'), () => { editing = false; draft = null; render(); })); form.append(actions);
             form.onsubmit = event => { event.preventDefault(); if (form.reportValidity()) void mutate(selected ? 'update' : 'create'); }; root.append(form);
         }
         async function mutate(operation, extra = {}) {
             const targetKind = extra.kind || original()?.kind || kind;
-            if (busy || uncertain || !readyRevision(snapshot?.revision) || !allowed(snapshot, operation, targetKind, operation === 'undo' ? null : detail?.item || original())) return;
+            const guarded = operation === 'undo' ? (extra.scope === 'project' ? { kind: targetKind, scope: 'project' } : null) : detail?.item || original();
+            if (busy || uncertain || !readyRevision(snapshot?.revision) || !allowed(snapshot, operation, targetKind, guarded)) return;
             if (operation === 'delete' && !confirm(t('删除此条目？可从已删除记录中恢复。'))) return;
-            const item = original(), profileId = profile, generation = ++serial;
+            const item = original();
+            const projectScope = (operation === 'undo' ? extra.scope : item?.scope) === 'project';
             const input = { requestId: uuid(), expectedRevision: snapshot.revision, operation, kind: targetKind,
                 ...(operation !== 'undo' && item ? { itemId: item.id, itemRevision: item.revision } : {}),
-                ...(operation === 'undo' ? { receiptId: extra.receiptId } : {}) };
+                ...(operation === 'undo' ? { receiptId: extra.receiptId } : {}),
+                ...(projectScope ? { scope: 'project', sessionId: sessionScope } : {}) };
             if (operation === 'create' || operation === 'update') {
                 Object.assign(input, { content: draft.content, scope: draft.scope });
                 if (targetKind === 'skill') Object.assign(input, { name: draft.name.trim(), description: draft.description.trim() }); else input.category = draft.category;
-                if (draft.scope === 'project') { notice = t('请选择助手范围；项目范围写入须由服务端提供已验证的项目标识。'); render(); return; }
+                if (draft.scope === 'project') {
+                    // The server derives the project directory from the verified session;
+                    // this page never submits a client-side projectKey.
+                    if (targetKind !== 'memory' || !sessionScope || snapshot?.capabilities?.projectWritesBySession !== true) {
+                        notice = t('请选择助手范围；项目范围写入须由服务端提供已验证的项目标识。'); render(); return;
+                    }
+                    input.sessionId = sessionScope;
+                }
             }
-            busy = true; uncertain = { requestId: input.requestId, operation, draft: JSON.stringify(draft) }; notice = t('正在提交，等待服务回执…'); render();
+            await runMutation(input, () => { editing = false; draft = null; selected = detail = null; });
+        }
+        // One submission path: the receipt, conflicts and uncertain results are handled the
+        // same way for single edits and for a consolidation batch.
+        async function runMutation(input, saved) {
+            const profileId = profile, generation = ++serial;
+            busy = true; uncertain = { requestId: input.requestId, operation: input.operation, draft: JSON.stringify(draft) }; notice = t('正在提交，等待服务回执…'); render();
             try {
                 const result = await apiFetch(`${base()}/knowledge/mutations`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
                 if (!current(profileId, generation)) return;
                 if (result?.version !== 1 || result.receipt?.requestId !== input.requestId) throw new Error(t('回执未确认'));
                 receipt = result.receipt; uncertain = null; conflict = false; if (readyRevision(result.revision)) snapshot.revision = result.revision;
-                if (['saved', 'pending'].includes(receipt.status)) { editing = false; draft = null; selected = detail = null; }
+                if (['saved', 'pending'].includes(receipt.status)) saved?.();
                 notice = receipt.status === 'conflict' ? t('版本冲突；草稿已保留。刷新并核对最新正文。') : '';
             } catch (error) {
                 if (current(profileId, generation)) {
@@ -293,9 +371,110 @@
                         uncertain = null; memoryFull = true; notice = t('记忆已满，新记忆会被拒绝。请整理合并后再试。'); void load();
                     } else if (error.status === 409) { uncertain = null; conflict = true; notice = t('版本冲突；草稿已保留。刷新并核对服务器版本。'); void load(); }
                     else if (rejected(error)) { uncertain = null; notice = t('提交被服务端拒绝：{0}，草稿已保留。', error.message); }
-                    else { uncertain = { requestId: input.requestId, operation, draft: JSON.stringify(draft) }; notice = t('提交结果未确认：{0}。草稿与请求 ID {1} 已保留，勿重复提交。', error.message, input.requestId); }
+                    else { uncertain = { requestId: input.requestId, operation: input.operation, draft: JSON.stringify(draft) }; notice = t('提交结果未确认：{0}。草稿与请求 ID {1} 已保留，勿重复提交。', error.message, input.requestId); }
                 }
             } finally { busy = false; if (current(profileId, generation)) { render(); if (!uncertain && receipt?.requestId === input.requestId) void load(); } }
+        }
+        // U2.1: apply one proposal group through the batched consolidate mutation. The
+        // recorded item revisions and the current snapshot revision are both confirmed.
+        async function consolidate(proposal, index) {
+            const group = proposal?.groups?.[index];
+            if (!group || !Array.isArray(group.items) || group.items.length < 2 || groupStale(group)
+                || busy || uncertain || !readyRevision(snapshot?.revision) || !allowed(snapshot, 'consolidate', 'memory')) return;
+            const merged = proposalDraft(proposal.id, index, group);
+            const input = { requestId: uuid(), expectedRevision: snapshot.revision, operation: 'consolidate', kind: 'memory',
+                target: proposal.target === 'user' ? 'user' : 'memory',
+                items: group.items.map(row => ({ itemId: row.itemId, itemRevision: row.itemRevision })),
+                content: merged.content, category: merged.category };
+            await runMutation(input, () => appliedGroups.add(`${proposal.id}:${index}`));
+        }
+        const groupKey = (proposalId, index) => `${proposalId}:${index}`;
+        function proposalDraft(proposalId, index, group) {
+            const key = groupKey(proposalId, index);
+            if (!proposalDrafts.has(key)) proposalDrafts.set(key, { content: String(group.content || ''), category: group.category || 'fact' });
+            return proposalDrafts.get(key);
+        }
+        // A group goes stale when any recorded item revision no longer matches the current
+        // snapshot, or the entry disappeared. Items on other pages are checked once by id.
+        function groupStale(group) {
+            return (group.items || []).some(row => itemRevisions.has(row.itemId) && itemRevisions.get(row.itemId) !== row.itemRevision);
+        }
+        function checkProposalItems(proposals) {
+            const missing = [...new Set((proposals || []).flatMap(proposal => proposal.groups || [])
+                .flatMap(group => group.items || []).map(row => row.itemId)
+                .filter(itemId => typeof itemId === 'string' && !itemRevisions.has(itemId) && !itemChecks.has(itemId)))];
+            if (!missing.length) return;
+            for (const itemId of missing) itemChecks.add(itemId);
+            const profileId = profile, generation = serial;
+            void Promise.all(missing.map(itemId => apiFetch(`${base()}/knowledge/items/${encodeURIComponent(itemId)}`)
+                .then(data => [itemId, data?.status === 'ready' && data.item ? data.item.revision ?? null : null])
+                .catch(() => [itemId, undefined]))).then(rows => {
+                if (!active || !root.isConnected || profileId !== profile) return;
+                for (const [itemId, revision] of rows) {
+                    if (revision === undefined) itemChecks.delete(itemId);
+                    else itemRevisions.set(itemId, revision);
+                }
+                if (current(profileId, generation)) render();
+            });
+        }
+        function renderProposals(box) {
+            const proposals = (Array.isArray(learning?.proposals) ? learning.proposals : []).filter(proposal => proposal && typeof proposal === 'object');
+            checkProposalItems(proposals);
+            const groups = proposals.flatMap(proposal => (proposal.groups || []).map((group, index) => ({ proposal, group, index })))
+                .filter(row => row.group && !appliedGroups.has(groupKey(row.proposal.id, row.index)));
+            if (!groups.length) return;
+            const section = node('section', undefined, 'pi-proposals');
+            section.append(node('h5', t('整理方案')));
+            for (const { proposal, group, index } of groups) {
+                const merged = proposalDraft(proposal.id, index, group);
+                const stale = groupStale(group);
+                const card = node('div', undefined, 'pi-proposal-group');
+                card.append(node('p', [t('第 {0} 组', index + 1), proposal.target === 'user' ? 'USER' : 'MEMORY',
+                    proposal.model && [proposal.model.provider, proposal.model.modelId || proposal.model.id].filter(Boolean).join('/'),
+                    proposal.createdAt && t('生成时间：{0}', proposal.createdAt)].filter(Boolean).join(' · '), 'pi-proposal-meta'));
+                const items = node('div', undefined, 'pi-proposal-items');
+                items.append(node('small', t('原条目')));
+                for (const row of group.items || []) {
+                    const line = node('p', undefined, 'pi-proposal-item');
+                    line.append(node('span', String(row.preview || '').slice(0, 160) || t('（无预览）'), 'pi-proposal-item-text'));
+                    if (row.category) line.append(node('em', t(label[row.category] || row.category), 'pi-proposal-tag'));
+                    items.append(line);
+                }
+                card.append(items);
+                const body = node('div', undefined, 'pi-proposal-body');
+                if (stale) body.append(node('p', t('已过期：条目版本已变化或已不存在，请重新生成方案。'), 'pi-proposal-stale'));
+                const content = node('textarea'); content.rows = 4; content.value = merged.content;
+                content.maxLength = snapshot?.capabilities?.maxContentLength || 65536; content.disabled = stale;
+                content.oninput = () => { merged.content = content.value; };
+                body.append(field(t('合并后正文'), content));
+                const category = node('select');
+                for (const key of ['fact', 'preference', 'correction', 'failure', 'procedure']) category.append(option(key, t(label[key])));
+                category.value = merged.category; category.disabled = stale; category.onchange = () => { merged.category = category.value; };
+                body.append(field(t('类别'), category));
+                const actions = node('div', undefined, 'pi-knowledge-actions');
+                const apply = button(t('应用'), () => void consolidate(proposal, index), 'settings-primary-button');
+                apply.disabled = stale || busy || !!uncertain || learningBusy || !readyRevision(snapshot?.revision) || !allowed(snapshot, 'consolidate', 'memory');
+                const dismiss = button(t('忽略'), () => void action('dismiss-proposal', undefined, { proposalId: proposal.id, groupIndex: index }));
+                dismiss.disabled = learningBusy || !!learningUncertain;
+                actions.append(apply, dismiss); body.append(actions);
+                card.append(body); section.append(card);
+            }
+            box.append(section);
+        }
+        // U2.2: next-turn injection preview for the identity-level block.
+        function renderInjection(box) {
+            if (!injection || typeof injection !== 'object') return;
+            const profileStats = injection.profile || {};
+            const section = node('section', undefined, 'pi-injection');
+            section.append(node('h5', t('下一轮注入预览')));
+            section.append(node('p', t('身份记忆：{0} 条 / {1} 字', Number.isFinite(profileStats.entries) ? profileStats.entries : '—',
+                Number.isFinite(profileStats.chars) ? profileStats.chars : '—'), 'pi-injection-stats'));
+            const details = node('details', undefined, 'pi-injection-body');
+            details.append(node('summary', t('查看注入原文')), node('pre', String(injection.block || '')));
+            section.append(details);
+            if (injection.truncated === true) section.append(node('p', t('已截断，仅显示部分内容'), 'pi-profile-note'));
+            section.append(node('p', t('注入不代表模型一定遵守。'), 'pi-profile-note'));
+            box.append(section);
         }
         const canEnable = data => Boolean(data?.health) || Array.isArray(data?.capabilities?.actions) && data.capabilities.actions.includes('enable');
         async function loadModelCatalog() {
@@ -359,6 +538,16 @@
                 box.append(node('p', t('还需要配置：{0}', missing.map(id => t(purposeLabel[id] || id)).join(' / ')), 'pi-knowledge-status'));
                 box.append(button(t('前往设置 → 使用偏好 → 辅助模型'), () => globalThis.dispatchEvent?.(new CustomEvent('workspace:open-settings', { detail: { tab: 'models' } }))));
             }
+            // U2.4: draft skills awaiting review; clicking filters the learned-skill list to drafts.
+            const pendingDrafts = Number.isSafeInteger(learning.drafts?.pending) ? learning.drafts.pending : 0;
+            if (pendingDrafts > 0) {
+                const wrap = node('div', undefined, 'pi-learning-drafts');
+                wrap.append(button(t('{0} 个草稿技能待审', `${pendingDrafts}${learning.drafts.capped === true ? '+' : ''}`), () => {
+                    if (!discard()) return;
+                    kind = 'skill'; draftOnly = true; offset = 0; selected = detail = draft = null; editing = false; void load();
+                }));
+                box.append(wrap);
+            }
             renderLegacy(box);
             const settings = learning.settings, form = node('form', undefined, 'pi-learning-settings');
             for (const [key, text] of [['enabled', '后台学习'], ['correctionEnabled', '纠错识别'], ['reviewEnabled', '定期复盘'], ['extractionEnabled', '候选提取']]) {
@@ -396,6 +585,8 @@
                     : rejected(error) ? t('学习设置被拒绝：{0}，草稿已保留。', error.message) : t('学习设置未确认：{0}。草稿已保留，请刷新核对。', error.message); }
                 finally { learningBusy = false; if (profileId === profile && generation === learningEpoch && active) render(); }
             }; box.append(form);
+            renderProposals(box);
+            renderInjection(box);
             if (learningUncertain) {
                 box.append(node('p', t('作业请求 {0} 结果未确认；请先核对作业列表，勿重复提交。', learningUncertain.requestId), 'pi-knowledge-status'));
                 box.append(button(t('已核对作业列表'), () => { learningUncertain = null; render(); }));
@@ -417,7 +608,8 @@
         async function action(name, jobId, extra = {}) {
             const supported = learning?.capabilities?.actions?.includes(name)
                 || name === 'enable' && canEnable(learning)
-                || ['adopt-legacy', 'dismiss-legacy'].includes(name) && Boolean(learning?.legacy);
+                || ['adopt-legacy', 'dismiss-legacy'].includes(name) && Boolean(learning?.legacy)
+                || ['propose-consolidation', 'dismiss-proposal'].includes(name) && proposalsSupported();
             if (learningBusy || learningUncertain || !supported) return;
             const requestId = uuid(), generation = learningEpoch;
             learningBusy = true; render(); const profileId = profile;
@@ -426,7 +618,8 @@
                 if (profileId !== profile || generation !== learningEpoch || !active) return;
                 if (result?.version !== 1 || !Number.isSafeInteger(result.revision) || !result.settings) throw new Error(t('作业回执未确认'));
                 notice = name === 'enable' ? t('已开启自学习；以学习状态为准。') : name === 'adopt-legacy' ? t('已迁移并开启学习。')
-                    : name === 'dismiss-legacy' ? t('已忽略旧自动学习提示。') : t('作业请求已返回；以作业列表状态为准。');
+                    : name === 'dismiss-legacy' ? t('已忽略旧自动学习提示。') : name === 'propose-consolidation' ? t('整理方案生成中；完成后显示在学习区。')
+                        : name === 'dismiss-proposal' ? t('已忽略该整理建议。') : t('作业请求已返回；以作业列表状态为准。');
                 learning = result;
             } catch (error) {
                 if (profileId === profile && generation === learningEpoch && active) {
