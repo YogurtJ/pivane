@@ -9,7 +9,7 @@ const { descriptorPathSync, assertDescriptorBackend } = require('../pi-file-desc
 const PROFILE_ENTRY = 'pivane-agent-profile';
 const MEMORY_READ_ENTRY = 'pivane-profile-memory-read';
 const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
-const MAX_LOOKUP_ENTRIES = 200000;
+const MAX_LOOKUP_ENTRIES = 20000;
 const MAX_SESSION_BYTES = 8 * 1024 * 1024;
 const MAX_METADATA_BYTES = 256 * 1024;
 // Provenance writes must work on long conversations, so their streaming proof
@@ -203,22 +203,45 @@ function activeBinding(file, context) {
     return scanned.identity;
 }
 
-// Pi names native session files `<timestamp>_<sessionId>.jsonl`, one directory
-// below the sessions root. Only the names are listed here; callers must still
-// prove the header and binding of the single match.
+// The session ID lives in the header line, not in the file name (Pi names files
+// `<timestamp>_<fileId>.jsonl` with an unrelated ID). Only the first line of each
+// file is read; callers must still prove the header and binding of the single match.
+const HEADER_BYTES = 64 * 1024;
+const lookupCache = new Map();
+function headerSessionId(file) {
+    let fd;
+    try {
+        fd = io.openReadSync(file);
+        const buffer = Buffer.alloc(HEADER_BYTES);
+        const length = fs.readSync(fd, buffer, 0, HEADER_BYTES, 0);
+        const end = buffer.subarray(0, length).indexOf(0x0a);
+        if (end < 0) return null;
+        const header = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, end)));
+        return header?.type === 'session' && typeof header.id === 'string' ? header.id : null;
+    } catch { return null; }
+    finally { if (fd !== undefined) fs.closeSync(fd); }
+}
 function sessionFilesById(sessionsRoot, sessionId) {
     if (typeof sessionId !== 'string' || !SESSION_ID.test(sessionId)) return [];
-    const suffix = `_${sessionId}.jsonl`, files = [];
+    const cached = lookupCache.get(`${sessionsRoot}\0${sessionId}`);
+    if (cached && inside(sessionsRoot, cached) && headerSessionId(cached) === sessionId) return [cached];
+    const files = [];
     let scanned = 0;
     for (const directory of fs.readdirSync(sessionsRoot, { withFileTypes: true })) {
         if (!directory.isDirectory() || directory.isSymbolicLink()) continue;
         const dir = path.join(sessionsRoot, directory.name);
         if (fs.realpathSync.native(dir) !== dir) continue;
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue;
             if (++scanned > MAX_LOOKUP_ENTRIES)
                 throw Object.assign(new Error('Session lookup exceeds scan limit'), { code: 'SOURCE_PROOF_LIMIT' });
-            if (entry.isFile() && entry.name.endsWith(suffix)) files.push(path.join(dir, entry.name));
+            const file = path.join(dir, entry.name);
+            if (headerSessionId(file) === sessionId) files.push(file);
         }
+    }
+    if (files.length === 1) {
+        if (lookupCache.size >= 256) lookupCache.delete(lookupCache.keys().next().value);
+        lookupCache.set(`${sessionsRoot}\0${sessionId}`, files[0]);
     }
     return files;
 }

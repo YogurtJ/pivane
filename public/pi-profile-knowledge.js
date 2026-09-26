@@ -386,11 +386,12 @@
                 target: proposal.target === 'user' ? 'user' : 'memory',
                 items: group.items.map(row => ({ itemId: row.itemId, itemRevision: row.itemRevision })),
                 content: merged.content, category: merged.category };
-            await runMutation(input, () => appliedGroups.add(`${proposal.id}:${index}`));
+            await runMutation(input, () => appliedGroups.add(groupKey(proposal.id, group)));
         }
-        const groupKey = (proposalId, index) => `${proposalId}:${index}`;
+        // Keyed by the group's items, not its position: dismissing a group shifts the later indexes.
+        const groupKey = (proposalId, group) => `${proposalId}:${(group?.items || []).map(row => row.itemId).join(',')}`;
         function proposalDraft(proposalId, index, group) {
-            const key = groupKey(proposalId, index);
+            const key = groupKey(proposalId, group);
             if (!proposalDrafts.has(key)) proposalDrafts.set(key, { content: String(group.content || ''), category: group.category || 'fact' });
             return proposalDrafts.get(key);
         }
@@ -421,7 +422,7 @@
             const proposals = (Array.isArray(learning?.proposals) ? learning.proposals : []).filter(proposal => proposal && typeof proposal === 'object');
             checkProposalItems(proposals);
             const groups = proposals.flatMap(proposal => (proposal.groups || []).map((group, index) => ({ proposal, group, index })))
-                .filter(row => row.group && !appliedGroups.has(groupKey(row.proposal.id, row.index)));
+                .filter(row => row.group && !appliedGroups.has(groupKey(row.proposal.id, row.group)));
             if (!groups.length) return;
             const section = node('section', undefined, 'pi-proposals');
             section.append(node('h5', t('整理方案')));

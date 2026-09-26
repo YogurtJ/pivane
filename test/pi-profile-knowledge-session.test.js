@@ -33,13 +33,14 @@ function setup(t, limits = {}) {
     return { service, agent, root, hooks, profile, input };
 }
 
-// Pi names native files `<timestamp>_<sessionId>.jsonl` under a per-cwd directory.
+// Pi names native files `<timestamp>_<fileId>.jsonl` under a per-cwd directory; the file ID is
+// unrelated to the session ID in the header, so lookups must read the header.
 function session(agent, name, { profileId = id, extra = [] } = {}) {
     const cwd = fs.mkdtempSync(path.join(agent, `${name}-cwd-`));
     const dir = path.join(agent, 'sessions', `--${name}--`);
     fs.mkdirSync(dir, { recursive: true });
     const sessionId = `${name}-session`;
-    const file = path.join(dir, `2026-01-01T00-00-00-000Z_${sessionId}.jsonl`);
+    const file = path.join(dir, `2026-01-01T00-00-00-000Z_${hash(`file:${name}`).slice(0, 36)}.jsonl`);
     const lines = [{ type: 'session', id: sessionId, cwd, timestamp: '2026-01-01' },
         { type: 'custom', customType: 'pivane-agent-profile', id: 'binding', data: { version: 1, sessionId, profileId } },
         { type: 'message', id: 'user-1', parentId: 'binding', message: { role: 'user', content: 'synthetic' } }, ...extra];
@@ -115,7 +116,7 @@ test('session project edits refuse client project keys, foreign sessions and oth
     await assert.rejects(service.mutate(id, await input('create', { ...base, sessionId: moved.sessionId })), /not bound/);
     // Two files claiming one session ID are ambiguous.
     const twin = session(agent, 'twin');
-    fs.copyFileSync(twin.file, path.join(path.dirname(twin.file), `2026-02-01T00-00-00-000Z_${twin.sessionId}.jsonl`));
+    fs.copyFileSync(twin.file, path.join(path.dirname(twin.file), `2026-02-01T00-00-00-000Z_${hash('file:twin-copy').slice(0, 36)}.jsonl`));
     await assert.rejects(service.mutate(id, await input('create', { ...base, sessionId: twin.sessionId })), /ambiguous/);
 });
 
