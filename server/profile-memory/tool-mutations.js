@@ -19,7 +19,27 @@ function toolResult(result) {
 
 function failureResult(error) {
     return { content: [{ type: 'text', text: `Profile knowledge write rejected: ${error.message}` }],
-        details: { success: false, error: error.message, status: error.status } };
+        details: { success: false, error: error.message, status: error.status,
+            ...(typeof error.code === 'string' ? { code: error.code } : {}),
+            ...(error.details && typeof error.details === 'object' ? { errorDetails: error.details } : {}) } };
+}
+
+// Upstream memory categories (pi-hermes-memory) mapped onto the profile knowledge categories.
+const CATEGORY_MAP = { failure: 'failure', 'tool-quirk': 'failure', correction: 'correction',
+    preference: 'preference', convention: 'procedure', insight: 'fact' };
+function mappedCategory(category) {
+    if (category === undefined) return undefined;
+    if (!Object.hasOwn(CATEGORY_MAP, category)) throw reject('Invalid memory category');
+    return CATEGORY_MAP[category];
+}
+// Agent failure memories are ordinary profile MEMORY.md entries; the optional reason is appended to the body.
+function failureContent(content, reason) {
+    if (reason === undefined || reason === null || typeof content !== 'string') return content;
+    if (typeof reason !== 'string') throw reject('Invalid failure_reason');
+    const trimmed = reason.trim();
+    if (!trimmed) return content;
+    if (trimmed.length > 200 || /[\r\n]/.test(trimmed)) throw reject('Invalid failure_reason');
+    return `${content.trim()}（原因：${trimmed}）`;
 }
 
 function nativeSource(context) {
@@ -145,6 +165,8 @@ function createKnowledgeMemoryTools(service, profileId) {
         const native = nativeSource(context);
         const kind = memory ? 'memory' : 'skill';
         const { first, rows } = await listing(service, profileId, kind);
+        const failure = memory && args?.target === 'failure';
+        const memoryTarget = failure ? 'memory' : args?.target;
         const project = memory ? args.target === 'project' : args.scope === 'project' || args.skill_id?.startsWith('project:');
         const scope = project ? 'project' : 'profile';
         const projectKey = project ? hash(native.cwd) : null;
@@ -152,7 +174,9 @@ function createKnowledgeMemoryTools(service, profileId) {
         if (memory && name !== 'memory_add') {
             if (typeof args.old_text !== 'string' || !args.old_text.trim()) throw reject('Exact old memory text is required');
             const matches = rows.filter(item => item.scope === scope && (!project || item.projectKey === projectKey)
-                && item.target === args.target && item.state === 'active' && !item.readOnly && item.content === args.old_text.trim());
+                && item.target === memoryTarget && item.state === 'active' && !item.readOnly && item.content === args.old_text.trim());
+            if (failure && !matches.length && rows.some(item => item.target === 'failure' && item.content === args.old_text.trim()))
+                throw reject('Legacy failure entries are read-only', 409);
             if (matches.length !== 1) throw reject('Memory identity is missing or ambiguous', 409);
             row = matches[0];
         }
@@ -175,8 +199,11 @@ function createKnowledgeMemoryTools(service, profileId) {
             ...(row ? { itemId: row.id, itemRevision: row.revision } : {}),
             scope,
             ...(project ? { projectKey } : {}),
-            ...(memory && operation !== 'delete' ? { content: args.content, category: row?.category || 'fact' } : {}),
-            ...(memory && operation === 'create' ? { target: args.target } : {}),
+            ...(memory && operation !== 'delete' ? {
+                content: failure && operation === 'create' ? failureContent(args.content, args.failure_reason) : args.content,
+                category: mappedCategory(args.category) || (failure ? 'failure' : operation === 'create' ? 'fact' : row?.category || 'fact'),
+            } : {}),
+            ...(memory && operation === 'create' ? { target: memoryTarget } : {}),
             ...(skill && operation === 'create' ? { name: args.name, description: args.description, content: skillBody(args) } : {}),
             ...(skill && operation === 'update' ? skillFields : {}) };
         signal?.throwIfAborted?.();

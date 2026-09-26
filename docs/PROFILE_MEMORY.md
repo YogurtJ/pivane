@@ -144,11 +144,30 @@ PUT checks the same private ledger under its existing mutation lock: it cannot
 remove managed facts or reintroduce tombstoned ones, while unrelated legacy
 entries remain editable. SQLite-only rows,
 legacy failure entries and oversized records remain visible but read-only,
-with distinct identities from the Markdown they may mirror. Failure records
-are never remapped into the `memory` target.
+with distinct identities from the Markdown they may mirror. Legacy
+`failures.md` records are never remapped into the `memory` target.
+
+Each new receipt adds `origin` (`manual` for the HTTP route, `agent` or
+`learning` for the native path), `learningReason`
+(`correction|review|extraction|manual`, learning only), `preview` (memory: the
+body after the change, or the removed body on delete, first 160 characters;
+skill: `name`, plus ` — ` and the first 120 characters of a non-empty
+description) and, for memory, the resulting `category`. `summary` is unchanged.
+Archived receipt digests keep `origin` but not `preview`; older receipts have
+none of these fields. A `ready` snapshot with memory enabled adds
+`usage: { memory: {chars, limit}, user: {chars, limit}, failure?: {chars, readOnly: true} }`
+for the global documents (`failure` only when a legacy `failures.md` exists;
+project memory usage is not reported). `chars` is measured like the write-time
+check (the entries joined by the `\n§\n` separator) and `limit` is the saved
+profile cap. A write that would exceed the cap is refused with 409
+`code: 'memory-full'` and `details: {target, chars, limit, needed}` (`needed` is
+the length after the write); the HTTP JSON error body carries `code` and
+`details` next to `error`.
 
 `service.mutateFromNative(profileId, input, { sessionPath, sessionId, entryId,
-cwd })` is **server/worker-only**. Both its first check and the final check
+cwd }, { origin, reason }?)` is **server/worker-only**. The optional fourth
+argument sets the receipt origin (`agent` by default, or `learning` with an
+optional `reason`); `input` itself cannot carry an origin. Both its first check and the final check
 immediately before publication run a streaming source proof over the opened
 native JSONL: descriptor read with before/after identity checks, header session
 id and canonical cwd, exactly one current-ID profile binding marker, and the
@@ -179,10 +198,22 @@ frontmatter, patch only a uniquely matching `##` section, and keep the
 `itemRevision` CAS between the located snapshot row and the service mutation.
 Deterministic rejections (4xx: name collisions, invalid fields, revision
 conflicts) return a failed tool result (`details.success=false` with a readable
-error) like upstream tools; uncertain outcomes (5xx or publication-unknown
-errors) keep throwing and are never reported as a clean success or failure.
-Legacy failure writes cannot be mapped losslessly and fail closed rather than
-changing a normal memory entry.
+error, plus `details.code` and `details.errorDetails` when the service gives a
+structured code such as `memory-full`) like upstream tools; uncertain outcomes
+(5xx or publication-unknown errors) keep throwing and are never reported as a
+clean success or failure.
+Agent `target: "failure"` writes become ordinary profile `MEMORY.md` entries
+(target `memory`, scope `profile`) and are injected on the next turn. An
+optional `failure_reason` (trimmed, at most 200 characters, single line) is
+appended as `<content>（原因：<reason>）`, and the result must still pass content
+validation. Upstream categories map as `failure`/`tool-quirk` → `failure`,
+`correction` → `correction`, `preference` → `preference`, `convention` →
+`procedure`, `insight` or none → `fact`, except that a failure write without a
+category is `failure`. `memory_replace` keeps the old category unless a category
+is given or the target is `failure`. Replace/remove with `target: "failure"`
+match the same unique writable `memory` entry by exact text; matching only a
+legacy `failures.md` entry is refused with 409 `Legacy failure entries are
+read-only`. The upstream tool schemas and prompts are unchanged.
 
 The journal and pending publication marker are private profile data protected
 by the same cross-process mutation lock and generation as the Markdown/SQLite

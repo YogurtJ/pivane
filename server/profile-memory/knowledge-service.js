@@ -217,6 +217,26 @@ function publicRecord(record) {
 function revision(root, generation, data, items) {
     return hash(JSON.stringify([generation, data.sequence, items.map(item => [item.id, item.revision, item.state]).sort()]));
 }
+// Global document usage, measured like the write-time limit check (chunks joined by the separator).
+function memoryUsage(root, memory) {
+    const limits = normalizedMemory(memory);
+    const chars = name => (safeDir(root) && safeFile(path.join(root, name))?.text || '').length;
+    const failures = safeDir(root) ? safeFile(path.join(root, 'failures.md')) : null;
+    return { memory: { chars: chars('MEMORY.md'), limit: limits.memoryCharLimit },
+        user: { chars: chars('USER.md'), limit: limits.userCharLimit },
+        ...(failures ? { failure: { chars: failures.text.length, readOnly: true } } : {}) };
+}
+const ORIGINS = new Set(['agent', 'learning']);
+const LEARNING_REASONS = new Set(['correction', 'review', 'extraction', 'manual']);
+function nativeOrigin(options) {
+    if (options === undefined) return { origin: 'agent' };
+    if (!options || typeof options !== 'object' || Array.isArray(options) || !keys(options, ['origin', 'reason']))
+        throw fail('Invalid mutation origin');
+    const origin = options.origin === undefined ? 'agent' : options.origin;
+    if (!ORIGINS.has(origin) || options.reason !== undefined && (origin !== 'learning' || !LEARNING_REASONS.has(options.reason)))
+        throw fail('Invalid mutation origin');
+    return { origin, ...(options.reason !== undefined ? { reason: options.reason } : {}) };
+}
 function publicReceipt(value) {
     if (!value) return value;
     const { inputHash, ...rest } = value;
@@ -225,9 +245,17 @@ function publicReceipt(value) {
 function recent(data, sessionId) {
     return data.receipts.filter(receipt => !sessionId || receipt.source?.sessionId === sessionId).slice(-30).reverse().map(publicReceipt);
 }
-function receipt(input, id, before, after, indexStatus, status = 'saved') {
+// Receipt preview: the memory body after the change (the removed body on delete),
+// or the skill name with the start of its description.
+function receiptPreview(after) {
+    if (after.kind === 'memory') return String(after.content || '').slice(0, 160);
+    return after.description ? `${after.name} \u2014 ${after.description.slice(0, 120)}` : after.name;
+}
+function receipt(input, id, before, after, indexStatus, provenance, status = 'saved') {
     return { id: randomUUID(), requestId: input.requestId, operation: input.operation, kind: input.kind,
         itemId: id, status, at: new Date().toISOString(), summary: `${input.operation} ${input.kind}`,
+        origin: provenance.origin, ...(provenance.reason ? { learningReason: provenance.reason } : {}),
+        preview: receiptPreview(after), ...(after.kind === 'memory' && after.category ? { category: after.category } : {}),
         scope: after.scope, ...(after.projectKey ? { projectKey: after.projectKey } : {}),
         ...(input.source ? { source: input.source } : {}), ...(before ? { beforeRevision: before.revision } : {}),
         ...(after ? { afterRevision: after.revision } : {}), indexStatus,
@@ -264,8 +292,10 @@ function append(data, item, result, server) {
         const dropped = data.receipts.shift();
         // Undo is only offered inside the active window, so its before-copy is no longer needed.
         dropHistory(data, dropped);
+        // Archive digests keep identity and origin but not the preview text.
         data.archive.push({ id: dropped.id, requestId: dropped.requestId, operation: dropped.operation,
-            kind: dropped.kind, itemId: dropped.itemId, status: dropped.status, at: dropped.at, undoable: false });
+            kind: dropped.kind, itemId: dropped.itemId, status: dropped.status, at: dropped.at,
+            ...(dropped.origin ? { origin: dropped.origin } : {}), undoable: false });
     }
     while (data.archive.length > ARCHIVE_KEEP) data.archive.shift();
     data.requests[result.requestId] = { h: result.inputHash, r: result.id, at: result.at, s: server };
@@ -384,7 +414,8 @@ class ProfileKnowledgeService {
             nativeProjectWrites: Boolean(ctx.installed && ctx.profile.memory?.enabled || ctx.profile.skills?.learnedEnabled), installedSkillsWrite: false,
             operations: ctx.installed && ctx.profile.memory?.enabled || ctx.profile.skills?.learnedEnabled
                 ? [...OPERATIONS] : [], skillNameMaxLength: 64, maxContentLength: MAX_CONTENT };
-        if (!fs.existsSync(ctx.root)) return { ...base, status: 'ready', revision: hash(JSON.stringify([0, 0, []])), capabilities };
+        if (!fs.existsSync(ctx.root)) return { ...base, status: 'ready', revision: hash(JSON.stringify([0, 0, []])), capabilities,
+            ...(capabilities.memory ? { usage: memoryUsage(ctx.root, ctx.profile.memory) } : {}) };
         if (!ctx.installed && fs.existsSync(path.join(ctx.root, 'sessions.db')))
             return { ...base, status: 'unsupported', capabilities };
         return createMutationLock(ctx.root).inspect(async generation => {
@@ -402,6 +433,7 @@ class ProfileKnowledgeService {
                     const { content, ...listed } = item;
                     return item.kind === 'memory' ? { ...listed, content: content?.slice(0, 512) } : listed;
                 }), receipts: recent(data, options.sessionId), hasMore: matches.length > offset + 50,
+                ...(capabilities.memory ? { usage: memoryUsage(ctx.root, ctx.profile.memory) } : {}),
                 capabilities: { ...capabilities, journal: { receipts: data.receipts.length, receiptsWindow: RECEIPTS_WINDOW,
                     archivedReceipts: data.archive.length, requests: Object.keys(data.requests).length,
                     requestsLimit: REQUESTS_ACTIVE, expiredRequests: data.spent.length,
@@ -426,10 +458,12 @@ class ProfileKnowledgeService {
         });
     }
     async mutate(profileId, raw) {
-        return this.#mutateValidated(profileId, checkedInput(raw));
+        return this.#mutateValidated(profileId, checkedInput(raw), undefined, undefined, { origin: 'manual' });
     }
     // Internal-only provenance. The HTTP route calls mutate(), which rejects source and projectKey.
-    async mutateFromNative(profileId, raw, native) {
+    // The origin comes only from the server-side options argument, never from raw input.
+    async mutateFromNative(profileId, raw, native, options) {
+        const provenance = nativeOrigin(options);
         if (!native || !keys(native, ['sessionPath', 'sessionId', 'entryId', 'cwd'])
             || !['sessionPath', 'sessionId', 'entryId', 'cwd'].every(key => typeof native[key] === 'string'
                 && native[key].length > 0 && native[key].length <= (key === 'cwd' || key === 'sessionPath' ? 4096 : 200)))
@@ -456,9 +490,9 @@ class ProfileKnowledgeService {
             throw fail('Project key does not match native cwd', 409);
         const input = checkedInput({ ...raw, ...(raw.scope === 'project' ? { projectKey } : {}),
             source: { sessionId: native.sessionId, entryId: native.entryId } }, true);
-        return this.#mutateValidated(profileId, input, verify, native.cwd);
+        return this.#mutateValidated(profileId, input, verify, native.cwd, provenance);
     }
-    async #mutateValidated(profileId, input, verifySource, projectCwd) {
+    async #mutateValidated(profileId, input, verifySource, projectCwd, provenance) {
         const ctx = await this.context(profileId, true);
         if (!ctx.profile) fail('Profile not found', 404);
         if (!ctx.profile.enabled || input.kind === 'memory' && (!ctx.profile.memory?.enabled || !ctx.installed)
@@ -586,7 +620,7 @@ class ProfileKnowledgeService {
                 if (input.kind === 'skill' && state === 'active') availableSkill(ctx.root, after);
                 const history = [...(data.records[id]?.history || [])];
                 const changed = { ...after, history };
-                const record = { ...receipt(input, id, before, after, input.kind === 'memory' ? 'ready' : 'not-applicable'),
+                const record = { ...receipt(input, id, before, after, input.kind === 'memory' ? 'ready' : 'not-applicable', provenance),
                     inputHash: hash(JSON.stringify(input)) };
                 history.push({ receiptId: record.id, before: copy(before) });
                 if (input.kind === 'memory' && before?.content && (before.content !== content || state === 'deleted'))
@@ -610,7 +644,9 @@ class ProfileKnowledgeService {
                     }
                     if (state === 'active') chunks.push(content);
                     const next = chunks.join('\n§\n');
-                    if (next.length > normalizedMemory(ctx.profile.memory)[target === 'user' ? 'userCharLimit' : 'memoryCharLimit']) fail('Memory document limit exceeded');
+                    const limit = normalizedMemory(ctx.profile.memory)[target === 'user' ? 'userCharLimit' : 'memoryCharLimit'];
+                    if (next.length > limit) throw Object.assign(new Error('Memory document limit exceeded'), { status: 409,
+                        code: 'memory-full', details: { target, chars: (previous?.text || '').length, limit, needed: next.length } });
                     if (pendingDocumentIndex(dir, target === 'project' ? 'memory' : target)
                         || !await documentIndexSynced(dir, target === 'project' ? 'memory' : target, ctx.bundle,
                             previous?.text || '', { databaseRoot: ctx.root, project: itemScope === 'project' ? projectCwd : null }))
@@ -655,7 +691,12 @@ function mountProfileKnowledgeRoutes(router, deps = {}) {
     const handle = callback => async (req, res) => {
         res.set('Cache-Control', 'no-store');
         try { return res.json(await callback(req)); }
-        catch (error) { return res.status(error.status || 500).json({ error: error.status ? error.message : 'Profile knowledge unavailable' }); }
+        catch (error) {
+            if (!error.status) return res.status(500).json({ error: 'Profile knowledge unavailable' });
+            return res.status(error.status).json({ error: error.message,
+                ...(typeof error.code === 'string' ? { code: error.code } : {}),
+                ...(error.details && typeof error.details === 'object' ? { details: error.details } : {}) });
+        }
     };
     router.get('/profiles/:id/knowledge', handle(req => {
         const options = { ...req.query };
