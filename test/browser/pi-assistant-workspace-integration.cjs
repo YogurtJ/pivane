@@ -125,8 +125,9 @@ async function main() {
         await page.locator('#pi-profile-form [name=userCharLimit]').fill('512');
         await page.locator('#pi-profile-form [name=memoryEnabled]').check();
         await page.locator('#pi-profile-form button[type=submit]').click();
-        const firstProfile = await api('GET', '/profiles');
+        // Read the store only after the UI shows the saved profile; the POST is still in flight right after the click.
         await page.waitForFunction(() => document.querySelectorAll('[data-profile-id]').length === 1);
+        const firstProfile = await api('GET', '/profiles');
         assert.equal(firstProfile.profiles.length, 1);
         const profileId = firstProfile.profiles[0].id;
         assert.match(firstProfile.profileRevisions[profileId], /^[a-f0-9]{64}$/);
