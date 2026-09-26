@@ -29,6 +29,7 @@ const FAILED_RUN = new Set(['failed', 'uncertain', 'conflict']);
 const ACTION_FIELDS = Object.freeze({ 'review-now': [], cancel: ['jobId'], enable: ['review', 'extraction'],
     'adopt-legacy': ['model'], 'dismiss-legacy': [] });
 const RETRY_MS = 1000;
+const LEGACY_AVAILABILITY_MS = 60 * 1000;
 const MAX_ACTION_SPENT = 1024;
 const ACTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const boundedSource = file => {
@@ -310,9 +311,19 @@ class ProfileLearningService {
         let reviewModel = null;
         try { reviewModel = await this.legacyReviewModel(); } catch { reviewModel = null; }
         const reviewModelAvailable = Boolean(reviewModel && this.auxiliaryModels
-            && await this.auxiliaryModels.textModelAvailable(reviewModel));
+            && await this.legacyModelAvailable(reviewModel));
         return { autoLearn: true, reviewModel: reviewModel || null, reviewModelAvailable,
             purposes: Object.values(PURPOSES).filter(purpose => !models[purpose]?.provider) };
+    }
+    // Snapshots are read on every settled turn; the registry check behind the legacy
+    // banner is cached briefly instead of querying model availability each time.
+    async legacyModelAvailable(reference) {
+        const key = `${reference.provider}\u0000${reference.modelId}`;
+        const cached = this.legacyAvailability;
+        if (cached?.key === key && Date.now() - cached.at < LEGACY_AVAILABILITY_MS) return cached.value;
+        const value = await this.auxiliaryModels.textModelAvailable(reference);
+        this.legacyAvailability = { key, at: Date.now(), value };
+        return value;
     }
     save(id, input) {
         if (this.closed) return Promise.reject(Object.assign(new Error('Learning service is stopping'), { status: 503 }));
