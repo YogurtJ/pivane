@@ -8733,6 +8733,17 @@
     ,["纠错模型","Correction model"]
     ,["复盘模型","Review model"]
     ,["提炼模型","Extraction model"]
+    ,["整理合并","Consolidate"]
+    ,["整理方案","Consolidation proposals"]
+    ,["原条目","Original entries"]
+    ,["合并后正文","Merged content"]
+    ,["应用","Apply"]
+    ,["已过期：条目版本已变化或已不存在，请重新生成方案。","Out of date: entry revisions changed or entries are gone. Generate a new proposal."]
+    ,["第 {0} 组","Group {0}"]
+    ,["生成时间：{0}","Created: {0}"]
+    ,["（无预览）","(no preview)"]
+    ,["整理方案生成中；完成后显示在学习区。","Generating the consolidation proposal; it appears in the learning section when ready."]
+    ,["已忽略该整理建议。","The consolidation suggestion was dismissed."]
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

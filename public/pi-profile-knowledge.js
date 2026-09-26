@@ -8,7 +8,7 @@
     const option = (value, label) => { const e = node('option', label); e.value = value; return e; };
     const label = { memory: '记忆', skill: '已学习技能', fact: '事实', preference: '偏好', correction: '纠错', failure: '失败经验', procedure: '流程',
         active: '启用', draft: '草稿', disabled: '停用', deleted: '已删除', saved: '已保存', pending: '待同步', failed: '失败', conflict: '版本冲突', skipped: '跳过',
-        create: '新建', update: '更新', delete: '删除', restore: '恢复条目', enable: '启用', disable: '停用', undo: '撤销' };
+        create: '新建', update: '更新', delete: '删除', restore: '恢复条目', enable: '启用', disable: '停用', undo: '撤销', consolidate: '整理合并' };
     const statusLabel = { ready: '就绪', pending: '待同步', missing: '缺失', disabled: '未启用', unsupported: '不支持', error: '错误' };
     const healthLabel = { ok: '学习正常', off: '学习已关闭', 'needs-model': '缺少学习模型配置', 'quota-exhausted': '今日学习额度已用完', failing: '最近学习连续失败', unavailable: '学习当前不可用' };
     const healthTone = { ok: 'ok', off: 'off', 'needs-model': 'warn', 'quota-exhausted': 'warn', failing: 'bad', unavailable: 'bad' };
@@ -17,7 +17,7 @@
     const jobLabel = { queued: '排队中', running: '运行中', 'waiting-config': '等待模型配置', cancelling: '取消中', cancelled: '已取消', completed: '已完成',
         failed: '失败', uncertain: '待核对', skipped: '已跳过', manual: '手动复盘', periodic: '周期复盘', correction: '纠错识别',
         review: '复盘', extraction: '候选提取' };
-    const operations = new Set(['create', 'update', 'delete', 'restore', 'enable', 'disable', 'undo']);
+    const operations = new Set(['create', 'update', 'delete', 'restore', 'enable', 'disable', 'undo', 'consolidate']);
     const allowed = (snapshot, key, kind, item) => {
         if (snapshot?.status !== 'ready') return false;
         const c = snapshot.capabilities;
@@ -39,6 +39,11 @@
         let snapshot = null, learning = null, learningDraft = null, selected = null, detail = null, draft = null, editing = false, reviewed = true;
         let busy = false, learningBusy = false, learningEpoch = 0, uncertain = null, learningUncertain = null, receipt = null, notice = '', conflict = false;
         let memoryFull = false, revealItem = null, modelCatalog = null, legacyModel = null;
+        // Consolidation proposals (learning) are applied through the knowledge mutations;
+        // group drafts and applied groups live only in this page.
+        let proposalDrafts = new Map(), appliedGroups = new Set();
+        // itemId -> current revision (null when verified missing) used for proposal staleness.
+        let itemRevisions = new Map(), itemChecks = new Set();
         const draftsByProfile = new Map();
         const base = () => `/api/pi/profiles/${encodeURIComponent(profile)}`;
         const current = (profileId, generation) => active && root.isConnected && profile === profileId && serial === generation;
@@ -52,6 +57,7 @@
             if (profile === id) { render(); if (!snapshot || uncertain) void load(); if (!learning) void loadLearning(); return; }
             if (profile) draftsByProfile.set(profile, { kind, query, offset, selected, detail, draft, editing, reviewed, uncertain, learningUncertain, receipt, conflict, learningDraft });
             profile = id || ''; serial++; learningEpoch++; memoryFull = false; legacyModel = null;
+            proposalDrafts = new Map(); appliedGroups = new Set(); itemRevisions = new Map(); itemChecks = new Set();
             ({ kind = 'skill', query = '', offset = 0, selected = null, detail = null, draft = null, editing = false,
                 reviewed = true, uncertain = null, learningUncertain = null, receipt = null, conflict = false, learningDraft = null } = draftsByProfile.get(profile) || {});
             snapshot = learning = null; notice = ''; render(); if (profile) { void load(); void loadLearning(); }
@@ -91,6 +97,7 @@
                 if (data?.version !== 1 || !Array.isArray(data.items) || !['ready', 'pending', 'missing', 'disabled', 'unsupported', 'error'].includes(data.status)
                     || data.revision !== null && typeof data.revision !== 'string') throw new Error(t('知识接口不兼容'));
                 snapshot = data;
+                if (data.status === 'ready') for (const row of data.items) if (row?.id) itemRevisions.set(row.id, row.revision ?? null);
                 if (selected && data.status === 'ready') {
                     const newer = data.items.find(row => row.id === selected.id);
                     if (newer && newer.revision !== selected.revision) {
@@ -143,13 +150,17 @@
         }
         function receiptText(r) {
             return [t(label[r.operation] || r.operation), t(label[r.status] || r.status), r.indexStatus === 'pending' ? t('索引待同步') : '',
-                r.activation === 'reload-required' ? t('当前会话需重载') : r.activation === 'next-turn' ? t('下次对话可用，模型是否遵守无法保证') : '', r.summary || ''].filter(Boolean).join(' · ');
+                r.activation === 'reload-required' ? t('当前会话需重载') : r.activation === 'next-turn' ? t('下次对话可用，模型是否遵守无法保证') : '', r.preview || '', r.summary || ''].filter(Boolean).join(' · ');
         }
         function meta(item) {
             const source = item.source && typeof item.source === 'object' ? [item.source.sessionId && t('来源线程：{0}', item.source.sessionId),
                 item.source.entryId && t('原生记录：{0}', item.source.entryId)].filter(Boolean).join(' · ') : '';
             return [t(label[item.state] || item.state || '未确认'), item.scope === 'project' ? t('目录范围：{0}', item.projectKey || t('未提供')) : t('助手范围'),
                 item.revision && t('版本：{0}', item.revision), item.updatedAt, source].filter(Boolean).join(' · ');
+        }
+        function proposalsSupported() {
+            // Contract fields arrive with the L2 backend; older snapshots keep the plain display.
+            return Array.isArray(learning?.proposals) || learning?.capabilities?.actions?.includes('propose-consolidation') === true;
         }
         function renderUsage() {
             const usage = snapshot?.usage;
@@ -167,6 +178,8 @@
                 row.append(bar); box.append(row);
                 if (level === 'full') box.append(node('p', t('已满，新记忆会被拒绝'), 'pi-usage-note pi-usage-full'));
                 else if (level === 'near') box.append(node('p', t('接近上限，下一步可整理合并'), 'pi-usage-note pi-usage-near'));
+                if (level !== 'ok' && proposalsSupported() && !learningUncertain)
+                    box.append(button(t('整理合并'), () => void action('propose-consolidation', undefined, { target: key }), 'settings-primary-button'));
             }
             root.append(box);
         }
@@ -270,7 +283,7 @@
             const targetKind = extra.kind || original()?.kind || kind;
             if (busy || uncertain || !readyRevision(snapshot?.revision) || !allowed(snapshot, operation, targetKind, operation === 'undo' ? null : detail?.item || original())) return;
             if (operation === 'delete' && !confirm(t('删除此条目？可从已删除记录中恢复。'))) return;
-            const item = original(), profileId = profile, generation = ++serial;
+            const item = original();
             const input = { requestId: uuid(), expectedRevision: snapshot.revision, operation, kind: targetKind,
                 ...(operation !== 'undo' && item ? { itemId: item.id, itemRevision: item.revision } : {}),
                 ...(operation === 'undo' ? { receiptId: extra.receiptId } : {}) };
@@ -279,13 +292,19 @@
                 if (targetKind === 'skill') Object.assign(input, { name: draft.name.trim(), description: draft.description.trim() }); else input.category = draft.category;
                 if (draft.scope === 'project') { notice = t('请选择助手范围；项目范围写入须由服务端提供已验证的项目标识。'); render(); return; }
             }
-            busy = true; uncertain = { requestId: input.requestId, operation, draft: JSON.stringify(draft) }; notice = t('正在提交，等待服务回执…'); render();
+            await runMutation(input, () => { editing = false; draft = null; selected = detail = null; });
+        }
+        // One submission path: the receipt, conflicts and uncertain results are handled the
+        // same way for single edits and for a consolidation batch.
+        async function runMutation(input, saved) {
+            const profileId = profile, generation = ++serial;
+            busy = true; uncertain = { requestId: input.requestId, operation: input.operation, draft: JSON.stringify(draft) }; notice = t('正在提交，等待服务回执…'); render();
             try {
                 const result = await apiFetch(`${base()}/knowledge/mutations`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
                 if (!current(profileId, generation)) return;
                 if (result?.version !== 1 || result.receipt?.requestId !== input.requestId) throw new Error(t('回执未确认'));
                 receipt = result.receipt; uncertain = null; conflict = false; if (readyRevision(result.revision)) snapshot.revision = result.revision;
-                if (['saved', 'pending'].includes(receipt.status)) { editing = false; draft = null; selected = detail = null; }
+                if (['saved', 'pending'].includes(receipt.status)) saved?.();
                 notice = receipt.status === 'conflict' ? t('版本冲突；草稿已保留。刷新并核对最新正文。') : '';
             } catch (error) {
                 if (current(profileId, generation)) {
@@ -293,9 +312,95 @@
                         uncertain = null; memoryFull = true; notice = t('记忆已满，新记忆会被拒绝。请整理合并后再试。'); void load();
                     } else if (error.status === 409) { uncertain = null; conflict = true; notice = t('版本冲突；草稿已保留。刷新并核对服务器版本。'); void load(); }
                     else if (rejected(error)) { uncertain = null; notice = t('提交被服务端拒绝：{0}，草稿已保留。', error.message); }
-                    else { uncertain = { requestId: input.requestId, operation, draft: JSON.stringify(draft) }; notice = t('提交结果未确认：{0}。草稿与请求 ID {1} 已保留，勿重复提交。', error.message, input.requestId); }
+                    else { uncertain = { requestId: input.requestId, operation: input.operation, draft: JSON.stringify(draft) }; notice = t('提交结果未确认：{0}。草稿与请求 ID {1} 已保留，勿重复提交。', error.message, input.requestId); }
                 }
             } finally { busy = false; if (current(profileId, generation)) { render(); if (!uncertain && receipt?.requestId === input.requestId) void load(); } }
+        }
+        // U2.1: apply one proposal group through the batched consolidate mutation. The
+        // recorded item revisions and the current snapshot revision are both confirmed.
+        async function consolidate(proposal, index) {
+            const group = proposal?.groups?.[index];
+            if (!group || !Array.isArray(group.items) || group.items.length < 2 || groupStale(group)
+                || busy || uncertain || !readyRevision(snapshot?.revision) || !allowed(snapshot, 'consolidate', 'memory')) return;
+            const merged = proposalDraft(proposal.id, index, group);
+            const input = { requestId: uuid(), expectedRevision: snapshot.revision, operation: 'consolidate', kind: 'memory',
+                target: proposal.target === 'user' ? 'user' : 'memory',
+                items: group.items.map(row => ({ itemId: row.itemId, itemRevision: row.itemRevision })),
+                content: merged.content, category: merged.category };
+            await runMutation(input, () => appliedGroups.add(`${proposal.id}:${index}`));
+        }
+        const groupKey = (proposalId, index) => `${proposalId}:${index}`;
+        function proposalDraft(proposalId, index, group) {
+            const key = groupKey(proposalId, index);
+            if (!proposalDrafts.has(key)) proposalDrafts.set(key, { content: String(group.content || ''), category: group.category || 'fact' });
+            return proposalDrafts.get(key);
+        }
+        // A group goes stale when any recorded item revision no longer matches the current
+        // snapshot, or the entry disappeared. Items on other pages are checked once by id.
+        function groupStale(group) {
+            return (group.items || []).some(row => itemRevisions.has(row.itemId) && itemRevisions.get(row.itemId) !== row.itemRevision);
+        }
+        function checkProposalItems(proposals) {
+            const missing = [...new Set((proposals || []).flatMap(proposal => proposal.groups || [])
+                .flatMap(group => group.items || []).map(row => row.itemId)
+                .filter(itemId => typeof itemId === 'string' && !itemRevisions.has(itemId) && !itemChecks.has(itemId)))];
+            if (!missing.length) return;
+            for (const itemId of missing) itemChecks.add(itemId);
+            const profileId = profile, generation = serial;
+            void Promise.all(missing.map(itemId => apiFetch(`${base()}/knowledge/items/${encodeURIComponent(itemId)}`)
+                .then(data => [itemId, data?.status === 'ready' && data.item ? data.item.revision ?? null : null])
+                .catch(() => [itemId, undefined]))).then(rows => {
+                if (!active || !root.isConnected || profileId !== profile) return;
+                for (const [itemId, revision] of rows) {
+                    if (revision === undefined) itemChecks.delete(itemId);
+                    else itemRevisions.set(itemId, revision);
+                }
+                if (current(profileId, generation)) render();
+            });
+        }
+        function renderProposals(box) {
+            const proposals = (Array.isArray(learning?.proposals) ? learning.proposals : []).filter(proposal => proposal && typeof proposal === 'object');
+            checkProposalItems(proposals);
+            const groups = proposals.flatMap(proposal => (proposal.groups || []).map((group, index) => ({ proposal, group, index })))
+                .filter(row => row.group && !appliedGroups.has(groupKey(row.proposal.id, row.index)));
+            if (!groups.length) return;
+            const section = node('section', undefined, 'pi-proposals');
+            section.append(node('h5', t('整理方案')));
+            for (const { proposal, group, index } of groups) {
+                const merged = proposalDraft(proposal.id, index, group);
+                const stale = groupStale(group);
+                const card = node('div', undefined, 'pi-proposal-group');
+                card.append(node('p', [t('第 {0} 组', index + 1), proposal.target === 'user' ? 'USER' : 'MEMORY',
+                    proposal.model && [proposal.model.provider, proposal.model.modelId || proposal.model.id].filter(Boolean).join('/'),
+                    proposal.createdAt && t('生成时间：{0}', proposal.createdAt)].filter(Boolean).join(' · '), 'pi-proposal-meta'));
+                const items = node('div', undefined, 'pi-proposal-items');
+                items.append(node('small', t('原条目')));
+                for (const row of group.items || []) {
+                    const line = node('p', undefined, 'pi-proposal-item');
+                    line.append(node('span', String(row.preview || '').slice(0, 160) || t('（无预览）'), 'pi-proposal-item-text'));
+                    if (row.category) line.append(node('em', t(label[row.category] || row.category), 'pi-proposal-tag'));
+                    items.append(line);
+                }
+                card.append(items);
+                const body = node('div', undefined, 'pi-proposal-body');
+                if (stale) body.append(node('p', t('已过期：条目版本已变化或已不存在，请重新生成方案。'), 'pi-proposal-stale'));
+                const content = node('textarea'); content.rows = 4; content.value = merged.content;
+                content.maxLength = snapshot?.capabilities?.maxContentLength || 65536; content.disabled = stale;
+                content.oninput = () => { merged.content = content.value; };
+                body.append(field(t('合并后正文'), content));
+                const category = node('select');
+                for (const key of ['fact', 'preference', 'correction', 'failure', 'procedure']) category.append(option(key, t(label[key])));
+                category.value = merged.category; category.disabled = stale; category.onchange = () => { merged.category = category.value; };
+                body.append(field(t('类别'), category));
+                const actions = node('div', undefined, 'pi-knowledge-actions');
+                const apply = button(t('应用'), () => void consolidate(proposal, index), 'settings-primary-button');
+                apply.disabled = stale || busy || !!uncertain || learningBusy || !readyRevision(snapshot?.revision) || !allowed(snapshot, 'consolidate', 'memory');
+                const dismiss = button(t('忽略'), () => void action('dismiss-proposal', undefined, { proposalId: proposal.id, groupIndex: index }));
+                dismiss.disabled = learningBusy || !!learningUncertain;
+                actions.append(apply, dismiss); body.append(actions);
+                card.append(body); section.append(card);
+            }
+            box.append(section);
         }
         const canEnable = data => Boolean(data?.health) || Array.isArray(data?.capabilities?.actions) && data.capabilities.actions.includes('enable');
         async function loadModelCatalog() {
@@ -396,6 +501,7 @@
                     : rejected(error) ? t('学习设置被拒绝：{0}，草稿已保留。', error.message) : t('学习设置未确认：{0}。草稿已保留，请刷新核对。', error.message); }
                 finally { learningBusy = false; if (profileId === profile && generation === learningEpoch && active) render(); }
             }; box.append(form);
+            renderProposals(box);
             if (learningUncertain) {
                 box.append(node('p', t('作业请求 {0} 结果未确认；请先核对作业列表，勿重复提交。', learningUncertain.requestId), 'pi-knowledge-status'));
                 box.append(button(t('已核对作业列表'), () => { learningUncertain = null; render(); }));
@@ -417,7 +523,8 @@
         async function action(name, jobId, extra = {}) {
             const supported = learning?.capabilities?.actions?.includes(name)
                 || name === 'enable' && canEnable(learning)
-                || ['adopt-legacy', 'dismiss-legacy'].includes(name) && Boolean(learning?.legacy);
+                || ['adopt-legacy', 'dismiss-legacy'].includes(name) && Boolean(learning?.legacy)
+                || ['propose-consolidation', 'dismiss-proposal'].includes(name) && proposalsSupported();
             if (learningBusy || learningUncertain || !supported) return;
             const requestId = uuid(), generation = learningEpoch;
             learningBusy = true; render(); const profileId = profile;
@@ -426,7 +533,8 @@
                 if (profileId !== profile || generation !== learningEpoch || !active) return;
                 if (result?.version !== 1 || !Number.isSafeInteger(result.revision) || !result.settings) throw new Error(t('作业回执未确认'));
                 notice = name === 'enable' ? t('已开启自学习；以学习状态为准。') : name === 'adopt-legacy' ? t('已迁移并开启学习。')
-                    : name === 'dismiss-legacy' ? t('已忽略旧自动学习提示。') : t('作业请求已返回；以作业列表状态为准。');
+                    : name === 'dismiss-legacy' ? t('已忽略旧自动学习提示。') : name === 'propose-consolidation' ? t('整理方案生成中；完成后显示在学习区。')
+                        : name === 'dismiss-proposal' ? t('已忽略该整理建议。') : t('作业请求已返回；以作业列表状态为准。');
                 learning = result;
             } catch (error) {
                 if (profileId === profile && generation === learningEpoch && active) {

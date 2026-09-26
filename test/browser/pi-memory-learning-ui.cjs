@@ -368,6 +368,128 @@ async function runChat(browser, base, width, locale) {
     await context.close();
 }
 
+// U2 wave-2 rehearsal (consolidation proposals, injection preview, project memory with a
+// session id, skill reload and draft-skill counts). Contract fields do not exist on the
+// backend yet: route interception mocks them and absent fields must keep the old display.
+async function runWave2(browser, base, width, locale) {
+    const context = await browser.newContext({ viewport: { width, height: 900 }, locale });
+    const page = await context.newPage(), errors = [], dialogs = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('dialog', dialog => { dialogs.push(dialog.message()); dialog.accept(); });
+    const zh = locale.startsWith('zh'), say = (source, english) => zh ? source : english;
+    const item = (letter, revision, content, category = 'fact') => ({ id: hash(letter), kind: 'memory', scope: 'profile', target: 'memory',
+        category, state: 'active', revision: hash(revision), content, updatedAt: '2026-01-01' });
+    const items = [item('a', '1', 'First source entry'), item('b', '2', 'Second source entry'), item('c', '3', 'Third source entry', 'preference')];
+    const proposal = { id: 'proposal-one', target: 'memory', createdAt: '2026-02-01', model: { provider: 'fixture', modelId: 'review-model' },
+        groups: [
+            { items: [{ itemId: hash('a'), itemRevision: hash('1'), preview: 'First source entry', category: 'fact' },
+                { itemId: hash('b'), itemRevision: hash('2'), preview: 'Second source entry', category: 'fact' }],
+                content: 'Merged source entry', category: 'procedure' },
+            { items: [{ itemId: hash('c'), itemRevision: hash('9'), preview: 'Third source entry', category: 'preference' },
+                { itemId: hash('b'), itemRevision: hash('2'), preview: 'Second source entry', category: 'fact' }],
+                content: 'Stale merge', category: 'fact' } ] };
+    const state = { learningRevision: 1, proposals: undefined, drafts: undefined, usage: { memory: { chars: 13600, limit: 16000 }, user: { chars: 100, limit: 8000 } },
+        settings: structuredClone(settings), actions: ['save', 'propose-consolidation', 'dismiss-proposal'], consolidates: [], undos: [] };
+    await page.route('**/api/pi/**', async route => {
+        const req = route.request(), url = new URL(req.url()), p = url.pathname;
+        const fulfill = (body, status = 200) => route.fulfill({ json: body, status });
+        const learning = () => ({ version: 1, status: 'ready', revision: state.learningRevision, settings: state.settings,
+            jobs: [], recentRuns: [], proposals: state.proposals, drafts: state.drafts,
+            health: { state: 'ok', missingModels: [], lastFailure: null, today: { runs: 0, maxRuns: 4, reservedTokens: 0, maxTokens: 24000 } },
+            capabilities: { installed: true, settingsWrite: true, reservedTokensPerRun: 6000, actions: state.actions,
+                limits: { maxRunsPerDay: { min: 1, max: 20 }, maxTokensPerDay: { min: 6000, max: 200000 }, periodicReviewMinutes: { min: 0, max: 10800 } } } });
+        const snapshot = () => ({ version: 1, status: 'ready', revision: hash('a'), items, receipts: [], hasMore: false,
+            usage: state.usage, capabilities: { memory: true, skill: true, projectWrites: false, projectWritesBySession: true,
+                operations: ['create', 'update', 'delete', 'undo', 'consolidate'], maxContentLength: 65536 } });
+        if (p.endsWith('/knowledge') && req.method() === 'GET') return fulfill(snapshot());
+        if (p.endsWith('/learning') && req.method() === 'GET') return fulfill(learning());
+        if (p.endsWith('/learning/actions')) {
+            const input = req.postDataJSON();
+            if (input.action === 'propose-consolidation') state.proposals = [structuredClone(proposal)];
+            if (input.action === 'dismiss-proposal') state.proposals = (state.proposals || []).map(row => row.id === input.proposalId
+                ? { ...row, groups: row.groups.filter((_, index) => index !== input.groupIndex) } : row).filter(row => row.groups.length);
+            state.learningRevision++;
+            return fulfill(learning());
+        }
+        if (p.endsWith('/knowledge/mutations')) {
+            const input = req.postDataJSON();
+            if (input.operation === 'consolidate') {
+                state.consolidates.push(input);
+                return fulfill({ version: 1, status: 'saved', revision: hash('5'), receipt: { id: 'receipt-consolidate', requestId: input.requestId,
+                    operation: 'consolidate', kind: 'memory', status: 'saved', undoable: true, origin: 'manual', preview: input.content.slice(0, 160),
+                    category: input.category, consolidated: [hash('n')], summary: 'consolidate memory' } });
+            }
+            if (input.operation === 'undo') { state.undos.push(input); return fulfill({ version: 1, status: 'saved', revision: hash('6'),
+                receipt: { id: 'receipt-undo', requestId: input.requestId, operation: 'undo', kind: input.kind, status: 'saved', undoable: false, summary: 'undo memory' } }); }
+            return fulfill({ error: 'unexpected mutation' }, 400);
+        }
+        return fulfill({ error: 'missing' }, 404);
+    });
+    await page.goto(`${base}/fixture`);
+    const text = selector => page.locator(selector).first().innerText();
+    // Compat: without proposal fields nothing new renders next to the usage bars.
+    await page.locator('.pi-usage-bars').waitFor();
+    assert.equal(await page.locator('.pi-proposals').count(), 0, 'absent proposals keep the plain display');
+    // U2.1: at 80% usage the consolidation button queues a propose-consolidation job.
+    const propose = page.locator('.pi-usage-bars button').filter({ hasText: say('整理合并', 'Consolidate') });
+    assert.equal(await propose.count(), 1);
+    await propose.click();
+    await page.waitForFunction(() => document.querySelectorAll('.pi-proposal-group').length === 2);
+    const asked = await page.evaluate(() => window.calls.filter(call => call.body && call.body.action === 'propose-consolidation').at(-1));
+    assert.equal(asked.url, '/api/pi/profiles/profile-one/learning/actions');
+    assert.equal(asked.body.target, 'memory');
+    assert.equal(typeof asked.body.requestId, 'string');
+    // Each group lists its source entries and edits the merged body and category.
+    const groups = page.locator('.pi-proposal-group');
+    assert.ok((await groups.nth(0).innerText()).includes('First source entry'), 'source previews list on the left');
+    await groups.nth(0).locator('textarea').fill('Merged source entry edited');
+    await groups.nth(0).locator('select').selectOption('procedure');
+    await groups.nth(0).locator('button').filter({ hasText: say('应用', 'Apply') }).click();
+    await page.waitForFunction(() => Boolean(document.querySelector('.pi-knowledge-receipt')));
+    const apply = state.consolidates.at(-1);
+    assert.deepEqual(Object.keys(apply).sort(), ['category', 'content', 'expectedRevision', 'items', 'kind', 'operation', 'requestId', 'target']);
+    assert.equal(apply.operation, 'consolidate'); assert.equal(apply.kind, 'memory'); assert.equal(apply.target, 'memory');
+    assert.deepEqual(apply.items, [{ itemId: hash('a'), itemRevision: hash('1') }, { itemId: hash('b'), itemRevision: hash('2') }]);
+    assert.equal(apply.expectedRevision, hash('a'));
+    assert.equal(apply.content, 'Merged source entry edited');
+    assert.equal(apply.category, 'procedure');
+    // The applied group disappears; the receipt shows with an undo entry.
+    await page.waitForFunction(() => document.querySelectorAll('.pi-proposal-group').length === 1);
+    assert.ok((await text('.pi-knowledge-receipt')).includes(say('整理合并', 'Consolidate')), await text('.pi-knowledge-receipt'));
+    await page.locator('.pi-knowledge-receipt button').filter({ hasText: say('撤销', 'Undo') }).click();
+    await page.waitForFunction(() => window.calls.some(call => call.body && call.body.operation === 'undo'));
+    const undo = state.undos.at(-1);
+    assert.deepEqual(Object.keys(undo).sort(), ['expectedRevision', 'kind', 'operation', 'receiptId', 'requestId']);
+    assert.equal(undo.receiptId, 'receipt-consolidate');
+    assert.equal(undo.expectedRevision, hash('a'));
+    // A stale group is marked out of date and its apply button is disabled.
+    const stale = groups.nth(0);
+    assert.ok((await stale.innerText()).includes(say('已过期', 'Out of date')), await stale.innerText());
+    assert.equal(await stale.locator('textarea').isDisabled(), true);
+    assert.equal(await stale.locator('button').filter({ hasText: say('应用', 'Apply') }).isDisabled(), true);
+    await stale.locator('button').filter({ hasText: say('忽略', 'Ignore') }).click();
+    await page.waitForFunction(() => window.calls.some(call => call.body && call.body.action === 'dismiss-proposal'));
+    const dismissed = await page.evaluate(() => window.calls.filter(call => call.body && call.body.action === 'dismiss-proposal').at(-1));
+    assert.equal(dismissed.body.proposalId, 'proposal-one');
+    assert.equal(dismissed.body.groupIndex, 1);
+    await page.waitForFunction(() => document.querySelectorAll('.pi-proposal-group').length === 0);
+    // Below 80% the consolidation button is not offered.
+    state.usage = { memory: { chars: 100, limit: 16000 }, user: { chars: 100, limit: 8000 } };
+    await page.evaluate(() => window.refreshAll());
+    await page.waitForFunction(() => document.querySelectorAll('.pi-usage-bars button').length === 0);
+    // Mobile: 16px form controls, no horizontal overflow, no page errors.
+    if (width < 900) {
+        await page.waitForFunction(() => [...document.querySelectorAll('textarea,input,select')].every(el => parseFloat(getComputedStyle(el).fontSize) >= 16), undefined, { timeout: 5000 }).catch(() => {});
+        const sizes = await page.evaluate(() => [...document.querySelectorAll('textarea,input,select')].map(el => [el.tagName.toLowerCase(), parseFloat(getComputedStyle(el).fontSize)]));
+        assert.ok(sizes.every(entry => entry[1] >= 16), `mobile form font sizes: ${JSON.stringify(sizes)}`);
+    }
+    const geometry = await page.evaluate(() => ({ width: innerWidth, body: document.documentElement.scrollWidth }));
+    assert.ok(geometry.body <= geometry.width + 1, JSON.stringify(geometry));
+    assert.deepEqual(errors, []);
+    console.log(`PASS wave2 consolidate ${width} ${locale}: ${JSON.stringify(geometry)}`);
+    await context.close();
+}
+
 (async () => {
     const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
     const base = `http://127.0.0.1:${server.address().port}`;
@@ -376,5 +498,6 @@ async function runChat(browser, base, width, locale) {
         for (const [width, locale] of [[393, 'zh-CN'], [1440, 'en-US']]) await runFixture(browser, base, width, locale);
         for (const [width, locale] of [[393, 'zh-CN'], [1440, 'en-US']]) await runProfiles(browser, base, width, locale);
         for (const [width, locale] of [[393, 'zh-CN'], [1440, 'en-US']]) await runChat(browser, base, width, locale);
+        for (const [width, locale] of [[393, 'zh-CN'], [1440, 'en-US']]) await runWave2(browser, base, width, locale);
     } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
