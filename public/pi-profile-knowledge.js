@@ -9,6 +9,10 @@
     const label = { memory: '记忆', skill: '已学习技能', fact: '事实', preference: '偏好', correction: '纠错', failure: '失败经验', procedure: '流程',
         active: '启用', draft: '草稿', disabled: '停用', deleted: '已删除', saved: '已保存', pending: '待同步', failed: '失败', conflict: '版本冲突', skipped: '跳过',
         create: '新建', update: '更新', delete: '删除', restore: '恢复条目', enable: '启用', disable: '停用', undo: '撤销' };
+    const statusLabel = { ready: '就绪', pending: '待同步', missing: '缺失', disabled: '未启用', unsupported: '不支持', error: '错误' };
+    const healthLabel = { ok: '学习正常', off: '学习已关闭', 'needs-model': '缺少学习模型配置', 'quota-exhausted': '今日学习额度已用完', failing: '最近学习连续失败', unavailable: '学习当前不可用' };
+    const healthTone = { ok: 'ok', off: 'off', 'needs-model': 'warn', 'quota-exhausted': 'warn', failing: 'bad', unavailable: 'bad' };
+    const purposeLabel = { 'memory-correction': '纠错模型', 'memory-review': '复盘模型', 'memory-extraction': '提炼模型' };
     const uuid = () => globalThis.crypto?.randomUUID?.() || `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const jobLabel = { queued: '排队中', running: '运行中', 'waiting-config': '等待模型配置', cancelling: '取消中', cancelled: '已取消', completed: '已完成',
         failed: '失败', uncertain: '待核对', skipped: '已跳过', manual: '手动复盘', periodic: '周期复盘', correction: '纠错识别',
@@ -34,6 +38,7 @@
         let profile = '', kind = 'skill', query = '', offset = 0, serial = 0, active = false;
         let snapshot = null, learning = null, learningDraft = null, selected = null, detail = null, draft = null, editing = false, reviewed = true;
         let busy = false, learningBusy = false, learningEpoch = 0, uncertain = null, learningUncertain = null, receipt = null, notice = '', conflict = false;
+        let memoryFull = false, revealItem = null, modelCatalog = null, legacyModel = null;
         const draftsByProfile = new Map();
         const base = () => `/api/pi/profiles/${encodeURIComponent(profile)}`;
         const current = (profileId, generation) => active && root.isConnected && profile === profileId && serial === generation;
@@ -46,10 +51,17 @@
             active = true;
             if (profile === id) { render(); if (!snapshot || uncertain) void load(); if (!learning) void loadLearning(); return; }
             if (profile) draftsByProfile.set(profile, { kind, query, offset, selected, detail, draft, editing, reviewed, uncertain, learningUncertain, receipt, conflict, learningDraft });
-            profile = id || ''; serial++; learningEpoch++;
+            profile = id || ''; serial++; learningEpoch++; memoryFull = false; legacyModel = null;
             ({ kind = 'skill', query = '', offset = 0, selected = null, detail = null, draft = null, editing = false,
                 reviewed = true, uncertain = null, learningUncertain = null, receipt = null, conflict = false, learningDraft = null } = draftsByProfile.get(profile) || {});
             snapshot = learning = null; notice = ''; render(); if (profile) { void load(); void loadLearning(); }
+        }
+        function reveal(itemId) {
+            revealItem = itemId || null;
+            if (revealItem && snapshot?.status === 'ready') {
+                const target = snapshot.items.find(row => row.id === revealItem);
+                if (target) { revealItem = null; choose(target); }
+            }
         }
         function close() { active = false; serial++; learningEpoch++; snapshot = learning = null; root.replaceChildren(); }
         async function load() {
@@ -79,8 +91,16 @@
                 }
                 notice = uncertain ? t('提交结果不确定。草稿和请求 ID 已保留，请核对回执，勿重复新建。')
                     : !reviewed ? t('保存版本已变化；先核对服务器正文与草稿。')
-                        : conflict ? t('版本冲突；草稿已保留。刷新并核对服务器版本。') : '';
+                        : conflict ? t('版本冲突；草稿已保留。刷新并核对服务器版本。')
+                            : memoryFull ? t('记忆已满，新记忆会被拒绝。请整理合并后再试。') : '';
                 render();
+                if (revealItem) {
+                    const target = data.items.find(row => row.id === revealItem);
+                    if (target) {
+                        revealItem = null; choose(target);
+                        requestAnimationFrame(() => root.querySelector('.pi-knowledge-row[aria-current="true"]')?.scrollIntoView({ block: 'nearest' }));
+                    }
+                }
             } catch (error) { if (current(profileId, generation)) { notice = t('读取失败：{0}', error.message); render(); } }
         }
         async function loadLearning() {
@@ -119,10 +139,30 @@
             return [t(label[item.state] || item.state || '未确认'), item.scope === 'project' ? t('目录范围：{0}', item.projectKey || t('未提供')) : t('助手范围'),
                 item.revision && t('版本：{0}', item.revision), item.updatedAt, source].filter(Boolean).join(' · ');
         }
+        function renderUsage() {
+            const usage = snapshot?.usage;
+            if (!usage || typeof usage !== 'object') return;
+            const box = node('section', undefined, 'pi-usage-bars');
+            box.append(node('h4', t('记忆用量')));
+            for (const [key, text] of [['memory', 'MEMORY'], ['user', 'USER']]) {
+                const data = usage[key];
+                if (!data || !Number.isFinite(data.chars) || !Number.isFinite(data.limit) || data.limit <= 0) continue;
+                const ratio = data.chars / data.limit, level = key === 'memory' && memoryFull || ratio >= 1 ? 'full' : ratio >= 0.8 ? 'near' : 'ok';
+                const row = node('div', undefined, 'pi-usage-row');
+                row.append(node('span', text, 'pi-usage-label'), node('span', `${data.chars} / ${data.limit}`, 'pi-usage-count'));
+                const bar = node('div', undefined, `pi-usage-bar pi-usage-${level}`);
+                const fill = node('div', undefined, 'pi-usage-fill'); fill.style.width = `${Math.min(100, Math.round(ratio * 100))}%`; bar.append(fill);
+                row.append(bar); box.append(row);
+                if (level === 'full') box.append(node('p', t('已满，新记忆会被拒绝'), 'pi-usage-note pi-usage-full'));
+                else if (level === 'near') box.append(node('p', t('接近上限，下一步可整理合并'), 'pi-usage-note pi-usage-near'));
+            }
+            root.append(box);
+        }
         function render() {
             root.replaceChildren(); if (!active || !profile) return;
             const head = node('div', undefined, 'pi-knowledge-head'); head.append(node('h4', t('助手内的记忆与技能')), button(t('刷新'), () => { void load(); void loadLearning(); })); root.append(head);
             root.append(node('p', t('已学习技能属于此助手；外部安装的成品技能在“扩展 → 已安装技能”管理。保存不代表当前会话已加载或模型一定遵守。'), 'pi-profile-note'));
+            renderUsage();
             const tabs = node('div', undefined, 'pi-profile-kinds'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', t('知识类别'));
             for (const key of ['memory', 'skill']) { const tab = button(t(label[key]), () => { if (key === kind || !discard()) return; kind = key; offset = 0; selected = detail = draft = null; editing = false; void load(); }); tab.setAttribute('aria-pressed', String(key === kind)); tabs.append(tab); }
             root.append(tabs);
@@ -130,8 +170,8 @@
             search.placeholder = t('搜索已保存数据'); search.setAttribute('aria-label', t('搜索已保存数据'));
             search.onchange = () => { if (!discard()) { search.value = query; return; } query = search.value; offset = 0; void load(); };
             const add = button(t('新建{0}', t(label[kind])), () => edit(null), 'settings-primary-button'); add.disabled = busy || !!uncertain || !readyRevision(snapshot?.revision) || !allowed(snapshot, 'create', kind); tools.append(search, add); root.append(tools);
-            const message = node('p', notice ? `${notice} · ${t('存储状态：{0}', snapshot?.status || t('状态未知'))}`
-                : snapshot ? t('已保存数据 · {0}', snapshot.status || t('状态未知')) : t('正在读取…'), 'pi-knowledge-status'); message.setAttribute('role', 'status'); root.append(message);
+            const message = node('p', notice ? `${notice} · ${t('存储状态：{0}', t(statusLabel[snapshot?.status] || snapshot?.status || '状态未知'))}`
+                : snapshot ? t('已保存数据 · {0}', t(statusLabel[snapshot.status] || snapshot.status || '状态未知')) : t('正在读取…'), 'pi-knowledge-status'); message.setAttribute('role', 'status'); root.append(message);
             if (receipt) {
                 const r = node('div', receiptText(receipt), 'pi-knowledge-receipt'); r.setAttribute('role', 'status');
                 if (receipt.undoable && receipt.id && allowed(snapshot, 'undo', receipt.kind)) r.append(button(t('撤销'), () => void mutate('undo', { receiptId: receipt.id, kind: receipt.kind })));
@@ -237,15 +277,77 @@
                 notice = receipt.status === 'conflict' ? t('版本冲突；草稿已保留。刷新并核对最新正文。') : '';
             } catch (error) {
                 if (current(profileId, generation)) {
-                    if (error.status === 409) { uncertain = null; conflict = true; notice = t('版本冲突；草稿已保留。刷新并核对服务器版本。'); void load(); }
+                    if (error.status === 409 && (error.data?.code === 'memory-full' || error.code === 'memory-full')) {
+                        uncertain = null; memoryFull = true; notice = t('记忆已满，新记忆会被拒绝。请整理合并后再试。'); void load();
+                    } else if (error.status === 409) { uncertain = null; conflict = true; notice = t('版本冲突；草稿已保留。刷新并核对服务器版本。'); void load(); }
                     else if (rejected(error)) { uncertain = null; notice = t('提交被服务端拒绝：{0}，草稿已保留。', error.message); }
                     else { uncertain = { requestId: input.requestId, operation, draft: JSON.stringify(draft) }; notice = t('提交结果未确认：{0}。草稿与请求 ID {1} 已保留，勿重复提交。', error.message, input.requestId); }
                 }
             } finally { busy = false; if (current(profileId, generation)) { render(); if (!uncertain && receipt?.requestId === input.requestId) void load(); } }
         }
+        const canEnable = data => Boolean(data?.health) || Array.isArray(data?.capabilities?.actions) && data.capabilities.actions.includes('enable');
+        async function loadModelCatalog() {
+            if (modelCatalog) return;
+            try {
+                const data = await apiFetch('/api/pi/settings/models');
+                if (data && Array.isArray(data.models)) modelCatalog = data;
+            } catch { modelCatalog = { models: [], providers: [] }; }
+            if (active && root.isConnected) render();
+        }
+        function renderLegacy(box) {
+            const legacy = learning?.legacy;
+            if (!legacy || typeof legacy !== 'object') return;
+            const banner = node('div', undefined, 'pi-learning-legacy');
+            banner.append(node('p', t('此身份开启过旧版自动学习，新版需要确认后才会继续学习。')));
+            const purposes = (Array.isArray(legacy.purposes) ? legacy.purposes : []).map(id => t(purposeLabel[id] || id));
+            banner.append(node('p', t('将设置的用途：{0}', purposes.join('、') || t('无'))));
+            const model = legacy.reviewModel?.provider ? `${legacy.reviewModel.provider}/${legacy.reviewModel.modelId || ''}` : '';
+            banner.append(node('p', t('模型：{0}', model || t('未提供'))));
+            let chosen = null;
+            if (legacy.reviewModelAvailable === false) {
+                banner.append(node('p', t('旧模型不可用，请选择新的辅助模型。')));
+                const catalog = (modelCatalog?.models || []).filter(m => m.available && Array.isArray(m.input) && m.input.includes('text') && !/:batch$/.test(m.id));
+                const providerNames = new Map((modelCatalog?.providers || []).map(p => [p.id, p.name || p.id]));
+                const providerIds = [...new Set(catalog.map(m => m.provider))];
+                const field = node('label', t('模型')), provider = node('select'), modelSelect = node('select');
+                provider.setAttribute('aria-label', t('供应商')); modelSelect.setAttribute('aria-label', t('模型'));
+                for (const id of providerIds) provider.append(option(id, providerNames.get(id) || id));
+                if (!providerIds.length) provider.append(option('', t('未提供')));
+                provider.value = catalog.some(m => m.provider === legacyModel?.provider) ? legacyModel.provider : providerIds[0] || '';
+                const fill = () => {
+                    modelSelect.replaceChildren();
+                    for (const m of catalog.filter(row => row.provider === provider.value)) modelSelect.append(option(m.id, m.name || m.id));
+                    modelSelect.value = [...modelSelect.options].some(o => o.value === legacyModel?.modelId) ? legacyModel.modelId : modelSelect.options[0]?.value || '';
+                    legacyModel = provider.value && modelSelect.value ? { provider: provider.value, modelId: modelSelect.value } : null;
+                    chosen = legacyModel;
+                };
+                provider.onchange = () => { fill(); render(); };
+                modelSelect.onchange = () => { fill(); render(); };
+                fill();
+                field.append(provider, modelSelect); banner.append(field);
+                if (!modelCatalog) void loadModelCatalog();
+            }
+            const adopt = button(t('迁移并开启'), () => void action('adopt-legacy', undefined, chosen ? { model: chosen } : {}), 'settings-primary-button');
+            adopt.disabled = learningBusy || legacy.reviewModelAvailable === false && !chosen;
+            banner.append(adopt, button(t('不再提示'), () => void action('dismiss-legacy')));
+            box.append(banner);
+        }
         function renderLearning() {
             const box = node('section', undefined, 'pi-learning'); box.append(node('h4', t('后台学习')));
             if (!learning || learning.error) { box.append(node('p', learning?.error || t('正在读取…'), 'pi-knowledge-status')); root.append(box); return; }
+            const health = learning.health;
+            if (health?.state) {
+                const line = node('p', undefined, 'pi-learning-health');
+                line.append(node('span', undefined, `pi-health-dot pi-health-${healthTone[health.state] || 'off'}`),
+                    node('span', t(healthLabel[health.state] || '学习当前不可用')));
+                box.append(line);
+            }
+            const missing = Array.isArray(health?.missingModels) ? health.missingModels : [];
+            if (missing.length) {
+                box.append(node('p', t('还需要配置：{0}', missing.map(id => t(purposeLabel[id] || id)).join(' / ')), 'pi-knowledge-status'));
+                box.append(button(t('前往设置 → 使用偏好 → 辅助模型'), () => globalThis.dispatchEvent?.(new CustomEvent('workspace:open-settings', { detail: { tab: 'models' } }))));
+            }
+            renderLegacy(box);
             const settings = learning.settings, form = node('form', undefined, 'pi-learning-settings');
             for (const [key, text] of [['enabled', '后台学习'], ['correctionEnabled', '纠错识别'], ['reviewEnabled', '定期复盘'], ['extractionEnabled', '候选提取']]) {
                 if (!Object.hasOwn(settings, key)) continue;
@@ -286,27 +388,34 @@
                 box.append(node('p', t('作业请求 {0} 结果未确认；请先核对作业列表，勿重复提交。', learningUncertain.requestId), 'pi-knowledge-status'));
                 box.append(button(t('已核对作业列表'), () => { learningUncertain = null; render(); }));
             }
+            if (!learningUncertain && canEnable(learning)) box.append(button(t('一键开启自学习'), () => void action('enable'), 'settings-primary-button'));
             if (!learningUncertain && learning.capabilities?.actions?.includes('review-now')) box.append(button(t('立即复盘'), () => void action('review-now')));
             for (const job of [...(learning.jobs || []), ...(learning.recentRuns || [])].slice(0, 20)) {
                 const row = node('div', undefined, 'pi-learning-job'); row.append(node('strong', `${t(jobLabel[job.reason] || job.reason || job.id)} · ${t(jobLabel[job.status] || job.status || '状态未知')}`));
                 row.append(node('small', [job.createdAt || job.startedAt || '', job.model?.provider && (job.model?.modelId || job.model?.id) ? `${job.model.provider}/${job.model.modelId || job.model.id}` : '',
                     job.usage?.totalTokens != null ? t('{0} tokens', job.usage.totalTokens) : '',
                     job.costStatus === 'reported' && job.usage?.reportedCostUsd != null ? t('供应商报告费用：${0}', job.usage.reportedCostUsd) : t('费用未知'),
+                    job.error === 'memory-full' ? t('记忆已满，未保存') : '',
                     job.receiptIds?.length ? t('关联回执：{0}', job.receiptIds.join(', ')) : ''].filter(Boolean).join(' · ')));
                 if (!learningUncertain && job.id && learning.capabilities?.actions?.includes('cancel') && ['queued', 'running', 'pending', 'waiting-config'].includes(job.status)) row.append(button(t('取消作业'), () => void action('cancel', job.id)));
                 box.append(row);
             }
             root.append(box);
         }
-        async function action(name, jobId) {
-            if (learningBusy || learningUncertain || !learning?.capabilities?.actions?.includes(name)) return;
+        async function action(name, jobId, extra = {}) {
+            const supported = learning?.capabilities?.actions?.includes(name)
+                || name === 'enable' && canEnable(learning)
+                || ['adopt-legacy', 'dismiss-legacy'].includes(name) && Boolean(learning?.legacy);
+            if (learningBusy || learningUncertain || !supported) return;
             const requestId = uuid(), generation = learningEpoch;
             learningBusy = true; render(); const profileId = profile;
             try {
-                const result = await apiFetch(`${base()}/learning/actions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId, action: name, ...(jobId ? { jobId } : {}) }) });
+                const result = await apiFetch(`${base()}/learning/actions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId, action: name, ...(jobId ? { jobId } : {}), ...extra }) });
                 if (profileId !== profile || generation !== learningEpoch || !active) return;
                 if (result?.version !== 1 || !Number.isSafeInteger(result.revision) || !result.settings) throw new Error(t('作业回执未确认'));
-                notice = t('作业请求已返回；以作业列表状态为准。'); learning = result;
+                notice = name === 'enable' ? t('已开启自学习；以学习状态为准。') : name === 'adopt-legacy' ? t('已迁移并开启学习。')
+                    : name === 'dismiss-legacy' ? t('已忽略旧自动学习提示。') : t('作业请求已返回；以作业列表状态为准。');
+                learning = result;
             } catch (error) {
                 if (profileId === profile && generation === learningEpoch && active) {
                     if (error.status !== 409 && !rejected(error)) learningUncertain = { requestId, action: name, jobId };
@@ -315,7 +424,7 @@
                 }
             } finally { learningBusy = false; if (profileId === profile && generation === learningEpoch && active) render(); }
         }
-        return { open, close, refresh: () => { if (profile) { void load(); void loadLearning(); } } };
+        return { open, close, reveal, refresh: () => { if (profile) { void load(); void loadLearning(); } } };
     }
     globalThis.PiProfileKnowledge = Object.freeze({ create });
 })();

@@ -23,6 +23,24 @@
 .pi-knowledge-version small { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
 .pi-knowledge-editor, .pi-learning-settings { display: grid; gap: 12px; }
 .pi-knowledge-editor label, .pi-learning-settings label:not(.pi-profile-check) { display: grid; gap: 5px; min-width: 0; font-size: .88rem; }
+.pi-profile-check { display: flex; align-items: center; gap: 9px; min-width: 0; font-size: .88rem; }
+.pi-usage-bars { display: grid; gap: 8px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 12px 0; margin: 12px 0; }
+.pi-usage-bars h4 { margin: 0; font-size: .92rem; }
+.pi-usage-row { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
+.pi-usage-label { font-size: .78rem; font-weight: 600; letter-spacing: .04em; }
+.pi-usage-count { font-size: .82rem; color: var(--text-soft); }
+.pi-usage-bar { flex: 1 1 140px; min-width: 90px; height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.pi-usage-fill { height: 100%; border-radius: inherit; background: #1f9d55; }
+.pi-usage-near .pi-usage-fill { background: #d98a00; }
+.pi-usage-full .pi-usage-fill { background: #c0392b; }
+.pi-usage-note { margin: 0; font-size: .82rem; }
+.pi-usage-note.pi-usage-near { color: #a06a00; }
+.pi-usage-note.pi-usage-full { color: #c0392b; }
+.pi-learning-health { display: flex; align-items: center; gap: 8px; margin: 0; font-size: .86rem; color: var(--text-soft); }
+.pi-learning-legacy { display: grid; gap: 8px; border-left: 3px solid #d98a00; background: var(--surface-2); padding: 12px 14px; margin: 10px 0; min-width: 0; }
+.pi-learning-legacy p { margin: 0; font-size: .86rem; line-height: 1.5; }
+.pi-learning-legacy label { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: .86rem; min-width: 0; }
+.pi-learning-legacy select { min-width: 0; flex: 1 1 140px; }
 .pi-knowledge-editor :is(input,textarea,select), .pi-learning-settings input[type=number], .pi-knowledge-tools input { width: 100%; min-width: 0; box-sizing: border-box; font: inherit; padding: 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-1); color: var(--text-main); }
 .pi-knowledge-editor textarea { resize: vertical; }
 .pi-learning-job { padding: 10px 0; border-bottom: 1px solid var(--line); }
