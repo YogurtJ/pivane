@@ -17,7 +17,7 @@ const settings = { enabled: false, correctionEnabled: true, reviewEnabled: false
 app.get('/fixture', (_req, res) => res.send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="/pi-profile-knowledge.css"><link rel="stylesheet" href="/pi-chat-knowledge.css">
 <style>:root{--line:#ccc;--text-main:#222;--text-soft:#555;--text-muted:#777;--surface-1:#fff;--surface-2:#eee;--accent:#168a68}body{margin:0;font-family:Arial,sans-serif;background:#f8f8f8;color:#222}main{max-width:720px;padding:12px;margin:auto;min-width:0}button{cursor:pointer}section{min-width:0}#pi-transcript-content{display:grid;gap:6px;padding:8px 0}</style></head><body><main><section id="pi-profiles-memory"></section><div id="pi-chat-knowledge"></div><div id="pi-transcript-content"></div></main>
-<script src="/pi-i18n-catalog.js"></script><script src="/pi-i18n.js"></script><script src="/pi-profile-knowledge.js"></script><script src="/pi-chat-knowledge.js"></script>
+<script src="/pi-i18n-catalog.js"></script><script src="/pi-i18n.js"></script><script src="/pi-profile-dialog.js"></script><script src="/pi-profile-knowledge.js"></script><script src="/pi-chat-knowledge.js"></script>
 <script>
 window.current = { cwd: '/synthetic', sessionId: 'thread-one', profileId: 'profile-one', generation: 1 };
 window.calls = []; window.events = [];
@@ -58,7 +58,7 @@ app.get('/profiles-fixture', (_req, res) => res.send(`<!doctype html><html><head
 <div id="pi-profiles-content"></div><button id="pi-profiles-refresh" type="button"></button>
 <dl id="pi-meta-profile-row"><dt></dt><dd id="pi-meta-profile"></dd></dl><div id="pi-session-profile"></div>
 </main>
-<script src="/pi-i18n-catalog.js"></script><script src="/pi-i18n.js"></script><script src="/pi-profile-knowledge.js"></script><script src="/pi-agent-profiles.js"></script>
+<script src="/pi-i18n-catalog.js"></script><script src="/pi-i18n.js"></script><script src="/pi-profile-dialog.js"></script><script src="/pi-profile-knowledge.js"></script><script src="/pi-agent-profiles.js"></script>
 <script>
 window.api = async (url, options) => {
     const response = await fetch(url, options);
@@ -620,6 +620,7 @@ async function runWave2(browser, base, width, locale) {
     assert.equal(update.itemId, hash('p')); assert.equal(update.itemRevision, hash('r'));
     await projectRow.click();
     await detail.locator('button').filter({ hasText: say('删除', 'Delete') }).click();
+    await page.locator('.pi-profile-confirm .settings-primary-button').click();
     await page.waitForFunction(() => window.calls.some(call => call.body && call.body.operation === 'delete'));
     const removal = state.mutations.at(-1);
     assert.deepEqual(Object.keys(removal).sort(), ['expectedRevision', 'itemId', 'itemRevision', 'kind', 'operation', 'requestId', 'scope', 'sessionId']);

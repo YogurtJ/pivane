@@ -69,4 +69,38 @@
     #pi-profiles-memory :is(input,textarea,select) { font-size: 16px; }
     .pi-knowledge-tools button { flex: 1 1 auto; }
 }
+/* Keep learning controls and knowledge entries readable within the profile workspace. */
+.pi-knowledge-head h4 { flex: 1 1 200px; }
+.pi-knowledge-head button { min-height: 38px; }
+.pi-knowledge-list { gap: 6px; border: 0; }
+.pi-knowledge-row { padding: 13px 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-1); }
+.pi-knowledge-row[aria-current=true] { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: color-mix(in srgb, var(--accent) 7%, var(--surface-1)); }
+.pi-knowledge-row-title { line-height: 1.6; }
+.pi-knowledge-row-meta { line-height: 1.5; }
+.pi-knowledge-detail, .pi-knowledge-editor, .pi-learning { border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin: 20px 0 0; background: var(--surface-1); }
+.pi-learning { display: grid; gap: 16px; scroll-margin-top: 16px; }
+.pi-learning > :is(p,.pi-knowledge-status) { margin: 0; }
+.pi-learning-settings { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; border-top: 1px solid var(--line); padding-top: 16px; }
+.pi-learning-settings .pi-profile-check { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-0, var(--surface-1)); }
+.pi-learning-settings .pi-profile-check input { width: 17px; height: 17px; flex: none; accent-color: var(--accent); }
+.pi-learning-settings > :is(small,details,button) { grid-column: 1 / -1; }
+.pi-learning-settings > small { line-height: 1.65; color: var(--text-soft); }
+.pi-learning-settings > button { justify-self: end; }
+.pi-learning-triggers { border: 1px solid var(--line); padding: 12px; border-radius: 8px; }
+.pi-learning-triggers summary { cursor: pointer; font-size: .85rem; }
+.pi-learning-triggers > small { display: block; color: var(--text-soft); line-height: 1.6; margin: 10px 0; }
+.pi-learning-triggers label { margin-top: 12px; }
+.pi-learning-triggers textarea { width: 100%; min-width: 0; box-sizing: border-box; resize: vertical; border: 1px solid var(--line); border-radius: 7px; padding: 10px; background: var(--surface-0, var(--surface-1)); color: var(--text-main); font: inherit; }
+.pi-usage-bars { padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-0, var(--surface-1)); }
+.pi-knowledge-tools input, .pi-knowledge-editor :is(input,textarea,select), .pi-learning-settings input[type=number] { border-radius: 8px; line-height: 1.5; }
+.pi-knowledge-editor input[type=checkbox] { width: auto; }
+.pi-knowledge-editor textarea { line-height: 1.75; min-height: 180px; }
+.pi-knowledge-detail pre, .pi-knowledge-editor pre { border: 1px solid var(--line); border-radius: 8px; padding: 14px; line-height: 1.75; }
+.pi-knowledge-actions { justify-content: flex-end; }
+@media (max-width: 680px) {
+    .pi-knowledge-detail, .pi-knowledge-editor, .pi-learning { padding: 14px; }
+    .pi-learning-settings { grid-template-columns: minmax(0, 1fr); }
+    .pi-learning-settings > button { justify-self: stretch; }
+    .pi-knowledge-actions button { min-height: 42px; }
+}
 @media (prefers-reduced-motion: reduce) { #pi-profiles-memory * { scroll-behavior: auto; transition-duration: 0s; animation-duration: 0s; } }

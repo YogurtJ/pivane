@@ -19,7 +19,7 @@ app.get('/fixture', (_req, res) => res.type('html').send(`<!doctype html><html><
 <link rel="stylesheet" href="/pi-agent-profiles.css"><link rel="stylesheet" href="/pi-profile-knowledge.css"><link rel="stylesheet" href="/pi-extensions.css"></head><body>
 <div id="workspace-settings-dialog"><div class="workspace-settings-dialog"><header class="workspace-settings-header"><h2 id="workspace-settings-title"></h2><button id="workspace-settings-close"></button></header><div class="workspace-settings-body"><nav class="workspace-settings-nav" aria-label="设置分类"></nav><div class="workspace-settings-content"><section id="pi-profiles-panel" class="workspace-settings-panel"><div class="settings-panel-header"><i aria-hidden="true"></i><div><h3>Profiles</h3><p></p></div><button id="pi-profiles-refresh">Refresh</button></div><div id="pi-profiles-content"></div></section></div></div></div></div>
 <span id="pi-session-profile" hidden></span><dl><div id="pi-meta-profile-row" hidden><dt></dt><dd id="pi-meta-profile"></dd></div></dl><div class="pi-empty-state"></div>
-<script src="/pi-profile-knowledge.js"></script><script src="/pi-agent-profiles.js"></script><script src="/pi-extensions.js"></script>
+<script src="/pi-profile-dialog.js"></script><script src="/pi-profile-knowledge.js"></script><script src="/pi-agent-profiles.js"></script><script src="/pi-extensions.js"></script>
 <script>window.addEventListener('DOMContentLoaded', () => { window.fixtureCwd = '/synthetic/project'; window.PiAgentProfilesUI = PiAgentProfiles.create({ apiFetch: window.syntheticFetch, currentCwd: () => window.fixtureCwd }); if (!window.synthetic.deferCapability) window.PiAgentProfilesUI.setEnabled(true, true); PiExtensions.connect({ apiFetch: window.syntheticFetch, currentCwd: () => window.fixtureCwd }); PiExtensions.setAssistantEnabled(true); });</script></body></html>`));
 
 async function main() {
@@ -134,7 +134,7 @@ async function main() {
             }
             await page.waitForFunction(() => synthetic.avatarUploaded === true);
             await page.waitForFunction(() => document.querySelector('#pi-profile-avatar-status')?.textContent.includes('已单独保存'));
-            assert.equal(await page.locator('#pi-profile-form [type=submit]').isDisabled(), false);
+            assert.equal(await page.locator('#pi-profile-form [type=submit]').isDisabled(), true, 'avatar saves independently; unchanged settings need no submit');
             await page.locator('[data-profile-section="projects"]').click();
             await page.locator('.pi-profile-projects article').waitFor();
             assert.match(await page.locator('.pi-profile-projects article').innerText(), /Notes/);
@@ -222,7 +222,7 @@ async function main() {
             await page.screenshot({ path: path.join(evidence, `pages-${width}.png`), fullPage: true });
             await page.evaluate(() => { fixtureCwd = ''; PiAgentProfilesUI.projectChanged(); });
             await page.waitForFunction(() => document.querySelector('#pi-profiles-status')?.textContent === '');
-            page.once('dialog', dialog => dialog.accept());
+            if (width < 681) await page.locator('#pi-profile-list-back').click();
             await page.locator('#pi-profile-add').click();
             await page.locator('#pi-profile-form [name=name]').fill('New assistant');
             assert.equal(await page.locator('#pi-profile-form [type=submit]').isDisabled(), false);

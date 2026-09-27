@@ -10,9 +10,9 @@ const settings = { enabled: false, correctionEnabled: true, reviewEnabled: false
     maxRunsPerDay: 4, maxTokensPerDay: 24000, periodicReviewMinutes: 0 };
 app.use(express.static(path.join(root, 'public')));
 app.get('/fixture', (_req, res) => res.send(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="/pi-profile-knowledge.css"><link rel="stylesheet" href="/pi-chat-knowledge.css">
+<link rel="stylesheet" href="/pi-agent-profiles.css"><link rel="stylesheet" href="/pi-profile-knowledge.css"><link rel="stylesheet" href="/pi-chat-knowledge.css">
 <style>:root{--line:#ccc;--text-main:#222;--text-soft:#555;--surface-1:#fff;--surface-2:#eee;--accent:#168a68}body{margin:0;font-family:Arial,sans-serif;background:#f8f8f8;color:#222}main{max-width:720px;padding:12px;margin:auto;min-width:0}button{cursor:pointer}section{min-width:0}</style></head><body><main><section id="pi-profiles-memory"></section><div id="pi-chat-knowledge"></div></main>
-<script src="/pi-i18n-catalog.js"></script><script src="/pi-i18n.js"></script><script src="/pi-profile-knowledge.js"></script><script src="/pi-chat-knowledge.js"></script>
+<script src="/pi-i18n-catalog.js"></script><script src="/pi-i18n.js"></script><script src="/pi-profile-dialog.js"></script><script src="/pi-profile-knowledge.js"></script><script src="/pi-chat-knowledge.js"></script>
 <script>window.current={cwd:'/synthetic',sessionId:'thread-one',profileId:'profile-one',generation:1};
 window.api=async (url,options)=>{const response=await fetch(url,options);if(!response.ok){const error=new Error((await response.json().catch(()=>({}))).error||response.statusText);error.status=response.status;throw error;}return response.json()};
 window.manager=PiProfileKnowledge.create({apiFetch:api,root:document.getElementById('pi-profiles-memory')});
@@ -76,9 +76,18 @@ async function run(browser, base, width, locale, dark) {
     await page.locator('.pi-knowledge-row').click();
     await page.locator('.pi-knowledge-detail pre').waitFor();
     assert.match(await page.locator('.pi-knowledge-detail small').innerText(), /[cC]{64}/);
+    await page.locator('.pi-knowledge-detail button').filter({ hasText: locale.startsWith('zh') ? '删除' : 'Delete' }).click();
+    await page.locator('.pi-profile-confirm[open]').waitFor();
+    await page.keyboard.press('Escape');
+    assert.equal(calls.length, 0, 'cancelling deletion must not send a mutation');
     await page.locator('.pi-knowledge-detail button').filter({ hasText: locale.startsWith('zh') ? '编辑' : 'Edit' }).click();
     assert.equal(await page.locator('.pi-knowledge-editor input').first().getAttribute('maxlength'), '64');
     await page.locator('.pi-knowledge-editor textarea').fill('New skill content');
+    await page.locator('.pi-profile-kinds button').first().click();
+    await page.locator('.pi-profile-confirm[open]').waitFor();
+    await page.locator('.pi-profile-confirm .settings-secondary-button').click();
+    assert.equal(await page.locator('.pi-knowledge-editor textarea').inputValue(), 'New skill content');
+    assert.equal(await page.locator('.pi-profile-kinds button').last().getAttribute('aria-pressed'), 'true');
     await page.locator('.pi-knowledge-editor details').evaluate(el => { el.open = true; });
     assert.match(await page.locator('.pi-knowledge-proposed').innerText(), /New skill content/);
     await page.locator('.pi-knowledge-editor button[type=submit]').click();
@@ -130,7 +139,7 @@ async function run(browser, base, width, locale, dark) {
     await page.evaluate(() => { window.manager.open('profile-two'); window.manager.open('profile-one'); });
     assert.equal(await page.locator('.pi-knowledge-editor textarea').inputValue(), 'A correction draft');
     assert.equal(await page.locator('.pi-knowledge-editor button[type=submit]').isDisabled(), true);
-    state.status = 'pending'; await page.locator('.pi-knowledge-head button').click();
+    state.status = 'pending'; await page.locator('.pi-knowledge-head button').first().click();
     await page.waitForFunction(() => /pending/i.test(document.querySelector('.pi-knowledge-status')?.textContent || '') || document.querySelector('.pi-knowledge-status')?.textContent.includes('待同步'));
     assert.equal(await page.locator('.pi-knowledge-tools button').isDisabled(), true);
     state.status = 'ready'; state.receipts.unshift({ id:'verified', kind:'memory', operation:'create', requestId:'server', source:{sessionId:'thread-one',entryId:'native-one'}, status:'saved', undoable:false });
