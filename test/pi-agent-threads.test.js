@@ -54,6 +54,8 @@ test('Agent creates a persistent task, runs immediately with defaults, preserves
     try {
         const { SessionManager } = await import('@earendil-works/pi-coding-agent');
         const source = await gateway.store.createSession(cwd, 'Source A');
+        const sourceManager = SessionManager.open(source.path);
+        for (let i = 0; i < 13; i++) sourceManager.appendCustomEntry('fixture-padding', { text: 'x'.repeat(1024 * 1024) });
         const worker = await gateway.supervisor.getWorker({ cwd, sessionPath: source.path, sessionId: source.id });
         const token = worker.navigationToken;
         const returnedEvents = [];
@@ -127,7 +129,7 @@ test('Agent creates a persistent task, runs immediately with defaults, preserves
         gateway.supervisor.getWorker = async () => { throw new Error('Synthetic startup failure'); };
         const failed = await api('/agent-threads/create', { ...initial, requestId: 'failed-start' }, token);
         gateway.supervisor.getWorker = originalGetWorker;
-        assert.equal(failed.data.status, 'saved');
+        assert.equal(failed.data.status, 'saved', JSON.stringify(failed));
         const failedSession = await gateway.store.getSession(cwd, failed.data.session.id);
         assert.ok(SessionManager.open(failedSession.path).getEntries().some(entry => entry.customType === TASK_MESSAGE));
         assert.equal((await api('/agent-threads/create', { ...initial, requestId: 'failed-start' }, token)).data.session.id, failedSession.id);

@@ -65,11 +65,17 @@ test('Unrelated threads message each other, wake a closed recipient, reply, and 
         const a = await gateway.store.createSession(cwd, 'Thread A');
         const b = await gateway.store.createSession(cwd, 'Thread B');
         const c = await gateway.store.createSession(cwd, 'Thread C');
+        // Large native caller history must not loop on TASK_INDEXING as each
+        // tool invocation appends more records. Hidden fixture entries keep the
+        // synthetic model request small; only SessionManager writes the file.
+        const manager = SessionManager.open(a.path);
+        for (let i = 0; i < 13; i++) manager.appendCustomEntry('fixture-padding', { text: 'x'.repeat(1024 * 1024) });
         const aWorker = await gateway.supervisor.getWorker({ cwd, sessionPath: a.path, sessionId: a.id });
         const token = aWorker.navigationToken;
         assert.ok((await aWorker.getNativeResources()).tools.some(tool => tool.name === 'agent_message'));
         assert.equal((await api('/agent-messages/threads', {}, 'fixture-web-token')).status, 403, 'web identity is not a source thread');
-        const listed = await deadline(async () => { const r = await api('/agent-messages/threads', {}, token); return r.status === 200 && r; });
+        const listed = await api('/agent-messages/threads', {}, token);
+        assert.equal(listed.status, 200, 'a source history over 8 MiB completes in one refresh');
         assert.deepEqual(listed.data.threads.map(row => row.name).sort(), ['Thread A', 'Thread B', 'Thread C']);
         assert.equal(listed.data.threads.find(row => row.id === a.id).relation, 'self');
         assert.equal(listed.data.threads.find(row => row.id === b.id).status, 'closed');

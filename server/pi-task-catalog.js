@@ -5,7 +5,7 @@ const { descriptorPathSync, assertDescriptorBackend } = require('./pi-file-descr
 const { customTypeIs } = require('./pivane-compat');
 const { getSdk } = require('./pi-session-store');
 const { MESSAGE_OUT, MESSAGE_IN, outboundMessage } = require('./pi-agent-message-format');
-const LIMITS = { outboxPerSession: 2000, projects: 8, batchBytes: 8 * 1024 * 1024, milliseconds: 100, lineBytes: 32 * 1024 * 1024, files: 50000, metadataBytes: 32 * 1024 * 1024 };
+const LIMITS = { outboxPerSession: 2000, projects: 8, batchBytes: 8 * 1024 * 1024, milliseconds: 100, refreshMilliseconds: 2000, lineBytes: 32 * 1024 * 1024, files: 50000, metadataBytes: 32 * 1024 * 1024 };
 const fingerprint = stat => [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].map(String).join(':');
 const failure = (code, message) => Object.assign(new Error(message), { code });
 
@@ -47,7 +47,26 @@ class TaskCatalog {
         const project = await this.project(cwd);
         if (this.stopping || this.suspended()) throw failure('TASK_SUSPENDED', 'Task directory is paused for maintenance');
         if (!project.flight) {
-            const flight = Promise.resolve().then(() => this.scan(project));
+            // A caller's native history grows with each tool call. Finish multiple
+            // bounded batches here so histories larger than batchBytes do not get
+            // invalidated again before the caller ever observes a complete index.
+            // Retain one shared flight and yield between batches; never relax scan's
+            // full inventory, descriptor identity or before/after change checks.
+            const flight = Promise.resolve().then(async () => {
+                const deadline = Date.now() + this.limits.refreshMilliseconds;
+                do {
+                    if (this.stopping || this.suspended()) throw failure('TASK_SUSPENDED', 'Task directory is paused for maintenance');
+                    try { await this.scan(project); }
+                    catch (error) {
+                        // A managed worker may append a receipt between batches.
+                        // scan/readBatch have discarded the changed record; retry
+                        // from disk within this same budget, never reuse its state.
+                        if (error.code !== 'TASK_CHANGED' || Date.now() >= deadline) throw error;
+                    }
+                    if (project.complete || Date.now() >= deadline) break;
+                    await new Promise(resolve => setImmediate(resolve));
+                } while (Date.now() < deadline);
+            });
             project.flight = flight;
             try { await flight; } finally { project.flight = null; }
         } else await project.flight;

@@ -21,7 +21,7 @@ async function complete(catalog, cwd) {
     throw new Error('Index did not finish');
 }
 test('large histories are indexed in resumable batches, unchanged bodies are not re-read, and legacy task metadata survives', async t => {
-    const f = fixture(t, { batchBytes: 2 * 1024 * 1024, milliseconds: 1000 });
+    const f = fixture(t, { batchBytes: 2 * 1024 * 1024, milliseconds: 1000, refreshMilliseconds: 0 });
     f.write('parent.jsonl', [f.header('parent')]);
     const file = f.write('misleading-filename.jsonl', [f.header('actual-id'), f.task('actual-id')]);
     const fd = fs.openSync(file, 'a');
@@ -38,6 +38,54 @@ test('large histories are indexed in resumable batches, unchanged bodies are not
     await complete(f.catalog, f.cwd);
     assert.ok(f.catalog.bytesRead - read < 1024, 'only the changed small file is read');
 });
+test('a growing caller larger than 8 MiB becomes complete on every refresh, including rewrites', async t => {
+    const f = fixture(t);
+    const file = f.write('source.jsonl', [f.header('parent')]);
+    const padding = JSON.stringify({ type: 'custom', customType: 'fixture-padding', data: 'x'.repeat(1024 * 1024) }) + '\n';
+    fs.appendFileSync(file, padding.repeat(13));
+    for (let call = 0; call < 3; call++) {
+        fs.appendFileSync(file, JSON.stringify({ type: 'session_info', name: `call-${call}` }) + '\n');
+        const snapshot = await f.catalog.refresh(f.cwd);
+        assert.equal(snapshot.complete, true, 'no background retry or quiet interval is needed');
+        assert.equal((await f.catalog.source(f.cwd, 'parent')).name, `call-${call}`);
+    }
+    // Growing length alone must not authorize reuse of old metadata.
+    const bytes = fs.readFileSync(file, 'utf8').replace('"id":"parent"', '"id":"edited"');
+    fs.writeFileSync(file, bytes + JSON.stringify({ type: 'session_info', name: 'rewritten' }) + '\n');
+    assert.equal((await f.catalog.refresh(f.cwd)).complete, true);
+    await assert.rejects(f.catalog.source(f.cwd, 'parent'), error => error.code === 'TASK_SOURCE');
+    assert.equal((await f.catalog.source(f.cwd, 'edited')).name, 'rewritten');
+});
+
+test('a change during a batch is re-read within the refresh budget', async t => {
+    const f = fixture(t);
+    const file = f.write('source.jsonl', [f.header('parent')]);
+    const line = f.catalog.line.bind(f.catalog); let changed = false;
+    f.catalog.line = (...args) => {
+        line(...args);
+        if (!changed) {
+            changed = true;
+            fs.appendFileSync(file, JSON.stringify({ type: 'session_info', name: 'appended during read' }) + '\n');
+        }
+    };
+    assert.equal((await f.catalog.refresh(f.cwd)).complete, true);
+    assert.equal((await f.catalog.source(f.cwd, 'parent')).name, 'appended during read');
+});
+
+test('multi-batch refresh shares its flight and stops for maintenance between batches', async t => {
+    const f = fixture(t, { batchBytes: 64 });
+    f.write('source.jsonl', [f.header('parent'), { type: 'session_info', name: 'x'.repeat(1000) }]);
+    let paused = false, scans = 0;
+    const scan = f.catalog.scan.bind(f.catalog);
+    f.catalog.suspended = () => paused;
+    f.catalog.scan = async project => { scans++; await scan(project); paused = true; };
+    const outcomes = await Promise.allSettled([f.catalog.refresh(f.cwd), f.catalog.refresh(f.cwd)]);
+    assert.equal(scans, 1, 'concurrent refreshes share one scan flight');
+    for (const outcome of outcomes) { assert.equal(outcome.status, 'rejected'); assert.equal(outcome.reason.code, 'TASK_SUSPENDED'); }
+    assert.equal(f.catalog.busy, false);
+    assert.equal((await f.catalog.project(f.cwd)).complete, false);
+});
+
 test('more than 2000 native sessions can be discovered without the old project cap', async t => {
     const f = fixture(t, { milliseconds: 1000 });
     for (let i = 0; i < 2001; i++) f.write(`${i}.jsonl`, [f.header(`id-${i}`)]);
@@ -58,7 +106,7 @@ test('partial writes, replacement, deletion, and duplicate identity never become
     assert.equal((await complete(f.catalog, f.cwd)).records.length, 0);
 });
 test('a session added during a batch leaves coverage incomplete until its task metadata is checked', async t => {
-    const f = fixture(t); f.write('first.jsonl', [f.header('parent')]);
+    const f = fixture(t, { refreshMilliseconds: 0 }); f.write('first.jsonl', [f.header('parent')]);
     const line = f.catalog.line.bind(f.catalog); let inserted = false;
     f.catalog.line = (...args) => {
         line(...args);
