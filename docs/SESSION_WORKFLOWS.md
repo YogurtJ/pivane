@@ -98,7 +98,7 @@
 
 Pi JSONL 仍是唯一聊天历史。队列只保存尚待确认/投递的消息，接受投递或取消后删除 payload，仅保留最多 100 条终态 metadata。工作台偏好不存这些正文。
 
-端口 3001 的新实例默认队列：`~/.pi/agent/pivane-deferred-messages.json`，既有同位置的 `pi5-deferred-messages.json` 自动沿用；非 3001 端口默认追加 `-<port>` 后缀，未设置 PORT 时视为开发 3000。`PI_CODING_AGENT_DIR` 仍决定 Agent 数据根，`PI_WEB_DEFERRED_FILE` 可显式覆盖。一个队列文件只能由一个服务进程管理，不可让两个实例共享该文件或同一正在写入的 Pi session。
+未设置 `PORT` 时使用新默认端口 11408，队列为 `~/.pi/agent/pivane-deferred-messages-11408.json`。显式配置端口 3001 的实例继续使用 `~/.pi/agent/pivane-deferred-messages.json`，既有同位置的 `pi5-deferred-messages.json` 自动沿用；其他显式端口追加 `-<port>` 后缀。此前未设置 `PORT` 的旧版安装如需保留 3000 地址及 `-3000` 队列，应在升级前设置 `PORT=3000`；不会自动迁移旧队列。`PI_CODING_AGENT_DIR` 仍决定 Agent 数据根，`PI_WEB_DEFERRED_FILE` 可显式覆盖。一个队列文件只能由一个服务进程管理，不可让两个实例共享该文件或同一正在写入的 Pi session。
 
 队列写入同目录 0600 临时文件，fsync、rename，再 fsync 目录；目录创建权限 0700。最多 50 条非终态消息，完整队列最多 64 MiB。单消息最多 400000 字符、6 张 PNG/JPEG/WebP/GIF、24 MiB base64；浏览器单图 6 MiB、文本附件 1 MiB。预约时间限未来一年。
 

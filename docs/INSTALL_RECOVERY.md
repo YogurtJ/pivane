@@ -60,14 +60,14 @@ printf 'Pi identity: %s\n' "$AGENT_DIR"
 
 ```bash
 cat > "$BASE/instance.env" <<EOF
-PORT=3001
+PORT=11408
 HOST=127.0.0.1
 PI_CODING_AGENT_DIR=$AGENT_DIR
 PI_MEDIA_CONFIG_DIR=$BASE/data/media-lab
 PI_MEDIA_DATA_DIR=$BASE/data/media
 PI_PROJECT_ROOTS=/
 PI_WEB_DEFERRED_FILE=$BASE/data/pivane-deferred-messages.json
-PI_WORKSPACE_BASE_URL=http://127.0.0.1:3001
+PI_WORKSPACE_BASE_URL=http://127.0.0.1:11408
 EOF
 chmod 600 "$BASE/instance.env"
 cp "$BASE/instance.env" .env
@@ -84,10 +84,10 @@ Node/npm 必须可由 PATH 找到；使用版本管理器时保留其 Node 所�
 另一个终端检查：
 
 ```bash
-curl -fsS http://127.0.0.1:3001/api/pi/status
+curl -fsS http://127.0.0.1:11408/api/pi/status
 ```
 
-预期 `ok=true`，`projectRoots` 为本次配置的 `/`，实际 Pi `version` 对应发布包依赖。浏览器打开 `http://127.0.0.1:3001`。从其他设备访问需要修改 HOST、重启并配置自己的地址/防火墙/访问验证；localhost 指浏览器所在机器。远程管理凭据请使用可信 HTTPS 或受信网络。
+预期 `ok=true`，`projectRoots` 为本次配置的 `/`，实际 Pi `version` 对应发布包依赖。浏览器打开 `http://127.0.0.1:11408`。从其他设备访问需要修改 HOST、重启并配置自己的地址/防火墙/访问验证；localhost 指浏览器所在机器。远程管理凭据请使用可信 HTTPS 或受信网络。
 
 ## 默认可选能力
 
@@ -177,6 +177,8 @@ chmod 600 "$AGENT_BACKUP.sha256"
 只保存哈希不能防止备份内容泄露；把包存放于加密且有另一份副本的存储中。不要上传到源码仓库、release 或 public/downloads。确认备份无误后可按原方式启动原实例。
 
 ## 5. 更新演练
+
+当前源码默认端口为 `11408`。旧 3001 安装升级时，把实际 `.env`、服务环境覆盖中的 `PORT` 改为 `11408`，并同步工作台地址、桌面快捷方式及反向代理目标。更换端口前，如未显式指定预约队列，先将 `PI_WEB_DEFERRED_FILE` 固定为原队列的实际绝对路径；不要复制出第二个同时工作的队列。完成下述停机备份与更新后，使用新地址验证。用户仍可显式指定自定义端口。
 
 可先在设置 → [版本与更新](UPDATES.md)检查 Pivane/Pi 版本，取得官方发布说明、发布包和校验文件。Pivane 应用仍按本节更新；普通 `node server.js` 或 `npm start` 启动后，工作台内的 Pi 还可在设置中单独更新，并执行停机备份或重启。全局 Pi CLI 的更新不改变工作台内核。
 

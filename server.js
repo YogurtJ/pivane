@@ -24,7 +24,7 @@ const app = express();
 require('./server/pi-local-env').loadLocalEnv(path.join(__dirname, '.env'));
 const maintenance = new (require('./server/pi-maintenance-client').MaintenanceClient)();
 app.use((req, res, next) => maintenance.http(req, res, next));
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 11408;
 const workspaceBaseUrlProvided = Boolean(process.env.PI_WORKSPACE_BASE_URL);
 process.env.PI_WORKSPACE_BASE_URL ||= `http://127.0.0.1:${PORT}`;
 

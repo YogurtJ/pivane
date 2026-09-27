@@ -12,7 +12,7 @@ function workspaceSetting(suffix: 'BASE_URL' | 'ACCESS_TOKEN'): string | undefin
 
 function workspaceBaseUrl(): string {
   const ownedOrigin = process.env.PI_WORKSPACE_INTERNAL_TOKEN && process.env.PI_WORKSPACE_INTERNAL_ORIGIN;
-  return (ownedOrigin || workspaceSetting('BASE_URL') || "http://127.0.0.1:3001").replace(/\/+$/, "");
+  return (ownedOrigin || workspaceSetting('BASE_URL') || "http://127.0.0.1:11408").replace(/\/+$/, "");
 }
 
 function plannerCurrentState(): Record<string, unknown> {

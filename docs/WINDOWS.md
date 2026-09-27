@@ -46,8 +46,8 @@ $piIdentity = $agentDir.Replace('\', '/')
 $projectRoots = ([IO.Directory]::GetLogicalDrives() -join ';').Replace('\', '/')
 $config = @"
 HOST=127.0.0.1
-PORT=3001
-PI_WORKSPACE_BASE_URL=http://127.0.0.1:3001
+PORT=11408
+PI_WORKSPACE_BASE_URL=http://127.0.0.1:11408
 PI_CODING_AGENT_DIR=$piIdentity
 PI_MEDIA_CONFIG_DIR=$dataRoot/data/media-lab
 PI_MEDIA_DATA_DIR=$dataRoot/data/media
@@ -59,7 +59,7 @@ Copy-Item -LiteralPath (Join-Path $base 'instance.env') -Destination (Join-Path 
 node.exe scripts/install-service.cjs
 ```
 
-打开http://127.0.0.1:3001或桌面 Pivane 入口。安装终端可以关闭，以后用户登录时由计划任务启动；首次安装成功后不用每次重装依赖。运行进程已有环境变量优先于.env，启动前核对实际身份和认证依赖；保留原 Pi 需要的 Provider 环境变量、代理和命令 PATH，清除其他实例的无关覆盖，不输出秘密值，也不修改其他应用的系统环境。打开“供应商与模型”检查复用的配置，缺少可用认证时才登录。
+打开http://127.0.0.1:11408或桌面 Pivane 入口。安装终端可以关闭，以后用户登录时由计划任务启动；首次安装成功后不用每次重装依赖。运行进程已有环境变量优先于.env，启动前核对实际身份和认证依赖；保留原 Pi 需要的 Provider 环境变量、代理和命令 PATH，清除其他实例的无关覆盖，不输出秘密值，也不修改其他应用的系统环境。打开“供应商与模型”检查复用的配置，缺少可用认证时才登录。
 
 上例默认开放安装时 Windows 可见的各盘符根目录（例如`C:/;D:/`），系统文件权限继续生效；新增盘符时更新此配置并空闲重启。只有用户明确要求缩小范围时才设置`C:/Projects;D:/Work`等指定目录，使用分号分隔。实际目录必须存在，仍经过系统realpath、目录与权限检查。按需要修改instance.env并同步复制到当前代码目录，端口变更需同时修改PORT和PI_WORKSPACE_BASE_URL。上例只监听本机；开放远程访问需要相应监听地址、防火墙及访问验证配置。常驻配置、计划任务和桌面入口的管理见[后台常驻](BACKGROUND_SERVICE.md)。前台 `npm.cmd start` 仅用于试用与排障；停止前先结束任务并暂停预约，不能把强制结束任务当作正常退出。普通关闭与远端/脱离进程不是事务性撤销。
 

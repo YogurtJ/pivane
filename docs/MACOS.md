@@ -56,9 +56,9 @@ printf 'Pi identity: %s\n' "$AGENT_DIR"
 
 ```sh
 cat > "$BASE/instance.env" <<EOF
-PORT=3001
+PORT=11408
 HOST=127.0.0.1
-PI_WORKSPACE_BASE_URL=http://127.0.0.1:3001
+PI_WORKSPACE_BASE_URL=http://127.0.0.1:11408
 PI_CODING_AGENT_DIR=$AGENT_DIR
 PI_MEDIA_CONFIG_DIR=$BASE/data/media-lab
 PI_MEDIA_DATA_DIR=$BASE/data/media
@@ -72,9 +72,9 @@ node scripts/install-service.cjs
 
 常驻服务不会自动继承安装终端中的 Provider Key、代理或 NODE_OPTIONS。若认证依赖环境变量或外部命令，需向本实例显式提供相同依赖，或通过网页原生登录保存认证；不要输出 Key。以后登录后自动启动，不需要重复 npm ci。
 
-打开`http://127.0.0.1:3001`或桌面 Pivane 入口，安装终端可以关闭；以后登录时自动启动。端口已被占用时先核对现有服务，不重复启动。
+打开`http://127.0.0.1:11408`或桌面 Pivane 入口，安装终端可以关闭；以后登录时自动启动。端口已被占用时先核对现有服务，不重复启动。
 
-另一个终端先用 `curl -fsS http://127.0.0.1:3001/api/access/status` 核对访问状态；需要认证时先在浏览器完成认证，再检查 Pi 状态。没有访问验证阻挡时，可用 `curl -fsS http://127.0.0.1:3001/api/pi/status` 检查 `ok=true`、Pi 版本与实际 `projectRoots`。网页可打开、只读状态正常即完成基础启动；普通安装无需运行全量测试、浏览器回归或打包。模型登录与真实请求另行验证。
+另一个终端先用 `curl -fsS http://127.0.0.1:11408/api/access/status` 核对访问状态；需要认证时先在浏览器完成认证，再检查 Pi 状态。没有访问验证阻挡时，可用 `curl -fsS http://127.0.0.1:11408/api/pi/status` 检查 `ok=true`、Pi 版本与实际 `projectRoots`。网页可打开、只读状态正常即完成基础启动；普通安装无需运行全量测试、浏览器回归或打包。模型登录与真实请求另行验证。
 
 普通安装默认生成当前用户的 LaunchAgent 和桌面 `.webloc`。具体启动、停止、卸载和本次原生验收限制见[后台常驻](BACKGROUND_SERVICE.md)。前台运行只用于明确选择的试用和排障；不以 launchd 的 running 状态代替 HTTP 健康检查。
 

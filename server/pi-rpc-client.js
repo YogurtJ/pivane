@@ -79,7 +79,7 @@ class PiRpcClient extends EventEmitter {
             env: {
                 ...process.env,
                 PI_SKIP_VERSION_CHECK: '1',
-                PI_WORKSPACE_BASE_URL: process.env.PI_WORKSPACE_BASE_URL || `http://127.0.0.1:${process.env.PORT || 3001}`,
+                PI_WORKSPACE_BASE_URL: process.env.PI_WORKSPACE_BASE_URL || `http://127.0.0.1:${process.env.PORT || 11408}`,
                 ...this.env
             },
             stdio: this.sideSeed ? ['pipe', 'pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe']

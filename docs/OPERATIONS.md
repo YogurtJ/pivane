@@ -9,7 +9,7 @@
 ```bash
 node --version
 npm --version
-curl -fsS http://127.0.0.1:3001/api/access/status
+curl -fsS http://127.0.0.1:11408/api/access/status
 ```
 
 将端口替换为自己的实例。启用访问验证时，使用浏览器Cookie或受控程序Bearer读取私人API；不要把Token放URL或日志。

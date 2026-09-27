@@ -66,7 +66,7 @@ TTS 的字段来自 `TtsProviderService.getPublicConfig()`；已配置模型复�
 
 - `/api/pi/media/lab/plan` 受 Origin/token 与项目 realpath 校验保护。
 - 旧 `/api/media-agent/capabilities/:kind` 和 `/api/media-agent/validate` 无生成或历史写入副作用；前者增加 `lab` 目录，后者根据 plan.modelId 分派实验室或旧参数校验。
-- extension 在存在内部进程身份时使用所属实例的实际绑定地址/端口；独立CLI使用 `PI_WORKSPACE_BASE_URL`，无配置时 fallback `http://127.0.0.1:3001`。隔离实例仍须覆盖可能继承的生产地址，并使用独立身份/媒体/项目目录。
+- extension 在存在内部进程身份时使用所属实例的实际绑定地址/端口；独立CLI使用 `PI_WORKSPACE_BASE_URL`，无配置时 fallback `http://127.0.0.1:11408`。隔离实例仍须覆盖可能继承的生产地址，并使用独立身份/媒体/项目目录。
 - 旧 `/api/pi/media/capabilities/:kind` 保留旧返回结构；新代码使用实验室目录。
 
 实验室方案增加 modelId/parameters，仍保留 version、id、kind、summary、jobs、warnings、createdAt，`execution={mode:"manual",count:1}`。旧 MediaPlan 的多项字段不表示已经支持队列。

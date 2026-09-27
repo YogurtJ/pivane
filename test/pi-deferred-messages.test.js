@@ -6,6 +6,30 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { PiDeferredMessages } = require('../server/pi-deferred-messages');
 
+test('default port queue stays separate while explicit old ports and file overrides retain their queues', async t => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-port-queue-'));
+    const keys = ['PORT', 'PI_CODING_AGENT_DIR', 'PI_WEB_DEFERRED_FILE'];
+    const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+    t.after(() => {
+        for (const key of keys) if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key];
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+    process.env.PI_CODING_AGENT_DIR = root;
+    delete process.env.PI_WEB_DEFERRED_FILE;
+    const legacy = path.join(root, 'pi5-deferred-messages.json');
+    const saved = JSON.stringify({ version: 1, jobs: [] });
+    fs.writeFileSync(legacy, saved, { mode: 0o600 });
+    for (const [port, expected] of [[undefined, 'pivane-deferred-messages-11408.json'], ['11408', 'pivane-deferred-messages-11408.json'], ['3001', 'pi5-deferred-messages.json'], ['3000', 'pivane-deferred-messages-3000.json']]) {
+        if (port === undefined) delete process.env.PORT; else process.env.PORT = port;
+        const service = new PiDeferredMessages({ store: {}, supervisor: {}, intervalMs: 1000000 });
+        try { assert.equal(service.filePath, path.join(root, expected)); } finally { await service.dispose(); }
+    }
+    process.env.PORT = '11408';
+    process.env.PI_WEB_DEFERRED_FILE = legacy;
+    const service = new PiDeferredMessages({ store: {}, supervisor: {}, intervalMs: 1000000 });
+    try { assert.equal(service.filePath, legacy); assert.equal(service.error, null); } finally { await service.dispose(); }
+});
+
 function fixture(t) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-deferred-'));
     let now = 100000, busy = false, sendError = null;

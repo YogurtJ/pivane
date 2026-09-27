@@ -42,7 +42,7 @@ async function install({ root = path.resolve(__dirname, '..'), noShortcut = fals
     if (root.includes(path.sep + '.pivane-runtime' + path.sep)) throw Error('Install from the original application directory, not a managed release');
     if (!fs.existsSync(path.join(root, '.env'))) throw Error('Create the instance .env with fixed absolute data paths before installing');
     const env = {}; loadLocalEnv(path.join(root, '.env'), env);
-    const port = Number(env.PORT || 3000);
+    const port = Number(env.PORT || 11408);
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw Error('A fixed valid PORT is required');
     const url = new URL(`http://127.0.0.1:${port}`);
     const home = os.homedir();

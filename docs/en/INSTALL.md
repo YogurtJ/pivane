@@ -79,8 +79,8 @@ Only for an explicitly isolated identity, replace this with `AGENT_DIR="$BASE/da
 ```bash
 cat > "$BASE/instance.env" <<EOF
 HOST=127.0.0.1
-PORT=3001
-PI_WORKSPACE_BASE_URL=http://127.0.0.1:3001
+PORT=11408
+PI_WORKSPACE_BASE_URL=http://127.0.0.1:11408
 PI_CODING_AGENT_DIR=$AGENT_DIR
 PI_MEDIA_CONFIG_DIR=$BASE/data/media-lab
 PI_MEDIA_DATA_DIR=$BASE/data/media
@@ -94,7 +94,7 @@ node scripts/install-service.cjs
 
 The minimal environment retains the identity explicitly selected in the configuration but does not inherit shell provider keys or proxy variables. Preserve your own HOME. If authentication uses environment values or external commands, provide those dependencies to this instance, or save credentials through the native Web login. If your network requires a proxy, explicitly add the required proxy configuration for this instance. With a Node version manager, ensure the chosen Node 22 is actually in PATH; noninteractive SSH and service managers may not load shell startup scripts.
 
-Open **http://127.0.0.1:3001**. The installation terminal can close. A user service starts Pivane at login; on Linux servers, configure user linger or an equivalent system service for boot-time startup. macOS also gets a desktop browser shortcut. See [background service management](../BACKGROUND_SERVICE.md). Foreground `npm start` is reserved for trials and troubleshooting.
+Open **http://127.0.0.1:11408**. The installation terminal can close. A user service starts Pivane at login; on Linux servers, configure user linger or an equivalent system service for boot-time startup. macOS also gets a desktop browser shortcut. See [background service management](../BACKGROUND_SERVICE.md). Foreground `npm start` is reserved for trials and troubleshooting.
 
 macOS's privacy controls and filesystem permissions still apply. `/tmp` resolving to `/private/tmp` is normal. Finder Trash is not integrated: session deletion tries `gio trash`, then permanently deletes if unavailable. The confirmation and result explain which behavior applies.
 
@@ -130,8 +130,8 @@ $piIdentity = $agentDir.Replace('\', '/')
 $projectRoots = ([IO.Directory]::GetLogicalDrives() -join ';').Replace('\', '/')
 $config = @"
 HOST=127.0.0.1
-PORT=3001
-PI_WORKSPACE_BASE_URL=http://127.0.0.1:3001
+PORT=11408
+PI_WORKSPACE_BASE_URL=http://127.0.0.1:11408
 PI_CODING_AGENT_DIR=$piIdentity
 PI_MEDIA_CONFIG_DIR=$dataRoot/data/media-lab
 PI_MEDIA_DATA_DIR=$dataRoot/data/media
@@ -143,7 +143,7 @@ Copy-Item -LiteralPath (Join-Path $base 'instance.env') -Destination (Join-Path 
 node.exe scripts/install-service.cjs
 ```
 
-Open **http://127.0.0.1:3001** or the Pivane desktop shortcut. The installation terminal can close; a current-user scheduled task starts Pivane at login. See [service lifecycle and platform limitations](../BACKGROUND_SERVICE.md). Existing process environment variables override `.env`; retain the intended CLI identity and its required credential/proxy/command environment, and clear unrelated instance overrides without printing secrets or changing other applications' system settings. For an explicitly isolated identity, set `$agentDir = Join-Path $base 'data\agent'` before calculating `$piIdentity`.
+Open **http://127.0.0.1:11408** or the Pivane desktop shortcut. The installation terminal can close; a current-user scheduled task starts Pivane at login. See [service lifecycle and platform limitations](../BACKGROUND_SERVICE.md). Existing process environment variables override `.env`; retain the intended CLI identity and its required credential/proxy/command environment, and clear unrelated instance overrides without printing secrets or changing other applications' system settings. For an explicitly isolated identity, set `$agentDir = Join-Path $base 'data\agent'` before calculating `$piIdentity`.
 
 The Windows example includes all drive roots visible at installation, such as `C:/;D:/`. Update the configuration and restart when adding drives. To restrict the scope on request, use **semicolon-separated** paths such as `C:/Projects;D:/Work`. The directories must exist. Use NTFS-aware backups and verify the restored Agent directory's protected DACL. See the detailed [Windows guide](../WINDOWS.md) for filesystem and platform limits.
 
@@ -158,6 +158,8 @@ The UI currently cannot change `PI_PROJECT_ROOTS`. If a directory is outside the
 A fresh installation has no executable media service. Configure your own image, video or speech service separately. The lab's planning extension is included in the package and does not require global Package installation; it does require a configured chat model. For planning tools in ordinary Agent conversations, install the bundled `pi-packages/media-workbench` Package explicitly after reviewing its permissions. GPU adapters have additional service-specific prerequisites.
 
 ## Backups, upgrades and recovery
+
+The current source defaults to port `11408`. When upgrading an installation on port `3001`, change `PORT` and the workspace URL in its actual configuration to `11408`. Before changing ports, set `PI_WEB_DEFERRED_FILE` to the absolute path of the existing scheduled-message queue if it was using a port-dependent default. Update any service overrides, shortcuts and reverse proxy targets, then restart when idle. Explicit custom ports remain supported.
 
 Preserve these together:
 
