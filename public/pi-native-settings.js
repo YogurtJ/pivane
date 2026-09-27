@@ -510,7 +510,7 @@ const installedFilterValues = ['all', 'packages', 'extensions', 'skills', 'promp
                 installedPanel.replaceChildren(assistantEntry(cwd, 'global'), node('p', e.message), button(translateUi('重试读取'), '', () => open(tab, options)));
             } } }
         }
-        let installDialog = null;
+        let installDialog = null, installPending = false;
         function ensureInstallDialog() {
             if (installDialog) return installDialog;
             const dialog = node('dialog', undefined, { id: 'pi-package-install-dialog', class: 'native-install-dialog', 'aria-labelledby': 'pi-package-install-title' });
@@ -538,7 +538,8 @@ const installedFilterValues = ['all', 'packages', 'extensions', 'skills', 'promp
             confirm.disabled = true;
             footer.append(cancel, confirm);
             dialog.append(header, body, status, footer);
-            source.addEventListener('input', () => { confirm.disabled = !source.value.trim(); });
+            source.addEventListener('input', () => { confirm.disabled = installPending || !source.value.trim(); });
+            dialog.addEventListener('cancel', event => { if (installPending) event.preventDefault(); });
             dialog.addEventListener('close', () => { status.textContent = ''; source.value = ''; confirm.disabled = true; });
             document.body.append(dialog);
             installDialog = dialog;
@@ -546,20 +547,26 @@ const installedFilterValues = ['all', 'packages', 'extensions', 'skills', 'promp
         }
         async function submitInstall(control) {
             const source = $('pi-package-install-source'), scope = $('pi-package-install-scope'), status = $('pi-package-install-status');
-            const cwd = contextCwd(), value = source.value.trim();
-            if (!value || !cwd) return;
+            const cwd = contextCwd(), value = source.value.trim(), requestScope = scope.value;
+            if (installPending || !value || !cwd) return;
             if (!confirm(translateUi("安装并信任 Package “{0}”？Packages 可执行任意代码。", value))) return;
-            control.disabled = true;
+            installPending = true;
+            const controls = [source, scope, control, $('pi-package-install-close'), $('pi-package-install-cancel')];
+            for (const item of controls) item.disabled = true;
             status.textContent = translateUi("安装中");
             try {
-                const latest = await apiFetch(`/api/pi/settings/native/resources?cwd=${encodeURIComponent(cwd)}&scope=${scope.value}`);
-                if (scope.value === 'project' && !latest.trust?.effective) { status.textContent = translateUi("当前项目未信任，项目写入已禁用；可切换所有项目或管理信任。"); return; }
-                await send('/api/pi/settings/native/packages', 'POST', { cwd, scope: scope.value, source: value, action: 'install', expectedRevision: latest.revision, confirmed: true });
+                const latest = await apiFetch(`/api/pi/settings/native/resources?cwd=${encodeURIComponent(cwd)}&scope=${requestScope}`);
+                if (requestScope === 'project' && !latest.trust?.effective) { status.textContent = translateUi("当前项目未信任，项目写入已禁用；可切换所有项目或管理信任。"); return; }
+                await send('/api/pi/settings/native/packages', 'POST', { cwd, scope: requestScope, source: value, action: 'install', expectedRevision: latest.revision, confirmed: true });
                 status.textContent = translateUi("操作完成；空闲时重新加载资源。");
                 source.value = '';
-                refreshResourcePanels(scope.value);
+                refreshResourcePanels(requestScope);
             } catch (error) { status.textContent = error.message; }
-            finally { if (control.isConnected) control.disabled = !source.value.trim(); }
+            finally {
+                installPending = false;
+                for (const item of controls) if (item.isConnected) item.disabled = false;
+                if (control.isConnected) control.disabled = !source.value.trim();
+            }
         }
         function refreshResourcePanels(scope) {
             const dialog = $('workspace-settings-dialog');
@@ -571,6 +578,7 @@ const installedFilterValues = ['all', 'packages', 'extensions', 'skills', 'promp
         }
         window.addEventListener('pi:extensions-install', () => {
             const dialog = ensureInstallDialog();
+            if (installPending) { if (!dialog.open) dialog.showModal(); return; }
             const scope = $('pi-package-install-scope');
             scope.replaceChildren(...availableScopes().map(([value, text]) => node('option', text, { value })));
             scope.value = currentCwd() ? 'project' : 'global';

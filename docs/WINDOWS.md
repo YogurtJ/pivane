@@ -4,7 +4,7 @@
 
 ## 安装前提
 
-当前源码的 `node scripts/install.cjs` 统一准备内置 pi-subagents 与 pi-hermes-memory，不再向共享 Pi 身份另行安装包；准备失败会返回安装错误。这个入口使用 SQLite 随包的原生二进制，避免 npm 无谓调用 Visual Studio C++ 编译。下文旧发布归档仍使用原有 `npm.cmd ci` 命令；当前源码请使用统一安装入口。默认启用、旧配置兼容和平台依赖见[内置能力包](BUNDLED_CAPABILITIES.md)。
+当前源码的 `node scripts/install.cjs` 统一准备内置 pi-subagents 与 pi-hermes-memory，不再向共享 Pi 身份另行安装包；准备失败会返回安装错误。这个入口使用 SQLite 随包的原生二进制，避免 npm 无谓调用 Visual Studio C++ 编译。下文以 1.2.0 为例，使用统一安装入口；旧归档没有此脚本时仍使用 `npm.cmd ci`。默认启用、旧配置兼容和平台依赖见[内置能力包](BUNDLED_CAPABILITIES.md)。
 
 - Node 22.x x64、npm、Git for Windows（含 Git Bash）、ripgrep 在运行进程 PATH 中可用。Pi 使用项目锁定依赖，不需要全局安装。
 - Pivane 自身使用随包的 Node-API 8 组件，无需现场编译该组件。当前源码内置记忆的 `better-sqlite3` 另外安装适配当前 Node 的二进制；缺少预构建文件时需要 Python 与 Visual Studio C++ 构建工具，见[内置能力包](BUNDLED_CAPABILITIES.md)。维护者重建 Pivane 自身组件的要求见 native/README.md。
@@ -14,19 +14,19 @@
 下面使用普通用户目录中的新实例。先将发布包和同名.sha256下载到Downloads；PowerShell执行：
 
 ```powershell
-$archive = Join-Path $env:USERPROFILE 'Downloads\pivane-1.0.0.tar.gz'
+$archive = Join-Path $env:USERPROFILE 'Downloads\pivane-1.2.0.tar.gz'
 $expected = (Get-Content -LiteralPath ($archive + '.sha256') -Raw).Trim().Split()[0]
 if ($expected -notmatch '^[a-fA-F0-9]{64}$' -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ine $expected) { throw '发布包校验失败' }
 $base = Join-Path $env:USERPROFILE 'Pivane'
 if (Test-Path -LiteralPath $base) { throw '此目录已存在，请按更新流程操作或选择新的base' }
-$app = Join-Path $base 'releases\1.0.0'
+$app = Join-Path $base 'releases\1.2.0'
 @($app, "$base\data\media", "$base\projects\demo", "$base\backups") | ForEach-Object { New-Item -ItemType Directory -Path $_ -Force | Out-Null }
 tar.exe -xzf $archive -C $app --strip-components=1
 if ($LASTEXITCODE -ne 0) { throw '解包失败' }
 Set-Location -LiteralPath $app
 node.exe --version
 rg.exe --version
-npm.cmd ci
+node.exe scripts/install.cjs
 if ($LASTEXITCODE -ne 0) { throw '依赖安装失败' }
 ```
 
@@ -67,7 +67,7 @@ node.exe scripts/install-service.cjs
 
 备份前暂停预约、处理未保存草稿并等所有任务结束，按实际常驻方式正常停机并确认本实例进程退出。用用户自己的备份工具整批保存实际 Pi 身份目录、data、projects、instance.env、实际服务配置及发布包/校验文件；共享身份通常在安装目录之外，必须同时停止使用该身份的 CLI 并保存该目录，不能仅备份 BASE/data。不要只备份会话JSONL，也不要把备份放进公开下载目录。使用支持NTFS权限的备份方式；恢复后核对Agent目录的受保护DACL。
 
-升级时把新版本解压到另一个releases子目录，进入新目录执行npm.cmd ci，复制固定的instance.env为.env，再启动新版本。旧版本必须已经停止，新旧版本不能同时打开同一身份或预约文件。数据绝对路径保持不变；不要复制旧node_modules或重建空身份。
+升级时把新版本解压到另一个releases子目录，进入新目录执行 `node.exe scripts/install.cjs`（旧归档没有该脚本时使用 `npm.cmd ci`），复制固定的instance.env为.env，再启动新版本。旧版本必须已经停止，新旧版本不能同时打开同一身份或预约文件。数据绝对路径保持不变；不要复制旧node_modules或重建空身份。
 
 恢复时先停机，将实际 Pi 身份目录、data、projects和启动配置整批恢复到原绝对路径，启动前比较文件SHA256，启动后核对会话、模型、搜索、用量与暂停预约。备份时不能确认预约已暂停的，首次恢复须隔离出站网络后先核对队列。详细数据清单和回退要求见[安装与恢复](INSTALL_RECOVERY.md)，其中Bash命令需使用本页的Windows原生等价操作。
 

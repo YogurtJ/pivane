@@ -145,8 +145,14 @@ class TaskCatalog {
             if (metadataBytes > this.limits.metadataBytes) throw failure('TASK_METADATA_LIMIT', 'Task metadata exceeds the cache budget');
             let stable = true;
             if (directoryBefore) {
+                // Directory timestamps can remain identical for multiple writes
+                // within one filesystem clock tick. Recheck actual membership
+                // before claiming a complete inventory for task deduplication.
+                const currentNames = (await fs.promises.readdir(project.directory, { withFileTypes: true })).filter(entry => entry.name.endsWith('.jsonl'));
+                const membersMatch = currentNames.length === names.length
+                    && currentNames.every(entry => entry.isFile() && present.has(path.join(project.directory, entry.name)));
                 const after = fs.lstatSync(project.directory, { bigint: true });
-                stable = after.isDirectory() && fingerprint(after) === fingerprint(directoryBefore)
+                stable = membersMatch && after.isDirectory() && fingerprint(after) === fingerprint(directoryBefore)
                     && fs.realpathSync.native(project.directory) === project.directory;
             } else stable = !fs.existsSync(project.directory);
             for (const [filename, record] of project.files) {

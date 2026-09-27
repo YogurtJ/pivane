@@ -13,7 +13,11 @@ const screenshots = path.resolve(process.env.PIVANE_TEST_SCREENSHOT_DIR || path.
 const bundle = process.env.PIVANE_TEST_HERMES_BUNDLE;
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const sourceRequire = createRequire(path.join(sourceRoot, 'package.json'));
-const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: sourceRoot, encoding: 'utf8' }).trim();
+let sourceSha = null;
+try {
+    const gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: sourceRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (fs.realpathSync.native(gitRoot) === sourceRoot) sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: sourceRoot, encoding: 'utf8' }).trim();
+} catch { /* Release archives have no Git identity; the caller records their checksum. */ }
 
 async function main() {
     if (!bundle || !fs.existsSync(bundle)) throw new Error('PIVANE_TEST_HERMES_BUNDLE must point to the reviewed read-only bundle');
@@ -132,9 +136,14 @@ async function main() {
         const profileId = firstProfile.profiles[0].id;
         assert.match(firstProfile.profileRevisions[profileId], /^[a-f0-9]{64}$/);
         await page.locator('#pi-profile-form [name=description]').fill('Edited with unavailable crypto.subtle');
-        await page.locator('#pi-profile-form button[type=submit]').click();
+        const [saveResponse] = await Promise.all([
+            page.waitForResponse(response => response.url().endsWith('/api/pi/profiles') && response.request().method() === 'PUT'),
+            page.locator('#pi-profile-form button[type=submit]').click()
+        ]);
+        assert.equal(saveResponse.ok(), true);
         await page.waitForFunction(() => document.querySelector('#pi-profile-form [name=description]')?.value === 'Edited with unavailable crypto.subtle'
-            && !document.querySelector('#pi-profile-form button[type=submit]')?.disabled);
+            && !document.querySelector('#pi-profile-form [name=description]')?.disabled
+            && document.querySelector('#pi-profile-form button[type=submit]')?.disabled);
         const edited = await api('GET', '/profiles');
         assert.equal(edited.profiles[0].description, 'Edited with unavailable crypto.subtle');
         assert.notEqual(edited.profileRevisions[profileId], firstProfile.profileRevisions[profileId]);
@@ -267,6 +276,7 @@ async function main() {
 
         await page.locator('#workspace-profiles-toggle').click();
         await page.locator(`[data-profile-id="${profileId}"]`).click();
+        await page.locator('[data-profile-section=overview]').click();
         await page.locator('#pi-profile-form [name=description]').fill('User-owned unsaved description');
         await page.locator('#pi-profile-form [data-profile-assist]').click();
         await page.waitForFunction(() => location.hash.startsWith('#/chat') && location.hash.includes('sessionId=')

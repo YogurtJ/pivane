@@ -4,7 +4,7 @@
 
 ## 安装前提
 
-当前源码的 `node scripts/install.cjs` 统一准备内置 pi-subagents 与 pi-hermes-memory，不再向共享 Pi 身份另行安装包；准备失败会返回安装错误。这个入口也避免 npm 对 SQLite 的无谓编译。下文旧发布归档仍使用原有 `npm ci` 命令；当前源码请使用统一安装入口。默认启用、旧配置兼容和平台依赖见[内置能力包](BUNDLED_CAPABILITIES.md)。
+当前源码的 `node scripts/install.cjs` 统一准备内置 pi-subagents 与 pi-hermes-memory，不再向共享 Pi 身份另行安装包；准备失败会返回安装错误。这个入口也避免 npm 对 SQLite 的无谓编译。下文以 1.2.0 为例，使用统一安装入口；旧归档没有此脚本时仍使用 `npm ci`。默认启用、旧配置兼容和平台依赖见[内置能力包](BUNDLED_CAPABILITIES.md)。
 
 - Node 22.x、npm、系统ripgrep。可以保留已有其他版本Node，为本实例指定独立Node22。
 - 安装包必须包含`native/pi-darwin-fd.node`、对应C源码与manifest；它们为同一批构建，不需现场编译该组件。缺失或不匹配时不启用全文/搜索/统计，不回退为较弱的路径检查。当前源码内置记忆的 SQLite 依赖另行安装适配当前 Node 的二进制，缺少预构建文件时需要 Python 与 Xcode Command Line Tools，见[内置能力包](BUNDLED_CAPABILITIES.md)。
@@ -29,21 +29,21 @@ rg --version
 先将发布包和同名.sha256下载到Downloads，并核对下载来源。以下为新实例示例，BASE必须尚不存在：
 
 ```sh
-ARCHIVE="$HOME/Downloads/pivane-1.0.0.tar.gz"
+ARCHIVE="$HOME/Downloads/pivane-1.2.0.tar.gz"
 (cd "$(dirname "$ARCHIVE")" && shasum -a 256 -c "$(basename "$ARCHIVE").sha256")
 BASE="$HOME/pivane"
 test ! -e "$BASE" || { echo "此目录已存在，请按更新流程操作或选择新的BASE"; exit 1; }
 umask 077
-mkdir -p "$BASE/releases/1.0.0" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
-tar -xzf "$ARCHIVE" -C "$BASE/releases/1.0.0" --strip-components=1 &&
-cd "$BASE/releases/1.0.0" &&
+mkdir -p "$BASE/releases/1.2.0" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
+tar -xzf "$ARCHIVE" -C "$BASE/releases/1.2.0" --strip-components=1 &&
+cd "$BASE/releases/1.2.0" &&
 node -e 'if (process.versions.node.split(".")[0] !== "22") { console.error("请先切换到 Node 22.x；当前 " + process.version); process.exit(1); } console.log(process.version, process.execPath)' &&
 npm --version &&
 rg --version &&
-npm ci
+node scripts/install.cjs
 ```
 
-先确认校验结果成功，再解包；`npm ci` 成功后，取得当前用户实际 Pi 目录：
+先确认校验结果成功，再解包；统一安装入口成功后，取得当前用户实际 Pi 目录：
 
 ```sh
 AGENT_DIR=$(node scripts/pi-agent-dir.cjs) || exit 1
@@ -70,7 +70,7 @@ cp "$BASE/instance.env" .env
 node scripts/install-service.cjs
 ```
 
-常驻服务不会自动继承安装终端中的 Provider Key、代理或 NODE_OPTIONS。若认证依赖环境变量或外部命令，需向本实例显式提供相同依赖，或通过网页原生登录保存认证；不要输出 Key。以后登录后自动启动，不需要重复 npm ci。
+常驻服务不会自动继承安装终端中的 Provider Key、代理或 NODE_OPTIONS。若认证依赖环境变量或外部命令，需向本实例显式提供相同依赖，或通过网页原生登录保存认证；不要输出 Key。以后登录后自动启动，不需要重复安装依赖。
 
 打开`http://127.0.0.1:11408`或桌面 Pivane 入口，安装终端可以关闭；以后登录时自动启动。端口已被占用时先核对现有服务，不重复启动。
 
@@ -88,6 +88,6 @@ node scripts/install-service.cjs
 
 通用数据范围与同路径恢复流程见[INSTALL_RECOVERY.md](INSTALL_RECOVERY.md)。常驻实例按[后台常驻](BACKGROUND_SERVICE.md)停止 LaunchAgent：先暂停预约，等待线程/工具/设置/媒体操作空闲，再从独立终端正常停机；确认本实例停止后整批保存Agent目录、媒体配置/文件/历史、项目和启动配置。用`tar -czf`保存完整目录，保留原路径恢复；默认共享的 Pi 目录通常在 BASE 之外，必须按[共享身份备份](PI_CLI.md#备份和恢复共享身份)另存完整身份，并同时停止使用该身份的 CLI，不能只保存实例 data。跨路径恢复不能批量替换JSONL字符串冒充完整迁移。
 
-更新时解压到新的release目录，`npm ci`，复制本实例的启动配置，并继续指向同一数据与项目目录。保持native源码、二进制、manifest一起更新；旧代码目录可留作回退。不要清空身份或把测试合成Provider复制进正式身份。重启后核对模型认证、原生会话、文件全文、跨线程搜索、用量以及预约状态；结果不确定的生成任务不要自动重试。
+更新时解压到新的 release 目录，执行 `node scripts/install.cjs`（旧归档没有该脚本时使用 `npm ci`），复制本实例的启动配置，并继续指向同一数据与项目目录。保持native源码、二进制、manifest一起更新；旧代码目录可留作回退。不要清空身份或把测试合成Provider复制进正式身份。重启后核对模型认证、原生会话、文件全文、跨线程搜索、用量以及预约状态；结果不确定的生成任务不要自动重试。
 
 macOS上的`npm run pack:trial`使用系统BSD tar，并逐项允许清单打包；不会把实例数据、node_modules、私人模型或备份带入。开发者重建native组件的说明见[native/README.md](../native/README.md)。Windows原生操作另见[WINDOWS.md](WINDOWS.md)。

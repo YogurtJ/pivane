@@ -4,7 +4,7 @@
 
 Use **Node.js 22.x** with npm. The published RC1 baseline was tested with Node 22.23.2 and Pi 0.85.0 on Debian ARM64, Ubuntu 24.04 x86_64, Apple Silicon M2 macOS and Windows 11 x64/NTFS. See [platform validation](../RELEASE_INSTALL_VALIDATION.md) for exact limits. A browser at phone width does not constitute native iPhone/Safari validation.
 
-The examples below install **1.0.0**, the first stable release, pinned to Pi 0.86.1. Use matching archives, checksums and version directories together. The platform table above describes historical baselines; consult the [1.0.0 release notes](../releases/1.0.0.md) and its validation attachment for checks performed on this artifact.
+The examples below target **1.2.0**, pinned to Pi 0.87.1. Available downloads are listed in [Releases](https://github.com/YogurtJ/pivane/releases). Use matching archives, checksums and version directories together. The platform table above describes historical baselines; consult the [1.2.0 release notes](../releases/1.2.0.md) and its validation attachment for checks performed on this artifact.
 
 ## Prerequisites
 
@@ -19,13 +19,13 @@ Use the same ordinary operating-system user as your existing Pi CLI. Pivane norm
 
 ## Bundled capabilities
 
-The current source includes pi-subagents 0.71.0 and pi-hermes-memory 0.9.9 under `vendor/`. `node scripts/install.cjs` installs the locked dependencies, prepares esbuild, verifies upstream files, builds the profile memory component and checks native SQLite support. It uses the dependency's shipped binaries without npm's unnecessary node-gyp step. Failure returns a nonzero installation result. Older published archives without this script retain the `npm ci` commands below. Targets without a usable SQLite binary need Python and C/C++ tools to build the upstream module explicitly.
+The current source includes pi-subagents 0.71.0 and pi-hermes-memory 0.9.9 under `vendor/`. `node scripts/install.cjs` installs the locked dependencies, prepares esbuild, verifies upstream files, builds the profile memory component and checks native SQLite support. It uses the dependency's shipped binaries without npm's unnecessary node-gyp step. Failure returns a nonzero installation result. Older published archives without this script retain their original `npm ci` installation command. Targets without a usable SQLite binary need Python and C/C++ tools to build the upstream module explicitly.
 
 Pivane selects its own package versions without rewriting existing CLI package declarations or moving profile data. Legacy resource filters remain effective. Subagent settings and profile memory controls keep their existing scopes; installation does not start tasks or enable memory for every profile. Components update with Pivane. `PI_SKIP_DEFAULT_CAPABILITIES` no longer controls bundled preparation. After an explicit `npm ci --ignore-scripts`, run `npm rebuild esbuild --foreground-scripts` and `node scripts/install-bundled-capabilities.cjs`. See [bundled capabilities](../BUNDLED_CAPABILITIES.md).
 
 ## Installation scope
 
-For an ordinary deployment, check prerequisites, reuse the intended Pi identity, choose instance media/schedule paths and project roots, run `npm ci` once, start the server, and verify read-only status and that the page opens. Full test suites, desktop/mobile regression, packaging and recovery drills belong to development validation. Persistent background service setup is an optional follow-up. Report time to first usable page separately from later validation or troubleshooting.
+For an ordinary deployment, check prerequisites, reuse the intended Pi identity, choose instance media/schedule paths and project roots, run `node scripts/install.cjs` once, start the server, and verify read-only status and that the page opens. Full test suites, desktop/mobile regression, packaging and recovery drills belong to development validation. Persistent background service setup is an optional follow-up. Report time to first usable page separately from later validation or troubleshooting.
 
 When given only the GitHub repository URL, prefer the Release archive and checksum. If the user explicitly chooses a Git checkout, record its commit and follow the same instance setup; a source checkout does not require development tests. After switching Node versions, check `node --version` and `node -p 'process.execPath'`. Chain the switch and installation with `&&` so a failed switch cannot silently run installation under the previous Node. Node 22 is the installation baseline, not proof that every other major version is incompatible.
 
@@ -35,7 +35,7 @@ Project roots are separate from data isolation. Ordinary installations default t
 
 Pi uses Node's OS home directory plus `.pi/agent`: usually `/Users/<user>/.pi/agent` on macOS, `/home/<user>/.pi/agent` on Linux, and `C:\Users\<user>\.pi\agent` on native Windows. Windows does not default to AppData. A nonempty `PI_CODING_AGENT_DIR` overrides this. Git Bash's `~`, PowerShell's home and native Node's home may differ; WSL Pi is a separate Linux environment.
 
-After `npm ci`, the commands below use `node scripts/pi-agent-dir.cjs` to obtain the path through Pi's public resolver. Run them as the normal CLI user with its actual configuration environment, including overrides supplied by a CLI alias or wrapper. The helper only reports a path; it does not read credentials, create directories or send model requests. Existing identities are reused, and missing ones are initialized by Pi on normal startup. Pivane still uses its bundled Pi version, not the globally installed executable.
+After dependency installation, the commands below use `node scripts/pi-agent-dir.cjs` to obtain the path through Pi's public resolver. Run them as the normal CLI user with its actual configuration environment, including overrides supplied by a CLI alias or wrapper. The helper only reports a path; it does not read credentials, create directories or send model requests. Existing identities are reused, and missing ones are initialized by Pi on normal startup. Pivane still uses its bundled Pi version, not the globally installed executable.
 
 Sharing an identity also shares native settings, standard sessions and global resources. Do not let the CLI and Web UI write the same session concurrently. For an existing Pivane installation, stop it when idle through its original management channel, retain both identity directories, and change the actual `PI_CODING_AGENT_DIR` in its startup configuration. Do not copy or merge authentication files. Media and schedule paths should retain their existing values. After startup, the authenticated `/api/pi/settings/native` response reports `agentDir`; check configured providers in Settings before logging in again.
 
@@ -46,7 +46,7 @@ Environment-only keys, proxy settings and external credential commands must also
 Download the archive and its `.sha256` file from [Releases](https://github.com/YogurtJ/pivane/releases) to Downloads and verify the source. In Bash or your macOS terminal:
 
 ```bash
-ARCHIVE="$HOME/Downloads/pivane-1.0.0.tar.gz"
+ARCHIVE="$HOME/Downloads/pivane-1.2.0.tar.gz"
 # Linux:
 (cd "$(dirname "$ARCHIVE")" && sha256sum -c "$(basename "$ARCHIVE").sha256")
 # macOS: use this checksum command instead:
@@ -59,12 +59,12 @@ Continue only if verification succeeds. For a new instance, the base directory m
 BASE="$HOME/pivane"
 test ! -e "$BASE" || { echo "Directory exists; use the update procedure or another BASE"; exit 1; }
 umask 077
-mkdir -p "$BASE/releases/1.0.0" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
-tar -xzf "$ARCHIVE" -C "$BASE/releases/1.0.0" --strip-components=1
-cd "$BASE/releases/1.0.0"
+mkdir -p "$BASE/releases/1.2.0" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
+tar -xzf "$ARCHIVE" -C "$BASE/releases/1.2.0" --strip-components=1
+cd "$BASE/releases/1.2.0"
 node --version
 rg --version
-npm ci
+node scripts/install.cjs
 ```
 
 Resolve the native Pi identity after dependency installation:
@@ -103,19 +103,19 @@ macOS's privacy controls and filesystem permissions still apply. `/tmp` resolvin
 Install Node 22.x x64, Git for Windows and ripgrep, making them available in PATH. Normal installation does not require Visual Studio or WSL. Use a new directory under your own user profile. In PowerShell:
 
 ```powershell
-$archive = Join-Path $env:USERPROFILE 'Downloads\pivane-1.0.0.tar.gz'
+$archive = Join-Path $env:USERPROFILE 'Downloads\pivane-1.2.0.tar.gz'
 $expected = (Get-Content -LiteralPath ($archive + '.sha256') -Raw).Trim().Split()[0]
 if ($expected -notmatch '^[a-fA-F0-9]{64}$' -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ine $expected) { throw 'Archive checksum failed' }
 $base = Join-Path $env:USERPROFILE 'Pivane'
 if (Test-Path -LiteralPath $base) { throw 'Directory exists; use the update procedure or another base' }
-$app = Join-Path $base 'releases\1.0.0'
+$app = Join-Path $base 'releases\1.2.0'
 @($app, "$base\data\media", "$base\projects\demo", "$base\backups") | ForEach-Object { New-Item -ItemType Directory -Path $_ -Force | Out-Null }
 tar.exe -xzf $archive -C $app --strip-components=1
 if ($LASTEXITCODE -ne 0) { throw 'Extraction failed' }
 Set-Location -LiteralPath $app
 node.exe --version
 rg.exe --version
-npm.cmd ci
+node.exe scripts/install.cjs
 if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
 ```
 
@@ -177,7 +177,7 @@ External Package sources, symlink targets, external credential commands, certifi
 1. Stop submitting new work. Finish Agent, Shell, side-chat, media, settings and import/export tasks. **Pause all scheduled messages in the UI.** Preserve unsent content.
 2. Stop the service and any external CLI using the same Pi identity. Wait for exit before copying data. An HTTP activity check cannot prove an external CLI or remote provider task has stopped.
 3. Back up the complete data, project and startup configuration directories together, outside those directories and outside public downloads. Keep private permissions and an encrypted copy elsewhere. Verify backup checksums.
-4. For an upgrade, extract into a new release directory and run `npm ci`. Copy the fixed `instance.env` into it as `.env`. Keep the same absolute data/project paths. Start only the new service; never run two instances against the same identity or scheduled-message file.
+4. For an upgrade, extract into a new release directory and run `node scripts/install.cjs` (use `npm ci` only for older archives without that script). Copy the fixed `instance.env` into it as `.env`. Keep the same absolute data/project paths. Start only the new service; never run two instances against the same identity or scheduled-message file.
 5. Verify thread IDs, history, model authentication, files, search, usage and media downloads. Keep scheduled messages paused until reviewed. Do not automatically replay uncertain requests.
 
 On Linux/macOS, after stopping the service, an example snapshot is:

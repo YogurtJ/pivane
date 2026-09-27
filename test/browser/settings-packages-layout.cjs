@@ -88,9 +88,27 @@ async function run(browser, width, locale, theme) {
     await page.locator('#pi-package-install-dialog').waitFor({ state: 'visible' });
     await page.locator('#pi-package-install-source').fill('npm:new-fixture@2.0.0');
     await page.locator('#pi-package-install-scope').selectOption('project');
+    held = true; release = null;
     await page.locator('#pi-package-install-confirm').click();
-    await page.waitForFunction(() => document.getElementById('pi-package-install-status').textContent.length > 0);
-    assert.deepEqual(writes, [], 'untrusted project cannot install');
+    for (let i = 0; !release && i < 100; i++) await page.waitForTimeout(10);
+    assert.ok(release, 'installation preflight is held');
+    for (const id of ['source', 'scope', 'confirm', 'close', 'cancel']) assert.equal(await page.locator(`#pi-package-install-${id}`).isDisabled(), true);
+    // Even synthetic input/click events during a held response must not retarget
+    // the confirmed request or create a second installation.
+    await page.evaluate(() => {
+        document.getElementById('pi-package-install-scope').value = 'global';
+        const source = document.getElementById('pi-package-install-source');
+        source.value = 'npm:raced-fixture'; source.dispatchEvent(new Event('input', { bubbles: true }));
+        document.getElementById('pi-package-install-confirm').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    assert.equal(await page.locator('#pi-package-install-confirm').isDisabled(), true);
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#pi-package-install-dialog').evaluate(dialog => dialog.open), true);
+    held = false; release(); release = null;
+    await page.waitForFunction(() => !document.getElementById('pi-package-install-source').disabled
+        && document.getElementById('pi-package-install-status').textContent.length > 0);
+    assert.deepEqual(writes, [], 'the original untrusted project cannot install after the scope changes');
+    await page.locator('#pi-package-install-source').fill('npm:new-fixture@2.0.0');
     accept = false; await page.locator('#pi-package-install-scope').selectOption('global'); await page.locator('#pi-package-install-confirm').click(); assert.deepEqual(writes, [], 'cancelled confirmation must not install');
     accept = true; await page.locator('#pi-package-install-confirm').click();
     await page.waitForFunction(() => document.querySelectorAll('[data-package-source]').length === 3);

@@ -26,10 +26,10 @@ Pivane 媒体和预约数据按实例保存，Pi 身份默认与 CLI 共用；`P
 
 ## 2. 从源码发布包安装
 
-先下载`pivane-1.0.0.tar.gz`及同名.sha256到Downloads，核对发布来源，然后检查哈希：
+以下以 1.2.0 归档为例，正式可下载版本以 [Releases](https://github.com/YogurtJ/pivane/releases) 为准。先下载 `pivane-1.2.0.tar.gz` 及同名 .sha256 到 Downloads，核对发布来源，然后检查哈希：
 
 ```bash
-ARCHIVE="$HOME/Downloads/pivane-1.0.0.tar.gz"
+ARCHIVE="$HOME/Downloads/pivane-1.2.0.tar.gz"
 (cd "$(dirname "$ARCHIVE")" && sha256sum -c "$(basename "$ARCHIVE").sha256")
 ```
 
@@ -39,10 +39,10 @@ ARCHIVE="$HOME/Downloads/pivane-1.0.0.tar.gz"
 BASE="$HOME/pivane"
 test ! -e "$BASE" || { echo "此目录已存在，请按更新流程操作或选择新的BASE"; exit 1; }
 umask 077
-mkdir -p "$BASE/releases/1.0.0" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
-tar -xzf "$ARCHIVE" -C "$BASE/releases/1.0.0" --strip-components=1
-cd "$BASE/releases/1.0.0"
-npm ci
+mkdir -p "$BASE/releases/1.2.0" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
+tar -xzf "$ARCHIVE" -C "$BASE/releases/1.2.0" --strip-components=1
+cd "$BASE/releases/1.2.0"
+node scripts/install.cjs
 ```
 
 只在所有前置检查成功后安装依赖。使用 nvm 等版本管理器时，版本切换与安装用 `&&` 连接，切换失败不要继续；用 `node -p 'process.execPath'` 核对实际 Node 路径。上述流程使用 Release 发布包；如果用户明确选择 Git checkout，记录 commit 并保留包内原生组件，同样配置独立数据与项目范围，不因源码安装自动运行开发验收。
@@ -127,7 +127,7 @@ curl -fsS http://127.0.0.1:11408/api/pi/status
 
 | 类别 | 本指南布局 | 恢复含义 |
 |---|---|---|
-| 代码/依赖清单 | `releases/1.0.0`、原发布包及哈希 | 重解压并 `npm ci`；不跨平台复制 node_modules |
+| 代码/依赖清单 | 当前 release 目录、原发布包及哈希 | 重解压并执行包内安装入口；不跨平台复制 node_modules |
 | Pi 会话 | 实际 `PI_CODING_AGENT_DIR` 下的 `sessions/` 原生 JSONL | 完整原生树与活动位置；网页当前分支导出不等于完整备份 |
 | Pi 凭据/模型/设置 | 整个实际 Pi 身份目录，通常在 BASE 之外 | 含 auth、models、settings、trust 等；不要只挑 auth.json 或手工改写它 |
 | 工作台配置 | Agent 目录内所选的 workspace、access、notifications 配置（新名称为 `pivane-*`，既有 `pi5-*` 沿用） | 偏好、访问校验/登录、通知订阅；均作为私人数据处理 |
@@ -176,7 +176,7 @@ chmod 600 "$AGENT_BACKUP.sha256"
 
 当前源码默认端口为 `11408`。旧 3001 安装升级时，把实际 `.env`、服务环境覆盖中的 `PORT` 改为 `11408`，并同步工作台地址、桌面快捷方式及反向代理目标。更换端口前，如未显式指定预约队列，先将 `PI_WEB_DEFERRED_FILE` 固定为原队列的实际绝对路径；不要复制出第二个同时工作的队列。完成下述停机备份与更新后，使用新地址验证。用户仍可显式指定自定义端口。
 
-可先在设置 → [版本与更新](UPDATES.md)检查 Pivane/Pi 版本，取得官方发布说明、发布包和校验文件。Pivane 应用仍按本节更新；普通 `node server.js` 或 `npm start` 启动后，工作台内的 Pi 还可在设置中单独更新，并执行停机备份或重启。全局 Pi CLI 的更新不改变工作台内核。
+可先在设置 → [版本与更新](UPDATES.md)检查 Pivane/Pi 版本，取得官方发布说明、发布包和校验文件。支持应用受管更新的实例可直接在版本卡片安装 Pivane；手动更新按本节执行。普通 `node server.js` 或 `npm start` 启动后，工作台内的 Pi 还可在设置中单独更新，并执行停机备份或重启。全局 Pi CLI 的更新不改变工作台内核。
 
 受管 Pi 版本位于原安装目录的 `.pivane-runtime` 中，始终从原目录启动。升级 Pivane 应用采用新的发布目录并沿用原数据配置，不将旧受管快照覆盖到新发布目录。备份、恢复及源码开发与受管快照的关系见[维护说明](UPDATES.md)。
 
@@ -191,8 +191,8 @@ NEXT_ARCHIVE="/absolute/path/to/new-release.tar.gz"
 mkdir "$BASE/releases/r2"
 tar -xzf "$NEXT_ARCHIVE" -C "$BASE/releases/r2" --strip-components=1
 cd "$BASE/releases/r2"
-npm ci
-cp "$BASE/instance.env" .env
+if test -f scripts/install.cjs; then node scripts/install.cjs; else npm ci; fi &&
+cp "$BASE/instance.env" .env &&
 env -i PATH="$PATH" HOME="$HOME" USER="$USER" LANG=C.UTF-8 npm start
 ```
 
@@ -208,7 +208,7 @@ env -i PATH="$PATH" HOME="$HOME" USER="$USER" LANG=C.UTF-8 npm start
 
 1. 校验备份 SHA-256；停止目标服务，保留已有目标目录副本。对可信的自己备份先 `tar -tzf` 检查成员，再解压到新的空 BASE。不要把不可信 tar 解压到系统目录。
 2. 恢复同一套 `instance.env`、data 和 projects；若 Pi 身份在 BASE 外，必须先将配套 `pi-agent-<时间戳>.tar.gz` 校验并解压到记录的原身份绝对路径（目标目录需已停止使用，并保留原内容副本）。BASE 的 tar 不包含这部分，不能先启动生成空身份。恢复文件所有者为运行用户，限制 Agent/备份/配置权限；不要把所有项目文件 chmod 为600而破坏可执行权限。
-3. 重新解压匹配版本源码，`npm ci`，复制 instance.env 到代码目录 `.env`，启动。服务器只能有一个进程拥有该数据目录。
+3. 重新解压匹配版本源码，执行 `node scripts/install.cjs`（旧归档没有此脚本时使用 `npm ci`），复制 instance.env 到代码目录 `.env`，启动。服务器只能有一个进程拥有该数据目录。
 4. 如果备份时未确认预约已暂停，**首次恢复启动必须隔离出站网络**，先在待发送列表核对/暂停。旧快照中的 scheduled 可能仍是未来时间，不能依靠“过期不补发”保证不会重放。不要手工把 uncertain/dispatching 改为 scheduled。
 5. 核对与更新相同的数据清单；恢复前后对 JSONL/媒体/项目文件做哈希对照。首次打开 Pi runtime 可能追加原生状态条目，应在启动前比较字节，启动后检查语义与会话 ID。
 

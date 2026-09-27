@@ -105,8 +105,12 @@ test('partial writes, replacement, deletion, and duplicate identity never become
     fs.unlinkSync(path.join(f.directory, 'duplicate.jsonl')); fs.unlinkSync(file);
     assert.equal((await complete(f.catalog, f.cwd)).records.length, 0);
 });
-test('a session added during a batch leaves coverage incomplete until its task metadata is checked', async t => {
+test('a session added during a batch stays incomplete even when directory timestamps do not change', async t => {
     const f = fixture(t, { refreshMilliseconds: 0 }); f.write('first.jsonl', [f.header('parent')]);
+    // Model filesystems whose directory size and timestamps cannot distinguish
+    // two additions in one clock tick. File identity checks remain real.
+    const directoryStat = fs.lstatSync(f.directory, { bigint: true }), lstat = fs.lstatSync;
+    t.mock.method(fs, 'lstatSync', (file, ...args) => file === f.directory ? directoryStat : lstat(file, ...args));
     const line = f.catalog.line.bind(f.catalog); let inserted = false;
     f.catalog.line = (...args) => {
         line(...args);
