@@ -120,7 +120,9 @@ async function run(browser, base, width, locale) {
  await page.locator('#pi-deferred-open').click();await page.locator('#pi-workflow-dialog').waitFor();
  assert.match(await page.locator('#pi-workflow-content').innerText(),/Fixture queued message/);
  await page.locator('#pi-workflow-close').click();await drawer();
- await page.locator('#pi-temp-session').click();await page.waitForFunction(()=>document.querySelector('.pi-session-item.ephemeral'));await drawer();
+ await page.locator('[data-project-action="menu"]').click();
+ await menu.getByRole('menuitem',{name:locale==='zh-CN'?'临时会话（不保存）':'Temporary session (not saved)',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('.pi-session-item.ephemeral'));await drawer();
  assert.equal(await page.locator('.ephemeral .pi-session-preview').innerText(),locale==='zh-CN'?'退出或断开后立即销毁':'Destroyed immediately on exit or disconnect');
  assert.deepEqual(errors,[]);
  assert.equal(commands.some(c=>['prompt','steer','follow_up'].includes(c)),false);
