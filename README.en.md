@@ -8,7 +8,7 @@
 
 Pivane is a self-hosted AI workspace powered by **Pi Coding Agent**. Work on code, manage projects and files, follow Agent tasks, and use your own image, video and speech models from a desktop, tablet or phone.
 
-[Download 1.1.0](https://github.com/YogurtJ/pivane/releases/tag/v1.1.0) · [Install](docs/en/INSTALL.md) · [User guide](docs/en/USER_GUIDE.md) · [Report an issue](https://github.com/YogurtJ/pivane/issues)
+[Download 1.2.0](https://github.com/YogurtJ/pivane/releases/tag/v1.2.0) · [Install](docs/en/INSTALL.md) · [User guide](docs/en/USER_GUIDE.md) · [Report an issue](https://github.com/YogurtJ/pivane/issues)
 
 ## From a question to completed work
 
@@ -38,7 +38,7 @@ The bilingual interface is included starting with **1.0.0-rc.2**. Version **1.0.
 
 ## Install
 
-The current stable release, **1.1.0**, is pinned to **Pi 0.87.1**. It adds project file browsing, native task progress, searchable model selection, shared favorites and mobile interaction improvements. See the [release notes](docs/releases/1.1.0.md). This archive passed 292 Node tests, 12 browser suites, installation, upgrade from 1.0.0 and same-path restoration on Linux ARM64 with Node 22. Running instances change only after an explicit update.
+The current stable release, **1.2.0**, is pinned to **Pi 0.87.1**. It adds assistant identities, managed memory and opt-in learning, bundled subagents, direct thread messaging, compact conversation views and performance improvements. See the [release notes](docs/releases/1.2.0.md). The release passed 444 Node tests and 19 browser suites; the final archive passed independent installation, upgrade from 1.1.0, old web-updater installation and same-path restoration on Linux ARM64 with Node 22. The validation report distinguishes exact-archive checks, unchanged regression reuse and historical platform results. Running instances change only after an explicit update.
 
 Use **Node.js 22.x** and the locked dependencies. Validation results are attached to the exact archive SHA256. You do not need a global Pi installation or a frontend build. The current source bundles pi-subagents 0.71.0 and pi-hermes-memory 0.9.9; `node scripts/install.cjs` prepares both without rewriting your CLI package declarations and uses the SQLite binaries shipped in the dependency package. Older published archives without this installer retain their original `npm ci` instructions. SQLite may require Python and C/C++ build tools when no matching prebuilt binary exists. See [bundled capabilities](docs/BUNDLED_CAPABILITIES.md).
 

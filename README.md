@@ -10,11 +10,11 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 
 **A self-hosted AI workspace powered by Pi Coding Agent. Code, manage files, and create images, video & audio from your desktop, tablet or phone. Bring your own models.**
 
-[下载 1.1.0 正式版](https://github.com/YogurtJ/pivane/releases/tag/v1.1.0) · [开始使用](docs/USER_GUIDE.md) · [安装与恢复](docs/INSTALL_RECOVERY.md) · [Agent 操作指南](docs/AGENT_GUIDE.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues)
+[下载 1.2.0 正式版](https://github.com/YogurtJ/pivane/releases/tag/v1.2.0) · [开始使用](docs/USER_GUIDE.md) · [安装与恢复](docs/INSTALL_RECOVERY.md) · [Agent 操作指南](docs/AGENT_GUIDE.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues)
 
-**1.1.0 正式版锁定 Pi 0.87.1**，整合项目文件浏览、原生任务进度卡、可搜索的模型选择与跨设备收藏，以及手机布局和操作反馈改进。[查看本版变化与升级说明](docs/releases/1.1.0.md)。
+**1.2.0 正式版锁定 Pi 0.87.1**，新增助手身份、记忆管理与可选自学习、内置子 Agent、线程通信和简洁消息视图，并改进长会话性能与手机操作。[查看本版变化与升级说明](docs/releases/1.2.0.md)。
 
-本包已通过 Linux ARM64 / Node 22 的独立安装、292 项测试、12 组浏览器专项、从 1.0.0 升级及原路径恢复验收。历史版本归档保持不变；运行实例需经正常更新流程切换后生效。
+本版通过 Linux ARM64 / Node 22 的 444 项测试与 19 组浏览器专项；最终包通过独立安装、从 1.1.0 升级、旧版网页更新器安装及原路径恢复验收。精确归档、回归复用与平台范围见版本说明；运行实例需经正常更新流程切换后生效。
 
 ## 为什么用 Pivane
 
@@ -64,7 +64,7 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 
 ## 部署在你自己的机器上
 
-当前正式版 **1.1.0** 锁定 **Pi 0.87.1**，推荐 Node.js 22.x；历史版本资产保留。1.1.0 的精确包 SHA256、验收范围和限制见[版本说明](docs/releases/1.1.0.md)及 Release 附件。下表是历史平台基线，不表示本包已在每个平台重跑验收。
+当前正式版 **1.2.0** 锁定 **Pi 0.87.1**，推荐 Node.js 22.x；历史版本资产保留。1.2.0 的精确包 SHA256、验收范围和限制见[版本说明](docs/releases/1.2.0.md)及 Release 附件。下表是历史平台基线，不表示本包已在每个平台重跑验收。
 
 | 服务端平台 | 已验收范围 | 安装入口 |
 |---|---|---|
@@ -92,7 +92,7 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 - Windows 普通用户权限下另通过 **30 项检查**；Ubuntu x86_64 另完成同包安装、167 项测试和静态检查补验。
 - 各验收环境的生产依赖 audit 为 **0 漏洞**。测试使用独立身份与合成服务，不把这些结果称为所有真实媒体供应商或手机系统的验收。
 
-准确的历史平台、包 SHA256 和检查结果随 [RC1 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.1) 的 `validation.json` 提供。**1.1.0** 的变更和本包验证范围见[版本说明](docs/releases/1.1.0.md)及[1.1.0 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.1.0)附件；历史 RC 跨平台结果不冒充 1.1.0 实机验收。
+准确的历史平台、包 SHA256 和检查结果随 [RC1 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.1) 的 `validation.json` 提供。**1.2.0** 的变更和本包验证范围见[版本说明](docs/releases/1.2.0.md)及[1.2.0 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.2.0)附件；历史 RC 跨平台结果不冒充 1.2.0 实机验收。
 
 ## 文档与 Agent 入口
 
