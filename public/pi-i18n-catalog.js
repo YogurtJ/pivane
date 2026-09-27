@@ -8832,6 +8832,8 @@
     ,['删除此条目？', 'Delete this entry?']
     ,['删除后可从已删除记录中恢复。', 'You can restore it from deleted entries later.']
     ,['删除条目', 'Delete entry']
+    ,['当前名称', 'Current name']
+    ,['首条消息预览', 'First message preview']
     ,['请先在概览中启用此身份并保存。', 'Enable this profile in Overview and save it first.']
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));

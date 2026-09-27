@@ -29,8 +29,15 @@
             const epoch = ++this.epoch;
             const active = () => epoch === this.epoch && this.dialog.open;
             const url = `/api/pi/sessions/${encodeURIComponent(session.id)}/title`;
-            this.body.replaceChildren(node('p', session.name || session.firstMessage || t('未命名会话')),
-                node('p', t(this.modelSelection ? '按标题模型设置生成建议，会产生少量额外用量。可以编辑后保存，关闭窗口保留原名称。' : '使用当前线程的模型生成建议，会产生少量额外用量。可以编辑后保存，关闭窗口保留原名称。')));
+            const source = node('section', undefined, 'pi-title-source');
+            source.setAttribute('aria-labelledby', 'pi-title-source-label');
+            const sourceLabel = node('div', t(session.name ? '当前名称' : '首条消息预览'), 'pi-title-source-label');
+            sourceLabel.id = 'pi-title-source-label';
+            const sourceText = node('p', session.name || session.firstMessage || t('未命名会话'), 'pi-title-source-text');
+            sourceText.tabIndex = 0;
+            source.append(sourceLabel, sourceText);
+            this.body.replaceChildren(source,
+                node('p', t(this.modelSelection ? '按标题模型设置生成建议，会产生少量额外用量。可以编辑后保存，关闭窗口保留原名称。' : '使用当前线程的模型生成建议，会产生少量额外用量。可以编辑后保存，关闭窗口保留原名称。'), 'pi-title-description'));
             const label = node('label', t('会话名称')), input = node('input');
             input.id = 'pi-title-input'; input.maxLength = 120; input.disabled = true; input.autocomplete = 'off';
             label.append(input); this.body.append(label);
@@ -43,6 +50,7 @@
             const generate = async () => {
                 if (busy) return;
                 busy = true; retry.disabled = true; save.disabled = true; input.disabled = true;
+                this.status.dataset.state = 'pending';
                 this.status.textContent = t('正在生成标题…');
                 usage.hidden = true; usage.textContent = '';
                 try {
@@ -55,14 +63,16 @@
                             node('span', result.usage ? t('本次 Token：输入 {0} · 输出 {1} · 缓存读取 {2} · 缓存写入 {3}', count('input'), count('output'), count('cacheRead'), count('cacheWrite')) : t('本次用量未上报')));
                         usage.hidden = false;
                     }
+                    this.status.dataset.state = 'success';
                     this.status.textContent = t('建议已生成，保存后应用。'); input.focus(); input.select();
-                } catch (error) { if (active()) this.status.textContent = error.message; }
+                } catch (error) { if (active()) { this.status.dataset.state = 'error'; this.status.textContent = error.message; } }
                 finally { if (active()) { busy = false; retry.disabled = false; input.disabled = !suggestion; } }
             };
             retry.onclick = generate;
             save.onclick = async () => {
                 if (busy || !suggestion || !input.value.trim()) return;
                 busy = true; save.disabled = true; retry.disabled = true; input.disabled = true;
+                this.status.dataset.state = 'pending';
                 this.status.textContent = t('正在保存…');
                 try {
                     const result = await this.apiFetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -70,7 +80,7 @@
                     this.saved(session, cwd, result.name);
                     if (active()) this.close();
                 } catch (error) {
-                    if (active()) this.status.textContent = error.message;
+                    if (active()) { this.status.dataset.state = 'error'; this.status.textContent = error.message; }
                 } finally {
                     // A submitted save is not replayed. Regenerate to obtain a current revision.
                     if (active()) { busy = false; retry.disabled = false; input.disabled = false; }

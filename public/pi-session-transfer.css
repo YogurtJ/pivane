@@ -21,6 +21,21 @@
 .pi-transfer-scope { padding: 12px; background: var(--surface-3); border-radius: 8px; }
 .pi-transfer-status { margin-bottom: 14px; }
 .pi-transfer-dialog footer { justify-content: flex-end; }
+/* Title suggestions: separate source, editing and feedback without moving the actions. */
+#pi-title-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
+#pi-title-dialog > :is(header, footer, .pi-transfer-status) { flex-shrink: 0; }
+#pi-title-dialog .pi-transfer-body { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+#pi-title-dialog .pi-title-source { min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-1); overflow: hidden; }
+#pi-title-dialog .pi-title-source-label { padding: 9px 12px; border-bottom: 1px solid var(--line); color: var(--text-muted); font-size: 12px; font-weight: 600; }
+#pi-title-dialog .pi-title-source-text { max-height: min(24dvh, 160px); padding: 12px; box-sizing: border-box; overflow: auto; overscroll-behavior: contain; white-space: pre-wrap; line-height: 1.75; }
+#pi-title-dialog .pi-title-description, #pi-title-usage { color: var(--text-muted); }
+#pi-title-dialog .pi-transfer-status { margin: 0; padding: 10px 12px; border-radius: 6px; background: var(--surface-1); color: var(--text-muted); max-height: 20dvh; overflow: auto; }
+#pi-title-dialog .pi-transfer-status[data-state="error"] { background: var(--danger-soft); color: var(--danger); }
+#pi-title-dialog footer { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); align-items: stretch; }
+#pi-title-dialog :is(header, footer) button { display: inline-flex; align-items: center; justify-content: center; margin: 0; min-height: 40px; padding: 9px 14px; line-height: 1.4; box-sizing: border-box; }
+#pi-title-dialog footer button { min-width: 80px; }
+#pi-title-dialog footer button:disabled { opacity: 0.45; cursor: not-allowed; }
+
 #pi-import-session { margin: 0 22px 14px; width: calc(100% - 44px); }
 @media (max-width: 600px) {
     .pi-transfer-dialog { padding: 16px; }

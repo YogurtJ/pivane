@@ -7,11 +7,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const root = path.resolve(__dirname, '../..');
 
 async function run(browser, base, width, locale, supported = true, modelSupport = true, missingModel = false) {
-    const context = await browser.newContext({ viewport: { width, height: 950 }, locale, isMobile: width < 900, hasTouch: width < 900 });
+    const context = await browser.newContext({ viewport: { width, height: width === 320 ? 640 : 950 }, locale, isMobile: width < 900, hasTouch: width < 900 });
     const page = await context.newPage(); page.setDefaultTimeout(12000);
     const en = locale === 'en', errors = [], calls = [], writes = [];
     const cwd = '/fixture/title-project';
-    const session = { id: 'title-fixture', cwd, name: '', firstMessage: '帮我看看手机聊天页面为什么横向溢出', messageCount: 4, modified: '2026-09-12T00:00:00Z' };
+    const sourceMessage = '帮我看看手机聊天页面为什么横向溢出，检查界面布局和操作反馈。\n'.repeat(8)
+        + '<img src=x onerror=alert(1)>\n'
+        + '[Image: original 2932×1662, displayed at 2000×1134. Multiply coordinates by 1.47 to map to original image.] '.repeat(6);
+    const session = { id: 'title-fixture', cwd, name: '', firstMessage: sourceMessage, messageCount: 4, modified: '2026-09-12T00:00:00Z' };
     const model = { provider: 'fixture', id: 'fixture', name: 'Fixture', available: true, input: ['text', 'image'], thinkingLevels: ['off'], contextWindow: 32000 };
     const cheap = { ...model, provider: 'budget', id: 'title-helper/long-model-id-for-width-check', name: 'Budget title helper with a long descriptive name' };
     const titlePreferences = { enabled: true, ...(modelSupport ? { provider: missingModel ? 'removed-provider' : '', modelId: missingModel ? 'removed-model' : '', revision: 0 } : {}) };
@@ -21,7 +24,10 @@ async function run(browser, base, width, locale, supported = true, modelSupport 
         { role: 'assistant', timestamp: 2, stopReason: 'stop', content: [{ type: 'text', text: '建议检查 flex 子元素的最小宽度。' }] }];
     let socket, titleMode = 'ready', releaseTitle, saveConflict = false, failSettings = false;
     page.on('pageerror', error => errors.push(error.message));
-    await page.addInitScript(({ cwd }) => { localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem('pi.web.session:' + cwd, 'title-fixture'); }, { cwd });
+    await page.addInitScript(({ cwd, width }) => {
+        localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem('pi.web.session:' + cwd, 'title-fixture');
+        localStorage.setItem('pi.workspace.theme', width === 320 ? 'dark' : width === 393 ? 'mint' : 'daylight');
+    }, { cwd, width });
     await page.route('**/api/**', async route => {
         const req = route.request(), url = new URL(req.url());
         let data = {}, status = 200;
@@ -145,8 +151,32 @@ async function run(browser, base, width, locale, supported = true, modelSupport 
         await page.getByRole('menuitem', { name: en ? 'Generate a new title' : '重新生成标题', exact: true }).click();
         await page.locator('#pi-title-dialog').waitFor({ state: 'visible' });
     };
+    const alignedActions = async () => {
+        const layout = await page.locator('#pi-title-dialog').evaluate(dialog => {
+            const buttons = [...dialog.querySelectorAll('footer button')].map(button => {
+                const rect = button.getBoundingClientRect(); return { top: rect.top, bottom: rect.bottom, height: rect.height };
+            });
+            const preview = dialog.querySelector('.pi-title-source-text');
+            return { buttons, viewport: window.innerHeight, previewHeight: preview.clientHeight, previewScroll: preview.scrollHeight };
+        });
+        assert.ok(Math.abs(layout.buttons[0].top - layout.buttons[1].top) < 1, 'action buttons share the same top edge');
+        assert.ok(Math.abs(layout.buttons[0].height - layout.buttons[1].height) < 1, 'action buttons have equal height');
+        assert.ok(layout.buttons.every(button => button.height >= 40 && button.bottom <= layout.viewport - 8), 'actions stay visible');
+        return layout;
+    };
+    titleMode = 'error';
     await openEditor();
+    await page.waitForFunction(() => document.querySelector('#pi-title-dialog .pi-transfer-status').dataset.state === 'error');
+    assert.equal(await page.locator('.pi-title-source-text').textContent(), sourceMessage);
+    assert.equal(await page.locator('.pi-title-source img').count(), 0);
+    assert.equal(await page.locator('#pi-title-source-label').textContent(), en ? 'First message preview' : '首条消息预览');
+    const sourceLayout = await alignedActions();
+    assert.ok(sourceLayout.previewScroll > sourceLayout.previewHeight, 'long original content scrolls inside its preview');
+    await page.screenshot({ path: `/tmp/pi-session-titles-${locale}-${width}-error.png` });
+    titleMode = 'ready';
+    await page.locator('#pi-title-dialog footer').getByRole('button', { name: en ? 'Generate a new title' : '重新生成标题', exact: true }).click();
     await page.waitForFunction(() => !document.getElementById('pi-title-input').disabled);
+    await alignedActions();
     assert.equal(await page.locator('#pi-title-input').inputValue(), '手机聊天页横向溢出排查');
     await overflow(['body', '#pi-title-dialog', '#pi-title-dialog .pi-transfer-body', '#pi-title-dialog label', '#pi-title-input', '#pi-title-dialog footer', '#pi-title-usage']);
     if (modelSupport) {
@@ -189,8 +219,11 @@ async function run(browser, base, width, locale, supported = true, modelSupport 
     await page.waitForFunction(() => [...document.querySelectorAll('.pi-session-title')].some(node => node.textContent === '后台生成的新标题'));
     if (width < 900) { await page.locator('#pi-toggle-sessions').click(); await overflow(['#pi-session-pane', '.pi-session-title']); await page.locator('#pi-toggle-sessions').click(); }
     await selectMessageView(page, 'full');
+    // Historical tool details are rendered when expanded by the current mainline UI.
+    const tool = page.locator('.pi-tool-row').first();
+    if (!await tool.evaluate(element => element.open)) await tool.locator('summary').first().click();
     assert.ok((await page.locator('.pi-tool-output').textContent()).includes('fixture tool output'));
-    await overflow(['body', '#pi-attachments', '.pi-tool-block']);
+    await overflow(['body', '#pi-attachments', '.pi-tool-row']);
     assert.ok(!calls.includes('prompt'), 'title UI must not prompt the main agent');
     assert.equal(calls.filter(call => call === 'open_session').length, 1, 'title UI must not reconnect the current thread');
     assert.deepEqual(errors, []);
