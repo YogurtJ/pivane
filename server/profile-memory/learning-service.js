@@ -16,7 +16,9 @@ const DEFAULTS = Object.freeze({ enabled: false, correctionEnabled: true, review
     extractionEnabled: false, periodicReviewMinutes: 0, maxRunsPerDay: 20, maxTokensPerDay: 200000,
     consolidationInputChars: 12000, triggerPhrases: require('./learning-triggers').EMPTY });
 const LIMIT = 256 * 1024;
-const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
+// Learning reads the whole native session (about 12 ms per MiB on a Pi 5) and every write is
+// re-proven against it, so the bound matches the source-proof bound instead of the 8 MiB index bound.
+const MAX_SOURCE_BYTES = scope.MAX_SOURCE_BYTES;
 const MAX_JOBS = 64;
 const MAX_CURSORS = 128;
 const MAX_SEEN_PER_CURSOR = 8;

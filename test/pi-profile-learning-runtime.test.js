@@ -998,3 +998,16 @@ test('imported history before a learning baseline is never queued; turns after i
     assert.equal(snap.recentRuns[0].reason, 'correction');
     assert.equal(f.calls(), 1);
 });
+
+test('a long-running thread above the 8 MiB index bound is still learned, up to the source-proof bound', async t => {
+    const f = await fixture(t); await f.enable({ correctionEnabled: true });
+    f.append('这是合成的长线程背景。', 'x'.repeat(9 * 1024 * 1024));
+    assert.ok(fs.statSync(f.session.sessionPath).size > 8 * 1024 * 1024);
+    f.append('不对，应该用新版校验清单。');
+    await f.service.register(f.session);
+    await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1);
+    const snap = await f.service.snapshot(profileId);
+    assert.equal(snap.recentRuns[0].reason, 'correction');
+    assert.equal(snap.recentRuns[0].status, 'completed');
+    assert.match(JSON.stringify(snap.capabilities), new RegExp(`"maxSourceBytes":${64 * 1024 * 1024}\\b`));
+});

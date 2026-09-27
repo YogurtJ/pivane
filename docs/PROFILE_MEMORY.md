@@ -349,7 +349,10 @@ tool adapter.
   keeps a turn out of learning, and questions or quoted examples never count;
   compaction/exit boundaries go to extraction of pairs not yet covered.
   Positive `periodicReviewMinutes` throttles review and lets a periodic scan
-  backfill known sessions. Native sessions above 8 MiB are not learned from.
+  backfill known sessions. Learning reads native sessions up to the 64 MiB
+  source-proof bound (`capabilities.maxSourceBytes`), so a long-running single
+  thread keeps being learned from; larger sessions are skipped. The derived
+  search index keeps its own 8 MiB bound.
   Pairs before the last `pivane-learning-baseline` custom entry on the branch
   (written when older conversations are imported) are never learned from, in
   any kind or at a boundary; forks keep the baseline.
