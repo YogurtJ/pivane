@@ -145,7 +145,7 @@ Web worker 使用 `-e server/pi-web-session-extension.ts` 显式加载桥接。`
 | POST | `/sessions/:id/fork` | expectedLeafId、可选 entryId/position；默认 before，at 仅用于完成回复；返回新 session 与 draft/null |
 | POST | `/sessions/:id/retry` | expectedLeafId、最近问题 entryId、message、images；返回 accepted |
 | POST | `/sessions/:id/restore` | expectedLeafId、旧版本 entryId；返回 restored |
-| GET | `/sessions/:id/deferred` | jobs 预览与状态；`detail=true` 包含尚未移除的 payload |
+| GET | `/sessions/:id/deferred` | `{revision,jobs}`；jobs 为预览与状态，`detail=true` 包含尚未移除的 payload |
 | POST | `/sessions/:id/deferred` | id(UUID)、dueAt(Unix ms)、message、images |
 | PATCH | `/sessions/:id/deferred/:jobId` | revision、action(save/send/pause/cancel)；save 另需 dueAt/message/images；uncertain 重发需 confirmUncertain=true |
 
@@ -153,7 +153,7 @@ Web worker 使用 `-e server/pi-web-session-extension.ts` 显式加载桥接。`
 
 只读 workflow/prompt 会启动当前线程的受管 worker，以 runtime 的活动位置为准；待发送列表和 activity 不会启动 worker。大历史问题预览不含工具输出/图片 base64，但单问题详情会包含其图片。
 
-`GET /status` 增加 sessionWorkflows=true；回复后分叉另以 replyFork=true 标记。`GET /activity` 增加 deferred.sessions 的 cwd/sessionId/count/attention，仅 metadata；队列异常时包含通用 error。`get_state` 增加 webOperation 布尔值。新增自定义广播只有 gateway_context_changed 和关闭连接用的内部 gateway_reconnect；不开放 fork/clone/navigateTree 的任意透传。
+`GET /status` 增加 sessionWorkflows=true；回复后分叉另以 replyFork=true 标记。`GET /activity` 增加 deferred.sessions 的 cwd/sessionId/count/attention，仅 metadata；队列异常时包含通用 error。`deferred.revision` 与详情响应的 `revision` 是整个队列的不透明修订：进程启动和成功保存队列变更时更新，不持久化、不含正文；不能用于修改任务，修改仍使用各 job 的整数 revision。网页仅在已成功读取的详情修订与当前摘要相同、且仍属于同一线程和连接代次时跳过轮询详情；主动打开列表、操作后刷新和重连继续读取，无该字段的旧服务沿用原刷新。`get_state` 增加 webOperation 布尔值。新增自定义广播只有 gateway_context_changed 和关闭连接用的内部 gateway_reconnect；不开放 fork/clone/navigateTree 的任意透传。
 
 ## 验证与部署
 

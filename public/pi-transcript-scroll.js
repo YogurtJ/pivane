@@ -181,8 +181,14 @@
         }
 
         captureAnchor() {
-            const children = [...this.content.children].filter(child => !child.hidden);
             const top = this.viewport.getBoundingClientRect().top;
+            const previous = this.readingAnchor;
+            // Streaming below a stationary reader cannot change their visible anchor.
+            // Validate its actual geometry before reusing it; scrolling, folding,
+            // replacement or reflow above it falls back to the ordered search.
+            if ((previous?.key || previous?.readingKey) && previous.top === this.viewport.scrollTop && this.visibleAnchor(previous.anchorNode)
+                && Math.abs(previous.anchorNode.getBoundingClientRect().top - top - previous.offset) < 1) return previous;
+            const children = [...this.content.children].filter(child => !child.hidden);
             // Message blocks are vertically ordered; only inspect the visible anchor on scroll.
             let low = 0;
             let high = children.length;
@@ -196,6 +202,8 @@
             const block = blocks.find(node => node.getBoundingClientRect().bottom > top);
             const anchor = block || article;
             return {
+                anchorNode: anchor,
+                articleNode: article,
                 top: this.viewport.scrollTop,
                 index: article ? [...this.content.children].indexOf(article) : -1,
                 key: article?.dataset.messageKey,
@@ -205,42 +213,47 @@
             };
         }
 
-        capture() {
-            const anchor = this.viewport.clientHeight ? this.captureAnchor() : this.pendingRestore || this.readingAnchor || { top: this.lastTop, index: -1 };
-            return {
-                ...anchor,
-                following: this.following,
-                keyedDetails: [...this.content.querySelectorAll('details[data-detail-key]')].map(detail => ({ key: detail.dataset.detailKey, open: detail.open })),
-                details: [...this.content.children].map((child, i) => ({
-                    key: child.dataset.messageKey,
-                    index: i,
-                    open: [...child.querySelectorAll('details')].map(detail => detail.open),
-                    userTextExpanded: [...child.querySelectorAll('.pi-user-text-toggle')].map(button => button.getAttribute('aria-expanded') === 'true'),
-                    ownOpen: child.tagName === 'DETAILS' ? child.open : undefined
-                }))
-            };
+        capture({ details = true, roots } = {}) {
+            const anchor = this.following ? { top: this.viewport.scrollTop, index: -1 }
+                : this.viewport.clientHeight ? this.captureAnchor() : this.pendingRestore || this.readingAnchor || { top: this.lastTop, index: -1 };
+            const saved = { ...anchor, following: this.following };
+            if (!details) return saved;
+            const indices = new Map([...this.content.children].map((node, index) => [node, index]));
+            saved.details = (roots || [...indices.keys()]).map(child => ({
+                node: child, key: child.dataset.messageKey, readingKey: child.dataset.readingKey,
+                index: indices.get(child),
+                open: [...child.querySelectorAll('details')].map(detail => ({ key: detail.dataset.detailKey, open: detail.open })),
+                userTextExpanded: [...child.querySelectorAll('.pi-user-text-toggle')].map(button => button.getAttribute('aria-expanded') === 'true'),
+                ownOpen: child.tagName === 'DETAILS' ? child.open : undefined,
+                detailKey: child.dataset.detailKey
+            }));
+            return saved;
         }
 
         restore(saved) {
-            const children = [...this.content.children];
-            const keyed = new Map(children.filter(child => child.dataset.messageKey).map(child => [child.dataset.messageKey, child]));
-            const find = item => item.key ? keyed.get(item.key) : children[item.index];
-            const detailStates = new Map((saved.keyedDetails || []).map(item => [item.key, item.open]));
+            const lookup = (attribute, value) => value ? this.content.querySelector(`[${attribute}="${CSS.escape(value)}"]`) : null;
+            const find = item => item.node?.parentElement === this.content ? item.node
+                : lookup('data-message-key', item.key) || lookup('data-reading-key', item.readingKey)
+                    || lookup('data-detail-key', item.detailKey) || (!item.key && !item.readingKey && !item.detailKey ? this.content.children[item.index] : null);
+            const restored = [];
             for (const item of saved.details || []) {
                 const child = find(item);
                 if (!child) continue;
+                restored.push(child);
                 [...child.querySelectorAll('.pi-user-long-text')].forEach((text, i) => {
                     if (item.userTextExpanded?.[i] !== undefined) text._piSetExpanded?.(item.userTextExpanded[i]);
                 });
-                if (item.ownOpen !== undefined && !child.dataset.detailKey) child.open = item.ownOpen;
-                [...child.querySelectorAll('details')].forEach((detail, i) => {
-                    if (!detail.dataset.detailKey && item.open[i] !== undefined) detail.open = item.open[i];
-                });
+                if (item.ownOpen !== undefined) child.open = item.ownOpen;
+                if (child.open) child._piEnsureDetails?.();
+                for (let i = 0; i < item.open.length; i++) {
+                    const state = item.open[i];
+                    const detail = state.key ? lookup('data-detail-key', state.key) : child.querySelectorAll('details')[i];
+                    if (!detail) continue;
+                    detail.open = state.open;
+                    if (detail.open) detail._piEnsureDetails?.();
+                }
             }
-            for (const detail of this.content.querySelectorAll('details[data-detail-key]')) {
-                if (detailStates.has(detail.dataset.detailKey)) detail.open = detailStates.get(detail.dataset.detailKey);
-            }
-            this.beforeRestore?.();
+            if (restored.length) this.beforeRestore?.(restored);
             this.following = saved.following;
             if (!this.viewport.clientHeight) {
                 this.pendingRestore = saved;
@@ -248,17 +261,16 @@
             }
             if (this.following) this.setTop(this.maximum());
             else {
-                const anchors = new Map([...this.content.querySelectorAll('[data-reading-key]')].map(node => [node.dataset.readingKey, node]));
-                const original = anchors.get(saved.readingKey);
+                const original = saved.anchorNode?.isConnected ? saved.anchorNode : lookup('data-reading-key', saved.readingKey);
                 let anchor = this.visibleAnchor(original);
                 let offset = saved.offset;
                 if (!anchor) {
-                    anchor = this.visibleAnchor(anchors.get(saved.processKey || original?.dataset.processKey));
+                    anchor = this.visibleAnchor(lookup('data-reading-key', saved.processKey || original?.dataset.processKey));
                     if (anchor) offset = 0;
                 }
-                if (!anchor) anchor = this.visibleAnchor(find(saved));
+                if (!anchor) anchor = this.visibleAnchor(saved.articleNode?.isConnected ? saved.articleNode : find(saved));
                 const top = anchor
-                    ? this.viewport.scrollTop + anchor.getBoundingClientRect().top - this.viewport.getBoundingClientRect().top - offset
+                    ? this.viewport.scrollTop + anchor.getBoundingClientRect().top - this.viewport.getBoundingClientRect().top - (offset || 0)
                     : saved.top;
                 this.setTop(top);
             }

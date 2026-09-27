@@ -79,12 +79,12 @@
             this.rounds.clear(); this.selection = null; this.renderedFile = null; this.returnTarget = null;
             this.renderPane();
         }
-        refresh(messages, running) {
+        refresh(messages, running, fromIndex = 0) {
             const rounds = collect(messages, running);
             this.rounds = new Map(rounds.map(round => [round.key, round]));
             if (this.selection && !this.rounds.has(this.selection.key)) this.selection = null;
             this.renderPane();
-            return new Map(rounds.map(round => [round.endIndex, this.card(round)]));
+            return new Map(rounds.filter(round => round.endIndex >= fromIndex).map(round => [round.endIndex, this.card(round)]));
         }
         remove(key) {
             this.rounds.delete(key);

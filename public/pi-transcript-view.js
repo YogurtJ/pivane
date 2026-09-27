@@ -21,6 +21,8 @@
             Object.assign(this, { content, controls, scroll });
             this.groups = new Map();
             this.turnGroups = new Map();
+            this.regions = new Map();
+            this.pendingNodes = new Set();
             this.nextControlId = 0;
             this.frame = null;
             this.mode = 'compact';
@@ -47,13 +49,13 @@
                 if (event.key === MODE_KEY && MODES.has(event.newValue)) this.setMode(event.newValue, false);
             });
             // Restore group visibility before the scroll controller measures its reading anchor.
-            scroll.beforeRestore = () => this.refreshVisibility();
+            scroll.beforeRestore = roots => this.refreshChanged(roots);
             this.refresh();
         }
 
         setMode(mode, persist) {
             if (!MODES.has(mode) || mode === this.mode) return;
-            const position = this.scroll.capture();
+            const position = this.scroll.capture({ details: false });
             this.mode = mode;
             if (persist) try { localStorage.setItem(MODE_KEY, mode); } catch {}
             this.refresh();
@@ -69,23 +71,98 @@
             active = Boolean(active);
             if (this.tailActive === active) return;
             this.tailActive = active;
-            const position = this.scroll.capture();
-            this.refresh();
+            const position = this.scroll.capture({ details: false });
+            this.refreshChanged();
             this.scroll.restore(position);
         }
 
-        schedule() {
+        schedule(node = this.content.lastElementChild) {
+            if (node) this.pendingNodes.add(node);
             if (this.frame !== null) return;
             this.frame = requestAnimationFrame(() => {
                 this.frame = null;
-                this.refresh();
+                const nodes = [...this.pendingNodes];
+                this.pendingNodes.clear();
+                this.refreshChanged(nodes);
                 this.scroll.update();
             });
+        }
+
+        isBoundary(node) { return node.matches('.pi-message.user, .pi-agent-turn-start'); }
+
+        boundary(node) {
+            while (node && node.parentElement !== this.content) node = node.parentElement;
+            for (; node; node = node.previousElementSibling) if (this.isBoundary(node)) return node;
+            return this.content;
+        }
+
+        regionNodes(boundary) {
+            const nodes = [];
+            for (let node = boundary === this.content ? this.content.firstElementChild : boundary; node; node = node.nextElementSibling) {
+                if (node !== boundary && this.isBoundary(node)) break;
+                if (!node.matches(TURN_GROUP_SELECTOR)) nodes.push(node);
+            }
+            return nodes;
+        }
+
+        groupKey(kind, key, region, active) {
+            const owner = this[kind].get(key)?.region;
+            return active.has(key) || owner && owner !== region ? `${key}:scope:${region.id}:${active.size}` : key;
+        }
+
+        replaceGroups(kind, region, active) {
+            for (const [key, group] of region[kind] || []) if (!active.has(key)) {
+                region.disclosures.set(key, group.element.open);
+                group.element.remove(); this[kind].delete(key);
+            }
+            for (const [key, group] of active) { group.region = region; this[kind].set(key, group); }
+            region[kind] = active;
+        }
+
+        pruneRegions() {
+            for (const [boundary, region] of this.regions) if (boundary !== this.content && boundary.parentElement !== this.content) {
+                this.replaceGroups('groups', region, new Map()); this.replaceGroups('turnGroups', region, new Map());
+                this.regions.delete(boundary);
+            }
+        }
+
+        refreshChanged(nodes = [this.content.lastElementChild]) {
+            const boundaries = new Set(nodes.filter(node => node?.isConnected).map(node => this.boundary(node)));
+            // A new turn makes the previously active tail a historical turn.
+            if (this.lastBoundary?.isConnected && boundaries.size && !boundaries.has(this.lastBoundary)) boundaries.add(this.lastBoundary);
+            for (const boundary of boundaries) this.refreshRegion(boundary);
+            this.lastBoundary = this.boundary(this.content.lastElementChild);
+        }
+
+        refreshFrom(node) {
+            this.pruneRegions();
+            const nodes = [];
+            for (let item = node; item; item = item.nextElementSibling) if (item === node || this.isBoundary(item)) nodes.push(item);
+            this.refreshChanged(nodes);
         }
 
         refresh() {
             if (this.frame !== null) cancelAnimationFrame(this.frame);
             this.frame = null;
+            this.pendingNodes.clear();
+            this.pruneRegions();
+            const boundaries = [this.content, ...[...this.content.children].filter(node => this.isBoundary(node))];
+            for (const boundary of boundaries) this.refreshRegion(boundary);
+            this.lastBoundary = this.boundary(this.content.lastElementChild);
+            this.content.dataset.transcriptMode = this.mode;
+            for (const button of this.controls.querySelectorAll('[data-transcript-mode]')) {
+                button.setAttribute('aria-pressed', String(button.dataset.transcriptMode === this.mode));
+            }
+            this.showHint(this.mode);
+        }
+
+        refreshRegion(boundary) {
+            let region = this.regions.get(boundary);
+            if (!region) { region = { boundary, id: ++this.nextControlId, groups: new Map(), turnGroups: new Map(), disclosures: new Map() }; this.regions.set(boundary, region); }
+            for (const { members, tail = [] } of region.turnGroups.values()) for (const node of [...members, ...tail]) {
+                if (node.dataset.turnHidden) { node.hidden = false; delete node.dataset.turnHidden; }
+            }
+            region.nodes = this.regionNodes(boundary);
             const runs = [];
             let run = [];
             const finish = () => { if (run.length) runs.push(run); run = []; };
@@ -95,9 +172,9 @@
                 if (node.matches(PROCESS_SELECTOR)) run.push(node);
                 else if (node.textContent.trim() || node.matches('img')) finish();
             };
-            [...this.content.children].forEach((article, index) => {
+            region.nodes.forEach(article => {
                 if (article.matches('.pi-process-group') || article.matches(TURN_GROUP_SELECTOR)) return;
-                const key = article.dataset.messageKey || `position:${index}`;
+                const key = article.dataset.messageKey || (article.dataset.readingKey ||= `node:${++this.nextControlId}`);
                 if (article.matches('.pi-message.assistant')) {
                     [...article.querySelector('.pi-message-body').children]
                         .filter(node => !node.matches('.pi-process-group'))
@@ -108,17 +185,19 @@
             finish();
             const active = new Map();
             for (const members of runs) {
-                const key = `process:${members[0].dataset.readingKey}`;
-                let group = this.groups.get(key);
+                const key = this.groupKey('groups', `process:${members[0].dataset.readingKey}`, region, active);
+                let group = region.groups.get(key);
                 if (!group || !group.element.isConnected) {
                     const element = document.createElement('details');
                     element.className = 'pi-process-group';
                     element.dataset.readingKey = key;
                     element.dataset.detailKey = key;
+                    element.open = region.disclosures.get(key) || false;
+                    region.disclosures.delete(key);
                     element.innerHTML = '<summary><i class="fa-solid fa-chevron-right" aria-hidden="true"></i><span class="pi-process-label"></span><span class="pi-process-status"></span></summary>';
                     element.addEventListener('toggle', () => {
-                        const position = this.scroll.capture();
-                        this.refreshVisibility();
+                        const position = this.scroll.capture({ details: false });
+                        this.refreshVisibility(group.region);
                         this.scroll.restore(position);
                     });
                     group = { element, members };
@@ -147,15 +226,10 @@
                 group.element.classList.toggle('has-error', failed > 0);
                 active.set(key, group);
             }
-            for (const [key, group] of this.groups) if (!active.has(key)) group.element.remove();
-            this.groups = active;
-            this.refreshTurnGroups();
-            this.content.dataset.transcriptMode = this.mode;
-            for (const button of this.controls.querySelectorAll('[data-transcript-mode]')) {
-                button.setAttribute('aria-pressed', String(button.dataset.transcriptMode === this.mode));
-            }
-            this.showHint(this.mode);
-            this.refreshVisibility();
+            this.replaceGroups('groups', region, active);
+            region.nodes = this.regionNodes(boundary);
+            this.refreshTurnGroups(region);
+            this.refreshVisibility(region);
         }
 
         nodeKey(node) {
@@ -195,10 +269,10 @@
             return `${seconds}s`;
         }
 
-        refreshTurnGroups() {
+        refreshTurnGroups(region) {
             const segments = [];
             let current = null;
-            for (const child of this.content.children) {
+            for (const child of region.nodes) {
                 if (child.matches(TURN_GROUP_SELECTOR)) continue;
                 // Agent handoffs and waking Agent messages start a turn just like a user message.
                 if (child.matches('.pi-message.user, .pi-agent-turn-start')) {
@@ -216,7 +290,7 @@
             for (const segment of segments) {
                 const nodes = segment.nodes;
                 if (!nodes.length) continue;
-                if (segment === segments[segments.length - 1] && this.tailActive) continue;
+                if (this.tailActive && region.boundary === this.boundary(this.content.lastElementChild)) continue;
                 let finalIndex = -1;
                 for (let i = nodes.length - 1; i >= 0; i--) {
                     if (this.isFinalReplyNode(nodes[i])) { finalIndex = i; break; }
@@ -226,16 +300,18 @@
                 if (finalIndex <= 0) continue;
                 const members = nodes.slice(0, finalIndex).filter(node => node.matches(TURN_MEMBER_SELECTOR));
                 if (!members.length) continue;
-                const key = `turn:${this.nodeKey(members[0])}`;
-                let group = this.turnGroups.get(key);
+                const key = this.groupKey('turnGroups', `turn:${this.nodeKey(members[0])}`, region, active);
+                let group = region.turnGroups.get(key);
                 if (!group || !group.element.isConnected) {
                     const element = document.createElement('details');
                     element.className = 'pi-turn-group';
                     element.dataset.detailKey = key;
+                    element.open = region.disclosures.get(key) || false;
+                    region.disclosures.delete(key);
                     element.innerHTML = '<summary><i class="fa-solid fa-chevron-right" aria-hidden="true"></i><span class="pi-turn-label"></span><span class="pi-turn-status"></span></summary>';
                     element.addEventListener('toggle', () => {
-                        const position = this.scroll.capture();
-                        this.refreshVisibility();
+                        const position = this.scroll.capture({ details: false });
+                        this.refreshVisibility(group.region);
                         this.scroll.restore(position);
                     });
                     group = { element, members };
@@ -280,29 +356,31 @@
                 group.element.classList.toggle('has-error', Boolean(status));
                 active.set(key, group);
             }
-            for (const [key, group] of this.turnGroups) if (!active.has(key)) group.element.remove();
-            this.turnGroups = active;
+            this.replaceGroups('turnGroups', region, active);
         }
 
         // Make one transcript node visible: open the folded turn that hides it.
         reveal(node) {
             const group = node?.dataset?.turnKey ? this.turnGroups.get(node.dataset.turnKey) : null;
-            if (group && this.mode === 'compact' && !group.element.open) { group.element.open = true; this.refreshVisibility(); }
+            if (group && this.mode === 'compact' && !group.element.open) { group.element.open = true; this.refreshVisibility(group.region); }
             return Boolean(node?.isConnected) && !node.hidden;
         }
 
-        refreshVisibility() {
+        refreshVisibility(region) {
+            if (!region) { for (const item of this.regions.values()) this.refreshVisibility(item); return; }
             const collapseProcess = this.mode !== 'full';
             const collapseTurns = this.mode === 'compact';
             // Undo only hiding that turn folding applied, so leaving compact mode or
             // dissolving a turn group cannot leave cards, notices or edits hidden.
-            for (const node of this.content.querySelectorAll('[data-turn-hidden]')) { node.hidden = false; delete node.dataset.turnHidden; }
-            for (const { element, members } of this.groups.values()) {
+            for (const { members, tail = [] } of region.turnGroups.values()) for (const node of [...members, ...tail]) {
+                if (node.dataset.turnHidden) { node.hidden = false; delete node.dataset.turnHidden; }
+            }
+            for (const { element, members } of region.groups.values()) {
                 element.hidden = !collapseProcess;
                 element.querySelector('summary').setAttribute('aria-expanded', String(element.open));
                 for (const member of members) member.hidden = collapseProcess && !element.open;
             }
-            for (const article of this.content.querySelectorAll(':scope > .pi-message.assistant')) {
+            for (const article of region.nodes.filter(node => node.matches('.pi-message.assistant'))) {
                 const blocks = [...article.querySelector('.pi-message-body').children];
                 const hasText = blocks.some(node => !node.matches(`${PROCESS_SELECTOR}, .pi-process-group`) && (node.textContent.trim() || node.matches('img')));
                 article.classList.toggle('pi-process-only', collapseProcess && !hasText);
@@ -311,7 +389,7 @@
             // Turn visibility runs last so a closed turn wins over per-article state.
             // A closed turn hides every member, but an open turn must not override
             // hiding that came from a closed process group.
-            for (const { element, members, tail = [] } of this.turnGroups.values()) {
+            for (const { element, members, tail = [] } of region.turnGroups.values()) {
                 element.hidden = !collapseTurns;
                 element.querySelector('summary').setAttribute('aria-expanded', String(element.open));
                 for (const member of [...members, ...tail]) {

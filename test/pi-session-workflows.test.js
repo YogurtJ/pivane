@@ -126,6 +126,11 @@ test('native session workflows preserve original forks, retry context, versions,
     assert.equal(requests.length, 0, 'fork and listing do not call a model');
     assert.equal((await api(`${prefix}/retry`, { entryId: first, expectedLeafId: oldLeafId, message: 'Cannot edit old question' })).status, 400);
     const scheduled = await api(`${prefix}/deferred`, { id: randomUUID(), message: 'Deferred original', dueAt: Date.now() + 600000 });
+    const deferredView = await api(`${prefix}/deferred?cwd=${encodeURIComponent(root)}`);
+    const activityView = await api('/activity');
+    assert.equal(typeof deferredView.data.revision, 'string');
+    assert.equal(deferredView.data.revision, activityView.data.deferred.revision);
+    assert.equal(deferredView.data.jobs[0].id, scheduled.data.id);
     assert.equal(scheduled.status, 201);
     assert.equal(gateway.deferred.list(root, clone.data.session.id).length, 0, 'fork does not inherit delayed messages');
     const retried = await api(`${prefix}/retry`, { entryId: last, expectedLeafId: oldLeafId, message: 'Replacement question', images: [image] });

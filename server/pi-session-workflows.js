@@ -92,7 +92,7 @@ function mountSessionWorkflows(router, { store, supervisor, deferred, preference
     router.get('/sessions/:id/deferred', endpoint(async (req, res) => {
         const session = await store.getSession(req.query.cwd, req.params.id);
         const jobs = deferred.list(session.cwd, session.id, { detail: req.query.detail === 'true' });
-        res.json({ jobs });
+        res.json({ revision: deferred.revision, jobs });
     }));
     router.post('/sessions/:id/deferred', endpoint(async (req, res) => {
         const session = await store.getSession(req.body.cwd, req.params.id);

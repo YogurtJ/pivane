@@ -50,6 +50,35 @@ test('deferred messages persist once, wait for idle, clear sent payload and reje
     assert.throws(() => service.update(f.root, 'session', id, { revision: 3, action: 'cancel' }));
 });
 
+test('queue revisions change only after saved mutations and are renewed on restart', async t => {
+    const f = fixture(t), service = f.create(), id = randomUUID();
+    const before = service.summary().revision;
+    assert.equal(typeof before, 'string');
+    assert.equal(service.summary().revision, before);
+    const input = { id, message: 'Private scheduled text', dueAt: 110000 };
+    service.create(f.session, input);
+    const created = service.summary().revision;
+    assert.notEqual(created, before);
+    service.create(f.session, input);
+    assert.equal(service.summary().revision, created, 'idempotent creation does not invalidate readers');
+    service.update(f.root, 'session', id, { action: 'save', revision: 1, message: 'Edited text', dueAt: 120000 });
+    const edited = service.summary().revision;
+    assert.notEqual(edited, created, 'same count/status with changed text still invalidates readers');
+    assert.equal(JSON.stringify(service.summary()).includes('Edited text'), false);
+    assert.throws(() => service.update(f.root, 'session', id, { action: 'cancel', revision: 1 }), /其他页面/);
+    assert.equal(service.summary().revision, edited);
+    const persist = service.persist;
+    service.persist = () => { throw new Error('Synthetic disk failure'); };
+    assert.throws(() => service.update(f.root, 'session', id, { action: 'cancel', revision: 2 }), /disk failure/);
+    assert.equal(service.summary().revision, edited);
+    assert.equal(service.jobs[0].status, 'scheduled');
+    service.persist = persist;
+    await service.dispose();
+    const resumed = f.create();
+    assert.notEqual(resumed.summary().revision, edited);
+    assert.equal(resumed.jobs[0].payload.message, 'Edited text');
+});
+
 test('deferred restart expires overdue jobs and quarantines uncertain handoff without retries', async t => {
     const f = fixture(t), service = f.create();
     service.create(f.session, { id: randomUUID(), message: 'Overdue', dueAt: 110000 });

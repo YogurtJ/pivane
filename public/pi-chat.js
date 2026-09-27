@@ -224,6 +224,8 @@ document.addEventListener('DOMContentLoaded', () => {
         uncertainDrafts: new Set(),
         liveMessage: null,
         toolRows: new Map(),
+        renderedTranscript: null,
+        dirtyTranscriptIndex: Infinity,
         currentDirectory: null,
         directoryParent: null,
         composerDrafts: new Map(),
@@ -363,7 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const workflows = new window.PiSessionWorkflows({
-        getContext: () => ({ cwd: state.cwd, session: state.session, connected: state.connected, model: state.model,
+        getContext: () => ({ cwd: state.cwd, session: state.session, connected: state.connected, model: state.model, generation: state.socketGeneration,
             busy: state.shellBusy || state.streaming || state.compacting || state.compactRequested || state.controlRequested || state.controlsStopping || state.pendingUi.size > 0,
             draftBusy: state.attachmentReads > 0 || state.submittingDrafts.has(state.composerSessionKey) }),
         apiFetch, toast,
@@ -1087,7 +1089,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const archivesChanged = applyArchives(data.archives);
             state.activity = new Map((data.runtimes || []).map(item => [activityKey(item.cwd, item.sessionId), item]));
             state.activityFresh = true;
-            void workflows.refresh().catch(() => {});
+            void workflows.refresh(false, { deferredRevision: data.deferred?.revision }).catch(() => {});
             const currentPreferences = projectRevision === state.projectPreferenceRevision
                 && !state.visibilityRequests.size && !state.pinRequests.size;
             if (currentPreferences && data.hiddenProjects
@@ -1885,6 +1887,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     forgetDeletedSession(session, session.cwd || state.cwd);
                     resolve(false); return;
                 }
+                flushLiveMessage();
+                discardLiveMessage();
                 sideChat.parentDisconnected();
                 state.connected = false;
                 nativeControls.disconnected();
@@ -1916,6 +1920,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function disconnectSocket(intentional = false) {
+        flushLiveMessage();
+        discardLiveMessage();
         taskProgress.reset();
         taskResults?.reset();
         titleEditor?.close();
@@ -2146,8 +2152,8 @@ document.addEventListener('DOMContentLoaded', () => {
         return content.filter(block => block.type === 'text').map(block => block.text).join('\n');
     }
 
-    function createMessageElement(message, showReplyActions = false) {
-        const element = createMessageContentElement(message, showReplyActions);
+    function createMessageElement(message, showReplyActions = false, lazyTools = false) {
+        const element = createMessageContentElement(message, showReplyActions, lazyTools);
         if (element && message.role === 'custom') element._piCustomMessage = message;
         if (element && message.timestamp != null) {
             element.dataset.messageKey = JSON.stringify([message.role, message.timestamp, message.toolCallId || '']);
@@ -2235,9 +2241,9 @@ document.addEventListener('DOMContentLoaded', () => {
         text.after(button);
     }
 
-    function createMessageContentElement(message, showReplyActions) {
+    function createMessageContentElement(message, showReplyActions, lazyTools) {
         const role = message.role || 'custom';
-        if (role === 'toolResult') return createToolResultElement(message);
+        if (role === 'toolResult') return createToolResultElement(message, lazyTools);
         if (role === 'bashExecution') return createBashElement(message);
         if (role === 'compactionSummary' || role === 'branchSummary') return window.PiAgentCards?.summary(role, message, { markdown: renderMarkdown })
             || createNoticeElement(role, message.summary || message.content || '');
@@ -2290,7 +2296,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (block.type === 'thinking') {
                 body.appendChild(createThinkingBlock(block.thinking));
             } else if (block.type === 'toolCall') {
-                body.appendChild(createToolCallBlock(block));
+                body.appendChild(createToolCallBlock(block, lazyTools));
             } else if (block.type === 'image') {
                 const image = document.createElement('img');
                 image.className = 'pi-message-image';
@@ -2358,7 +2364,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return details;
     }
 
-    function createToolCallBlock(toolCall) {
+    function createToolCallBlock(toolCall, lazy = false) {
         const row = document.createElement('details');
         row.className = 'pi-tool-row';
         row.dataset.toolId = toolCall.id || '';
@@ -2371,9 +2377,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span class="pi-tool-status">${translateUi("等待结果")}</span>
                 <i class="fa-solid fa-chevron-right"></i>
             </summary>
-            <div class="pi-tool-detail"><pre class="pi-tool-args"></pre><pre class="pi-tool-output"></pre></div>
         `;
-        row.querySelector('.pi-tool-args').textContent = formatToolArgs(toolCall.arguments);
+        row._piArgsText = formatToolArgs(toolCall.arguments);
+        row._piEnsureDetails = () => {
+            if (row.querySelector('.pi-tool-detail')) return;
+            const detail = document.createElement('div'); detail.className = 'pi-tool-detail';
+            const args = document.createElement('pre'); args.className = 'pi-tool-args'; args.textContent = row._piArgsText;
+            const output = document.createElement('pre'); output.className = 'pi-tool-output';
+            detail.append(args, output); row.append(detail);
+            if (row._piResult) renderToolOutput(row, row._piResult);
+        };
+        row.querySelector('summary').addEventListener('click', row._piEnsureDetails);
+        row.addEventListener('toggle', () => { if (row.open) row._piEnsureDetails(); });
+        if (!lazy) row._piEnsureDetails();
         if (toolCall.id) {
             row.dataset.readingKey = `tool:${toolCall.id}`;
             row.dataset.detailKey = row.dataset.readingKey;
@@ -2383,6 +2399,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 row.querySelector('.pi-tool-status').textContent = previous.querySelector('.pi-tool-status').textContent;
                 if (previous._piResult) setToolOutput(row, previous._piResult);
                 row.open = previous.open;
+                if (row.open) row._piEnsureDetails();
             }
             state.toolRows.set(toolCall.id, row);
         }
@@ -2393,6 +2410,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function setToolOutput(row, result) {
         row._piResult = result;
         window.PiToolLabels?.update(row);
+        if (row.querySelector('.pi-tool-detail')) renderToolOutput(row, result);
+    }
+
+    function renderToolOutput(row, result) {
         row.querySelector('.pi-tool-output').textContent = contentToPlainText(result.content);
         window.PiToolDiff.render(row, result, copyTextToClipboard, toast);
         let images = row.querySelector('.pi-tool-images');
@@ -2414,12 +2435,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function createToolResultElement(message) {
+    function createToolResultElement(message, lazy = false) {
         let row = state.toolRows.get(message.toolCallId);
         const existing = Boolean(row?.isConnected);
         if (!existing) {
-            row = createToolCallBlock({ id: message.toolCallId, name: message.toolName });
-            row.querySelector('.pi-tool-args').textContent = '';
+            row = createToolCallBlock({ id: message.toolCallId, name: message.toolName }, lazy);
+            row._piArgsText = '';
+            if (row.querySelector('.pi-tool-args')) row.querySelector('.pi-tool-args').textContent = '';
         }
         row.dataset.state = message.isError ? 'error' : 'done';
         row.querySelector('.pi-tool-status').textContent = message.isError ? translateUi("失败") : translateUi("完成");
@@ -2474,24 +2496,78 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderMessages(messages) {
-        const readingPosition = transcriptScroll.capture();
+        const context = JSON.stringify([state.cwd, state.session?.id]);
+        const previous = state.renderedTranscript?.context === context ? state.renderedTranscript.records : [];
         const finalReplies = finalReplyIndices(messages, state.streaming);
-        const editCards = turnEdits.refresh(messages, state.streaming);
-        state.toolRows.clear();
-        state.liveMessage = null;
-        state.lastAssistantText = '';
-        elements.transcript.innerHTML = '';
-        messages.forEach((message, index) => {
-            const element = createMessageElement(message, finalReplies.has(index));
-            if (element) elements.transcript.appendChild(element);
-            if (editCards.has(index)) elements.transcript.appendChild(editCards.get(index));
+        const anchors = new Map();
+        for (const [id, role, timestamp, toolId] of state.messageAnchors || []) {
+            const key = JSON.stringify([role, timestamp, toolId || '']);
+            anchors.set(key, anchors.has(key) ? null : id);
+        }
+        const identities = new Set();
+        let ambiguous = false;
+        const records = messages.map((message, index) => {
+            const key = JSON.stringify([message.role, message.timestamp, message.toolCallId || '']);
+            // Context summaries and hidden custom entries have no native message
+            // anchor. Their exact payload and position still guard this presentation-only reuse.
+            const projection = ['compactionSummary', 'branchSummary'].includes(message.role) || message.role === 'custom' && message.display === false;
+            const identity = anchors.has(key) ? anchors.get(key) : message.timestamp == null ? projection ? `projection:${index}:${message.role}` : null : key;
+            if (!identity || identities.has(identity)) ambiguous = true;
+            identities.add(identity);
+            return { identity, signature: JSON.stringify(message), role: message.role, actions: finalReplies.has(index), nodes: [] };
         });
-        if (!elements.transcript.children.length) renderEmptySession();
+        let keep = 0;
+        if (!ambiguous) while (keep < records.length && keep < previous.length
+            && keep < state.dirtyTranscriptIndex && records[keep].identity === previous[keep].identity
+            && records[keep].signature === previous[keep].signature && records[keep].actions === previous[keep].actions
+            && previous[keep].nodes.every(node => node.parentElement === elements.transcript)) keep++;
+        // Tool results can correct a call from an earlier turn. Rebuild from that
+        // call's turn, never attach a corrected result to an unchanged historical row.
+        const calls = new Map();
+        messages.slice(0, keep).forEach((message, index) => {
+            for (const block of Array.isArray(message.content) ? message.content : []) if (block.type === 'toolCall') calls.set(block.id, index);
+        });
+        for (const message of messages.slice(keep)) if (message.role === 'toolResult' && calls.has(message.toolCallId)) keep = Math.min(keep, calls.get(message.toolCallId));
+        const boundary = role => ['user', 'compactionSummary', 'branchSummary'].includes(role);
+        if (keep < records.length || keep < previous.length || state.liveMessage || state.dirtyTranscriptIndex < Infinity) {
+            while (keep > 0 && !boundary((records[keep] || previous[keep])?.role)) keep--;
+        }
+        if ([...records.slice(keep), ...previous.slice(keep)].some(record => ['compactionSummary', 'branchSummary'].includes(record.role))) keep = 0;
+        let retained = null;
+        for (let i = keep - 1; i >= 0 && !retained; i--) retained = previous[i].nodes.at(-1);
+        const removed = [];
+        for (let node = retained ? retained.nextElementSibling : elements.transcript.firstElementChild; node; node = node.nextElementSibling) removed.push(node);
+        const readingPosition = transcriptScroll.capture({ details: removed.length > 0, roots: removed });
+        discardLiveMessage();
+        for (const node of removed) node.remove();
+        for (const [id, row] of state.toolRows) if (!row.isConnected) state.toolRows.delete(id);
+        const editCards = turnEdits.refresh(messages, state.streaming, keep);
+        const changed = [];
+        for (let index = 0; index < records.length; index++) {
+            if (index < keep) { records[index].nodes = previous[index].nodes; continue; }
+            const element = createMessageElement(messages[index], finalReplies.has(index), true);
+            if (element) {
+                element.dataset.transcriptIndex = String(index);
+                elements.transcript.appendChild(element); records[index].nodes.push(element); changed.push(element);
+                decorateCodeBlocks(element);
+            }
+            if (editCards.has(index)) {
+                const card = editCards.get(index);
+                elements.transcript.appendChild(card); records[index].nodes.push(card); changed.push(card);
+            }
+        }
+        state.renderedTranscript = { context, records };
+        state.dirtyTranscriptIndex = Infinity;
+        state.lastAssistantText = '';
+        for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === 'assistant' && messageText(messages[i].content).trim()) {
+            state.lastAssistantText = messageText(messages[i].content).trim(); break;
+        }
         shell.setMessages(messages);
-        decorateCodeBlocks(elements.transcript);
+        transcriptView.tailActive = state.streaming;
+        if (!elements.transcript.children.length) renderEmptySession();
+        else if (!keep) transcriptView.refresh();
+        else transcriptView.refreshFrom(changed[0] || retained);
         chatKnowledge?.decorate();
-        transcriptView.setTailActive(state.streaming);
-        transcriptView.refresh();
         transcriptScroll.restore(readingPosition);
         workflows.decorate();
     }
@@ -2509,6 +2585,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function clearSessionView() {
+        state.renderedTranscript = null;
+        state.dirtyTranscriptIndex = Infinity;
         extensionAssistant.update(null);
         turnEdits.reset();
         filesPanel.reset();
@@ -2713,11 +2791,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function startLiveMessage(message) {
         if (!message || message.role !== 'assistant') return;
-        const readingPosition = transcriptScroll.capture();
-        for (const element of [...elements.transcript.children].reverse()) {
-            if (element.matches('.pi-message.user')) break;
+        flushLiveMessage();
+        const readingPosition = transcriptScroll.capture({ details: false });
+        for (let element = elements.transcript.lastElementChild; element;) {
+            if (element.matches('.pi-message.user, .pi-agent-turn-start')) break;
+            const previous = element.previousElementSibling;
             if (element.matches('.pi-turn-edits')) { turnEdits.remove(element.dataset.editRound); element.remove(); }
             element.querySelector('.pi-message-actions')?.remove();
+            element = previous;
         }
         const article = document.createElement('article');
         article.className = 'pi-message assistant streaming';
@@ -2725,8 +2806,8 @@ document.addEventListener('DOMContentLoaded', () => {
         article.innerHTML = `<header><strong>Pi</strong><span class="pi-stream-label">${translateUi("生成中")}</span></header><div class="pi-message-body"></div>`;
         elements.transcript.querySelector('.pi-empty-state')?.remove();
         elements.transcript.appendChild(article);
-        state.liveMessage = { article, blocks: new Map(), message };
-        transcriptView.refresh();
+        state.liveMessage = { article, blocks: new Map(), message, pending: new Map(), frame: null, generation: state.socketGeneration };
+        transcriptView.refreshChanged([article]);
         transcriptScroll.restore(readingPosition);
     }
 
@@ -2745,6 +2826,7 @@ document.addEventListener('DOMContentLoaded', () => {
             block.className = 'pi-markdown';
             block.dataset.raw = '';
         }
+        block._piLiveText = '';
         block.dataset.readingKey = `${state.liveMessage.article.dataset.messageKey || 'live'}:${index}`;
         if (block.tagName === 'DETAILS') block.dataset.detailKey = block.dataset.readingKey;
         state.liveMessage.article.querySelector('.pi-message-body').appendChild(block);
@@ -2752,39 +2834,63 @@ document.addEventListener('DOMContentLoaded', () => {
         return block;
     }
 
+    function discardLiveMessage() {
+        const live = state.liveMessage;
+        if (live?.frame != null) cancelAnimationFrame(live.frame);
+        state.liveMessage = null;
+    }
+
+    function flushLiveMessage(live = state.liveMessage) {
+        if (!live) return;
+        if (live.frame !== null) cancelAnimationFrame(live.frame);
+        live.frame = null;
+        if (live !== state.liveMessage || live.generation !== state.socketGeneration || !live.article.isConnected) return;
+        for (const [block, type] of live.pending) {
+            if (type === 'text') {
+                block.dataset.raw = block._piLiveText;
+                block.innerHTML = renderMarkdown(block._piLiveText);
+                decorateCodeBlocks(block);
+            } else {
+                block.querySelector(type === 'thinking' ? '.pi-thinking-content' : '.pi-tool-args').textContent = block._piLiveText;
+            }
+        }
+        live.pending.clear();
+        transcriptView.schedule(live.article);
+        scrollTranscript();
+    }
+
+    function scheduleLiveMessage() {
+        const live = state.liveMessage;
+        if (!live || live.frame !== null) return;
+        live.frame = requestAnimationFrame(() => flushLiveMessage(live));
+    }
+
     function updateLiveMessage(delta) {
         if (!delta) return;
         const index = delta.contentIndex ?? 0;
-        if (delta.type === 'text_delta') {
-            const block = ensureLiveBlock(index, 'text');
-            block.dataset.raw = `${block.dataset.raw || ''}${delta.delta || ''}`;
-            block.innerHTML = renderMarkdown(block.dataset.raw);
-            decorateCodeBlocks(block);
-        } else if (delta.type === 'thinking_delta') {
-            const block = ensureLiveBlock(index, 'thinking');
-            const content = block.querySelector('.pi-thinking-content');
-            content.textContent += delta.delta || '';
+        if (delta.type === 'text_delta' || delta.type === 'thinking_delta' || delta.type === 'toolcall_delta') {
+            const type = delta.type === 'text_delta' ? 'text' : delta.type === 'thinking_delta' ? 'thinking' : 'toolcall';
+            const block = ensureLiveBlock(index, type);
+            block._piLiveText += delta.delta || '';
+            state.liveMessage.pending.set(block, type);
         } else if (delta.type === 'toolcall_start') {
             const block = ensureLiveBlock(index, 'toolcall');
             block.dataset.toolId = delta.id || '';
             block.dataset.toolName = delta.toolName || 'tool';
             window.PiToolLabels?.update(block);
             if (delta.id) state.toolRows.set(delta.id, block);
-        } else if (delta.type === 'toolcall_delta') {
-            const block = ensureLiveBlock(index, 'toolcall');
-            const args = block.querySelector('.pi-tool-args');
-            args.textContent += delta.delta || '';
         } else if (delta.type === 'toolcall_end' && delta.toolCall) {
             const block = ensureLiveBlock(index, 'toolcall');
+            state.liveMessage.pending.delete(block);
             block.dataset.toolId = delta.toolCall.id || '';
             block.dataset.toolName = delta.toolCall.name || 'tool';
             block._piToolArgs = delta.toolCall.arguments;
             window.PiToolLabels?.update(block);
-            block.querySelector('.pi-tool-args').textContent = formatToolArgs(delta.toolCall.arguments);
+            block._piLiveText = formatToolArgs(delta.toolCall.arguments);
+            block.querySelector('.pi-tool-args').textContent = block._piLiveText;
             if (delta.toolCall.id) state.toolRows.set(delta.toolCall.id, block);
         }
-        transcriptView.schedule();
-        scrollTranscript();
+        scheduleLiveMessage();
     }
 
     function endLiveMessage(message) {
@@ -2805,10 +2911,10 @@ document.addEventListener('DOMContentLoaded', () => {
             // A persisted custom message can arrive after agent_settled. Invalidate
             // older history requests and append without disturbing a draft/live reply.
             state.runtimeRevision++;
-            const readingPosition = transcriptScroll.capture();
+            const readingPosition = transcriptScroll.capture({ details: false });
             elements.transcript.querySelector('.pi-empty-state')?.remove();
             elements.transcript.appendChild(element);
-            transcriptView.refresh(); workflows.decorate();
+            transcriptView.refreshChanged([element]); workflows.decorate();
             transcriptScroll.restore(readingPosition);
             void taskResults?.refresh();
             return;
@@ -2823,25 +2929,33 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.transcript.querySelector('.pi-empty-state')?.remove();
             if (optimistic) optimistic.replaceWith(element);
             else elements.transcript.appendChild(element);
-            transcriptView.refresh(); workflows.decorate(); scrollTranscript();
+            transcriptView.refreshChanged([element]); workflows.decorate(); scrollTranscript();
             return;
         }
         if (message?.role === 'toolResult') {
+            const old = state.toolRows.get(message.toolCallId);
+            markTranscriptDirty(old);
             const row = createToolResultElement(message);
             if (row) elements.transcript.appendChild(row);
-            transcriptView.refresh();
+            transcriptView.refreshChanged([row || old]);
             scrollTranscript();
             return;
         }
         if (!message || message.role !== 'assistant' || !state.liveMessage) return;
-        const readingPosition = transcriptScroll.capture();
+        const readingPosition = transcriptScroll.capture({ roots: [state.liveMessage.article] });
         const element = createMessageElement(message);
         state.liveMessage.article.replaceWith(element);
-        state.liveMessage = null;
+        // The authoritative final message includes every buffered delta.
+        discardLiveMessage();
         decorateCodeBlocks(element);
         workflows.decorate();
-        transcriptView.refresh();
+        transcriptView.refreshChanged([element]);
         transcriptScroll.restore(readingPosition);
+    }
+
+    function markTranscriptDirty(node) {
+        const index = node?.closest('[data-transcript-index]')?.dataset.transcriptIndex;
+        if (index !== undefined) state.dirtyTranscriptIndex = Math.min(state.dirtyTranscriptIndex, Number(index));
     }
 
     function updateToolExecution(event, status) {
@@ -2852,17 +2966,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const host = state.liveMessage?.article.querySelector('.pi-message-body') || elements.transcript;
             host.appendChild(row);
         }
+        markTranscriptDirty(row);
         row.dataset.state = status;
         row.querySelector('.pi-tool-status').textContent = status === 'running' ? translateUi("执行中") : status === 'error' ? translateUi("失败") : translateUi("完成");
         if (event.args) {
             row._piToolArgs = event.args;
-            row.querySelector('.pi-tool-args').textContent = formatToolArgs(event.args);
+            row._piArgsText = formatToolArgs(event.args);
+            if (row.querySelector('.pi-tool-args')) row.querySelector('.pi-tool-args').textContent = row._piArgsText;
         }
         if (event.toolName) row.dataset.toolName = event.toolName;
         const result = event.partialResult || event.result;
         if (result) setToolOutput(row, result);
         else window.PiToolLabels?.update(row);
-        transcriptView.schedule();
+        transcriptView.schedule(row);
         scrollTranscript();
     }
 

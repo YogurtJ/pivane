@@ -23,6 +23,9 @@
             this.jobs = [];
             this.sequence = 0;
             this.historySequence = 0;
+            this.deferredRevision = null;
+            this.deferredGeneration = null;
+            this.pollRequest = null;
             this.dialog = $('pi-workflow-dialog');
             this.content = $('pi-workflow-content');
             this.submit = $('pi-workflow-submit');
@@ -76,12 +79,17 @@
             return this.host.apiFetch(this.url(tail, ctx), { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, cwd: ctx.cwd }), signal: AbortSignal.timeout(150000) });
         }
         async run(action) { try { await action(); } catch (error) { this.host.toast(error.message, 'error'); } }
-        setStoreError(error) { this.storeError = error || null; this.update(); }
+        setStoreError(error) {
+            const next = error || null;
+            if (next === this.storeError) return;
+            this.storeError = next; this.update();
+        }
         setEnabled(enabled) { this.enabled = enabled; this.update(); }
         update() {
             const key = this.identity();
             if (key !== this.key) {
                 this.key = key; this.sequence++; this.historySequence++; this.snapshot = null; this.jobs = [];
+                this.deferredRevision = null; this.deferredGeneration = null; this.pollRequest = null;
                 if (!this.inFlight) this.close();
             }
             $('pi-current-thread-menu').disabled = !this.context().session;
@@ -95,18 +103,35 @@
             this.decorate();
         }
 
-        async refresh(includeHistory = false) {
+        async refresh(includeHistory = false, { deferredRevision } = {}) {
             if (!this.usable()) { this.update(); return; }
-            const ctx = { ...this.context() }, key = this.identity(ctx), sequence = ++this.sequence;
+            const ctx = { ...this.context() }, key = this.identity(ctx);
+            if (key !== this.key) this.update();
+            const knownRevision = typeof deferredRevision === 'string' && deferredRevision.length > 0;
+            const readDeferred = !knownRevision || deferredRevision !== this.deferredRevision || ctx.generation !== this.deferredGeneration;
+            if (!readDeferred && !includeHistory) return;
+            const pollKey = JSON.stringify([key, ctx.generation]);
+            if (!includeHistory && knownRevision && this.pollRequest?.key === pollKey && this.pollRequest.revision === deferredRevision) return this.pollRequest.promise;
+            const sequence = ++this.sequence;
             const historySequence = includeHistory ? ++this.historySequence : null;
-            const requests = [this.get('deferred', ctx)];
-            if (includeHistory) requests.push(this.get('workflow', ctx));
-            const [deferred, snapshot] = await Promise.all(requests);
-            if (key !== this.identity()) return;
-            if (sequence === this.sequence) this.jobs = deferred.jobs || [];
-            if (snapshot && historySequence === this.historySequence) this.snapshot = snapshot;
-            this.update();
-            if (this.dialog.open && this.mode === 'deferred' && !this.inFlight && !this.loadingPanel) this.renderList();
+            const request = { key: pollKey, revision: deferredRevision };
+            request.promise = Promise.all([
+                readDeferred ? this.get('deferred', ctx) : null,
+                includeHistory ? this.get('workflow', ctx) : null
+            ]).then(([deferred, snapshot]) => {
+                if (key !== this.identity() || ctx.generation !== this.context().generation) return;
+                if (deferred && sequence === this.sequence) {
+                    this.jobs = deferred.jobs || [];
+                    this.deferredRevision = typeof deferred.revision === 'string' ? deferred.revision : null;
+                    this.deferredGeneration = ctx.generation;
+                }
+                if (snapshot && historySequence === this.historySequence) this.snapshot = snapshot;
+                this.update();
+                if (this.dialog.open && this.mode === 'deferred' && !this.inFlight && !this.loadingPanel) this.renderList();
+            });
+            if (!includeHistory && knownRevision) this.pollRequest = request;
+            try { await request.promise; }
+            finally { if (this.pollRequest === request) this.pollRequest = null; }
         }
 
         messageText(message, separator = '') { return typeof message.content === 'string' ? message.content : (message.content || []).filter(block => block.type === 'text').map(block => block.text).join(separator); }

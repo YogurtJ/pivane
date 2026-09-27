@@ -29,6 +29,8 @@ function isWithin(root, candidate) {
 
 class PiSessionStore {
     constructor() {
+        // Share only concurrent list reads; completed results are never cached.
+        this.sessionLists = new Map();
         const defaults = process.platform === 'win32'
             ? Array.from({ length: 26 }, (_, index) => `${String.fromCharCode(65 + index)}:\\`)
             : ['/'];
@@ -155,8 +157,25 @@ class PiSessionStore {
         const { SessionManager } = await getSdk();
         const profiles = this.profiles;
         const projects = this.projects;
-        const profileState = profiles ? (await profiles.state()).state : null;
-        const projectState = projects ? (await projects.state()).state : null;
+        const profileSnapshot = profiles ? await profiles.state() : null;
+        const projectSnapshot = projects ? await projects.state() : null;
+        const revision = JSON.stringify([profileSnapshot?.revision, projectSnapshot?.revision]);
+        let read = this.sessionLists.get(cwd);
+        if (!read || read.revision !== revision || read.profiles !== profiles || read.projects !== projects) {
+            read = { revision, profiles, projects };
+            // Reserve before starting the read, and remove on success or failure.
+            read.promise = Promise.resolve().then(() => this._listSessions(cwd, SessionManager, profiles, projects,
+                profileSnapshot?.state, projectSnapshot?.state)).finally(() => {
+                if (this.sessionLists.get(cwd) === read) this.sessionLists.delete(cwd);
+            });
+            this.sessionLists.set(cwd, read);
+        }
+        const result = await read.promise;
+        this.resolveProject(cwd);
+        return structuredClone(result);
+    }
+
+    async _listSessions(cwd, SessionManager, profiles, projects, profileState, projectState) {
         const sessions = await SessionManager.list(cwd);
         const result = [];
         for (const session of sessions) {
@@ -219,6 +238,7 @@ class PiSessionStore {
             persisted.appendCustomMessageEntry(TASK_MESSAGE, message, true, { source: task.source });
         }
         require('./pi-private-files').privateFileMode(sessionPath);
+        this.sessionLists.delete(cwd);
         return {
             assistant: assistant ? require('./pi-extension-assistant').assistantProfile(persisted) : null,
             profileAuthoring: require('./pi-profile-authoring').readProfileAuthoring(persisted),
@@ -258,6 +278,7 @@ class PiSessionStore {
             if (groupBinding) source.appendCustomEntry(require('./pi-assistant-project-state').PROJECT_ENTRY,
                 { version: 1, sessionId: source.getSessionId(), projectId: groupBinding.projectId, cwd: groupBinding.cwd });
             source.appendSessionInfo(`${session.name || '会话'} · 分叉`.slice(0, 120));
+            this.sessionLists.delete(session.cwd);
             result = await this.getSession(session.cwd, source.getSessionId());
         } else if (branch.length) {
             // Native branching preserves IDs/references, but defers its file until
@@ -279,6 +300,7 @@ class PiSessionStore {
                 AgentSession.prototype.exportToJsonl.call({ sessionManager: source }, output);
                 privateFiles.privateFileMode(output);
                 fs.linkSync(output, source.getSessionFile());
+                this.sessionLists.delete(session.cwd);
                 result = await this.getSession(session.cwd, source.getSessionId());
             } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
         } else {
@@ -300,6 +322,7 @@ class PiSessionStore {
             const { SessionManager } = await getSdk();
             SessionManager.open(session.path).appendSessionInfo(cleanName);
         }
+        this.sessionLists.delete(session.cwd);
         return { ...session, name: cleanName, modified: new Date().toISOString() };
     }
 
@@ -311,7 +334,7 @@ class PiSessionStore {
         } catch {
             fs.unlinkSync(session.path);
             return { id, trashed: false };
-        }
+        } finally { this.sessionLists.delete(session.cwd); }
     }
 
     _serializeSession(session, agentProfile = null, assistantProject = null, profileAuthoring = null) {

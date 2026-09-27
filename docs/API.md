@@ -317,7 +317,7 @@ POST `/sessions/:id/title` 接受 `{cwd}`，使用请求开始时冻结的标题
 
 `/status.replyFork=true` 标记已支持回复后分叉：`GET /sessions/:id/workflow` 增加 replies（entryId、timestamp、文本预览）；`POST /sessions/:id/fork` 新增可选 `position=at`，必须同时提供一个已完成且无工具调用的文本 assistant entryId，返回 draft=null。省略 position 仍从用户问题之前分叉，省略 entryId 仍复制当前活动分支。任意其他 position、错误角色、未完成/toolCall 消息会被拒绝，不退化为 clone。
 
-`/activity.deferred` 仅含各线程 cwd/sessionId/count/attention 和可选通用存储错误，不含待发送正文。普通 `get_state` 另含 `webOperation` 布尔值。回退后向全部当前订阅者广播 `gateway_context_changed`，浏览器重读原生消息/状态。原生 fork/clone/navigate 命令没有直接加入透传白名单。
+`/activity.deferred` 含不透明队列 `revision`、各线程 cwd/sessionId/count/attention 和可选通用存储错误，不含待发送正文。`GET /sessions/:id/deferred` 返回 `{revision,jobs}`；队列修订在进程启动或成功保存变更时更新，仅供判断详情是否变化，不代替各 job 的修改 revision。无修订字段时客户端继续普通刷新；同线程和连接代次的已读修订未变化时可跳过自动详情查询，主动查看与操作后仍重新读取。普通 `get_state` 另含 `webOperation` 布尔值。回退后向全部当前订阅者广播 `gateway_context_changed`，浏览器重读原生消息/状态。原生 fork/clone/navigate 命令没有直接加入透传白名单。
 
 ## 3. Pi WebSocket
 

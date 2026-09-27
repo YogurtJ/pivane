@@ -18,6 +18,7 @@ class PiDeferredMessages {
         const portSuffix = String(process.env.PORT || '3000') === '3001' ? '' : `-${String(process.env.PORT || '3000').replace(/[^0-9]/g, '')}`;
         this.filePath = filePath || process.env.PI_WEB_DEFERRED_FILE || require('./pivane-compat').dataFile(process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), '.pi', 'agent'), `pivane-deferred-messages${portSuffix}.json`);
         this.jobs = [];
+        this.revision = randomUUID();
         this.disposed = false;
         this.running = null;
         this.error = null;
@@ -69,7 +70,7 @@ class PiDeferredMessages {
         this.assertHealthy();
         const previous = this.jobs;
         this.jobs = structuredClone(previous);
-        try { const result = callback(); this.persist(); return result; }
+        try { const result = callback(); this.persist(); this.revision = randomUUID(); return result; }
         catch (error) { this.jobs = previous; throw error; }
     }
 
@@ -82,7 +83,7 @@ class PiDeferredMessages {
     }
 
     summary() {
-        if (this.error) return { error: this.error, sessions: [] };
+        if (this.error) return { revision: this.revision, error: this.error, sessions: [] };
         const sessions = new Map();
         for (const job of this.jobs.filter(job => ACTIVE.has(job.status))) {
             try { this.store.resolveProject(job.cwd); } catch { continue; }
@@ -92,7 +93,7 @@ class PiDeferredMessages {
             item.attention ||= ['paused', 'expired', 'failed', 'uncertain'].includes(job.status);
             sessions.set(key, item);
         }
-        return { sessions: [...sessions.values()] };
+        return { revision: this.revision, sessions: [...sessions.values()] };
     }
 
     create(session, input) {
