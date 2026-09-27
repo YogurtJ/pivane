@@ -62,6 +62,8 @@
     function installation(entry) {
         if (inventoryState !== 'ready') return { state: inventoryState, label: inventoryState === 'loading' ? text('正在核对…', 'Checking…') : text('状态待核对', 'Status unknown') };
         if (entry.id === 'pi-hermes-memory' && inventory.profileMemoryInstalled) return { state: 'installed', label: text('档案适配已安装', 'Profile adapter installed') };
+        const bundled = inventory.packages.find(item => item.managedBy === 'pivane' && item.name === entry.id && item.installed);
+        if (bundled) return { state: 'installed', label: text('Pivane 内置', 'Bundled with Pivane') + ' · ' + bundled.version };
         const matches = inventory.packages.filter(item => identity(item.source) === entry.source || identity(item.source) === `github:${repositories[entry.id]}`);
         const installed = matches.filter(item => item.installed === true);
         if (installed.length) {
@@ -105,6 +107,9 @@
         let need = entry ? text(
             `我想了解并配置 ${entry.name}。来源：${entry.url}${entry.source ? `，Pi 包来源：${entry.source}` : ''}。用途：${text(...entry.description)} 示例：${text(...entry.example)} 请先只读检查已有安装、当前版本、许可、依赖和平台兼容性，说明安装范围与方案，等我确认后再安装；不要重复安装已有能力。安装后分别核对文件、依赖与当前会话加载状态。`,
             `I want to learn about and configure ${entry.name}. Source: ${entry.url}${entry.source ? `; Pi package source: ${entry.source}` : ''}. Purpose: ${text(...entry.description)} Example: ${text(...entry.example)} First inspect existing installations, versions, licenses, dependencies and platform compatibility read-only. Explain the scope and plan, then wait for my confirmation before installing. Avoid duplicate installations. After installation, check files, dependencies and current-session loading separately.`) : '';
+        if (entry && ['pi-subagents', 'pi-hermes-memory'].includes(entry.id)) need = text(
+            `请帮我配置 Pivane 内置的 ${entry.name}。该组件随 Pivane 安装和更新，请先检查当前版本、资源开关、身份与会话加载状态，再调整配置，不要另行安装或修改上游源码。`,
+            `Help me configure ${entry.name}, bundled with Pivane. Check its version, resource toggles, profile and actual session loading before adjusting settings. It updates with Pivane; do not install another copy or modify upstream source.`);
         if (entry?.id === 'pi-hermes-memory' && inventory?.profileMemoryInstalled) need += text(
             '\nPivane 已安装独立的档案记忆适配组件。请先检查助手身份和实际加载状态；不要另行全局启用上游默认扩展，以免扩大历史索引范围。',
             '\nPivane already has the separate profile memory adapter installed. Inspect assistant profiles and actual loading first; do not additionally enable the upstream default extension globally, which would broaden history indexing.');

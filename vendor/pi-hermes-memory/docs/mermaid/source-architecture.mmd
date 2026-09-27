@@ -1,0 +1,54 @@
+graph LR
+    subgraph "pi-hermes-memory/src/"
+        IDX["index.ts<br/><i>Entry point</i>"]
+        MS["memory-store.ts<br/><i>Markdown memory CRUD</i>"]
+        SSM["sqlite-memory-store.ts<br/><i>Search mirror + backfill sync</i>"]
+        DB["db.ts<br/><i>sessions.db manager</i>"]
+        SS["skill-store.ts<br/><i>Skill CRUD</i>"]
+        MT["memory-tool.ts<br/><i>Memory LLM tool</i>"]
+        MST["memory-search-tool.ts<br/><i>Search SQLite memory</i>"]
+        ST["skill-tool.ts<br/><i>Skill LLM tool</i>"]
+        CS["content-scanner.ts<br/><i>Security</i>"]
+        BR["background-review.ts<br/><i>Learning loop</i>"]
+        AC["auto-consolidate.ts<br/><i>Memory merge</i>"]
+        CD["correction-detector.ts<br/><i>Instant save</i>"]
+        SF["session-flush.ts<br/><i>Pre-compaction flush</i>"]
+        IN["insights.ts<br/><i>/memory-insights</i>"]
+        SC["skills-command.ts<br/><i>/memory-skills</i>"]
+        SM["sync-markdown-memories.ts<br/><i>/memory-sync-markdown</i>"]
+    end
+
+    IDX --> MS
+    IDX --> SSM
+    IDX --> DB
+    IDX --> SS
+    IDX --> MT
+    IDX --> MST
+    IDX --> ST
+    IDX --> BR
+    IDX --> AC
+    IDX --> CD
+    IDX --> SF
+    IDX --> IN
+    IDX --> SC
+    IDX --> SM
+
+    MT --> MS
+    MT --> SSM
+    MST --> SSM
+    SM --> SSM
+    ST --> SS
+    MS --> CS
+    SS --> CS
+    BR --> MS
+    AC --> MS
+    CD --> MS
+    CD --> SSM
+    SSM --> DB
+
+    style IDX fill:#e94560,stroke:#fff,color:#fff
+    style MS fill:#0f3460,stroke:#fff,color:#fff
+    style SSM fill:#1282a2,stroke:#fff,color:#fff
+    style DB fill:#1b4332,stroke:#fff,color:#fff
+    style SS fill:#0f3460,stroke:#fff,color:#fff
+    style CS fill:#ff6600,stroke:#fff,color:#fff

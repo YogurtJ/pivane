@@ -1,0 +1,173 @@
+import { listBackgroundWorkProviders } from "../../api/background-work.js";
+import { ReadonlyDrainObservation } from "./readonly-drain-observation.js";
+import registerFanoutChildSubagentExtension, { createChildSafeState } from "../../extension/fanout-child.js";
+import registerSubagentFastModeExtension from "./fast-mode-extension.js";
+import registerSubagentPromptRuntime from "./subagent-prompt-runtime.js";
+import { projectRuntimeAcknowledgedExtensions } from "./runtime-acknowledged-extensions.js";
+const promptProofs = new WeakMap();
+function ownedProof(hooks) {
+    const proof = hooks[0] && promptProofs.get(hooks[0].factory);
+    return proof?.factories?.length === hooks.length && proof.factories.every((factory, index) => hooks[index]?.factory === factory) ? proof : undefined;
+}
+/** The host's mandatory transcript reporting, owned by the existing hook certificate. */
+export function withChildSessionErrorReporting(session, transcriptWriter) {
+    const launch = { ...session, onExtensionError: (error) => {
+            transcriptWriter?.writeStderrLine(`Extension error (${error.extensionPath}, ${error.event}): ${error.error instanceof Error ? error.error.message : String(error.error)}`);
+        } };
+    const proof = ownedProof(launch.hooks);
+    if (proof?.capture && proof.config === launch.runtime)
+        proof.reporting = { launch, callback: launch.onExtensionError };
+    return launch;
+}
+export function isReadonlyChildSessionReporting(launch) {
+    const proof = ownedProof(launch.hooks);
+    const descriptor = Object.getOwnPropertyDescriptor(launch, "onExtensionError");
+    if (descriptor && (!descriptor.enumerable || !("value" in descriptor)))
+        return false;
+    return proof?.reporting ? proof.reporting.launch === launch && proof.reporting.callback === descriptor?.value : !descriptor && !("onExtensionError" in launch);
+}
+/** Admit only own enumerable data: inspecting descriptors must not invoke getters. */
+function dataKeys(value) {
+    if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype)
+        return undefined;
+    const keys = Reflect.ownKeys(value);
+    for (const key of keys) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (typeof key !== "string" || !descriptor.enumerable || !("value" in descriptor))
+            return undefined;
+    }
+    return keys;
+}
+/** Only reviewed data and the capture callbacks constructed below; no caller callback opt-in. */
+function readonlyConfig(config, capture) {
+    const strings = ["runId", "agent", "sessionName", "forkCacheKey", "parentSessionId", "orchestratorSessionId"];
+    const numbers = ["childIndex", "depth", "maxDepth"];
+    const booleans = ["inheritProjectContext", "inheritGlobalContext", "inheritSkills"];
+    const keys = dataKeys(config);
+    if (!keys)
+        return undefined;
+    if (capture && (config.toolDiagnostic !== capture.toolDiagnostic || config.runtimeAcknowledgements !== capture.runtimeAcknowledgements))
+        return undefined;
+    const waitKeys = dataKeys(config.waitTool);
+    if (!waitKeys || waitKeys.some((key) => key !== "enabled"))
+        return undefined;
+    if (config.fast !== false || config.fanoutChild !== false || config.waitTool.enabled !== false)
+        return undefined;
+    for (const key of keys) {
+        const value = Object.getOwnPropertyDescriptor(config, key).value;
+        if (["fast", "fanoutChild", "waitTool"].includes(key))
+            continue;
+        if (capture && (key === "toolDiagnostic" || key === "runtimeAcknowledgements"))
+            continue;
+        if (capture && key === "requiredTools" && Array.isArray(value) && Object.getPrototypeOf(value) === Array.prototype) {
+            const descriptors = Object.getOwnPropertyDescriptors(value);
+            if (Reflect.ownKeys(descriptors).length !== value.length + 1)
+                return undefined;
+            for (let i = 0; i < value.length; i++) {
+                const descriptor = descriptors[String(i)];
+                if (!descriptor?.enumerable || !("value" in descriptor) || !["read", "ls"].includes(descriptor.value))
+                    return undefined;
+            }
+            continue;
+        }
+        if (strings.includes(key) && (value === undefined || typeof value === "string"))
+            continue;
+        if (numbers.includes(key) && (value === undefined || (typeof value === "number" && Number.isInteger(value) && value >= 0)))
+            continue;
+        if (booleans.includes(key) && (value === undefined || typeof value === "boolean"))
+            continue;
+        return undefined;
+    }
+    return JSON.stringify(config);
+}
+function noBackgroundProviders() {
+    try {
+        return listBackgroundWorkProviders().length === 0;
+    }
+    catch {
+        return false;
+    }
+}
+/** Internal proof of the captured closure/config, not its caller-controlled display name. */
+export function isReadonlyChildHookProfile(hooks, config) {
+    const proof = ownedProof(hooks);
+    if (!proof)
+        return false;
+    const valid = proof.config === config && readonlyConfig(config, proof.capture) === proof.snapshot && noBackgroundProviders();
+    if (!valid)
+        proof.observation?.deny();
+    return valid && (proof.observation?.check() ?? true);
+}
+/** Arm just the next installation; ordinary installations retain the original API/handlers. */
+export function observeReadonlyChildHookDrain(hooks, enabled, sessionFile) {
+    const proof = ownedProof(hooks);
+    if (!proof)
+        return;
+    if (enabled) {
+        proof.observation?.deny();
+        proof.observation = undefined;
+    }
+    proof.observeNext = enabled ? new ReadonlyDrainObservation(sessionFile, () => readonlyConfig(proof.config, proof.capture) === proof.snapshot && noBackgroundProviders()) : undefined;
+}
+export function captureReadonlyChildDrain(hooks) {
+    const proof = ownedProof(hooks);
+    const observation = proof?.observation;
+    return () => !!observation && proof?.observation === observation && observation.settled();
+}
+/**
+ * The child-side hooks pi-subagents installs in every child, keyed off the
+ * launch config. The registrations live in `subagent-prompt-runtime.ts`,
+ * `fast-mode-extension.ts`, and `fanout-child.ts`.
+ */
+export function createChildHooks(config) {
+    return childHooks(config);
+}
+/** Launch-owned bookkeeping, paired with the same private hook certificate (no callback registration API). */
+export function createCapturedChildHooks(config) {
+    let diagnostic;
+    let acknowledgedIds;
+    let finalDrainHeld = false;
+    const capture = {
+        toolDiagnostic: (value) => { diagnostic = value; },
+        runtimeAcknowledgements: (ids) => { acknowledgedIds = ids; },
+    };
+    Object.assign(config, capture);
+    const hooks = childHooks(config, capture, (held) => { finalDrainHeld = held; });
+    return {
+        hooks,
+        toolDiagnostic: () => diagnostic,
+        runtimeAcknowledgedExtensions: () => acknowledgedIds ? projectRuntimeAcknowledgedExtensions(acknowledgedIds) : undefined,
+        finalDrainHeld: () => finalDrainHeld,
+    };
+}
+function childHooks(config, capture, holdFinalDrain) {
+    const snapshot = readonlyConfig(config, capture);
+    const proof = snapshot === undefined ? undefined : { config, snapshot, capture };
+    const runtime = Object.create(config);
+    const ownedState = Object.getOwnPropertyDescriptor(config, "runtimeState");
+    if (!ownedState || !("value" in ownedState) || ownedState.value == null) {
+        Object.defineProperty(runtime, "runtimeState", { configurable: true, enumerable: true, writable: true, value: createChildSafeState() });
+    }
+    if (holdFinalDrain) {
+        Object.defineProperty(runtime, "holdFinalDrain", { configurable: true, enumerable: true, writable: true, value: holdFinalDrain });
+    }
+    const hooks = [
+        { name: "pi-subagents:prompt-runtime", factory: function promptRuntime(pi) {
+                if (!proof?.observeNext)
+                    return registerSubagentPromptRuntime(pi, runtime);
+                proof.observation = proof.observeNext;
+                proof.observeNext = undefined;
+                registerSubagentPromptRuntime(pi, runtime, proof.observation);
+            } },
+    ];
+    if (proof) {
+        proof.factories = hooks.map((hook) => hook.factory);
+        promptProofs.set(hooks[0].factory, proof);
+    }
+    if (config.fast)
+        hooks.push({ name: "pi-subagents:fast-mode", factory: (pi) => registerSubagentFastModeExtension(pi) });
+    if (config.fanoutChild)
+        hooks.push({ name: "pi-subagents:fanout-child", factory: (pi) => registerFanoutChildSubagentExtension(pi, runtime) });
+    return hooks;
+}
+//# sourceMappingURL=child-hooks.js.map

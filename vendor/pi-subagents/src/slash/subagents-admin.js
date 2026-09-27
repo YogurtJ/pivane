@@ -1,0 +1,453 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { discoverAgentsAll, EXTRA_AGENT_DIRS_ENV, frontmatterNameForConfig, mergeBuiltinAgentOverride, removeBuiltinAgentOverrideFields, } from "../agents/agents.js";
+import { serializeAgent } from "../agents/agent-serializer.js";
+import { mergeRuntimeAgents } from "../agents/runtime-agent-registry.js";
+import { editableAgentConfig, preservedAgentFrontmatterFields } from "../agents/agent-management.js";
+import { findModelInfo, getSupportedThinkingLevels, toModelInfo } from "../shared/model-info.js";
+import { SelectorComponent } from "./selector.js";
+const ADMIN_MESSAGE_TYPE = "subagents-admin";
+const INHERIT_MODEL_CHOICE = "Default / inherit session model";
+const INHERIT_THINKING_CHOICE = "Default / inherit session thinking";
+function sourceRank(source) {
+    if (source === "project")
+        return 0;
+    if (source === "user")
+        return 1;
+    if (source === "package")
+        return 2;
+    return 3;
+}
+function allVisibleAgents(pi, cwd, preferredModelProvider) {
+    const d = discoverAgentsAll(cwd, preferredModelProvider);
+    const allConfigured = [...d.project, ...d.user, ...d.package, ...d.builtin];
+    const visibleConfigured = allConfigured.filter((agent) => !agent.disabled);
+    // Disabled definitions remain in collision checks even though the panel hides them.
+    const agents = mergeRuntimeAgents(pi, { agents: visibleConfigured }, allConfigured, { cwd, scope: "both", preferredModelProvider }).agents;
+    return agents.sort((a, b) => a.name.localeCompare(b.name) || sourceRank(a.source) - sourceRank(b.source));
+}
+function agentLabel(agent) {
+    const model = agent.model ? ` · ${agent.model}` : "";
+    return `${agent.name} [${agent.source}]${model} — ${agent.description}`;
+}
+function agentChoices(agents) {
+    const labels = agents.map(agentLabel);
+    const counts = new Map();
+    for (const label of labels)
+        counts.set(label, (counts.get(label) ?? 0) + 1);
+    return new Map(agents.map((agent, index) => {
+        const label = labels[index];
+        return [counts.get(label) === 1 ? label : `${label} · ${agent.filePath}`, agent];
+    }));
+}
+function agentSelectItems(byLabel) {
+    return [...byLabel.keys()].map((label) => ({ value: label, label }));
+}
+function agentMatches(agent, rawName) {
+    const name = rawName.trim();
+    return agent.name === name || frontmatterNameForConfig(agent) === name;
+}
+function sendAdminMessage(pi, content) {
+    pi.sendMessage({
+        customType: ADMIN_MESSAGE_TYPE,
+        content,
+        display: true,
+    });
+}
+function modelFullId(model) {
+    return `${model.provider}/${model.id}`;
+}
+async function liveAvailableModels(ctx) {
+    try {
+        // Reload local configuration and cached catalogs without network discovery on picker open.
+        const result = await ctx.modelRegistry.refresh?.({ allowNetwork: false, signal: AbortSignal.timeout(5_000) });
+        const firstError = result?.errors.entries().next().value;
+        if (firstError) {
+            ctx.ui.notify(`Could not refresh ${firstError[0]}; using the currently loaded choices. ${firstError[1].message}`, "warning");
+        }
+        else if (result?.aborted) {
+            ctx.ui.notify("Model registry refresh timed out; using the currently loaded choices.", "warning");
+        }
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.ui.notify(`Could not refresh the model registry; using the last loaded choices. ${message}`, "warning");
+    }
+    return ctx.modelRegistry.getAvailable();
+}
+function buildBuiltinBase(agent) {
+    return {
+        ...(agent.model !== undefined ? { model: agent.model } : {}),
+        ...(agent.thinking !== undefined ? { thinking: agent.thinking } : {}),
+        systemPromptMode: agent.systemPromptMode,
+        inheritProjectContext: agent.inheritProjectContext,
+        inheritGlobalContext: agent.inheritGlobalContext,
+        inheritSkills: agent.inheritSkills,
+        ...(agent.defaultContext !== undefined ? { defaultContext: agent.defaultContext } : {}),
+        ...(agent.acceptanceRole !== undefined ? { acceptanceRole: agent.acceptanceRole } : {}),
+        ...(agent.disabled !== undefined ? { disabled: agent.disabled } : {}),
+        systemPrompt: agent.systemPrompt,
+        ...(agent.skills !== undefined ? { skills: [...agent.skills] } : {}),
+        ...(agent.tools !== undefined ? { tools: [...agent.tools] } : {}),
+        ...(agent.excludeTools !== undefined ? { excludeTools: [...agent.excludeTools] } : {}),
+        ...(agent.mcpDirectTools !== undefined ? { mcpDirectTools: [...agent.mcpDirectTools] } : {}),
+        ...(agent.subagentOnlyExtensions !== undefined ? { subagentOnlyExtensions: [...agent.subagentOnlyExtensions] } : {}),
+        ...(agent.mutationTools !== undefined ? { mutationTools: [...agent.mutationTools] } : {}),
+        ...(agent.toolBudget !== undefined ? { toolBudget: agent.toolBudget } : {}),
+    };
+}
+function savesThroughSettings(agent, field) {
+    if (agent.source === "builtin")
+        return true;
+    if (agent.source === "package")
+        return true;
+    if (!agent.override)
+        return false;
+    if (agent.override.fields?.includes(field) === true)
+        return true;
+    // A lower-scope override can flow into a higher-scope custom agent with the
+    // same name. Persist that agent's edits in its own frontmatter instead of
+    // rewriting the shared lower-scope override used by another agent.
+    if (agent.source !== agent.override.scope)
+        return false;
+    // Compare the effective value with the pre-override base so an override on one
+    // field does not redirect edits to an unrelated frontmatter-owned field.
+    return agent[field] !== agent.override.base[field];
+}
+function isReadOnlyExtraAgent(agent) {
+    const configured = process.env[EXTRA_AGENT_DIRS_ENV];
+    if (!configured || agent.source !== "user")
+        return false;
+    const filePath = path.resolve(agent.filePath);
+    return configured.split(path.delimiter).map((dir) => dir.trim()).filter(Boolean).some((dir) => {
+        const root = path.resolve(dir);
+        const relative = path.relative(root, filePath);
+        return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+    });
+}
+function readOnlyAgentMessage(agent, field) {
+    if (agent.source === "runtime") {
+        return `Cannot update '${agent.name}' ${field} because that agent is runtime-registered by an extension; edit its source definition instead.`;
+    }
+    if (agent.source === "package") {
+        return `Cannot update '${agent.name}' ${field} because that field is owned by its read-only package definition.`;
+    }
+    return isReadOnlyExtraAgent(agent)
+        ? `Cannot update '${agent.name}' because its definition in PI_SUBAGENT_EXTRA_AGENT_DIRS is read-only.`
+        : undefined;
+}
+async function selectAgent(pi, ctx, args) {
+    const agents = allVisibleAgents(pi, ctx.cwd, ctx.model?.provider);
+    const requestedName = args.trim().split(/\s+/)[0] ?? "";
+    if (agents.length === 0)
+        return { kind: "not-found", agents, requestedName: requestedName || undefined };
+    if (requestedName) {
+        const matches = agents.filter((agent) => agentMatches(agent, requestedName));
+        if (matches.length === 1)
+            return { kind: "selected", agent: matches[0] };
+        if (matches.length > 1 && !ctx.hasUI)
+            return { kind: "ambiguous", requestedName, matches };
+        if (matches.length > 1) {
+            const byLabel = agentChoices(matches);
+            const choice = await selectFromList(ctx, `Multiple subagents named '${requestedName}'`, undefined, agentSelectItems(byLabel));
+            return choice ? { kind: "selected", agent: byLabel.get(choice) } : { kind: "cancelled" };
+        }
+        return { kind: "not-found", agents, requestedName };
+    }
+    if (!ctx.hasUI)
+        return { kind: "not-found", agents };
+    const byLabel = agentChoices(agents);
+    const choice = await selectFromList(ctx, "Select subagent", undefined, agentSelectItems(byLabel));
+    return choice ? { kind: "selected", agent: byLabel.get(choice) } : { kind: "cancelled" };
+}
+function metadataFor(agent) {
+    const tools = [...(agent.tools ?? []), ...(agent.mcpDirectTools ?? []).map((tool) => `mcp:${tool}`)];
+    const lines = [
+        `Agent: ${agent.name} (${agent.source})`,
+        `Path: ${agent.filePath}`,
+        `Description: ${agent.description}`,
+    ];
+    if (agent.packageName) {
+        lines.push(`Local name: ${frontmatterNameForConfig(agent)}`);
+        lines.push(`Package: ${agent.packageName}`);
+    }
+    lines.push(`Model: ${agent.model ?? "default / inherit"}`);
+    if (agent.thinking !== undefined)
+        lines.push(`Thinking: ${agent.thinking === false ? "off" : agent.thinking}`);
+    if (tools.length)
+        lines.push(`Tools: ${tools.join(", ")}`);
+    if (agent.excludeTools?.length)
+        lines.push(`Excluded tools: ${agent.excludeTools.join(", ")}`);
+    if (agent.skills?.length)
+        lines.push(`Skills: ${agent.skills.join(", ")}`);
+    lines.push(`System prompt mode: ${agent.systemPromptMode}`);
+    lines.push(`Inherit project context: ${agent.inheritProjectContext ? "true" : "false"}`);
+    lines.push(`Inherit global context: ${agent.inheritGlobalContext ? "true" : "false"}`);
+    lines.push(`Inherit skills: ${agent.inheritSkills ? "true" : "false"}`);
+    if (agent.defaultContext)
+        lines.push(`Default context: ${agent.defaultContext}`);
+    if (agent.output)
+        lines.push(`Output: ${agent.output}`);
+    if (agent.defaultReads?.length)
+        lines.push(`Reads: ${agent.defaultReads.join(", ")}`);
+    if (agent.defaultProgress)
+        lines.push("Progress: true");
+    if (agent.maxSubagentDepth !== undefined)
+        lines.push(`Max subagent depth: ${agent.maxSubagentDepth}`);
+    if (agent.source === "builtin")
+        lines.push(`Disabled: ${agent.disabled ? "true" : "false"}`);
+    if (agent.override)
+        lines.push(`Override: ${agent.override.scope} (${agent.override.path})`);
+    if (agent.systemPrompt.trim())
+        lines.push("", "System Prompt:", agent.systemPrompt);
+    return lines.join("\n");
+}
+async function selectFromList(ctx, title, subtitle, items) {
+    if (typeof ctx.ui.custom === "function") {
+        const result = await ctx.ui.custom((tui, theme, kb, done) => new SelectorComponent(tui, theme, kb, { title, subtitle, items, done }), { overlay: false });
+        return result?.confirmed ? result.value : undefined;
+    }
+    const flatTitle = subtitle ? `${title}\nCurrent: ${subtitle}` : title;
+    const labelToValue = new Map(items.map((item) => [item.label, item.value]));
+    const choice = await ctx.ui.select(flatTitle, items.map((item) => item.value));
+    return choice ? (items.find((item) => item.value === choice)?.value ?? labelToValue.get(choice)) : undefined;
+}
+async function chooseModel(ctx, agent) {
+    const models = await liveAvailableModels(ctx);
+    const current = agent.model ?? INHERIT_MODEL_CHOICE;
+    const items = [{ value: INHERIT_MODEL_CHOICE, label: INHERIT_MODEL_CHOICE, current: !agent.model }];
+    if (agent.model && !models.some((model) => modelFullId(model) === agent.model)) {
+        items.push({ value: agent.model, label: agent.model, current: true });
+    }
+    for (const model of models) {
+        const fullId = modelFullId(model);
+        items.push({ value: fullId, label: model.id, badge: model.provider, current: fullId === agent.model });
+    }
+    const choice = await selectFromList(ctx, `Select model for ${agent.name}`, current, items);
+    if (choice === undefined)
+        return null;
+    return choice === INHERIT_MODEL_CHOICE ? undefined : choice;
+}
+async function chooseThinking(ctx, agent) {
+    const availableModels = (await liveAvailableModels(ctx)).map(toModelInfo);
+    const effectiveModel = agent.model ?? (ctx.model ? modelFullId(ctx.model) : undefined);
+    const modelInfo = findModelInfo(effectiveModel, availableModels, ctx.model?.provider);
+    const levels = getSupportedThinkingLevels(modelInfo);
+    const current = agent.thinking === false ? "off" : agent.thinking ?? INHERIT_THINKING_CHOICE;
+    const values = [INHERIT_THINKING_CHOICE, ...levels];
+    if (current !== INHERIT_THINKING_CHOICE && !values.includes(current))
+        values.splice(1, 0, current);
+    const modelNote = agent.model
+        ? `Model: ${agent.model}`
+        : effectiveModel
+            ? `Session model: ${effectiveModel}`
+            : "Model: default / inherit";
+    const items = values.map((value) => ({ value, label: value, current: value === current }));
+    const choice = await selectFromList(ctx, `Select thinking level for ${agent.name}`, `${modelNote} · ${current}`, items);
+    if (choice === undefined)
+        return null;
+    return choice === INHERIT_THINKING_CHOICE ? undefined : choice;
+}
+async function chooseOverrideScope(ctx, agent) {
+    const d = discoverAgentsAll(ctx.cwd);
+    if (agent.override?.scope) {
+        return agent.source === "project" && agent.override.scope === "user" && d.projectSettingsPath ? "project" : agent.override.scope;
+    }
+    if (!d.projectSettingsPath || !ctx.hasUI)
+        return "user";
+    const choice = await ctx.ui.select(`Save subagent override for ${agent.name}`, ["user", "project"]);
+    return choice === "user" || choice === "project" ? choice : undefined;
+}
+function persistSettingsField(ctx, agent, scope, field, value) {
+    const base = agent.override?.base ?? buildBuiltinBase(agent);
+    const shadowsLowerScope = scope === "project" && agent.override?.fieldScopes?.[field]?.includes("user") === true;
+    if (shadowsLowerScope && (value === undefined || value === base[field])) {
+        const filePath = field === "model"
+            ? mergeBuiltinAgentOverride(ctx.cwd, agent.name, scope, { model: value ?? base.model ?? false })
+            : field === "thinking"
+                ? mergeBuiltinAgentOverride(ctx.cwd, agent.name, scope, { thinking: value ?? (base.thinking === false ? "off" : base.thinking) ?? false })
+                : mergeBuiltinAgentOverride(ctx.cwd, agent.name, scope, { systemPrompt: value ?? base.systemPrompt });
+        return {
+            filePath,
+            overridden: true,
+        };
+    }
+    if (value === undefined || value === base[field]) {
+        return {
+            filePath: removeBuiltinAgentOverrideFields(ctx.cwd, agent.name, scope, [field]).path,
+            overridden: false,
+        };
+    }
+    return {
+        filePath: mergeBuiltinAgentOverride(ctx.cwd, agent.name, scope, { [field]: value }),
+        overridden: true,
+    };
+}
+async function saveAgentModel(ctx, agent, selectedModel) {
+    if (savesThroughSettings(agent, "model")) {
+        const scope = await chooseOverrideScope(ctx, agent);
+        if (!scope)
+            return null;
+        const { filePath, overridden } = persistSettingsField(ctx, agent, scope, "model", selectedModel);
+        return overridden
+            ? `Saved ${scope} settings override for '${agent.name}' with model '${selectedModel}' in ${filePath}.`
+            : `Cleared model settings override for '${agent.name}' in ${filePath}.`;
+    }
+    const readOnlyMessage = readOnlyAgentMessage(agent, "model");
+    if (readOnlyMessage)
+        return readOnlyMessage;
+    const updated = editableAgentConfig(agent);
+    if (selectedModel === undefined)
+        delete updated.model;
+    else
+        updated.model = selectedModel;
+    fs.writeFileSync(updated.filePath, serializeAgent(updated, {
+        preserveFrontmatterFields: preservedAgentFrontmatterFields(agent, { model: selectedModel }),
+    }), "utf-8");
+    return selectedModel
+        ? `Updated '${agent.name}' model to '${selectedModel}' in ${updated.filePath}.`
+        : `Cleared '${agent.name}' model in ${updated.filePath}.`;
+}
+async function saveAgentThinking(ctx, agent, selectedThinking) {
+    if (savesThroughSettings(agent, "thinking")) {
+        const scope = await chooseOverrideScope(ctx, agent);
+        if (!scope)
+            return null;
+        const { filePath, overridden } = persistSettingsField(ctx, agent, scope, "thinking", selectedThinking);
+        return overridden
+            ? `Saved ${scope} settings override for '${agent.name}' with thinking '${selectedThinking}' in ${filePath}.`
+            : `Cleared thinking settings override for '${agent.name}' in ${filePath}.`;
+    }
+    const readOnlyMessage = readOnlyAgentMessage(agent, "thinking");
+    if (readOnlyMessage)
+        return readOnlyMessage;
+    const updated = editableAgentConfig(agent);
+    if (selectedThinking === undefined)
+        delete updated.thinking;
+    else
+        updated.thinking = selectedThinking;
+    fs.writeFileSync(updated.filePath, serializeAgent(updated, {
+        preserveFrontmatterFields: preservedAgentFrontmatterFields(agent, { thinking: selectedThinking }),
+    }), "utf-8");
+    return selectedThinking
+        ? `Updated '${agent.name}' thinking to '${selectedThinking}' in ${updated.filePath}.`
+        : `Cleared '${agent.name}' thinking in ${updated.filePath}.`;
+}
+/** Compact one-line summary shown in the interactive picker (no full system prompt dump). */
+function metadataSummary(agent) {
+    return [
+        `Source: ${agent.source}`,
+        `Model: ${agent.model ?? "default / inherit"}`,
+        `Thinking: ${agent.thinking === false ? "off" : agent.thinking ?? "default / inherit"}`,
+    ].join(" · ");
+}
+async function saveAgentSystemPrompt(ctx, agent, systemPrompt) {
+    const nextPrompt = systemPrompt.replace(/\s+$/, "");
+    if (savesThroughSettings(agent, "systemPrompt")) {
+        const scope = await chooseOverrideScope(ctx, agent);
+        if (!scope)
+            return null;
+        const { filePath, overridden } = persistSettingsField(ctx, agent, scope, "systemPrompt", nextPrompt);
+        return overridden
+            ? `Saved ${scope} settings override for '${agent.name}' system prompt in ${filePath}.`
+            : `Cleared system prompt settings override for '${agent.name}' in ${filePath}.`;
+    }
+    const readOnlyMessage = readOnlyAgentMessage(agent, "systemPrompt");
+    if (readOnlyMessage)
+        return readOnlyMessage;
+    const updated = { ...editableAgentConfig(agent), systemPrompt: nextPrompt };
+    fs.writeFileSync(updated.filePath, serializeAgent(updated, {
+        preserveFrontmatterFields: preservedAgentFrontmatterFields(agent, { systemPrompt: nextPrompt }),
+    }), "utf-8");
+    return `Updated '${agent.name}' system prompt in ${updated.filePath}.`;
+}
+async function editSystemPrompt(ctx, agent) {
+    const saveThroughSettings = savesThroughSettings(agent, "systemPrompt");
+    if (!saveThroughSettings) {
+        const readOnlyMessage = readOnlyAgentMessage(agent, "systemPrompt");
+        if (readOnlyMessage)
+            return readOnlyMessage;
+    }
+    const edited = await ctx.ui.editor(`Edit '${agent.name}' system prompt`, agent.systemPrompt ?? "");
+    if (edited === undefined)
+        return null;
+    const projectOwnsLowerScopeOverride = agent.source === "project" && agent.override?.scope === "user" && discoverAgentsAll(ctx.cwd).projectSettingsPath;
+    if (edited.replace(/\s+$/, "") === (agent.systemPrompt ?? "").replace(/\s+$/, "") && !(saveThroughSettings && projectOwnsLowerScopeOverride)) {
+        return `System prompt for '${agent.name}' left unchanged.`;
+    }
+    return saveAgentSystemPrompt(ctx, agent, edited);
+}
+export async function openSubagentsAdmin(pi, ctx, args = "") {
+    const selection = await selectAgent(pi, ctx, args);
+    if (selection.kind === "cancelled")
+        return;
+    if (selection.kind === "ambiguous") {
+        sendAdminMessage(pi, `Subagent '${selection.requestedName}' is ambiguous. Choose a scope in interactive mode:\n${selection.matches.map((agent) => `- ${agent.source}: ${agent.filePath}`).join("\n")}`);
+        return;
+    }
+    if (selection.kind === "not-found") {
+        const text = selection.requestedName
+            ? `Subagent '${selection.requestedName}' not found.\n\nAvailable subagents:\n${selection.agents.map((agent) => `- ${agent.name} (${agent.source})`).join("\n") || "- (none)"}`
+            : `Available subagents:\n${selection.agents.map((agent) => `- ${agent.name} (${agent.source})`).join("\n") || "- (none)"}`;
+        sendAdminMessage(pi, text);
+        return;
+    }
+    const agent = selection.agent;
+    if (!ctx.hasUI) {
+        // Non-interactive (tool/headless): emit full metadata as the inspection result.
+        sendAdminMessage(pi, metadataFor(agent));
+        return;
+    }
+    const requestedAction = args.trim().split(/\s+/)[1]?.toLowerCase();
+    let action;
+    if (requestedAction === "model")
+        action = "Change model";
+    else if (requestedAction === "thinking")
+        action = "Change thinking level";
+    else if (requestedAction === "prompt" || requestedAction === "system-prompt" || requestedAction === "edit")
+        action = "Edit system prompt";
+    else if (requestedAction === "details" || requestedAction === "info")
+        action = "Show details";
+    if (!action) {
+        action = await ctx.ui.select(`Administer ${agent.name}\n${metadataSummary(agent)}`, ["Change model", "Change thinking level", "Edit system prompt", "Show details", "Done"]);
+    }
+    try {
+        if (action === "Change model") {
+            const selectedModel = await chooseModel(ctx, agent);
+            if (selectedModel === null)
+                return;
+            const message = await saveAgentModel(ctx, agent, selectedModel);
+            if (message === null)
+                return;
+            ctx.ui.notify(message, "info");
+            sendAdminMessage(pi, message);
+        }
+        else if (action === "Change thinking level") {
+            const selectedThinking = await chooseThinking(ctx, agent);
+            if (selectedThinking === null)
+                return;
+            const message = await saveAgentThinking(ctx, agent, selectedThinking);
+            if (message === null)
+                return;
+            ctx.ui.notify(message, "info");
+            sendAdminMessage(pi, message);
+        }
+        else if (action === "Edit system prompt") {
+            const message = await editSystemPrompt(ctx, agent);
+            if (message === null)
+                return;
+            ctx.ui.notify(message, "info");
+            sendAdminMessage(pi, message);
+        }
+        else if (action === "Show details") {
+            // Full metadata is now opt-in (previously always posted to the thread).
+            sendAdminMessage(pi, metadataFor(agent));
+        }
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.ui.notify(message, "error");
+        sendAdminMessage(pi, `Failed to update '${agent.name}': ${message}`);
+    }
+}
+//# sourceMappingURL=subagents-admin.js.map

@@ -33,6 +33,9 @@ const messages = [
 ];
 const innerWidthOf = width => width;
 async function check(browser, base, width, language) {
+    const fixtureNow = Date.now();
+    running.generatedAt = fixtureNow; running.runs[0].startedAt = fixtureNow - 65000;
+    finished.runs[0].startedAt = fixtureNow - 65000; finished.runs[0].endedAt = fixtureNow - 1000;
     const en = language === 'en';
     const context = await browser.newContext({ viewport: { width, height: 900 }, locale: language });
     const page = await context.newPage(), errors = [], commands = [];

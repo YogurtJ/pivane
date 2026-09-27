@@ -1,0 +1,667 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { safeTerminalText, truncateDisplayText } from "../../shared/display-text.js";
+import { formatDuration, formatModelThinking, formatTokens, shortenPath } from "../../shared/formatters.js";
+import { formatActivityLabel } from "../../shared/status-format.js";
+import { DIRS, } from "../../shared/types.js";
+import { readStatus } from "../../shared/utils.js";
+import { formatNestedRunStatusLines } from "../shared/nested-render.js";
+import { contextModeLabel, summarizeContextModes } from "../shared/context-mode.js";
+import { formatAsyncRunOutputPath, formatAsyncRunProgressLabel, listAsyncRuns } from "./async-status.js";
+import { isTrustedRecordedSessionFile } from "../../shared/session-file-trust.js";
+const DEFAULT_TRANSCRIPT_LINES = 80;
+const MAX_TRANSCRIPT_LINES = 500;
+const TRANSCRIPT_TAIL_BYTES = 256 * 1024;
+const MAX_TRANSCRIPT_LINE_CHARS = 2000;
+const MAX_TRANSCRIPT_BODY_BYTES = 32 * 1024;
+const TRANSCRIPT_LINE_OMISSION = "… [content omitted]";
+const TRANSCRIPT_BODY_OMISSION = "  … [earlier lines omitted]";
+function transcriptLineLimit(value) {
+    if (value === undefined)
+        return DEFAULT_TRANSCRIPT_LINES;
+    if (!Number.isFinite(value))
+        return DEFAULT_TRANSCRIPT_LINES;
+    return Math.max(1, Math.min(MAX_TRANSCRIPT_LINES, Math.trunc(value)));
+}
+function uniqueStrings(values) {
+    const seen = new Set();
+    const result = [];
+    for (const value of values) {
+        if (!value || seen.has(value))
+            continue;
+        seen.add(value);
+        result.push(value);
+    }
+    return result;
+}
+function fleetChildDisplayName(child, fallback = "subagent") {
+    return child.sessionName?.trim() || child.agent || fallback;
+}
+function fleetStepDisplayName(step) {
+    return step.sessionName?.trim() || (step.label ? `${step.label} (${step.agent})` : step.agent);
+}
+function resolveMaybeRelative(asyncDir, filePath) {
+    if (!filePath)
+        return undefined;
+    return path.resolve(asyncDir, filePath);
+}
+function pathWithin(base, candidate) {
+    const resolvedBase = path.resolve(base);
+    const resolvedCandidate = path.resolve(candidate);
+    return resolvedCandidate === resolvedBase || resolvedCandidate.startsWith(`${resolvedBase}${path.sep}`);
+}
+function getErrorMessage(error) {
+    return error instanceof Error ? error.message : String(error);
+}
+function isNotFoundError(error) {
+    return typeof error === "object"
+        && error !== null
+        && "code" in error
+        && error.code === "ENOENT";
+}
+function readTextTail(filePath, maxLines) {
+    let stat;
+    try {
+        stat = fs.statSync(filePath);
+    }
+    catch (error) {
+        if (isNotFoundError(error))
+            return { path: filePath, lines: [], truncated: false };
+        return { path: filePath, lines: [], truncated: false, error: getErrorMessage(error) };
+    }
+    if (stat.size === 0)
+        return { path: filePath, lines: [], truncated: false };
+    let fd;
+    try {
+        const bytesToRead = Math.min(stat.size, TRANSCRIPT_TAIL_BYTES);
+        const start = stat.size - bytesToRead;
+        const buffer = Buffer.alloc(bytesToRead);
+        fd = fs.openSync(filePath, "r");
+        const bytesRead = fs.readSync(fd, buffer, 0, bytesToRead, start);
+        const content = buffer.subarray(0, bytesRead).toString("utf-8");
+        let lines = content.split(/\r?\n/);
+        if (start > 0 && lines.length > 0)
+            lines = lines.slice(1);
+        if (lines.at(-1) === "")
+            lines = lines.slice(0, -1);
+        return { path: filePath, lines: lines.slice(-maxLines), truncated: start > 0 || lines.length > maxLines };
+    }
+    catch (error) {
+        return { path: filePath, lines: [], truncated: false, error: getErrorMessage(error) };
+    }
+    finally {
+        if (fd !== undefined)
+            fs.closeSync(fd);
+    }
+}
+function readContainedTextTail(filePath, maxLines, trustedRoots, label, trustedFiles = [], trustedFileRoot) {
+    if (trustedRoots.length === 0 && (!trustedFileRoot || trustedFiles.length === 0))
+        return { path: filePath, lines: [], truncated: false, error: `Refusing to read ${label} transcript path without a trusted root: ${filePath}` };
+    const resolvedPath = path.resolve(filePath);
+    const recordedCandidate = trustedFileRoot
+        && pathWithin(trustedFileRoot, resolvedPath)
+        && trustedFiles.some((file) => path.resolve(file) === resolvedPath);
+    if (!trustedRoots.some((root) => pathWithin(root, resolvedPath)) && !recordedCandidate) {
+        return { path: filePath, lines: [], truncated: false, error: `Refusing to read ${label} transcript path outside trusted roots: ${filePath}` };
+    }
+    let lstat;
+    try {
+        lstat = fs.lstatSync(resolvedPath);
+    }
+    catch (error) {
+        if (isNotFoundError(error))
+            return { path: filePath, lines: [], truncated: false };
+        return { path: filePath, lines: [], truncated: false, error: getErrorMessage(error) };
+    }
+    if (lstat.isSymbolicLink())
+        return { path: filePath, lines: [], truncated: false, error: `Refusing to read symlink ${label} transcript path: ${filePath}` };
+    if (!lstat.isFile())
+        return { path: filePath, lines: [], truncated: false, error: `Refusing to read non-file ${label} transcript path: ${filePath}` };
+    let realPath;
+    let realRoots;
+    try {
+        realPath = fs.realpathSync(resolvedPath);
+        realRoots = trustedRoots.filter((root) => fs.existsSync(root)).map((root) => fs.realpathSync(root));
+    }
+    catch (error) {
+        return { path: filePath, lines: [], truncated: false, error: getErrorMessage(error) };
+    }
+    if (!realRoots.some((root) => pathWithin(root, realPath)) && !isTrustedRecordedSessionFile(realPath, trustedFiles, trustedFileRoot)) {
+        return { path: filePath, lines: [], truncated: false, error: `Refusing to read ${label} transcript path outside trusted roots: ${filePath}` };
+    }
+    return readTextTail(resolvedPath, maxLines);
+}
+function stringifyJsonPreview(value, maxLength = 240) {
+    let raw;
+    if (typeof value === "string")
+        raw = value;
+    else
+        raw = JSON.stringify(value);
+    return raw.length > maxLength ? `${raw.slice(0, maxLength)}…` : raw;
+}
+function sessionMessageParts(record) {
+    if (!record || typeof record !== "object")
+        return [];
+    const outer = record;
+    const message = outer.message && typeof outer.message === "object" ? outer.message : outer;
+    const role = typeof message.role === "string" ? message.role : undefined;
+    if (!role)
+        return [];
+    const content = message.content;
+    if (typeof content === "string")
+        return content.trim() ? [{ role, kind: "text", text: content }] : [];
+    if (!Array.isArray(content))
+        return [];
+    const parts = [];
+    for (const part of content) {
+        if (!part || typeof part !== "object")
+            continue;
+        const entry = part;
+        if (typeof entry.text === "string") {
+            if (entry.text.trim())
+                parts.push({ role, kind: "text", text: entry.text });
+            continue;
+        }
+        if (entry.type === "toolCall" || entry.type === "tool_call") {
+            const name = typeof entry.name === "string" ? entry.name : typeof entry.toolName === "string" ? entry.toolName : "tool";
+            parts.push({ role, kind: "toolCall", name, text: `[tool: ${name}${entry.args === undefined ? "" : ` ${stringifyJsonPreview(entry.args)}`}]` });
+            continue;
+        }
+        if (entry.type === "toolResult" || entry.type === "tool_result") {
+            const name = typeof entry.name === "string" ? entry.name : typeof entry.toolName === "string" ? entry.toolName : undefined;
+            parts.push({ role, kind: "toolResult", ...(name ? { name } : {}), ...(entry.isError === true ? { isError: true } : {}), text: `[tool result${entry.result === undefined ? "" : `: ${stringifyJsonPreview(entry.result)}`}]` });
+            continue;
+        }
+        if (entry.content !== undefined) {
+            const preview = stringifyJsonPreview(entry.content);
+            if (preview.trim())
+                parts.push({ role, kind: "text", text: preview });
+        }
+    }
+    return parts;
+}
+function sessionMessageLine(record) {
+    const parts = sessionMessageParts(record);
+    if (parts.length === 0)
+        return undefined;
+    const text = parts.map((part) => part.text).join("\n").trim();
+    if (!text)
+        return undefined;
+    return `${parts[0].role}: ${text}`;
+}
+/** Structured session tail: parsed content parts, newest last, bounded by
+ *  maxMessages. Same trusted-root containment as the prose transcript tail. */
+export function readSessionMessagesTail(sessionFile, maxMessages, trustedRoots, trustedFiles = [], trustedFileRoot) {
+    const tail = readContainedTextTail(sessionFile, Math.max(maxMessages * 4, maxMessages), trustedRoots, "session", trustedFiles, trustedFileRoot);
+    const warnings = [];
+    if (tail.error)
+        warnings.push(`Session read failed for ${sessionFile}: ${tail.error}`);
+    const parsedMessages = [];
+    let malformed = 0;
+    let recordIndex = 0;
+    for (const line of tail.lines) {
+        if (!line.trim())
+            continue;
+        try {
+            const parsed = JSON.parse(line);
+            for (const part of sessionMessageParts(parsed))
+                parsedMessages.push({ ...part, recordIndex });
+        }
+        catch {
+            malformed++;
+        }
+        recordIndex++;
+    }
+    if (malformed > 0)
+        warnings.push(`Skipped ${malformed} malformed session tail line${malformed === 1 ? "" : "s"}.`);
+    const messages = parsedMessages.slice(-maxMessages);
+    return { messages, warnings, truncated: tail.truncated || parsedMessages.length > messages.length };
+}
+function readSessionTranscriptTail(sessionFile, maxLines, trustedRoots, trustedFiles = [], trustedFileRoot) {
+    const tail = readContainedTextTail(sessionFile, Math.max(maxLines * 4, maxLines), trustedRoots, "session", trustedFiles, trustedFileRoot);
+    const warnings = [];
+    if (tail.error)
+        warnings.push(`Session read failed for ${sessionFile}: ${tail.error}`);
+    const lines = [];
+    let malformed = 0;
+    for (const line of tail.lines) {
+        if (!line.trim())
+            continue;
+        try {
+            const parsed = JSON.parse(line);
+            const messageLine = sessionMessageLine(parsed);
+            if (messageLine)
+                lines.push(...messageLine.split(/\r?\n/));
+        }
+        catch {
+            malformed++;
+        }
+    }
+    if (malformed > 0)
+        warnings.push(`Skipped ${malformed} malformed session tail line${malformed === 1 ? "" : "s"}.`);
+    return { lines: lines.slice(-maxLines), warnings };
+}
+function formatActivityFacts(input) {
+    const facts = [];
+    if (input.currentTool && input.currentToolStartedAt !== undefined)
+        facts.push(`tool ${input.currentTool} ${formatDuration(Math.max(0, Date.now() - input.currentToolStartedAt))}`);
+    else if (input.currentTool)
+        facts.push(`tool ${input.currentTool}`);
+    if (input.currentPath)
+        facts.push(shortenPath(input.currentPath));
+    if (input.turnCount !== undefined)
+        facts.push(`${input.turnCount} turns`);
+    if (input.toolCount !== undefined)
+        facts.push(`${input.toolCount} tools`);
+    if (input.tokens?.total)
+        facts.push(`${formatTokens(input.tokens.total)} tok`);
+    const activity = formatActivityLabel(input.lastActivityAt, input.activityState);
+    return activity || facts.length ? [activity, ...facts].filter(Boolean).join(" | ") : undefined;
+}
+function foregroundModeName(control) {
+    const currentDisplayName = control.sessionName?.trim() || control.currentAgent;
+    if (control.mode === "single" && currentDisplayName)
+        return currentDisplayName;
+    return control.mode;
+}
+function formatForegroundFleetLines(controls) {
+    if (controls.length === 0)
+        return [];
+    const lines = ["Foreground runs:"];
+    const ordered = [...controls].sort((left, right) => right.updatedAt - left.updatedAt);
+    for (const control of ordered) {
+        const activity = formatActivityFacts({
+            activityState: control.currentActivityState,
+            lastActivityAt: control.lastActivityAt,
+            currentTool: control.currentTool,
+            currentToolStartedAt: control.currentToolStartedAt,
+            currentPath: control.currentPath,
+            turnCount: control.turnCount,
+            toolCount: control.toolCount,
+            ...(control.tokens !== undefined ? { tokens: { total: control.tokens } } : {}),
+        });
+        const currentDisplayName = control.sessionName?.trim() || control.currentAgent;
+        const current = currentDisplayName ? ` | ${currentDisplayName}${control.currentIndex !== undefined ? ` #${control.currentIndex}` : ""}` : "";
+        lines.push(`- ${control.runId} | running | ${foregroundModeName(control)}${current}${activity ? ` | ${activity}` : ""}`);
+        lines.push(`  status: subagent({ action: "status", id: "${control.runId}" })`);
+        lines.push("  transcript: live in the expanded foreground result; persisted session transcript appears after completion when sessions are enabled.");
+        lines.push(...formatNestedRunStatusLines(control.nestedChildren, { indent: "  ", commandHints: true, maxLines: 12 }));
+    }
+    return lines;
+}
+function formatDetachedForegroundFleetLines(runs) {
+    if (runs.length === 0)
+        return [];
+    const lines = ["Detached foreground runs:"];
+    const ordered = [...runs].sort((left, right) => right.updatedAt - left.updatedAt);
+    for (const run of ordered) {
+        const detachedChildren = run.children.filter((child) => child.status === "detached");
+        const childSummary = detachedChildren.map((child) => `${fleetChildDisplayName(child)} #${child.index}`).join(", ");
+        lines.push(`- ${run.runId} | detached | ${run.mode}${childSummary ? ` | ${childSummary}` : ""}`);
+        lines.push(`  status: subagent({ action: "status", id: "${run.runId}" })`);
+        lines.push(`  recovery: reply to the supervisor request first, then wait with bg_wait({ id: "${run.runId}" }); do not resume or launch a replacement while any child remains detached.`);
+    }
+    return lines;
+}
+function externalCliStepFacts(step, now) {
+    if (step.runner?.type !== "external-cli")
+        return undefined;
+    const process = step.externalProcess;
+    const elapsed = process
+        ? process.durationMs ?? Math.max(0, (process.endedAt ?? now) - process.startedAt)
+        : undefined;
+    return `external-cli${elapsed !== undefined ? ` · ${formatDuration(elapsed)}` : ""}`;
+}
+function formatAsyncFleetLines(runs, now = Date.now()) {
+    if (runs.length === 0)
+        return [];
+    const lines = ["Async runs:"];
+    for (const run of runs) {
+        const progress = formatAsyncRunProgressLabel(run);
+        const activity = formatActivityFacts(run);
+        const cwd = run.cwd ? shortenPath(run.cwd) : shortenPath(run.asyncDir);
+        const pending = run.pendingAppends ? ` | ${run.pendingAppends} pending append${run.pendingAppends === 1 ? "" : "s"}` : "";
+        const runContext = contextModeLabel(run.context);
+        lines.push(`- ${run.id} | ${run.state}${activity ? ` | ${activity}` : ""} | ${run.mode}${runContext ? ` ${runContext}` : ""} | ${progress}${pending} | ${cwd}`);
+        lines.push(`  status: subagent({ action: "status", id: "${run.id}" })`);
+        lines.push(`  transcript: subagent({ action: "status", id: "${run.id}", view: "transcript" })`);
+        for (const step of run.steps) {
+            const display = fleetStepDisplayName(step);
+            const stepContext = contextModeLabel(step.context);
+            const phase = step.phase ? `[${step.phase}] ` : "";
+            const stepActivity = formatActivityFacts(step);
+            const modelThinking = formatModelThinking(step.model, step.thinking);
+            const parts = [`${step.index}. ${phase}${display}${stepContext ? ` ${stepContext}` : ""}`, step.status, externalCliStepFacts(step, now), stepActivity, modelThinking].filter(Boolean);
+            lines.push(`  ${parts.join(" | ")}`);
+            const output = path.join(run.asyncDir, `output-${step.index}.log`);
+            if (fs.existsSync(output))
+                lines.push(`    output: ${shortenPath(output)}`);
+            if (step.sessionFile)
+                lines.push(`    session: ${shortenPath(step.sessionFile)}`);
+            if (step.status === "running" || step.recentOutput?.length || fs.existsSync(output)) {
+                lines.push(`    transcript: subagent({ action: "status", id: "${run.id}", index: ${step.index}, view: "transcript" })`);
+            }
+            lines.push(...formatNestedRunStatusLines(step.children, { indent: "    ", commandHints: true, maxLines: 12 }));
+        }
+        const attached = new Set(run.steps.flatMap((step) => step.children?.map((child) => child.id) ?? []));
+        const unattached = run.nestedChildren?.filter((child) => !attached.has(child.id)) ?? [];
+        lines.push(...formatNestedRunStatusLines(unattached, { indent: "  ", commandHints: true, maxLines: 12 }));
+        if (run.error)
+            lines.push(`  error: ${run.error}`);
+        for (const warning of run.nestedWarnings ?? [])
+            lines.push(`  warning: ${warning}`);
+        const outputPath = formatAsyncRunOutputPath(run);
+        if (outputPath)
+            lines.push(`  output: ${shortenPath(outputPath)}`);
+        if (run.sessionFile)
+            lines.push(`  session: ${shortenPath(run.sessionFile)}`);
+    }
+    return lines;
+}
+export function inspectSubagentFleet(_params, deps = {}) {
+    if (deps.childSafe) {
+        return {
+            content: [{ type: "text", text: "Child-safe subagent fleet view is unavailable without an explicit run id. Use subagent({ action: \"status\", id: \"...\" }) for the delegated run you can see." }],
+            isError: true,
+            details: { mode: "management", results: [] },
+        };
+    }
+    let asyncRuns;
+    try {
+        asyncRuns = listAsyncRuns(deps.asyncDirRoot ?? DIRS.async, {
+            states: ["queued", "running"],
+            sessionId: deps.state?.currentSessionId ?? undefined,
+            resultsDir: deps.resultsDir ?? DIRS.results,
+            kill: deps.kill,
+            now: deps.now,
+        });
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { content: [{ type: "text", text: message }], isError: true, details: { mode: "management", results: [] } };
+    }
+    const foregroundControls = deps.state ? [...deps.state.foregroundControls.values()] : [];
+    const activeForegroundIds = new Set(foregroundControls.map((control) => control.runId));
+    const detachedForegroundRuns = deps.state?.foregroundRuns
+        ? [...deps.state.foregroundRuns.values()].filter((run) => run.sessionId === deps.state?.currentSessionId && !activeForegroundIds.has(run.runId) && run.children.some((child) => child.status === "detached"))
+        : [];
+    const total = foregroundControls.length + detachedForegroundRuns.length + asyncRuns.length;
+    if (total === 0) {
+        return {
+            content: [{ type: "text", text: "No active subagent fleet. Background runs that already finished are available through completion notifications or subagent({ action: \"status\", id: \"...\" })." }],
+            details: { mode: "management", results: [] },
+        };
+    }
+    const lines = [`Subagent fleet: ${total} tracked`, ""];
+    const foregroundLines = formatForegroundFleetLines(foregroundControls);
+    if (foregroundLines.length)
+        lines.push(...foregroundLines, "");
+    const detachedForegroundLines = formatDetachedForegroundFleetLines(detachedForegroundRuns);
+    if (detachedForegroundLines.length)
+        lines.push(...detachedForegroundLines, "");
+    const asyncLines = formatAsyncFleetLines(asyncRuns, deps.now?.() ?? Date.now());
+    if (asyncLines.length)
+        lines.push(...asyncLines, "");
+    lines.push("Commands:");
+    lines.push("  Refresh fleet: subagent({ action: \"status\", view: \"fleet\" })");
+    lines.push("  Tail run transcript: subagent({ action: \"status\", id: \"<run-id>\", view: \"transcript\" })");
+    lines.push("  Tail child transcript: subagent({ action: \"status\", id: \"<run-id>\", index: 0, view: \"transcript\" })");
+    return { content: [{ type: "text", text: lines.join("\n").trimEnd() }], details: { mode: "management", results: [] } };
+}
+function validateTranscriptIndex(index, steps) {
+    if (index === undefined)
+        return undefined;
+    if (!Number.isInteger(index))
+        throw new Error("Transcript index must be an integer.");
+    if (index < 0 || index >= steps.length)
+        throw new Error(`Transcript index ${index} is out of range for ${steps.length} child step${steps.length === 1 ? "" : "s"}.`);
+    return index;
+}
+function selectTranscriptStep(status, options) {
+    const steps = status.steps ?? [];
+    let selectedIndex = validateTranscriptIndex(options.index, steps);
+    if (selectedIndex === undefined) {
+        if (status.state === "running" && typeof status.currentStep === "number" && status.currentStep >= 0 && status.currentStep < steps.length) {
+            selectedIndex = status.currentStep;
+        }
+        else if (steps.length === 1) {
+            selectedIndex = 0;
+        }
+    }
+    const step = selectedIndex !== undefined ? steps[selectedIndex] : undefined;
+    const hint = options.index === undefined && steps.length > 1
+        ? `Tip: pass index to inspect a specific child transcript (${steps.map((candidate, index) => `${index}=${fleetChildDisplayName(candidate)}`).join(", ")}).`
+        : undefined;
+    return { index: selectedIndex, step, hint };
+}
+function stepStateLine(mode, index, step) {
+    if (index === undefined || !step)
+        return undefined;
+    const modelThinking = formatModelThinking(step.model, step.thinking);
+    const context = contextModeLabel(step.context);
+    const parts = [
+        `${mode === "parallel" ? "Agent" : "Step"}: ${index} (${fleetChildDisplayName(step)})${context ? ` ${context}` : ""}`,
+        step.status,
+        formatActivityFacts(step),
+        modelThinking,
+        step.error ? `error: ${step.error}` : undefined,
+    ].filter(Boolean);
+    return parts.join(" | ");
+}
+function appendKnownArtifacts(lines, input) {
+    const artifacts = [];
+    for (const outputPath of input.outputPaths)
+        artifacts.push(`Output: ${outputPath}`);
+    if (input.sessionFile)
+        artifacts.push(`Session: ${input.sessionFile}`);
+    if (input.eventsPath)
+        artifacts.push(`Events: ${input.eventsPath}`);
+    if (input.logPath)
+        artifacts.push(`Log: ${input.logPath}`);
+    if (input.resultPath)
+        artifacts.push(`Result: ${input.resultPath}`);
+    if (!artifacts.length)
+        return;
+    lines.push("Artifacts:");
+    for (const artifact of artifacts)
+        lines.push(`  ${artifact}`);
+}
+/**
+ * Sanitizes each assembled line independently.
+ *
+ * Sanitizing the joined response would let a single binary fragment in child
+ * output collapse the whole transcript, including run state, artifact paths, and
+ * warnings, into the binary placeholder. Per-line sanitization keeps that damage
+ * to the offending line.
+ */
+function safeTranscriptLines(lines) {
+    return lines.map((line) => safeTerminalText(line)).join("\n");
+}
+function appendTranscriptBody(lines, sourceLabel, sourceLines, truncated) {
+    lines.push(`${sourceLabel}${truncated ? " (tail truncated)" : ""}:`);
+    if (sourceLines.length === 0) {
+        lines.push("  (no transcript lines available yet)");
+        return;
+    }
+    // Bound the rendered body, not the raw input: terminal escaping can expand it.
+    // Keep line prefixes (roles/tool names), then prefer whole recent lines. The
+    // byte budget includes indentation, separators and omission markers, but not
+    // the source label, run metadata, warnings or artifact paths above the body.
+    const body = [];
+    let bytes = 0;
+    for (let index = sourceLines.length - 1; index >= 0; index--) {
+        // Preserve assembled-line binary detection (including indentation). A
+        // binary placeholder replaces the whole line and must not be reindented.
+        const safe = safeTerminalText(`  ${sourceLines[index]}`);
+        const lineLimit = MAX_TRANSCRIPT_LINE_CHARS + 2;
+        const line = safe.length <= lineLimit
+            ? safe
+            : truncateDisplayText(safe, lineLimit - TRANSCRIPT_LINE_OMISSION.length) + TRANSCRIPT_LINE_OMISSION;
+        const size = Buffer.byteLength(line) + 1;
+        if (bytes + size > MAX_TRANSCRIPT_BODY_BYTES) {
+            const markerBytes = Buffer.byteLength(TRANSCRIPT_BODY_OMISSION) + 1;
+            while (bytes + markerBytes > MAX_TRANSCRIPT_BODY_BYTES)
+                bytes -= Buffer.byteLength(body.pop()) + 1;
+            body.push(TRANSCRIPT_BODY_OMISSION);
+            break;
+        }
+        body.push(line);
+        bytes += size;
+    }
+    lines.push(...body.reverse());
+}
+function resolveWorkflowTranscriptChild(status, asyncDir, options) {
+    if (status.mode !== "workflow" || options.index === undefined)
+        return undefined;
+    const step = status.steps?.[options.index];
+    if (step?.async !== true || typeof step.runId !== "string" || !/^[A-Za-z0-9_-]+$/.test(step.runId) || step.runId === status.runId)
+        return undefined;
+    try {
+        const asyncRoot = fs.realpathSync(path.dirname(asyncDir));
+        const childDir = path.join(asyncRoot, step.runId);
+        if (fs.realpathSync(childDir) !== childDir || fs.lstatSync(path.join(childDir, "status.json")).isSymbolicLink())
+            return undefined;
+        const childStatus = readStatus(childDir);
+        return childStatus?.runId === step.runId
+            && childStatus.parentWorkflowRunId === status.runId
+            && typeof step.workflowKey === "string" && step.workflowKey.length > 0
+            && childStatus.workflowKey === step.workflowKey
+            && typeof status.sessionId === "string" && status.sessionId.length > 0
+            && childStatus.sessionId === status.sessionId
+            ? { status: childStatus, asyncDir: childDir }
+            : undefined;
+    }
+    catch (error) {
+        if (isNotFoundError(error))
+            return undefined;
+        throw error;
+    }
+}
+export function formatAsyncRunTranscript(status, asyncDir, options = {}) {
+    const workflowChild = resolveWorkflowTranscriptChild(status, asyncDir, options);
+    if (workflowChild)
+        return formatAsyncRunTranscript(workflowChild.status, workflowChild.asyncDir, { ...options, index: undefined });
+    const lineLimit = transcriptLineLimit(options.lines);
+    const selected = selectTranscriptStep(status, options);
+    const stepOutputPath = selected.index !== undefined ? path.join(asyncDir, `output-${selected.index}.log`) : undefined;
+    const runOutputPath = resolveMaybeRelative(asyncDir, status.outputFile);
+    const logPath = path.join(asyncDir, `subagent-log-${status.runId}.md`);
+    const outputPaths = selected.index !== undefined
+        ? uniqueStrings([selected.step?.externalProcess?.finalOutputPath, stepOutputPath, runOutputPath && stepOutputPath && path.resolve(runOutputPath) === path.resolve(stepOutputPath) ? runOutputPath : undefined])
+        : uniqueStrings([runOutputPath]);
+    const sessionFile = selected.index !== undefined ? selected.step?.sessionFile : status.sessionFile;
+    const eventsPath = path.join(asyncDir, "events.jsonl");
+    // Synthesized output paths can name files that were never written. Keep the unfiltered paths
+    // below so a present-but-unreadable file still reports its read error.
+    const context = contextModeLabel(status.context ?? summarizeContextModes((status.steps ?? []).map((step) => step.context)));
+    const lines = [
+        `Run: ${status.runId}`,
+        `State: ${status.state}`,
+        `Mode: ${status.mode}${context ? ` ${context}` : ""}`,
+        stepStateLine(status.mode, selected.index, selected.step),
+        selected.hint,
+    ].filter((line) => Boolean(line));
+    appendKnownArtifacts(lines, { outputPaths: outputPaths.filter((outputPath) => fs.existsSync(outputPath)), sessionFile, eventsPath: fs.existsSync(eventsPath) ? eventsPath : undefined, logPath: fs.existsSync(logPath) ? logPath : undefined });
+    const warnings = [];
+    let transcriptLines = [];
+    let transcriptSource = "Transcript tail";
+    let truncated = false;
+    const externalProcess = selected.step?.runner?.type === "external-cli" ? selected.step.externalProcess : undefined;
+    const externalLogPaths = externalProcess ? [
+        { path: externalProcess.stderrPath, label: "External stderr tail" },
+        { path: externalProcess.stdoutPath, label: "External stdout tail" },
+    ] : [];
+    const runningExternal = selected.step?.status === "running" && externalProcess;
+    const sources = runningExternal
+        ? [...externalLogPaths, ...outputPaths.map((outputPath) => ({ path: outputPath, label: "Transcript tail" }))]
+        : [...outputPaths.map((outputPath) => ({ path: outputPath, label: "Transcript tail" })), ...externalLogPaths];
+    for (const source of sources) {
+        const outputPath = source.path;
+        const tail = readContainedTextTail(outputPath, lineLimit, [asyncDir], "output");
+        if (tail.error)
+            warnings.push(`Output read failed for ${tail.path}: ${tail.error}`);
+        if (!tail.lines.some((line) => line.trim().length > 0))
+            continue;
+        transcriptLines = tail.lines;
+        transcriptSource = `${source.label} from ${tail.path}`;
+        truncated = tail.truncated;
+        break;
+    }
+    if (transcriptLines.length === 0 && selected.step?.recentOutput?.length) {
+        transcriptLines = selected.step.recentOutput.slice(-lineLimit);
+        transcriptSource = "Recent output from status.json";
+    }
+    if (transcriptLines.length === 0 && sessionFile) {
+        const sessionTail = readSessionTranscriptTail(sessionFile, lineLimit, options.sessionRoots ?? [], options.trustedSessionFiles, options.trustedSessionFileRoot);
+        transcriptLines = sessionTail.lines;
+        warnings.push(...sessionTail.warnings);
+        if (transcriptLines.length > 0)
+            transcriptSource = `Session transcript tail from ${sessionFile}`;
+    }
+    if (warnings.length) {
+        lines.push("Warnings:");
+        for (const warning of warnings)
+            lines.push(`  ${warning}`);
+    }
+    appendTranscriptBody(lines, transcriptSource, transcriptLines, truncated);
+    return safeTranscriptLines(lines);
+}
+export function formatNestedRunTranscript(run, options = {}) {
+    if (run.asyncDir) {
+        const status = readStatus(run.asyncDir);
+        if (status)
+            return formatAsyncRunTranscript(status, run.asyncDir, options);
+    }
+    const lineLimit = transcriptLineLimit(options.lines);
+    const lines = [
+        `Nested run: ${run.id}`,
+        `State: ${run.state}`,
+        run.mode ? `Mode: ${run.mode}` : undefined,
+        run.sessionName?.trim() ? `Agent: ${run.sessionName.trim()}` : run.agent ? `Agent: ${run.agent}` : run.agents?.length ? `Agents: ${run.agents.join(", ")}` : undefined,
+    ].filter((line) => Boolean(line));
+    appendKnownArtifacts(lines, { outputPaths: [], sessionFile: run.sessionFile });
+    if (!run.sessionFile) {
+        appendTranscriptBody(lines, "Transcript tail", [], false);
+        return safeTranscriptLines(lines);
+    }
+    const sessionTail = readSessionTranscriptTail(run.sessionFile, lineLimit, options.sessionRoots ?? [], options.trustedSessionFiles, options.trustedSessionFileRoot);
+    if (sessionTail.warnings.length) {
+        lines.push("Warnings:");
+        for (const warning of sessionTail.warnings)
+            lines.push(`  ${warning}`);
+    }
+    appendTranscriptBody(lines, `Session transcript tail from ${run.sessionFile}`, sessionTail.lines, false);
+    return safeTranscriptLines(lines);
+}
+export function formatAsyncResultTranscript(data, resultPath, options = {}) {
+    const lineLimit = transcriptLineLimit(options.lines);
+    const runId = data.runId ?? data.id ?? path.basename(resultPath, ".json");
+    const children = Array.isArray(data.results)
+        ? data.results
+        : data.agent
+            ? [{ agent: data.agent, sessionName: undefined, output: data.output, summary: data.summary, sessionFile: data.sessionFile, state: data.state, success: data.success, exitCode: data.exitCode }]
+            : [];
+    let index = options.index;
+    if (index !== undefined && !Number.isInteger(index))
+        throw new Error("Transcript index must be an integer.");
+    if (index === undefined && children.length === 1)
+        index = 0;
+    if (index !== undefined && (index < 0 || index >= children.length))
+        throw new Error(`Transcript index ${index} is out of range for ${children.length} result child${children.length === 1 ? "" : "ren"}.`);
+    const child = index !== undefined ? children[index] : undefined;
+    const output = index !== undefined
+        ? child?.output ?? child?.summary ?? (children.length === 1 ? data.output ?? data.summary : undefined) ?? ""
+        : data.output ?? data.summary ?? "";
+    const transcriptLines = output.split(/\r?\n/).slice(-lineLimit);
+    const sessionFile = child?.sessionFile ?? data.sessionFile;
+    const lines = [
+        `Run: ${runId}`,
+        `State: ${data.state ?? (data.success ? "complete" : "failed")}`,
+        index !== undefined && child ? `Child: ${index} (${fleetChildDisplayName(child)})` : undefined,
+        index === undefined && children.length > 1 ? `Tip: pass index to inspect a specific child transcript (${children.map((candidate, childIndex) => `${childIndex}=${fleetChildDisplayName(candidate)}`).join(", ")}).` : undefined,
+    ].filter((line) => Boolean(line));
+    appendKnownArtifacts(lines, { outputPaths: [], sessionFile, resultPath });
+    appendTranscriptBody(lines, "Result transcript tail", transcriptLines.filter((line) => line.trim()), output.split(/\r?\n/).length > lineLimit);
+    return safeTranscriptLines(lines);
+}
+//# sourceMappingURL=fleet-view.js.map

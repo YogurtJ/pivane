@@ -1,0 +1,153 @@
+/**
+ * Module aliases for the detached async runner.
+ *
+ * The runner is a plain Node process started through jiti. The child hooks it
+ * loads import pi's host packages (`@earendil-works/pi-coding-agent`,
+ * `pi-agent-core`, `pi-ai`, `pi-tui`, `typebox`), which are peer packages of
+ * this extension and are not installed next to it. pi's own extension loader
+ * aliases those specifiers to the copies shipped inside the installed pi
+ * package; the parent computes the same map and hands it to the runner
+ * through `JITI_ALIAS`, so child sessions and hooks retain host API identity.
+ */
+import * as fs from "node:fs";
+import * as path from "node:path";
+export const JITI_ALIAS_ENV = "JITI_ALIAS";
+/** Specifiers the runner's import graph may use, with the package and export subpath each resolves to. */
+export const HOST_PEER_ALIASES = [
+    { specifier: "@earendil-works/pi-coding-agent", pkg: "@earendil-works/pi-coding-agent", subpath: "." },
+    { specifier: "@earendil-works/pi-agent-core", pkg: "@earendil-works/pi-agent-core", subpath: "." },
+    { specifier: "@earendil-works/pi-agent-core/node", pkg: "@earendil-works/pi-agent-core", subpath: "./node" },
+    { specifier: "@earendil-works/pi-tui", pkg: "@earendil-works/pi-tui", subpath: "." },
+    { specifier: "@earendil-works/pi-ai", pkg: "@earendil-works/pi-ai", subpath: "./compat" },
+    { specifier: "@earendil-works/pi-ai/compat", pkg: "@earendil-works/pi-ai", subpath: "./compat" },
+    { specifier: "@earendil-works/pi-ai/oauth", pkg: "@earendil-works/pi-ai", subpath: "./oauth" },
+    { specifier: "@earendil-works/pi-ai/providers/all", pkg: "@earendil-works/pi-ai", subpath: "./providers/all" },
+    { specifier: "typebox", pkg: "typebox", subpath: "." },
+    { specifier: "typebox/compile", pkg: "typebox", subpath: "./compile" },
+    { specifier: "typebox/value", pkg: "typebox", subpath: "./value" },
+];
+/** Public Pi manifests introduce chord in 0.85.0 (absent through 0.84.4). */
+const CHORD_PEER_ALIASES = [
+    { specifier: "@earendil-works/chord", pkg: "@earendil-works/chord", subpath: "." },
+    { specifier: "@earendil-works/chord/context", pkg: "@earendil-works/chord", subpath: "./context" },
+];
+function readManifest(packageDir) {
+    try {
+        return JSON.parse(fs.readFileSync(path.join(packageDir, "package.json"), "utf-8"));
+    }
+    catch {
+        return undefined;
+    }
+}
+const BLOCKED_EXPORT = Symbol("blocked export");
+/** Pick the import target of one exports entry (string, conditions object, or array of those). */
+function exportTarget(entry) {
+    if (typeof entry === "string")
+        return entry;
+    if (entry === null)
+        return BLOCKED_EXPORT;
+    if (Array.isArray(entry)) {
+        let blocked = entry.length === 0;
+        for (const candidate of entry) {
+            const target = exportTarget(candidate);
+            if (typeof target === "string")
+                return target;
+            if (target === BLOCKED_EXPORT)
+                blocked = true;
+        }
+        return blocked ? BLOCKED_EXPORT : undefined;
+    }
+    if (entry && typeof entry === "object") {
+        const conditions = entry;
+        for (const [condition, value] of Object.entries(conditions)) {
+            if (condition === "default" || condition === "import" || condition === "node" || condition === "node-addons" || condition === "module-sync") {
+                const target = exportTarget(value);
+                if (target)
+                    return target;
+            }
+        }
+    }
+    return undefined;
+}
+/** Resolve `subpath` of the package at `packageDir` through its `exports` map (with `*` patterns) or `main`. */
+export function resolvePackageSubpath(packageDir, subpath) {
+    const manifest = readManifest(packageDir);
+    if (!manifest)
+        return undefined;
+    const exportsField = manifest.exports;
+    if (exportsField !== undefined && exportsField !== null) {
+        const map = typeof exportsField === "string" || Array.isArray(exportsField) || (exportsField && typeof exportsField === "object" && !Object.keys(exportsField).some((key) => key.startsWith(".")))
+            ? { ".": exportsField }
+            : exportsField;
+        if (subpath in map) {
+            const exact = exportTarget(map[subpath]);
+            return typeof exact === "string" ? path.resolve(packageDir, exact) : undefined;
+        }
+        let best;
+        for (const [pattern, entry] of Object.entries(map)) {
+            const star = pattern.indexOf("*");
+            if (star === -1)
+                continue;
+            const prefix = pattern.slice(0, star);
+            const suffix = pattern.slice(star + 1);
+            if (!subpath.startsWith(prefix) || !subpath.endsWith(suffix) || subpath.length < prefix.length + suffix.length)
+                continue;
+            if (!best || prefix.length > best.prefix.length || (prefix.length === best.prefix.length && suffix.length > best.suffix.length))
+                best = { entry, prefix, suffix };
+        }
+        if (!best)
+            return undefined;
+        const target = exportTarget(best.entry);
+        if (typeof target !== "string")
+            return undefined;
+        const wildcard = subpath.slice(best.prefix.length, subpath.length - best.suffix.length);
+        return path.resolve(packageDir, target.replaceAll("*", () => wildcard));
+    }
+    if (subpath !== ".")
+        return undefined;
+    return path.resolve(packageDir, typeof manifest.main === "string" && manifest.main.trim() ? manifest.main : "index.js");
+}
+/** Find `pkg` as the pi package itself, one of its dependencies, or a sibling in a hoisted install. */
+export function findHostPeerPackageDir(piPackageRoot, pkg) {
+    return findPeerPackageDir(piPackageRoot, pkg, readManifest(piPackageRoot)?.name);
+}
+function findPeerPackageDir(piPackageRoot, pkg, hostName) {
+    if (hostName === pkg)
+        return piPackageRoot;
+    const candidates = [path.join(piPackageRoot, "node_modules", pkg)];
+    let dir = piPackageRoot;
+    for (;;) {
+        const parent = path.dirname(dir);
+        if (parent === dir)
+            break;
+        if (path.basename(parent) === "node_modules" || path.basename(path.dirname(parent)) === "node_modules") {
+            const modulesRoot = path.basename(parent) === "node_modules" ? parent : path.dirname(parent);
+            candidates.push(path.join(modulesRoot, pkg));
+        }
+        candidates.push(path.join(parent, "node_modules", pkg));
+        dir = parent;
+    }
+    return candidates.find((candidate) => readManifest(candidate)?.name === pkg);
+}
+/** The alias map the runner needs, or the specifiers that could not be resolved. */
+export function resolveHostPeerAliases(piPackageRoot) {
+    const aliases = {};
+    const missing = [];
+    const hostManifest = readManifest(piPackageRoot);
+    // Only known stable pre-chord versions may omit it. Unknown/prerelease
+    // hosts retain the required aliases, rather than hiding a broken install.
+    const stableVersion = typeof hostManifest?.version === "string" ? /^0\.(\d+)\.\d+$/.exec(hostManifest.version) : null;
+    const isPreChord = stableVersion !== null && Number(stableVersion[1]) < 85;
+    const required = [...HOST_PEER_ALIASES, ...(isPreChord ? [] : CHORD_PEER_ALIASES)];
+    for (const { specifier, pkg, subpath } of required) {
+        const packageDir = findPeerPackageDir(piPackageRoot, pkg, hostManifest?.name);
+        const target = packageDir ? resolvePackageSubpath(packageDir, subpath) : undefined;
+        // Native loaders short-circuit resolution, so aliases must retain the real package's dependency scope.
+        if (target && fs.existsSync(target))
+            aliases[specifier] = fs.realpathSync(target);
+        else
+            missing.push(specifier);
+    }
+    return { aliases, missing };
+}
+//# sourceMappingURL=runner-aliases.js.map

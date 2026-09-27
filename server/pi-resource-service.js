@@ -2,7 +2,8 @@ const privateFiles = require('./pi-private-files');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
-const { safeFile, read, atomic, fail } = require('./pi-native-service');
+const { safeFile, read, json, atomic, fail } = require('./pi-native-service');
+const { resolveManagedResources, managedEntry, identify } = require('./pi-bundled-resources');
 const TYPES = ['extensions', 'skills', 'prompts', 'themes'];
 const hash = value => createHash('sha256').update(value).digest('hex');
 const target = value => /^[!+-]/.test(value) ? value.slice(1) : value;
@@ -15,8 +16,7 @@ class PiResourceService {
         if (!['global', 'project'].includes(scope)) throw fail('资源范围无效');
         const ctx = await this.native.context(cwd);
         const settings = ctx.sdk.SettingsManager.create(ctx.cwd, ctx.agentDir, { projectTrusted: scope === 'project' && ctx.trust.effective });
-        const manager = new ctx.sdk.DefaultPackageManager({ cwd: ctx.cwd, agentDir: ctx.agentDir, settingsManager: settings });
-        const resolved = await manager.resolve(async () => 'skip');
+        const { manager, resolved } = await resolveManagedResources(ctx.sdk, { cwd: ctx.cwd, agentDir: ctx.agentDir, settings });
         const resources = TYPES.flatMap(type => resolved[type].map(item => ({ ...item, type,
             id: hash(JSON.stringify([type, item.path, item.metadata.source, item.metadata.scope])) })));
         if (resources.length > 3000) throw fail('资源超过 3000 项，请在终端缩小配置范围');
@@ -29,12 +29,18 @@ class PiResourceService {
     patterns(ctx, item, scope) {
         const config = scope === 'project' ? ctx.project : ctx.global;
         if (item.metadata.origin !== 'package') return config[item.type] || [];
+        const bundled = managedEntry(item.metadata.source);
+        if (bundled) {
+            const overlay = require('./pi-bundled-resources').projectSettings(config, scope === 'project' ? path.join(ctx.cwd, '.pi') : ctx.agentDir, { global: scope === 'global' });
+            return overlay.packages.find(p => (typeof p === 'string' ? p : p.source) === item.metadata.source)?.[item.type] || [];
+        }
         return config.packages?.find(p => this.packageMatch(ctx, item.metadata.source, item.metadata.scope, p, scope))?.[item.type] || [];
     }
     async snapshot(cwd, scope = 'project') {
         const ctx = await this.context(cwd, scope);
         return { cwd: ctx.cwd, scope, revision: ctx.revision, trust: ctx.trust,
-            packages: ctx.manager.listConfiguredPackages().map(p => ({ source: p.source, scope: p.scope, installed: Boolean(p.installedPath), filtered: p.filtered })),
+            packages: ctx.manager.listConfiguredPackages().map(p => ({ source: p.source, scope: p.scope, installed: Boolean(p.installedPath), filtered: p.filtered,
+                ...(managedEntry(p.source) ? { managedBy: 'pivane', name: managedEntry(p.source).name, version: managedEntry(p.source).version } : {}) })),
             resources: ctx.resources.map(item => {
                 const pattern = item.metadata.origin === 'package' ? path.relative(item.metadata.baseDir, item.path) : item.path;
                 const exact = this.patterns(ctx, item, scope).filter(p => target(p) === pattern || path.resolve(item.metadata.baseDir || ctx.agentDir, target(p)) === item.path).at(-1);
@@ -51,6 +57,31 @@ class PiResourceService {
             const item = ctx.resources.find(r => r.id === input.resourceId);
             if (!item) throw fail('资源已变化或不存在，请刷新', 409);
             if (item.path === path.join(__dirname, 'pi-web-session-extension.ts')) throw fail('网页内部资源不能禁用');
+            const bundled = managedEntry(item.metadata.source);
+            if (bundled) {
+                const file = input.scope === 'project' ? ctx.projectFile : ctx.globalFile;
+                safeFile(input.scope === 'project' ? ctx.cwd : ctx.agentDir, input.scope === 'project' ? ['.pi', 'settings.json'] : ['settings.json'], true);
+                const lock = file + '.lock';
+                try { fs.mkdirSync(lock, { mode: 0o700 }); } catch { throw fail('原生设置正在写入，请稍后再试', 409); }
+                try {
+                    const revision = hash(JSON.stringify([ctx.cwd, read(ctx.globalFile), read(ctx.projectFile), read(ctx.trustFile), process.env.PI_WEB_APPROVE_PROJECTS || '']));
+                    if (revision !== input.expectedRevision) throw fail('配置已变化，请刷新', 409);
+                    const data = json(read(file));
+                    const pattern = path.relative(item.metadata.baseDir, item.path);
+                    let patterns = this.patterns(ctx, item, input.scope);
+                    const base = input.scope === 'project' ? path.join(ctx.cwd, '.pi') : ctx.agentDir;
+                    const overlay = require('./pi-bundled-resources').projectSettings(data, base, { global: input.scope === 'global' });
+                    const packageConfig = overlay.packages.find(pkg => (typeof pkg === 'string' ? pkg : pkg.source) === item.metadata.source);
+                    if (patterns.length === 0 && Array.isArray(packageConfig?.[item.type]) && packageConfig.autoload !== false) patterns = ['!**/*'];
+                    patterns = patterns.filter(p => target(p) !== pattern);
+                    if (input.state !== 'inherit') patterns.push((input.state === 'on' ? '+' : '-') + pattern);
+                    data.pivaneBuiltins ||= {}; data.pivaneBuiltins[bundled.id] ||= {};
+                    if (patterns.length) data.pivaneBuiltins[bundled.id][item.type] = patterns;
+                    else delete data.pivaneBuiltins[bundled.id][item.type];
+                    atomic(file, JSON.stringify(data, null, 2) + '\n');
+                } finally { fs.rmdirSync(lock); }
+                return { ok: true, requiresReload: true };
+            }
             const config = input.scope === 'project' ? ctx.settings.getProjectSettings() : ctx.settings.getGlobalSettings();
             let key = item.type, value;
             if (item.metadata.origin === 'package') {
@@ -98,6 +129,7 @@ class PiResourceService {
         return this.native.mutate(input, async () => {
             const ctx = await this.context(input.cwd, input.scope);
             if (ctx.revision !== input.expectedRevision) throw fail('配置已变化，请刷新', 409);
+            if (identify(input.source, input.scope === 'project' ? path.join(ctx.cwd, '.pi') : ctx.agentDir)) throw fail('此组件由 Pivane 管理，请随 Pivane 更新；资源开关可单独设置');
             if (input.scope === 'project' && !ctx.trust.effective) throw fail('请先信任项目');
             const wantedScope = input.scope === 'project' ? 'project' : 'user';
             const matches = ctx.manager.listConfiguredPackages().filter(p => p.source === input.source);

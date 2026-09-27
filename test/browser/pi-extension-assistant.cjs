@@ -35,7 +35,7 @@ async function run(browser, base, width, locale, noProject = false) {
         }
         if (p === '/api/pi/settings/native/resources') return route.fulfill({ json: { cwd, revision: 'r1', scope: url.searchParams.get('scope'), trust: { effective: projectTrusted },
             packages: [{ source: 'npm:fixture', scope: 'user', installed: true }, { source: 'npm:@example/document-tools@1.2.3', scope: 'user', installed: true },
-                { source: 'npm:pi-subagents@0.69.0', scope: 'user', installed: true },
+                { source: '/fixture/pivane/vendor/pi-subagents', scope: 'user', installed: true, managedBy: 'pivane', name: 'pi-subagents', version: '0.71.0' },
                 { source: 'git:github.com/nicobailon/pi-web-access@v1.0', scope: 'user', installed: true },
                 { source: 'npm:pi-hermes-memory', scope: 'user', installed: false },
                 { source: 'npm:@other/pi-computer-use', scope: 'user', installed: true },
@@ -80,6 +80,7 @@ async function run(browser, base, width, locale, noProject = false) {
     assert.equal(await page.locator('#extensions-learned').count(), 0, 'learned skills belong to assistant profiles');
     assert.equal(await page.locator('.extensions-card').count(), 6);
     await page.locator('#extension-pi-subagents [data-installation="installed"]').waitFor();
+    assert.match(await page.locator('#extension-pi-subagents [data-installation]').textContent(), /Pivane.*0\.71\.0/);
     assert.equal(await page.locator('#extension-pi-web-access [data-installation="installed"]').count(), 1);
     assert.equal(await page.locator('#extension-pi-hermes-memory [data-installation="configured"]').count(), 1);
     memoryAdapterInstalled = true; await page.locator('#extensions-refresh').click();

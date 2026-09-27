@@ -1,0 +1,233 @@
+/**
+ * Builds the in-process launch for one child: the tool plan, the typed child
+ * runtime config the hooks read, and the session launch input. Foreground
+ * children are built in the parent process; background children are built in
+ * the detached runner from the step it received in its config.
+ */
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { intersectThinkingCeilings } from "../../shared/thinking-ceiling.js";
+import { resolveChildDepth, } from "../../shared/types.js";
+import { encodeExtensionBindings, PI_SUBAGENT_EXTENSION_BINDINGS_ENV } from "./extension-bindings.js";
+import { intersectSubagentCapabilityCeilings } from "./capability-ceiling.js";
+import { isSubagentRuntimeExtensionPath, projectLaunchResolvedChildExtensions, resolvePiLaunchToolPlan, supervisorChannelDir, } from "./child-tool-plan.js";
+import { createCapturedChildHooks, withChildSessionErrorReporting } from "./child-hooks.js";
+import { resolveRequiredChildExtensions } from "../../shared/required-child-extensions.js";
+/** Environment variable pi-mcp-adapter reads for the tools a child may expose. */
+export const MCP_DIRECT_TOOLS_ENV = "MCP_DIRECT_TOOLS";
+export function inheritedChildRuntime(config) {
+    if (!config)
+        return undefined;
+    return {
+        depth: config.depth,
+        ...(config.maxDepth !== undefined ? { maxDepth: config.maxDepth } : {}),
+        ...(config.nestedRoute ? { nestedRoute: config.nestedRoute } : {}),
+        ...(config.nestedParent ? { nestedParent: config.nestedParent } : {}),
+        ...(config.capabilityCeiling ? { capabilityCeiling: config.capabilityCeiling } : {}),
+        ...(config.thinkingCeiling ? { thinkingCeiling: config.thinkingCeiling } : {}),
+        ...(config.runFanoutBudget ? { runFanoutBudget: config.runFanoutBudget } : {}),
+        ...(config.requiredExtensions ? { requiredExtensions: config.requiredExtensions } : {}),
+    };
+}
+/** Actual host create-input boundary. Evidence remains explicitly opt-in and dormant in production. */
+export function createReportedChildSessionInput(launch, transcriptWriter) {
+    return withChildSessionErrorReporting(launch.session, transcriptWriter);
+}
+/** Escape XML-significant characters in a string for safe attribute interpolation. */
+function escapeXmlAttr(value) {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+}
+function inheritedCapabilityCeiling(inherited) {
+    return inherited?.capabilityCeiling;
+}
+/** Environment values external child extensions read; only the runner applies them. */
+function childProcessEnv(input, toolPlan) {
+    const env = {};
+    env[PI_SUBAGENT_EXTENSION_BINDINGS_ENV] = encodeExtensionBindings(input.extensionBindings);
+    if (!toolPlan.capabilityCeiling && input.mcpDirectTools?.length)
+        env[MCP_DIRECT_TOOLS_ENV] = input.mcpDirectTools.join(",");
+    else if (toolPlan.capabilityCeiling && toolPlan.effectiveMcpSelections.length && !toolPlan.capabilityCeiling.denyExtensions) {
+        env[MCP_DIRECT_TOOLS_ENV] = toolPlan.effectiveMcpSelections.map((selection) => selection.selector).join(",");
+    }
+    else
+        env[MCP_DIRECT_TOOLS_ENV] = "__none__";
+    return env;
+}
+function childStorage(input) {
+    if (input.sessionFile) {
+        fs.mkdirSync(path.dirname(input.sessionFile), { recursive: true });
+        return { kind: "file", sessionFile: input.sessionFile };
+    }
+    if (!input.sessionEnabled)
+        return { kind: "memory" };
+    if (input.sessionDir) {
+        fs.mkdirSync(input.sessionDir, { recursive: true });
+        return { kind: "dir", sessionDir: input.sessionDir };
+    }
+    return { kind: "default" };
+}
+export function buildInProcessChildLaunch(input) {
+    const requiredExtensions = input.requiredExtensions ?? input.inherited?.requiredExtensions ?? resolveRequiredChildExtensions(input.parentSessionId);
+    const agentCapabilityCeiling = input.descendantAllowedAgents === undefined
+        ? undefined
+        : { version: 1, allowedAgents: [...input.descendantAllowedAgents], denyExtensions: false, sources: [`agent:${input.childAgentName}`] };
+    const inheritedCeiling = inheritedCapabilityCeiling(input.inherited);
+    const capabilityCeilingForPlanning = agentCapabilityCeiling && !input.capabilityCeiling && !inheritedCeiling
+        ? { version: 1, denyExtensions: false, sources: [] }
+        : input.capabilityCeiling;
+    const toolPlan = resolvePiLaunchToolPlan({
+        tools: input.tools,
+        excludeTools: input.excludeTools,
+        allowNestedSubagents: input.allowNestedSubagents,
+        extensions: input.extensions,
+        subagentOnlyExtensions: input.subagentOnlyExtensions,
+        requiredExtensions,
+        mcpDirectTools: input.mcpDirectTools,
+        cwd: input.cwd,
+        requireReadTool: input.requireReadTool,
+        structuredOutput: Boolean(input.structuredOutput),
+        fast: input.fast,
+        model: input.model,
+        capabilityCeiling: capabilityCeilingForPlanning,
+        inheritedCapabilityCeiling: inheritedCeiling,
+        agentName: input.childAgentName,
+        permissionRules: input.permissionRules,
+        runtimeSnapshotHost: input.runtimeSnapshotHost,
+    });
+    toolPlan.capabilityCeiling = intersectSubagentCapabilityCeilings(toolPlan.capabilityCeiling, agentCapabilityCeiling);
+    if (toolPlan.capabilityAudit && toolPlan.capabilityCeiling) {
+        toolPlan.capabilityAudit = { ...toolPlan.capabilityAudit, ceiling: toolPlan.capabilityCeiling };
+    }
+    const inherited = input.inherited;
+    const fanout = toolPlan.fanoutAuthorized;
+    const inheritedRoute = inherited?.nestedRoute;
+    const parentRunId = input.runId ?? inherited?.nestedParent?.parentRunId ?? "";
+    const parentChildIndex = input.childIndex;
+    const parentDepth = inheritedRoute && inherited?.nestedParent ? inherited.nestedParent.depth + 1 : 1;
+    const parentPath = [
+        ...(inherited?.nestedParent?.path ?? []),
+        ...(parentRunId ? [{ runId: parentRunId, stepIndex: parentChildIndex, agent: input.childAgentName }] : []),
+    ];
+    const nestedRoute = fanout ? (input.nestedRoute ?? inheritedRoute) : undefined;
+    const childDepth = resolveChildDepth(input.maxSubagentDepth, inherited);
+    const permissions = input.permissionRules && Object.keys(input.permissionRules).length > 0
+        ? { rules: input.permissionRules, ...(input.permissionAuditPath ? { auditPath: input.permissionAuditPath } : {}) }
+        : undefined;
+    let supervisorDir;
+    if (input.orchestratorIntercomTarget && input.parentSessionId && input.runId) {
+        supervisorDir = supervisorChannelDir(input.runId, input.childAgentName, input.childIndex);
+        fs.mkdirSync(path.join(supervisorDir, "requests"), { recursive: true });
+        fs.mkdirSync(path.join(supervisorDir, "replies"), { recursive: true });
+    }
+    const thinkingCeiling = intersectThinkingCeilings(input.thinkingCeiling, inherited?.thinkingCeiling);
+    let structuredValue;
+    let structuredAcceptanceReport;
+    let structuredCalled = false;
+    let structuredAcceptanceProvided = false;
+    const structuredTerminalState = { captured: false };
+    const config = {
+        cwd: input.cwd,
+        ...(input.runId ? { runId: input.runId } : {}),
+        agent: input.childAgentName,
+        childIndex: input.childIndex,
+        fanoutChild: fanout,
+        ...(input.sessionName?.trim() ? { sessionName: input.sessionName.trim() } : {}),
+        ...(input.intercomSessionName ? { intercomSessionName: input.intercomSessionName } : {}),
+        ...(input.orchestratorIntercomTarget ? { orchestratorTarget: input.orchestratorIntercomTarget } : {}),
+        ...(input.parentSessionId ? { orchestratorSessionId: input.parentSessionId, parentSessionId: input.parentSessionId } : {}),
+        ...(supervisorDir ? { supervisorChannelDir: supervisorDir } : {}),
+        ...(nestedRoute ? { nestedRoute } : {}),
+        ...(fanout && parentRunId ? { nestedParent: { parentRunId, parentChildIndex, depth: parentDepth, path: parentPath } } : {}),
+        ...(fanout && (input.runFanoutBudget ?? inherited?.runFanoutBudget) ? { runFanoutBudget: input.runFanoutBudget ?? inherited?.runFanoutBudget } : {}),
+        depth: childDepth.depth,
+        maxDepth: childDepth.maxDepth,
+        ...(toolPlan.capabilityCeiling ? { capabilityCeiling: toolPlan.capabilityCeiling } : {}),
+        ...(thinkingCeiling ? { thinkingCeiling } : {}),
+        ...(toolPlan.requiredExtensions.length > 0 ? { requiredExtensions: toolPlan.requiredExtensions } : {}),
+        inheritProjectContext: input.inheritProjectContext,
+        inheritGlobalContext: input.inheritGlobalContext,
+        inheritSkills: input.inheritSkills,
+        ...(input.forkCacheKey?.trim() ? { forkCacheKey: input.forkCacheKey.trim() } : {}),
+        ...(permissions ? { permissions } : {}),
+        ...(input.toolBudget ? { toolBudget: input.toolBudget } : {}),
+        ...(input.childWatchdog ? { childWatchdog: input.childWatchdog } : {}),
+        ...(input.watchdogStatus ? { watchdogStatus: input.watchdogStatus } : {}),
+        waitTool: {
+            enabled: input.waitToolEnabled ?? true,
+            ...(input.waitToolDefaultTimeoutMs !== undefined ? { defaultTimeoutMs: input.waitToolDefaultTimeoutMs } : {}),
+        },
+        ...(input.structuredOutput
+            ? {
+                structuredOutput: {
+                    schema: input.structuredOutput.schema,
+                    terminalState: structuredTerminalState,
+                    ...(input.structuredOutput.acceptanceReportPath
+                        ? { acceptanceReport: input.structuredOutput.acceptanceReportRequired ? "required" : "optional" }
+                        : {}),
+                    capture: (value, acceptanceReport) => {
+                        structuredCalled = true;
+                        structuredValue = value;
+                        structuredAcceptanceProvided = acceptanceReport !== undefined;
+                        structuredAcceptanceReport = acceptanceReport;
+                        structuredTerminalState.captured = true;
+                    },
+                },
+            }
+            : {}),
+        ...(toolPlan.requiredChildTools.length > 0 ? { requiredTools: toolPlan.requiredChildTools } : {}),
+        ...(toolPlan.effectiveMcpTools.length > 0 ? { mcpDirectTools: toolPlan.effectiveMcpTools } : {}),
+        fast: input.fast === true,
+    };
+    const capturedHooks = createCapturedChildHooks(config);
+    const extensionPaths = toolPlan.extensionArgs.filter((extensionPath) => !isSubagentRuntimeExtensionPath(extensionPath));
+    const ambientExtensions = input.host === "runner" && !toolPlan.disableAmbientExtensions;
+    const launchResolvedExtensions = projectLaunchResolvedChildExtensions({
+        runtimeExtensions: toolPlan.runtimeExtensions,
+        configuredExtensions: toolPlan.configuredExtensions,
+        extensionArgs: toolPlan.extensionArgs,
+        disableAmbientExtensions: !ambientExtensions,
+        requiredExtensions: toolPlan.requiredExtensions,
+    });
+    const taggedPrompt = input.systemPrompt !== undefined && input.systemPrompt !== null
+        ? `<active_agent name="${escapeXmlAttr(input.childAgentName)}"/>\n\n${input.systemPrompt}`
+        : undefined;
+    const session = {
+        cwd: input.cwd,
+        ...(input.machine ? { machine: input.machine } : {}),
+        ...(input.machine ? { remoteResources: { agent: input.childAgentName, ...(input.remoteSkillNames ? { skills: input.remoteSkillNames } : {}), ...(input.remoteReads !== undefined ? { reads: input.remoteReads } : {}), ...(toolPlan.explicitToolAllowlist ? { toolCeiling: [...toolPlan.effectiveToolAllowlist] } : toolPlan.capabilityCeiling?.allowedTools ? { toolCeiling: [...toolPlan.capabilityCeiling.allowedTools] } : {}) } } : {}),
+        storage: childStorage(input),
+        ...(input.model ? { model: input.model } : {}),
+        ...(toolPlan.explicitToolAllowlist ? { tools: toolPlan.effectiveToolAllowlist } : {}),
+        ...(!toolPlan.explicitToolAllowlist && toolPlan.excludeTools.length > 0 ? { excludeTools: toolPlan.excludeTools } : {}),
+        extensionPaths,
+        requiredExtensions: toolPlan.requiredExtensions,
+        ambientExtensions,
+        hooks: capturedHooks.hooks,
+        ...(input.host === "runner" ? { processEnv: childProcessEnv(input, toolPlan) } : {}),
+        runtime: config,
+        noSkills: !input.inheritSkills,
+        noContextFiles: !input.inheritProjectContext,
+        ...(taggedPrompt !== undefined
+            ? input.systemPromptMode === "replace" ? { systemPrompt: taggedPrompt } : { appendSystemPrompt: taggedPrompt }
+            : {}),
+    };
+    return {
+        toolPlan,
+        config,
+        session,
+        capture: {
+            structuredOutput: () => ({ called: structuredCalled, value: structuredValue, acceptanceReport: structuredAcceptanceReport, acceptanceReportProvided: structuredAcceptanceProvided }),
+            toolDiagnostic: capturedHooks.toolDiagnostic,
+            runtimeAcknowledgedExtensions: capturedHooks.runtimeAcknowledgedExtensions,
+            finalDrainHeld: capturedHooks.finalDrainHeld,
+        },
+        launchResolvedExtensions,
+        warnings: toolPlan.warnings,
+        ...(toolPlan.capabilityAudit ? { capabilityAudit: toolPlan.capabilityAudit } : {}),
+    };
+}
+//# sourceMappingURL=child-launch.js.map

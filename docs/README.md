@@ -6,6 +6,8 @@ English: [project overview](../README.en.md) · [installation](en/INSTALL.md) ·
 
 电脑、平板和手机使用同一套响应式浏览器界面；服务可部署在下述已验收的Linux、Apple Silicon macOS与Windows环境中。下载包、校验文件和精确验收摘要见[GitHub Releases](https://github.com/YogurtJ/pivane/releases)；当前正式版为 1.1.0/Pi 0.87.1，本包验收范围以其发布附件为准。
 
+[1.2.0 发布候选说明](releases/1.2.0.md)介绍助手身份、记忆学习、内置能力、线程通信及新版安装入口；正式发布与精确包验收状态以该页和 Release 附件为准。
+
 [1.1.0 版本说明](releases/1.1.0.md)涵盖文件浏览、任务进度、模型收藏和手机交互改进，以及从 1.0.0 升级和恢复的验收范围；历史资产保持不变。
 
 ## 使用与管理
@@ -21,6 +23,7 @@ English: [project overview](../README.en.md) · [installation](en/INSTALL.md) ·
 | 访问验证、通知、日常排障 | [访问控制](ACCESS_CONTROL.md) · [通知](NOTIFICATIONS.md) · [运维](OPERATIONS.md) |
 | 聊天模型、Thinking、资源 | [供应商与模型](PROVIDER_SETTINGS.md) · [Pi原生设置](NATIVE_SETTINGS.md) |
 | 按用途配置标题与媒体规划模型 | [辅助模型](AUXILIARY_MODELS.md) |
+| 内置子 Agent、记忆组件与旧安装兼容 | [内置能力包](BUNDLED_CAPABILITIES.md) |
 | 可选助手档案与档案记忆 | [助手档案](AGENT_PROFILES.md) · [记忆适配与安装](PROFILE_MEMORY.md) |
 | 输入、Shell、运行恢复 | [命令与模板](COMPOSER_TOOLS.md) · [Shell](WEB_SHELL.md) · [运行控制](NATIVE_CONTROLS.md) · [运行与配置恢复](NATIVE_COMPLETION.md) |
 | 历史、分叉、导出与侧聊 | [历史](HISTORY.md) · [工作流](SESSION_WORKFLOWS.md) · [导入导出](SESSION_TRANSFER.md) · [侧聊](SIDE_CHAT.md) |

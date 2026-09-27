@@ -9,8 +9,8 @@ package.json的应用版本、Pi依赖版本和快照时间戳是不同概念。
 ## 候选包
 
 1. 从明确的源码提交准备候选，核对 Git 跟踪清单与未提交改动，冻结公开文档，完成所需的 Node、语法、文档、audit 及浏览器回归。记录源码提交、实际运行版本和候选之间的差异。
-2. 运行npm run pack:release（开发快照仍用pack:trial）。相同版本包存在时拒绝覆盖；冻结包变化须重新验收，已公开版本不能悄悄替换。`scripts/source-files.cjs` 的发行集合与 docs/public-files.json 决定内容；LICENSE、第三方声明和原生manifest随包；AGENTS.local.md、docs/local、身份、媒体和备份禁止纳入。构建后核对manifest/hash，不能仅检查.gitignore。
-3. 从该包在独立目录npm ci，不继承维护者的node_modules、Provider环境或Pi身份；做必要的平台/浏览器安装、更新和恢复回归。
+2. 运行npm run pack:release（开发快照仍用pack:trial）。相同版本包存在时拒绝覆盖；冻结包变化须重新验收，已公开版本不能悄悄替换。`scripts/source-files.cjs` 的发行集合与 docs/public-files.json 决定内容；LICENSE、第三方声明和原生manifest随包；AGENTS.local.md、docs/local、身份、媒体和备份禁止纳入。构建前强制核对档案记忆 bundle 存在且与审查哈希一致，保证跳过安装脚本的旧版网页更新器仍能使用新包。构建后核对manifest/hash，不能仅检查.gitignore。
+3. 从该包在独立目录执行 `node scripts/install.cjs`（旧归档没有此脚本时使用 `npm ci`），不继承维护者的node_modules、Provider环境或Pi身份；做必要的平台/浏览器安装、更新和恢复回归。
 4. 更新公开平台范围与CHANGELOG，将测试结果绑定到准确的包SHA256。后续代码变化需按影响补验并重新生成包。
 5. 准备下载包、SHA256、版本说明、安装/恢复步骤与已知限制。发布仓库/渠道和外部上传作为独立明确操作。
 
@@ -26,7 +26,7 @@ node test/release/acceptance.cjs --archive /path/pivane-1.0.0-rc.1.tar.gz --sha2
 
 Windows用自己的node.exe和带引号的Windows路径传递相同参数。可选--previous-archive和--previous-sha256用于真正的旧包升级验收；没有旧包时结果只表示同包重开与恢复，不称跨版本升级。不要将来自未知来源的压缩包交给此脚本。
 
-脚本新建系统临时目录，使用随机run ID、哨兵、独立Agent/媒体/项目/预约路径和最小环境，从归档解包npm ci；npm配置也独立。固定loopback8089只用于合成Provider，占用时失败，不结束已有进程；Web使用独立随机loopback端口。仅该标记临时目录允许测试脚本运行，普通安装不调用此入口。
+脚本新建系统临时目录，使用随机run ID、哨兵、独立Agent/媒体/项目/预约路径和最小环境，从归档解包后执行统一安装入口（旧归档回退 `npm ci`）；npm配置也独立。固定loopback8089只用于合成Provider，占用时失败，不结束已有进程；Web使用独立随机loopback端口。仅该标记临时目录允许测试脚本运行，普通安装不调用此入口。
 
 验收包含npm test、check、check:docs、audit、目标系统打包、桌面/手机安装与刷新、真实Pi RPC/Shell/历史/侧聊/导入导出，以及停机更新、原路径逐文件恢复、正数用量、搜索和媒体解码。16×16一秒黑色视频为随包合成fixture，不调用媒体生成服务。服务器通过测试父进程的私有IPC触发原SIGINT关闭逻辑，没有新增HTTP退出接口。RC各阶段必须退出码0；旧包的已知signal-exit问题只在结束全部worker后单独记录，不计作RC正常停机或放宽新包断言。
 

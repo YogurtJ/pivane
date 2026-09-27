@@ -11,6 +11,9 @@ const memoryFixtureEnv = new Set(['PIVANE_TEST_HERMES_BUNDLE', 'PIVANE_TEST_PI_J
 for (const key of Object.keys(process.env)) {
     if (key.startsWith('PIVANE_') && !memoryFixtureEnv.has(key) || ambientProviderEnv.test(key) || /^(?:AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|AWS_PROFILE|GOOGLE_APPLICATION_CREDENTIALS|MINIMAX_API_KEY)$/.test(key)) delete process.env[key];
 }
+process.env.PIVANE_TEST_HERMES_BUNDLE ||= require('../server/pi-bundled-capabilities').memoryBundle();
+process.env.PIVANE_TEST_PI_JITI ||= require('node:module').createRequire(path.join(root, 'node_modules/@earendil-works/pi-coding-agent/package.json')).resolve('jiti');
+if (!require('../server/profile-memory/management').profileMemoryCapability({ bundlePath: process.env.PIVANE_TEST_HERMES_BUNDLE }).installed) throw new Error('Bundled memory must be installed before testing (npm ci)');
 const files = sourceFiles(root, 'tests');
 if (!files.length) throw new Error('No Node tests found');
 const result = spawnSync(process.execPath, ['--test', '--test-concurrency=1', ...files.map(name => path.join(root, name))], {

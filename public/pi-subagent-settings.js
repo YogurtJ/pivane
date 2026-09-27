@@ -77,6 +77,7 @@
             const copy = node('div', '', 'sa-heading'); copy.append(node('h4', '子 Agent'), node('p', '为不同任务分配合适的模型', 'sa-note'));
             const statusLabels = { ready: '已配置启用', missing: '尚未安装', disabled: '已停用', unsupported: '版本待适配' };
             const badge = node('span', statusLabels[data.plugin.status] || '状态未知', 'sa-badge'); badge.dataset.state = data.plugin.status;
+            if (data.plugin.managedBy === 'pivane') copy.append(node('p', 'Pivane 内置，随应用更新', 'sa-note'));
             header.append(emblem, copy, badge); this.root.append(header);
             const toolbar = node('div', '', 'sa-toolbar');
             if (ready) {
@@ -105,7 +106,9 @@
                     disabled: 'pi-subagents 已安装但未启用，请在 Packages 中启用后刷新。',
                     unsupported: '已安装的 pi-subagents 版本尚未适配，暂时无法编辑。请在 Packages 中核对版本。'
                 };
-                const empty = node('div', '', 'sa-empty'); empty.append(icon('puzzle-piece'), node('p', messages[data.plugin.status]));
+                const message = data.plugin.managedBy === 'pivane' && data.plugin.status !== 'disabled'
+                    ? '内置组件未就绪，请检查 Pivane 安装或重新安装依赖。' : messages[data.plugin.status];
+                const empty = node('div', '', 'sa-empty'); empty.append(icon('puzzle-piece'), node('p', message));
                 if (data.plugin.canInstall) {
                     this.installButton = button('安装 pi-subagents', 'settings-primary-button', () => { if (window.confirm(t('将为所有项目安装 pi-subagents 指定版本，安装位置与 Pi CLI 共用。继续？'))) this.submit('install'); });
                     this.installButton.disabled = this.busy || this.needsRefresh; empty.append(this.installButton);

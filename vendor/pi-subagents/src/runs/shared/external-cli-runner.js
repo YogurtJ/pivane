@@ -1,0 +1,423 @@
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { finished } from "node:stream/promises";
+import { createOwnedProcessTreeController } from "../background/owned-process-tree.js";
+import { omitExtensionBindingsEnv } from "./extension-bindings.js";
+import { omitGitRoutingEnv } from "./git-environment.js";
+import { invalidateExternalCliPreflight, preflightExternalCli, } from "./external-cli-preflight.js";
+const MAX_OUTPUT_TAIL_BYTES = 64 * 1024;
+const MAX_ERROR_TAIL_BYTES = 64 * 1024;
+const MAX_RAW_LOG_BYTES = 8 * 1024 * 1024;
+const MAX_PARSER_LINE_BYTES = 256 * 1024;
+const MAX_PARSER_STREAM_BYTES = 32 * 1024 * 1024;
+const MAX_PARSER_OUTPUT_BYTES = 1024 * 1024;
+const MAX_OVERSIZED_LINE_PREFIX_BYTES = 512;
+const MAX_SKIPPABLE_LINE_BYTES = 1024 * 1024;
+const PARSER_PROGRESS_INTERVAL_MS = 100;
+export function buildExternalCliPrompt(systemInstructions, task) {
+    return `<System instructions>\n${systemInstructions.trim()}\n\n<Task>\n${task}`;
+}
+export function parseExternalCliJsonlEvent(line, label, maxTypeLength) {
+    let value;
+    try {
+        value = JSON.parse(line);
+    }
+    catch (error) {
+        throw new Error(`${label} emitted malformed JSONL: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (!value || typeof value !== "object" || Array.isArray(value))
+        throw new Error(`${label} emitted a JSONL event that is not an object.`);
+    const event = value;
+    if (typeof event.type !== "string" || !event.type || event.type.length > maxTypeLength)
+        throw new Error(`${label} emitted a JSONL event with an invalid type.`);
+    return event;
+}
+function narrowLimit(value, ceiling, label) {
+    if (value === undefined)
+        return ceiling;
+    assert(Number.isInteger(value) && value > 0 && value <= ceiling, `${label} may only narrow the code-owned ${ceiling}-byte limit.`);
+    return value;
+}
+function externalEnvironment(allowlist, values) {
+    // An adapter allowlist is a deliberate choice, so only the inherited default is filtered.
+    if (!allowlist)
+        return omitGitRoutingEnv(omitExtensionBindingsEnv(process.env));
+    const allowed = new Set(allowlist);
+    const env = {};
+    for (const key of allowed) {
+        if (!key || key.includes("=") || key.includes("\0"))
+            throw new Error(`Invalid external CLI environment key: ${JSON.stringify(key)}.`);
+        if (process.env[key] !== undefined)
+            env[key] = process.env[key];
+    }
+    for (const [key, value] of Object.entries(values ?? {})) {
+        if (!allowed.has(key))
+            throw new Error(`External CLI environment value '${key}' is not in the adapter allowlist.`);
+        env[key] = value;
+    }
+    return omitExtensionBindingsEnv(env);
+}
+function createByteTail(maxBytes) {
+    const chunks = [];
+    let bytes = 0;
+    return {
+        push(chunk) {
+            chunks.push(chunk);
+            bytes += chunk.length;
+            while (bytes > maxBytes && chunks.length > 0) {
+                const first = chunks[0];
+                const excess = bytes - maxBytes;
+                if (first.length <= excess) {
+                    chunks.shift();
+                    bytes -= first.length;
+                }
+                else {
+                    chunks[0] = first.subarray(excess);
+                    bytes -= excess;
+                }
+            }
+        },
+        text: () => Buffer.concat(chunks, bytes).toString("utf-8"),
+    };
+}
+function writeBoundedLog(source, stream, chunk, state, limit) {
+    state.total += chunk.length;
+    const remaining = limit - state.bytes;
+    if (remaining <= 0)
+        return;
+    const bytes = chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
+    state.bytes += bytes.length;
+    if (!stream.write(bytes)) {
+        source.pause();
+        stream.once("drain", () => source.resume());
+    }
+}
+function classifyInvalidation(error) {
+    if (/auth|unauthori[sz]ed|credential|login/i.test(error))
+        return "auth";
+    if (/permission|forbidden|denied|read.?only/i.test(error))
+        return "permission";
+    return "launch";
+}
+function terminateExternalProcessTree(pid, controller) {
+    if (process.platform !== "win32")
+        return controller.terminate();
+    return new Promise((resolve) => {
+        const cleanup = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+        cleanup.once("error", () => { void controller.terminate().then(resolve); });
+        cleanup.once("close", () => { void controller.terminate().then(resolve); });
+    });
+}
+export function runExternalCli(input) {
+    const limits = {
+        stdoutLogBytes: narrowLimit(input.limits?.stdoutLogBytes, MAX_RAW_LOG_BYTES, "stdoutLogBytes"),
+        stderrLogBytes: narrowLimit(input.limits?.stderrLogBytes, MAX_RAW_LOG_BYTES, "stderrLogBytes"),
+        parserLineBytes: narrowLimit(input.limits?.parserLineBytes, MAX_PARSER_LINE_BYTES, "parserLineBytes"),
+        parserStreamBytes: narrowLimit(input.limits?.parserStreamBytes, MAX_PARSER_STREAM_BYTES, "parserStreamBytes"),
+        parserOutputBytes: narrowLimit(input.limits?.parserOutputBytes, MAX_PARSER_OUTPUT_BYTES, "parserOutputBytes"),
+    };
+    return new Promise((resolve, reject) => {
+        const startedAt = Date.now();
+        const stdoutPath = path.join(input.asyncDir, `external-${input.stepIndex}.stdout.log`);
+        const stderrPath = path.join(input.asyncDir, `external-${input.stepIndex}.stderr.log`);
+        fs.mkdirSync(input.asyncDir, { recursive: true });
+        const stdoutStream = fs.createWriteStream(stdoutPath, { flags: "w" });
+        const stderrStream = fs.createWriteStream(stderrPath, { flags: "w" });
+        const streamsFinished = Promise.allSettled([finished(stdoutStream), finished(stderrStream)]);
+        const createdDirectories = [];
+        let promptFileCreated = false;
+        const cleanupTemporaryPaths = () => {
+            if (input.promptFilePath && promptFileCreated)
+                fs.rmSync(input.promptFilePath, { force: true });
+            for (const directory of createdDirectories.reverse())
+                fs.rmSync(directory, { recursive: true, force: true });
+        };
+        const env = externalEnvironment(input.environment?.allowlist, input.environment?.values);
+        let preflight;
+        try {
+            for (const directory of input.temporaryDirectories ?? []) {
+                fs.mkdirSync(directory, { mode: 0o700 });
+                createdDirectories.push(directory);
+            }
+            if (input.promptFilePath) {
+                const promptDescriptor = fs.openSync(input.promptFilePath, "wx", 0o600);
+                promptFileCreated = true;
+                try {
+                    fs.writeFileSync(promptDescriptor, input.prompt, { encoding: "utf-8" });
+                }
+                finally {
+                    fs.closeSync(promptDescriptor);
+                }
+            }
+            if (input.preflight)
+                preflight = preflightExternalCli(input.command, input.preflight, env, input.cwd);
+        }
+        catch (error) {
+            const endedAt = Date.now();
+            const externalProcess = { startedAt, endedAt, durationMs: endedAt - startedAt, exitCode: 1, processSignal: null, stdoutPath, stderrPath, ...(input.finalOutputPath ? { finalOutputPath: input.finalOutputPath } : {}) };
+            stdoutStream.end();
+            stderrStream.end();
+            void streamsFinished.then((streamResults) => {
+                try {
+                    cleanupTemporaryPaths();
+                }
+                catch (cleanupError) {
+                    reject(cleanupError);
+                    return;
+                }
+                const streamFailure = streamResults.find((streamResult) => streamResult.status === "rejected");
+                if (streamFailure?.status === "rejected")
+                    reject(streamFailure.reason);
+                else
+                    resolve({ output: "", exitCode: 1, error: error instanceof Error ? error.message : String(error), processSignal: null, externalProcess });
+            });
+            return;
+        }
+        const stdoutTail = createByteTail(MAX_OUTPUT_TAIL_BYTES);
+        const stderrTail = createByteTail(MAX_ERROR_TAIL_BYTES);
+        const stdoutLog = { bytes: 0, total: 0 };
+        const stderrLog = { bytes: 0, total: 0 };
+        let parserBytes = 0;
+        let pendingLine = Buffer.alloc(0);
+        let pendingLineBytes = 0;
+        let pendingLineOversizedAccepted = false;
+        let parserError;
+        let parserTerminal;
+        let latestProgress;
+        let progressTimer;
+        let timedOut = false;
+        let stopped = false;
+        let settled = false;
+        let processTree;
+        let processPid;
+        let termination;
+        const flushProgress = () => {
+            if (!latestProgress)
+                return;
+            input.onParserProgress?.(latestProgress);
+            latestProgress = undefined;
+        };
+        const reportProgress = (progress) => {
+            if (!progress.phase || progress.phase.length > 64 || !Number.isSafeInteger(progress.eventCount) || progress.eventCount < 0) {
+                failParser(new Error("External CLI parser returned invalid progress metadata."));
+                return;
+            }
+            latestProgress = { ...progress, ...(progress.message ? { message: progress.message.slice(0, 512) } : {}) };
+            if (progressTimer)
+                return;
+            progressTimer = setTimeout(() => {
+                progressTimer = undefined;
+                flushProgress();
+            }, PARSER_PROGRESS_INTERVAL_MS);
+            progressTimer.unref?.();
+        };
+        const terminate = (reason) => {
+            if (settled || timedOut || stopped || parserError)
+                return;
+            timedOut = reason === "timeout";
+            stopped = reason === "stop";
+            if (processTree && processPid !== undefined)
+                termination = terminateExternalProcessTree(processPid, processTree);
+        };
+        const failParser = (error) => {
+            if (parserError)
+                return;
+            parserError = error instanceof Error ? error : new Error(String(error));
+            if (input.preflight)
+                invalidateExternalCliPreflight(input.command, input.preflight, "parser");
+            if (processTree && processPid !== undefined)
+                termination = terminateExternalProcessTree(processPid, processTree);
+        };
+        const parseLine = (line, byteLength = line.length) => {
+            if (!input.parser || parserError)
+                return false;
+            if (byteLength > limits.parserLineBytes) {
+                const progress = input.limits?.parserLineBytes === undefined
+                    ? input.parser.skipOversizedLine?.(line.subarray(0, MAX_OVERSIZED_LINE_PREFIX_BYTES).toString("utf-8"), byteLength)
+                    : undefined;
+                if (progress) {
+                    reportProgress(progress);
+                    return true;
+                }
+                failParser(new Error("External CLI parser line exceeded its byte limit."));
+                return false;
+            }
+            try {
+                const progress = input.parser.parseLine(line.toString("utf-8"));
+                if (progress)
+                    reportProgress(progress);
+            }
+            catch (error) {
+                failParser(error);
+            }
+            return false;
+        };
+        const appendPendingLine = (chunk) => {
+            pendingLineBytes += chunk.length;
+            if (pendingLineOversizedAccepted) {
+                if (pendingLineBytes > MAX_SKIPPABLE_LINE_BYTES)
+                    failParser(new Error("External CLI parser line exceeded its byte limit."));
+                return;
+            }
+            if (pendingLineBytes <= limits.parserLineBytes) {
+                pendingLine = Buffer.concat([pendingLine, chunk]);
+                return;
+            }
+            if (pendingLineBytes > MAX_SKIPPABLE_LINE_BYTES) {
+                failParser(new Error("External CLI parser line exceeded its byte limit."));
+                return;
+            }
+            if (pendingLine.length > MAX_OVERSIZED_LINE_PREFIX_BYTES)
+                pendingLine = pendingLine.subarray(0, MAX_OVERSIZED_LINE_PREFIX_BYTES);
+            const remainingPrefixBytes = MAX_OVERSIZED_LINE_PREFIX_BYTES - pendingLine.length;
+            if (remainingPrefixBytes > 0)
+                pendingLine = Buffer.concat([pendingLine, chunk.subarray(0, remainingPrefixBytes)]);
+            pendingLineOversizedAccepted = parseLine(pendingLine, pendingLineBytes);
+        };
+        const finishPendingLine = () => {
+            if (!pendingLineOversizedAccepted)
+                parseLine(pendingLine, pendingLineBytes);
+            pendingLine = Buffer.alloc(0);
+            pendingLineBytes = 0;
+            pendingLineOversizedAccepted = false;
+        };
+        const parseChunk = (chunk) => {
+            if (!input.parser || parserError)
+                return;
+            parserBytes += chunk.length;
+            if (parserBytes > limits.parserStreamBytes) {
+                failParser(new Error("External CLI parser stream exceeded its byte limit."));
+                return;
+            }
+            let start = 0;
+            for (let index = 0; index < chunk.length; index++) {
+                if (chunk[index] !== 0x0a)
+                    continue;
+                appendPendingLine(chunk.subarray(start, index));
+                finishPendingLine();
+                start = index + 1;
+            }
+            appendPendingLine(chunk.subarray(start));
+        };
+        const child = spawn(preflight?.binaryPath ?? input.command, input.args ?? [], {
+            cwd: input.cwd,
+            env,
+            stdio: ["pipe", "pipe", "pipe"],
+            shell: false,
+            windowsHide: true,
+            detached: process.platform !== "win32",
+        });
+        if (typeof child.pid === "number") {
+            processPid = child.pid;
+            processTree = createOwnedProcessTreeController(child.pid, { termGraceMs: 2_000 });
+        }
+        const initialProcess = {
+            ...(typeof child.pid === "number" ? { pid: child.pid } : {}),
+            startedAt,
+            stdoutPath,
+            stderrPath,
+            ...(input.finalOutputPath ? { finalOutputPath: input.finalOutputPath } : {}),
+        };
+        input.onProcess?.(initialProcess);
+        child.stdout.on("data", (chunk) => {
+            parseChunk(chunk);
+            writeBoundedLog(child.stdout, stdoutStream, chunk, stdoutLog, limits.stdoutLogBytes);
+            input.onStdout?.(chunk);
+            stdoutTail.push(chunk);
+        });
+        child.stderr.on("data", (chunk) => {
+            writeBoundedLog(child.stderr, stderrStream, chunk, stderrLog, limits.stderrLogBytes);
+            input.onStderr?.(chunk);
+            stderrTail.push(chunk);
+        });
+        input.registerTimeout?.(() => terminate("timeout"));
+        input.registerStop?.(() => terminate("stop"));
+        child.stdin.on("error", () => { });
+        child.stdin.end(input.promptFilePath ? undefined : input.prompt);
+        let spawnError;
+        child.once("error", (error) => { spawnError = error; });
+        child.stdout.once("end", () => {
+            if (!input.parser || parserError)
+                return;
+            if (pendingLineBytes > 0)
+                finishPendingLine();
+            try {
+                parserTerminal = input.parser.finish();
+                if (!parserTerminal)
+                    failParser(new Error("External CLI parser did not produce a terminal state."));
+                else if (Buffer.byteLength(parserTerminal.output ?? "", "utf-8") > limits.parserOutputBytes)
+                    failParser(new Error("External CLI parser terminal output exceeded its byte limit."));
+                else if (Buffer.byteLength(parserTerminal.error ?? "", "utf-8") > 4 * 1024)
+                    failParser(new Error("External CLI parser terminal error exceeded its byte limit."));
+            }
+            catch (error) {
+                failParser(error);
+            }
+        });
+        child.once("close", (exitCode, signal) => {
+            settled = true;
+            if (progressTimer)
+                clearTimeout(progressTimer);
+            flushProgress();
+            input.registerTimeout?.(undefined);
+            input.registerStop?.(undefined);
+            void (async () => {
+                const treeProof = termination ? await termination : processTree ? await processTree.finishAfterWriterClose() : undefined;
+                const endedAt = Date.now();
+                const externalProcess = {
+                    ...initialProcess,
+                    endedAt,
+                    durationMs: endedAt - startedAt,
+                    exitCode,
+                    processSignal: signal,
+                    stdoutBytes: stdoutLog.total,
+                    stderrBytes: stderrLog.total,
+                    ...(stdoutLog.total > stdoutLog.bytes ? { stdoutTruncated: true } : {}),
+                    ...(stderrLog.total > stderrLog.bytes ? { stderrTruncated: true } : {}),
+                };
+                input.onProcess?.(externalProcess);
+                const stderr = stderrTail.text().trim();
+                const parserFailure = parserError?.message ?? (parserTerminal?.state === "failed" ? parserTerminal.error ?? "External CLI parser reported terminal failure." : undefined);
+                const treeFailure = process.platform !== "win32" && treeProof?.state === "unknown"
+                    ? `Process-tree cleanup failed: ${treeProof.reason}.`
+                    : undefined;
+                const error = stopped
+                    ? input.stopMessage ?? "Subagent stopped by user."
+                    : timedOut
+                        ? input.timeoutMessage ?? "Subagent timed out."
+                        : spawnError?.message ?? parserFailure ?? treeFailure ?? (exitCode === 0 ? undefined : stderr || `External CLI exited with code ${exitCode}.`);
+                if (error && input.preflight && !parserError)
+                    invalidateExternalCliPreflight(input.command, input.preflight, classifyInvalidation(error));
+                const result = {
+                    output: (!parserError && parserTerminal?.state === "completed" ? parserTerminal.output ?? "" : stdoutTail.text()).trim(),
+                    exitCode: timedOut || stopped || spawnError || parserFailure || treeFailure ? 1 : exitCode,
+                    ...(error ? { error } : {}),
+                    ...(timedOut ? { timedOut: true } : {}),
+                    ...(stopped ? { stopped: true } : {}),
+                    processSignal: signal,
+                    externalProcess,
+                    ...(parserTerminal ? { parserTerminal } : {}),
+                    ...(preflight ? { preflight } : {}),
+                };
+                stdoutStream.end();
+                stderrStream.end();
+                const streamResults = await streamsFinished;
+                const streamFailure = streamResults.find((streamResult) => streamResult.status === "rejected");
+                try {
+                    cleanupTemporaryPaths();
+                }
+                catch (cleanupError) {
+                    reject(cleanupError);
+                    return;
+                }
+                if (streamFailure?.status === "rejected")
+                    reject(streamFailure.reason);
+                else
+                    resolve(result);
+            })();
+        });
+    });
+}
+//# sourceMappingURL=external-cli-runner.js.map

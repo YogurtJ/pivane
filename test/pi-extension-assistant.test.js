@@ -93,7 +93,7 @@ test('extension assistant persists its identity, scopes tools, confirms packages
         await run({ name: 'extensions_package', args });
         assert.equal(confirmations, 1);
         assert.equal((await worker.request('get_messages')).messages.find(m => m.role === 'toolResult' && m.toolName === 'extensions_package').details.pivanePackageOperation.status, 'cancelled');
-        assert.equal((await api('/extension-assistant/inventory', input)).data.packages.length, 0);
+        assert.equal((await api('/extension-assistant/inventory', input)).data.packages.filter(pkg => !pkg.managedBy).length, 0);
         allow = true;
         await run({ name: 'extensions_package', args });
         assert.equal(confirmations, 2);

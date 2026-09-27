@@ -1,0 +1,520 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { getPiSpawnCommand } from "../runs/shared/pi-spawn.js";
+import { findModelInfo, getSupportedThinkingLevels, splitKnownThinkingSuffix, toModelInfo } from "../shared/model-info.js";
+import { getAgentDir } from "../shared/utils.js";
+export const DEFAULT_PROVIDER_MODELS_MAX_AGE_DAYS = 7;
+function readJsonObjectFile(filePath) {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error(`File '${filePath}' must contain a JSON object.`);
+    }
+    return parsed;
+}
+function writeJsonFile(filePath, value) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
+}
+const SAFE_PATH_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+function normalizePathToken(value, label) {
+    const trimmed = value.trim();
+    if (!trimmed)
+        throw new Error(`${label} is required.`);
+    if (!SAFE_PATH_TOKEN.test(trimmed) || trimmed === "." || trimmed === ".." || trimmed.includes("/") || trimmed.includes("\\")) {
+        throw new Error(`${label} must be a safe file name using only letters, numbers, dots, underscores, and hyphens.`);
+    }
+    return trimmed;
+}
+function normalizeProfileName(name) {
+    const trimmed = name.trim();
+    const stem = trimmed.endsWith(".json") ? trimmed.slice(0, -5) : trimmed;
+    return normalizePathToken(stem, "Profile name");
+}
+function normalizeProviderName(provider) {
+    return normalizePathToken(provider, "Provider");
+}
+function validateSubagentProfile(filePath, parsed) {
+    const subagents = parsed.subagents;
+    if (!subagents || typeof subagents !== "object" || Array.isArray(subagents)) {
+        throw new Error(`Profile '${filePath}' must contain a 'subagents' object.`);
+    }
+    const agentOverrides = subagents.agentOverrides;
+    if (!agentOverrides || typeof agentOverrides !== "object" || Array.isArray(agentOverrides)) {
+        throw new Error(`Profile '${filePath}' must contain 'subagents.agentOverrides' as an object.`);
+    }
+    for (const [name, value] of Object.entries(agentOverrides)) {
+        if (!value || typeof value !== "object" || Array.isArray(value)) {
+            throw new Error(`Profile '${filePath}' has invalid override '${name}'; expected an object.`);
+        }
+        const override = value;
+        const model = override.model;
+        if (model !== undefined && typeof model !== "string") {
+            throw new Error(`Profile '${filePath}' has invalid model for '${name}'; expected a string.`);
+        }
+        const thinking = override.thinking;
+        if (thinking !== undefined && thinking !== false && typeof thinking !== "string") {
+            throw new Error(`Profile '${filePath}' has invalid thinking for '${name}'; expected a string or false.`);
+        }
+        if (override.fallbackModels !== undefined)
+            throw new Error(`Profile '${filePath}' uses removed field fallbackModels for '${name}'; configure one model instead.`);
+    }
+    const disableBuiltins = subagents.disableBuiltins;
+    if (disableBuiltins !== undefined && typeof disableBuiltins !== "boolean") {
+        throw new Error(`Profile '${filePath}' has invalid subagents.disableBuiltins; expected a boolean.`);
+    }
+    return parsed;
+}
+function getUserSettingsPath() {
+    return path.join(getAgentDir(), "settings.json");
+}
+function readSettingsFile(filePath) {
+    if (!fs.existsSync(filePath))
+        return {};
+    return readJsonObjectFile(filePath);
+}
+function extractVersionScore(id) {
+    const match = id.match(/(\d+(?:\.\d+)?)/g);
+    if (!match || match.length === 0)
+        return 0;
+    return Math.max(...match.map((value) => Number.parseFloat(value)).filter((value) => Number.isFinite(value)));
+}
+function modelNameTokens(modelName) {
+    return modelName
+        .toLowerCase()
+        .replace(/([a-z])([0-9])/g, "$1 $2")
+        .replace(/([0-9])([a-z])/g, "$1 $2")
+        .split(/[^a-z0-9.]+/)
+        .filter(Boolean);
+}
+function inferProfileBand(modelName) {
+    const tokens = new Set(modelNameTokens(modelName));
+    if (["spark", "flash", "nano", "tiny", "instant"].some((token) => tokens.has(token)))
+        return 0;
+    if (["mini", "haiku", "small"].some((token) => tokens.has(token)))
+        return 1;
+    if (["opus", "max", "ultra", "pro"].some((token) => tokens.has(token)))
+        return 4;
+    if (["sonnet", "turbo", "plus"].some((token) => tokens.has(token)))
+        return 3;
+    return 2;
+}
+function combinedCost(cost) {
+    if (!cost)
+        return undefined;
+    const values = [cost.input, cost.output, cost.cacheRead, cost.cacheWrite].filter((value) => typeof value === "number" && Number.isFinite(value));
+    if (values.length === 0)
+        return undefined;
+    return values.reduce((sum, value) => sum + value, 0);
+}
+function collectStats(values) {
+    const filtered = values.filter((value) => typeof value === "number" && Number.isFinite(value));
+    if (filtered.length === 0)
+        return undefined;
+    return { min: Math.min(...filtered), max: Math.max(...filtered) };
+}
+function normalize(value, stats) {
+    if (value === undefined || !stats)
+        return undefined;
+    if (stats.max <= stats.min)
+        return 0.5;
+    return (value - stats.min) / (stats.max - stats.min);
+}
+function buildClassificationContext(models) {
+    return {
+        cost: collectStats(models.map((model) => combinedCost(model.cost))),
+        contextWindow: collectStats(models.map((model) => model.contextWindow)),
+        maxTokens: collectStats(models.map((model) => model.maxTokens)),
+    };
+}
+function rankToCostTier(rank) {
+    if (rank <= 0.33)
+        return "cheap";
+    if (rank <= 0.66)
+        return "medium";
+    return "expensive";
+}
+function scoreToQualityTier(score) {
+    if (score <= 0.33)
+        return "weak";
+    if (score <= 0.66)
+        return "medium";
+    return "strong";
+}
+function qualityTierToRoleTier(quality, cost) {
+    if (quality === "strong")
+        return "strong";
+    if (quality === "medium")
+        return cost === "cheap" ? "cheap" : "medium";
+    return "cheap";
+}
+function agentsForRoleTier(roleTier) {
+    if (roleTier === "cheap")
+        return ["scout", "delegate"];
+    if (roleTier === "medium")
+        return ["researcher", "reviewer"];
+    return ["worker", "reviewer", "oracle"];
+}
+function classifyModel(input, context) {
+    const modelName = input.name?.trim() || input.id;
+    const tokens = new Set(modelNameTokens(modelName));
+    const band = inferProfileBand(modelName);
+    const versionScore = extractVersionScore(input.id);
+    const costNorm = normalize(combinedCost(input.cost), context.cost);
+    const contextNorm = normalize(input.contextWindow, context.contextWindow);
+    const maxTokensNorm = normalize(input.maxTokens, context.maxTokens);
+    const hasOfficialMetadata = costNorm !== undefined || contextNorm !== undefined || maxTokensNorm !== undefined;
+    const classificationSources = hasOfficialMetadata
+        ? ["official-metadata", "heuristic-name"]
+        : ["heuristic-name"];
+    const heuristicBase = band / 4;
+    const qualitySignals = [
+        heuristicBase,
+        ...(contextNorm !== undefined ? [contextNorm] : []),
+        ...(maxTokensNorm !== undefined ? [maxTokensNorm] : []),
+        ...(input.reasoning === true ? [1] : []),
+        ...(input.reasoning === false ? [0] : []),
+    ];
+    const latencyHintsFast = tokens.has("highspeed") || tokens.has("flash") || tokens.has("instant") || tokens.has("turbo");
+    const latencyHintsSlow = tokens.has("pro") || tokens.has("ultra") || tokens.has("opus") || tokens.has("max");
+    let qualityScore = qualitySignals.reduce((sum, value) => sum + value, 0) / qualitySignals.length;
+    if (latencyHintsFast) {
+        qualityScore -= 0.2;
+    }
+    qualityScore = Math.max(0, Math.min(1, qualityScore));
+    const costTier = costNorm !== undefined
+        ? rankToCostTier(costNorm)
+        : band === 0 ? "cheap" : band >= 3 ? "expensive" : "medium";
+    const qualityTier = scoreToQualityTier(qualityScore);
+    const latencyTier = latencyHintsFast
+        ? "fast"
+        : latencyHintsSlow
+            ? "slow"
+            : costNorm !== undefined
+                ? (costNorm <= 0.33 ? "fast" : costNorm <= 0.66 ? "medium" : "slow")
+                : (band <= 1 ? "fast" : band >= 3 ? "slow" : "medium");
+    const recommendedRoleTier = qualityTierToRoleTier(qualityTier, costTier);
+    const latencyPenalty = latencyHintsFast ? 125 : 0;
+    const profileRank = Math.round((qualityScore * 100) * 10) + Math.round(versionScore * 25) - latencyPenalty;
+    return {
+        profileRank,
+        costTier,
+        qualityTier,
+        latencyTier,
+        recommendedRoleTier,
+        recommendedAgents: agentsForRoleTier(recommendedRoleTier),
+        classificationSources,
+    };
+}
+function resolveProbeStatus(text, timedOut) {
+    if (timedOut)
+        return "timeout";
+    if (!text)
+        return "error";
+    if (/(unauthori[sz]ed|forbidden|api key|auth|billing|credit|quota)/i.test(text))
+        return "auth";
+    if (/(not found|unknown model|model unavailable|model disabled|unsupported model|unavailable)/i.test(text))
+        return "unavailable";
+    return "error";
+}
+async function probeModel(pi, fullId) {
+    if (typeof pi.exec !== "function") {
+        return { status: "skipped", message: "pi.exec is unavailable in this runtime." };
+    }
+    const spawnSpec = getPiSpawnCommand(["-p", "--model", fullId, "--no-tools", 'Reply with exactly "OK".']);
+    const result = await pi.exec(spawnSpec.command, spawnSpec.args, {
+        cwd: os.tmpdir(),
+        timeout: 45_000,
+    });
+    const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
+    const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
+    const combined = [stderr, stdout].filter(Boolean).join("\n").trim();
+    if (result.code === 0)
+        return { status: "ok", message: stdout || "Probe succeeded." };
+    return { status: resolveProbeStatus(combined, result.killed === true), message: combined || `Probe exited with code ${result.code ?? "unknown"}.` };
+}
+function roundIndex(count, position) {
+    if (count <= 1)
+        return 0;
+    return Math.max(0, Math.min(count - 1, Math.round((count - 1) * position)));
+}
+function profilePositions(kind) {
+    return kind === "quota"
+        ? { cheap: 0, medium: 1 / 3, strong: 2 / 3 }
+        : { cheap: 1 / 3, medium: 2 / 3, strong: 1 };
+}
+function pickTierModels(models, kind) {
+    if (models.length === 0)
+        throw new Error("No provider models are available for profile generation.");
+    const selectionPool = kind === "quota" && models.length > 1
+        ? models.slice(0, -1)
+        : models;
+    const positions = profilePositions(kind);
+    return {
+        cheap: selectionPool[roundIndex(selectionPool.length, positions.cheap)].fullId,
+        medium: selectionPool[roundIndex(selectionPool.length, positions.medium)].fullId,
+        strong: selectionPool[roundIndex(selectionPool.length, positions.strong)].fullId,
+    };
+}
+function observedCombinedCost(model) {
+    return combinedCost(model.observed.cost);
+}
+function dominatesModel(a, b) {
+    const costA = observedCombinedCost(a);
+    const costB = observedCombinedCost(b);
+    if (costA === undefined || costB === undefined)
+        return false;
+    if (costA > costB)
+        return false;
+    if (a.derived.profileRank < b.derived.profileRank)
+        return false;
+    if ((a.observed.reasoning === true ? 1 : 0) < (b.observed.reasoning === true ? 1 : 0))
+        return false;
+    if ((a.observed.contextWindow ?? 0) < (b.observed.contextWindow ?? 0))
+        return false;
+    if ((a.observed.maxTokens ?? 0) < (b.observed.maxTokens ?? 0))
+        return false;
+    return costA < costB
+        || a.derived.profileRank > b.derived.profileRank
+        || (a.observed.reasoning === true && b.observed.reasoning !== true)
+        || (a.observed.contextWindow ?? 0) > (b.observed.contextWindow ?? 0)
+        || (a.observed.maxTokens ?? 0) > (b.observed.maxTokens ?? 0);
+}
+function filterDominatedModels(models) {
+    return models.filter((candidate, index) => !models.some((other, otherIndex) => otherIndex !== index && dominatesModel(other, candidate)));
+}
+function buildProfileFile(models) {
+    return {
+        subagents: {
+            agentOverrides: {
+                scout: { model: models.cheap },
+                delegate: { model: models.cheap },
+                researcher: { model: models.medium },
+                worker: { model: models.strong },
+                reviewer: { model: models.strong },
+                oracle: { model: models.strong },
+            },
+        },
+    };
+}
+function catalogModelIsUsable(model) {
+    return model.observed.availableInRegistry && model.observed.probe.status !== "unavailable" && model.observed.probe.status !== "auth" && model.observed.probe.status !== "timeout" && model.observed.probe.status !== "error";
+}
+function modelUsesHeuristicClassification(model) {
+    return model.derived.classificationSources.includes("heuristic-name")
+        && !model.derived.classificationSources.includes("official-metadata");
+}
+function warningLineForHeuristicFallback() {
+    return "Classification fell back to name heuristics.";
+}
+export function countHeuristicFallbackModels(catalog) {
+    return catalog.models.filter(modelUsesHeuristicClassification).length;
+}
+function resolveProfilePath(name) {
+    const dir = ensureSubagentProfilesDir();
+    return path.join(dir, `${normalizeProfileName(name)}.json`);
+}
+export function getSubagentProfilesRootDir() {
+    return path.join(getAgentDir(), "profiles", "pi-subagents");
+}
+export function getSubagentProfilesDir() {
+    return getSubagentProfilesRootDir();
+}
+export function ensureSubagentProfilesDir() {
+    const dir = getSubagentProfilesDir();
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+}
+export function getProviderModelsDir() {
+    return path.join(getSubagentProfilesRootDir(), "providers");
+}
+export function ensureProviderModelsDir() {
+    const dir = getProviderModelsDir();
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+}
+export function getProviderModelsPath(provider) {
+    return path.join(ensureProviderModelsDir(), `${normalizeProviderName(provider)}.models.json`);
+}
+export function listSubagentProfiles() {
+    const dir = ensureSubagentProfilesDir();
+    return fs.readdirSync(dir, { withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+        .map((entry) => entry.name.slice(0, -5))
+        .sort((a, b) => a.localeCompare(b));
+}
+export function readSubagentProfile(name) {
+    const filePath = resolveProfilePath(name);
+    if (!fs.existsSync(filePath))
+        throw new Error(`Profile not found: ${name}`);
+    const parsed = readJsonObjectFile(filePath);
+    return { filePath, profile: validateSubagentProfile(filePath, parsed) };
+}
+export function applySubagentProfile(name) {
+    const { filePath, profile } = readSubagentProfile(name);
+    const settingsPath = getUserSettingsPath();
+    const settings = readSettingsFile(settingsPath);
+    const existing = settings.subagents && typeof settings.subagents === "object" && !Array.isArray(settings.subagents)
+        ? settings.subagents
+        : {};
+    // A profile owns the complete agent mapping, but unrelated subagent settings
+    // (notably disableBuiltins, modelScope, watchdog, etc.) survive profile switches.
+    // Machine placement is not a model choice, so an existing pin survives a profile switch too.
+    const agentOverrides = { ...profile.subagents.agentOverrides };
+    const existingOverrides = existing.agentOverrides && typeof existing.agentOverrides === "object" && !Array.isArray(existing.agentOverrides)
+        ? existing.agentOverrides
+        : {};
+    for (const [name, value] of Object.entries(existingOverrides)) {
+        const machine = value && typeof value === "object" && !Array.isArray(value) ? value.machine : undefined;
+        if (typeof machine === "string" && agentOverrides[name]?.machine === undefined)
+            agentOverrides[name] = { ...agentOverrides[name], machine };
+    }
+    settings.subagents = {
+        ...existing,
+        ...profile.subagents,
+        agentOverrides,
+    };
+    writeJsonFile(settingsPath, settings);
+    return { filePath, settingsPath };
+}
+export function readProviderModelCatalog(provider) {
+    const filePath = getProviderModelsPath(provider);
+    if (!fs.existsSync(filePath))
+        return null;
+    return readJsonObjectFile(filePath);
+}
+export function isProviderModelCatalogStale(catalog, maxAgeDays = DEFAULT_PROVIDER_MODELS_MAX_AGE_DAYS) {
+    const refreshedAt = Date.parse(catalog.refreshedAt);
+    if (!Number.isFinite(refreshedAt))
+        return true;
+    const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
+    return Date.now() - refreshedAt > maxAgeMs;
+}
+export async function refreshProviderModelCatalog(pi, ctx, provider, options = {}) {
+    const normalizedProvider = normalizeProviderName(provider);
+    const maxAgeDays = options.maxAgeDays ?? DEFAULT_PROVIDER_MODELS_MAX_AGE_DAYS;
+    const filePath = getProviderModelsPath(normalizedProvider);
+    if (!options.force) {
+        const existing = readProviderModelCatalog(normalizedProvider);
+        if (existing && !isProviderModelCatalogStale(existing, maxAgeDays)) {
+            return { filePath, catalog: existing, reused: true, heuristicFallbackCount: countHeuristicFallbackModels(existing) };
+        }
+    }
+    const availableModels = ctx.modelRegistry.getAvailable().filter((model) => model.provider === normalizedProvider);
+    if (availableModels.length === 0) {
+        throw new Error(`No models found in the current registry for provider '${normalizedProvider}'.`);
+    }
+    const observedModels = [];
+    for (const rawModel of availableModels) {
+        const modelRecord = rawModel;
+        const fullId = `${modelRecord.provider}/${modelRecord.id}`;
+        const probe = options.probe === false
+            ? { status: "skipped", message: "Live probing disabled." }
+            : await probeModel(pi, fullId);
+        observedModels.push({ rawModel, modelRecord, fullId, probe });
+    }
+    const classificationContext = buildClassificationContext(observedModels.map(({ modelRecord }) => ({
+        id: modelRecord.id,
+        ...(typeof modelRecord.name === "string" ? { name: modelRecord.name } : {}),
+        ...(typeof modelRecord.reasoning === "boolean" ? { reasoning: modelRecord.reasoning } : {}),
+        ...(typeof modelRecord.contextWindow === "number" ? { contextWindow: modelRecord.contextWindow } : {}),
+        ...(typeof modelRecord.maxTokens === "number" ? { maxTokens: modelRecord.maxTokens } : {}),
+        ...(modelRecord.cost && typeof modelRecord.cost === "object" ? { cost: modelRecord.cost } : {}),
+    })));
+    const models = [];
+    for (const { rawModel, modelRecord, fullId, probe } of observedModels) {
+        const classification = classifyModel({
+            id: modelRecord.id,
+            ...(typeof modelRecord.name === "string" ? { name: modelRecord.name } : {}),
+            ...(typeof modelRecord.reasoning === "boolean" ? { reasoning: modelRecord.reasoning } : {}),
+            ...(typeof modelRecord.contextWindow === "number" ? { contextWindow: modelRecord.contextWindow } : {}),
+            ...(typeof modelRecord.maxTokens === "number" ? { maxTokens: modelRecord.maxTokens } : {}),
+            ...(modelRecord.cost && typeof modelRecord.cost === "object" ? { cost: modelRecord.cost } : {}),
+        }, classificationContext);
+        const warnings = classification.classificationSources.includes("heuristic-name") && !classification.classificationSources.includes("official-metadata")
+            ? [warningLineForHeuristicFallback()]
+            : [];
+        models.push({
+            id: modelRecord.id,
+            fullId,
+            observed: {
+                availableInRegistry: true,
+                ...(typeof modelRecord.name === "string" ? { name: modelRecord.name } : {}),
+                ...(typeof modelRecord.reasoning === "boolean" ? { reasoning: modelRecord.reasoning } : {}),
+                thinkingLevels: getSupportedThinkingLevels(toModelInfo(rawModel)).map((level) => level),
+                ...(typeof modelRecord.contextWindow === "number" ? { contextWindow: modelRecord.contextWindow } : {}),
+                ...(typeof modelRecord.maxTokens === "number" ? { maxTokens: modelRecord.maxTokens } : {}),
+                ...(modelRecord.cost && typeof modelRecord.cost === "object" ? { cost: modelRecord.cost } : {}),
+                probe: {
+                    status: probe.status,
+                    checkedAt: new Date().toISOString(),
+                    ...(probe.message ? { message: probe.message } : {}),
+                },
+            },
+            derived: classification,
+            warnings,
+            notes: [],
+        });
+    }
+    models.sort((a, b) => a.derived.profileRank - b.derived.profileRank || a.fullId.localeCompare(b.fullId));
+    const catalog = {
+        provider: normalizedProvider,
+        refreshedAt: new Date().toISOString(),
+        maxAgeDays,
+        sources: ["runtime-registry", ...(options.probe === false ? [] : ["live-probe"]), "heuristic-classifier"],
+        models,
+    };
+    writeJsonFile(filePath, catalog);
+    return { filePath, catalog, reused: false, heuristicFallbackCount: countHeuristicFallbackModels(catalog) };
+}
+export async function generateProfilesForProvider(pi, ctx, provider, options = {}) {
+    const normalizedProvider = normalizeProviderName(provider);
+    const { filePath: catalogPath, catalog, heuristicFallbackCount } = await refreshProviderModelCatalog(pi, ctx, normalizedProvider, {
+        maxAgeDays: options.maxAgeDays,
+        force: options.forceRefresh,
+        probe: options.probe,
+    });
+    const usableModels = catalog.models.filter(catalogModelIsUsable);
+    const profileModels = filterDominatedModels(usableModels);
+    if (profileModels.length === 0) {
+        throw new Error(`Provider '${normalizedProvider}' has no usable models after filtering.`);
+    }
+    const quotaModels = pickTierModels(profileModels, "quota");
+    const qualityModels = pickTierModels(profileModels, "quality");
+    const dir = ensureSubagentProfilesDir();
+    const quotaPath = path.join(dir, `${normalizedProvider}.quota.json`);
+    const qualityPath = path.join(dir, `${normalizedProvider}.quality.json`);
+    writeJsonFile(quotaPath, buildProfileFile(quotaModels));
+    writeJsonFile(qualityPath, buildProfileFile(qualityModels));
+    const selectedModels = new Set([...Object.values(quotaModels), ...Object.values(qualityModels)]);
+    const selectedHeuristicFallbackCount = profileModels.filter((model) => selectedModels.has(model.fullId) && modelUsesHeuristicClassification(model)).length;
+    return { quotaPath, qualityPath, catalogPath, quotaModels, qualityModels, heuristicFallbackCount, selectedHeuristicFallbackCount };
+}
+export async function checkSubagentProfile(pi, ctx, name) {
+    const { filePath, profile } = readSubagentProfile(name);
+    const availableModels = ctx.modelRegistry.getAvailable().map(toModelInfo);
+    const entries = Object.entries(profile.subagents.agentOverrides)
+        .filter(([, value]) => typeof value?.model === "string" && value.model.trim())
+        .map(([agent, value]) => ({ agent, model: value.model.trim() }));
+    const probeCache = new Map();
+    const results = [];
+    for (const entry of entries) {
+        const modelInfo = findModelInfo(entry.model, availableModels);
+        const { thinkingSuffix } = splitKnownThinkingSuffix(entry.model);
+        const probeModelId = modelInfo ? `${modelInfo.fullId}${thinkingSuffix}` : entry.model;
+        let probe = probeCache.get(probeModelId);
+        if (!probe) {
+            probe = await probeModel(pi, probeModelId);
+            probeCache.set(probeModelId, probe);
+        }
+        results.push({
+            agent: entry.agent,
+            model: entry.model,
+            inRegistry: modelInfo !== undefined,
+            probe,
+        });
+    }
+    return { profileName: name, filePath, results };
+}
+//# sourceMappingURL=profiles.js.map

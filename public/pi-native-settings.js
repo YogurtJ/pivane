@@ -417,15 +417,15 @@ const installedFilterValues = ['all', 'packages', 'extensions', 'skills', 'promp
                 return row;
             }
             function packageRow(pkg) {
-                const name = packageName(pkg.source);
+                const name = pkg.name || packageName(pkg.source);
                 const menu = [];
-                if (pkg.scope === (scope === 'global' ? 'user' : 'project')) {
+                if (!pkg.managedBy && pkg.scope === (scope === 'global' ? 'user' : 'project')) {
                     if (pkg.installed) menu.push({ label: translateUi("更新"), icon: 'fa-arrows-rotate', disabled, action: () => packageAction(null, 'update', pkg.source) });
                     menu.push({ label: translateUi("移除"), icon: 'fa-trash', danger: true, disabled, action: () => packageAction(null, 'remove', pkg.source) });
                 }
                 const row = resourceRow({
                     icon: 'fa-box', name,
-                    badges: [[resourceScopeLabel(pkg.scope), 'scope'], [pkg.installed ? translateUi("已安装") : translateUi("尚未安装"), pkg.installed ? 'on' : 'off']],
+                    badges: [[pkg.managedBy === 'pivane' ? 'Pivane · ' + pkg.version : resourceScopeLabel(pkg.scope), 'scope'], [pkg.installed ? translateUi("已安装") : translateUi("尚未安装"), pkg.installed ? 'on' : 'off']],
                     origin: { summary: translateUi("查看来源"), lines: [['code', pkg.source]] },
                     menu, extra: [itemHelp(cwd, scope, { kind: 'package', name, source: pkg.source, resourceScope: pkg.scope })]
                 });

@@ -10,12 +10,34 @@ const { reviewModelConfig } = require('./auto-learn');
 // Instance-owned executable configuration. Never register the upstream default
 // extension globally: only the verified profile worker receives these values.
 class ProfileMemoryConfiguration {
-    constructor({ getAgentDir = async () => (await getSdk()).getAgentDir() } = {}) {
+    constructor({ getAgentDir = async () => (await getSdk()).getAgentDir(), bundledPath = require('../pi-bundled-capabilities').memoryBundle() } = {}) {
         this.getAgentDir = getAgentDir;
+        this.bundledPath = bundledPath;
         this.cached = null;
     }
 
     async snapshot() {
+        // Current release owns executable code. Legacy absolute paths are only a
+        // compatibility fallback for installations without a built bundle.
+        if (this.bundledPath) {
+            const bundlePath = fs.realpathSync.native(path.dirname(this.bundledPath)) + path.sep + path.basename(this.bundledPath);
+            const capability = profileMemoryCapability({ bundlePath });
+            if (capability.installed) {
+                // Preserve the old model hint for explicit learning adoption even
+                // when its former executable path no longer exists.
+                let reviewModel = null;
+                try {
+                    const file = safeFile(await this.getAgentDir(), ['pivane-profiles', 'runtime.json']);
+                    const data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(readSafe(file, 16384)));
+                    if (data?.version === 1 && data.reviewModel != null) reviewModel = reviewModelConfig(JSON.stringify(data.reviewModel));
+                } catch { /* Optional legacy hint never disables the bundled component. */ }
+                return { bundlePath, reviewModel, capability };
+            }
+        }
+        return this.legacySnapshot();
+    }
+
+    async legacySnapshot() {
         const unavailable = { bundlePath: null, reviewModel: null, capability: { installed: false, autoLearn: false } };
         try {
             const agentDir = await this.getAgentDir();

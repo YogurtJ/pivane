@@ -1,0 +1,226 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { extractTextFromContent, extractToolArgsPreview } from "./utils.js";
+const MAX_TOOL_PAYLOAD_BYTES = 32 * 1024;
+const TOOL_PAYLOAD_TRUNCATION_MARKER = "\n\n… payload truncated";
+function boundedPayload(value, maxBytes = MAX_TOOL_PAYLOAD_BYTES) {
+    let text;
+    if (typeof value === "string")
+        text = value;
+    else {
+        try {
+            const serialized = JSON.stringify(value, null, 2);
+            if (serialized === undefined)
+                return undefined;
+            text = serialized;
+        }
+        catch {
+            return undefined;
+        }
+    }
+    if (!text.trim())
+        return undefined;
+    const payload = Buffer.from(text, "utf-8");
+    if (payload.length <= maxBytes)
+        return text;
+    const markerBytes = Buffer.byteLength(TOOL_PAYLOAD_TRUNCATION_MARKER, "utf-8");
+    let end = Math.max(0, maxBytes - markerBytes);
+    while (end > 0 && (payload[end] & 0xc0) === 0x80)
+        end--;
+    return `${payload.subarray(0, end).toString("utf-8")}${TOOL_PAYLOAD_TRUNCATION_MARKER}`;
+}
+export const CHILD_TRANSCRIPT_ARTIFACT_VERSION = 1;
+const DEFAULT_MAX_CHILD_TRANSCRIPT_BYTES = 50 * 1024 * 1024;
+function errorMessage(error) {
+    return error instanceof Error ? error.message : String(error);
+}
+function finiteNumber(value) {
+    return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+function normalizeUsage(value) {
+    if (!value || typeof value !== "object")
+        return undefined;
+    const raw = value;
+    const rawCost = raw.cost;
+    const cost = rawCost && typeof rawCost === "object"
+        ? finiteNumber(rawCost.total) ?? 0
+        : finiteNumber(rawCost) ?? 0;
+    return {
+        input: finiteNumber(raw.input) ?? finiteNumber(raw.inputTokens) ?? 0,
+        output: finiteNumber(raw.output) ?? finiteNumber(raw.outputTokens) ?? 0,
+        cacheRead: finiteNumber(raw.cacheRead) ?? 0,
+        cacheWrite: finiteNumber(raw.cacheWrite) ?? 0,
+        cost,
+    };
+}
+function eventArgs(event) {
+    return event.args && typeof event.args === "object" && !Array.isArray(event.args)
+        ? event.args
+        : {};
+}
+export function createChildTranscriptWriter(input) {
+    let bytesWritten = 0;
+    let writeError;
+    let truncated = false;
+    const maxBytes = input.maxBytes ?? DEFAULT_MAX_CHILD_TRANSCRIPT_BYTES;
+    const baseRecord = (recordType) => {
+        const ts = Date.now();
+        return {
+            version: CHILD_TRANSCRIPT_ARTIFACT_VERSION,
+            recordType,
+            source: input.source,
+            runId: input.runId,
+            agent: input.agent,
+            ...(input.childIndex !== undefined ? { childIndex: input.childIndex } : {}),
+            cwd: input.cwd,
+            ts,
+            timestamp: new Date(ts).toISOString(),
+        };
+    };
+    const writeTruncatedMarker = () => {
+        truncated = true;
+        const marker = `${JSON.stringify({
+            ...baseRecord("truncated"),
+            maxBytes,
+            message: `Child transcript exceeded ${maxBytes} bytes; further records were omitted.`,
+        })}\n`;
+        const markerBytes = Buffer.byteLength(marker, "utf-8");
+        if (bytesWritten + markerBytes > maxBytes)
+            return false;
+        try {
+            fs.appendFileSync(input.transcriptPath, marker, "utf-8");
+            bytesWritten += markerBytes;
+            return true;
+        }
+        catch (error) {
+            writeError = `Failed to write child transcript '${input.transcriptPath}': ${errorMessage(error)}`;
+            return false;
+        }
+    };
+    const writeRecord = (record) => {
+        if (writeError || truncated)
+            return;
+        const line = `${JSON.stringify(record)}\n`;
+        const bytes = Buffer.byteLength(line, "utf-8");
+        if (bytesWritten + bytes > maxBytes) {
+            writeTruncatedMarker();
+            return;
+        }
+        const markerProbe = `${JSON.stringify({
+            ...baseRecord("truncated"),
+            maxBytes,
+            message: `Child transcript exceeded ${maxBytes} bytes; further records were omitted.`,
+        })}\n`;
+        if (bytesWritten + bytes + Buffer.byteLength(markerProbe, "utf-8") > maxBytes) {
+            writeTruncatedMarker();
+            return;
+        }
+        try {
+            fs.appendFileSync(input.transcriptPath, line, "utf-8");
+            bytesWritten += bytes;
+        }
+        catch (error) {
+            writeError = `Failed to write child transcript '${input.transcriptPath}': ${errorMessage(error)}`;
+        }
+    };
+    try {
+        fs.mkdirSync(path.dirname(input.transcriptPath), { recursive: true });
+        fs.writeFileSync(input.transcriptPath, "", "utf-8");
+    }
+    catch (error) {
+        writeError = `Failed to initialize child transcript '${input.transcriptPath}': ${errorMessage(error)}`;
+    }
+    const writeMessage = (sourceEventType, message) => {
+        const text = extractTextFromContent(message.content);
+        if (message.role === "toolResult") {
+            const output = boundedPayload(text);
+            writeRecord({
+                ...baseRecord("message"),
+                sourceEventType,
+                role: message.role,
+                toolCallId: message.toolCallId,
+                toolName: message.toolName,
+                isError: message.isError,
+                ...(output ? { text: output, outputTruncated: output.includes("… payload truncated") } : {}),
+                message: {
+                    role: message.role,
+                    toolCallId: message.toolCallId,
+                    toolName: message.toolName,
+                    isError: message.isError,
+                    content: output ? [{ type: "text", text: output }] : [],
+                    ...(message.timestamp !== undefined ? { timestamp: message.timestamp } : {}),
+                },
+            });
+            return;
+        }
+        writeRecord({
+            ...baseRecord("message"),
+            sourceEventType,
+            role: message.role,
+            ...(text ? { text } : {}),
+            ...(message.model ? { model: message.model } : {}),
+            ...(message.stopReason ? { stopReason: message.stopReason } : {}),
+            ...(message.errorMessage ? { errorMessage: message.errorMessage } : {}),
+            ...(message.usage ? { usage: normalizeUsage(message.usage) } : {}),
+            message,
+        });
+    };
+    return {
+        path: input.transcriptPath,
+        writeInitialUserMessage(prompt) {
+            writeRecord({
+                ...baseRecord("message"),
+                sourceEventType: "initial_prompt",
+                role: "user",
+                text: prompt,
+                message: { role: "user", content: [{ type: "text", text: prompt }] },
+            });
+        },
+        writeChildEvent(event) {
+            if ((event.type === "message_end" || event.type === "tool_result_end") && event.message) {
+                writeMessage(event.type, event.message);
+                return;
+            }
+            if (event.type === "tool_execution_start" && event.toolName) {
+                const args = eventArgs(event);
+                const argsPayload = boundedPayload(args);
+                writeRecord({
+                    ...baseRecord("tool_start"),
+                    sourceEventType: event.type,
+                    ...(event.toolCallId ? { toolCallId: event.toolCallId } : {}),
+                    toolName: event.toolName,
+                    ...(Object.keys(args).length > 0 ? { argsPreview: extractToolArgsPreview(args) } : {}),
+                    ...(argsPayload ? { argsPayload } : {}),
+                });
+                return;
+            }
+            if (event.type === "tool_execution_end") {
+                writeRecord({
+                    ...baseRecord("tool_end"),
+                    sourceEventType: event.type,
+                    ...(event.toolCallId ? { toolCallId: event.toolCallId } : {}),
+                    ...(event.toolName ? { toolName: event.toolName } : {}),
+                    ...(typeof event.isError === "boolean" ? { isError: event.isError } : {}),
+                });
+            }
+        },
+        writeStdoutLine(line) {
+            if (!line.trim())
+                return;
+            writeRecord({ ...baseRecord("stdout"), text: line });
+        },
+        writeStderrLine(line) {
+            if (!line.trim())
+                return;
+            writeRecord({ ...baseRecord("stderr"), text: line });
+        },
+        writeStderrText(text) {
+            for (const line of text.split(/\r?\n/))
+                this.writeStderrLine(line);
+        },
+        getError() {
+            return writeError;
+        },
+    };
+}
+//# sourceMappingURL=child-transcript.js.map

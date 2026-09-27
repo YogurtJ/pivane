@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { sourceFiles, distributionFiles } = require('../scripts/source-files.cjs');
+const { sourceFiles, distributionFiles, verifyBundledMemory } = require('../scripts/source-files.cjs');
 
 function fixture(t) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-source-'));
@@ -34,6 +34,15 @@ test('source discovery refuses linked code directories instead of silently omitt
     put(root, 'server/main.js'); put(outside, 'secret.js');
     fs.symlinkSync(outside, path.join(root, 'server/linked'), process.platform === 'win32' ? 'junction' : 'dir');
     assert.throws(() => sourceFiles(root, 'server'), /symlink/);
+});
+
+test('release inventory requires the reviewed memory build even when installation scripts are skipped by an older updater', t => {
+    const root = fixture(t);
+    assert.throws(() => verifyBundledMemory(root), /run node scripts\/install.cjs/);
+    put(root, 'server/profile-memory/upstream-bundle.mjs');
+    assert.throws(() => verifyBundledMemory(root), /differs from the reviewed build/);
+    fs.copyFileSync(path.resolve(__dirname, '../server/profile-memory/upstream-bundle.mjs'), path.join(root, 'server/profile-memory/upstream-bundle.mjs'));
+    assert.doesNotThrow(() => verifyBundledMemory(root));
 });
 
 test('release inventory includes its own discovery and checking tools and excludes maintenance and user data', () => {

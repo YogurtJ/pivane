@@ -85,6 +85,7 @@ async function stageApplication({ directory, release, env = process.env, signal,
     progress('installing');
     const installEnv = installEnvironment(env, directory);
     await run([npmCli(env), 'ci', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: directory, env: installEnv, signal, onOutput, secretEnv: env });
+    await require('./pi-update-installer').prepareBundled({ directory, env: { ...installEnv, PI_NPM_CLI: npmCli(env) }, signal, run, onOutput, secretEnv: env });
     if (JSON.parse(readSafe(path.join(directory, 'node_modules/@earendil-works/pi-coding-agent/package.json'))).version !== pi) throw Error('Installed Pi mismatch');
     progress('verifying');
     const probe = privateDir(path.join(directory, 'probe-data'));

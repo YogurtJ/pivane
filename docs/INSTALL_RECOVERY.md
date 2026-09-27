@@ -91,13 +91,9 @@ curl -fsS http://127.0.0.1:11408/api/pi/status
 
 ## 默认可选能力
 
-当前源码的 `npm ci` 在必需依赖安装后尝试安装 `npm:pi-subagents@0.71.0`，使用 Pi 公开包管理接口写入当前用户的 Pi 配置，与 CLI 共用。下载失败只产生提示，Pivane 仍可安装和运行。默认安装不会自动委派任务。插件按自身 MIT 许可单独下载，不将其源码复制进 Pivane 仓库。
+当前源码已改为随应用交付 pi-subagents 0.71.0 和 pi-hermes-memory 0.9.9。运行 `node scripts/install.cjs` 安装锁定依赖并准备内置组件，避免 npm 对 SQLite 随包二进制进行无谓编译；不再写入当前用户的 Pi Packages 配置。组件准备失败会返回安装错误；不会自动启动子任务或启用身份记忆。旧发布归档没有此脚本时，仍使用归档原有的 `npm ci` 安装说明。
 
-如使用独立身份，必须在 `npm ci` **之前**设置 `PI_CODING_AGENT_DIR`（或准备应用 `.env`），避免把可选插件安装到默认身份。已有 Pi 用户保持原来的身份环境。设置 `PI_SKIP_DEFAULT_CAPABILITIES=1`、`PI_OFFLINE=1` 或使用 npm 的 `--ignore-scripts` 可跳过自动安装；前两种方式记录跳过，`--ignore-scripts` 不运行安装器也不写记录。
-
-每个 Pi 身份的 `pivane-default-capabilities.json` 保存能力安装尝试状态；成功、失败、中断、跳过或发现已有配置后，不会在后续启动或 `npm ci` 自动重放。已安装的其他版本保留，用户卸载后不会自动装回。缺失插件可在“设置 → 模型与能力 → 子 Agent”确认补装，异常或结果不确定先刷新核对。停用、版本调整与移除通过 Packages 管理。
-
-默认能力清单用于后续扩展其他包/Skills，目前只包含 pi-subagents；并非自动安装任意第三方能力。首次添加的新清单项会在下一次执行安装脚本时单独尝试。
+子 Agent 模型与角色设置沿用原生配置，资源可在扩展页停用；档案记忆按助手身份启用。旧 CLI 包声明、过滤、记忆数据和独立安装路径保留，Pivane 优先加载自己的版本。旧跳过变量与安装尝试记录不再控制内置组件。SQLite 平台依赖、跳过脚本后的补全步骤和旧安装兼容见[内置能力包](BUNDLED_CAPABILITIES.md)。
 
 ## 3. 首次网页使用
 

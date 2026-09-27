@@ -81,7 +81,7 @@ test('control requests are allow-listed and results keep private fields out', ()
 test('managed worker hosts the liveness registry, retains background work and relays controls privately', { timeout: 120000 }, async () => {
     const flag = path.join(root, 'active.flag');
     const requests = path.join(root, 'requests.jsonl');
-    fs.writeFileSync(path.join(root, 'agent/settings.json'), JSON.stringify({ enableInstallTelemetry: false, defaultProjectTrust: 'never' }));
+    fs.writeFileSync(path.join(root, 'agent/settings.json'), JSON.stringify({ enableInstallTelemetry: false, defaultProjectTrust: 'never', pivaneBuiltins: { subagents: { extensions: [] } } }));
     // Emulates the pi-subagents host protocol: session liveness provider, RPC event bus and snapshot widget.
     fs.writeFileSync(path.join(root, 'agent/extensions/fixture-subagents.ts'), `import fs from 'node:fs';
     export default function (pi) {

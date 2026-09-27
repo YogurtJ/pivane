@@ -111,6 +111,8 @@ POSIX 私密权限和目录刷盘、Windows 受保护 DACL 和写透替换分别
 
 ## 安装、维护与交付
 
+内置第三方能力由 `pi-bundled-capabilities` 定义接入，`vendor/manifest.json` 保存上游原始文件与哈希。父会话通过 `pi-managed-runtime` 的公开 SDK/RPC 入口加载，`pi-bundled-resources` 在原生包解析前生成内存视图，`pi-bundled-loader` 在执行扩展前过滤重复来源。子 Agent 的版本审查 factory 接口只替换子会话的资源加载器，任务生命周期继续由上游与 Supervisor 管理；记忆仍通过档案适配，只改变 bundle 来源。安装、旧路径兼容和维护步骤见[内置能力包](../BUNDLED_CAPABILITIES.md)。
+
 普通 node server.js 和 npm start 经独立受管启动器；direct 模式用于明确的独立开发实例。启动器持有安装目录锁，通过私有 IPC 和服务代次处理维护请求，正常停机等待全部登记的 RPC 进程实际退出。SIGINT/SIGTERM 监听在清理结束前保持注册；重复信号不重复清理。
 
 源码工作区、运行 release 与发布归档分别有身份。受管 Pi 更新创建代码/依赖快照，应用更新下载并校验固定官方来源的归档。安装完成和服务启动完成分开记录；失败保留旧版本与证据，不自动恢复数据或重放维护请求。

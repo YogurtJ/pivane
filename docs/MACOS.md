@@ -4,10 +4,10 @@
 
 ## 安装前提
 
-当前源码的 `npm ci` 默认尝试安装可选 pi-subagents，下载失败不影响 Pivane。独立身份必须在安装前设置 `PI_CODING_AGENT_DIR`；跳过、已有插件与补装规则见[默认可选能力](INSTALL_RECOVERY.md#默认可选能力)。
+当前源码的 `node scripts/install.cjs` 统一准备内置 pi-subagents 与 pi-hermes-memory，不再向共享 Pi 身份另行安装包；准备失败会返回安装错误。这个入口也避免 npm 对 SQLite 的无谓编译。下文旧发布归档仍使用原有 `npm ci` 命令；当前源码请使用统一安装入口。默认启用、旧配置兼容和平台依赖见[内置能力包](BUNDLED_CAPABILITIES.md)。
 
 - Node 22.x、npm、系统ripgrep。可以保留已有其他版本Node，为本实例指定独立Node22。
-- 安装包必须包含`native/pi-darwin-fd.node`、对应C源码与manifest；它们为同一批构建。正常安装不需要Xcode、Python或现场编译。缺失或不匹配时不启用全文/搜索/统计，不回退为较弱的路径检查。
+- 安装包必须包含`native/pi-darwin-fd.node`、对应C源码与manifest；它们为同一批构建，不需现场编译该组件。缺失或不匹配时不启用全文/搜索/统计，不回退为较弱的路径检查。当前源码内置记忆的 SQLite 依赖另行安装适配当前 Node 的二进制，缺少预构建文件时需要 Python 与 Xcode Command Line Tools，见[内置能力包](BUNDLED_CAPABILITIES.md)。
 - 本轮实测使用独立Node22官方Darwin ARM64归档，并用官方SHASUMS256核对；没有替换原全局Node。也可通过自己的Node版本管理器或Homebrew提供Node22，启动前用`node --version`核对。
 - 若缺少rg，可用`brew install ripgrep`；不要因系统已装Node25而认为该版本已在本项目验收。
 

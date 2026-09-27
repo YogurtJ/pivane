@@ -394,6 +394,13 @@ async function main() {
         assert.equal(legacySnap.settings.enabled, false, 'legacy profile is not enabled by the upgrade');
         assert.deepEqual({ reviewModel: legacySnap.legacy?.reviewModel, available: legacySnap.legacy?.reviewModelAvailable,
             purposes: legacySnap.legacy?.purposes }, { reviewModel: { provider: 'fixture', modelId: 'learner' }, available: true, purposes: [] });
+        // The previous profile's asynchronous exit extraction is independent of
+        // adoption. Drain it before measuring whether adoption makes a request.
+        await gateway.learning.flushRegistrations();
+        await until('previous learning settled before legacy adoption', async () => {
+            const snap = await api('GET', `/profiles/${profileId}/learning`);
+            return !gateway.learning.busy && !snap.jobs.some(job => ['queued', 'running', 'cancelling'].includes(job.status));
+        }, 30000);
         const learnerBeforeAdopt = learner.length;
         const adopted = await api('POST', `/profiles/${legacyProfile}/learning/actions`, { requestId: 'e2e-adopt-legacy-1', action: 'adopt-legacy' });
         assert.deepEqual({ enabled: adopted.settings.enabled, review: adopted.settings.reviewEnabled, legacy: adopted.legacy },

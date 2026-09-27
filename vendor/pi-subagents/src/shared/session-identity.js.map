@@ -1,0 +1,1 @@
+{"version":3,"file":"session-identity.js","sourceRoot":"","sources":["../../../src/shared/session-identity.ts"],"names":[],"mappings":"AAKA,MAAM,UAAU,uBAAuB,CAAC,cAAsC;IAC7E,MAAM,SAAS,GAAG,cAAc,CAAC,cAAc,EAAE,IAAI,cAAc,CAAC,YAAY,EAAE,CAAC;IACnF,IAAI,CAAC,SAAS;QAAE,MAAM,IAAI,KAAK,CAAC,0CAA0C,CAAC,CAAC;IAC5E,OAAO,SAAS,CAAC;AAClB,CAAC"}

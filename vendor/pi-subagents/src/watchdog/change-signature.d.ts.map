@@ -1,0 +1,1 @@
+{"version":3,"file":"change-signature.d.ts","sourceRoot":"","sources":["../../../src/watchdog/change-signature.ts"],"names":[],"mappings":"AAmCA,MAAM,WAAW,2BAA2B;IAC3C,IAAI,EAAE,MAAM,CAAC;IACb,GAAG,EAAE,MAAM,CAAC;IACZ,YAAY,EAAE,MAAM,EAAE,CAAC;CACvB;AA8KD,wBAAgB,kCAAkC,CAAC,GAAG,EAAE,MAAM,GAAG,2BAA2B,GAAG,SAAS,CAiBvG;AAoBD,wBAAgB,sBAAsB,CAAC,KAAK,EAAE,OAAO,GAAG,OAAO,CAS9D"}

@@ -1,0 +1,497 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { getLanguageFromPath, highlightCode } from "@earendil-works/pi-coding-agent";
+import { Markdown, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { safeTerminalText as safeDisplayText } from "../shared/display-text.js";
+import { isTrustedRecordedSessionFile } from "../shared/session-file-trust.js";
+const DEFAULT_MAX_RECORDS = 240;
+const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
+const MAX_MESSAGE_CHARS = 64 * 1024;
+const TOOL_PREVIEW_LINES = 7;
+function sanitizeJsonDisplayValue(value) {
+    if (typeof value === "string") {
+        const safe = safeDisplayText(value);
+        return { value: safe, changed: safe !== value };
+    }
+    if (Array.isArray(value)) {
+        const sanitized = value.map(sanitizeJsonDisplayValue);
+        return {
+            value: sanitized.map((entry) => entry.value),
+            changed: sanitized.some((entry) => entry.changed),
+        };
+    }
+    if (value && typeof value === "object") {
+        let changed = false;
+        const sanitized = Object.create(null);
+        for (const [key, nested] of Object.entries(value)) {
+            const safeKey = safeDisplayText(key);
+            const safeValue = sanitizeJsonDisplayValue(nested);
+            sanitized[safeKey] = safeValue.value;
+            changed ||= safeKey !== key || safeValue.changed;
+        }
+        return { value: changed ? sanitized : value, changed };
+    }
+    return { value, changed: false };
+}
+function safeToolArgsPayload(payload) {
+    try {
+        const sanitized = sanitizeJsonDisplayValue(JSON.parse(payload));
+        return sanitized.changed ? JSON.stringify(sanitized.value) : safeDisplayText(payload);
+    }
+    catch {
+        return safeDisplayText(payload);
+    }
+}
+function objectValue(value) {
+    return value && typeof value === "object" && !Array.isArray(value)
+        ? value
+        : undefined;
+}
+function stringValue(value) {
+    return typeof value === "string" && value.trim() ? value : undefined;
+}
+function numberValue(value) {
+    return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+function pathWithin(base, candidate) {
+    const resolvedBase = path.resolve(base);
+    const resolvedCandidate = path.resolve(candidate);
+    return resolvedCandidate === resolvedBase || resolvedCandidate.startsWith(`${resolvedBase}${path.sep}`);
+}
+function errorMessage(error) {
+    return error instanceof Error ? error.message : String(error);
+}
+function isNotFoundError(error) {
+    return Boolean(objectValue(error)?.code === "ENOENT");
+}
+function validateTranscriptPath(filePath, trustedRoots, trustedFiles = [], trustedFileRoot) {
+    if (trustedRoots.length === 0 && (!trustedFileRoot || trustedFiles.length === 0))
+        return { warning: `Transcript preview has no trusted root: ${filePath}` };
+    const resolvedPath = path.resolve(filePath);
+    const recordedCandidate = trustedFileRoot
+        && pathWithin(trustedFileRoot, resolvedPath)
+        && trustedFiles.some((file) => path.resolve(file) === resolvedPath);
+    if (!trustedRoots.some((root) => pathWithin(root, resolvedPath)) && !recordedCandidate) {
+        return { warning: `Transcript is outside trusted roots: ${filePath}` };
+    }
+    let stat;
+    try {
+        stat = fs.lstatSync(resolvedPath);
+    }
+    catch (error) {
+        if (isNotFoundError(error))
+            return {};
+        return { warning: `Transcript could not be inspected: ${errorMessage(error)}` };
+    }
+    if (stat.isSymbolicLink())
+        return { warning: `Transcript preview refused a symlink: ${filePath}` };
+    if (!stat.isFile())
+        return { warning: `Transcript path is not a file: ${filePath}` };
+    try {
+        const realPath = fs.realpathSync(resolvedPath);
+        const realRoots = trustedRoots
+            .filter((root) => fs.existsSync(root))
+            .map((root) => fs.realpathSync(root));
+        if (!realRoots.some((root) => pathWithin(root, realPath)) && !isTrustedRecordedSessionFile(realPath, trustedFiles, trustedFileRoot)) {
+            return { warning: `Transcript resolves outside trusted roots: ${filePath}` };
+        }
+        return { resolvedPath: realPath };
+    }
+    catch (error) {
+        return { warning: `Transcript path could not be resolved: ${errorMessage(error)}` };
+    }
+}
+function isCompleteRecord(line) {
+    if (!line?.trim())
+        return false;
+    try {
+        return objectValue(JSON.parse(line)) !== undefined;
+    }
+    catch {
+        return false;
+    }
+}
+function readTailLines(filePath, maxBytes) {
+    let fd;
+    try {
+        const noFollow = typeof fs.constants.O_NOFOLLOW === "number" ? fs.constants.O_NOFOLLOW : 0;
+        fd = fs.openSync(filePath, fs.constants.O_RDONLY | noFollow);
+        const stat = fs.fstatSync(fd);
+        if (!stat.isFile())
+            return { lines: [], truncated: false, warning: `Transcript path is not a file: ${filePath}` };
+        if (stat.size === 0)
+            return { lines: [], truncated: false };
+        const bytesToRead = Math.min(stat.size, maxBytes);
+        const start = stat.size - bytesToRead;
+        const buffer = Buffer.alloc(bytesToRead);
+        const bytesRead = fs.readSync(fd, buffer, 0, bytesToRead, start);
+        const content = buffer.subarray(0, bytesRead).toString("utf-8");
+        const endsWithNewline = content.endsWith("\n");
+        let lines = content.split(/\r?\n/);
+        if (start > 0 && lines.length > 0)
+            lines = lines.slice(1);
+        if (lines.at(-1) === "")
+            lines = lines.slice(0, -1);
+        else if (!endsWithNewline && !isCompleteRecord(lines.at(-1)))
+            lines = lines.slice(0, -1);
+        return { lines, truncated: start > 0 };
+    }
+    catch (error) {
+        return { lines: [], truncated: false, warning: `Transcript could not be read: ${errorMessage(error)}` };
+    }
+    finally {
+        if (fd !== undefined)
+            fs.closeSync(fd);
+    }
+}
+function clipMessage(text) {
+    if (text.length <= MAX_MESSAGE_CHARS)
+        return text;
+    return `${text.slice(0, MAX_MESSAGE_CHARS)}\n\n… message truncated`;
+}
+function safeTranscriptEvent(event) {
+    if (event.kind === "assistant") {
+        return {
+            ...event,
+            text: safeDisplayText(event.text),
+            ...(event.model ? { model: safeDisplayText(event.model) } : {}),
+        };
+    }
+    if (event.kind === "user" || event.kind === "notice") {
+        return { ...event, text: safeDisplayText(event.text) };
+    }
+    return {
+        ...event,
+        name: safeDisplayText(event.name),
+        ...(event.args !== undefined ? { args: safeDisplayText(event.args) } : {}),
+        ...(event.argsPayload !== undefined ? { argsPayload: safeToolArgsPayload(event.argsPayload) } : {}),
+        ...(event.output !== undefined ? { output: safeDisplayText(event.output) } : {}),
+        ...(event.error !== undefined ? { error: safeDisplayText(event.error) } : {}),
+    };
+}
+function findTool(events, toolCallId, name) {
+    if (toolCallId) {
+        for (let index = events.length - 1; index >= 0; index--) {
+            const event = events[index];
+            if (event?.kind === "tool" && event.toolCallId === toolCallId)
+                return event;
+        }
+        return undefined;
+    }
+    for (let index = events.length - 1; index >= 0; index--) {
+        const event = events[index];
+        if (event?.kind !== "tool")
+            continue;
+        const tool = event;
+        if ((!name || tool.name === name) && !tool.resultSeen)
+            return tool;
+    }
+    return undefined;
+}
+function appendTextEvent(events, kind, text, metadata) {
+    const clipped = clipMessage(text.trim());
+    if (!clipped)
+        return;
+    const previous = events.at(-1);
+    if (previous?.kind === kind && previous.text === clipped)
+        return;
+    events.push({ kind, text: clipped, ...metadata });
+}
+function parseTranscriptLines(lines, conversationStarted = false) {
+    const events = [];
+    let malformed = 0;
+    let explicitTruncation = false;
+    let assistantSeen = conversationStarted;
+    for (const line of lines) {
+        if (!line.trim())
+            continue;
+        let record;
+        try {
+            record = objectValue(JSON.parse(line));
+        }
+        catch {
+            malformed++;
+            continue;
+        }
+        if (!record) {
+            malformed++;
+            continue;
+        }
+        const recordType = stringValue(record.recordType);
+        const timestamp = numberValue(record.ts);
+        if (recordType === "truncated") {
+            explicitTruncation = true;
+            continue;
+        }
+        if (recordType === "tool_start") {
+            const name = stringValue(record.toolName) ?? "tool";
+            events.push({
+                kind: "tool",
+                ...(stringValue(record.toolCallId) ? { toolCallId: stringValue(record.toolCallId) } : {}),
+                name,
+                ...(stringValue(record.argsPreview) ? { args: stringValue(record.argsPreview) } : {}),
+                ...(stringValue(record.argsPayload) ? { argsPayload: stringValue(record.argsPayload) } : {}),
+                status: "running",
+                ...(timestamp !== undefined ? { timestamp, startedAt: timestamp } : {}),
+            });
+            continue;
+        }
+        if (recordType === "tool_end") {
+            const tool = findTool(events, stringValue(record.toolCallId), stringValue(record.toolName));
+            if (tool && !tool.resultSeen)
+                tool.status = record.isError === true ? "error" : "complete";
+            if (tool && timestamp !== undefined && tool.endedAt === undefined)
+                tool.endedAt = timestamp;
+            continue;
+        }
+        if (recordType === "stderr") {
+            const text = stringValue(record.text);
+            if (text)
+                events.push({ kind: "notice", text: clipMessage(text), tone: "error", ...(timestamp !== undefined ? { timestamp } : {}) });
+            continue;
+        }
+        if (recordType !== "message")
+            continue;
+        const message = objectValue(record.message);
+        const role = stringValue(record.role) ?? stringValue(message?.role);
+        const text = stringValue(record.text) ?? stringValue(message?.text) ?? stringValue(message?.content);
+        if (role === "toolResult" || role === "tool_result") {
+            const toolCallId = stringValue(record.toolCallId) ?? stringValue(message?.toolCallId);
+            const name = stringValue(record.toolName) ?? stringValue(message?.toolName) ?? "tool";
+            const failed = record.isError === true || message?.isError === true;
+            let tool = findTool(events, toolCallId, name);
+            if (!tool) {
+                tool = {
+                    kind: "tool",
+                    ...(toolCallId ? { toolCallId } : {}),
+                    name,
+                    status: failed ? "error" : "complete",
+                    ...(timestamp !== undefined ? { timestamp } : {}),
+                };
+                events.push(tool);
+            }
+            if (!tool.resultSeen) {
+                tool.resultSeen = true;
+                tool.status = failed ? "error" : "complete";
+                if (timestamp !== undefined && tool.endedAt === undefined)
+                    tool.endedAt = timestamp;
+                if (text && (!failed || tool.output === undefined)) {
+                    tool.output = clipMessage(text);
+                    tool.outputTruncated = record.outputTruncated === true || text.includes("… payload truncated") || text.includes("[Showing lines");
+                }
+                if (failed && text)
+                    tool.error = clipMessage(text.split(/\r?\n/).find((candidate) => candidate.trim()) ?? text);
+            }
+            continue;
+        }
+        if (role === "assistant") {
+            assistantSeen = true;
+            if (text)
+                appendTextEvent(events, "assistant", text, {
+                    ...(stringValue(record.model) ? { model: stringValue(record.model) } : {}),
+                    ...(timestamp !== undefined ? { timestamp } : {}),
+                });
+            continue;
+        }
+        if (role === "user" && assistantSeen && text) {
+            appendTextEvent(events, "user", text, timestamp !== undefined ? { timestamp } : {});
+        }
+    }
+    for (const event of events) {
+        if (event.kind === "tool")
+            delete event.resultSeen;
+    }
+    return { events: events.map(safeTranscriptEvent), malformed, explicitTruncation };
+}
+export function readFleetTranscript(filePath, options) {
+    const validated = validateTranscriptPath(filePath, options.trustedRoots, options.trustedFiles, options.trustedFileRoot);
+    if (!validated.resolvedPath) {
+        return { path: filePath, events: [], truncated: false, ...(validated.warning ? { warning: safeDisplayText(validated.warning) } : {}) };
+    }
+    const maxRecords = Math.max(1, options.maxRecords ?? DEFAULT_MAX_RECORDS);
+    const tail = readTailLines(validated.resolvedPath, Math.max(1024, options.maxBytes ?? DEFAULT_MAX_BYTES));
+    const recordsOmitted = tail.truncated || tail.lines.length > maxRecords;
+    const selectedLines = tail.lines.slice(-maxRecords);
+    const parsed = parseTranscriptLines(selectedLines, recordsOmitted);
+    const warnings = [
+        tail.warning,
+        parsed.malformed > 0 ? `Skipped ${parsed.malformed} malformed transcript record${parsed.malformed === 1 ? "" : "s"}.` : undefined,
+    ].filter((value) => Boolean(value));
+    return {
+        path: filePath,
+        events: parsed.events,
+        truncated: tail.truncated || tail.lines.length > maxRecords || parsed.explicitTruncation,
+        ...(warnings.length ? { warning: safeDisplayText(warnings.join(" ")) } : {}),
+    };
+}
+function statusGlyph(event, theme) {
+    if (event.status === "running")
+        return theme.fg("warning", "●");
+    if (event.status === "error")
+        return theme.fg("error", "✗");
+    return theme.fg("success", "✓");
+}
+function jsonScalar(value) {
+    if (typeof value === "string" && value.trim())
+        return value;
+    if (typeof value === "number" || typeof value === "boolean")
+        return String(value);
+    return undefined;
+}
+function parseToolArgs(event) {
+    if (!event.argsPayload)
+        return undefined;
+    try {
+        return objectValue(JSON.parse(event.argsPayload));
+    }
+    catch {
+        return undefined;
+    }
+}
+function toolDuration(event) {
+    if (event.startedAt === undefined || event.endedAt === undefined)
+        return undefined;
+    return `${((event.endedAt - event.startedAt) / 1000).toFixed(1)}s`;
+}
+function renderExpandedTool(event, width, theme) {
+    const lines = [];
+    const args = parseToolArgs(event);
+    const glyph = statusGlyph(event, theme);
+    const output = event.output ?? event.error;
+    const outputColor = event.status === "error" ? "error" : "toolOutput";
+    if (event.name === "bash") {
+        const command = jsonScalar(args?.command) ?? event.args ?? "(unknown command)";
+        lines.push(railLine(`${glyph} ${theme.fg("toolTitle", theme.bold(`$ ${command}`))}`, width, theme));
+        if (output) {
+            for (const outputLine of output.replace(/\s+$/, "").split(/\r?\n/)) {
+                for (const wrapped of renderWrapped(theme.fg(outputColor, outputLine), Math.max(1, width - 4))) {
+                    lines.push(railLine(`  ${wrapped}`, width, theme));
+                }
+            }
+        }
+        const duration = toolDuration(event);
+        if (duration)
+            lines.push(railLine(theme.fg("dim", `  Took ${duration}`), width, theme));
+        return lines;
+    }
+    if (event.name === "read") {
+        const filePath = jsonScalar(args?.path ?? args?.file_path);
+        const language = filePath ? getLanguageFromPath(filePath) : undefined;
+        const rendered = !output
+            ? []
+            : event.status === "error"
+                ? output.split("\n").map((line) => theme.fg("error", line))
+                : language
+                    ? highlightCode(output, language)
+                    : output.split("\n");
+        lines.push(railLine(`${glyph} ${theme.fg("toolTitle", theme.bold(`read ${filePath ?? event.args ?? ""}`))}`, width, theme));
+        for (const line of rendered) {
+            for (const wrapped of renderWrapped(line, Math.max(1, width - 4)))
+                lines.push(railLine(`  ${wrapped}`, width, theme));
+        }
+        return lines;
+    }
+    lines.push(railLine(`${glyph} ${theme.fg("toolTitle", theme.bold(event.name))}`, width, theme));
+    if (event.argsPayload) {
+        lines.push(railLine(theme.fg("dim", "  args"), width, theme));
+        for (const argLine of event.argsPayload.split(/\r?\n/)) {
+            for (const wrapped of renderWrapped(theme.fg("muted", argLine), Math.max(1, width - 4)))
+                lines.push(railLine(`  ${wrapped}`, width, theme));
+        }
+    }
+    if (output) {
+        lines.push(railLine(theme.fg(event.status === "error" ? "error" : "dim", event.status === "error" ? "  error" : "  output"), width, theme));
+        for (const outputLine of output.split(/\r?\n/)) {
+            for (const wrapped of renderWrapped(theme.fg(outputColor, outputLine), Math.max(1, width - 4)))
+                lines.push(railLine(`  ${wrapped}`, width, theme));
+        }
+    }
+    return lines;
+}
+function bounded(text, width) {
+    return truncateToWidth(text, Math.max(0, width));
+}
+function railLine(content, width, theme) {
+    return bounded(`${theme.fg("borderMuted", "│")} ${content}`, width);
+}
+function renderWrapped(text, width) {
+    return wrapTextWithAnsi(text, Math.max(1, width));
+}
+export function renderFleetTranscript(transcript, width, theme, markdownTheme, options = {}) {
+    if (width <= 0)
+        return [];
+    const lines = [];
+    if (transcript.truncated)
+        lines.push(bounded(theme.fg("dim", "↑ Earlier activity omitted"), width));
+    if (transcript.warning) {
+        for (const line of renderWrapped(safeDisplayText(transcript.warning), Math.max(1, width - 2))) {
+            lines.push(bounded(`${theme.fg("warning", "!")} ${theme.fg("warning", line)}`, width));
+        }
+    }
+    for (const rawEvent of transcript.events) {
+        const event = safeTranscriptEvent(rawEvent);
+        if (event.kind === "tool") {
+            if (options.expandedTools && (event.output || event.argsPayload || event.error)) {
+                lines.push(...renderExpandedTool(event, width, theme));
+                lines.push(railLine(theme.fg("dim", "  x to collapse"), width, theme));
+                continue;
+            }
+            const title = theme.fg("toolTitle", theme.bold(event.name));
+            const args = event.args ? ` ${theme.fg("dim", event.args)}` : "";
+            const suffix = event.status === "running" ? theme.fg("warning", " running") : "";
+            lines.push(bounded(`${theme.fg("borderMuted", "├─")} ${statusGlyph(event, theme)} ${title}${args}${suffix}`, width));
+            if (event.output && event.status !== "error" && event.name === "bash") {
+                const outputLines = event.output.replace(/\s+$/, "").split(/\r?\n/);
+                const visible = outputLines.slice(-TOOL_PREVIEW_LINES);
+                const hidden = Math.max(0, outputLines.length - visible.length);
+                for (const outputLine of visible) {
+                    for (const wrapped of renderWrapped(theme.fg("toolOutput", outputLine), Math.max(1, width - 4))) {
+                        lines.push(railLine(`  ${wrapped}`, width, theme));
+                    }
+                }
+                if (hidden > 0)
+                    lines.push(railLine(theme.fg("dim", `  … ${hidden} earlier lines · x to expand`), width, theme));
+                const duration = toolDuration(event);
+                lines.push(railLine(theme.fg("dim", `  Took${duration ? ` ${duration}` : ""}`), width, theme));
+            }
+            else if (event.output && event.status !== "error") {
+                const summary = truncateToWidth(event.output.replace(/\s+/g, " ").trim(), Math.max(1, width - 18), "…");
+                if (summary)
+                    lines.push(railLine(theme.fg("dim", `  ${summary} · x to expand`), width, theme));
+            }
+            if (event.error) {
+                for (const errorLine of renderWrapped(event.error, Math.max(1, width - 4))) {
+                    lines.push(railLine(theme.fg("error", `  ${errorLine}`), width, theme));
+                }
+            }
+            continue;
+        }
+        if (event.kind === "notice") {
+            const color = event.tone === "error" ? "error" : event.tone === "warning" ? "warning" : "dim";
+            for (const noticeLine of renderWrapped(event.text, Math.max(1, width - 2))) {
+                lines.push(railLine(theme.fg(color, noticeLine), width, theme));
+            }
+            continue;
+        }
+        const assistant = event.kind === "assistant";
+        const label = assistant ? "Assistant" : "Supervisor";
+        const marker = assistant ? theme.fg("accent", "◆") : theme.fg("warning", "◇");
+        const model = assistant && event.model ? theme.fg("dim", ` · ${event.model}`) : "";
+        lines.push(bounded(`${marker} ${theme.bold(label)}${model}`, width));
+        if (assistant) {
+            const rendered = new Markdown(event.text, 0, 0, markdownTheme).render(Math.max(1, width - 2));
+            for (const markdownLine of rendered)
+                lines.push(railLine(markdownLine, width, theme));
+        }
+        else {
+            for (const userLine of renderWrapped(event.text, Math.max(1, width - 2))) {
+                lines.push(railLine(userLine, width, theme));
+            }
+        }
+        lines.push(theme.fg("borderMuted", "│"));
+    }
+    while (lines.length > 0 && visibleWidth(lines.at(-1) ?? "") === 1)
+        lines.pop();
+    return lines;
+}
+//# sourceMappingURL=fleet-transcript.js.map

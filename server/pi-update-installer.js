@@ -48,6 +48,13 @@ function runNode(args, { cwd, env, timeout = 20 * 60 * 1000, signal, onOutput = 
         });
     });
 }
+async function prepareBundled({ directory, env, signal, run = runNode, onOutput, secretEnv }) {
+    const manifest = JSON.parse(readSafe(path.join(directory, 'package.json')));
+    if (!manifest.workspaces?.includes('vendor/pi-subagents')) return; // Older release compatibility.
+    const options = { cwd: directory, env, signal, onOutput, secretEnv };
+    await run([npmCli(env), 'rebuild', 'esbuild', '--foreground-scripts', '--no-audit', '--no-fund'], options);
+    await run([path.join(directory, 'scripts/install-bundled-capabilities.cjs')], options);
+}
 function copyCode(root, destination) {
     privateDir(destination);
     const files = require('../scripts/source-files.cjs').distributionFiles(root), metadata = [];
@@ -77,6 +84,7 @@ async function stagePi({ root, directory, version, env = process.env, signal, ru
     atomicJson(manifestPath, manifest);
     const installEnv = installEnvironment(env, directory);
     await run([npmCli(env), 'install', '--ignore-scripts', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org'], { cwd: directory, env: installEnv, signal, onOutput, secretEnv: env });
+    await prepareBundled({ directory, env: { ...installEnv, PI_NPM_CLI: npmCli(env) }, signal, run, onOutput, secretEnv: env });
     const lock = JSON.parse(readSafe(path.join(directory, 'package-lock.json'), 16 * 1024 * 1024));
     for (const name of PI_PACKAGES) {
         const actual = JSON.parse(readSafe(path.join(directory, 'node_modules', name, 'package.json'))).version;
@@ -93,4 +101,4 @@ async function stagePi({ root, directory, version, env = process.env, signal, ru
     atomicJson(path.join(directory, 'PI_INSTALL_COMPLETE.json'), { version, completedAt: new Date().toISOString(), lockSha256: hash(readSafe(path.join(directory, 'package-lock.json'), 16 * 1024 * 1024)) });
     return directory;
 }
-module.exports = { stagePi, runNode, copyCode, npmCli, installEnvironment, exactVersion, PI_PACKAGES };
+module.exports = { stagePi, prepareBundled, runNode, copyCode, npmCli, installEnvironment, exactVersion, PI_PACKAGES };

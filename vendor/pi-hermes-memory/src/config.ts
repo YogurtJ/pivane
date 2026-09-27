@@ -1,0 +1,224 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type { MemoryConfig, MemoryOverflowStrategy, ReviewTransport, SessionSearchVariant, ThinkingLevel } from "./types.js";
+import {
+  DEFAULT_MEMORY_CHAR_LIMIT,
+  DEFAULT_USER_CHAR_LIMIT,
+  DEFAULT_PROJECT_CHAR_LIMIT,
+  DEFAULT_PROJECTS_MEMORY_DIR,
+  DEFAULT_NUDGE_INTERVAL,
+  DEFAULT_FLUSH_MIN_TURNS,
+  DEFAULT_NUDGE_TOOL_CALLS,
+  DEFAULT_REVIEW_RECENT_MESSAGES,
+  DEFAULT_FLUSH_RECENT_MESSAGES,
+  DEFAULT_CONSOLIDATION_TIMEOUT_MS,
+  DEFAULT_FLUSH_COMPACT_TIMEOUT_MS,
+  DEFAULT_OVERFLOW_GRACE_MS,
+  DEFAULT_FAILURE_INJECTION_MAX_AGE_DAYS,
+  DEFAULT_FAILURE_INJECTION_MAX_ENTRIES,
+  DEFAULT_SESSION_RETENTION_DAYS,
+} from "./constants.js";
+import { AGENT_ROOT, normalizeConfiguredMemoryDir, normalizeProjectsMemoryDir } from "./paths.js";
+
+const MEMORY_OVERFLOW_STRATEGIES: readonly MemoryOverflowStrategy[] = ["auto-consolidate", "reject", "fifo-evict"];
+const SESSION_SEARCH_VARIANTS: readonly SessionSearchVariant[] = ["legacy", "anchors"];
+const REVIEW_TRANSPORTS: readonly ReviewTransport[] = ["direct", "subprocess"];
+const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+function isReviewTransport(value: unknown): value is ReviewTransport {
+  return typeof value === "string" && REVIEW_TRANSPORTS.includes(value as ReviewTransport);
+}
+
+function isMemoryOverflowStrategy(value: unknown): value is MemoryOverflowStrategy {
+  return typeof value === "string" && MEMORY_OVERFLOW_STRATEGIES.includes(value as MemoryOverflowStrategy);
+}
+
+function isSessionSearchVariant(value: unknown): value is SessionSearchVariant {
+  return typeof value === "string" && SESSION_SEARCH_VARIANTS.includes(value as SessionSearchVariant);
+}
+
+function isThinkingLevel(value: unknown): value is ThinkingLevel {
+  return typeof value === "string" && (THINKING_LEVELS as readonly string[]).includes(value);
+}
+
+const DEFAULT_CONFIG: MemoryConfig = {
+  lazyInitialization: false,
+  memoryMode: "policy-only",
+  memoryPolicyStyle: "full",
+  memoryCharLimit: DEFAULT_MEMORY_CHAR_LIMIT,
+  userCharLimit: DEFAULT_USER_CHAR_LIMIT,
+  projectCharLimit: DEFAULT_PROJECT_CHAR_LIMIT,
+  nudgeInterval: DEFAULT_NUDGE_INTERVAL,
+  reviewRecentMessages: DEFAULT_REVIEW_RECENT_MESSAGES,
+  reviewEnabled: true,
+  reviewTransport: "direct",
+  flushOnCompact: true,
+  flushOnShutdown: true,
+  flushMinTurns: DEFAULT_FLUSH_MIN_TURNS,
+  flushRecentMessages: DEFAULT_FLUSH_RECENT_MESSAGES,
+  flushCompactTimeoutMs: DEFAULT_FLUSH_COMPACT_TIMEOUT_MS,
+  memoryOverflowStrategy: "auto-consolidate",
+  overflowGraceMs: DEFAULT_OVERFLOW_GRACE_MS,
+  autoConsolidate: true,
+  correctionDetection: true,
+  failureInjectionEnabled: true,
+  failureInjectionMaxAgeDays: DEFAULT_FAILURE_INJECTION_MAX_AGE_DAYS,
+  failureInjectionMaxEntries: DEFAULT_FAILURE_INJECTION_MAX_ENTRIES,
+  consolidationTimeoutMs: DEFAULT_CONSOLIDATION_TIMEOUT_MS,
+  autoConsolidationWarnOnFailure: true,
+  nudgeToolCalls: DEFAULT_NUDGE_TOOL_CALLS,
+  standingInstructionsEnabled: true,
+  projectsMemoryDir: DEFAULT_PROJECTS_MEMORY_DIR,
+  sessionSearch: { variant: "legacy" },
+  quickCheckOnOpen: true,
+  sessionRetentionDays: DEFAULT_SESSION_RETENTION_DAYS,
+};
+
+export const DEFAULT_CONFIG_PATH = path.join(
+  AGENT_ROOT,
+  "hermes-memory-config.json",
+);
+
+export function loadConfig(configPath = DEFAULT_CONFIG_PATH): MemoryConfig {
+  try {
+    if (fs.existsSync(configPath)) {
+      const raw = fs.readFileSync(configPath, "utf-8");
+      const parsed = JSON.parse(raw);
+      // Merge: override defaults with user config
+      const config: MemoryConfig = { ...DEFAULT_CONFIG };
+      const isNonNegativeNumber = (value: unknown): value is number => (
+        typeof value === "number" && Number.isFinite(value) && value >= 0
+      );
+      const isStringArray = (value: unknown): value is string[] => (
+        Array.isArray(value) && value.every((item) => typeof item === "string")
+      );
+      let hasLegacyAutoConsolidate = false;
+      let hasMemoryOverflowStrategy = false;
+      if (typeof parsed.lazyInitialization === "boolean") config.lazyInitialization = parsed.lazyInitialization;
+      if (parsed.memoryMode === "policy-only" || parsed.memoryMode === "legacy-inject") config.memoryMode = parsed.memoryMode;
+      if (
+        parsed.memoryPolicyStyle === "full" ||
+        parsed.memoryPolicyStyle === "compact" ||
+        parsed.memoryPolicyStyle === "custom" ||
+        parsed.memoryPolicyStyle === "none"
+      ) config.memoryPolicyStyle = parsed.memoryPolicyStyle;
+      if (typeof parsed.memoryPolicyCustomText === "string") config.memoryPolicyCustomText = parsed.memoryPolicyCustomText;
+      if (typeof parsed.memoryCharLimit === "number") config.memoryCharLimit = parsed.memoryCharLimit;
+      if (typeof parsed.userCharLimit === "number") config.userCharLimit = parsed.userCharLimit;
+      if (typeof parsed.nudgeInterval === "number") config.nudgeInterval = parsed.nudgeInterval;
+      if (isNonNegativeNumber(parsed.reviewRecentMessages)) config.reviewRecentMessages = parsed.reviewRecentMessages;
+      if (typeof parsed.reviewEnabled === "boolean") config.reviewEnabled = parsed.reviewEnabled;
+      if (isReviewTransport(parsed.reviewTransport)) config.reviewTransport = parsed.reviewTransport;
+      if (typeof parsed.flushOnCompact === "boolean") config.flushOnCompact = parsed.flushOnCompact;
+      if (typeof parsed.flushOnShutdown === "boolean") config.flushOnShutdown = parsed.flushOnShutdown;
+      if (typeof parsed.flushMinTurns === "number") config.flushMinTurns = parsed.flushMinTurns;
+      if (isNonNegativeNumber(parsed.flushRecentMessages)) config.flushRecentMessages = parsed.flushRecentMessages;
+      if (typeof parsed.flushCompactTimeoutMs === "number" && Number.isFinite(parsed.flushCompactTimeoutMs)) {
+        config.flushCompactTimeoutMs = parsed.flushCompactTimeoutMs;
+        // Zero and below is the documented disable, not a too-low timeout.
+        if (parsed.flushCompactTimeoutMs > 0 && parsed.flushCompactTimeoutMs < DEFAULT_FLUSH_COMPACT_TIMEOUT_MS) {
+          console.warn(
+            `⚠️ flushCompactTimeoutMs is set to ${parsed.flushCompactTimeoutMs}ms, below the ${DEFAULT_FLUSH_COMPACT_TIMEOUT_MS}ms default.`
+            + " Compact flush is one LLM turn over the conversation; local models are routinely cut off below this.",
+          );
+        }
+      }
+      if (typeof parsed.autoConsolidate === "boolean") {
+        config.autoConsolidate = parsed.autoConsolidate;
+        hasLegacyAutoConsolidate = true;
+      }
+      if (isMemoryOverflowStrategy(parsed.memoryOverflowStrategy)) {
+        config.memoryOverflowStrategy = parsed.memoryOverflowStrategy;
+        hasMemoryOverflowStrategy = true;
+      }
+      if (isNonNegativeNumber(parsed.overflowGraceMs)) config.overflowGraceMs = parsed.overflowGraceMs;
+      if (typeof parsed.correctionDetection === "boolean") config.correctionDetection = parsed.correctionDetection;
+      if (isStringArray(parsed.correctionStrongPatterns)) config.correctionStrongPatterns = parsed.correctionStrongPatterns;
+      if (isStringArray(parsed.correctionWeakPatterns)) config.correctionWeakPatterns = parsed.correctionWeakPatterns;
+      if (isStringArray(parsed.correctionNegativePatterns)) config.correctionNegativePatterns = parsed.correctionNegativePatterns;
+      if (isStringArray(parsed.correctionDirectiveWords)) config.correctionDirectiveWords = parsed.correctionDirectiveWords;
+      if (typeof parsed.consolidationTimeoutMs === "number") {
+        config.consolidationTimeoutMs = parsed.consolidationTimeoutMs;
+        if (parsed.consolidationTimeoutMs < DEFAULT_CONSOLIDATION_TIMEOUT_MS) {
+          console.warn(
+            `⚠️ consolidationTimeoutMs is set to ${parsed.consolidationTimeoutMs}ms, below the ${DEFAULT_CONSOLIDATION_TIMEOUT_MS}ms default.`
+            + " Consolidation spawns a child agent turn and is routinely killed mid-run at lower values.",
+          );
+        }
+      }
+      if (typeof parsed.autoConsolidationWarnOnFailure === "boolean") {
+        config.autoConsolidationWarnOnFailure = parsed.autoConsolidationWarnOnFailure;
+      }
+      if (typeof parsed.failureInjectionEnabled === "boolean") config.failureInjectionEnabled = parsed.failureInjectionEnabled;
+      if (typeof parsed.failureInjectionMaxAgeDays === "number") config.failureInjectionMaxAgeDays = parsed.failureInjectionMaxAgeDays;
+      if (typeof parsed.failureInjectionMaxEntries === "number") config.failureInjectionMaxEntries = parsed.failureInjectionMaxEntries;
+      if (typeof parsed.nudgeToolCalls === "number") config.nudgeToolCalls = parsed.nudgeToolCalls;
+      // Accept any finite number >= 0 so a user can both opt in (positive value)
+      // and explicitly disable retention with 0. Invalid/negative values are
+      // ignored, keeping the current (default) semantics.
+      if (typeof parsed.sessionRetentionDays === "number" && Number.isFinite(parsed.sessionRetentionDays) && parsed.sessionRetentionDays >= 0) {
+        config.sessionRetentionDays = parsed.sessionRetentionDays;
+      }
+      if (typeof parsed.standingInstructionsEnabled === "boolean") config.standingInstructionsEnabled = parsed.standingInstructionsEnabled;
+      if (typeof parsed.projectCharLimit === "number") config.projectCharLimit = parsed.projectCharLimit;
+      if (typeof parsed.memoryDir === "string") {
+        const normalizedMemoryDir = normalizeConfiguredMemoryDir(parsed.memoryDir);
+        if (normalizedMemoryDir) config.memoryDir = normalizedMemoryDir;
+      }
+      if (typeof parsed.projectsMemoryDir === "string") {
+        const normalizedProjectsMemoryDir = normalizeProjectsMemoryDir(parsed.projectsMemoryDir);
+        if (normalizedProjectsMemoryDir) config.projectsMemoryDir = normalizedProjectsMemoryDir;
+      }
+      if (
+        typeof parsed.sessionSearch === "object" &&
+        parsed.sessionSearch !== null &&
+        isSessionSearchVariant(parsed.sessionSearch.variant)
+      ) {
+        config.sessionSearch = { variant: parsed.sessionSearch.variant };
+      }
+      if (typeof parsed.quickCheckOnOpen === "boolean") config.quickCheckOnOpen = parsed.quickCheckOnOpen;
+      if (typeof parsed.llmModelOverride === "string") {
+        const trimmed = parsed.llmModelOverride.trim();
+        if (trimmed.length > 0) config.llmModelOverride = trimmed;
+      }
+      // Support array form for primary override too (e.g. llmModelOverride: ["a/b","c/d"]) — first entry is primary, rest are fallbacks
+      if (Array.isArray(parsed.llmModelOverride) && parsed.llmModelOverride.every((v: unknown) => typeof v === "string")) {
+        const cleaned = (parsed.llmModelOverride as string[]).map((s) => s.trim()).filter(Boolean);
+        if (cleaned.length > 0) {
+          config.llmModelOverride = cleaned[0];
+          const fallbacks = cleaned.slice(1);
+          if (fallbacks.length > 0) config.llmFallbackModels = fallbacks;
+        }
+      }
+      if (isStringArray(parsed.llmFallbackModels)) {
+        const cleaned = (parsed.llmFallbackModels as string[]).map((s) => s.trim()).filter(Boolean);
+        if (cleaned.length > 0) config.llmFallbackModels = [...new Set([...(config.llmFallbackModels ?? []), ...cleaned])];
+      }
+      // Backward-compat alias: llmModelFallbacks / fallbackModels
+      if (isStringArray((parsed as Record<string, unknown>).llmModelFallbacks)) {
+        const cleaned = ((parsed as Record<string, unknown>).llmModelFallbacks as string[]).map((s: string) => s.trim()).filter(Boolean);
+        if (cleaned.length > 0) config.llmFallbackModels = [...new Set([...(config.llmFallbackModels ?? []), ...cleaned])];
+      }
+      if (isStringArray((parsed as Record<string, unknown>).fallbackModels)) {
+        const cleaned = ((parsed as Record<string, unknown>).fallbackModels as string[]).map((s: string) => s.trim()).filter(Boolean);
+        if (cleaned.length > 0) config.llmFallbackModels = [...new Set([...(config.llmFallbackModels ?? []), ...cleaned])];
+      }
+      if (isThinkingLevel(parsed.llmThinkingOverride)) config.llmThinkingOverride = parsed.llmThinkingOverride;
+      if (isStringArray(parsed.childExtensionPaths)) {
+        const childExtensionPaths = [...new Set<string>(
+          (parsed.childExtensionPaths as string[]).map((item) => item.trim()).filter(Boolean),
+        )];
+        if (childExtensionPaths.length > 0) config.childExtensionPaths = childExtensionPaths;
+      }
+      if (hasMemoryOverflowStrategy) {
+        config.autoConsolidate = config.memoryOverflowStrategy === "auto-consolidate";
+      } else if (hasLegacyAutoConsolidate) {
+        config.memoryOverflowStrategy = config.autoConsolidate ? "auto-consolidate" : "reject";
+      }
+      return config;
+    }
+  } catch {
+    // Fall back to defaults on parse error or access issues
+  }
+  return { ...DEFAULT_CONFIG };
+}

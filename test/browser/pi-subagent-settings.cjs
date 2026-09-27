@@ -7,12 +7,12 @@ const root = path.resolve(__dirname, '../..');
 async function run(browser, base, width, locale) {
     const context = await browser.newContext({ viewport: { width, height: width === 320 ? 680 : 1000 }, locale, isMobile: width < 900 });
     const page = await context.newPage(); page.setDefaultTimeout(45000); page.setDefaultNavigationTimeout(45000);
-    const errors = [], writes = []; let status = 'missing', installed = '0.69.0', revision = 1, conflict = false, failRead = false, holdRead = false, releaseRead;
+    const errors = [], writes = []; let bundled = false, status = 'missing', installed = '0.69.0', revision = 1, conflict = false, failRead = false, holdRead = false, releaseRead;
     const cwd = '/fixture/project', model = { provider: 'fixture', id: 'reasoner', name: 'Fixture Reasoner', available: true, input: ['text'], thinkingLevels: ['off', 'medium', 'high'] };
     let models = [model, ...Array.from({ length: 550 }, (_, i) => ({ ...model, provider: 'openrouter', id: `vendor/model-${String(i).padStart(3, '0')}`, name: `Research model ${String(i).padStart(3, '0')}` }))];
     const defaults = { global: { model: null, thinking: null }, project: { model: null, thinking: null } };
     const roles = ['delegate', 'evidence-auditor', 'oracle', 'researcher', 'reviewer', 'scout', 'worker', '<custom-role>', 'toString'].map(name => ({ name, global: { model: null, thinking: null }, project: { model: null, thinking: null } }));
-    const snapshot = () => ({ version: 1, cwd, revision: String(revision), trust: { effective: true }, plugin: { status, name: 'pi-subagents', version: '0.71.0', installedVersions: status === 'missing' ? [] : [installed], canInstall: status === 'missing', upgradeFrom: status === 'ready' && installed !== '0.71.0' ? installed : null }, defaults, roles });
+    const snapshot = () => ({ version: 1, cwd, revision: String(revision), trust: { effective: true }, plugin: { ...(bundled ? { managedBy: 'pivane' } : {}), status, name: 'pi-subagents', version: '0.71.0', installedVersions: status === 'missing' ? [] : [installed], canInstall: status === 'missing', upgradeFrom: status === 'ready' && installed !== '0.71.0' ? installed : null }, defaults, roles });
     page.on('pageerror', error => errors.push(error.message));
     await page.route('https://**', route => route.abort());
     await page.route('**/api/**', async route => {
@@ -128,7 +128,10 @@ async function run(browser, base, width, locale) {
     assert.equal(writes.at(-1).upgrade.confirmed, true);
     assert.equal(await card.locator('.sa-upgrade').count(), 0);
     if (width < 700) assert.ok(await card.evaluate(el => el.scrollWidth <= el.clientWidth + 1));
-    installed = '0.69.0';
+    installed = '0.71.0'; bundled = true;
+    await card.locator('.sa-refresh').click(); await trigger.waitFor();
+    await card.getByText(locale === 'en' ? 'Bundled with Pivane; updated with the app' : 'Pivane 内置，随应用更新').waitFor();
+    assert.equal(await card.locator('.sa-upgrade').count(), 0);
     if (width < 900) assert.ok(await card.locator('select').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize)) >= 16);
     await reviewer.locator('summary').click(); await dimensions();
     await card.evaluate(el => el.scrollIntoView({ block: 'start' }));

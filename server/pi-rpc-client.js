@@ -66,7 +66,8 @@ class PiRpcClient extends EventEmitter {
         if (rpcShuttingDown || this.disposed) throw new Error('Pi transport is disposed or shutting down');
         if (this.child) return;
 
-        const args = [this.sideSeed ? path.join(__dirname, 'pi-side-runtime.mjs') : resolvePiCli(), '--mode', 'rpc'];
+        const managed = this.extraArgs.includes(path.join(__dirname, 'pi-web-session-extension.ts')) && !process.env.PI_WEB_CLI;
+        const args = [this.sideSeed ? path.join(__dirname, 'pi-side-runtime.mjs') : managed ? path.join(__dirname, 'pi-managed-runtime.mjs') : resolvePiCli(), '--mode', 'rpc'];
         if (this.noSession) args.push('--no-session');
         else args.push('--session', this.sessionPath);
         args.push(...this.extraArgs);

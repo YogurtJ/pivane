@@ -1,0 +1,271 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+const READ_ONLY_OUTPUT_TOOLS = new Set([
+    "read", "grep", "find", "ls", "web_search", "fetch_content", "get_search_content",
+    "source_check", "intercom", "contact_supervisor", "structured_output", "watchdog_diff",
+]);
+function hasOutputWriteCapability(tools, mcpDirectTools) {
+    if ((mcpDirectTools?.length ?? 0) > 0 || tools === undefined)
+        return true;
+    return tools.some((tool) => !READ_ONLY_OUTPUT_TOOLS.has(tool));
+}
+function missingFileStatError(error) {
+    const code = error?.code;
+    return code === "ENOENT" || code === "ENOTDIR";
+}
+function snapshotFromStatError(error) {
+    if (missingFileStatError(error))
+        return { exists: false };
+    return { exists: false, error: error instanceof Error ? error.message : String(error) };
+}
+/**
+ * Content the child itself sent to the configured output path, taken from its
+ * last `write` tool call whose tool result reports success. Unlike reading the
+ * path from disk, this cannot be polluted by a sibling run writing the same
+ * path (#420); requiring the successful tool result keeps failed, cancelled,
+ * or unanswered write calls from counting as authored output. Returns
+ * undefined when no such write exists (e.g. bash or edit-based construction),
+ * in which case callers must not assume file authorship.
+ */
+export function extractChildWrittenOutput(messages, outputPath, cwd) {
+    if (!messages?.length || !outputPath)
+        return undefined;
+    const resolvedTarget = path.resolve(cwd ?? ".", outputPath);
+    const comparableTarget = process.platform === "win32" ? resolvedTarget.toLowerCase() : resolvedTarget;
+    const successfulCallIds = new Set();
+    for (const message of messages) {
+        if (message.role === "toolResult" && message.isError === false && typeof message.toolCallId === "string") {
+            successfulCallIds.add(message.toolCallId);
+        }
+    }
+    let content;
+    for (const message of messages) {
+        if (message.role !== "assistant")
+            continue;
+        for (const part of message.content) {
+            if (part.type !== "toolCall" || part.name !== "write" || !successfulCallIds.has(part.id))
+                continue;
+            const args = typeof part.arguments === "object" && part.arguments !== null && !Array.isArray(part.arguments)
+                ? part.arguments
+                : {};
+            if (typeof args.path !== "string" || typeof args.content !== "string")
+                continue;
+            const resolvedWritePath = path.resolve(cwd ?? ".", args.path);
+            const comparableWritePath = process.platform === "win32" ? resolvedWritePath.toLowerCase() : resolvedWritePath;
+            if (comparableWritePath !== comparableTarget)
+                continue;
+            content = args.content;
+        }
+    }
+    return content;
+}
+export function normalizeSingleOutputOverride(output, defaultOutput) {
+    if (output === false || output === "false")
+        return false;
+    if (output === true || output === "true")
+        return defaultOutput;
+    if (typeof output === "string" && output.length > 0)
+        return output;
+    return undefined;
+}
+export function resolveSingleOutputPath(output, runtimeCwd, requestedCwd, relativeBaseDir) {
+    if (typeof output !== "string" || !output || output === "false" || output === "true")
+        return undefined;
+    if (path.isAbsolute(output))
+        return output;
+    if (relativeBaseDir)
+        return path.resolve(relativeBaseDir, output);
+    const baseCwd = requestedCwd
+        ? (path.isAbsolute(requestedCwd) ? requestedCwd : path.resolve(runtimeCwd, requestedCwd))
+        : runtimeCwd;
+    return path.resolve(baseCwd, output);
+}
+function formatOutputPathInstruction(outputPath, capabilities) {
+    const delivery = !capabilities || hasOutputWriteCapability(capabilities.tools, capabilities.mcpDirectTools)
+        ? `Write your findings to exactly this path: ${outputPath}`
+        : [
+            "Return the complete artifact in your final response.",
+            `The runtime will persist it to exactly this path: ${outputPath}`,
+            "Do not call contact_supervisor merely because no write-capable tool is available.",
+        ].join("\n");
+    return [
+        delivery,
+        "This path is authoritative for this run.",
+        "Ignore any other output filename or output path mentioned elsewhere, including output destinations in the base agent prompt, system prompt, or task instructions.",
+    ].join("\n");
+}
+export function requestedOutputPathFromTask(task) {
+    for (const line of task.split(/\r?\n/).reverse()) {
+        const match = line.match(/^\s*(?:Write your findings to(?: exactly this path)?:|The runtime will persist it to exactly this path:)\s*(.+?)\s*$/i);
+        if (!match?.[1])
+            continue;
+        const requested = match[1].trim();
+        return requested.startsWith("`") && requested.endsWith("`") ? requested.slice(1, -1) : requested;
+    }
+    return undefined;
+}
+export function outputPathMappingFromTask(task, savedPath) {
+    const requestedPath = requestedOutputPathFromTask(task);
+    if (!requestedPath || !savedPath)
+        return undefined;
+    if (path.isAbsolute(requestedPath) && path.normalize(requestedPath) === path.normalize(savedPath))
+        return undefined;
+    return { requestedPath, savedPath };
+}
+export function injectSingleOutputInstruction(task, outputPath, capabilities) {
+    if (!outputPath)
+        return task;
+    return `${task}\n\n---\n**Output:**\n${formatOutputPathInstruction(outputPath, capabilities)}`;
+}
+export function injectOutputPathSystemPrompt(systemPrompt, outputPath, capabilities) {
+    if (!outputPath)
+        return systemPrompt;
+    const instruction = `Runtime output path override:\n${formatOutputPathInstruction(outputPath, capabilities)}`;
+    return systemPrompt ? `${systemPrompt}\n\n${instruction}` : instruction;
+}
+function countLines(text) {
+    if (!text)
+        return 0;
+    const newlineMatches = text.match(/\r\n|\r|\n/g);
+    return (newlineMatches?.length ?? 0) + (/[\r\n]$/.test(text) ? 0 : 1);
+}
+function formatByteSize(bytes) {
+    if (bytes < 1024)
+        return `${bytes} B`;
+    const units = ["KB", "MB", "GB", "TB"];
+    let value = bytes / 1024;
+    let unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex++;
+    }
+    return `${value.toFixed(1)} ${units[unitIndex]}`;
+}
+export function formatSavedOutputReference(savedPath, fullOutput) {
+    const absolutePath = path.resolve(savedPath);
+    const bytes = Buffer.byteLength(fullOutput, "utf-8");
+    const lines = countLines(fullOutput);
+    return {
+        path: absolutePath,
+        bytes,
+        lines,
+        message: `Output saved to: ${absolutePath} (${formatByteSize(bytes)}, ${lines} ${lines === 1 ? "line" : "lines"}). Read this file if needed.`,
+    };
+}
+export function validateFileOnlyOutputMode(outputMode, outputPath, context) {
+    if (outputMode === "file-only" && !outputPath) {
+        return `${context} sets outputMode: "file-only" but does not configure an output file. Set output to a path or use outputMode: "inline".`;
+    }
+    return undefined;
+}
+export function resolveSingleOutputClaimPath(outputPath) {
+    let existing = path.resolve(outputPath);
+    const missingSegments = [];
+    while (!fs.existsSync(existing)) {
+        missingSegments.unshift(path.basename(existing));
+        const parent = path.dirname(existing);
+        if (parent === existing)
+            break;
+        existing = parent;
+    }
+    return path.join(fs.realpathSync(existing), ...missingSegments);
+}
+function outputClaimError(outputPath, expectedClaimPath) {
+    if (expectedClaimPath && resolveSingleOutputClaimPath(outputPath) !== expectedClaimPath)
+        return "Output path changed after it was claimed.";
+    return undefined;
+}
+export function captureSingleOutputSnapshot(outputPath) {
+    if (!outputPath)
+        return undefined;
+    try {
+        const stat = fs.statSync(outputPath);
+        return { exists: true, mtimeMs: stat.mtimeMs, size: stat.size };
+    }
+    catch (error) {
+        return snapshotFromStatError(error);
+    }
+}
+function inspectSingleOutputChange(outputPath, beforeRun) {
+    if (beforeRun?.error)
+        return { changed: false, error: beforeRun.error };
+    try {
+        const stat = fs.statSync(outputPath);
+        return {
+            changed: !beforeRun?.exists || stat.mtimeMs !== beforeRun.mtimeMs || stat.size !== beforeRun.size,
+        };
+    }
+    catch (error) {
+        if (missingFileStatError(error))
+            return { changed: false };
+        return { changed: false, error: error instanceof Error ? error.message : String(error) };
+    }
+}
+export function hasSingleOutputChangedSinceSnapshot(outputPath, beforeRun) {
+    if (!outputPath)
+        return undefined;
+    const inspected = inspectSingleOutputChange(outputPath, beforeRun);
+    return inspected.error ? undefined : inspected.changed;
+}
+function persistSingleOutput(outputPath, fullOutput, expectedClaimPath) {
+    if (!outputPath)
+        return {};
+    try {
+        const claimError = outputClaimError(outputPath, expectedClaimPath);
+        if (claimError)
+            return { error: claimError, fatalError: true };
+        fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+        fs.writeFileSync(outputPath, fullOutput, "utf-8");
+        return { savedPath: outputPath };
+    }
+    catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+    }
+}
+export function resolveSingleOutput(outputPath, fallbackOutput, beforeRun, expectedClaimPath) {
+    if (!outputPath)
+        return { fullOutput: fallbackOutput };
+    const claimError = outputClaimError(outputPath, expectedClaimPath);
+    if (claimError)
+        return { fullOutput: fallbackOutput, saveError: claimError, fatalError: true };
+    const changedSinceStart = inspectSingleOutputChange(outputPath, beforeRun);
+    if (changedSinceStart.error) {
+        return {
+            fullOutput: fallbackOutput,
+            saveError: `Failed to inspect output file: ${changedSinceStart.error}`,
+        };
+    }
+    if (changedSinceStart.changed) {
+        try {
+            return { fullOutput: fs.readFileSync(outputPath, "utf-8"), savedPath: outputPath };
+        }
+        catch (error) {
+            return {
+                fullOutput: fallbackOutput,
+                saveError: `Failed to read changed output file: ${error instanceof Error ? error.message : String(error)}`,
+            };
+        }
+    }
+    const save = persistSingleOutput(outputPath, fallbackOutput, expectedClaimPath);
+    if (save.savedPath)
+        return { fullOutput: fallbackOutput, savedPath: save.savedPath };
+    return { fullOutput: fallbackOutput, saveError: save.error, ...(save.fatalError ? { fatalError: true } : {}) };
+}
+export function finalizeSingleOutput(params) {
+    let displayOutput = params.truncatedOutput || params.fullOutput;
+    if ((params.exitCode === 0 || params.preserveSavedOutput) && params.savedPath) {
+        const outputReference = params.outputReference ?? formatSavedOutputReference(params.savedPath, params.fullOutput);
+        if (params.outputMode === "file-only") {
+            return { displayOutput: outputReference.message, savedPath: params.savedPath, outputReference };
+        }
+        if (!displayOutput.includes(outputReference.message))
+            displayOutput += `\n\n${outputReference.message}`;
+        return { displayOutput, savedPath: params.savedPath, outputReference };
+    }
+    if (params.exitCode === 0 && params.saveError && params.outputPath) {
+        displayOutput += `\n\nOutput file error: ${params.outputPath}\n${params.saveError}`;
+        return { displayOutput, saveError: params.saveError };
+    }
+    return { displayOutput };
+}
+//# sourceMappingURL=single-output.js.map

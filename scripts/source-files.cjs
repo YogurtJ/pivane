@@ -32,10 +32,22 @@ function sourceFiles(root, group) {
     return files;
 }
 
+function verifyBundledMemory(root) {
+    const file = path.join(root, 'server/profile-memory/upstream-bundle.mjs');
+    const message = 'Bundled memory is missing or differs from the reviewed build; run node scripts/install.cjs before packaging';
+    try {
+        if (!fs.lstatSync(file).isFile() || fs.realpathSync.native(file) !== path.join(fs.realpathSync.native(root), 'server/profile-memory/upstream-bundle.mjs')) throw new Error(message);
+        const digest = require('node:crypto').createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+        if (digest !== require('../server/profile-memory/management').BUNDLE_SHA256) throw new Error(message);
+    } catch (error) { throw new Error(message, { cause: error }); }
+}
+
 function distributionFiles(root) {
+    verifyBundledMemory(root);
     const { publicDocumentation, assertPublicPath } = require('./check-docs.cjs');
     const files = [
         ...publicDocumentation(root), 'docs/public-files.json',
+        ...require('./vendor-files.cjs').vendorFiles(root),
         'native/pi-win32-fd.c', 'native/pi-win32-x64-fd.node', 'native/win32-x64-manifest.json',
         'native/pi-darwin-fd.c', 'native/pi-darwin-fd.node', 'native/darwin-fd-manifest.json',
         'package.json', 'package-lock.json', 'LICENSE', 'server.js', '.env.example', '.gitignore',
@@ -60,4 +72,4 @@ function distributionFiles(root) {
     return result;
 }
 
-module.exports = { sourceFiles, distributionFiles };
+module.exports = { sourceFiles, distributionFiles, verifyBundledMemory };

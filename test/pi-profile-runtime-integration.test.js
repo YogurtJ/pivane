@@ -20,7 +20,7 @@ const { ProfileMemoryConfiguration } = require('../server/profile-memory/config'
 // This gate is optional for installations without the optional memory package.
 // Release validation supplies the exact reviewed bundle and requires zero skips.
 test('private memory config fails closed and never leaks executable settings to unbound workers', async t => {
-    const configuration = new ProfileMemoryConfiguration({ getAgentDir: async () => agentDir });
+    const configuration = new ProfileMemoryConfiguration({ getAgentDir: async () => agentDir, bundledPath: null });
     const configRoot = path.join(agentDir, 'pivane-profiles');
     const file = path.join(configRoot, 'runtime.json');
     fs.mkdirSync(configRoot, { recursive: true });

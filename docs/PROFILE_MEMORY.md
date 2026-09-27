@@ -417,7 +417,25 @@ rather than returning unchecked data. Oversized native histories remain
 unindexed and visibly partial; no full-recall promise is made. Cwd must remain
 resolvable. The source candidate has not been deployed.
 
-## Isolated installation
+## Bundled installation
+
+The current source ships the upstream 0.9.9 npm contents in `vendor/pi-hermes-memory/`.
+`node scripts/install.cjs` prepares locked workspace dependencies and runs
+`scripts/install-bundled-capabilities.cjs`, which verifies vendor hashes, builds
+selected components and checks native SQLite. The resulting
+`server/profile-memory/upstream-bundle.mjs` retains the previously reviewed SHA256
+`0b2d8dae469077d615f46cb7d96d408663dc66980748718441d137293f9f9faa`.
+The configuration service selects this release-local bundle before the legacy
+`pivane-profiles/runtime.json` absolute path. It does not rewrite the old file or
+move profile data. `npm test` supplies the built-in bundle and Pi's Jiti loader,
+so memory integration gates are no longer silently skipped by the normal suite.
+See [bundled capabilities](BUNDLED_CAPABILITIES.md) for installation, platform
+requirements, child-session loading and update procedures.
+
+## Legacy isolated installation
+
+The following recipe remains available for legacy installations and compatibility
+testing; ordinary Pivane installation uses the bundled path above.
 
 Use the pinned upstream tarball; its SHA256 is
 `6a1b71dfa34f40bba6372a4f71dec54cce76be4ae55923d3b83ebfc1c5920c20`
@@ -425,9 +443,7 @@ Use the pinned upstream tarball; its SHA256 is
 `sha512-6EfhmlgBuMfN7bQwN+xHMDVwX/Tm0fKKi6X8lAIBZtcjqxS9Of0rboJzmxfO3r+rGMWb71ss4p+dY34aEsJ1dg==`).
 The reviewed isolated lock at `server/profile-memory/upstream-lock.json` has
 SHA256 `4f242aaee52d1be13c1d9a795d77595a2f6ef0070d18cf7546f21b01d7a2881b`.
-Parent must add this JSON lock to `distributionFiles()` (server source discovery
-currently includes only JS/MJS/TS), and add this document to the public docs
-manifest before packaging. The installer rejects a different lock, creates a
+The isolated installer retains the reviewed JSON lock and rejects a different lock, creates a
 fresh prefix, runs `npm ci
 --ignore-scripts` for that locked graph, then runs only pinned `better-sqlite3`
 trusted native rebuild and checks the real Node ABI/FTS5. Dependencies,

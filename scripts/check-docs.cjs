@@ -26,8 +26,9 @@ function checkDocumentation(root, distributionFiles) {
     const included = distributionFiles ? new Set([...distributionFiles, 'TRIAL_MANIFEST.json']) : null;
     if (included) for (const file of distributionFiles) assertPublicPath(file);
     const errors = [];
+    const upstream = fs.existsSync(path.join(root, 'vendor/manifest.json')) ? new Set(require('./vendor-files.cjs').vendorFiles(root)) : new Set();
     if (included) for (const file of included) {
-        if (file.endsWith('.md') && !declared.has(file)) errors.push(`Distribution Markdown is not declared public: ${file}`);
+        if (file.endsWith('.md') && !declared.has(file) && !upstream.has(file)) errors.push(`Distribution Markdown is not declared public: ${file}`);
     }
     function regular(file) {
         const target = path.resolve(root, file);

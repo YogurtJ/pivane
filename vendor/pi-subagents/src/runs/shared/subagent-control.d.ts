@@ -1,0 +1,50 @@
+import { type ActivityState, type ControlConfig, type ControlEvent, type ControlEventType, type ResolvedControlConfig } from "../../shared/types.ts";
+export declare const DEFAULT_CONTROL_CONFIG: ResolvedControlConfig;
+export declare function resolveControlConfig(globalConfig?: ControlConfig, override?: ControlConfig): ResolvedControlConfig;
+export declare function deriveActivityState(input: {
+    config: ResolvedControlConfig;
+    startedAt: number;
+    lastActivityAt?: number;
+    turnCount?: number;
+    currentTool?: string;
+    thinking?: string | false;
+    now?: number;
+}): ActivityState | undefined;
+export declare function shouldEmitOpenToolAttention(input: {
+    config: ResolvedControlConfig;
+    currentTool?: string;
+    currentToolStartedAt?: number;
+    now?: number;
+}): boolean;
+export declare function buildControlEvent(input: {
+    type?: ControlEventType;
+    from?: ActivityState;
+    to: ActivityState;
+    runId: string;
+    agent: string;
+    index?: number;
+    ts?: number;
+    lastActivityAt?: number;
+    message?: string;
+    reason?: ControlEvent["reason"];
+    turns?: number;
+    tokens?: number;
+    toolCount?: number;
+    currentTool?: string;
+    toolCallId?: string;
+    currentToolDurationMs?: number;
+    currentPath?: string;
+    elapsedMs?: number;
+    recentFailureSummary?: string;
+    workflowKey?: string;
+    phase?: string;
+    label?: string;
+    taskPreview?: string;
+}): ControlEvent;
+export declare function shouldNotifyControlEvent(config: ResolvedControlConfig, event: ControlEvent): boolean;
+export declare function controlNotificationKey(event: ControlEvent, childIntercomTarget?: string): string;
+export declare function claimControlNotification(config: ResolvedControlConfig, event: ControlEvent, seenKeys: Set<string>, childIntercomTarget?: string): boolean;
+export declare function formatControlNudge(event: ControlEvent): string;
+export declare function formatControlNoticeMessage(event: ControlEvent, childIntercomTarget?: string): string;
+export declare function formatControlIntercomMessage(event: ControlEvent, childIntercomTarget?: string): string;
+//# sourceMappingURL=subagent-control.d.ts.map

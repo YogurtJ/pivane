@@ -1,0 +1,86 @@
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { FleetViewPlacement, HerdrProjectPaneSnapshot, NestedRunSummary, SubagentState } from "../shared/types.ts";
+import { type AsyncStatusWorkflowRow } from "../runs/shared/async-status-projection.ts";
+import { type WorkflowChecklistProjection } from "../workflows/workflow-checklist.ts";
+export declare const FLEET_STATUS_WIDGET_KEY = "subagent-fleet-status";
+type Theme = ExtensionContext["ui"]["theme"];
+declare const FLEET_AGENT_IDENTITY_COLORS: readonly ["mdLink", "mdHeading", "syntaxFunction", "syntaxKeyword", "syntaxNumber", "syntaxType", "syntaxVariable", "customMessageLabel", "toolTitle", "thinkingMedium", "thinkingHigh", "mdQuote", "bashMode", "userMessageText", "mdCode", "syntaxOperator"];
+export declare function fleetAgentIdentityColor(identity: string): (typeof FLEET_AGENT_IDENTITY_COLORS)[number];
+type FleetStatusEntry = {
+    key: string;
+    surface?: "project-pane";
+    parentKey?: string;
+    workflowWrapper?: boolean;
+    agent: string;
+    displayLabel?: string;
+    modelThinking?: string;
+    description?: string;
+    startedAt: number;
+    tokens: number;
+    window?: number;
+    state: string;
+    external?: true;
+    projectPane?: HerdrProjectPaneSnapshot;
+    nestedChildren?: NestedRunSummary[];
+    workflowRows?: AsyncStatusWorkflowRow[];
+    workflowChecklist?: WorkflowChecklistProjection;
+};
+export interface FleetStatusOptions {
+    refreshMs?: number;
+    maxAgentRows?: number;
+    placement?: FleetViewPlacement;
+    onWorkflowCoverageChange?: (ui: ExtensionContext["ui"], coverage: ReadonlyMap<string, string>) => void;
+}
+export declare function resolveFleetViewPlacement(value: unknown): FleetViewPlacement;
+export declare function formatFleetElapsed(ms: number): string;
+export declare function formatFleetTokens(count: number, window?: number, windowCount?: number): string;
+export declare function collectFleetStatusEntries(state: SubagentState): FleetStatusEntry[];
+export declare class SubagentFleetStatus {
+    private ctx;
+    private ui;
+    private tui;
+    private inputUnsubscribe;
+    private timer;
+    private widgetRegistered;
+    private active;
+    private selectedKey;
+    private inspectorOpen;
+    private lastRenderKey;
+    private entries;
+    private workflowSnapshots;
+    private readonly onWorkflowCoverageChange;
+    private readonly state;
+    private readonly openInspector;
+    private readonly refreshMs;
+    private readonly maxAgentRows;
+    private readonly placement;
+    constructor(state: SubagentState, openInspector: (itemKey: string) => Promise<void> | void, options?: FleetStatusOptions);
+    setContext(ctx: ExtensionContext): void;
+    dispose(): void;
+    refresh(): void;
+    handleKey(data: string): {
+        consume?: boolean;
+        data?: string;
+    } | undefined;
+    render(width: number, theme: Theme): string[];
+    private renderProjectPaneSection;
+    private renderEntry;
+    private renderNestedRow;
+    private workflowRowGlyph;
+    private workflowRowStateLabel;
+    private renderWorkflowPhaseRow;
+    private renderWorkflowRow;
+    private bullet;
+    private rosterKeys;
+    private clampSelection;
+    private deactivate;
+    private editorHasFocus;
+    private getRenderKey;
+    private hasInlineSurface;
+    private getActiveUiContext;
+    private clearWidget;
+    private clearUiRegistration;
+    private clearWorkflowCoverage;
+}
+export {};
+//# sourceMappingURL=fleet-status.d.ts.map

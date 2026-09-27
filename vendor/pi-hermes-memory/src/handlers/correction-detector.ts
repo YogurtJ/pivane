@@ -1,0 +1,305 @@
+/**
+ * Correction detection — detects user corrections in real-time and triggers
+ * an immediate memory save instead of waiting for the next nudge interval.
+ *
+ * Uses a two-pass filter:
+ * - Strong patterns: always trigger (high confidence)
+ * - Weak patterns: only trigger if followed by a directive clause
+ * - Negative patterns: suppress even if a positive pattern matched
+ */
+
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { MemoryStore } from "../store/memory-store.js";
+import { DatabaseManager } from "../store/db.js";
+import {
+  buildMemoryTargetRoutingGuidance,
+  CORRECTION_SAVE_PROMPT,
+  CORRECTION_STRONG_PATTERNS,
+  CORRECTION_WEAK_PATTERNS,
+  CORRECTION_NEGATIVE_PATTERNS,
+  CORRECTION_DIRECTIVE_WORDS,
+  DIRECT_CORRECTION_SYSTEM_PROMPT,
+  ENTRY_DELIMITER,
+} from "../constants.js";
+import type { MemoryConfig } from "../types.js";
+import type { EnsureMemoryReady } from "../memory-initialization.js";
+import { getMessageText } from "../types.js";
+import { execChildPrompt, resolveChildPiModel } from "./pi-child-process.js";
+import { resolveProjectName, resolveProjectStore, type ProjectNameRef, type ProjectStoreRef } from "../project-context.js";
+import { runDirectMemoryCompletion, usesDirectTransport } from "./review-memory-ops.js";
+
+/**
+ * Extract the directive part from a correction message.
+ * E.g., "no, use pnpm instead" -> "use pnpm instead"
+ */
+function extractCorrectionDirective(text: string): string {
+  // Remove common correction starters
+  const cleaned = text
+    .replace(/^(no|wrong|actually|stop|don'?t|that'?s not|I said|I told you)[,\.\s!]+/i, '')
+    .replace(/^(please\s+)?/i, '')
+    .trim();
+  return cleaned || text;
+}
+
+function compileCorrectionPatterns(
+  configured: string[] | undefined,
+  defaults: RegExp[],
+): RegExp[] {
+  if (configured === undefined) return defaults;
+
+  const patterns: RegExp[] = [];
+  for (const source of configured) {
+    try {
+      patterns.push(new RegExp(source, "i"));
+    } catch {
+      // Ignore invalid configured regex entries; valid entries still apply.
+    }
+  }
+  return patterns;
+}
+
+function escapeRegexLiteral(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function hasDirectiveWord(remainder: string, words: string[]): boolean {
+  if (words.length === 0) return false;
+  const source = words.map(escapeRegexLiteral).join("|");
+  return new RegExp(`\\b(${source})\\b`, "i").test(remainder);
+}
+
+/**
+ * Check if a user message is a correction using the two-pass filter.
+ * Returns true if the message should trigger an immediate save.
+ */
+type CorrectionPatternConfig = Pick<MemoryConfig,
+  "correctionStrongPatterns" |
+  "correctionWeakPatterns" |
+  "correctionNegativePatterns" |
+  "correctionDirectiveWords"
+>;
+
+export function isCorrection(text: string, config?: CorrectionPatternConfig): boolean {
+  const negativePatterns = compileCorrectionPatterns(
+    config?.correctionNegativePatterns,
+    CORRECTION_NEGATIVE_PATTERNS,
+  );
+  const strongPatterns = compileCorrectionPatterns(
+    config?.correctionStrongPatterns,
+    CORRECTION_STRONG_PATTERNS,
+  );
+  const weakPatterns = compileCorrectionPatterns(
+    config?.correctionWeakPatterns,
+    CORRECTION_WEAK_PATTERNS,
+  );
+  const directiveWords = config?.correctionDirectiveWords ?? CORRECTION_DIRECTIVE_WORDS;
+
+  // Check negative patterns first — suppress even if positive matches
+  for (const pattern of negativePatterns) {
+    if (pattern.test(text)) return false;
+  }
+
+  // Check strong patterns — always trigger
+  for (const pattern of strongPatterns) {
+    if (pattern.test(text)) return true;
+  }
+
+  // Check weak patterns — only trigger if followed by a directive clause
+  for (const pattern of weakPatterns) {
+    if (pattern.test(text)) {
+      // Look for a directive after the weak pattern match
+      // Directive = a verb or "the/that/this" in the remainder of the text
+      const match = pattern.exec(text);
+      if (match && match.index === 0) {
+        const remainder = text.slice(match[0].length).trim();
+        // Simple heuristic: remainder contains something directive-ish
+        if (hasDirectiveWord(remainder, directiveWords)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+export function setupCorrectionDetector(
+  pi: ExtensionAPI,
+  store: MemoryStore,
+  projectStore: ProjectStoreRef,
+  config: MemoryConfig,
+  dbManager: DatabaseManager | null = null,
+  projectName: ProjectNameRef = null,
+  deps: { runDirectMemoryCompletion?: typeof runDirectMemoryCompletion; ensureMemoryReady?: EnsureMemoryReady } = {},
+): void {
+  if (!config.correctionDetection) return;
+
+  let pendingCorrection: string | undefined;
+  let turnsSinceLastCorrection = 3; // Start at threshold so first correction can fire immediately
+  let correctionInProgress = false;
+  const runDirect = deps.runDirectMemoryCompletion ?? runDirectMemoryCompletion;
+
+  // Flag on message_end (user role)
+  pi.on("message_end", async (event, _ctx) => {
+    if (event.message.role !== "user") return;
+    const text = getMessageText(event.message);
+    if (!text) return;
+    if (isCorrection(text, config)) {
+      pendingCorrection = text;
+    }
+  });
+
+  // Trigger on turn_end (we need full context: user correction + what agent said)
+  pi.on("turn_end", async (event, ctx) => {
+    if (!pendingCorrection) {
+      turnsSinceLastCorrection++;
+      return;
+    }
+    if (correctionInProgress) return;
+    const correctionText = pendingCorrection;
+    pendingCorrection = undefined;
+
+    // Rate limit: max 1 correction save per 3 turns
+    if (turnsSinceLastCorrection < 3) return;
+
+    correctionInProgress = true;
+
+    try {
+      try {
+        await deps.ensureMemoryReady?.(ctx, ctx.signal);
+      } catch {
+        // Keep the correction eligible for the next turn after a transient load
+        // failure, without consuming the successful-capture rate limit.
+        pendingCorrection ??= correctionText;
+        return;
+      }
+      turnsSinceLastCorrection = 0;
+      // Build conversation snapshot
+      const entries = ctx.sessionManager.getBranch();
+      const parts: string[] = [];
+
+      for (const entry of entries) {
+        if (entry.type !== "message") continue;
+        const msg = entry.message;
+        const text = getMessageText(msg);
+        if (!text) continue;
+        const prefix = msg.role === "user" ? "[USER]" : "[ASSISTANT]";
+        parts.push(`${prefix}: ${text}`);
+      }
+
+      // Only include last few exchanges (correction context is recent)
+      const recentParts = parts.slice(-6);
+
+      const activeProjectStore = resolveProjectStore(projectStore);
+      const activeProjectName = resolveProjectName(projectName);
+      const currentMemory = store.getMemoryEntries().join(ENTRY_DELIMITER);
+      const currentUser = store.getUserEntries().join(ENTRY_DELIMITER);
+      const currentProject = activeProjectStore ? activeProjectStore.getMemoryEntries().join(ENTRY_DELIMITER) : null;
+
+      const promptBody = [
+        "--- Current Memory ---",
+        currentMemory || "(empty)",
+        "",
+        "--- Current User Profile ---",
+        currentUser || "(empty)",
+      ];
+
+      if (currentProject !== null) {
+        promptBody.push(
+          "",
+          "--- Current Project Memory ---",
+          currentProject || "(empty)",
+        );
+      }
+
+      promptBody.push(
+        "",
+        "--- User Correction to Save ---",
+        correctionText,
+        "",
+        "--- Recent Conversation ---",
+        recentParts.join("\n\n"),
+      );
+
+      let savedViaLlm = false;
+
+      const runSubprocessCorrection = async (): Promise<void> => {
+        const subprocessPrompt = [
+          CORRECTION_SAVE_PROMPT,
+          "",
+          buildMemoryTargetRoutingGuidance(activeProjectStore !== null),
+          "",
+          ...promptBody,
+        ].join("\n");
+        const result = await execChildPrompt(pi, subprocessPrompt, config, {
+          cwd: ctx.cwd,
+          model: resolveChildPiModel(ctx.model),
+          signal: ctx.signal,
+          timeoutMs: 30000,
+        });
+        if (result.code === 0 && result.stdout) {
+          const output = result.stdout.trim();
+          savedViaLlm = !!output && !output.toLowerCase().includes("nothing to save");
+        }
+      };
+
+      let handledDirect = false;
+      if (usesDirectTransport(config)) {
+        try {
+          const directResult = await runDirect(
+            ctx,
+            store,
+            activeProjectStore,
+            {
+              systemPrompt: [
+                DIRECT_CORRECTION_SYSTEM_PROMPT,
+                "",
+                buildMemoryTargetRoutingGuidance(activeProjectStore !== null),
+              ].join("\n"),
+              userPrompt: promptBody.join("\n"),
+              config,
+              timeoutMs: 30000,
+              signal: ctx.signal,
+            },
+            dbManager,
+            activeProjectName,
+          );
+          if (directResult.ok) {
+            savedViaLlm = directResult.appliedCount > 0;
+            handledDirect = true;
+          }
+        } catch {
+          // Fall through to subprocess below.
+        }
+      }
+
+      if (!handledDirect) {
+        await runSubprocessCorrection();
+      }
+
+      if (savedViaLlm) {
+        ctx.ui.notify("🔧 Correction detected — memory updated", "info");
+      }
+
+      // Also save as a failure memory for learning
+      try {
+        if (correctionText) {
+          const directive = extractCorrectionDirective(correctionText);
+          const failureReason = "User corrected the agent";
+          const scopedProjectName = activeProjectStore ? activeProjectName : null;
+          await store.addFailure(directive, {
+            category: "correction",
+            failureReason,
+            project: scopedProjectName ?? undefined,
+          });
+        }
+      } catch {
+        // Best-effort — don't block the session
+      }
+    } catch {
+      // Best-effort — don't block the session
+    } finally {
+      correctionInProgress = false;
+    }
+  });
+}

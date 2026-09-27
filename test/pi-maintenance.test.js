@@ -140,9 +140,13 @@ test('staged install pins the entire Pi family, uses no model credentials and ve
                 const packages = { '': { dependencies: manifest.dependencies } };
                 for (const name of PI_PACKAGES) { const p = privateDir(path.join(dir, 'node_modules', name)); atomicJson(path.join(p, 'package.json'), { version: '0.85.1' }); packages['node_modules/' + name] = { version: '0.85.1' }; }
                 atomicJson(path.join(dir, 'package-lock.json'), { packages });
+            } else if (args.includes('rebuild')) {
+                assert.ok(!args.includes('better-sqlite3')); assert.ok(args.includes('esbuild'));
+            } else if (args[0].endsWith('install-bundled-capabilities.cjs')) {
+                assert.equal(options.cwd, dir);
             } else { assert.ok(options.env.PI_UPDATE_PROBE.startsWith(dir)); assert.equal(options.env.PI_OFFLINE, '1'); }
         } });
-    assert.equal(result, dir); assert.equal(calls.length, 2); assert.ok(fs.existsSync(path.join(dir, 'PI_INSTALL_COMPLETE.json')));
+    assert.equal(result, dir); assert.equal(calls.length, 4); assert.ok(fs.existsSync(path.join(dir, 'PI_INSTALL_COMPLETE.json')));
     await assert.rejects(stagePi({ root, directory: path.join(root, 'bad'), version: 'latest' }), /exact/);
     const envDir = privateDir(path.join(root, 'env'));
     const env = installEnvironment({ PATH: 'fixture', npm_config_token: 'secret', NODE_OPTIONS: 'bad', HTTPS_PROXY: 'http://localhost:1' }, envDir);

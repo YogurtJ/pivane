@@ -1,0 +1,231 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { discoverAgentsAll } from "../agents/agents.js";
+import { isAsyncAvailable } from "../runs/background/async-execution.js";
+import { formatSpawnBudgetSummary, getSpawnBudgetSnapshot } from "../runs/shared/spawn-budget.js";
+import { getActiveAsyncCapacitySnapshot, resolveAbandonedSlotReleaseAfterMs, resolveMaxActiveAsyncRunsPerSession } from "../runs/background/active-async-capacity.js";
+import { diagnoseIntercomBridge } from "../intercom/intercom-bridge.js";
+import { discoverAvailableSkills } from "../agents/skills.js";
+import { DIRS, CHAIN_RUNS_DIR, TEMP_ROOT_DIR, normalizeMaxSubagentSpawnsPerRun, resolveMaxSubagentSpawnsPerRun, } from "../shared/types.js";
+function defaultPaths() {
+    return {
+        tempRootDir: TEMP_ROOT_DIR,
+        asyncDir: DIRS.async,
+        resultsDir: DIRS.results,
+        chainRunsDir: CHAIN_RUNS_DIR,
+    };
+}
+const DEFAULT_DEPS = {
+    isAsyncAvailable,
+    discoverAgentsAll,
+    discoverAvailableSkills,
+    diagnoseIntercomBridge,
+};
+function errorText(error) {
+    return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+}
+function lineFromCheck(label, check) {
+    try {
+        return check();
+    }
+    catch (error) {
+        return `- ${label}: failed — ${errorText(error)}`;
+    }
+}
+function formatExistingDirectory(label, dirPath) {
+    try {
+        if (!fs.existsSync(dirPath))
+            return `- ${label}: missing (${dirPath})`;
+        const stats = fs.statSync(dirPath);
+        if (!stats.isDirectory())
+            throw new Error(`not a directory: ${dirPath}`);
+        fs.accessSync(dirPath, fs.constants.R_OK | fs.constants.W_OK);
+        return `- ${label}: ok (${dirPath})`;
+    }
+    catch (error) {
+        return `- ${label}: failed (${dirPath}) — ${errorText(error)}`;
+    }
+}
+function formatSourceCounts(counts) {
+    return `builtin ${counts.builtin}, package ${counts.package}, user ${counts.user}, project ${counts.project}`;
+}
+function formatSkillSourceCounts(skills) {
+    const counts = new Map();
+    for (const skill of skills)
+        counts.set(skill.source, (counts.get(skill.source) ?? 0) + 1);
+    const ordered = [
+        "project",
+        "project-settings",
+        "project-package",
+        "user",
+        "user-settings",
+        "user-package",
+        "extension",
+        "builtin",
+        "unknown",
+    ];
+    const parts = ordered
+        .map((source) => `${source} ${counts.get(source) ?? 0}`)
+        .filter((part) => !part.endsWith(" 0"));
+    return parts.length > 0 ? parts.join(", ") : "none";
+}
+function formatConfiguredSessionDir(input) {
+    if (input.requestedSessionDir) {
+        return path.resolve(input.expandTilde?.(input.requestedSessionDir) ?? input.requestedSessionDir);
+    }
+    if (input.config.defaultSessionDir) {
+        return path.resolve(input.expandTilde?.(input.config.defaultSessionDir) ?? input.config.defaultSessionDir);
+    }
+    return "not configured";
+}
+function formatSessionLines(input) {
+    const sessionFile = input.currentSessionFile ?? null;
+    const lines = [
+        lineFromCheck("configured session dir", () => `- configured session dir: ${formatConfiguredSessionDir(input)}`),
+        `- current session file: ${sessionFile ?? "not available"}`,
+        `- current session dir: ${sessionFile ? path.dirname(sessionFile) : "not available"}`,
+        `- current session id: ${input.currentSessionId ?? input.state.currentSessionId ?? "not available"}`,
+    ];
+    if (input.sessionError)
+        lines.push(`- session manager: failed — ${input.sessionError}`);
+    return lines;
+}
+function formatDiscovery(input, deps) {
+    return [
+        lineFromCheck("agents", () => {
+            const discovered = deps.discoverAgentsAll(input.cwd);
+            const agentCounts = {
+                builtin: discovered.builtin.length,
+                package: discovered.package?.length ?? 0,
+                user: discovered.user.length,
+                project: discovered.project.length,
+                runtime: 0,
+            };
+            const diagnostics = discovered.agentDiagnostics ?? [];
+            return [
+                `- agents: total ${agentCounts.builtin + agentCounts.package + agentCounts.user + agentCounts.project} (${formatSourceCounts(agentCounts)})`,
+                ...diagnostics.map((diagnostic) => `- invalid agent ${diagnostic.name ?? diagnostic.filePath} (${diagnostic.source}): ${diagnostic.error}`),
+            ].join("\n");
+        }),
+        lineFromCheck("skills", () => {
+            const skills = deps.discoverAvailableSkills(input.cwd);
+            return `- skills: total ${skills.length} (${formatSkillSourceCounts(skills)})`;
+        }),
+    ];
+}
+function formatIntercomDiagnostic(diagnostic, context) {
+    const lines = [
+        `- bridge: ${diagnostic.active ? "active" : "inactive"}${diagnostic.reason ? ` (${diagnostic.reason})` : ""}`,
+        `- mode: ${diagnostic.mode}; context: ${context ?? "unspecified"}`,
+        `- orchestrator target: ${diagnostic.orchestratorTarget ?? "not available"}`,
+        `- supervisor channel: ${diagnostic.supervisorChannelAvailable ? "available" : "unavailable"} (${diagnostic.extensionDir})`,
+    ];
+    return lines;
+}
+function formatSpawnBudgetSection(input) {
+    const snapshot = getSpawnBudgetSnapshot(input.state, input.config, input.currentSessionId ?? input.state.currentSessionId);
+    return [
+        `- usage: ${formatSpawnBudgetSummary(snapshot)}`,
+        `- recent grants: ${snapshot.grantHistory.length === 0
+            ? "none"
+            : snapshot.grantHistory.map((grant) => `+${grant.amount} at ${new Date(grant.grantedAt).toISOString()} (${grant.previousLimit} → ${grant.limit})`).join("; ")}`,
+        "- reset boundary: a new parent session resets usage and grants; compaction does not",
+    ];
+}
+function formatRunFanoutSection(input) {
+    const configured = resolveMaxSubagentSpawnsPerRun(input.config.maxSubagentSpawnsPerRun);
+    const source = normalizeMaxSubagentSpawnsPerRun(process.env.PI_SUBAGENT_MAX_SPAWNS_PER_RUN) !== undefined
+        ? "environment"
+        : normalizeMaxSubagentSpawnsPerRun(input.config.maxSubagentSpawnsPerRun) !== undefined ? "config" : "default";
+    return [`- configured limit: ${configured} (${source})`, "- usage: available after a run starts", "- reset boundary: cumulative claims are never released; a new top-level run creates a new budget"];
+}
+function formatActiveAsyncCapacitySection(input) {
+    const limit = resolveMaxActiveAsyncRunsPerSession(input.config.maxActiveAsyncRunsPerSession);
+    const sessionId = input.currentSessionId ?? input.state.currentSessionId;
+    const snapshot = sessionId
+        ? getActiveAsyncCapacitySnapshot(sessionId, limit, { liveWorkflowRunIds: new Set(input.state.workflowControllers?.keys() ?? []), abandonedSlotReleaseAfterMs: resolveAbandonedSlotReleaseAfterMs(input.config.capacity?.abandonedSlotReleaseAfterMs) })
+        : { used: 0, limit: limit ?? 0 };
+    input.state.activeAsyncCapacity = snapshot;
+    return [
+        `- usage: ${snapshot.used}/${snapshot.limit || "unlimited"} used`,
+        "- scope: top-level async runs in the current parent session; foreground and nested workflow children are not charged again",
+        "- release: terminal state plus matching observed process-terminal proof, or abandoned-timeout for failed runs with a dead runner PID and stale activity when enabled; false keeps unknown-proof slots",
+    ];
+}
+function formatPermissionSystemSection() {
+    const lines = [];
+    const parentSession = process.env["PI_SUBAGENT_PARENT_SESSION"] ?? "";
+    const trimmed = parentSession.trim();
+    const isChild = process.env["PI_SUBAGENT_CHILD"] === "1";
+    if (isChild && trimmed) {
+        lines.push(`- runner parent session: set (${trimmed}) — explicit target for this dedicated child process`);
+    }
+    else if (isChild) {
+        lines.push("- runner parent session: not set — this child process has no forwarding target");
+    }
+    else if (trimmed) {
+        lines.push("- root parent session: ignored legacy process-global value — root sessions do not use it for routing");
+    }
+    else {
+        lines.push("- root parent session: not set (healthy) — detached forwarding is attached at runner launch");
+    }
+    if (!isChild)
+        lines.push("- foreground external ask forwarding: unavailable until the permission extension supports a session-scoped target");
+    lines.push(`- subagent process: ${isChild ? "yes (PI_SUBAGENT_CHILD=1)" : "no"}`);
+    // Whether pi-permission-system is installed and where it stores config is
+    // outside pi-subagents' control, so we only report the forwarding signal we
+    // own. Run `pi list` to confirm the permission extension is installed.
+    return lines;
+}
+function formatWorkflowScriptSection() {
+    return [
+        "- helpers: runs.run, runs.all, runs.steer, runs.status, runs.ref/refs, emit, console",
+        "- recovery: if runs.all is missing, reload or update pi-subagents; await Promise.all([runs.run(...)]) is also supported",
+    ];
+}
+export function buildDoctorReport(input) {
+    const paths = input.paths ?? defaultPaths();
+    const deps = { ...DEFAULT_DEPS, ...input.deps };
+    const lines = [
+        "Subagents doctor report",
+        "",
+        "Runtime",
+        `- cwd: ${input.cwd}`,
+        lineFromCheck("async support", () => `- async support: ${deps.isAsyncAvailable() ? "available" : "unavailable"}`),
+        ...formatSessionLines(input),
+        "",
+        "Filesystem",
+        formatExistingDirectory("temp root", paths.tempRootDir),
+        formatExistingDirectory("async runs", paths.asyncDir),
+        formatExistingDirectory("results", paths.resultsDir),
+        formatExistingDirectory("chain runs", paths.chainRunsDir),
+        "",
+        "Discovery",
+        ...formatDiscovery(input, deps),
+        "",
+        "Spawn budget",
+        ...formatSpawnBudgetSection(input),
+        "",
+        "Run fan-out budget",
+        ...formatRunFanoutSection(input),
+        "",
+        "Active async capacity",
+        ...formatActiveAsyncCapacitySection(input),
+        "",
+        "Workflow script",
+        ...formatWorkflowScriptSection(),
+        "",
+        "Permission system",
+        ...formatPermissionSystemSection(),
+        "",
+        "Intercom bridge",
+        ...lineFromCheck("intercom bridge", () => formatIntercomDiagnostic(deps.diagnoseIntercomBridge({
+            config: input.config.intercomBridge,
+            context: input.context,
+            orchestratorTarget: input.orchestratorTarget,
+            cwd: input.cwd,
+        }), input.context).join("\n")).split("\n"),
+    ];
+    return lines.join("\n");
+}
+//# sourceMappingURL=doctor.js.map

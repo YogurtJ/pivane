@@ -40,7 +40,7 @@ The bilingual interface is included starting with **1.0.0-rc.2**. Version **1.0.
 
 The current stable release, **1.1.0**, is pinned to **Pi 0.87.1**. It adds project file browsing, native task progress, searchable model selection, shared favorites and mobile interaction improvements. See the [release notes](docs/releases/1.1.0.md). This archive passed 292 Node tests, 12 browser suites, installation, upgrade from 1.0.0 and same-path restoration on Linux ARM64 with Node 22. Running instances change only after an explicit update.
 
-Use **Node.js 22.x** and the locked dependencies. Validation results are attached to the exact archive SHA256. You do not need a global Pi installation, a frontend build, or a compiler for the packaged native components.
+Use **Node.js 22.x** and the locked dependencies. Validation results are attached to the exact archive SHA256. You do not need a global Pi installation or a frontend build. The current source bundles pi-subagents 0.71.0 and pi-hermes-memory 0.9.9; `node scripts/install.cjs` prepares both without rewriting your CLI package declarations and uses the SQLite binaries shipped in the dependency package. Older published archives without this installer retain their original `npm ci` instructions. SQLite may require Python and C/C++ build tools when no matching prebuilt binary exists. See [bundled capabilities](docs/BUNDLED_CAPABILITIES.md).
 
 | Server platform | Validated RC baseline |
 |---|---|
@@ -75,7 +75,7 @@ Start with the [English user guide](docs/en/USER_GUIDE.md). Detailed feature, AP
 In an isolated development environment:
 
 ```bash
-npm ci
+node scripts/install.cjs
 npm test
 npm run check
 npm run check:docs

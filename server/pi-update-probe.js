@@ -37,6 +37,15 @@ require('./pi-process-shutdown').registerProcessShutdown(cleanup);
         const { data } = await new PiSessionTransfer({ store: gateway.store, supervisor: gateway.supervisor }).export(directory, session.id, 'jsonl');
         assert.ok(validateImport(data.toString('utf8')).some(entry => entry.type === 'context_edit'));
         assert.ok(Array.isArray((await worker.request('get_commands')).commands));
+        if (require('../package.json').workspaces?.includes('vendor/pi-subagents')) {
+            const resources = await worker.getNativeResources();
+            assert.equal(resources.tools.filter(tool => tool.name === 'subagents_enable').length, 1);
+            assert.ok(resources.skills.some(skill => skill.name === 'pi-subagents'));
+            await worker.subagentRequest({ method: 'status', params: {} });
+            const memory = await new (require('./profile-memory/config').ProfileMemoryConfiguration)().snapshot();
+            assert.equal(memory.capability.installed, true);
+            assert.equal(memory.bundlePath, require('./pi-bundled-capabilities').memoryBundle());
+        }
         await worker.request('set_session_name', { name: 'Update compatibility passed' });
         assert.equal(sdk.SessionManager.open(session.path).getSessionName(), 'Update compatibility passed');
     } finally { await cleanup(); }

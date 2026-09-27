@@ -27,37 +27,25 @@ const service = new PiSubagentSettingsService(native, resources, { getModelSnaps
 const globalFile = path.join(process.env.PI_CODING_AGENT_DIR, 'settings.json');
 test.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
-test('optional capability failure is nonfatal, durable, and never retried implicitly', async () => {
-    const agentDir = path.join(root, 'optional'); let attempts = 0;
-    const manager = { listConfiguredPackages: () => [], installAndPersist: async source => { attempts++; assert.equal(source, definition.source); throw new Error('secret must not be logged'); } };
-    const messages = [];
-    await installDefaults({ agentDir, manager, log: message => messages.push(message) });
+test('bundled capability preparation never installs into a shared identity', async () => {
+    const agentDir = path.join(root, 'optional');
+    const manager = { listConfiguredPackages: () => { throw new Error('must not inspect CLI installs'); }, installAndPersist: async () => { throw new Error('must not install into CLI'); } };
     await installDefaults({ agentDir, manager });
-    assert.equal(attempts, 1); assert.doesNotMatch(messages.join(''), /secret/);
-    assert.equal(JSON.parse(fs.readFileSync(path.join(agentDir, 'pivane-default-capabilities.json'))).subagents.status, 'failed');
-    const skipDir = path.join(root, 'skipped');
-    await installDefaults({ agentDir: skipDir, manager, skip: true });
-    await installDefaults({ agentDir: skipDir, manager }); assert.equal(attempts, 1);
-    const existing = path.join(root, 'existing');
-    await installDefaults({ agentDir: existing, manager: { ...manager, listConfiguredPackages: () => [{ source: 'npm:pi-subagents@0.1.0' }] } });
-    assert.equal(attempts, 1, 'existing choices must not be upgraded');
-    const successful = path.join(root, 'successful'); let installed = 0;
-    await installDefaults({ agentDir: successful, manager: { ...manager, installAndPersist: async () => { installed++; } }, log: () => {} });
-    await installDefaults({ agentDir: successful, manager, log: () => {} });
-    assert.equal(installed, 1); assert.equal(attempts, 1, 'removal after installation must not trigger reinstall');
+    assert.equal(fs.existsSync(agentDir), false);
 });
 
-test('missing, disabled and incompatible plugins cannot accept subagent settings', async () => {
+test('bundled plugin is ready by default and preserves legacy disable filters', async () => {
     fs.writeFileSync(globalFile, '{}');
     let snapshot = await service.snapshot(cwd);
-    assert.equal(snapshot.plugin.status, 'missing'); assert.equal(snapshot.plugin.canInstall, true);
-    await assert.rejects(service.save({ cwd, scope: 'global', expectedRevision: snapshot.revision, changes: { defaultModel: 'fixture/reasoner' } }), /插件/);
+    assert.equal(snapshot.plugin.status, 'ready'); assert.equal(snapshot.plugin.canInstall, false);
+    assert.equal(snapshot.plugin.managedBy, 'pivane');
     const pkg = path.join(root, 'plugin'); fs.mkdirSync(path.join(pkg, 'agents'), { recursive: true });
     fs.writeFileSync(path.join(pkg, 'index.js'), 'export default function() {}');
     fs.writeFileSync(path.join(pkg, 'agents/reviewer.md'), '---\nname: reviewer\nthinking: high\n---\nFixture');
     fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: 'pi-subagents', version: '0.1.0', pi: { extensions: ['./index.js'] } }));
     fs.writeFileSync(globalFile, JSON.stringify({ packages: [pkg], preserved: { sentinel: 123 } }));
-    snapshot = await service.snapshot(cwd); assert.equal(snapshot.plugin.status, 'unsupported');
+    snapshot = await service.snapshot(cwd); assert.equal(snapshot.plugin.status, 'ready');
+    assert.deepEqual(snapshot.plugin.installedVersions, [definition.version]);
     fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: 'pi-subagents', version: definition.version, pi: { extensions: ['./index.js'] } }));
     fs.writeFileSync(globalFile, JSON.stringify({ packages: [{ source: pkg, extensions: [] }], preserved: { sentinel: 123 } }));
     snapshot = await service.snapshot(cwd); assert.equal(snapshot.plugin.status, 'disabled');
@@ -119,43 +107,22 @@ test('subagent HTTP settings enforce authentication, Origin, fixed install sourc
     } finally { delete process.env.PI_WEB_TOKEN; await gateway.dispose(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });
 
-test('only a confirmed pinned user-scope npm install of an older reviewed release upgrades in place', async () => {
+test('bundled plugin ignores legacy versions without rewriting CLI declarations or installing', async () => {
     const sdk = await import('@earendil-works/pi-coding-agent');
-    const installed = path.join(process.env.PI_CODING_AGENT_DIR, 'npm/node_modules/pi-subagents');
-    const writePackage = version => {
-        fs.mkdirSync(installed, { recursive: true });
-        fs.writeFileSync(path.join(installed, 'index.js'), 'export default function() {}');
-        fs.writeFileSync(path.join(installed, 'package.json'), JSON.stringify({ name: 'pi-subagents', version, pi: { extensions: ['./index.js'] } }));
-    };
     const original = sdk.DefaultPackageManager.prototype.installAndPersist;
-    const sources = [];
-    sdk.DefaultPackageManager.prototype.installAndPersist = async function (source, options) {
-        sources.push([source, options]); writePackage(definition.version); this.addSourceToSettings(source, options);
-    };
+    sdk.DefaultPackageManager.prototype.installAndPersist = async () => { throw new Error('Unexpected installation'); };
     try {
-        writePackage('0.69.0');
-        fs.writeFileSync(globalFile, JSON.stringify({ packages: [{ source: 'npm:pi-subagents@0.69.0', skills: [] }], preserved: { sentinel: 5 } }));
-        let snapshot = await service.snapshot(cwd);
-        assert.equal(snapshot.plugin.status, 'ready', 'reviewed older releases remain editable');
-        assert.equal(snapshot.plugin.upgradeFrom, '0.69.0');
-        await assert.rejects(service.upgrade({ cwd, expectedRevision: snapshot.revision }), /确认/);
-        await assert.rejects(service.upgrade({ cwd, expectedRevision: 'stale', confirmed: true }), /变化/);
-        assert.deepEqual(sources, []);
-        assert.deepEqual(await service.upgrade({ cwd, expectedRevision: snapshot.revision, confirmed: true }), { ok: true, version: definition.version, requiresRuntimeRestart: true });
-        assert.deepEqual(sources, [[definition.source, { local: false }]]);
-        const data = JSON.parse(fs.readFileSync(globalFile));
-        assert.deepEqual(data.packages, [{ source: definition.source, skills: [] }], 'same entry, filters kept');
-        assert.equal(data.preserved.sentinel, 5);
-        snapshot = await service.snapshot(cwd);
-        assert.equal(snapshot.plugin.upgradeFrom, null);
-        await assert.rejects(service.upgrade({ cwd, expectedRevision: snapshot.revision, confirmed: true }), /Packages/);
-        for (const source of ['npm:pi-subagents', 'npm:pi-subagents@0.1.0']) {
-            writePackage(source.endsWith('0.1.0') ? '0.1.0' : '0.69.0');
-            fs.writeFileSync(globalFile, JSON.stringify({ packages: [source] }));
-            snapshot = await service.snapshot(cwd);
-            assert.equal(snapshot.plugin.upgradeFrom, null, source);
-            await assert.rejects(service.upgrade({ cwd, expectedRevision: snapshot.revision, confirmed: true }), /Packages/);
+        for (const source of ['npm:pi-subagents@0.69.0', 'npm:pi-subagents', 'npm:pi-subagents@0.1.0']) {
+            const bytes = JSON.stringify({ packages: [{ source, skills: [] }], preserved: { sentinel: 5 } });
+            fs.writeFileSync(globalFile, bytes);
+            const snapshot = await service.snapshot(cwd);
+            assert.equal(snapshot.plugin.status, 'ready');
+            assert.deepEqual(snapshot.plugin.installedVersions, [definition.version]);
+            assert.equal(snapshot.plugin.upgradeFrom, null);
+            await assert.rejects(service.upgrade({ cwd, expectedRevision: snapshot.revision }), /确认/);
+            await assert.rejects(service.upgrade({ cwd, expectedRevision: 'stale', confirmed: true }), /变化/);
+            await assert.rejects(service.upgrade({ cwd, expectedRevision: snapshot.revision, confirmed: true }), /Pivane/);
+            assert.equal(fs.readFileSync(globalFile, 'utf8'), bytes);
         }
-        assert.equal(sources.length, 1);
-    } finally { sdk.DefaultPackageManager.prototype.installAndPersist = original; fs.rmSync(installed, { recursive: true, force: true }); }
+    } finally { sdk.DefaultPackageManager.prototype.installAndPersist = original; }
 });

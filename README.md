@@ -72,17 +72,17 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 | macOS | Apple Silicon M2 / macOS 26.5.1 | [macOS 原生安装](docs/MACOS.md) |
 | Windows | Windows 11 x64 / NTFS，原生运行，无需 WSL | [Windows 原生安装](docs/WINDOWS.md) |
 
-需要 Node、npm 和对应平台的 Bash/ripgrep 等基础工具。**无需全局安装 Pi，没有前端构建步骤，普通安装无需现场编译原生组件。** 其他系统版本、Intel Mac 硬件及特殊文件系统的状态详见[验证范围](docs/RELEASE_INSTALL_VALIDATION.md)。
+需要 Node、npm 和对应平台的 Bash/ripgrep 等基础工具。**无需全局安装 Pi，没有前端构建步骤。** Pivane 自身原生组件随包提供；当前源码的记忆 SQLite 依赖在缺少适配的预构建二进制时需要编译环境。 其他系统版本、Intel Mac 硬件及特殊文件系统的状态详见[验证范围](docs/RELEASE_INSTALL_VALIDATION.md)。
 
 1. 从 [Releases](https://github.com/YogurtJ/pivane/releases) 下载发布包与校验文件，按平台指南准备独立数据目录和启动配置。
-2. 在解压后的代码目录运行 `npm ci`，配置实例后运行 `node scripts/install-service.cjs` 安装[后台常驻与桌面入口](docs/BACKGROUND_SERVICE.md)。前台 `npm start` 仅用于试用或排障。
+2. 在解压后的代码目录运行 `node scripts/install.cjs`（1.1.0 及更早归档没有该脚本时运行 `npm ci`），配置实例后运行 `node scripts/install-service.cjs` 安装[后台常驻与桌面入口](docs/BACKGROUND_SERVICE.md)。前台 `npm start` 仅用于试用或排障。
 3. 打开工作台，在“设置 → 供应商与模型”核对已有 Pi 配置；没有可用认证时再完成 API Key 或 OAuth 登录，选择项目并新建线程。
 
 **已经在用 Pi CLI？** 普通安装会通过 Pi 原生接口取得当前用户的身份目录，直接复用模型、认证和设置。macOS/Linux 与 Windows 使用各自的系统主目录，`PI_CODING_AGENT_DIR` 覆盖优先；无需复制认证文件。具体步骤、Windows/WSL 差异和已装成空身份的切换方法见[已有 Pi 接入](docs/PI_CLI.md)。
 
 普通安装以后台常驻、网页可打开和只读健康检查通过为基础交付，不需要运行开发测试或打包；模型认证和真实请求单独验证。数据目录独立不代表项目必须放进指定子目录：普通安装默认开放系统用户可访问的目录，Linux/macOS 使用 `/`，Windows 使用各盘符根目录；用户明确需要时才缩小范围。当前网页不能扩大项目范围，配置方法见[目录范围排障](docs/INSTALL_RECOVERY.md#项目选择器找不到目录)。
 
-首次安装需要下载锁定依赖；`npm ci` 还会尝试安装可选的 pi-subagents 0.71.0，失败不影响 Pivane 使用，可在“设置 → 模型与能力 → 子 Agent”确认补装。已有版本保留，默认安装不自动启动子任务；跳过与独立身份说明见[默认可选能力](docs/INSTALL_RECOVERY.md#默认可选能力)。图标、代码高亮、公式与图表所需资源随包或随依赖提供。聊天模型与媒体服务需要使用者自行配置，其服务费用由使用者承担。没有默认可执行的媒体服务。
+首次安装需要下载锁定依赖。当前源码随包提供 pi-subagents 0.71.0 和 pi-hermes-memory 0.9.9，`node scripts/install.cjs` 统一准备子 Agent 与档案记忆组件；版本随 Pivane 更新，已有 CLI 配置和记忆数据保留。安装不启动子任务，记忆仍按助手身份启用。SQLite 平台依赖及旧安装兼容见[内置能力包](docs/BUNDLED_CAPABILITIES.md)。图标、代码高亮、公式与图表所需资源随包或随依赖提供。聊天模型与媒体服务需要使用者自行配置，其服务费用由使用者承担。没有默认可执行的媒体服务。
 
 [.env.example](.env.example) 与未配置 `PORT` 时的服务默认端口统一为 `11408`，本机访问地址为 `http://127.0.0.1:11408`。已有 3001 安装升级时，将实际 `.env` 或服务配置中的 `PORT` 改为 `11408`，工作台地址同步改为 `http://127.0.0.1:11408`；如使用默认预约队列，先把 `PI_WEB_DEFERRED_FILE` 固定为原队列的实际绝对路径，再在空闲时重启。自定义端口仍可显式指定。不同设备访问时，请使用部署机器的可达地址。
 
@@ -120,7 +120,7 @@ Pi 原生会话是对话的唯一事实来源。不要让网页与外部 CLI 同
 在独立测试环境中运行：
 
 ```bash
-npm ci
+node scripts/install.cjs
 npm test
 npm run check
 npm run check:docs

@@ -1,0 +1,1 @@
+{"version":3,"file":"plugin.d.ts","sourceRoot":"","sources":["../../../../src/inspectors/herdr/plugin.ts"],"names":[],"mappings":"AAAA,OAAO,EAAqB,KAAK,WAAW,EAAE,MAAM,aAAa,CAAC;AAElE,OAAO,KAAK,EAAE,eAAe,EAAE,MAAM,aAAa,CAAC;AAEnD,MAAM,WAAW,eAAe;IAC/B,MAAM,CAAC,EAAE,WAAW,CAAC;CACrB;AAED,wBAAgB,0BAA0B,CAAC,IAAI,GAAE,eAAoB,GAAG,eAAe,CAWtF"}

@@ -1,0 +1,56 @@
+sequenceDiagram
+    participant User
+    participant Pi
+    participant Extension
+    participant MD as Markdown (~/.pi/agent/...)
+    participant SQL as SQLite (sessions.db)
+
+    Note over Pi,SQL: ── Session Start ──
+    Pi->>Extension: session_start event
+    Extension->>MD: loadFromDisk() — MEMORY.md + USER.md + failures.md + skills/
+    Extension-->>Extension: Load searchable memory stores
+
+    Note over Pi,SQL: ── System Prompt Context ──
+    Pi->>Extension: before_agent_start event
+    Extension-->>Pi: systemPrompt + compact memory policy
+    Note right of Pi: Default mode does NOT inject full Markdown memory
+    opt memoryMode = legacy-inject
+        Extension-->>Pi: systemPrompt + legacy memory blocks
+    end
+
+    Note over Pi,SQL: ── Agent Loop (memory add) ──
+    User->>Pi: "Remember I prefer vim"
+    Pi->>Extension: tool_call (memory, add)
+    Extension->>Extension: scanContent() security check
+    Extension->>MD: Atomic write to USER.md
+    alt Markdown save success
+        Extension->>SQL: best-effort sync to memories table
+        Extension-->>Pi: success (plus warning only if sync fails)
+    else Markdown save fails (limit/validation)
+        Extension-->>Pi: fail (no SQLite-only fallback)
+    end
+
+    Note over Pi,SQL: ── User Correction ──
+    User->>Pi: "No, don't use npm — use pnpm"
+    Extension->>Extension: isCorrection() = true
+    Extension->>Pi: pi.exec("pi -p", correctionPrompt)
+    Extension->>MD: Save [correction] failure memory
+    Extension->>SQL: best-effort correction sync
+
+    Note over Pi,SQL: ── Search + Backfill ──
+    Pi->>Extension: memory_search(query)
+    Extension->>SQL: FTS5 search memories
+    SQL-->>Extension: results
+    Pi->>Extension: /memory-sync-markdown
+    Extension->>MD: scan global + project Markdown files
+    Extension->>SQL: idempotent Markdown → SQLite import
+
+    Note over Pi,SQL: ── Background Learning ──
+    Pi->>Extension: turn_end (10 turns or 15 tool calls)
+    Extension->>Pi: pi.exec("pi -p", reviewPrompt)
+    Note right of Pi: Review can save memories/failures/skills
+
+    Note over Pi,SQL: ── Session End ──
+    Pi->>Extension: session_shutdown event
+    Extension->>Pi: pi.exec("pi -p", flushPrompt)
+    Note right of Pi: final chance to save durable learnings

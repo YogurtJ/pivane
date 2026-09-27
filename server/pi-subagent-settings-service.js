@@ -1,5 +1,4 @@
 const fs = require('node:fs');
-const privateFiles = require('./pi-private-files');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { safeFile, read, json, atomic, fail } = require('./pi-native-service');
@@ -8,23 +7,6 @@ const definition = require('./pi-default-capabilities').find(entry => entry.id =
 const roleName = name => typeof name === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(name) && !['constructor', 'prototype', '__proto__'].includes(name);
 const fields = value => ({ model: typeof value?.model === 'string' ? value.model : null,
     thinking: value?.thinking === false ? 'off' : typeof value?.thinking === 'string' ? value.thinking : null });
-// Only a single user-scope pinned npm entry of a reviewed older release is upgraded
-// in place. Project entries, git/local sources and unpinned specs stay user-managed.
-function upgradeSource(ctx) {
-    if (!['ready', 'disabled'].includes(ctx.status) || ctx.packages.length !== 1 || ctx.manifests.length !== 1) return null;
-    const [item] = ctx.packages, version = ctx.manifests[0].manifest.version;
-    if (item.scope !== 'user' || item.source !== `npm:${definition.name}@${version}` || version === definition.version) return null;
-    const rank = value => value.split('.').map(Number).reduce((sum, part) => sum * 1000 + part, 0);
-    return definition.compatibleVersions.includes(version) && rank(version) < rank(definition.version) ? item.source : null;
-}
-// Pi queues settings writes; report success only after the package entry is on disk.
-async function persisted(ctx) {
-    await ctx.settings.flush();
-    const file = safeFile(ctx.agentDir, ['settings.json']);
-    const packages = json(read(file)).packages || [];
-    if (!packages.some(item => (typeof item === 'string' ? item : item?.source) === definition.source)) throw new Error('settings write not confirmed');
-    privateFiles.privateFileMode(file);
-}
 class PiSubagentSettingsService {
     constructor(native, resources, settings) { this.native = native; this.resources = resources; this.settings = settings; }
     async context(cwd) {
@@ -58,33 +40,17 @@ class PiSubagentSettingsService {
         return { version: 1, cwd: ctx.cwd, revision: ctx.revision, trust: ctx.trust,
             plugin: { name: definition.name, version: definition.version, status: ctx.status,
                 installedVersions: ctx.manifests.map(item => item.manifest.version),
-                canInstall: ctx.status === 'missing' && ctx.packages.every(item => item.scope === 'user' && item.source === definition.source),
-                upgradeFrom: upgradeSource(ctx) ? ctx.manifests[0].manifest.version : null },
+                managedBy: 'pivane', canInstall: false, upgradeFrom: null },
             defaults: { global: fields({ model: global.defaultModel, thinking: global.defaultThinking }), project: fields({ model: project.defaultModel, thinking: project.defaultThinking }) },
             roles: [...names].sort().map(name => ({ name, global: fields(global.agentOverrides?.[name]), project: fields(project.agentOverrides?.[name]) })) };
     }
-    async install(input) {
-        if (!input || Object.keys(input).some(key => !['cwd', 'expectedRevision', 'confirmed'].includes(key)) || input.confirmed !== true) throw fail('请确认安装子 Agent 插件');
-        return this.native.mutate({ cwd: input.cwd, expectedRevision: (await this.native.context(input.cwd)).revision }, async () => {
-            const ctx = await this.context(input.cwd);
-            if (ctx.revision !== input.expectedRevision) throw fail('配置已变化，请刷新', 409);
-            if (ctx.status !== 'missing' || ctx.packages.some(item => item.scope !== 'user' || item.source !== definition.source)) throw fail('已有插件配置，请通过 Packages 管理');
-            try { await ctx.manager.installAndPersist(definition.source, { local: false }); await persisted(ctx); }
-            catch { throw fail('子 Agent 插件安装未完成，请刷新核对安装状态后再操作'); }
-            return { ok: true, requiresRuntimeRestart: true };
-        });
-    }
-    async upgrade(input) {
-        if (!input || Object.keys(input).some(key => !['cwd', 'expectedRevision', 'confirmed'].includes(key)) || input.confirmed !== true) throw fail('请确认升级子 Agent 插件');
-        return this.native.mutate({ cwd: input.cwd, expectedRevision: (await this.native.context(input.cwd)).revision }, async () => {
-            const ctx = await this.context(input.cwd);
-            if (ctx.revision !== input.expectedRevision) throw fail('配置已变化，请刷新', 409);
-            if (!upgradeSource(ctx)) throw fail('当前插件配置不适合自动升级，请通过 Packages 管理');
-            // Same package identity: Pi replaces the pinned source in place and keeps filters.
-            try { await ctx.manager.installAndPersist(definition.source, { local: false }); await persisted(ctx); }
-            catch { throw fail('子 Agent 插件升级未完成，请刷新核对版本后再操作'); }
-            return { ok: true, version: definition.version, requiresRuntimeRestart: true };
-        });
+    async install(input) { return this.managedAction(input); }
+    async upgrade(input) { return this.managedAction(input); }
+    async managedAction(input) {
+        if (!input || Object.keys(input).some(key => !['cwd', 'expectedRevision', 'confirmed'].includes(key)) || input.confirmed !== true) throw fail('请确认组件操作');
+        const ctx = await this.context(input.cwd);
+        if (ctx.revision !== input.expectedRevision) throw fail('配置已变化，请刷新', 409);
+        throw fail('此组件由 Pivane 管理，请随 Pivane 安装或更新');
     }
     async save(input) {
         if (!input || Object.keys(input).some(key => !['cwd', 'scope', 'expectedRevision', 'changes'].includes(key)) || !['global', 'project'].includes(input.scope)

@@ -1,0 +1,324 @@
+import { Agent } from "@earendil-works/pi-agent-core";
+import { createReadOnlyTools, convertToLlm } from "@earendil-works/pi-coding-agent";
+import { streamSimple } from "@earendil-works/pi-ai/compat";
+import { Type } from "typebox";
+import { resolveModelCandidate } from "../runs/shared/model-resolution.js";
+import { agentStreamOptions } from "../shared/agent-stream-options.js";
+import { opencodeSessionHeaders } from "../shared/opencode-session-headers.js";
+import { resolveEffectiveThinking, splitKnownThinkingSuffix, THINKING_LEVELS, toModelInfo } from "../shared/model-info.js";
+import { createWatchdogDiffTool, WATCHDOG_DIFF_TOOL_NAME } from "./diff-tool.js";
+import { loadWatchdogGuidance } from "./guidance.js";
+import { boundWatchdogReviewText } from "./runtime.js";
+import { WATCHDOG_WARNING_CATEGORIES, WATCHDOG_WARNING_IMPORTANCES, WATCHDOG_WARNING_SEVERITIES, } from "./types.js";
+const WATCHDOG_ALLOWED_TOOL_NAMES = new Set(["read", "grep", "find", "ls", "watchdog_warn", WATCHDOG_DIFF_TOOL_NAME]);
+const WatchdogAskParams = Type.Object({ question: Type.String(), evidence: Type.String() }, { additionalProperties: false });
+const WatchdogWarnParams = Type.Object({
+    severity: Type.String({ enum: WATCHDOG_WARNING_SEVERITIES, description: "concern for actionable risk, blocker for a likely wrong or unsafe outcome" }),
+    importance: Type.String({ enum: WATCHDOG_WARNING_IMPORTANCES, description: "low or medium for user-only visibility; high when the parent model must receive the finding" }),
+    summary: Type.String({ description: "One concise sentence naming the issue." }),
+    evidence: Type.String({ description: "Specific evidence from the turn delta or inspected files." }),
+    recommendedAction: Type.String({ description: "Specific action the parent should take before accepting or continuing." }),
+    category: Type.Optional(Type.String({ enum: WATCHDOG_WARNING_CATEGORIES })),
+}, { additionalProperties: false });
+function fullModelId(model) {
+    return `${model.provider}/${model.id}`;
+}
+function splitProviderModel(value) {
+    const slashIndex = value.indexOf("/");
+    if (slashIndex <= 0 || slashIndex === value.length - 1)
+        return undefined;
+    return { provider: value.slice(0, slashIndex), id: value.slice(slashIndex + 1) };
+}
+function assertThinkingLevel(value, source) {
+    if (THINKING_LEVELS.includes(value))
+        return value;
+    throw new Error(`Unsupported watchdog thinking level '${value}' from ${source}; expected ${THINKING_LEVELS.join(", ")} or false.`);
+}
+function contextThinkingLevel(ctx, currentThinkingLevel) {
+    if (currentThinkingLevel)
+        return currentThinkingLevel;
+    const value = ctx.thinkingLevel;
+    return typeof value === "string" && THINKING_LEVELS.includes(value) ? value : undefined;
+}
+function resolveReviewThinking(input) {
+    const fromModelOrConfig = resolveEffectiveThinking(input.modelString, input.configThinking);
+    if (fromModelOrConfig)
+        return assertThinkingLevel(fromModelOrConfig, "watchdog model/config");
+    if (input.configThinking === false)
+        return "off";
+    if (input.configThinking !== undefined)
+        return assertThinkingLevel(input.configThinking, "watchdog config");
+    if (input.allowContextThinking)
+        return contextThinkingLevel(input.ctx, input.currentThinkingLevel) ?? "off";
+    return "off";
+}
+function resolveConfiguredModel(ctx, rawModel) {
+    const availableModels = ctx.modelRegistry.getAvailable().map(toModelInfo);
+    const preferredProvider = typeof ctx.model?.provider === "string" ? ctx.model.provider : undefined;
+    const resolved = resolveModelCandidate(rawModel, availableModels, preferredProvider);
+    if (!resolved) {
+        throw new Error(`Configured watchdog model '${rawModel}' did not match exactly one authenticated available model. Use provider/model or configure credentials for the intended provider.`);
+    }
+    const { baseModel } = splitKnownThinkingSuffix(resolved);
+    const named = splitProviderModel(baseModel);
+    if (!named) {
+        throw new Error(`Configured watchdog model '${rawModel}' did not match exactly one authenticated available model. Use provider/model or configure credentials for the intended provider.`);
+    }
+    const model = ctx.modelRegistry.find(named.provider, named.id);
+    if (!model)
+        throw new Error(`Configured watchdog model '${rawModel}' was not found as '${baseModel}'.`);
+    if (!ctx.modelRegistry.hasConfiguredAuth(model)) {
+        throw new Error(`Configured watchdog model '${baseModel}' is not authenticated. Configure credentials for provider '${named.provider}' or choose an authenticated model.`);
+    }
+    return { model, modelString: resolved };
+}
+class WatchdogAuthError extends Error {
+}
+async function resolveReviewAuth(ctx, model) {
+    let auth;
+    try {
+        auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+    }
+    catch (error) {
+        throw new WatchdogAuthError(`Watchdog model auth failed for ${fullModelId(model)}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    }
+    if (auth.ok === false)
+        throw new WatchdogAuthError(`Watchdog model auth failed for ${fullModelId(model)}: ${auth.error}`);
+    return {
+        ...(auth.apiKey ? { apiKey: auth.apiKey } : {}),
+        ...(auth.headers ? { headers: auth.headers } : {}),
+        ...(auth.env ? { env: auth.env } : {}),
+    };
+}
+export async function resolveWatchdogReviewModel(ctx, config, options = {}) {
+    if (config.main.model) {
+        const resolved = resolveConfiguredModel(ctx, config.main.model);
+        return {
+            model: resolved.model,
+            thinkingLevel: resolveReviewThinking({
+                modelString: resolved.modelString,
+                configThinking: config.main.thinking,
+                ctx,
+                allowContextThinking: false,
+                currentThinkingLevel: options.currentThinkingLevel,
+            }),
+            auth: await resolveReviewAuth(ctx, resolved.model),
+            explicit: true,
+        };
+    }
+    const currentModel = ctx.model;
+    if (!currentModel) {
+        throw new Error("Main watchdog review cannot run because the current Pi session model is unavailable and subagents.watchdog.main.model is not configured.");
+    }
+    return {
+        model: currentModel,
+        thinkingLevel: resolveReviewThinking({
+            modelString: fullModelId(currentModel),
+            configThinking: config.main.thinking,
+            ctx,
+            allowContextThinking: true,
+            currentThinkingLevel: options.currentThinkingLevel,
+        }),
+        auth: await resolveReviewAuth(ctx, currentModel),
+        explicit: false,
+    };
+}
+function nonEmptyString(value, field) {
+    const trimmed = value.trim();
+    if (!trimmed)
+        throw new Error(`watchdog_warn.${field} must be a non-empty string.`);
+    return trimmed;
+}
+function toWatchdogWarning(params) {
+    return {
+        severity: params.severity,
+        importance: params.importance,
+        category: (params.category ?? "other"),
+        source: "main",
+        summary: nonEmptyString(params.summary, "summary"),
+        evidence: nonEmptyString(params.evidence, "evidence"),
+        recommendedAction: nonEmptyString(params.recommendedAction, "recommendedAction"),
+    };
+}
+function createWatchdogWarnTool(request) {
+    return {
+        name: "watchdog_warn",
+        label: "Watchdog warning",
+        description: [
+            "Emit one actionable main-session watchdog warning.",
+            "Set importance explicitly: low or medium for user-only visibility, high only when the parent model must receive the finding.",
+            "Do not use for nits, praise, informational notes, or clean reviews.",
+        ].join(" "),
+        parameters: WatchdogWarnParams,
+        executionMode: "sequential",
+        async execute(_toolCallId, params) {
+            const warning = toWatchdogWarning(params);
+            const accepted = request.emitWarning(warning);
+            return {
+                content: [{
+                        type: "text",
+                        text: accepted
+                            ? "Watchdog warning recorded."
+                            : "Watchdog warning was ignored by the runtime guard because it was stale, duplicate, or over budget.",
+                    }],
+                details: { accepted },
+            };
+        },
+    };
+}
+export function formatWatchdogCwdSection(cwd) {
+    if (/[\p{Cc}\p{Zl}\p{Zp}<>]/u.test(cwd))
+        throw new Error("Watchdog cwd cannot contain control, line-separator, or angle-bracket characters.");
+    return `<cwd>\n${cwd}\n</cwd>`;
+}
+export function buildWatchdogSystemPrompt(ctx, options = {}) {
+    const guidance = options.guidance?.trim();
+    return [
+        "You are the main-session subagent watchdog for Pi.",
+        "Review only the supplied parent turn delta. Inspect repository files only when needed to verify a concrete concern.",
+        options.hasScope ? "Use the Current scope record alongside supplied activity evidence; an unrelated user question does not cancel older authorized work." : undefined,
+        `You are read-only. You may use ${options.hasDiff ? "read, grep, find, ls, and watchdog_diff (the full repo diff since the session baseline; pass a path to narrow it)" : "read, grep, find, and ls"}. Do not edit files, run shell commands, spawn agents, or mutate state.`,
+        "Emit warnings only by calling watchdog_warn. Freeform assistant text is ignored and must not be used to report warnings.",
+        "Emit only actionable concerns or blockers: missed user constraints, correctness risks, test gaps that matter, unsafe changes, stale facts, loop risks, or scope drift.",
+        "Do not emit nits, style preferences, unsupported guesses, informational notes, praise, or summaries.",
+        "If the turn is clean, call no tools and end normally.",
+        "Use severity='blocker' only when the issue should stop acceptance until addressed; otherwise use severity='concern'.",
+        guidance ? `\nStanding instructions from WATCHDOG.md (project first, then user):\n${guidance}` : undefined,
+        `\n${formatWatchdogCwdSection(ctx.cwd)}`,
+    ].filter((line) => Boolean(line)).join("\n");
+}
+function buildReviewPrompt(request, selection) {
+    return [
+        "Review this parent-session turn delta for subagent-watchdog-worthy issues.",
+        `Review id: ${request.reviewId}; epoch: ${request.epoch}; review model: ${fullModelId(selection.model)}; thinking: ${selection.thinkingLevel}.`,
+        "Call watchdog_warn for each qualifying concern or blocker. Call no tools when clean.",
+        "<turn_delta>",
+        request.delta,
+        "</turn_delta>",
+    ].join("\n\n");
+}
+function resolveContext(provider) {
+    return typeof provider === "function" ? provider() : provider;
+}
+export function createMainWatchdogReview(provider, options = {}) {
+    return async (request) => {
+        const ctx = resolveContext(provider);
+        if (!ctx)
+            throw new Error("Main watchdog review cannot run without an active Pi extension context.");
+        const aborted = () => ctx.signal?.aborted || request.signal?.aborted;
+        if (aborted())
+            return { stopReason: "aborted" };
+        try {
+            return (await runWatchdogAttempt(ctx, request, options)).result;
+        }
+        catch (error) {
+            if (error instanceof WatchdogAuthError)
+                throw error.cause ?? error;
+            throw error;
+        }
+    };
+}
+async function runWatchdogAttempt(ctx, request, options) {
+    const selection = await resolveWatchdogReviewModel(ctx, request.config, {
+        currentThinkingLevel: options.getThinkingLevel?.(),
+    });
+    if (ctx.signal?.aborted || request.signal?.aborted)
+        return { result: { stopReason: "aborted" } };
+    const auth = selection.auth;
+    const registeredProvider = ctx.modelRegistry.getRegisteredProviderConfig?.(selection.model.provider);
+    const baseStreamFn = options.streamFn ?? (registeredProvider?.streamSimple && registeredProvider.api === selection.model.api
+        ? registeredProvider.streamSimple
+        : streamSimple);
+    const sessionId = ctx.sessionManager.getSessionId();
+    const streamFn = (model, context, streamOptions) => {
+        // Agent may enter one final loop iteration after an aborted mixed tool batch.
+        // Never send that iteration to the provider after an intentional yield.
+        if (clarification)
+            throw new Error("Watchdog review yielded for clarification.");
+        return baseStreamFn(model, context, {
+            ...streamOptions,
+            ...(auth.apiKey ? { apiKey: auth.apiKey } : {}),
+            env: auth.env || streamOptions?.env ? { ...(auth.env ?? {}), ...(streamOptions?.env ?? {}) } : undefined,
+            headers: { ...opencodeSessionHeaders(model, sessionId), ...(streamOptions?.headers ?? {}), ...(auth.headers ?? {}) },
+        });
+    };
+    const diffBaseline = options.diffBaseline?.();
+    let clarification;
+    let warned = false;
+    let toolCount = 0;
+    const warnRequest = request.allowClarification ? { ...request, emitWarning: (warning) => {
+            if (clarification)
+                return false;
+            const accepted = request.emitWarning(warning);
+            warned ||= accepted;
+            return accepted;
+        } } : request;
+    const tools = [
+        ...(options.createReadOnlyTools ?? createReadOnlyTools)(ctx.cwd).filter((tool) => WATCHDOG_ALLOWED_TOOL_NAMES.has(tool.name) && tool.name !== "watchdog_warn"),
+        createWatchdogWarnTool(warnRequest),
+        ...(diffBaseline ? [createWatchdogDiffTool(diffBaseline)] : []),
+    ];
+    if (request.allowClarification)
+        tools.push({
+            name: "watchdog_ask",
+            label: "Watchdog clarification",
+            description: "Send one focused question when missing task status, intent or other orchestrator context prevents a concrete review judgment. Yields and ends this review so the orchestrator can handle the message and continue; no answer or follow-up review is required. Never ask for approval or permission, or after recording a warning. Question and evidence are capped at 1000 and 2000 characters.",
+            parameters: WatchdogAskParams,
+            executionMode: "sequential",
+            async execute(_id, rawParams) {
+                const params = rawParams;
+                if (warned || clarification || ctx.signal?.aborted || request.signal?.aborted)
+                    throw new Error("Clarification unavailable after warning, yield, or cancellation.");
+                if (!params.question.trim() || !params.evidence.trim())
+                    throw new Error("A focused question and concrete evidence are required.");
+                clarification = { question: boundWatchdogReviewText(params.question.trim(), 1_000), evidence: boundWatchdogReviewText(params.evidence.trim(), 2_000) };
+                agent.abort(); // Intentional yield also stops mixed tool batches; terminate alone does not.
+                return { content: [{ type: "text", text: "Review yielded for clarification." }], details: {} };
+            },
+        });
+    const systemPrompt = buildWatchdogSystemPrompt(ctx, {
+        hasScope: request.hasScope,
+        guidance: loadWatchdogGuidance(ctx.cwd, request.config.guidance.watchdogMd),
+        hasDiff: diffBaseline !== undefined,
+    });
+    const agent = new Agent({
+        initialState: {
+            systemPrompt,
+            model: selection.model,
+            thinkingLevel: selection.thinkingLevel,
+            tools,
+        },
+        convertToLlm,
+        ...agentStreamOptions(streamFn),
+        getApiKey: (providerName) => providerName === selection.model.provider ? auth.apiKey : undefined,
+        beforeToolCall: async ({ toolCall }) => !clarification && (WATCHDOG_ALLOWED_TOOL_NAMES.has(toolCall.name) || (request.allowClarification && toolCall.name === "watchdog_ask"))
+            ? undefined
+            : { block: true, reason: `Watchdog reviews are read-only; tool '${toolCall.name}' is not allowed.` },
+        toolExecution: "sequential",
+    });
+    // Include rejected/invalid calls as well as read-only work and findings.
+    agent.subscribe((event) => { if (event.type === "tool_execution_start")
+        toolCount++; });
+    const abort = () => agent.abort();
+    ctx.signal?.addEventListener("abort", abort, { once: true });
+    request.signal?.addEventListener("abort", abort, { once: true });
+    try {
+        if (ctx.signal?.aborted || request.signal?.aborted)
+            return { result: { stopReason: "aborted" } };
+        await agent.prompt(buildReviewPrompt(request, selection));
+    }
+    finally {
+        ctx.signal?.removeEventListener("abort", abort);
+        request.signal?.removeEventListener("abort", abort);
+    }
+    if (ctx.signal?.aborted || request.signal?.aborted)
+        return { result: { stopReason: "aborted" } };
+    const terminal = agent.state.messages.findLast((message) => message.role === "assistant");
+    const reason = terminal && "stopReason" in terminal ? terminal.stopReason : undefined;
+    const stopReason = reason === "error" || reason === "aborted" || reason === "length" ? reason : "stop";
+    const error = terminal && "errorMessage" in terminal && typeof terminal.errorMessage === "string" ? terminal.errorMessage : undefined;
+    return {
+        result: clarification ? { clarification } : error ? { stopReason, errorMessage: error } : { stopReason },
+    };
+}
+//# sourceMappingURL=review.js.map

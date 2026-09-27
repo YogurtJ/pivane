@@ -162,7 +162,7 @@ async function cleanup() {
         assert.equal(result.appVersion, manifest.appVersion);
         result.manifestFilesVerified = manifest.files.length;
         initializeData();
-        await run(npm, ['ci', '--no-audit', '--no-fund'], 'npm-ci');
+        await run(path.join(app, 'scripts/install.cjs'), [], 'locked-install');
         await run(npm, ['test'], 'node-tests');
         await run(npm, ['run', 'check'], 'syntax');
         await run(npm, ['run', 'check:docs'], 'documentation');
@@ -179,7 +179,8 @@ async function cleanup() {
         await stopServer();
         if (args['--previous-archive']) {
             extract(args['--previous-archive'], args['--previous-sha256'], previous);
-            await run(npm, ['ci', '--no-audit', '--no-fund'], 'npm-ci-previous', previous);
+            if (fs.existsSync(path.join(previous, 'scripts/install.cjs'))) await run(path.join(previous, 'scripts/install.cjs'), [], 'locked-install-previous', previous);
+            else await run(npm, ['ci', '--no-audit', '--no-fund'], 'npm-ci-previous', previous);
             for (const name of ['data', 'projects']) fs.renameSync(path.join(root, name), path.join(root, 'clean-install-' + name));
             initializeData();
             await startServer(previous, 'server-previous');

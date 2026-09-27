@@ -13,15 +13,15 @@ The examples below install **1.0.0**, the first stable release, pinned to Pi 0.8
 - HTTPS access to npm to download locked dependencies on first installation.
 - Your own model provider account or compatible model service. A model appearing in the catalog does not provide credentials or credit.
 
-No global Pi installation, frontend build, GPU or installation-time native compilation is required. Keep packaged native source, binaries and manifests together. Do not reuse another OS/CPU's `node_modules`, omit optional dependencies, or use `npm audit fix --force` to change locked dependencies.
+No global Pi installation, frontend build or GPU is required. Pivane's own native components are prebuilt; the current source's SQLite dependency may require native compilation when no matching prebuilt binary is available. Keep packaged native source, binaries and manifests together. Do not reuse another OS/CPU's `node_modules`, omit optional dependencies, or use `npm audit fix --force` to change locked dependencies.
 
 Use the same ordinary operating-system user as your existing Pi CLI. Pivane normally reuses that user's native Pi identity; media and scheduled messages use instance-specific paths. Use a separate identity only for an explicitly independent instance or isolated testing. Additional project tools, such as Git, compilers or Python, are installed separately as needed.
 
-## Optional default capabilities
+## Bundled capabilities
 
-The current source runs an optional step after `npm ci` to install `pi-subagents@0.71.0` into the selected Pi identity, shared with Pi CLI. Download failure does not fail Pivane installation. Existing versions remain unchanged; recorded attempts are not automatically retried, including after failure, interruption, skipping or later removal. Use **Settings → Models & capabilities → Subagents** to verify and explicitly install a missing plugin.
+The current source includes pi-subagents 0.71.0 and pi-hermes-memory 0.9.9 under `vendor/`. `node scripts/install.cjs` installs the locked dependencies, prepares esbuild, verifies upstream files, builds the profile memory component and checks native SQLite support. It uses the dependency's shipped binaries without npm's unnecessary node-gyp step. Failure returns a nonzero installation result. Older published archives without this script retain the `npm ci` commands below. Targets without a usable SQLite binary need Python and C/C++ tools to build the upstream module explicitly.
 
-For an isolated identity, set `PI_CODING_AGENT_DIR` before running `npm ci`, or prepare the application's `.env` first. Set `PI_SKIP_DEFAULT_CAPABILITIES=1` or `PI_OFFLINE=1` to record a skipped attempt. `npm ci --ignore-scripts` also skips installation but writes no attempt record. Installation does not authorize or start child tasks. The current catalog includes only pi-subagents; additional capability packages require explicit integration in a future version.
+Pivane selects its own package versions without rewriting existing CLI package declarations or moving profile data. Legacy resource filters remain effective. Subagent settings and profile memory controls keep their existing scopes; installation does not start tasks or enable memory for every profile. Components update with Pivane. `PI_SKIP_DEFAULT_CAPABILITIES` no longer controls bundled preparation. After an explicit `npm ci --ignore-scripts`, run `npm rebuild esbuild --foreground-scripts` and `node scripts/install-bundled-capabilities.cjs`. See [bundled capabilities](../BUNDLED_CAPABILITIES.md).
 
 ## Installation scope
 

@@ -208,4 +208,4 @@ function mountProfileMemoryRoutes(router, { profiles, getAgentDir, bundlePath = 
         } catch { return res.status(409).json({ error: 'Profile skill cannot be read safely' }); }
     });
 }
-module.exports = { mountProfileMemoryRoutes, profileMemoryCapability, safeFile, listMemories, listSkills, projectRoots, skillFiles, listExtendedMemories, safeDir };
+module.exports = { BUNDLE_SHA256, mountProfileMemoryRoutes, profileMemoryCapability, safeFile, listMemories, listSkills, projectRoots, skillFiles, listExtendedMemories, safeDir };

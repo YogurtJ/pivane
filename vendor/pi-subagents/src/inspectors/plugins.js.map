@@ -1,0 +1,1 @@
+{"version":3,"file":"plugins.js","sourceRoot":"","sources":["../../../src/inspectors/plugins.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,0BAA0B,EAAE,MAAM,mBAAmB,CAAC;AAC/D,OAAO,EAAE,4BAA4B,EAAE,MAAM,qBAAqB,CAAC;AAGnE,8DAA8D;AAC9D,MAAM,UAAU,6BAA6B;IAC5C,OAAO,CAAC,0BAA0B,EAAE,EAAE,4BAA4B,EAAE,CAAC,CAAC;AACvE,CAAC"}

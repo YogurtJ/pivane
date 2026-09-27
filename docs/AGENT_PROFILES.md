@@ -41,16 +41,9 @@
 
 ## 记忆组件安装与实例配置
 
-Pivane 使用独立的 pi-hermes-memory 适配组件。按[安装说明](PROFILE_MEMORY.md)取得已验证版本及原生 SQLite 依赖后，配置实际 Pi 身份目录中的 `pivane-profiles/runtime.json`：
+Pivane 随包提供 pi-hermes-memory 0.9.9 的选定组件。`node scripts/install.cjs` 安装依赖并构建当前应用目录的记忆 bundle，正常安装不再需要手动填写 `pivane-profiles/runtime.json`。平台 SQLite 依赖和故障补全步骤见[内置能力包](BUNDLED_CAPABILITIES.md)。
 
-```json
-{
-  "version": 1,
-  "bundlePath": "/absolute/installation/package/profile-memory-bundle.mjs"
-}
-```
-
-`bundlePath` 为已核对的独立安装 bundle 的绝对路径；不要把凭据写入这个文件，模型认证继续由 Pi 管理。旧 `reviewModel` 配置只读兼容，不再供旧的三轮复盘调用。后台学习需要在“设置 → 辅助模型”按纠错、复盘、提取分别指定可用模型，并在档案的学习设置显式开启；保存两类设置本身均不发送模型请求。此安装配置只读加载，不通过浏览器接收任意执行文件路径。
+已有 `runtime.json.bundlePath` 保留；可用的内置组件优先，缺少可用内置组件时才按旧校验规则尝试该绝对路径。记忆数据目录不变。旧 `reviewModel` 配置只读兼容，不再供旧的三轮复盘调用。后台学习需要在“设置 → 辅助模型”按纠错、复盘、提取分别指定可用模型，并在档案的学习设置显式开启；保存两类设置本身均不发送模型请求。
 
 服务核对 bundle 和本机 SQLite 后，`/api/pi/status.profileMemory` 说明组件安装，`/api/pi/status.profileLearning` 表示新接口已装配；实际可写状态、专用模型、队列与限额来自相应档案的 `/knowledge` 和 `/learning` 快照。组件安装、内容保存、索引同步、当前 worker 加载与模型实际遵守是不同事实。
 

@@ -1,0 +1,158 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { readStatus } from "../../shared/utils.js";
+import { encodeIndexSegment } from "./index-segment.js";
+import { updateTerminalRunIndex } from "./terminal-run-index.js";
+import { isStorageCapacityError } from "../../shared/file-system-retry.js";
+export const ACTIVE_RUN_INDEX_DIR = ".active-runs";
+export const DEFAULT_STALE_TERMINAL_ACTIVE_MARKER_MS = 24 * 60 * 60 * 1000;
+const TOOL_CALL_INDEX_DIR = "tool-calls";
+function indexDir(asyncDirRoot) {
+    return path.join(asyncDirRoot, ACTIVE_RUN_INDEX_DIR);
+}
+function toolCallIndexDir(asyncDirRoot, toolCallId) {
+    return path.join(indexDir(asyncDirRoot), TOOL_CALL_INDEX_DIR, encodeIndexSegment(toolCallId));
+}
+function toolCallIndexPath(asyncDir, toolCallId) {
+    return path.join(toolCallIndexDir(path.dirname(asyncDir), toolCallId), path.basename(asyncDir));
+}
+function markerPath(asyncDir) {
+    return path.join(indexDir(path.dirname(asyncDir)), path.basename(asyncDir));
+}
+function removeEmptyAncestors(start, stop) {
+    let current = start;
+    while (current !== stop && current.startsWith(`${stop}${path.sep}`)) {
+        try {
+            fs.rmdirSync(current);
+        }
+        catch {
+            return;
+        }
+        current = path.dirname(current);
+    }
+}
+export function isActiveAsyncState(state) {
+    return state === "queued" || state === "running";
+}
+function releaseToolCallAliases(asyncDir) {
+    const root = path.join(indexDir(path.dirname(asyncDir)), TOOL_CALL_INDEX_DIR);
+    let entries;
+    try {
+        entries = fs.readdirSync(root, { withFileTypes: true });
+    }
+    catch (error) {
+        const code = error.code;
+        if (code !== "ENOENT" && code !== "ENOTDIR") {
+            console.error(`Failed to inspect async active-run tool-call index root '${root}':`, error);
+        }
+        return;
+    }
+    for (const entry of entries) {
+        if (!entry.isDirectory())
+            continue;
+        const aliasMarker = path.join(root, entry.name, path.basename(asyncDir));
+        try {
+            fs.rmSync(aliasMarker, { force: true });
+            removeEmptyAncestors(path.dirname(aliasMarker), root);
+        }
+        catch {
+            // Alias cleanup must not affect the authoritative active-run marker.
+        }
+    }
+}
+export function releaseActiveRunIndex(asyncDir) {
+    try {
+        fs.rmSync(markerPath(asyncDir));
+    }
+    catch (error) {
+        if (error.code !== "ENOENT")
+            throw error;
+    }
+    releaseToolCallAliases(asyncDir);
+}
+export function updateActiveRunIndex(asyncDir, state, toolCallId, options = {}) {
+    const marker = markerPath(asyncDir);
+    if (isActiveAsyncState(state)) {
+        fs.mkdirSync(path.dirname(marker), { recursive: true });
+        fs.writeFileSync(marker, "", { flag: "a" });
+        if (toolCallId) {
+            try {
+                const toolCallMarker = toolCallIndexPath(asyncDir, toolCallId);
+                fs.mkdirSync(path.dirname(toolCallMarker), { recursive: true });
+                fs.writeFileSync(toolCallMarker, "", { flag: "a" });
+            }
+            catch (error) {
+                // Tool-call aliases are optional. The authoritative active-run marker
+                // must keep the launch discoverable even when alias indexing fails.
+                console.error(`Failed to write async active-run tool-call index for '${asyncDir}':`, error);
+            }
+        }
+        return;
+    }
+    if (options.terminalIndexBeforeRelease) {
+        fs.mkdirSync(path.dirname(marker), { recursive: true });
+        fs.writeFileSync(marker, "", { flag: "a" });
+        const status = readStatus(asyncDir);
+        if (status?.state === state) {
+            try {
+                updateTerminalRunIndex(asyncDir, status);
+            }
+            catch (error) {
+                if (options.retryCapacityErrors)
+                    throw error;
+                console.error(`Failed to write async terminal-run index for '${asyncDir}':`, error);
+                return;
+            }
+        }
+        releaseActiveRunIndex(asyncDir);
+        return;
+    }
+    releaseActiveRunIndex(asyncDir);
+    const status = readStatus(asyncDir);
+    if (status && status.state === state) {
+        try {
+            updateTerminalRunIndex(asyncDir, status);
+        }
+        catch (error) {
+            if (options.retryCapacityErrors && isStorageCapacityError(error))
+                throw error;
+            console.error(`Failed to write async terminal-run index for '${asyncDir}':`, error);
+        }
+    }
+}
+export function activeRunMarkerAgeMs(asyncDir, now = Date.now()) {
+    try {
+        return Math.max(0, now - fs.statSync(markerPath(asyncDir)).mtimeMs);
+    }
+    catch (error) {
+        if (error.code === "ENOENT")
+            return undefined;
+        throw error;
+    }
+}
+export function readActiveRunIndex(asyncDirRoot) {
+    try {
+        return fs.readdirSync(indexDir(asyncDirRoot), { withFileTypes: true })
+            .filter((entry) => entry.isFile())
+            .map((entry) => entry.name);
+    }
+    catch (error) {
+        if (error.code === "ENOENT")
+            return undefined;
+        throw error;
+    }
+}
+export function readActiveRunToolCallIndex(asyncDirRoot, toolCallId) {
+    try {
+        return fs.readdirSync(toolCallIndexDir(asyncDirRoot, toolCallId), { withFileTypes: true })
+            .filter((entry) => entry.isFile())
+            .map((entry) => entry.name);
+    }
+    catch (error) {
+        const code = error.code;
+        if (code === "ENOENT" || code === "ENOTDIR")
+            return [];
+        throw error;
+    }
+}
+//# sourceMappingURL=active-run-index.js.map

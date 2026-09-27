@@ -1,0 +1,1 @@
+{"version":3,"file":"frontmatter.d.ts","sourceRoot":"","sources":["../../../src/agents/frontmatter.ts"],"names":[],"mappings":"AAyCA;;;GAGG;AACH,wBAAgB,oBAAoB,CAAC,GAAG,EAAE,MAAM,GAAG,SAAS,GAAG,MAAM,EAAE,GAAG,SAAS,CAWlF;AAED;;;;;GAKG;AACH,wBAAgB,gBAAgB,CAAC,OAAO,EAAE,MAAM,GAAG;IAAE,WAAW,EAAE,MAAM,CAAC,MAAM,EAAE,MAAM,CAAC,CAAC;IAAC,IAAI,EAAE,MAAM,CAAA;CAAE,CAwFvG"}

@@ -1,0 +1,201 @@
+import { spawn } from "node:child_process";
+import { createOwnedProcessTreeController } from "../background/owned-process-tree.js";
+function terminateCommandTree(pid, controller) {
+    if (process.platform !== "win32")
+        return controller.terminate();
+    return new Promise((resolve) => {
+        let settled = false;
+        const fallback = () => {
+            if (settled)
+                return;
+            settled = true;
+            void controller.terminate().then(resolve);
+        };
+        const cleanup = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+        cleanup.once("error", fallback);
+        cleanup.once("close", (status) => {
+            if (settled)
+                return;
+            if (status !== 0)
+                return fallback();
+            settled = true;
+            resolve({ state: "observed", mechanism: "windows-taskkill", pid, verifiedAt: Date.now() });
+        });
+    });
+}
+function commandError(message, code) {
+    return Object.assign(new Error(message), { code });
+}
+/**
+ * Setup I/O only. Commands must await their descendants before reporting success.
+ * Exit 0 + natural close + complete output still requires caller JSON/path validation.
+ * Invalid output is NOT accepted completion: retain unknown ownership, never signal
+ * this completed command's PID later. Callers own compensation and admission.
+ */
+export async function runSetupCommand(command, args, options) {
+    const result = {
+        stdout: "", stdoutBuffer: Buffer.alloc(0), stderr: "", status: null, signal: null, outputIncomplete: false,
+    };
+    const maxBuffer = options.maxBuffer ?? 1024 * 1024;
+    if (!Number.isSafeInteger(maxBuffer) || maxBuffer <= 0)
+        throw new Error("Invalid setup command maxBuffer");
+    if (options.deadlineAt !== undefined && !Number.isFinite(options.deadlineAt))
+        throw new Error("Invalid setup deadline");
+    if (options.hookTimeoutMs !== undefined && (!Number.isSafeInteger(options.hookTimeoutMs) || options.hookTimeoutMs <= 0)) {
+        throw new Error("Invalid setup hook timeout");
+    }
+    const cancellation = () => {
+        if (options.signal?.aborted)
+            return commandError("Worktree setup aborted", "ABORT_ERR");
+        if (options.deadlineAt !== undefined && Date.now() >= options.deadlineAt) {
+            return commandError("Worktree setup deadline exceeded", "ETIMEDOUT");
+        }
+        return undefined;
+    };
+    result.error = cancellation();
+    if (result.error)
+        return result;
+    let child;
+    try {
+        child = spawn(command, args, {
+            cwd: options.cwd,
+            env: options.env ? { ...process.env, ...options.env } : process.env,
+            stdio: "pipe", shell: false, windowsHide: true,
+            // Isolated owned POSIX group, never unref'd or fire-and-forget.
+            detached: process.platform !== "win32",
+        });
+    }
+    catch (error) {
+        result.error = error instanceof Error ? error : new Error(String(error));
+        return result;
+    }
+    result.pid = child.pid;
+    if (child.pid !== undefined && process.platform !== "win32")
+        result.processGroupId = child.pid;
+    const tree = child.pid === undefined ? undefined : createOwnedProcessTreeController(child.pid);
+    let termination;
+    let directSettled = false;
+    const releaseUnknownIO = () => {
+        if (!directSettled || result.processTree?.state !== "unknown")
+            return;
+        const detail = result.processTree.diagnostic ? `: ${result.processTree.diagnostic}` : "";
+        result.error = commandError(`Worktree setup process tree settlement is unverified${detail}`, "PROCESS_TREE_UNVERIFIED");
+        result.outputIncomplete = true;
+        // Only local I/O is released; unknown descendant ownership remains retained.
+        child.stdin.destroy();
+        child.stdout.destroy();
+        child.stderr.destroy();
+    };
+    const terminate = () => {
+        if (termination || !tree)
+            return;
+        if (directSettled) {
+            result.processTree = {
+                state: "unknown", reason: "verification-failed",
+                diagnostic: "Command exited before termination began; no longer safe to signal its recorded PID.",
+            };
+            releaseUnknownIO();
+            return;
+        }
+        termination = terminateCommandTree(result.pid, tree).then((proof) => {
+            result.processTree = proof;
+            releaseUnknownIO();
+            return proof;
+        });
+    };
+    const fail = (error) => {
+        result.error ??= error;
+        terminate();
+    };
+    const onAbort = () => fail(commandError("Worktree setup aborted", "ABORT_ERR"));
+    const stdout = [];
+    const stderr = [];
+    let capturedBytes = 0;
+    const capture = (chunks, chunk) => {
+        const remaining = maxBuffer - capturedBytes;
+        if (remaining > 0) {
+            const saved = Buffer.from(chunk.subarray(0, remaining));
+            chunks.push(saved);
+            capturedBytes += saved.length;
+        }
+        if (chunk.length > remaining) {
+            result.outputIncomplete = true;
+            fail(commandError("Worktree setup command output exceeds maxBuffer", "ENOBUFS"));
+        }
+    };
+    const onStdout = (chunk) => capture(stdout, chunk);
+    const onStderr = (chunk) => capture(stderr, chunk);
+    child.stdout.on("data", onStdout);
+    child.stderr.on("data", onStderr);
+    child.stdin.on("error", fail);
+    const close = new Promise((resolve) => child.once("close", () => resolve()));
+    const directExit = new Promise((resolve) => {
+        child.once("exit", (status, signal) => {
+            directSettled = true;
+            result.status = status;
+            result.signal = signal;
+            if (status === null || !(options.acceptedExitCodes ?? [0]).includes(status))
+                terminate();
+            releaseUnknownIO();
+            resolve();
+        });
+        child.once("error", (error) => {
+            fail(error);
+            // A failed spawn has no direct process to await. Other errors do not prove exit.
+            if (child.pid === undefined) {
+                directSettled = true;
+                resolve();
+            }
+        });
+    });
+    let timer;
+    const deadlineAt = Math.min(options.deadlineAt ?? Infinity, options.hookTimeoutMs === undefined ? Infinity : Date.now() + options.hookTimeoutMs);
+    const armDeadline = () => {
+        if (deadlineAt === Infinity)
+            return;
+        const remaining = deadlineAt - Date.now();
+        if (remaining <= 0)
+            fail(commandError("Worktree setup command timed out", "ETIMEDOUT"));
+        else
+            timer = setTimeout(armDeadline, Math.min(remaining, 2 ** 31 - 1));
+    };
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+    try {
+        armDeadline();
+        if (options.signal?.aborted)
+            onAbort();
+        if (child.pid !== undefined) {
+            try {
+                options.onSpawn?.({ pid: child.pid, processGroupId: result.processGroupId });
+            }
+            catch (error) {
+                fail(error instanceof Error ? error : new Error(String(error)));
+            }
+        }
+        child.stdin.end(options.input);
+        await directExit;
+        if (termination)
+            result.processTree = await termination;
+        releaseUnknownIO();
+        await close;
+        // Abort/overflow may arrive while draining stdio after direct exit.
+        if (termination)
+            result.processTree = await termination;
+        const cancelled = cancellation();
+        if (cancelled)
+            fail(cancelled);
+        result.stdoutBuffer = Buffer.concat(stdout);
+        result.stdout = result.stdoutBuffer.toString("utf8");
+        result.stderr = Buffer.concat(stderr).toString("utf8");
+        return result;
+    }
+    finally {
+        if (timer)
+            clearTimeout(timer);
+        options.signal?.removeEventListener("abort", onAbort);
+        child.stdout.removeListener("data", onStdout);
+        child.stderr.removeListener("data", onStderr);
+        child.stdin.removeListener("error", fail);
+    }
+}
+//# sourceMappingURL=worktree-setup-command.js.map

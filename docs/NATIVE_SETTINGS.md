@@ -2,7 +2,7 @@
 
 ## 子 Agent 专属设置
 
-设置 → **模型与能力** 包含多模态与子 Agent 两个分区，子 Agent 适配 `pi-subagents@0.71.0`。`npm ci` 的可选安装阶段单独下载插件，失败不阻断 Pivane；保留已有版本与配置，失败、跳过或卸载后不自动重放。详见[默认可选能力](INSTALL_RECOVERY.md#默认可选能力)。
+设置 → **模型与能力** 包含多模态与子 Agent 两个分区，子 Agent 使用随 Pivane 交付的 `pi-subagents@0.71.0`。`npm ci` 统一准备内置组件，CLI 的独立声明保留，Pivane 在加载前选择内置版本并保留资源过滤。详见[内置能力包](BUNDLED_CAPABILITIES.md)。
 
 直接管理全局/项目 settings.json 的 `subagents.defaultModel/defaultThinking` 和 `subagents.agentOverrides.<name>.model/thinking`，只修改提交字段，null 删除本层覆盖，保留工具、提示词、供应商覆盖和未知字段。模型及思考选项来自可用模型目录。本层保存值不是最终运行映射，角色定义、供应商覆盖和单次运行参数仍参与插件优先级。
 
@@ -14,15 +14,17 @@
 |---|---|---|
 | GET | `/api/pi/settings/subagents?cwd` | version/cwd/revision/trust、plugin 状态与版本、defaults、roles；仅返回模型和思考字段 |
 | PUT | `/api/pi/settings/subagents` | `{cwd,scope,expectedRevision,changes}`；changes 为 defaultModel/defaultThinking 或 agentOverrides.角色.model/thinking 的扁平键 |
-| POST | `/api/pi/settings/subagents/install` | `{cwd,expectedRevision,confirmed:true}`；只补装固定来源到全局，不接受任意包或版本 |
-| POST | `/api/pi/settings/subagents/upgrade` | `{cwd,expectedRevision,confirmed:true}`；仅当唯一安装为用户范围 `npm:pi-subagents@<旧兼容版本>` 时，经 Pi `installAndPersist` 原位替换为固定来源，保留包过滤 |
+| POST | `/api/pi/settings/subagents/install` | 兼容旧客户端；校验确认与修订后返回 400，说明组件随 Pivane 管理，不另行安装 |
+| POST | `/api/pi/settings/subagents/upgrade` | 同上，组件只能随 Pivane 更新 |
 
-状态为 missing/disabled/unsupported/ready，ready 只表示版本在兼容列表（0.69.0、0.70.0、0.70.1、0.71.0）且配置启用，不代表当前 worker 已加载。`plugin.upgradeFrom` 为可升级的已装版本或 null；升级需用户确认，安装器不会替用户升级已有插件。未就绪时写设置失败；缺失且没有冲突来源时可补装。写入复用 nativeSettingsBusy、身份/Origin、修订和配置互斥；设置保存使用原生 settings 锁、私有备份与原子写入，项目写入要求 trust。
+状态为 missing/disabled/unsupported/ready，ready 表示当前内置版本（0.71.0）文件存在且配置启用，不代表当前 worker 已加载。`plugin.managedBy="pivane"`、`canInstall=false`、`upgradeFrom=null`。未就绪时写设置失败。写入复用 nativeSettingsBusy、身份/Origin、修订和配置互斥；设置保存使用原生 settings 锁、私有备份与原子写入，项目写入要求 trust。
 
 保存不启动子任务或重启服务，任务结束后显式重开运行实例并从当前加载资源核对。关闭页面不取消安装；失败或结果不确定先刷新核对，不自动重放。当前页草稿按项目/范围保留，冲突刷新仍保留草稿，浏览器刷新会丢失草稿。
 
 
 ## 扩展中心
+
+内置子 Agent 包返回 `managedBy:"pivane"`、`name` 和 `version`，界面不提供独立更新和移除；资源开关写入当前范围的 `pivaneBuiltins.subagents`，保留原 CLI Packages 声明。发现页通过服务端内置元数据识别该包，不猜测本地目录名称。档案记忆仍通过 `status.profileMemory` 核对。
 
 扩展作为工作台的完整管理页展示，从左侧导航（手机“更多功能”）进入，不再重复列在设置分类中。页顶是共享子导航：**发现、已安装**，右侧固定“安装扩展包”入口；已安装页再按类型过滤（全部／Packages／扩展／Skills／提示词／主题），切换过滤只重渲染，不重新请求也不修改资源。已安装包、扩展、提示词、主题与技能使用同一套资源行（图标、名称、类型/范围/启用徽章、来源折叠、行内启用停用、行尾“⋯”菜单）；更新、移除、恢复继承等低频或破坏性操作在菜单内，移除仍需确认。安装统一从页顶窗口完成：选择范围、填写来源、确认代码执行风险；未信任项目范围在提交前被拒绝。旧地址 `#/extensions?tab=packages|skills` 归一化到 `#/extensions?tab=installed&type=…`。已学习技能属于助手身份页（`#/profiles`）的“学习与技能”区域，不在扩展页重复展示。
 

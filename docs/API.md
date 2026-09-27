@@ -112,7 +112,7 @@
 
 `browserNotifications=true` 标记设备Web Push订阅与任务通知后端。`GET /notifications`、`POST /notifications/key`、`POST /notifications/status`、`PUT/DELETE /notifications/subscription`、`POST /notifications/test` 复用认证和Origin，响应no-store；只公开VAPID公钥，订阅绑定当前访问身份，关闭/撤销停止后续推送。参数、限额和HTTPS/手机要求见 [NOTIFICATIONS.md](NOTIFICATIONS.md)。
 
-`/settings/subagents` 提供 pi-subagents 专属状态与模型/思考配置，`/settings/subagents/install` 确认后补装固定版本，`/settings/subagents/upgrade` 确认后把默认方式安装的旧兼容版本原位升级到固定版本。未安装、停用或版本不匹配时不能保存，ready 不代表已加载进当前 worker。字段、修订、范围与安装限制见[子 Agent 专属设置](NATIVE_SETTINGS.md#子-agent-专属设置)。
+`/settings/subagents` 提供内置 pi-subagents 的状态与模型/思考配置，返回 `plugin.managedBy:"pivane"`、`canInstall:false`、`upgradeFrom:null`。旧 `/settings/subagents/install` 和 `/settings/subagents/upgrade` 保留确认和修订检查，但返回 400，提示组件随 Pivane 安装或更新。未安装、停用或版本不匹配时不能保存，ready 不代表已加载进当前 worker。原生资源清单的内置包增加 `managedBy/name/version`，内置资源开关保存到 `pivaneBuiltins.subagents`；内置包不允许通过通用包操作独立安装、移除或更新。字段、修订和范围见[子 Agent 专属设置](NATIVE_SETTINGS.md#子-agent-专属设置)。
 
 `nativeSettings`、`nativeResources`、`projectTrust`、`modelAdvanced` 标记原生配置增强。设置 `/settings/native`、`/settings/native/trust`、`/settings/native/resources`、`/settings/native/packages`、`/settings/native/skill` 和 `/settings/models/advanced` 的方法、修订、范围和限额见 [NATIVE_SETTINGS.md](NATIVE_SETTINGS.md)。主连接新增 `get_native_resources` 返回当前 worker 的实际 trust/资源来源，不返回系统提示正文或工具 schema；最多3000项/512KiB，不扩展裸 RPC 白名单。`/activity.nativeSettingsBusy` 供空闲部署检查。受管扩展原生换会话或直接导航被取消，网页入口保持。
 

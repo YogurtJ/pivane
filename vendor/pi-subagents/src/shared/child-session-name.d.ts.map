@@ -1,0 +1,1 @@
+{"version":3,"file":"child-session-name.d.ts","sourceRoot":"","sources":["../../../src/shared/child-session-name.ts"],"names":[],"mappings":"AAuBA,gEAAgE;AAChE,eAAO,MAAM,4BAA4B,KAAK,CAAC;AAE/C,wBAAgB,sBAAsB,CAAC,KAAK,EAAE;IAC7C,KAAK,CAAC,EAAE,MAAM,CAAC;IACf,IAAI,CAAC,EAAE,MAAM,CAAC;IACd,yEAAyE;IACzE,KAAK,CAAC,EAAE,MAAM,CAAC;CACf,GAAG,MAAM,GAAG,SAAS,CAgBrB"}

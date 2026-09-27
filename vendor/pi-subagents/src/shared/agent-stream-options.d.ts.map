@@ -1,0 +1,1 @@
+{"version":3,"file":"agent-stream-options.d.ts","sourceRoot":"","sources":["../../../src/shared/agent-stream-options.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,QAAQ,EAAE,MAAM,+BAA+B,CAAC;AAE9D,wBAAgB,kBAAkB,CAAC,QAAQ,EAAE,QAAQ,GAAG;IAAE,cAAc,EAAE,QAAQ,CAAC;IAAC,QAAQ,EAAE,QAAQ,CAAA;CAAE,CAEvG"}

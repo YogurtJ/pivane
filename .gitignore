@@ -2,6 +2,7 @@
 .env.*
 !.env.example
 node_modules/
+/server/profile-memory/upstream-bundle.mjs
 backups/
 .pivane-runtime/
 public/legacy-workspace/
