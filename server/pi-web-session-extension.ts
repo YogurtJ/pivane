@@ -1,4 +1,5 @@
 import { registerTaskProgress } from './pi-task-progress-extension.ts';
+import { registerDeliverables } from './pi-deliverables-extension.ts';
 import { registerToolProvenance } from './pi-tool-provenance.js';
 import { receiveTaskReturn } from './pi-task-returns.js';
 import { receiveAgentMessages } from './pi-agent-message-format.js';
@@ -35,6 +36,7 @@ export default async function (pi: ExtensionAPI) {
     registerAgentThreads(pi);
     registerAgentMessages(pi);
     registerTaskProgress(pi);
+    registerDeliverables(pi);
     registerSubagentHost(pi);
     registerAgentProfile(pi, getAgentDir);
     registerAssistantProject(pi, getAgentDir);

@@ -104,6 +104,15 @@ async function run(browser, viewport, legacy = false) {
     await page.locator('#pi-stop-button').click();
     await page.waitForFunction(() => document.querySelector('#pi-toast-region').textContent.includes('Controlled stop failure'));
     await page.waitForFunction(() => !document.querySelector('#pi-stop-button').disabled);
+    if (!legacy) {
+        const notice = page.locator('.pi-recovery-notice');
+        assert.equal(await notice.isVisible(), true);
+        const stopCount = commands.filter(c => c.type === 'stop_and_recover').length;
+        await notice.getByRole('button', { name: '核对当前状态' }).click();
+        await notice.waitFor({ state: 'hidden' });
+        assert.equal(commands.filter(c => c.type === 'stop_and_recover').length, stopCount, 'verification reads state without replaying stop');
+        await page.locator('#pi-close-inspector').click();
+    }
     failStop = false;
     await page.locator('#pi-stop-button').click();
     while (pendingStop === oldStop) await page.waitForTimeout(10);

@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { selectMessageView } = require('./pi-mobile-view-helper.cjs');
+const { selectMessageView, openInspector } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.PI_EDITS_TEST_URL || 'http://127.0.0.1:3001';
 const cwd = '/srv/turn-edits-fixture';
@@ -148,32 +148,32 @@ async function run(browser, viewport) {
         const divider = page.locator('#pi-inspector-split'); await divider.focus(); await page.keyboard.press('ArrowLeft');
         await checkWidth(page);
     } else assert.ok(await page.locator('#pi-inspector').evaluate(n => n.clientWidth) >= viewport.width - 16, 'diff uses nearly the full mobile width');
-    // Native tab navigation now includes the third pane, without starting side chat just to view changes.
-    await page.locator('#pi-changes-tab').focus(); await page.keyboard.press('Home');
+    // The in-panel native selector changes panels without starting side chat.
+    await openInspector(page, 'details');
     assert.equal(await page.locator('#pi-details-tab').getAttribute('aria-selected'), 'true');
-    await page.keyboard.press('End');
+    await openInspector(page, 'changes');
     assert.equal(await page.locator('#pi-changes-tab').getAttribute('aria-selected'), 'true');
     assert.equal(sideStarts, 0);
     if (viewport.width !== 320) {
-        await page.locator('#pi-history-tab').click();
+        await openInspector(page, 'history');
         await page.locator('#pi-history').waitFor({ state: 'visible' });
         assert.equal(await page.locator('#pi-changes').isVisible(), false);
-        await page.locator('#pi-toggle-inspector').click();
+        await openInspector(page, 'details');
         assert.equal(await page.locator('#pi-inspector-details').isVisible(), true, 'details button selects details from any pane');
-        await page.locator('#pi-changes-tab').click();
+        await openInspector(page, 'changes');
         assert.equal(await page.locator('#pi-history').isVisible(), false);
         assert.equal(await page.locator('#pi-inspector-tabs [aria-selected="true"]').count(), 1);
         await checkWidth(page);
     }
-    await page.locator('#pi-side-tab').click();
+    await openInspector(page, 'side');
     await page.waitForFunction(() => !document.querySelector('#pi-side-input').disabled);
     await page.locator('#pi-side-input').fill('保留侧聊草稿');
-    await page.locator('#pi-changes-tab').click(); await page.locator('#pi-side-tab').click();
+    await openInspector(page, 'changes'); await openInspector(page, 'side');
     assert.equal(await page.locator('#pi-side-input').inputValue(), '保留侧聊草稿');
     assert.equal(sideStarts, 1); assert.equal(sideCloses, 0); assert.ok(sideSocket);
-    await page.locator('#pi-changes-tab').click(); await page.keyboard.press('Escape');
+    await openInspector(page, 'changes'); await page.keyboard.press('Escape');
     assert.equal(await page.locator('#pi-inspector').evaluate(n => n.classList.contains('open')), false);
-    assert.equal(await cards.first().locator('.pi-edit-file').first().evaluate(n => n === document.activeElement), true);
+    assert.equal(await cards.first().locator('.pi-edit-file').first().evaluate(n => n === document.activeElement), true, JSON.stringify(await page.evaluate(() => ({ width: innerWidth, active: document.activeElement.outerHTML.slice(0, 400), inert: document.querySelector('.pi-transcript-shell').inert }))));
     await cards.last().locator('.pi-edit-file').click();
     assert.match(await page.locator('#pi-changes-diffs').textContent(), /原始差异/);
     assert.equal(await page.locator('#pi-changes-diffs button').count(), 0, 'legacy display diff cannot be copied as a patch');

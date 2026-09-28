@@ -17,15 +17,21 @@
         return span;
     }
 
-    function renderGroups(groups, sessions, selectedId, renderSession) {
+    function renderGroups(groups, sessions, selectedId, renderSession, options = {}) {
         return groups.map(group => {
             const list = sessions.get(group.id) || [];
+            const expanded = Boolean(options.query) || options.expanded?.has(group.id);
+            const visible = expanded ? list : list.slice(0, 6);
+            const current = list.find(item => item.id === options.sessionId && group.cwd === options.cwd);
+            if (current && !visible.includes(current)) visible.push(current);
+            const remaining = list.length - visible.length;
+            const more = !options.query && list.length > 6 ? `<button class="pi-thread-more" type="button" data-assistant-action="${expanded ? 'less-threads' : 'more-threads'}"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i><span>${remaining ? escape(t(`显示其余 ${remaining} 个线程`, `Show ${remaining} more threads`)) : escape(t('仅显示前 6 个线程', 'Show first 6 threads'))}</span></button>` : '';
             return `<section class="pi-project-group pi-assistant-group ${group.archived ? 'archived' : ''} ${group.id === selectedId ? 'current' : ''}" data-assistant-project-id="${escape(group.id)}">
                 <div class="pi-project-group-heading"><span class="pi-project-group-icon"><i class="fa-regular fa-folder-open"></i></span>
                     <button class="pi-project-group-main" type="button" data-assistant-action="select" title="${escape(group.cwd)}"><span class="pi-project-group-copy"><strong>${escape(group.name)}</strong><small>${escape(group.cwd)}</small></span></button>
                     <span class="pi-project-session-count">${list.length}</span>
                     <button class="pi-project-new" type="button" data-assistant-action="menu" aria-haspopup="menu" aria-label="${escape(t('项目操作', 'Project actions'))}" title="${escape(t('项目操作', 'Project actions'))}"><i class="fa-solid fa-ellipsis"></i></button></div>
-                <div class="pi-project-threads">${list.length ? list.map(session => renderSession(session, group.cwd)).join('') : `<div class="pi-project-empty">${escape(group.archived ? t('编辑项目以恢复', 'Edit project to restore') : t('暂无线程', 'No conversations yet'))}</div>`}</div>
+                <div class="pi-project-threads">${list.length ? visible.map(session => renderSession(session, group.cwd)).join('') + more : `<div class="pi-project-empty">${escape(group.archived ? t('编辑项目以恢复', 'Edit project to restore') : t('暂无线程', 'No conversations yet'))}</div>`}</div>
             </section>`;
         }).join('');
     }

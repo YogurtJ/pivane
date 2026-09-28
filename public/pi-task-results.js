@@ -61,7 +61,7 @@
         body.append(head, list, note);
         root.append(summary, body); root.hidden = true;
         const key = value => value ? JSON.stringify([value.cwd, value.id, value.generation]) : '';
-        function reset() { revision++; rendered = ''; expanded.clear(); root.hidden = true; root.open = false; delete root.dataset.state; list.replaceChildren(); }
+        function reset() { revision++; rendered = ''; expanded.clear(); root.hidden = true; root.open = false; delete root.dataset.wasOpen; delete root.dataset.state; list.replaceChildren(); }
         function setSummary(text, more = '', brief = '') {
             title.textContent = words('任务结果', 'Task results'); count.textContent = text; short.textContent = brief || text; summary.title = more || text;
         }
@@ -147,7 +147,7 @@
                         if (key(scope()) !== nextKey) return;
                         // Prefer the delivered card in the transcript; it holds the rendered body.
                         if (locate(result.deliveryId)) {
-                            root.open = false;
+                            root.open = false; delete root.dataset.wasOpen;
                             if (!result.read && !Boolean(scope()?.busy)) void runMark(current, [result.deliveryId], null);
                             return;
                         }

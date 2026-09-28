@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { selectMessageView } = require('./pi-mobile-view-helper.cjs');
+const { selectMessageView, openInspector } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const baseUrl = process.env.PI_NATIVE_TEST_URL || 'http://127.0.0.1:3106';
 const cwd = '/srv/native-fixture';
@@ -95,7 +95,7 @@ async function run(browser, viewport) {
     assert.equal(await tool.getByRole('button', { name: '复制 patch' }).count(), 0, 'legacy display diff is not a standard patch');
     event({ type: 'tool_execution_end', toolCallId: 'edit1', toolName: 'edit', result: { content: [], details: { patch } } });
     await page.waitForFunction(() => document.querySelector('.pi-diff-code').textContent.includes('old 中文'));
-    await page.locator('#pi-toggle-inspector').click();
+    await openInspector(page, 'details');
     await page.locator('#pi-extension-state > summary').click();
     assert.match(await page.locator('#pi-extension-body').textContent(), /Step one/);
     assert.equal(await page.locator('#pi-extension-body img').count(), 0);

@@ -17,4 +17,17 @@ async function openWorkspaceTab(page, tab) {
         await page.locator(`[data-tab="${tab}"]`).click();
     }
 }
-module.exports = { selectMessageView, openWorkspaceTab };
+// Use the real desktop rail / narrow-screen chooser, or the in-panel selector.
+async function openInspector(page, mode = 'details') {
+    if (await page.locator('#pi-close-inspector').isVisible()) {
+        await page.locator('#pi-inspector-title').focus();
+        await page.locator('#pi-inspector-title').selectOption(mode);
+    } else if (await page.locator(`#pi-tool-${mode}`).isVisible()) {
+        await page.locator(`#pi-tool-${mode}`).click();
+    } else {
+        await page.locator('#pi-tools-toggle').click();
+        await page.locator(`#pi-mobile-tool-${mode}`).click();
+    }
+    await page.locator('#pi-inspector.open').waitFor({ state: 'visible' });
+}
+module.exports = { selectMessageView, openWorkspaceTab, openInspector };

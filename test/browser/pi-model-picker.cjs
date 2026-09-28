@@ -67,7 +67,7 @@ async function check(browser, base, width, language, theme) {
     const button = page.locator('#pi-model-select'), dialog = page.locator('#pi-model-dialog'), search = page.locator('.pi-model-search');
     const openPicker = async () => {
         if (width <= 680) {
-            await page.locator('#pi-mobile-context-trigger').click();
+            await page.locator('#pi-mobile-composer-summary').click();
             await page.locator('#pi-mobile-choose-model').click();
         } else await button.click();
     };
@@ -155,7 +155,7 @@ async function check(browser, base, width, language, theme) {
     fail = false;
     await openPicker(); await page.keyboard.press('Escape');
     assert.equal(await button.getAttribute('aria-expanded'), 'false');
-    assert.equal(await page.locator(width <= 680 ? '#pi-mobile-context-trigger' : '#pi-model-select').evaluate(node => node === document.activeElement), true);
+    assert.equal(await page.locator(width <= 680 ? '#pi-mobile-composer-summary' : '#pi-model-select').evaluate(node => node === document.activeElement), true);
     await openPicker(); running = true; socket.send(JSON.stringify({ type: 'agent_start' }));
     await page.waitForFunction(() => document.querySelector('#pi-model-select').disabled && !document.querySelector('#pi-model-dialog').open);
     if (width <= 680) {
@@ -164,7 +164,8 @@ async function check(browser, base, width, language, theme) {
             return { input: box('#pi-input'), ring: box('#pi-mobile-context-trigger'), send: box('#pi-send-button'), stop: box('#pi-stop-button'), delivery: box('#pi-delivery-mode'), summary: box('#pi-mobile-composer-summary') };
         });
         assert.ok(layout.input.width >= 96 && layout.ring.right <= layout.send.left + 1 && layout.send.right <= layout.stop.left + 1, JSON.stringify(layout));
-        assert.ok(layout.delivery.top >= layout.summary.top && layout.delivery.bottom <= layout.summary.bottom + 1, JSON.stringify(layout));
+        assert.ok(layout.delivery.top >= layout.summary.bottom && layout.delivery.right <= layout.send.left + 1, JSON.stringify(layout));
+        assert.ok(layout.input.width >= width - 64, 'running controls do not shrink the text input');
         await page.screenshot({ path: `/tmp/pivane-composer-running-${width}.png` });
     }
     running = false; socket.send(JSON.stringify({ type: 'agent_settled' }));
@@ -174,16 +175,12 @@ async function check(browser, base, width, language, theme) {
     if (width <= 680) {
         assert.equal(await page.locator('#pi-mobile-context-percent').textContent(), '72');
         assert.equal(await page.locator('#pi-mobile-context-trigger').getAttribute('data-level'), 'warn');
-        const ringMetrics = await page.locator('#pi-mobile-context-trigger').evaluate(node => ({
-            visualSize: parseFloat(getComputedStyle(node, '::before').width),
-            targetWidth: node.getBoundingClientRect().width,
-            sendSize: document.querySelector('#pi-send-button').getBoundingClientRect().width
-        }));
-        assert.ok(ringMetrics.visualSize < ringMetrics.sendSize && ringMetrics.targetWidth >= ringMetrics.sendSize, JSON.stringify(ringMetrics));
+        assert.match(await page.locator('#pi-mobile-composer-usage').textContent(), /72/);
+        assert.ok(await page.locator('#pi-mobile-composer-summary').evaluate(node => node.getBoundingClientRect().width >= 250));
         await page.locator('#pi-input').focus();
         assert.equal(await page.locator('#pi-mobile-composer-summary').isVisible(), true);
         assert.ok((await page.locator('#pi-mobile-composer-model').textContent()).includes('Special'));
-        await page.locator('#pi-mobile-context-trigger').click();
+        await page.locator('#pi-mobile-composer-summary').click();
         const thinkingStyle = await page.locator('#pi-mobile-thinking').evaluate(node => ({ borderWidth: getComputedStyle(node).borderTopWidth, appearance: getComputedStyle(node).appearance, fontSize: getComputedStyle(node).fontSize,
             width: node.getBoundingClientRect().width, sheetWidth: document.querySelector('#pi-mobile-session-dialog').getBoundingClientRect().width }));
         assert.equal(thinkingStyle.borderWidth, '0px');
@@ -203,7 +200,7 @@ async function check(browser, base, width, language, theme) {
             parentRight: node.parentElement.getBoundingClientRect().right, width: node.getBoundingClientRect().width
         }));
         assert.ok(levelBounds.width > 0 && levelBounds.left >= 0 && levelBounds.right <= levelBounds.parentRight + 1, JSON.stringify(levelBounds));
-        await page.locator('#pi-mobile-context-trigger').click();
+        await page.locator('#pi-mobile-composer-summary').click();
         failThinking = true;
         await page.locator('#pi-mobile-thinking').selectOption('off');
         await page.locator('.pi-toast').filter({ hasText: 'Fixture selection failed' }).waitFor();

@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { openInspector } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const { searchHistory, previewHistory, setHistoryBookmark } = require('../../server/pi-history-model');
 const base = process.env.PI_HISTORY_TEST_URL || 'http://127.0.0.1:3001';
@@ -58,7 +59,7 @@ async function run(browser, viewport, SessionManager) {
     await page.waitForFunction(() => !document.querySelector('#pi-input').disabled);
     await page.locator('#pi-input').fill('Keep the main draft');
     const original = JSON.stringify(sm.getEntries()), leaf = sm.getLeafId();
-    await page.locator('#pi-toggle-inspector').click(); await page.locator('#pi-history-tab').click();
+    await openInspector(page, 'history');
     await page.waitForFunction(() => document.querySelectorAll('[data-history-id]').length === 30);
     assert.equal(JSON.stringify(sm.getEntries()), original); assert.equal(sm.getLeafId(), leaf);
     await page.locator('#pi-history-next').click(); await page.waitForFunction(() => document.querySelector('#pi-history-status').textContent.includes('31–60'));
@@ -147,7 +148,7 @@ async function run(browser, viewport, SessionManager) {
     await page.locator('[data-filter="all"]').click();
     await page.locator('[data-session-id="b"] .pi-session-main').click(); await page.waitForFunction(() => document.querySelector('#pi-meta-id').textContent === 'b' && !document.querySelector('#pi-input').disabled);
     try { reply(delayedPreview.ws, delayedPreview.cmd, previewHistory(delayedPreview.sm, delayedPreview.cmd)); } catch {}
-    await page.locator('#pi-toggle-inspector').click(); await page.locator('#pi-history-tab').click();
+    await openInspector(page, 'history');
     await page.waitForFunction(() => document.querySelector('#pi-history-results').textContent.includes('second thread'));
     assert.equal(await page.locator('#pi-history-preview').isVisible(), false); assert.equal(await query.inputValue(), '');
     assert.ok(!commands.some(c => ['prompt', 'steer', 'follow_up', 'compact'].includes(c.type))); assert.deepEqual(writes, []);

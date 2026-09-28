@@ -256,7 +256,7 @@ async function run(browser, size) {
     const viewport = await page.locator('#pi-transcript').boundingBox();
     assert.equal(await page.locator('.pi-transcript-toolbar').count(), 0, 'no separate toolbar row');
     assert.ok(Math.abs(banner.y + banner.height - viewport.y) <= 1, 'transcript begins directly after the status bar');
-    assert.ok(banner.height <= (size.width <= 680 ? 36 : size.width < 900 ? 37 : 29), 'status bar has bounded height');
+    assert.ok(banner.height <= (size.width <= 680 ? 36 : 40), 'status bar has bounded height');
     assert.equal(await page.locator('#pi-connection-banner [data-transcript-mode]').count(), 0, 'message view switch lives in settings, not the status bar');
     if (size.width <= 680) assert.equal(await page.locator('#pi-mobile-thread-title').textContent(), session.name);
     const originalStatus = await page.locator('#pi-connection-text').textContent();

@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { openInspector } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.PI_SHELL_TEST_URL || 'http://127.0.0.1:3131';
 const cwd = '/tmp/pi-shell-browser-project';
@@ -125,7 +126,7 @@ async function run(browser, width, legacy = false) {
     assert.equal(requests.filter(r => r.type === 'bash').length, beforeAttachment);
     assert.equal(await page.locator('.pi-attachment-chip').count(), 1);
     await page.locator('[data-remove-attachment]').click();
-    await page.locator('#pi-toggle-inspector').click();
+    await openInspector(page, 'details');
     await page.locator('#pi-runtime-settings > summary').click();
     await page.locator('#pi-steeringMode').selectOption('all');
     await page.waitForFunction(() => document.querySelector('#pi-queue-mode-status').textContent.includes('已更新'));

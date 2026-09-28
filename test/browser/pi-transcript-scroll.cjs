@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { openInspector } = require('./pi-mobile-view-helper.cjs');
 const { openWorkspaceTab } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
@@ -215,7 +216,7 @@ async function run(browser, size) {
     await expectBottom();
     await page.locator('#pi-attachments [data-remove-attachment]').click();
     await expectBottom();
-    await page.locator('#pi-toggle-inspector').click();
+    await openInspector(page, 'details');
     await page.waitForTimeout(150);
     await page.locator('#pi-close-inspector').click();
     await expectBottom();

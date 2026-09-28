@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { selectMessageView } = require('./pi-mobile-view-helper.cjs');
+const { selectMessageView, openInspector } = require('./pi-mobile-view-helper.cjs');
 const http = require('node:http');
 const path = require('node:path');
 const { once } = require('node:events');
@@ -71,6 +71,7 @@ async function run(browser, base, width, language) {
     assert.equal(await page.locator('#pi-thinking-select option:checked').textContent(), english ? 'Off' : '不启用');
     await selectMessageView(page, 'full');
     assert.equal(await page.locator('.pi-tool-status').textContent(), english ? 'Failed' : '失败');
+    await page.locator('[data-tool-id="raw-tool"] > summary').click();
     assert.equal(await page.locator('.pi-tool-output').textContent(), '保存：原始工具输出');
     assert.ok((await page.locator('.pi-tool-args').textContent()).includes('/fixture/中文文件.txt'));
     await selectMessageView(page, 'reading');
@@ -84,8 +85,8 @@ async function run(browser, base, width, language) {
         for (const m of metrics) assert.ok(m.scroll <= m.width + 1, `${language}/${width}: ${JSON.stringify(m)}`);
     };
     await overflow(['body', '.pi-command-bar', '.pi-runtime-controls', '.pi-composer-wrap', '#pi-attachments']);
-    if (width < 900) { await page.locator('#pi-toggle-sessions').click(); await overflow(['#pi-session-pane', '#pi-session-filters']); await page.locator('#pi-toggle-sessions').click(); }
-    await page.locator('#pi-toggle-inspector').click();
+    if (width < 900) { await page.locator('#pi-toggle-sessions').click(); await overflow(['#pi-session-pane', '#pi-session-filters']); await page.locator('#pi-close-sessions').click(); }
+    await openInspector(page, 'details');
     await overflow(['#pi-inspector', '#pi-inspector-details']);
     if (width < 900) await page.locator('#pi-close-inspector').click();
     await page.locator('#workspace-settings-toggle').click();

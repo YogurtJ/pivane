@@ -11,6 +11,7 @@
             this.value = null;
             this.root.hidden = true;
             this.root.open = false;
+            delete this.root.dataset.wasOpen;
         }
         apply(value) {
             const plan = value?.plan;
@@ -20,9 +21,7 @@
             if (this.value?.id === value.id) return;
             const completed = plan.filter(item => item.status === 'completed').length;
             const done = completed === plan.length;
-            const previousDone = this.value?.plan.every(item => item.status === 'completed');
-            // Collapsed by default; the user opens it. Finishing closes an open card.
-            if (done && !previousDone) this.root.open = false;
+            // Completion updates the content, not the reader's explicit open state.
             this.value = value;
             this.root.hidden = false;
             this.root.querySelector('summary strong').textContent = t('当前进度');

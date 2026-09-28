@@ -4,6 +4,8 @@
     const languages = { js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript', py: 'python', json: 'json', html: 'xml', htm: 'xml', xml: 'xml', svg: 'xml', css: 'css', sh: 'bash', bash: 'bash', yml: 'yaml', yaml: 'yaml', md: 'markdown', markdown: 'markdown', go: 'go', rs: 'rust', java: 'java', c: 'c', h: 'c', cpp: 'cpp', sql: 'sql', rb: 'ruby', php: 'php', ini: 'ini', toml: 'ini', diff: 'diff' };
     function linkTarget(href, base = '') {
         if (typeof href !== 'string' || !href) return null;
+        const delivery = /^#pi-delivery=([a-f0-9]{64})\/(\d{1,2})$/.exec(href);
+        if (delivery && Number(delivery[2]) < 20) return { deliveryId: delivery[1], index: Number(delivery[2]) };
         let decoded = false;
         if (href.startsWith('#pi-file=')) { try { href = decodeURIComponent(href.slice(9)); decoded = true; } catch { return null; } }
         else if (href.startsWith('#')) return null;
@@ -35,10 +37,11 @@
         };
         renderer.link = function(token) {
             const target = linkTarget(token.href, base);
-            return original.call(this, target ? { ...token, href: `#pi-file=${encodeURIComponent(target.path + (target.line ? ':' + target.line : ''))}` } : token);
+            return original.call(this, target && !target.deliveryId ? { ...token, href: `#pi-file=${encodeURIComponent(target.path + (target.line ? ':' + target.line : ''))}` } : token);
         };
         const math = window.PiMath?.create(renderer);
-        const html = window.DOMPurify.sanitize(math ? math.parse(text) : window.marked.parse(text, { renderer }), {
+        const source = text.replace(/^\uFEFF/, ''); // BOM belongs to the downloadable bytes, not the first heading.
+        const html = window.DOMPurify.sanitize(math ? math.parse(source) : window.marked.parse(source, { renderer }), {
             USE_PROFILES: { html: true }, FORBID_TAGS: ['style', 'iframe', 'form', 'input', 'button', ...(preview ? ['img', 'video', 'audio', 'source', 'object', 'embed'] : [])],
             FORBID_ATTR: ['style', 'onerror', 'onclick']
         });
@@ -48,6 +51,11 @@
     class PiFileViewer {
         constructor(host) {
             this.host = host; this.sequence = 0; this.enabled = false; this.file = null; this.data = null;
+            this.previewsEnabled = false; this.deliverablesEnabled = false; this.objectUrls = [];
+            const action = (id, title, run) => { const b = document.createElement('button'); b.id = id; b.type = 'button'; b.textContent = title; b.addEventListener('click', run); $('pi-file-info').before(b); return b; };
+            this.downloadButton = action('pi-file-download', translateUi('下载'), () => this.download());
+            this.imageSizeButton = action('pi-file-image-size', translateUi('原尺寸'), () => { this.actualSize = !this.actualSize; this.renderContent(); });
+            this.runButton = action('pi-file-run-html', translateUi('运行交互'), () => { this.runHtml = !this.runHtml; this.renderContent(); });
             $('pi-file-diff-tab').addEventListener('click', () => this.show('diff'));
             $('pi-file-full-tab').addEventListener('click', () => this.show('full'));
             $('pi-file-source').addEventListener('change', () => { this.cancel(); this.source = $('pi-file-source').value; this.load(); });
@@ -66,10 +74,25 @@
                 next.click(); next.focus();
             });
             this.clear();
+            new MutationObserver(() => {
+                const pane = $('pi-inspector');
+                if (this.runHtml && (!pane.classList.contains('open') || !pane.classList.contains('show-changes'))) this.stopInteractive();
+            }).observe($('pi-inspector'), { attributes: true, attributeFilter: ['class'] });
         }
+        stopInteractive() { if (this.runHtml) { this.runHtml = false; this.renderContent(); } }
         cancel() { this.sequence++; this.controller?.abort(); this.controller = null; this.loading = false; }
+        releaseUrls() { this.objectUrls.forEach(url => URL.revokeObjectURL(url)); this.objectUrls = []; }
+        blob(bytes, mime) { const url = URL.createObjectURL(new Blob([bytes], { type: mime })); this.objectUrls.push(url); return url; }
+        bytes() { return this.data?.encoding === 'base64' ? Uint8Array.from(atob(this.data.base64), c => c.charCodeAt(0)) : new TextEncoder().encode(this.data?.content || ''); }
+        download() {
+            if (!this.data) return;
+            const url = URL.createObjectURL(new Blob([this.bytes()], { type: 'application/octet-stream' }));
+            const link = document.createElement('a'); link.href = url; link.download = this.data.name || this.file.path.split(/[\\/]/).at(-1) || 'download';
+            document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
+        }
         clear() {
-            this.cancel(); this.file = null; this.data = null; this.current = null; this.positions = new Map(); this.restoreTop = null;
+            this.cancel(); this.releaseUrls(); this.file = null; this.data = null; this.current = null; this.positions = new Map(); this.restoreTop = null;
+            this.runHtml = false; this.actualSize = false;
             $('pi-file-tabs').hidden = true; $('pi-file-viewer').hidden = true; $('pi-file-body').replaceChildren();
         }
         setEnabled(enabled) { this.enabled = enabled; }
@@ -84,17 +107,19 @@
             if (saved && this.data) $('pi-file-body').scrollTop = saved.top;
         }
         setFile(file) {
-            if (this.file?.identity === file.identity && this.file.path === file.path && this.file.hasDiff === file.hasDiff && this.file.writes.length === file.writes.length
+            if (this.file?.identity === file.identity && (this.file.path === file.path || this.file.deliveryId && this.file.deliveryId === file.deliveryId) && this.file.hasDiff === file.hasDiff && this.file.writes.length === file.writes.length
                 && this.file.writes.every((w, i) => w.id === file.writes[i].id && w.content === file.writes[i].content)) return;
             this.rememberPosition();
-            this.cancel(); this.file = file; this.data = null; this.current = null; this.jumped = false;
+            this.cancel(); this.releaseUrls(); this.file = file; this.data = null; this.current = null; this.jumped = false;
+            this.runHtml = false; this.actualSize = false;
             const position = this.positions.get(file.identity);
+            this.defaultPreview = !position && !file.line;
             this.restoreTop = position?.top || 0;
             this.preview = position?.preview ?? (/\.(?:md|markdown)$/i.test(file.path) && !file.line); this.wrap = position?.wrap || false;
             this.source = file.writes.length ? `write:${file.writes.at(-1).id}` : 'current';
             const picker = $('pi-file-source'); picker.replaceChildren();
             file.writes.forEach((w, i) => picker.append(new Option(translateUi("写入记录 {0}", i + 1), `write:${w.id}`)));
-            picker.append(new Option(translateUi("当前文件"), 'current')); picker.value = this.source;
+            picker.append(new Option(file.deliveryId ? translateUi('交付快照') : translateUi("当前文件"), 'current')); picker.value = this.source;
             $('pi-file-tabs').hidden = false; $('pi-file-diff-tab').disabled = !file.hasDiff;
             $('pi-file-path').textContent = file.path; $('pi-file-path').title = file.path;
             const prefix = this.host.context().cwd.replace(/\/$/, '') + '/';
@@ -107,7 +132,7 @@
         }
         show(mode) {
             if (!this.file) return;
-            if (mode === 'diff') this.cancel();
+            if (mode === 'diff') { this.cancel(); this.releaseUrls(); $('pi-file-body').replaceChildren(); this.runHtml = false; }
             this.mode = mode;
             $('pi-file-source').closest('label').hidden = mode !== 'full';
             $('pi-changes-diffs').hidden = mode !== 'diff'; $('pi-file-viewer').hidden = mode !== 'full';
@@ -122,25 +147,33 @@
             notice.dataset.error = String(error);
         }
         controls() {
+            const kind = this.data?.kind || (/\.(?:md|markdown)$/i.test(this.file?.path || '') ? 'markdown' : 'text');
             $('pi-file-refresh').hidden = this.source !== 'current'; $('pi-file-refresh').disabled = this.loading || !this.enabled;
-            $('pi-file-copy').disabled = !this.data || this.data.content.length === 0;
-            $('pi-file-preview').hidden = !/\.(?:md|markdown)$/i.test(this.file?.path || '');
-            $('pi-file-source').title = this.source === 'current' ? translateUi("当前磁盘文件快照，点击刷新更新") : translateUi("工具成功写入时的内容记录");
+            $('pi-file-copy').disabled = !this.data?.content?.length;
+            $('pi-file-preview').hidden = !['markdown', 'html'].includes(kind);
+            this.downloadButton.hidden = !this.previewsEnabled && !this.file?.deliveryId;
+            this.downloadButton.disabled = !this.data;
+            this.imageSizeButton.hidden = kind !== 'image'; this.imageSizeButton.textContent = this.actualSize ? translateUi('适应窗口') : translateUi('原尺寸');
+            this.runButton.hidden = kind !== 'html' || !this.preview;
+            this.runButton.disabled = !this.data; this.runButton.setAttribute('aria-pressed', String(Boolean(this.runHtml)));
+            this.runButton.textContent = this.runHtml ? translateUi('停止交互') : translateUi('运行交互');
+            $('pi-file-source').title = this.file?.deliveryId ? translateUi('交付时保存的只读版本，不随源文件变化') : this.source === 'current' ? translateUi("当前磁盘文件快照，点击刷新更新") : translateUi("工具成功写入时的内容记录");
             $('pi-file-preview').disabled = !this.data; $('pi-file-preview').textContent = this.preview ? translateUi("源码") : translateUi("预览");
-            $('pi-file-preview').title = this.preview ? translateUi("查看源码") : translateUi("Markdown 排版预览");
+            $('pi-file-preview').title = this.preview ? translateUi("查看源码") : translateUi("预览");
             $('pi-file-preview').setAttribute('aria-label', $('pi-file-preview').title);
             $('pi-file-preview').setAttribute('aria-pressed', String(Boolean(this.preview)));
-            $('pi-file-wrap').hidden = Boolean(this.preview); $('pi-file-wrap').disabled = !this.data;
+            $('pi-file-wrap').hidden = Boolean(this.preview) || ['image', 'binary'].includes(kind); $('pi-file-wrap').disabled = !this.data;
             $('pi-file-wrap').setAttribute('aria-pressed', String(Boolean(this.wrap)));
         }
         async load() {
             if (!this.file || this.mode !== 'full') return;
-            this.cancel(); this.data = null; $('pi-file-body').replaceChildren();
-            if (window.PiFilePolicy.restricted(this.file.path)) { this.status(translateUi("此文件不提供网页预览"), true); this.controls(); return; }
+            this.cancel(); this.releaseUrls(); this.runHtml = false; this.data = null; $('pi-file-body').replaceChildren();
+            if (!this.file.deliveryId && window.PiFilePolicy.restricted(this.file.path)) { this.status(translateUi("此文件不提供网页预览"), true); this.controls(); return; }
             if (this.source !== 'current') {
                 const write = this.file.writes.find(w => `write:${w.id}` === this.source);
                 if (!write || new TextEncoder().encode(write.content).length > window.PiFilePolicy.maxBytes) { this.status(translateUi("写入内容超过 2 MiB，暂不支持全文展示"), true); this.controls(); return; }
-                this.data = { content: write.content };
+                this.data = { content: write.content, kind: /\.(?:html?|md|markdown)$/i.test(this.file.path) ? /\.html?$/i.test(this.file.path) && this.previewsEnabled ? 'html' : /\.(md|markdown)$/i.test(this.file.path) ? 'markdown' : 'text' : 'text' };
+                if (this.defaultPreview) { this.preview = ['markdown', 'html'].includes(this.data.kind); this.defaultPreview = false; }
                 this.status(translateUi("本次成功写入的内容 · 不随磁盘后续修改而更新")); this.renderContent(); return;
             }
             if (!this.enabled) { this.status(translateUi("当前后端尚未启用文件读取；写入记录仍可查看。"), true); this.controls(); return; }
@@ -148,11 +181,20 @@
             const context = this.host.context(), sequence = this.sequence;
             this.controller = new AbortController(); this.loading = true; this.status(translateUi("正在读取当前文件…"), false, true); this.controls();
             try {
-                const data = await this.host.api(`/api/pi/files/content?${new URLSearchParams({ cwd: context.cwd, path: this.file.path })}`, { signal: this.controller.signal });
+                const query = this.file.deliveryId ? new URLSearchParams({ cwd: context.cwd, sessionId: context.sessionId || '', id: this.file.deliveryId, index: this.file.index }) : new URLSearchParams({ cwd: context.cwd, path: this.file.path });
+                const endpoint = this.file.deliveryId ? 'deliverables' : `files/${this.previewsEnabled ? 'preview' : 'content'}`;
+                const data = await this.host.api(`/api/pi/${endpoint}?${query}`, { signal: this.controller.signal });
                 if (sequence !== this.sequence || context.key !== this.host.context().key || context.generation !== this.host.context().generation) return;
-                if (typeof data.content !== 'string' || new TextEncoder().encode(data.content).length > window.PiFilePolicy.maxBytes) throw new Error(translateUi("文件响应无效或超过大小限制"));
+                const binary = data.encoding === 'base64';
+                if (binary ? typeof data.base64 !== 'string' || data.base64.length > 24 * 1024 * 1024 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data.base64) || data.base64.length % 4 !== 0
+                    : typeof data.content !== 'string' || new TextEncoder().encode(data.content).length > window.PiFilePolicy.maxBytes) throw new Error(translateUi("文件响应无效或超过大小限制"));
                 this.current = data; this.applyCurrent();
-            } catch (error) { if (sequence === this.sequence && error.name !== 'AbortError') this.status(error.message || translateUi("文件读取失败"), true); }
+            } catch (error) {
+                if (sequence === this.sequence && error.name !== 'AbortError') {
+                    const outside = error.data?.code === 'FILE_OUTSIDE';
+                    this.status(outside ? translateUi('文件位于当前项目外。请让 Agent 使用 deliver_files 登记为交付物；不会自动扩大访问范围。') : error.message || translateUi("文件读取失败"), true);
+                }
+            }
             finally {
                 if (sequence === this.sequence) {
                     this.loading = false; this.controller = null;
@@ -164,16 +206,40 @@
         applyCurrent() {
             this.data = this.current;
             const readAt = new Date(this.data.readAt), modifiedAt = new Date(this.data.modifiedAt);
-            this.status(translateUi("当前文件快照{0}，点击刷新更新{1}", Number.isNaN(readAt.getTime()) ? '' : translateUi(" · 读取于 {0}", readAt.toLocaleTimeString(globalThis.PiI18n?.locale)), Number.isNaN(modifiedAt.getTime()) ? '' : translateUi(" · 文件修改于 {0}", modifiedAt.toLocaleString(globalThis.PiI18n?.locale))));
+            this.status(this.file.deliveryId ? translateUi('交付快照 · {0} · SHA256 {1}', new Date(this.data.createdAt).toLocaleString(globalThis.PiI18n?.locale), this.data.revision)
+                : translateUi("当前文件快照{0}，点击刷新更新{1}", Number.isNaN(readAt.getTime()) ? '' : translateUi(" · 读取于 {0}", readAt.toLocaleTimeString(globalThis.PiI18n?.locale)), Number.isNaN(modifiedAt.getTime()) ? '' : translateUi(" · 文件修改于 {0}", modifiedAt.toLocaleString(globalThis.PiI18n?.locale))));
+            if (this.file.deliveryId && this.data.name) { this.file.path = this.data.name; $('pi-changes-title').textContent = this.data.name; $('pi-file-path').textContent = this.data.absolutePath; this.host.selected?.(this.file); }
+            if (this.defaultPreview && this.data.kind) { this.preview = ['markdown', 'html', 'image'].includes(this.data.kind); this.defaultPreview = false; }
             this.renderContent();
         }
         renderContent() {
             const body = $('pi-file-body'), oldTop = body.scrollTop;
-            body.replaceChildren(); this.controls();
+            this.releaseUrls(); body.replaceChildren(); this.controls();
             if (!this.data) return;
+            if (this.data.kind === 'image') {
+                const wrap = document.createElement('div'); wrap.className = 'pi-file-image'; wrap.classList.toggle('actual-size', Boolean(this.actualSize));
+                const image = document.createElement('img'); image.alt = this.data.name || this.file.path; image.src = this.blob(this.bytes(), this.data.mime);
+                image.addEventListener('error', () => this.status(translateUi('图片无法解码，可下载原文件'), true), { once: true });
+                wrap.append(image); body.append(wrap); return;
+            }
+            if (this.data.kind === 'binary') { const note = document.createElement('p'); note.className = 'pi-file-large-note'; note.textContent = translateUi(this.data.previewReason || '此类型暂不支持预览，可下载原文件'); body.append(note); return; }
             const text = this.data.content;
             if (!text.length) {
                 const empty = document.createElement('p'); empty.className = 'pi-file-large-note'; empty.textContent = translateUi("空文件（0 字符）"); body.append(empty); return;
+            }
+            if (this.preview && this.data.kind === 'html') {
+                const note = document.createElement('p'); note.className = 'pi-file-preview-warning';
+                note.textContent = this.runHtml ? translateUi('隔离交互已运行；无法访问工作台。仅运行可信页面，脚本导航仍可能联网。') : translateUi('静态预览 · 脚本尚未运行。仅对可信页面启用交互；相对资源不自动加载。');
+                const frame = document.createElement('iframe'); frame.className = 'pi-file-html'; frame.title = translateUi('HTML 隔离预览');
+                frame.setAttribute('sandbox', this.runHtml ? 'allow-scripts' : ''); frame.referrerPolicy = 'no-referrer'; frame.setAttribute('credentialless', '');
+                frame.setAttribute('allow', "camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'; fullscreen 'none'");
+                const csp = `default-src 'none'; script-src ${this.runHtml ? "'unsafe-inline'" : "'none'"}; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
+                const template = document.createElement('template'); template.innerHTML = text;
+                // Static previews must not navigate via refresh/base. Scripts, when
+                // explicitly enabled, remain confined to the opaque iframe.
+                template.content.querySelectorAll('base, meta[http-equiv], iframe, object, embed').forEach(n => n.remove());
+                frame.srcdoc = '<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="' + csp + '">' + template.innerHTML;
+                body.append(note, frame); return;
             }
             if (this.preview) {
                 const article = document.createElement('article'); article.className = 'pi-markdown pi-file-markdown';
@@ -182,7 +248,7 @@
                     const href = a.getAttribute('href') || '';
                     if (!href.startsWith('#pi-file=')) {
                         const target = linkTarget(href, this.data.absolutePath || this.file.path);
-                        if (target) a.href = `#pi-file=${encodeURIComponent(target.path + (target.line ? ':' + target.line : ''))}`;
+                        if (target && !target.deliveryId) a.href = `#pi-file=${encodeURIComponent(target.path + (target.line ? ':' + target.line : ''))}`;
                     }
                     if (/^https?:/i.test(href)) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
                 }

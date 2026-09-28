@@ -10,7 +10,7 @@ Pivane runs on your computer or server. You can open it from another device's br
 2. Open **Settings → Providers and models** and check the configuration shared with Pi CLI. Sign in with an API key or OAuth only if usable credentials are missing. If the CLI has models but Pivane does not, check the identity and startup environment using [existing Pi users](INSTALL.md#existing-pi-cli-users). Enter credentials in settings, not in chat. For remote OAuth, a localhost callback refers to the server; use a device code or manual callback if the provider offers one.
 3. Close settings, select an existing server project directory and create a thread. Select its model and thinking level. Open threads refresh the model catalog when idle; if no model is available, follow the settings link in the composer.
 
-On desktop, click the model name in the session header to see favorites, the current model and recently used models. The project picker uses a folder icon, and the status strip shows the thread title alongside connection state, truncating long titles. On phones, tap the compact context ring immediately left of Send for a focused model, thinking and context sheet; the ring shows a number without `%` (`35` means 35%). Tapping Model opens the same searchable picker. When the composer has focus, a compact row shows the current model, thinking level and full context percentage. The folder/project name at the top opens the project picker directly, including the option to add a directory; the status strip shows the thread title or connection state. Files, history and the Reading/Full record view control are in the `i` details pane, not the model sheet. Reading is the default for a new browser; an existing browser retains its saved view choice. Context usage shows `--` when no reliable measurement is available, not a fabricated 0%.
+On desktop, click the model name in the composer to see favorites, the current model and recently used models. The project picker uses a folder icon, and the status strip shows the thread title alongside connection state, truncating long titles. On phones, the composer always shows a model, thinking and context summary. Tap it to open the settings sheet, then Model for the searchable picker. The folder/project name at the top opens the project picker directly, including the option to add a server directory. Files, history and details have separate tool entries; message display modes are under Settings → Preferences. A new browser defaults to Compact, while existing browsers retain their saved choice. Context usage shows `--` when no reliable measurement is available, not a fabricated 0%. Running tasks keep steering/follow-up, Send and Stop in a separate controls row, without narrowing the text input.
 
 Search names, full IDs or providers across the entire available catalog, or choose **View all models** to browse by provider. Stars only change favorites; clicking a model row switches the session. Favorites are saved on the Pivane instance and shared across devices; up to five recent models remain local to each browser. Existing browser favorites merge once when that browser loads the new picker. Reopening the picker or returning to the page reads the latest favorites; an open picker checks every five seconds. This does not change the global default. On phones and touch devices, the bottom sheet initially focuses its close button, so search input only receives focus when tapped.
 4. Send a simple question. Refresh and reopen the persistent thread to verify that the reply is retained. This request uses your own provider account.
@@ -19,7 +19,11 @@ Before selecting a project, you can manage global Pi settings, Packages and Skil
 
 ## Workspace navigation
 
-The colorful π at the top identifies Pivane. Pi Agent uses a conversation icon, and the Media Lab uses a flask; the active entry uses the theme accent color. On desktop, use the sidebar panel button beside the Pivane title to collapse navigation. The same button appears below the brand icon when collapsed. A single arrow inside the icon indicates the action direction; hover shows a soft accent background and an action label. The browser remembers your choice. Clicking the brand icon remains a shortcut.
+The colorful π at the top identifies Pivane. New browsers start with a labelled 72px navigation rail; use the panel button below the brand to expand it. Existing explicit expanded/collapsed preferences remain intact. The project pane defaults to 272px and the inspector to 336px; drag their dividers, use arrow keys, or double-click to reset.
+
+**Projects** browses directories and threads; **Activity** groups work needing attention, running work, unknown status and recent conversations. Sidebar search matches projects, thread names and first questions; **Search content** is a separate cross-thread search. Ctrl/Cmd+K focuses sidebar search. New threads belong to the selected project; temporary sessions are in its menu. Long assistant-project lists show six threads plus the selected thread, with explicit show-more controls; search results are not capped.
+
+The desktop tool rail and phone tool chooser provide Files, Tasks, History, Side chat and Details. A selector inside the inspector switches tools. Panels dock only when roughly 600px remains for chat; otherwise they overlay part of the conversation, which must be closed before interacting with the covered content. Escape, the scrim and Close dismiss overlays and restore focus. Closing a panel does not stop its task or side chat. Empty-thread examples append to the draft, preserve attachments and never send automatically.
 
 Narrow tablets use an icon rail, with entry names available on hover. Phones use bottom navigation with visible labels. These layouts do not show the desktop collapse button.
 
@@ -91,7 +95,7 @@ Pivane application updates are available from the version card when the managed 
 
 ## Conversation and tools
 
-**Reading** is the default view and groups consecutive thinking and tool records. **Full record** shows them individually. The browser remembers your selection. While a task runs, send steering or follow-up messages, or stop the task. After a timeout or disconnect, check thread state before repeating a request.
+**Compact** is the default for new browsers. **Reading** groups consecutive thinking and tool records, while **Full record** shows them individually. The browser remembers your selection. While a task runs, send steering or follow-up messages, or stop the task. After a timeout or disconnect, check thread state before repeating a request.
 
 Final replies in the main chat show the local message time to the right of the action icons. Hover to see the full date and time. This uses the native message timestamp, which can mark the start of generation rather than its exact completion. Missing or invalid timestamps are omitted.
 
@@ -101,9 +105,11 @@ In the main composer, `!command` runs server Shell; `!!command` keeps its output
 
 Temporary sessions do not save a session file and end on refresh or disconnect. Unsent drafts and attachments live only in the current page.
 
+If Stop or Take queue fails, a persistent **Operation needs verification** notice offers a state refresh and access to recovered text. Verification never repeats the original operation. Review actual runtime state and recovered content; closing the notice is not proof that an external operation was undone.
+
 ## Task progress
 
-When the Agent creates a plan for a substantial task, a collapsed **Task progress** chip appears above the composer with the completed count and current step. Click it to open the full step list as a popover above the composer, without taking transcript height; click elsewhere, click the chip again or press Esc to close it. A completed plan closes automatically. Long lists scroll inside the popover without changing drafts or attachments.
+When the Agent creates a plan for a substantial task, a collapsed **Task progress** chip appears above the composer with the completed count and current step. Click it to open the full step list as a popover above the composer, without taking transcript height; click elsewhere, click the chip again or press Esc to close it. A completed plan keeps the reader's current expanded/collapsed choice. The Tasks inspector moves the original progress, subagent and result cards into one panel and returns them to the composer when closed. Long lists scroll inside the popover without changing drafts or attachments.
 
 The built-in `update_plan` tool needs no extra package or user prompt configuration. The Agent decides when planning helps; you can also ask it to create and maintain a plan. Progress is reported by the Agent. Stopping, errors or a finished reply do not automatically complete unfinished steps. Ask the Agent to revise or clear the plan when needed.
 
@@ -111,11 +117,11 @@ Persistent threads restore the latest plan from the native Pi session after refr
 
 ## Archive projects and threads
 
-The sidebar opens in **All**. Choose **Archive project** to move a project into **Archived projects** at the bottom, or **Archive thread** to move one thread into **Archived threads** under its project. Both sections start collapsed. Expand either section to open and read a thread directly; only **Restore project / Restore thread** moves it back to the regular list.
+The sidebar opens in **Projects**. Choose **Archive project** to move a project into **Archived projects** at the bottom, or **Archive thread** to move one thread into **Archived threads** under its project. Both sections start collapsed. Expand either section to open and read a thread directly; only **Restore project / Restore thread** moves it back to the regular list.
 
 The two archive states are independent. Restoring a project keeps individually archived threads archived; restoring a thread does not restore its project. **Project archived** identifies a thread collected under its project's archive. Archiving preserves directories and native session records and does not stop running tasks. Archive state is shared by devices; disclosure state stays in this page.
 
-The work view still shows running, unread, failed and waiting archived threads with an archive label. Archived threads stay out of Recent. Sidebar search and cross-thread content search exclude archives unless you check **Include archived**. Archive actions are available only when supported by the backend.
+The Activity view still shows running, unread, failed and waiting archived threads with an archive label. Archived threads stay out of Recent. Sidebar search and cross-thread content search exclude archives unless you check **Include archived**. Archive actions are available only when supported by the backend.
 
 The thread menu groups **Session tree**, **Search history and bookmarks**, and **Export records** under **History and records**. The existing Copy submenu retains thread name and session ID. Arrow keys, Back and Escape work within the same popup.
 
@@ -129,7 +135,7 @@ This does not change chat models, media execution models or resource installatio
 
 ## Thread list display
 
-Regular thread cards show a title and a compact metadata row without repeating the first question. Named titles use one line, with the full title available on hover. Unnamed threads use up to two lines from the first question. Update time, message count and selection highlighting remain visible; the work view also identifies the project.
+Regular thread cards show a title and a compact metadata row without repeating the first question. Named titles use one line, with the full title available on hover. Unnamed threads use up to two lines from the first question. Update time and selection highlighting remain visible; message counts are available on hover, and Activity also identifies the project.
 
 Running, tool use, compaction, retries, waiting, unread, failure, stopped and unknown connection states remain visible. A retained runtime shows a green circle-check icon and **Idle** label with a tooltip explaining `/quit`; threads without a workspace runtime omit the inactive label. When a search match in the first question needs context, the card shows a nearby excerpt; clearing search removes it. Temporary threads retain their unsaved/disconnection notice.
 
@@ -157,7 +163,7 @@ Open **Files → Project files** to browse the selected project's directory tree
 
 On desktop, **Expand reader** provides more space and shows the tree beside the preview when the panel is wide enough. Narrow screens switch between browsing and reading. The hidden-file toggle retains private-path restrictions. Folder expansion and a bounded set of reading positions stay in this page only.
 
-**Files this turn** retains successful edit/write tool records. Diffs and recorded write contents describe those operations. **Current file** reads the current disk file only when requested; use Refresh to update its snapshot. See [file browsing and viewing](../FILE_VIEWER.md) for preview limits and search scope.
+**Files this turn** retains successful edit/write tool records. Diffs and recorded write contents describe those operations. **Current file** reads the current disk file only when requested; use Refresh to update its snapshot. When the backend advertises file previews, images support fit/actual-size viewing and original-byte downloads. Self-contained HTML starts as a static isolated preview; enable interaction only for trusted pages. Scripts cannot access workbench storage or the parent DOM, but iframe navigation may still contact the network. **Deliverables** contains immutable files explicitly published with the managed `deliver_files` tool. Links work within the current native branch and inherited forks without changing projects; ordinary external paths are not automatically authorized. See [file browsing and viewing](../FILE_VIEWER.md) for limits, source distinctions and search scope.
 
 Side chat freezes the main task's effective context when created. With `sideChatTools` enabled, it can read and search current files. Explicit modification requests can use edit, write and command tools after an approval inside side chat; the grant lasts for that reply and is reset afterwards. Main and side agents share files: avoid concurrent edits to the same files, and remember that stopping does not undo completed changes. Tool activity is shown in side chat; selected text can still be explicitly appended to the main draft. This page can retain a limited number of side chats across persistent threads. Refresh, closing the page and signing out end them.
 

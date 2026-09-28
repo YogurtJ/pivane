@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { openInspector: openWorkbenchInspector } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const baseUrl = process.env.PI_COMPACTION_TEST_URL || 'http://127.0.0.1:3102';
 const cwd = '/srv/pi-compaction-fixture';
@@ -81,7 +82,7 @@ async function run(browser, viewport) {
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.querySelector('#pi-context-percent').textContent === '47%');
     const openInspector = async () => {
-        if (!(await page.locator('#pi-compact-button').isVisible())) await page.locator('#pi-toggle-inspector').click();
+        if (!(await page.locator('#pi-compact-button').isVisible())) await openWorkbenchInspector(page, 'details');
     };
     const closeInspector = async () => {
         if (await page.locator('#pi-close-inspector').isVisible()) await page.locator('#pi-close-inspector').click();

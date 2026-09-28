@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { selectMessageView } = require('./pi-mobile-view-helper.cjs');
+const { selectMessageView, openInspector } = require('./pi-mobile-view-helper.cjs');
 const http = require('node:http');
 const path = require('node:path');
 const { once } = require('node:events');
@@ -80,11 +80,14 @@ async function check(browser, base, width, language) {
     publish(makePlan('milestone'));
     await page.waitForFunction(() => document.querySelector('#pi-task-progress .pi-progress-count').textContent === '1/3');
     assert.equal(await card.evaluate(node => node.open), false, 'an update respects manual collapse');
+    await card.locator('summary').click();
+    assert.equal(await card.evaluate(node => node.open), true);
     running = false; holdRead = true; emit({ type: 'agent_settled' });
     let timer; await Promise.race([held, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Reconciliation not requested')), 10000); })]); clearTimeout(timer);
     publish(makePlan('finished', true)); releaseRead();
     await page.waitForFunction(() => document.querySelector('#pi-task-progress .pi-progress-count').textContent === '3/3');
-    assert.equal(await card.evaluate(node => node.open), false, 'completed card collapses');
+    assert.equal(await card.evaluate(node => node.open), true, 'completion preserves explicit expansion');
+    await card.locator('summary').click();
     assert.equal(await page.locator('#pi-input').inputValue(), 'Keep my draft');
     assert.equal(await page.locator('#pi-attachments').isVisible(), true);
     publish(makePlan('branch-restored'));
@@ -100,6 +103,15 @@ async function check(browser, base, width, language) {
     emit({ type: 'gateway_context_changed' });
     emit({ type: 'tool_execution_end', toolCallId: 'failed-plan', toolName: 'update_plan', isError: true, result: { content: [{ type: 'text', text: 'Invalid plan' }] } });
     assert.equal(await card.locator('.pi-progress-count').textContent(), '1/3', 'failed call and idle state do not complete progress');
+    await openInspector(page, 'tasks');
+    await page.waitForFunction(() => document.querySelector('#pi-task-dock > #pi-task-progress'));
+    assert.equal(await card.evaluate(node => node.open), true);
+    assert.equal(await card.locator('.pi-progress-body').evaluate(node => getComputedStyle(node).position), 'static');
+    await page.locator('#pi-close-inspector').click();
+    await page.waitForFunction(() => document.querySelector('#pi-composer-chips > #pi-task-progress'));
+    assert.equal(await card.evaluate(node => node.open), true, 'task dock preserves the chip expansion from before opening the tool');
+    assert.equal(await page.locator('#pi-input').inputValue(), 'Keep my draft');
+    assert.equal(await page.locator('#pi-attachments').isVisible(), true);
     await selectMessageView(page, 'full');
     assert.equal(await page.locator('[data-tool-id="test-tool"]').getAttribute('data-state'), 'done');
     assert.equal(await card.isVisible(), true);

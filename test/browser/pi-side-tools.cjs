@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { openInspector } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.PI_SIDE_TEST_URL || 'http://127.0.0.1:3126';
 async function run(browser, width, language) {
@@ -33,7 +34,7 @@ async function run(browser, width, language) {
     }));
     await page.goto(base, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => !document.querySelector('#pi-input').disabled);
-    await page.locator('#pi-toggle-side-chat').click();
+    await openInspector(page, 'side');
     await page.waitForFunction(() => !document.querySelector('#pi-side-input').disabled);
     const english = language.startsWith('en');
     assert.equal(await page.locator('#pi-side-tool-mode').textContent(), english ? 'Can read' : '可读取');

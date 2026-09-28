@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { openInspector } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const baseUrl = process.env.PI_WORKFLOWS_TEST_URL || 'http://127.0.0.1:3101';
 const cwd = '/srv/workflow-browser-fixture';
@@ -120,8 +121,7 @@ async function run(browser, viewport, historyEnabled = true) {
             await page.getByRole('menuitem', { name: '历史与记录', exact: true }).click();
             return;
         }
-        if (!await page.locator('#pi-close-inspector').isVisible()) await page.locator('#pi-toggle-inspector').click();
-        await page.locator('#pi-history-tab').click();
+        await openInspector(page, 'history');
         await page.locator('#pi-history-more').click();
     };
     const historyAction = label => page.getByRole('menuitem', { name: label, exact: true }).click();
@@ -130,7 +130,7 @@ async function run(browser, viewport, historyEnabled = true) {
         assert.equal(await page.evaluate(() => document.body.scrollWidth > document.body.clientWidth), false);
         assert.equal(await page.locator('#pi-workflow-dialog').evaluate(node => node.scrollWidth > node.clientWidth + 1), false);
     };
-    await page.locator('#pi-toggle-inspector').click();
+    await openInspector(page, 'details');
     assert.equal(await page.locator('#pi-runtime-settings').getAttribute('open'), null);
     assert.equal(await page.locator('#pi-session-information').getAttribute('open'), null);
     assert.equal(await page.locator('#pi-inspector-details button').filter({ hasText: /复制为新线程|分叉|待发送|重命名|删除/ }).count(), 0);
@@ -140,7 +140,7 @@ async function run(browser, viewport, historyEnabled = true) {
         await page.screenshot({ path: `/tmp/pi-inspector-slim-${viewport.width}-${theme}.png` });
         assert.equal(await page.locator('#pi-inspector-details').evaluate(n => n.scrollWidth > n.clientWidth), false);
         if (!historyEnabled) continue;
-        await page.locator('#pi-history-tab').click();
+        await openInspector(page, 'history');
         const before = await page.locator('#pi-history-browse').boundingBox();
         await page.locator('#pi-history-more').click();
         assert.equal(await page.getByRole('menuitem').count(), 2);
@@ -154,7 +154,7 @@ async function run(browser, viewport, historyEnabled = true) {
         await page.locator('#pi-history-query').click();
         assert.equal(await page.locator('#pi-history-more').getAttribute('aria-expanded'), 'false');
         await page.locator('#pi-history-more').click();
-        await page.locator('#pi-details-tab').click();
+        await openInspector(page, 'details');
         assert.equal(await page.locator('.pi-thread-menu:not(.hidden)').count(), 0);
     }
     await closeInspector();

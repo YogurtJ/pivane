@@ -122,14 +122,17 @@ document.addEventListener('DOMContentLoaded', () => {
     window.PiAgentProfilesUI = agentProfiles;
 
     let settingsViewEpoch = 0;
+    let settingsOpen = false;
     let activeProfileMetadata = null;
     const extensionTabs = new Set(['extensions', 'installed']);
     function openSettings(tab = state.activeTab, metadata = {}) {
+        settingsOpen = true;
         elements.dialog.classList.remove('hidden');
         switchTab(tab, metadata);
     }
 
     function closeSettings() {
+        settingsOpen = false;
         settingsViewEpoch++;
         window.WorkspaceAccess?.closeSettings();
         nativeSettings.close();
@@ -796,7 +799,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const metadata = { profileId, section, authoringSession: authoringSession ? { id: authoringSession, cwd: authoringCwd } : undefined };
             if (resourceType) metadata.resourceType = resourceType;
             openSettings(settingsTab, metadata);
-        } else if (!elements.dialog.classList.contains('hidden')) closeSettings();
+        } else if (settingsOpen || !elements.dialog.classList.contains('hidden')) closeSettings();
     });
     const initialRoute = window.PiWorkspaceRoute?.current();
     if (['profiles', 'extensions', 'settings'].includes(initialRoute?.tab)) {

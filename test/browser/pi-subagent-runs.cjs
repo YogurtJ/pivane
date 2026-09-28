@@ -156,9 +156,15 @@ async function check(browser, base, width, language) {
     assert.ok(await page.locator('#pi-input').evaluate(node => node.getBoundingClientRect().bottom <= innerHeight));
     await page.screenshot({ path: `/tmp/pivane-subagent-runs-${width}-${language}.png` });
 
-    // Finished run: continue offered, retention badge gone, manual collapse respected.
+    // Attention must remain visible alongside active work, including narrow layouts.
+    emit({ type: 'gateway_controls', controls: controls({ ...running, runs: [...running.runs, { ...finished.runs[0], id: 'attention-run' }] }, true) });
+    await page.waitForFunction(() => document.querySelector('#pi-subagent-runs').dataset.state === 'attention');
+    assert.match(await panel.locator('.sa-runs-count').textContent(), en ? /1 running.*1 need attention/ : /1 个运行中.*1 个需处理/);
+    assert.ok(await panel.locator('.sa-runs-count').evaluate(node => node.scrollWidth <= node.clientWidth + 1));
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    // Paused run: continue offered, retention badge gone, manual collapse respected.
     emit({ type: 'gateway_controls', controls: controls(finished, false) });
-    await page.waitForFunction(label => document.querySelector('#pi-subagent-runs .sa-runs-count').textContent === label, en ? '1 finished' : '1 个已结束');
+    await page.waitForFunction(label => document.querySelector('#pi-subagent-runs .sa-runs-count').textContent === label, en ? '1 need attention' : '1 个需处理');
     assert.equal(await panel.locator('.sa-runs-keep').isVisible(), false);
     await panel.getByRole('button', { name: en ? 'Continue' : '继续' }).click();
     await dialog.waitFor();

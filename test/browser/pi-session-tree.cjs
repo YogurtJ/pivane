@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { openInspector } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const { searchHistory, previewHistory, setHistoryBookmark } = require('../../server/pi-history-model');
 const { sessionTree, checkNavigation } = require('../../server/pi-session-tree');
@@ -77,7 +78,7 @@ async function run(browser, viewport, SessionManager) {
     function inputWithId(c) { const { id, type, ...input } = c; Object.defineProperties(input, { id: { value: id }, type: { value: type } }); return input; }
     await page.goto(base, { waitUntil: 'domcontentloaded' }); await page.waitForFunction(() => !document.querySelector('#pi-input').disabled);
     await page.locator('#pi-input').fill('保留已有草稿');
-    await page.locator('#pi-toggle-inspector').click(); await page.locator('#pi-history-tab').click();
+    await openInspector(page, 'history');
     await page.waitForFunction(() => document.querySelectorAll('[data-history-id]').length > 0);
     assert.equal(await page.locator('#pi-history-filter').inputValue(), 'conversation');
     assert.equal(await page.locator(`[data-history-id="${pure}"]`).count(), 0);
@@ -149,7 +150,9 @@ async function run(browser, viewport, SessionManager) {
     await page.locator('#pi-tree-options summary').click(); await page.locator('#pi-tree-summarize').check(); await page.locator('#pi-tree-focus').fill('保留限制');
     hold = true; page.once('dialog', d => d.accept()); await page.locator('#pi-tree-continue').click(); await page.locator('#pi-tree-cancel').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#pi-send-button').isDisabled(), true);
+    await page.locator('#pi-close-inspector').click();
     await page.locator('#pi-input').fill('摘要期间的新草稿');
+    await openInspector(page, 'history');
     const heldLeaf = sm.getLeafId(); await page.locator('#pi-tree-cancel').click(); await page.waitForFunction(() => document.querySelector('#pi-tree-progress-text').textContent.includes('已取消'));
     assert.equal(sm.getLeafId(), heldLeaf); assert.equal(await page.locator('#pi-input').inputValue(), '摘要期间的新草稿');
     assert.equal(commands.filter(c => c.type === 'navigate_history').at(-1).customInstructions, '保留限制');
@@ -175,7 +178,7 @@ async function run(browser, viewport, SessionManager) {
     await page.locator('[data-filter="all"]').click();
     await page.locator('[data-session-id="b"] .pi-session-main').click(); await page.waitForFunction(() => document.querySelector('#pi-meta-id').textContent === 'b');
     try { respond(delayed.ws, delayed.c, previewHistory(delayed.manager, delayed.c)); } catch {}
-    await page.locator('#pi-toggle-inspector').click(); await page.locator('#pi-history-tab').click();
+    await openInspector(page, 'history');
     assert.equal(await page.locator('#pi-history-preview').isVisible(), false);
     await page.locator('#pi-history-tree-mode').click(); await page.waitForFunction(() => document.querySelector('#pi-tree-rows').textContent.includes('另一个线程'));
     assert.doesNotMatch(await page.locator('#pi-tree-rows').textContent(), /旧路线/);

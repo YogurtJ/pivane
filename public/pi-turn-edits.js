@@ -152,7 +152,7 @@
         returnFocus() {
             const card = [...this.transcript.querySelectorAll('.pi-turn-edits')].find(node => node.dataset.editRound === this.returnTarget?.key);
             const button = card && [...card.querySelectorAll('.pi-edit-file')].find(node => node.dataset.editPath === this.returnTarget?.path);
-            (button || $('pi-toggle-inspector')).focus({ preventScroll: true });
+            (button || $(innerWidth <= 900 ? 'pi-tools-toggle' : 'pi-tool-changes'))?.focus({ preventScroll: true });
         }
         renderPane() {
             if (!this.active) return;

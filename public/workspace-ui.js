@@ -189,7 +189,7 @@
         }, { passive: false });
         document.addEventListener('gestureend', () => { blockPageGesture = false; });
 
-        function setSidebarCollapsed(collapsed) {
+        function setSidebarCollapsed(collapsed, persist = true) {
             app?.classList.toggle('sidebar-collapsed', collapsed);
             for (const button of [sidebarToggle, brandToggle]) {
                 if (!button) continue;
@@ -197,7 +197,7 @@
                 button.title = collapsed ? translateUi("展开导航") : translateUi("折叠导航");
                 button.setAttribute('aria-label', button.title);
             }
-            localStorage.setItem(SIDEBAR_KEY, String(collapsed));
+            if (persist) localStorage.setItem(SIDEBAR_KEY, String(collapsed));
             window.setTimeout(() => window.dispatchEvent(new Event('resize')), 180);
         }
 
@@ -227,7 +227,7 @@
             themeToggle?.setAttribute('aria-expanded', 'false');
         }
 
-        setSidebarCollapsed(localStorage.getItem(SIDEBAR_KEY) === 'true');
+        setSidebarCollapsed(localStorage.getItem(SIDEBAR_KEY) !== 'false', false);
 
         for (const button of [sidebarToggle, brandToggle]) {
             button?.addEventListener('click', () => {
@@ -282,8 +282,12 @@
                 const containerWidth = container.getBoundingClientRect().width;
                 if (container.classList.contains('pi-workbench') && containerWidth) {
                     const occupied = [...container.children].filter(node => node !== target && !node.classList.contains('pi-transcript-shell')
+                        && !(target.id === 'pi-session-pane' && ['pi-inspector', 'pi-inspector-split'].includes(node.id))
                         && getComputedStyle(node).position !== 'absolute').reduce((total, node) => total + node.getBoundingClientRect().width, 0);
-                    return Math.max(minSize, Math.min(configuredMax, containerWidth - occupied - 360));
+                    // The workbench owns docking. A wide inspector becomes an overlay
+                    // rather than squeezing the conversation to a narrow column.
+                    if (target.id === 'pi-inspector') return Math.max(minSize, Math.min(configuredMax, containerWidth - 80));
+                    return Math.max(minSize, Math.min(configuredMax, containerWidth - occupied - 600));
                 }
                 if (containerWidth < minSize + 320) return configuredMax;
                 return Math.max(minSize, Math.min(configuredMax, containerWidth - 320));
@@ -376,8 +380,8 @@
             workbench.appendChild(scrim);
 
             const syncScrim = () => {
-                const open = mobileMedia.matches
-                    && (sessionPane.classList.contains('open') || inspector.classList.contains('open'));
+                const open = mobileMedia.matches && sessionPane.classList.contains('open')
+                    || (mobileMedia.matches || workbench.classList.contains('pi-inspector-overlay')) && inspector.classList.contains('open');
                 scrim.classList.toggle('hidden', !open);
             };
             const observer = new MutationObserver(syncScrim);

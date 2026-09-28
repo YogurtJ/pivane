@@ -417,7 +417,7 @@
                 this.content.appendChild(article);
                 if (message === live) this.liveNode = article;
             }
-            if (!this.content.children.length) { const empty = document.createElement('p'); empty.className = 'pi-side-empty'; empty.textContent = translateUi("暂无侧聊消息"); this.content.appendChild(empty); }
+            if (!this.content.children.length) { const empty = document.createElement('p'); empty.className = 'pi-side-empty'; empty.textContent = translateUi('在这里旁路讨论，不打断主任务。侧聊是临时的，有用内容可以追加到主草稿。'); this.content.appendChild(empty); }
             this.scroll.restore(position);
         }
         async synchronize() {
@@ -465,6 +465,7 @@
             $('pi-toggle-side-chat').addEventListener('click', () => this.run(() => this.open()));
             $('pi-side-tab').addEventListener('click', () => this.run(() => this.open()));
             $('pi-details-tab').addEventListener('click', () => this.showPane('details'));
+            $('pi-tasks-tab')?.addEventListener('click', () => this.showPane('tasks'));
             $('pi-inspector-tabs').addEventListener('keydown', event => {
                 if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || event.target.getAttribute('role') !== 'tab') return;
                 event.preventDefault();
@@ -565,7 +566,9 @@
             this.current.root.hidden = !side;
             $('pi-changes').hidden = mode !== 'changes';
             $('pi-history').hidden = mode !== 'history';
-            for (const [id, selected] of [['pi-details-tab', mode === 'details'], ['pi-side-tab', side], ['pi-changes-tab', mode === 'changes'], ['pi-history-tab', mode === 'history']]) {
+            if ($('pi-inspector-tasks')) $('pi-inspector-tasks').hidden = mode !== 'tasks';
+            for (const [id, selected] of [['pi-details-tab', mode === 'details'], ['pi-tasks-tab', mode === 'tasks'], ['pi-side-tab', side], ['pi-changes-tab', mode === 'changes'], ['pi-history-tab', mode === 'history']]) {
+                if (!$(id)) continue;
                 $(id).setAttribute('aria-selected', String(selected)); $(id).tabIndex = selected ? 0 : -1;
             }
             const panel = $('pi-inspector');

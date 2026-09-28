@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { openInspector } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const baseUrl = process.env.PI_COMPLETION_TEST_URL || 'http://127.0.0.1:3001';
 const model = {provider:'fixture',id:'fixture',name:'Fixture',input:['text','image'],contextWindow:32000};
@@ -81,7 +82,7 @@ async function run(browser, viewport) {
  await page.getByRole('button',{name:/Found thread/}).click();await page.locator('#pi-history-text').getByText('MATCHED_BODY',{exact:true}).waitFor();
  assert.ok((await page.locator('#pi-input').inputValue()).includes('MY_DRAFT'));
  assert.equal(requests.filter(r=>r.type==='prompt'||r.type==='navigate_history').length,0);
- await page.locator('#pi-details-tab').click();await page.locator('#pi-loaded-resources > summary').click();
+ await openInspector(page, 'details');await page.locator('#pi-loaded-resources > summary').click();
  await page.locator('#pi-runtime-config-check').click();await page.waitForFunction(()=>document.getElementById('pi-runtime-config-status').dataset.state==='changed');
  page.once('dialog',d=>d.accept());await page.locator('#pi-runtime-restart').click();await page.locator('#pi-runtime-config-check').click();await page.waitForFunction(()=>document.getElementById('pi-runtime-config-status').dataset.state==='current');
  for(const theme of ['daylight','mint','dark']) {

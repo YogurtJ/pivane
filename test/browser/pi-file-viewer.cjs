@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { openInspector } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -87,6 +88,9 @@ async function run(browser, viewport) {
     await page.locator('#pi-file-body h1').waitFor();
     assert.equal(await page.locator('#pi-file-body h1').textContent(), '写入报告');
     assert.match(await page.locator('#pi-file-status').textContent(), /本次成功写入/);
+    await page.locator('#pi-close-inspector').click(); await openInspector(page, 'changes');
+    assert.equal(await page.locator('#pi-file-body h1').textContent(), '写入报告', 'Files reopens the historical write rather than project browsing');
+    assert.equal(await page.locator('#pi-file-source').inputValue(), 'write:w2');
     assert.equal(await page.locator('#pi-file-diff-tab').isDisabled(), true);
     assert.deepEqual(reads, []); assert.equal(await page.locator('#pi-file-body script, #pi-file-body img').count(), 0);
     assert.equal(await page.evaluate(() => window.badFile), undefined); assert.deepEqual(remoteImages, []);

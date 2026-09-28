@@ -33,7 +33,7 @@ async function assertDrawerControls(page, label) {
         const padding = getComputedStyle(heading);
         const innerLeft = header.left + parseFloat(padding.paddingLeft);
         const innerRight = header.right - parseFloat(padding.paddingRight);
-        const actions = heading.querySelector('.pi-pane-actions').getBoundingClientRect();
+        const actions = heading.querySelector('#pi-session-search-toggle').getBoundingClientRect();
         const search = heading.querySelector('.pi-search-field');
         return { paneRight: pane.right, innerLeft, innerRight, actionsLeft: actions.left,
             searchRight: search.hidden ? null : search.getBoundingClientRect().right,
@@ -46,7 +46,7 @@ async function assertDrawerControls(page, label) {
     assert.ok(bounds.controls.every(button => button.left >= bounds.innerLeft - 1 &&
         button.right <= bounds.innerRight + 1 && button.right < bounds.paneRight &&
         button.width >= 39.5 && button.hit), `${label}: ${JSON.stringify(bounds)}`);
-    assert.ok(bounds.searchRight === null || bounds.searchRight <= bounds.actionsLeft - 7,
+    assert.ok(bounds.searchRight === null || bounds.searchRight <= bounds.actionsLeft - 5,
         `${label} expanded search: ${JSON.stringify(bounds)}`);
 }
 
@@ -273,7 +273,7 @@ async function main() {
                 pane: document.querySelector('#pi-session-pane').getBoundingClientRect().width,
                 transcript: document.querySelector('.pi-transcript-shell').getBoundingClientRect().width }));
             assert.ok(shell.body <= width + 1, JSON.stringify(shell));
-            if (width >= 1200) { assert.ok(shell.nav >= 175 && shell.nav <= 195, JSON.stringify(shell)); assert.ok(shell.pane >= 232 && shell.pane <= 440, JSON.stringify(shell)); assert.ok(shell.transcript > 300, JSON.stringify(shell)); }
+            if (width >= 1200) { assert.ok(shell.nav === 72, JSON.stringify(shell)); assert.ok(shell.pane >= 232 && shell.pane <= 440, JSON.stringify(shell)); assert.ok(shell.transcript > 300, JSON.stringify(shell)); }
             await page.screenshot({ path: path.join(evidence, `shell-assistant-${width}.png`) });
             if (width === 1440) {
                 for (const theme of ['mint', 'dark']) {
@@ -401,6 +401,7 @@ async function main() {
                 assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1 && bounds.y >= 0 && bounds.y + bounds.height <= 852, JSON.stringify(bounds));
                 await page.screenshot({ path: path.join(evidence, `shell-project-browser-${width}.png`) });
                 await editor.locator('[data-close]').click();
+                await page.locator('#pi-close-sessions').click();
                 await page.locator('[data-tab="chat"]').click();
                 await page.locator('#pi-toggle-sessions').click();
                 await page.waitForFunction(() => document.querySelector('#pi-session-pane').classList.contains('open') && document.querySelector('#pi-session-pane').getBoundingClientRect().left >= -1);

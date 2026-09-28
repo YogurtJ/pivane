@@ -40,7 +40,7 @@
         }
         reset() {
             this.epoch++; this.value = null; this.snapshot = null; this.background = null; this.busy = false;
-            this.root.hidden = true; this.root.open = false; this.list.replaceChildren(); this.footer.replaceChildren();
+            this.root.hidden = true; this.root.open = false; delete this.root.dataset.wasOpen; this.list.replaceChildren(); this.footer.replaceChildren();
             if (this.dialog.open) this.dialog.close();
         }
         hasActive() { return Boolean(this.snapshot?.runs.some(run => ACTIVE.has(run.state))); }
@@ -58,10 +58,11 @@
             if (this.root.hidden) return;
             const active = runs.filter(run => ACTIVE.has(run.state)).length;
             const attention = runs.filter(run => STATES[run.state]?.[2] === 'attention' || STATES[run.state]?.[2] === 'error').length;
-            this.root.dataset.state = active ? 'active' : attention ? 'attention' : 'done';
+            this.root.dataset.state = attention ? 'attention' : active ? 'active' : 'done';
             this.root.querySelector('summary strong').textContent = t('子 Agent');
-            this.root.querySelector('.sa-runs-count').textContent = active ? t('{0} 个运行中', active)
-                : runs.length ? t('{0} 个已结束', runs.length) : t('后台工作进行中');
+            this.root.querySelector('.sa-runs-count').textContent = attention
+                ? [active ? t('{0} 个运行中', active) : '', t('{0} 个需处理', attention)].filter(Boolean).join(' · ')
+                : active ? t('{0} 个运行中', active) : runs.length ? t('{0} 个已结束', runs.length) : t('后台工作进行中');
             const keepBadge = this.root.querySelector('.sa-runs-keep');
             keepBadge.hidden = !keep; keepBadge.querySelector('span').textContent = t('会话保持中');
             keepBadge.title = t('后台子 Agent 未结束，Pivane 会保留此会话，以便结果返回后主 Agent 自动继续。');

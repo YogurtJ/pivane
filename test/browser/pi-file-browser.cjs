@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { openInspector } = require('./pi-mobile-view-helper.cjs');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const express = require('express'), http = require('node:http'), path = require('node:path');
 const { once } = require('node:events');
@@ -54,7 +55,7 @@ async function run(browser, base, width, language) {
         ws.send(JSON.stringify({ type: 'response', id: cmd.id, command: cmd.type, success: true, data }));
     }));
     await page.goto(base, { waitUntil: 'domcontentloaded' }); await page.locator('[data-session-id="files"]').waitFor({ state: 'attached' });
-    await page.locator('#pi-toggle-inspector').click(); await page.locator('#pi-changes-tab').click();
+    await openInspector(page, 'changes');
     const row = relative => page.locator('.pi-file-tree-row').and(page.locator(`[data-path="${relative}"]`));
     await row('README.md').waitFor();
     assert.equal(requests.filter(r => r.startsWith('/api/pi/files/content')).length, 0, 'browsing does not read file contents');
@@ -109,7 +110,7 @@ async function run(browser, base, width, language) {
     await pendingSearch.fulfill({ json: { entries: [file('LATE_OTHER_THREAD.txt')] } }).catch(() => {});
     assert.equal(await page.locator('#pi-file-body').textContent(), '');
     assert.equal(await page.locator('[data-path="LATE_OTHER_THREAD.txt"]').count(), 0);
-    await page.locator('#pi-toggle-inspector').click(); await page.locator('#pi-changes-tab').click(); await row('README.md').waitFor();
+    await openInspector(page, 'changes'); await row('README.md').waitFor();
     const listsBefore = requests.filter(r => r.startsWith('/api/pi/files/list?')).length;
     // Exercise a coordinator context change while the file panel remains open.
     await page.locator('[data-session-id="files"] .pi-session-main').evaluate(n => n.click());
@@ -117,7 +118,7 @@ async function run(browser, base, width, language) {
     await row('README.md').waitFor();
     assert.ok(requests.filter(r => r.startsWith('/api/pi/files/list?')).length > listsBefore);
     legacy = true; await page.reload(); await page.locator('#pi-input:not([disabled])').waitFor();
-    await page.locator('#pi-toggle-inspector').click(); await page.locator('#pi-changes-tab').click();
+    await openInspector(page, 'changes');
     assert.match(await page.locator('.pi-explorer-status').textContent(), language.startsWith('zh') ? /尚未启用/ : /not available/);
     assert.deepEqual(errors, []); assert.deepEqual(writes, []); assert.ok(!commands.includes('prompt'));
     console.log(`PASS file browser ${width} ${language}`); await context.close();

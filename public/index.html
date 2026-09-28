@@ -198,7 +198,7 @@
                     </div>
                 </aside>
 
-                <div class="split-handle" data-split-handle data-split-key="agent-sessions" data-split-target="#pi-session-pane" data-default="278" data-min="232" data-max="440" role="separator" tabindex="0" aria-label="调整项目线程栏宽度" aria-orientation="vertical" data-i18n-aria-label="s1346"></div>
+                <div class="split-handle" data-split-handle data-split-key="agent-sessions" data-split-target="#pi-session-pane" data-default="272" data-min="232" data-max="440" role="separator" tabindex="0" aria-label="调整项目线程栏宽度" aria-orientation="vertical" data-i18n-aria-label="s1346"></div>
 
                 <section class="pi-transcript-shell">
                     <div id="pi-connection-banner" class="pi-connection-banner">
@@ -298,12 +298,13 @@
                     </div>
                 </section>
 
-                <div id="pi-inspector-split" class="split-handle pi-inspector-split" data-split-handle data-split-key="agent-inspector" data-split-target="#pi-inspector" data-split-edge="right" data-default="372" data-min="280" data-max="800" role="separator" tabindex="0" aria-label="调整详情、侧聊和变更宽度" aria-controls="pi-inspector" aria-orientation="vertical" title="拖动调整右栏宽度，双击恢复默认" data-i18n-aria-label="s1374" data-i18n-title="s1375"></div>
+                <div id="pi-inspector-split" class="split-handle pi-inspector-split" data-split-handle data-split-key="agent-inspector" data-split-target="#pi-inspector" data-split-edge="right" data-default="336" data-min="280" data-max="800" role="separator" tabindex="0" aria-label="调整详情、侧聊和变更宽度" aria-controls="pi-inspector" aria-orientation="vertical" title="拖动调整右栏宽度，双击恢复默认" data-i18n-aria-label="s1374" data-i18n-title="s1375"></div>
                 <aside id="pi-inspector" class="pi-inspector">
                     <div class="pi-pane-heading inspector-heading">
                         <div>
                             <div id="pi-inspector-tabs" class="pi-inspector-tabs" role="tablist" aria-label="右侧面板" data-i18n-aria-label="s1376">
                                 <button id="pi-details-tab" type="button" role="tab" aria-selected="true" aria-controls="pi-inspector-details"><!--i18n:s1336-->会话详情</button>
+                                <button id="pi-tasks-tab" type="button" role="tab" aria-selected="false" aria-controls="pi-inspector-tasks" tabindex="-1"></button>
                                 <button id="pi-side-tab" type="button" role="tab" aria-selected="false" aria-controls="pi-side-chat" tabindex="-1" hidden><!--i18n:s1097-->侧聊</button>
                                 <button id="pi-history-tab" type="button" role="tab" aria-selected="false" aria-controls="pi-history" tabindex="-1" hidden><!--i18n:s1377-->历史</button>
                                 <button id="pi-changes-tab" type="button" role="tab" aria-selected="false" aria-controls="pi-changes" tabindex="-1"><!--i18n:s1378-->文件</button>
@@ -313,6 +314,7 @@
                             <i class="fa-solid fa-xmark"></i>
                         </button>
                     </div>
+                    <section id="pi-inspector-tasks" class="pi-inspector-tasks" role="tabpanel" aria-labelledby="pi-tasks-tab" hidden><div id="pi-task-dock"></div><p id="pi-task-dock-empty" class="pi-native-help"></p></section>
                     <div id="pi-inspector-details" role="tabpanel" aria-labelledby="pi-details-tab">
                     <div class="pi-inspector-section">
                         <div class="pi-runtime-state">
@@ -939,6 +941,8 @@
     <script src="pi-task-results.js"></script>
     <script src="pi-agent-cards.js"></script>
     <script src="pi-model-picker.js?v=favorites-sync-2"></script>
+    <link rel="stylesheet" href="pi-workbench.css">
+    <script src="pi-workbench.js"></script>
     <script src="pi-chat.js?v=subagent-runtime-1"></script>
 </body>
 </html>

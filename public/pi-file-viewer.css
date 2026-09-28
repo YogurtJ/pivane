@@ -39,6 +39,20 @@
 .pi-file-markdown pre, .pi-file-markdown table { display: block; max-width: 100%; overflow: auto; }
 .pi-file-large-note { margin: 10px 12px 0; font-size: .72rem; color: var(--text-muted); }
 .pi-edit-count { white-space: normal; max-width: 45%; text-align: right; }
+#pi-files-deliveries[hidden], #pi-deliveries-list[hidden] { display: none !important; }
+.pi-deliveries-list { flex: 1; min-height: 0; min-width: 0; overflow: auto; padding: 12px; }
+.pi-deliveries-heading { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: .78rem; }
+.pi-deliveries-heading p { flex: 1; }
+.pi-delivery-card { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 6px 10px; text-align: left; width: 100%; margin: 8px 0; padding: 14px; color: var(--text-main); background: var(--surface-1); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.pi-delivery-card strong { font-size: .88rem; overflow-wrap: anywhere; }
+.pi-delivery-card span { grid-column: 2; color: var(--text-muted); font-size: .75rem; overflow-wrap: anywhere; }
+.pi-file-image { min-height: 100%; display: grid; place-items: center; padding: 16px; }
+.pi-file-image img { display: block; max-width: 100%; height: auto; object-fit: contain; }
+.pi-file-image.actual-size { width: max-content; min-width: 100%; }
+.pi-file-image.actual-size img { max-width: none; }
+.pi-file-html { display: block; width: 100%; height: calc(100% - 72px); min-height: 320px; border: 0; background: white; }
+.pi-file-preview-warning { margin: 0; padding: 10px 12px; min-height: 52px; font-size: .75rem; line-height: 1.6; color: var(--text-muted); background: var(--surface-2); }
+.pi-file-actions { flex-wrap: wrap; }
 @media (max-width: 900px) {
     #pi-file-source { font-size: 16px; height: 36px; }
     .pi-file-tabs button, .pi-file-actions button, #pi-changes-file-list > summary { min-height: 36px; }

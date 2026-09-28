@@ -19,7 +19,22 @@
 - 回复中的常规相对/绝对项目文件链接可直接在同一右栏打开，支持 `path:行号`、`path:行号:列号` 和 `path#L行号`，仅定位到行。空格、中文和 URL 编码路径支持；外部 HTTP(S)、mailto、页面锚点及媒体下载等应用链接保留原行为。主回复与侧聊回复共用点击入口。
 - Markdown 默认排版预览，可切换源码；带行号链接默认显示源码并定位。预览中的相对文件链接以所查看文件的目录为基准。代码/文本提供行号、常见语言高亮、换行开关和复制全文；复制使用完整原文字串，不复制行号或高亮 HTML。空文件明确显示 0 字符，禁用无内容的复制。
 - 右侧页签名为“文件”，项目浏览与本轮记录共用查看器。从回复卡片打开时定位到原记录；从目录树打开时查看当前文件。原轮次／文件选择器保留为浮层，选择后收起。
-- 桌面支持“展开阅读”，文件面板至少 760px 宽且已打开文件时，目录树可在预览右侧并排显示；较窄面板和手机切换浏览／阅读。“浏览项目文件”、面包屑目录和“在项目中定位”均可返回树。图片、PDF 等非文本仍显示现有不支持提示，没有新增编辑或下载接口。
+- 桌面支持“展开阅读”，文件面板至少 760px 宽且已打开文件时，目录树可在预览右侧并排显示；较窄面板和手机切换浏览／阅读。“浏览项目文件”、面包屑目录和“在项目中定位”均可返回树。后端提供 `filePreviews` 时支持图片、隔离 HTML 和下载；PDF 等未支持预览的类型显示下载提示，不提供编辑接口。
+
+## 交付物、图片与 HTML
+
+当前源码新增以下能力，部署后以 `/api/pi/status.filePreviews` 和 `deliverables` 为准；旧后端保持原文本功能。
+
+- “文件”包含项目文件、本轮文件和交付物。项目目录看当前磁盘；历史 write 看当时输入；交付物看明确保存的只读成果版本。交付来源、时间和 SHA256 在文件信息中显示，不把交付快照称为当前磁盘文件。
+- 新的 `deliver_files` 工具接受稳定 `requestId`、标题和 1–20 个文件，将明确的任务成果复制到身份目录的私有 `pivane-deliverables` 中，返回 `#pi-delivery=<id>/<index>` 链接。单文件最多 16 MiB、每组最多 64 MiB；不改原件，不调用模型、不生成文件内容、不自动清理数据。该目录随身份目录备份；会话导出的 JSONL/HTML 不包含二进制成果文件，跨实例迁移需同时备份身份目录。
+- 工具默认只接受当前项目文件。项目外的已授权任务成果必须显式指定 `sourceRoot`，它仍须通过允许项目根、私密路径和描述符检查。不得自动从 Markdown 路径推断授权；普通文本链接不会开放整个维护目录或扩大当前项目。
+- 交付记录通过当前唯一受管 worker 写入原生 `pivane-deliverable` custom entry，只保存资源 ID 和清单修订。读取以当前完整分支为准，压缩不丢引用；分叉只继承分叉点之前的引用，其他分支和其他项目的引用不能读取。不启动关闭的线程 worker，不维护第二套聊天历史。
+- 同一 session/requestId 重复调用返回原快照，不追随原件更新；不同参数复用 ID 拒绝。快照部分写入或结果不确定时不覆盖、不自动重放。需要新版本时使用新的 requestId。实例中的既有 worker 需在安全空闲时重新加载受管扩展，才能获得新工具。
+- 从回复点击交付链接可直接打开；已登记的同分支来源路径也能映射到交付快照，兼容旧路径链接。尚未登记的项目外文件仍拒绝并给出处理提示，不静默切项目。目录树始终读取磁盘，不用交付快照替代项目文件。
+- PNG/JPEG/WebP/GIF 依据文件签名和尺寸识别，支持适应窗口、原尺寸及下载。单边最多 16384 像素、总计最多 32M 像素；超限或签名不匹配降为下载，不按后缀直接执行。SVG 不作为普通图片放行。
+- HTML 默认静态隔离预览，点“运行交互”才启用页面脚本；也可切源码或下载原件。iframe 不获得 same-origin、弹窗、表单、顶层导航或工作台存储权限，CSP 禁止 fetch/XHR、外部脚本、远程图片/字体和子 frame。切文件、切线程、关闭面板或“停止交互”会移除运行中的 frame。
+- **HTML 不是恶意脚本的离线执行沙箱。** 浏览器对 iframe 自身导航的限制不等于禁止所有网络：用户启用脚本后，脚本仍可能导航自己的 frame 并向网络发送数据。仅对可信任务页面启用交互；界面明确提示此限制。自包含页面可交互，多文件相对资源、浏览器剪贴板和外部联网能力尚未支持。
+- 下载由受认证 JSON 快照在浏览器生成 `application/octet-stream` Blob，保留原 UTF-8/BOM/换行或原二进制字节，不导航同源 HTML。没有公开静态文件目录、Bearer 查询参数或任意路径 `sendFile`。旧后端不显示下载入口。
 
 ## 文件面板布局
 
@@ -68,6 +83,16 @@
 
 错误响应仅含 `error`、`code`，不包含文件内容或底层系统路径：400 参数无效；401/403 鉴权、项目范围、私密文件或权限拒绝；404 文件不存在；409 文件/路径读取时变化；413 超过大小限制；415 非文本/编码/非普通文件；429 并发额度满；500 其他读取失败。错误不自动重试。
 
+## 类型化预览与交付 API
+
+- `GET /api/pi/files/preview?cwd&path`：普通项目文件，与 `/files/content` 共享项目/身份/私密路径、打开描述符、前后状态和 4 并发额度；最多读取完整 16 MiB。原 `/files/content` 保持 2 MiB UTF-8 契约。
+- `GET /api/pi/deliverables?cwd&sessionId`：返回当前完整分支的 `items`，每项 `id/index/name/title/size/createdAt/sourcePath/revision`；缺失或损坏成果显示 `unavailable`。最多 200 个文件并返回 `partial`，最多核对 500 条引用。关闭线程原生文件超过 128 MiB 时拒绝索引。列表不启动 worker。
+- 同接口加 `path=<旧来源路径>`：查找当前分支已登记、来源路径匹配的最新成果；没有匹配返回空列表，不登记、不扩大访问范围。
+- 同接口加 `id=<64位小写hex>&index=<0–19>`：读取指定交付快照。读取前后重新核对原生分支引用和清单修订；不可见引用返回 `DELIVERY_SCOPE`，切分支返回 `DELIVERY_CONTEXT`，内容/hash 改变返回 `DELIVERY_CHANGED`。交付读取最多 4 并发。
+- 类型化响应保留 `path/absolutePath/size/modifiedAt/readAt/revision`，增加 `kind: text|markdown|html|image|binary`、`mime`、`encoding: utf8|base64`。UTF-8 文本（含 Markdown/HTML）最多 2 MiB 并使用 `content`；其他使用 `base64`。图片有 `width/height`；不能预览有 `previewReason`。交付另含 `source: delivery`、`deliveryId/index/name/title/createdAt`。未知二进制不嗅探为可执行 HTML。
+- 两接口只返回 JSON，复用工作台 Cookie/Bearer 和 Origin 校验，设置 no-store、nosniff、`default-src 'none'; sandbox` 及同源资源策略。浏览器不把响应当 HTML 导航。范围、文件和并发错误沿用 `FILE_*`。
+- 新工具不是通用 Web 上传或注册接口；登记只在受管工具中发生。存储为权限保护的独立目录，文件与清单刷盘，清单原子发布并绑定原生引用；并行同 requestId 预占，单 worker 最多 2 组登记。未发布清单不能被网页访问。
+
 ## 目录与文件名搜索 API
 
 - `GET /api/pi/files/list?cwd=<project>&path=<directory>&hidden=false`：`path` 必传，可为空字符串表示项目根，也可使用项目内相对／绝对目录；返回 `cwd/path/entries/partial`。
@@ -80,14 +105,15 @@
 
 ## 渲染边界
 
-新增精确依赖 `@highlightjs/cdn-assets@11.11.1`，脚本从本实例 `/vendor/highlight/highlight.min.js` 提供，不访问远端 CDN 获取代码或语言包。高亮结果只允许 span/class，经 DOMPurify 后再构造安全逐行 DOM；HTML/SVG/脚本文件显示源码，不执行。
+新增精确依赖 `@highlightjs/cdn-assets@11.11.1`，脚本从本实例 `/vendor/highlight/highlight.min.js` 提供，不访问远端 CDN 获取代码或语言包。高亮结果只允许 span/class，经 DOMPurify 后再构造安全逐行 DOM；SVG/脚本文件显示源码，不在主页面执行。HTML 的显式运行只发生在上述隔离 frame，下载也不生成可执行的同源页面。
 
 Markdown 继续经过 marked + DOMPurify；文件预览额外移除图片、音视频、iframe/object/embed 和表单，不自动加载文件正文中的远端资源。源码切换可查看完整原文。文件链接由受控查看器解析后交给同一只读接口校验，不能把模型提供的链接或 `#pi-file` 标记当成权限凭证。
 
 ## 验证与部署
 
 ```bash
-node --test test/pi-file-service.test.js test/pi-file-browser.test.js
+node --test test/pi-file-service.test.js test/pi-file-browser.test.js test/pi-deliverables.test.js test/pi-deliverables-runtime.test.js
+PLAYWRIGHT_MODULE=/path/to/playwright node test/browser/pi-deliverables.cjs
 PLAYWRIGHT_MODULE=/path/to/playwright node test/browser/pi-file-browser.cjs
 PLAYWRIGHT_MODULE=/path/to/playwright PI_FILE_TEST_URL=http://127.0.0.1:3118 node test/browser/pi-file-viewer.cjs
 ```

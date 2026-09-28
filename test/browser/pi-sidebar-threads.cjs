@@ -81,19 +81,19 @@ async function run(browser, viewport) {
     const checkHeader = async open => {
         const geometry = await page.locator('.pi-session-heading').evaluate(node => {
             const rect = el => { const b = el.getBoundingClientRect(); return { x: b.x, y: b.y, right: b.right, bottom: b.bottom, width: b.width }; };
-            return { header: rect(node), children: [...node.children].filter(el => !el.hidden).map(el => ({
-                ...rect(el), clipped: el.scrollWidth > el.clientWidth + 1
+            return { header: rect(node), children: [...node.querySelectorAll('h3, .pi-search-field, button')].filter(el => el.getClientRects().length).map(el => ({
+                ...rect(el), id: el.id, clipped: el.scrollWidth > el.clientWidth + 1
             })) };
         });
         for (const [index, box] of geometry.children.entries()) {
             assert.ok(box.x >= geometry.header.x && box.right <= geometry.header.right, 'header child stays inside pane');
             assert.ok(box.y >= geometry.header.y && box.bottom <= geometry.header.bottom, 'header stays one row');
             assert.equal(box.clipped, false, 'title and controls are not clipped');
-            if (index) assert.ok(box.x >= geometry.children[index - 1].right, 'header children must not overlap');
+            for (const previous of geometry.children.slice(0, index)) assert.ok(box.x >= previous.right || previous.x >= box.right || box.y >= previous.bottom || previous.y >= box.bottom, 'header controls must not overlap: ' + JSON.stringify(geometry));
         }
         assert.equal(await title.isVisible(), !open);
         assert.equal(await searchInput.isVisible(), open);
-        assert.equal(await page.locator('#pi-temp-session').isVisible(), !open);
+        assert.equal(await page.locator('#pi-open-project').isVisible(), !open && viewport.width > 900);
         assert.equal(await page.locator('#pi-new-session').isVisible(), true);
         assert.equal(await searchToggle.getAttribute('aria-expanded'), String(open));
         if (open) assert.ok((await searchInput.boundingBox()).width >= 90, 'usable search input even in narrow pane');
@@ -184,7 +184,7 @@ async function run(browser, viewport) {
     // 5. Project menu no longer duplicates open/collapse; row and chevron still toggle.
     await page.locator('[data-project-action="menu"]').click();
     const menuItems = await page.locator('.pi-thread-menu:not(.hidden) button span').allInnerTexts();
-    assert.deepEqual(menuItems, ['新建线程', '置顶项目', '刷新线程', '更多操作', '从列表移除']);
+    assert.deepEqual(menuItems, ['新建线程', '临时会话（不保存）', '置顶项目', '刷新线程', '更多操作', '从列表移除']);
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => document.querySelector('.pi-thread-menu').classList.contains('hidden'));
     await page.locator('.pi-project-group-main').click();

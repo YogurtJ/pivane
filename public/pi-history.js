@@ -20,7 +20,7 @@
             this.rows = []; this.offset = 0; this.pageSize = 30; this.selected = null;
             this.bodyEnabled = false;
             this.tree = new window.PiSessionTreeView(this, host);
-            $('pi-history-tab').addEventListener('click', () => this.open(this.tree.mode));
+            $('pi-history-tab').addEventListener('click', () => this.resume());
             this.query.addEventListener('input', () => this.queueSearch());
             for (const input of [this.scope, this.filter, this.onlyBookmarks]) input.addEventListener('change', () => this.queueSearch(0));
             this.query.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); this.queueSearch(0); } });
@@ -82,6 +82,12 @@
             for (const id of ['pi-history-label', 'pi-history-bookmark-save', 'pi-history-bookmark-remove']) $(id).disabled = !ready || !this.selected?.canBookmark || this.saving;
             $('pi-history-bookmark-remove').hidden = !this.selected?.label;
             this.tree.sync();
+        }
+        resume() {
+            if (!this.available()) return this.host.toast(translateUi("请先连接持久线程再查看历史"), 'info');
+            this.host.showPane('history'); this.sync();
+            if (this.tree.mode === 'tree' && !this.tree.loaded && !this.tree.loading) this.tree.load('current');
+            (this.selected ? $('pi-history-preview-close') : this.tree.mode === 'tree' ? $('pi-tree-current') : this.query).focus({ preventScroll: true });
         }
         open(mode = 'search') {
             if (!this.available()) return this.host.toast(translateUi("请先连接持久线程再查看历史"), 'info');

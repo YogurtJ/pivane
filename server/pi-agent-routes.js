@@ -137,6 +137,7 @@ function createPiAgentGateway(options = {}) {
             && !options.mediaLabService?.inFlight && !options.mediaLabService?.providerService?.busy && !options.mediaLabService?.providerService?.active,
         pause: () => deferred.pauseAll()
     });
+    require('./pi-file-routes').mountFilePreviews(router, { files, store, supervisor });
     notifications.mount(router);
     require('./pi-extension-assistant').mountExtensionAssistant(router, { store, supervisor, resourceService, settingsService, access });
     const assistantEnvironment = supervisor.workerEnvironment;
@@ -236,6 +237,8 @@ function createPiAgentGateway(options = {}) {
             modelCatalog: true,
             fileViewer: descriptorBackendAvailable(),
             fileBrowser: descriptorBackendAvailable(),
+            filePreviews: descriptorBackendAvailable(),
+            deliverables: descriptorBackendAvailable(),
             usageStats: descriptorBackendAvailable(),
             usageLedger: descriptorBackendAvailable(),
             runtimeControls: true,

@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { openInspector } = require('./pi-mobile-view-helper.cjs');
 const http = require('node:http');
 const path = require('node:path');
 const { once } = require('node:events');
@@ -100,7 +101,27 @@ async function check(browser, base, width, language) {
     assert.deepEqual(overflow, []);
     // A row jumps to the delivered transcript card, opens its body and marks the result read.
     await page.locator('#pi-transcript').evaluate(node => { node.scrollTop = 0; node.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, bubbles: true })); });
+    // All three cards dock together as their original nodes, without composer-popover exclusivity.
+    liveSocket.send(JSON.stringify({ type: 'gateway_progress', progress: { version: 1, id: 'dock-plan', explanation: '', plan: [{ step: 'Review result', status: 'in_progress' }] } }));
+    liveSocket.send(JSON.stringify({ type: 'gateway_controls', controls: { runtimeId: 'parent', revision: 1, queue: { steering: [], followUp: [] }, recoveries: [], drafts: [], extension: { title: '', statuses: [], widgets: [] },
+        subagents: { snapshot: { version: 1, generatedAt: Date.now(), omitted: { runs: 0, children: 0 }, runs: [{ id: 'dock-run', kind: 'workflow', label: 'Synthetic reviewer', state: 'paused', children: [] }] }, background: { supported: true, active: false, sources: [] } } } }));
+    await page.waitForFunction(() => ['pi-task-progress', 'pi-subagent-runs', 'pi-task-results'].every(id => !document.getElementById(id).hidden));
+    await page.evaluate(() => { window.originalTaskCards = [...document.querySelector('#pi-composer-chips').children]; });
+    await openInspector(page, 'tasks');
+    await page.waitForFunction(() => document.querySelectorAll('#pi-task-dock > details[open]:not([hidden])').length === 3);
+    await page.locator('#pi-task-progress > summary').click();
+    assert.equal(await page.locator('#pi-subagent-runs').evaluate(node => node.open), true);
+    assert.equal(await page.locator('#pi-task-results').evaluate(node => node.open), true);
+    await page.locator('#pi-close-inspector').click();
+    await page.waitForFunction(() => window.originalTaskCards.every(card => card.parentElement.id === 'pi-composer-chips'));
+    assert.equal(await page.locator('#pi-input').inputValue(), 'Unsent draft');
+    assert.ok(await page.locator('#pi-attachments').isVisible());
+    await openInspector(page, 'tasks');
+    await page.waitForFunction(() => document.querySelectorAll('#pi-task-dock > details[open]:not([hidden])').length === 3);
+    assert.ok(await page.evaluate(() => window.originalTaskCards.every(card => card.parentElement.id === 'pi-task-dock')));
+    assert.deepEqual(await page.locator('#pi-task-dock, #pi-task-dock > details, #pi-task-dock .pi-chip-body').evaluateAll(nodes => nodes.filter(node => node.clientWidth && node.scrollWidth > node.clientWidth + 2).map(node => node.id || node.className)), []);
     await row.locator('.pi-task-result-main').click();
+    if (width <= 900) await page.waitForFunction(() => !document.querySelector('#pi-inspector').classList.contains('open'));
     await page.waitForFunction(() => document.querySelector('.pi-agent-card[data-agent-card="result"] .pi-agent-card-body')?.open === true);
     assert.equal(await page.locator('#pi-task-results').evaluate(node => node.open), false);
     await page.waitForFunction(() => {

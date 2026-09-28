@@ -142,6 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
         assistantSessions: new Map(),
         assistantProjectId: null,
         assistantArchivedOpen: false,
+        assistantExpandedLists: new Map(),
         assistantRevision: null,
         assistantEpoch: 0,
         navigationEpoch: 0,
@@ -202,6 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
         compacting: false,
         compactRequested: false,
         controlRequested: false,
+        recoveryNotice: null,
         compaction: null,
         runtimeRevision: 0,
         model: null,
@@ -403,15 +405,15 @@ document.addEventListener('DOMContentLoaded', () => {
         focusMain: () => {
             elements.inspector.classList.remove('open');
             if (state.pendingUi.size) openPendingRequest();
-            else elements.input.focus();
+            else queueMicrotask(() => elements.input.focus());
         },
         insertDraft: text => {
             if (!state.connected || state.attachmentReads) throw new Error(translateUi("请先连接主会话并等待附件读取完成"));
             const draft = `${elements.input.value}${elements.input.value ? '\n\n' : ''}${text}`;
             attachments.validateDraft(draft, state.attachmentFiles);
             elements.input.value = draft; autoResizeInput();
-            if (innerWidth <= 900) elements.inspector.classList.remove('open');
-            elements.input.focus();
+            if (innerWidth <= 900 || document.querySelector('.pi-workbench').classList.contains('pi-inspector-overlay')) elements.inspector.classList.remove('open');
+            queueMicrotask(() => elements.input.focus());
         }
     });
 
@@ -434,7 +436,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const filesPanel = new window.PiFilesPanel({
         showPane: mode => sideChat.showPane(mode), copy: copyTextToClipboard, notify: toast,
-        api: apiFetch, context: () => ({ cwd: state.cwd, key: JSON.stringify([state.cwd, state.session?.id]), generation: state.socketGeneration })
+        api: apiFetch, context: () => ({ cwd: state.cwd, sessionId: state.session?.id || null, key: JSON.stringify([state.cwd, state.session?.id]), generation: state.socketGeneration })
     });
     const turnEdits = new window.PiTurnEdits({
         transcript: elements.transcript, showPane: () => filesPanel.showHistory(), copy: copyTextToClipboard, notify: toast,
@@ -631,6 +633,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function locateTaskResult(deliveryId) {
         const card = [...elements.transcript.querySelectorAll('.pi-agent-card[data-agent-card="result"]')].find(node => node.dataset.deliveryId === deliveryId);
         if (!card || !transcriptView.reveal(card)) return false;
+        if (document.querySelector('.pi-workbench').classList.contains('pi-inspector-overlay')) elements.inspector.classList.remove('open');
         const body = card.querySelector('.pi-agent-card-body');
         if (body && !body.open) body.open = true;
         requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -674,6 +677,7 @@ document.addEventListener('DOMContentLoaded', () => {
             historyView.setCapabilities(status);
             filesPanel.viewer.setEnabled(status.fileViewer === true);
             filesPanel.setEnabled(status.fileBrowser === true);
+            filesPanel.setCapabilities({ previews: status.filePreviews === true, deliverables: status.deliverables === true });
             composer.setEnabled(status.composerTools === true);
             state.composerTools = status.composerTools === true;
             state.nativeSettings = status.nativeSettings === true;
@@ -1382,8 +1386,9 @@ document.addEventListener('DOMContentLoaded', () => {
             .map(session => [session.id, session])).values()]]));
         const active = groups.filter(group => !group.archived);
         const archived = groups.filter(group => group.archived);
-        elements.sessionList.innerHTML = window.PiAssistantProjects.renderGroups(active, sessions, state.assistantProjectId, renderSessionItem)
-            + (archived.length ? `<details class="pi-archive-group pi-archived-projects" data-archive-kind="assistant-projects" ${state.assistantArchivedOpen || query ? 'open' : ''}><summary>${translateUi('已归档项目（{0}）', archived.length)}</summary>${window.PiAssistantProjects.renderGroups(archived, sessions, state.assistantProjectId, renderSessionItem)}</details>` : '')
+        const options = { query, expanded: state.assistantExpandedLists.get(state.assistantProfileId), cwd: state.cwd, sessionId: state.session?.id };
+        elements.sessionList.innerHTML = window.PiAssistantProjects.renderGroups(active, sessions, state.assistantProjectId, renderSessionItem, options)
+            + (archived.length ? `<details class="pi-archive-group pi-archived-projects" data-archive-kind="assistant-projects" ${state.assistantArchivedOpen || query ? 'open' : ''}><summary>${translateUi('已归档项目（{0}）', archived.length)}</summary>${window.PiAssistantProjects.renderGroups(archived, sessions, state.assistantProjectId, renderSessionItem, options)}</details>` : '')
             || `<div class="pi-list-state">${translateUi(query ? '没有匹配的项目或线程' : '还没有助手项目')}</div>`;
         elements.sessionCount.textContent = translateUi('{0} 个项目', state.assistantGroups.length);
         elements.newSession.disabled = !state.assistantGroups.some(group => group.id === state.assistantProjectId && !group.unclassified && !group.archived);
@@ -1461,7 +1466,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${!session.ephemeral && isThreadArchived(cwd, session.id) ? `<span class="pi-session-archive-label">${state.archivedSessions.has(activityKey(cwd, session.id)) ? translateUi('已归档') : translateUi('随项目归档')}</span>` : ''}
                     <span class="pi-session-deferred" hidden></span>
                     <span class="pi-session-unread" hidden><i class="fa-solid fa-circle" aria-hidden="true"></i> ${translateUi("新回复")}</span>
-                    <span class="pi-session-foot"><span class="pi-session-activity"></span><span>${session.ephemeral ? translateUi("临时") : translateUi("{0} · {1} 条", formatDate(session.modified), session.messageCount)}</span></span>
+                    <span class="pi-session-foot"><span class="pi-session-activity"></span><span title="${escapeHtml(translateUi('{0} · {1} 条', formatDate(session.modified), session.messageCount))}">${session.ephemeral ? translateUi("临时") : formatDate(session.modified)}</span></span>
                 </button>
                 <div class="pi-session-actions">
                     <button type="button" data-action="menu" title="${translateUi("线程操作")}" aria-label="${translateUi("线程操作")}" aria-haspopup="menu" aria-expanded="false"><i class="fa-solid fa-ellipsis"></i></button>
@@ -1537,9 +1542,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
         const archiveSection = archivedCount ? `<details class="pi-archive-group pi-archived-projects" data-archive-kind="projects" ${state.archiveProjectsOpen || query ? 'open' : ''}><summary>${translateUi('已归档项目（{0}）', archivedCount)}</summary>${archivedGroups}</details>` : '';
 
-        elements.sessionCount.textContent = translateUi("{0} 个项目 · {1} 个当前线程", orderedProjects().length, state.sessions.length);
+        elements.sessionCount.textContent = translateUi('{0} 个项目', orderedProjects().length);
+        elements.sessionCount.title = translateUi("{0} 个项目 · {1} 个当前线程", orderedProjects().length, state.sessions.length);
         elements.sessionList.innerHTML = groups + archiveSection || (state.sessionFilter === 'work' ? '' : `<div class="pi-list-state">${query ? translateUi("没有匹配的项目或线程") : translateUi("还没有 Pi 项目")}</div>`);
         renderActivityBadges();
+        if (!groups && !archiveSection && state.sessionFilter !== 'work') {
+            const action = document.createElement('button'); action.type = 'button'; action.className = 'pi-list-state-action';
+            action.textContent = query ? translateUi('改搜对话正文') : translateUi('打开服务器目录');
+            action.hidden = Boolean(query && $('pi-search-conversations').hidden);
+            action.addEventListener('click', () => query ? $('pi-search-conversations').click() : elements.projectButton.click());
+            elements.sessionList.querySelector('.pi-list-state')?.append(action);
+        }
         elements.sessionList.scrollTop = scrollTop;
         if (focusedWorkAction) elements.sessionList.querySelector(`[data-work-action="${CSS.escape(focusedWorkAction)}"]`)?.focus({ preventScroll: true });
         if (focusedCwd) {
@@ -2625,18 +2638,54 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderEmptySession() {
-        elements.transcript.innerHTML = `
-            <div class="pi-empty-state session-ready">
-                <div class="pi-empty-mark">π</div>
-                <h2>${escapeHtml(state.session ? getSessionTitle(state.session) : 'Pi Coding Agent')}</h2>
-                <p>${state.session?.assistant?.kind === 'extensions' ? escapeHtml(translateUi('描述你想完成的任务，或粘贴技能、扩展包的链接。我会先检查已有能力，再查找适合的方案。')) : state.session ? escapeHtml(state.cwd) : translateUi("选择项目会话后开始工作")}</p>
-            </div>
-        `;
-        if (state.session?.assistant?.kind !== 'extensions') window.PiExtensions?.mountExplore(elements.transcript.querySelector('.pi-empty-state'));
+        const extension = state.session?.assistant?.kind === 'extensions';
+        const root = document.createElement('div'); root.className = 'pi-empty-state session-ready';
+        const mark = document.createElement('div'); mark.className = 'pi-empty-mark'; mark.textContent = 'π';
+        const title = document.createElement('h2'); title.textContent = extension ? getSessionTitle(state.session) : translateUi('把想法，推进一步。');
+        const description = document.createElement('p');
+        description.textContent = extension ? translateUi('描述你想完成的任务，或粘贴技能、扩展包的链接。我会先检查已有能力，再查找适合的方案。')
+            : state.session ? translateUi('描述你想完成的事，或从一个具体问题开始。')
+                : state.assistantMode ? translateUi('选择助手项目与线程，继续你的工作。')
+                    : state.cwd ? translateUi('选择一个线程继续，或在当前项目开始新任务。') : translateUi('打开服务器上的项目目录，开始你的第一项工作。');
+        root.append(mark, title, description);
+        if (!extension) {
+            const actions = document.createElement('div'); actions.className = 'pi-empty-actions';
+            const action = (label, handler, primary = false) => {
+                const node = document.createElement('button'); node.type = 'button'; node.textContent = label;
+                if (primary) node.className = 'pi-empty-primary'; node.addEventListener('click', handler); actions.append(node); return node;
+            };
+            if (state.session) {
+                for (const [label, prompt] of [
+                    [translateUi('了解这个项目'), translateUi('请先了解这个项目，梳理主要模块和入口，暂时不要修改文件。')],
+                    [translateUi('一起检查问题'), translateUi('请帮我检查一个问题。先和我确认要检查的范围与目标，再开始分析。')],
+                    [translateUi('讨论一个想法'), translateUi('我想先讨论一个想法的可行性，再把它整理成具体计划。')]
+                ]) action(label, () => {
+                    if (!state.connected || state.attachmentReads || state.submittingDrafts.has(state.composerSessionKey)) return toast(translateUi('请等待连接、附件读取或消息投递完成'), 'info');
+                    const draft = `${elements.input.value}${elements.input.value ? '\n\n' : ''}${prompt}`;
+                    try { attachments.validateDraft(draft, state.attachmentFiles); } catch (error) { return toast(error.message, 'error'); }
+                    elements.input.value = draft; autoResizeInput(); elements.input.focus();
+                });
+            } else if (state.assistantMode) {
+                action(translateUi('选择助手项目'), () => { if (innerWidth <= 900) elements.sessionPane.classList.add('open'); $('pi-assistant-profile').focus(); }, true);
+            } else if (!state.cwd) action(translateUi('打开服务器目录'), () => elements.projectButton.click(), true);
+            else {
+                const recent = state.sessions.find(item => !item.ephemeral && !isThreadArchived(state.cwd, item.id));
+                if (recent) action(translateUi('继续：{0}', getSessionTitle(recent)), () => openSession(recent).catch(error => toast(error.message, 'error')), true);
+                action(translateUi('新建线程'), () => createSession().catch(error => toast(error.message, 'error')), !recent);
+            }
+            root.append(actions);
+            const hint = document.createElement('p'); hint.className = 'pi-empty-hint';
+            hint.textContent = state.session ? translateUi('示例只会追加到草稿，不会自动发送。') : state.cwd || translateUi('目录位于部署 Pivane 的服务器，不是当前浏览器所在设备。');
+            root.append(hint);
+        }
+        elements.transcript.replaceChildren(root);
+        if (!extension) window.PiExtensions?.mountExplore(root);
         transcriptView.refresh();
     }
 
     function clearSessionView() {
+        state.recoveryNotice = null;
+        renderRecoveryNotice();
         state.renderedTranscript = null;
         state.dirtyTranscriptIndex = Infinity;
         extensionAssistant.update(null);
@@ -3159,8 +3208,10 @@ document.addEventListener('DOMContentLoaded', () => {
             updateSessionMeta(runtime);
             void workflows.refresh(true).catch(() => {});
             if (state.modelRefreshPending && !runtime.webOperation && !runtime.pendingMessageCount) void refreshSessionModels();
+            return true;
         } catch (error) {
             if (state.connected) toast(translateUi("会话同步失败：{0}", error.message), 'error');
+            return false;
         }
     }
 
@@ -3284,7 +3335,38 @@ document.addEventListener('DOMContentLoaded', () => {
         workflows.update();
         sideChat.updateParent();
         syncMobileHeader();
+        if (state.recoveryNotice) renderRecoveryNotice();
         autoResizeInput();
+    }
+
+    const recoveryNotice = document.createElement('section'); recoveryNotice.className = 'pi-recovery-notice'; recoveryNotice.hidden = true;
+    recoveryNotice.setAttribute('role', 'status'); document.querySelector('.pi-composer-wrap').before(recoveryNotice);
+    let renderedRecoveryNotice = null, renderedRecoveryState = '';
+    function renderRecoveryNotice() {
+        const notice = state.recoveryNotice;
+        recoveryNotice.hidden = !notice || notice.key !== state.composerSessionKey;
+        if (recoveryNotice.hidden) { renderedRecoveryNotice = null; renderedRecoveryState = ''; return; }
+        const signature = JSON.stringify([notice.message, Boolean(notice.verifying), state.connected, Boolean(nativeControls.value)]);
+        if (renderedRecoveryNotice === notice && renderedRecoveryState === signature) return;
+        renderedRecoveryNotice = notice; renderedRecoveryState = signature;
+        const title = document.createElement('strong'); title.textContent = translateUi('操作结果待核实');
+        const detail = document.createElement('p'); detail.textContent = notice.message;
+        const verify = document.createElement('button'); verify.type = 'button'; verify.textContent = translateUi('核对当前状态'); verify.disabled = !state.connected || Boolean(notice.verifying);
+        verify.addEventListener('click', async () => {
+            if (notice.verifying) return;
+            const generation = state.socketGeneration, key = state.composerSessionKey;
+            notice.verifying = true; renderRecoveryNotice();
+            const reconciled = await reconcileSession();
+            notice.verifying = false;
+            if (generation !== state.socketGeneration || key !== state.composerSessionKey || state.recoveryNotice !== notice) { renderRecoveryNotice(); return; }
+            if (reconciled) { state.recoveryNotice = null; renderRecoveryNotice(); sideChat.showPane('details'); toast(translateUi('已刷新当前状态；请同时核对运行队列与取回内容。'), 'info'); }
+            else renderRecoveryNotice();
+        });
+        const queue = document.createElement('button'); queue.type = 'button'; queue.textContent = translateUi('查看取回内容'); queue.disabled = !nativeControls.value;
+        queue.addEventListener('click', () => nativeControls.button.click());
+        const dismiss = document.createElement('button'); dismiss.type = 'button'; dismiss.textContent = translateUi('收起提示');
+        dismiss.addEventListener('click', () => { state.recoveryNotice = null; renderRecoveryNotice(); });
+        recoveryNotice.replaceChildren(title, detail, verify, queue, dismiss);
     }
 
     async function takeRuntimeQueue(stop = true) {
@@ -3301,7 +3383,9 @@ document.addEventListener('DOMContentLoaded', () => {
             toast(stop ? translateUi("已停止；取回文字可在运行队列中查看") : translateUi("已取回队列文字，请核对后追加到草稿"), 'success');
         } catch (error) {
             if (generation !== state.socketGeneration) return;
-            toast(translateUi("{0}；请核对运行状态和取回列表，未自动重试", error.message), 'error', 8000);
+            const message = translateUi("{0}；请核对运行状态和取回列表，未自动重试", error.message);
+            state.recoveryNotice = { key: state.composerSessionKey, message };
+            renderRecoveryNotice(); toast(message, 'error', 8000);
             await reconcileSession();
         } finally {
             if (generation === state.socketGeneration) { state.controlRequested = false; setStreaming(state.streaming); }
@@ -4200,7 +4284,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const group = state.assistantGroups.find(item => item.id === assistantControl.closest('[data-assistant-project-id]')?.dataset.assistantProjectId);
             if (!group) return;
             if (assistantControl.dataset.assistantAction === 'menu') showAssistantMenu(assistantControl, group);
-            else {
+            else if (['more-threads', 'less-threads'].includes(assistantControl.dataset.assistantAction)) {
+                const expanded = state.assistantExpandedLists.get(state.assistantProfileId) || new Set();
+                if (assistantControl.dataset.assistantAction === 'more-threads') expanded.add(group.id); else expanded.delete(group.id);
+                state.assistantExpandedLists.set(state.assistantProfileId, expanded);
+                const top = elements.sessionList.scrollTop;
+                renderAssistantSessions(); elements.sessionList.scrollTop = top;
+                elements.sessionList.querySelector(`[data-assistant-project-id="${CSS.escape(group.id)}"] .pi-thread-more`)?.focus({ preventScroll: true });
+            } else {
                 state.assistantProjectId = group.id;
                 localStorage.setItem(`pi.web.assistantProject:${state.assistantProfileId}`, group.id);
                 renderAssistantSessions();
