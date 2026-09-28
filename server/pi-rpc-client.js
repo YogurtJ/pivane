@@ -5,6 +5,19 @@ const fs = require('fs');
 const path = require('path');
 
 const DEFAULT_REQUEST_TIMEOUT = 30000;
+// Cold starts load Pi, its providers and every enabled extension. Windows file
+// scanning can make that take a minute or more, so the readiness window is
+// generous and configurable. The browser waits 180 s for an opened thread; the
+// upper bound leaves room for the first snapshot after startup.
+const DEFAULT_STARTUP_TIMEOUT = 120000;
+const STARTUP_TIMEOUT_RANGE = Object.freeze({ min: 20000, max: 170000 });
+const STARTUP_TIMEOUT_MESSAGE = 'Pi 运行实例启动超时，请重试连接；如经常出现，可调大 PIVANE_WEB_STARTUP_TIMEOUT_MS';
+function startupTimeoutMs(value = process.env.PI_WEB_STARTUP_TIMEOUT_MS) {
+    if (value === undefined || value === null || String(value).trim() === '') return DEFAULT_STARTUP_TIMEOUT;
+    const number = Number(value);
+    if (!Number.isFinite(number)) return DEFAULT_STARTUP_TIMEOUT;
+    return Math.min(STARTUP_TIMEOUT_RANGE.max, Math.max(STARTUP_TIMEOUT_RANGE.min, Math.round(number)));
+}
 const rpcProcesses = new Set();
 const stoppingProcesses = new WeakMap();
 let rpcShuttingDown = false;
@@ -44,8 +57,9 @@ function resolvePiCli() {
 }
 
 class PiRpcClient extends EventEmitter {
-    constructor({ cwd, sessionPath, noSession = false, extraArgs = [], env = {}, projectApproval, sideSeed }) {
+    constructor({ cwd, sessionPath, noSession = false, extraArgs = [], env = {}, projectApproval, sideSeed, startupTimeoutMs: startupLimit }) {
         super();
+        this.startupTimeoutMs = Number.isFinite(startupLimit) && startupLimit > 0 ? startupLimit : startupTimeoutMs();
         this.cwd = cwd;
         this.sessionPath = sessionPath;
         this.noSession = noSession;
@@ -56,6 +70,8 @@ class PiRpcClient extends EventEmitter {
         this.child = null;
         this.pending = new Map();
         this.startupProbes = new Set();
+        this.healthProbes = new Set();
+        this.responseCount = 0;
         this.nextRequestId = 1;
         this.stdoutBuffer = '';
         this.stderrTail = '';
@@ -118,18 +134,21 @@ class PiRpcClient extends EventEmitter {
         });
         let probing = true;
         const readiness = async () => {
-            const deadline = Date.now() + 20000;
+            const deadline = Date.now() + this.startupTimeoutMs;
             while (probing) {
                 try {
                     return await this.request('get_state', {}, Math.min(1000, Math.max(1, deadline - Date.now())), id => this.startupProbes.add(id));
                 } catch (error) {
                     // Some SDK bootstraps start consuming stdin before attaching RPC.
                     // Probe readiness using bounded, read-only requests on this same process.
-                    if (!probing || error.code !== 'RPC_TIMEOUT' || Date.now() >= deadline) throw error;
+                    // A process exit rejects at once; only a live, loading process is awaited.
+                    if (!probing || error.code !== 'RPC_TIMEOUT') throw error;
+                    if (Date.now() >= deadline) throw Object.assign(new Error(STARTUP_TIMEOUT_MESSAGE), { startupTimeoutMs: this.startupTimeoutMs });
                 }
             }
         };
-        try { await Promise.race([readiness(), startupUi]); }
+        const startedAt = Date.now();
+        try { await Promise.race([readiness(), startupUi]); this.startupMs = Date.now() - startedAt; }
         catch (error) { if (error.code !== 'STARTUP_UI_UNSUPPORTED') error.code = 'RPC_STARTUP_FAILED'; throw error; }
         finally { probing = false; this.off('event', this.startupListener); this.startupListener = null; }
     }
@@ -177,9 +196,11 @@ class PiRpcClient extends EventEmitter {
             return;
         }
 
-        if (record.type === 'response' && this.startupProbes.has(record.id)) {
-            this.startupProbes.delete(record.id);
-            if (!this.pending.has(record.id)) return; // Late startup probes are private readiness traffic.
+        if (record.type === 'response') this.responseCount++;
+        for (const probes of [this.startupProbes, this.healthProbes]) {
+            if (record.type !== 'response' || !probes.has(record.id)) continue;
+            probes.delete(record.id);
+            if (!this.pending.has(record.id)) return; // Late probes are private readiness traffic.
         }
         if (record.type === 'response' && record.id && this.pending.has(record.id)) {
             const pending = this.pending.get(record.id);
@@ -235,6 +256,24 @@ class PiRpcClient extends EventEmitter {
         });
     }
 
+    // Bounded liveness check of an established process. A reply that arrives
+    // after the timer, or any other reply in the same window, proves that the
+    // command loop still runs; only a silent process is reported unresponsive.
+    async probe(timeoutMs) {
+        if (!this.child) return false;
+        const before = this.responseCount;
+        try {
+            await this.request('get_state', {}, timeoutMs, id => this.healthProbes.add(id));
+            return true;
+        } catch (error) {
+            if (error.code === 'RPC_REJECTED') return true;
+            if (error.code !== 'RPC_TIMEOUT') return false;
+            // Let replies already waiting in the pipe be read before deciding.
+            await new Promise(resolve => setImmediate(resolve));
+            return this.responseCount !== before;
+        }
+    }
+
     _handleExit(error) {
         if (!this.child && this.disposed) return;
         this.child = null;
@@ -243,6 +282,8 @@ class PiRpcClient extends EventEmitter {
             pending.reject(error);
         }
         this.pending.clear();
+        this.startupProbes.clear();
+        this.healthProbes.clear();
         if (!this.disposed) this.emit('exit', error);
     }
 
@@ -256,4 +297,4 @@ class PiRpcClient extends EventEmitter {
     }
 }
 
-module.exports = { PiRpcClient, resolvePiCli, shutdownRpcProcesses };
+module.exports = { PiRpcClient, resolvePiCli, shutdownRpcProcesses, startupTimeoutMs, DEFAULT_STARTUP_TIMEOUT, STARTUP_TIMEOUT_RANGE, STARTUP_TIMEOUT_MESSAGE };

@@ -8837,6 +8837,7 @@
     ,['请先在概览中启用此身份并保存。', 'Enable this profile in Overview and save it first.']
     ,['Pivane 内置，随应用更新', 'Bundled with Pivane; updated with the app']
     ,['内置组件未就绪，请检查 Pivane 安装或重新安装依赖。', 'The bundled component is not ready. Check the Pivane installation or reinstall dependencies.']
+    ,['Pi 运行实例启动超时，请重试连接；如经常出现，可调大 PIVANE_WEB_STARTUP_TIMEOUT_MS', 'Pi runtime startup timed out. Retry the connection; if this happens often, increase PIVANE_WEB_STARTUP_TIMEOUT_MS.']
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

@@ -7,7 +7,7 @@
 | HTTP 服务、身份和静态入口 | [server.js](../../server.js)、[workspace-access-service](../../server/workspace-access-service.js) | [访问控制](../ACCESS_CONTROL.md)、workspace-access 用例 |
 | 主会话 REST/WS 与服务装配 | [pi-agent-routes](../../server/pi-agent-routes.js) | [API](../API.md)、pi-native-integration、pi-activity-api |
 | 已保存的设置与媒体 HTTP 接口 | [settings routes](../../server/routes/settings.js)、[media routes](../../server/routes/media.js) | [模型设置](../PROVIDER_SETTINGS.md)、[媒体实验室](../MEDIA_LAB.md)，对应 HTTP/服务用例 |
-| worker 唯一性、启动、停止与回收 | [supervisor](../../server/pi-agent-supervisor.js)、[worker lifecycle](../../server/pi-worker-lifecycle.js)、[RPC](../../server/pi-rpc-client.js) | [运行控制](../NATIVE_CONTROLS.md)、pi-worker-lifecycle、pi-runtime-activity、pi-maintenance |
+| worker 唯一性、启动、停止与回收 | [supervisor](../../server/pi-agent-supervisor.js)、[worker lifecycle](../../server/pi-worker-lifecycle.js)、[RPC](../../server/pi-rpc-client.js) | [运行控制](../NATIVE_CONTROLS.md)、[启动等待](../NATIVE_COMPLETION.md#启动等待与无响应-worker)、pi-worker-lifecycle、pi-worker-health、pi-runtime-activity、pi-maintenance |
 | 会话身份、列表、分叉和历史导航 | [session store](../../server/pi-session-store.js)、[workflows](../../server/pi-session-workflows.js)、[history navigation](../../server/pi-history-navigation.js) | [会话工作流](../SESSION_WORKFLOWS.md)、[历史](../HISTORY.md)、pi-session-workflows、pi-history、pi-session-tree |
 | 项目路径迁移 | [session relocation](../../server/pi-session-relocation.js) | [命名与迁移](NAMING.md)、pi-session-relocation；真实迁移另做停机验证 |
 | 任务线程、侧聊和扩展助手 | [agent threads](../../server/pi-agent-threads.js)、[side chat](../../server/pi-side-chat.js)、[extension assistant](../../server/pi-extension-assistant.js) | [任务线程](../AGENT_THREADS.md)、[侧聊](../SIDE_CHAT.md)、[原生设置](../NATIVE_SETTINGS.md) |

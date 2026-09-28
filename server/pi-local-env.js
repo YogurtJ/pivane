@@ -3,7 +3,7 @@ const fs = require('node:fs');
 // Pivane owns these settings. Pi-native identity, model and protocol variables
 // retain their upstream names; they must not be renamed by brand normalization.
 const WORKSPACE_VARIABLES = Object.freeze([
-    'PROJECT_ROOTS', 'ALLOWED_ORIGINS', 'WEB_TOKEN', 'WEB_SECURE_COOKIE', 'WEB_IDLE_MS',
+    'PROJECT_ROOTS', 'ALLOWED_ORIGINS', 'WEB_TOKEN', 'WEB_SECURE_COOKIE', 'WEB_IDLE_MS', 'WEB_STARTUP_TIMEOUT_MS',
     'WEB_APPROVE_PROJECTS', 'WEB_CLI', 'WEB_DEFERRED_FILE', 'WORKSPACE_BASE_URL',
     'WORKSPACE_ACCESS_TOKEN', 'MEDIA_PLANNER_MODEL', 'MEDIA_CONFIG_DIR', 'MEDIA_DATA_DIR', 'MEDIA_PROFILE'
 ]);

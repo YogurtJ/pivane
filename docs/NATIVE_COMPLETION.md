@@ -20,7 +20,13 @@
 
 `ack_extension_draft {runtimeId,draftId}` 只处理当前受管实例的建议。前端先记录本页已应用 ID，再确认移除，确认失败不重复追加；线程切换和断线清空本页展示并丢弃迟到结果。建议随 worker 销毁，不写 JSONL/工作台偏好。未处理建议阻止空闲回收，显式退出仍会丢失。旧后端的实时建议也经过同一草稿保护，无法提供服务端重连恢复。
 
-当前 Pi 0.85.0 在绑定 session_start 后才安装 RPC stdin 处理，启动阶段阻塞对话无法响应。PiRpcClient 在启动阶段发现 select/confirm/input/editor 时返回 `STARTUP_UI_UNSUPPORTED`，不替用户确认；启动失败返回 `RPC_STARTUP_FAILED`。Supervisor 清理未就绪实例，前端停止自动重连并保留错误、重试连接和管理扩展入口；浏览器主动关闭使用应用关闭码4000/4008，避免浏览器拒绝1011/1008引发二次异常。正常任务中的基础对话框沿用原 pendingUi 协议。
+Pi 在绑定 session_start 后才安装 RPC stdin 处理，启动阶段阻塞对话无法响应。PiRpcClient 在启动阶段发现 select/confirm/input/editor 时返回 `STARTUP_UI_UNSUPPORTED`，不替用户确认；启动失败返回 `RPC_STARTUP_FAILED`。Supervisor 清理未就绪实例，前端停止自动重连并保留错误、重试连接和管理扩展入口；浏览器主动关闭使用应用关闭码4000/4008，避免浏览器拒绝1011/1008引发二次异常。正常任务中的基础对话框沿用原 pendingUi 协议。
+
+### 启动等待与无响应 worker
+
+新 worker 在同一进程上每秒发出一次只读 `get_state` 探测，直到就绪。等待窗口默认 120 秒，可用 `PIVANE_WEB_STARTUP_TIMEOUT_MS`（旧拼写 `PI_WEB_STARTUP_TIMEOUT_MS`）设置，取值限制在 20–170 秒，留出浏览器 180 秒打开等待中的首个快照时间；无效值使用默认。进程在等待期间退出会立即失败并带 stderr 摘要，不等满窗口。超出窗口返回 `RPC_STARTUP_FAILED` 和“Pi 运行实例启动超时”提示；迟到的探测回复只在 RPC 客户端内部截获。用时 10 秒以上的冷启动在服务日志记录一行耗时，不含会话内容。
+
+复用已存在的 worker 前，Supervisor 对**空闲**实例执行一次最长 15 秒的只读探测，并发调用共享同一次探测。只有探测窗口内完全没有 RPC 回复的空闲实例才会被替换：流程与显式重开相同，先通知已连接页面重连并等待旧进程退出，再启动新进程，同一原生会话文件不会同时存在两个受管 worker。正在运行、压缩、Shell、等待确认、有队列或未保存内容、模型切换不确定，以及保留后台子 Agent 的实例都不因一次缺失回复被终止；替换不重放任何请求。探测前父进程若被阻塞，已在管道中的回复仍计为有响应。
 
 Packages 页面明确说明安装/配置发现不等于已验证 Web 兼容。基础工具/命令/对话框/文字状态可用；TUI custom、终端编辑器/快捷键、组件式 widget 不自动转换。不对未知 Package 虚构兼容认证。
 

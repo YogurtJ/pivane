@@ -12,6 +12,11 @@ const { PiRuntimeControls } = require('./pi-runtime-controls');
 const { PiShellExecution } = require('./pi-shell-execution');
 const subagentRuntime = require('./pi-subagent-runtime');
 const DEFAULT_IDLE_MS = 15 * 60 * 1000;
+// A healthy worker answers get_state in milliseconds. The window is long enough
+// that brief synchronous work in an extension does not cause a replacement.
+const DEFAULT_HEALTH_TIMEOUT_MS = 15000;
+// Only unusually slow cold starts are logged; the log carries no session content.
+const SLOW_STARTUP_LOG_MS = 10000;
 
 // Pi 0.86 persists prompt/tool checkpoints as role=system messages. They are
 // needed by Pi's provider transcript but are not user-visible chat messages.
@@ -724,6 +729,15 @@ class AgentWorker extends EventEmitter {
         return this.isIdle() && !this.retainsBackgroundWork() && this.subscribers.size === 0 && now - this.lastUsedAt >= idleMs;
     }
 
+    // Liveness before an existing worker is reused. Active or detached background
+    // work is not probed for replacement: a timeout there does not show that the
+    // run ended. Concurrent callers share one bounded read-only probe.
+    responsive(timeoutMs) {
+        if (!this.isIdle() || this.retainsBackgroundWork()) return Promise.resolve(true);
+        if (!this.healthCheck) this.healthCheck = this.client.probe(timeoutMs).finally(() => { this.healthCheck = null; });
+        return this.healthCheck;
+    }
+
     async dispose() {
         if (this.disposed) return;
         this.disposed = true;
@@ -740,6 +754,8 @@ class PiAgentSupervisor extends EventEmitter {
     constructor(options = {}) {
         super();
         this.idleMs = options.idleMs || Number(process.env.PI_WEB_IDLE_MS) || DEFAULT_IDLE_MS;
+        this.healthTimeoutMs = options.healthTimeoutMs || DEFAULT_HEALTH_TIMEOUT_MS;
+        this.startupTimeoutMs = options.startupTimeoutMs; // Unset: PIVANE_WEB_STARTUP_TIMEOUT_MS or the default.
         this.workers = new Map();
         this.disposing = false;
         this.starting = new Map();
@@ -755,12 +771,12 @@ class PiAgentSupervisor extends EventEmitter {
         // A caller may have resolved the session before a completed deletion.
         if (!fs.existsSync(sessionPath)) throw new Error('Session file no longer exists');
         const existing = this.workers.get(sessionPath);
-        if (existing && !existing.disposed && !existing.restarting) return existing;
+        if (existing && !existing.disposed && !existing.restarting) return this._reuse(existing, { cwd, sessionPath, sessionId });
         if (this.starting.has(sessionPath)) return this.starting.get(sessionPath);
 
         const starting = (async () => {
             const env = this.workerEnvironment ? await this.workerEnvironment({ cwd, sessionId, sessionPath }) : {};
-            const worker = new AgentWorker({ cwd, sessionPath, sessionId, env });
+            const worker = new AgentWorker({ cwd, sessionPath, sessionId, env, startupTimeoutMs: this.startupTimeoutMs });
             worker.on('completion', notice => this.emit('completion', notice, worker));
             worker.on('attention', event => this.emit('attention', event));
             worker.on('exit', () => {
@@ -772,6 +788,9 @@ class PiAgentSupervisor extends EventEmitter {
             try {
                 await worker.ensureReady();
                 if (this.disposing) throw new Error('Pi supervisor is shutting down');
+                if (worker.client.startupMs >= SLOW_STARTUP_LOG_MS) {
+                    console.warn(`Pi worker became ready after ${(worker.client.startupMs / 1000).toFixed(1)} s (startup limit ${Math.round(worker.client.startupTimeoutMs / 1000)} s)`);
+                }
                 this.workers.set(sessionPath, worker);
                 this.emit('worker', worker);
                 return worker;
@@ -789,9 +808,23 @@ class PiAgentSupervisor extends EventEmitter {
         }
     }
 
+    // An idle worker whose process no longer answers is replaced through the same
+    // path as an explicit restart: the old process exits before a new one starts,
+    // so one native session file never has two managed workers.
+    async _reuse(worker, target) {
+        if (await worker.responsive(this.healthTimeoutMs)) return worker;
+        if (this.disposing) throw new Error('Pi supervisor is shutting down');
+        if (this.removing.has(target.sessionPath)) throw new Error('Session is being deleted');
+        if (this.workers.get(target.sessionPath) !== worker || worker.disposed || worker.restarting) return this.getWorker(target);
+        // Work that started during the probe is never terminated for a missed reply.
+        if (!worker.isIdle() || worker.retainsBackgroundWork()) return worker;
+        console.warn(`Pi worker did not answer within ${(this.healthTimeoutMs / 1000).toFixed(1)} s while idle; starting a replacement`);
+        return this.restartWorker(worker);
+    }
+
     async createEphemeralWorker(cwd, options = {}) {
         if (this.disposing) throw new Error('Pi supervisor is shutting down');
-        const worker = new AgentWorker({ ...options, cwd, noSession: true });
+        const worker = new AgentWorker({ startupTimeoutMs: this.startupTimeoutMs, ...options, cwd, noSession: true });
         this.ephemeralWorkers.add(worker);
         const forget = () => this.ephemeralWorkers.delete(worker);
         worker.once('exit', forget);

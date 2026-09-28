@@ -79,6 +79,7 @@ node.exe scripts/install-service.cjs
 - 拒绝 ADS、设备命名空间、保留设备名、盘符相对路径及含糊的末尾点/空格；网页文件链接支持盘符、反斜杠和行号。真实规范路径仍由后端核对。
 - 私密文件创建时携带受保护 DACL，只允许当前用户、SYSTEM 与管理员；专用 Pi 目录、项目原生配置目录和私有导出目录同步保护。不会用 POSIX mode 数值冒充 Windows ACL，也不修改系统临时目录权限。
 - 预约/访问/通知文件先通过可写句柄刷盘，再用 `MoveFileExW(REPLACE_EXISTING|WRITE_THROUGH)` 替换。Windows 不执行目录 fsync。打开文件导致系统拒绝替换时明确报错，不吞掉失败或重放外部请求。
+- 每个线程首次打开都会启动独立的 Pi worker，需要读取数千个依赖与扩展文件；实时病毒扫描可能使首次冷启动达到数十秒，之后的同线程操作复用已启动实例。worker 默认最多等待 120 秒就绪，可在 instance.env 设置 `PIVANE_WEB_STARTUP_TIMEOUT_MS`（20000–170000）。该值属于实例配置，升级复制同一 instance.env 后保留，无需修改源码。
 - 常见 HTTP 媒体连接保持原协议。Windows 的 GPU bridge 可指向明确的 Node 脚本（.js/.cjs/.mjs）或可执行文件；Node 脚本通过当前 runtime 启动，远端命令仍是单个参数，用户正文仍经 stdin，不启用 cmd shell 解析。真实 GPU 服务未在本轮调用。
 
 ## 验证结果
