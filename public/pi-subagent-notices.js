@@ -30,5 +30,27 @@
         header.append(source);
         return true;
     }
-    window.PiSubagentNotices = { decorate, types: Object.keys(TYPES) };
+    // One-line preview: first meaningful line without Markdown punctuation.
+    function preview(source) {
+        const line = String(source || '').split(/\r\n|\r|\n/).map(item => item.replace(/^[\s>#*\-+`|]+|[*_`~]+/g, '').trim()).find(Boolean) || '';
+        return line.length > 160 ? line.slice(0, 159) + '…' : line;
+    }
+    // Notices are collapsed to a single row: the plugin writes them for the main
+    // Agent, and people rarely read them. Markdown renders on first expansion.
+    function collapse(article, header, body, source, render) {
+        const fold = document.createElement('details'); fold.className = 'pi-subagent-notice-fold';
+        const summary = document.createElement('summary');
+        const hint = document.createElement('span'); hint.className = 'pi-subagent-notice-preview';
+        hint.textContent = preview(source); hint.title = hint.textContent;
+        const chevron = document.createElement('i'); chevron.className = 'fa-solid fa-chevron-right pi-subagent-notice-chevron'; chevron.setAttribute('aria-hidden', 'true');
+        const origin = header.querySelector('.pi-subagent-notice-source');
+        summary.append(...[...header.childNodes].filter(node => node !== origin), hint, ...(origin ? [origin] : []), chevron);
+        header.remove(); body.remove();
+        fold.append(summary, body);
+        const ensure = () => { for (const node of body.querySelectorAll('[data-pending-markdown]')) { node.innerHTML = render(node._piMarkdown || ''); node.removeAttribute('data-pending-markdown'); delete node._piMarkdown; } };
+        fold.addEventListener('toggle', () => { if (fold.open) ensure(); });
+        article.append(fold);
+        article._piExpandNotice = () => { fold.open = true; ensure(); };
+    }
+    window.PiSubagentNotices = { decorate, collapse, preview, types: Object.keys(TYPES) };
 })();

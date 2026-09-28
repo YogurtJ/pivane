@@ -7,6 +7,24 @@
         stopped: ['已停止', 'fa-regular fa-circle-stop', 'muted'], rejected: ['未启动', 'fa-solid fa-ban', 'error']
     };
     const ACTIVE = new Set(['queued', 'running']);
+    // pi-subagents reports each step's model only in targeted status text, e.g.
+    // "Step 1: auth check (reviewer) running (claude-opus-4 · thinking high), 3 turns".
+    const STEP_LINE = /^(Step \d+(?:\/\d+)?(?: Agent \d+\/\d+)?|Agent \d+\/\d+|Workflow child [^:]{1,120}): (?:\[[^\]]{0,80}\] )?(.+?) (pending|queued|running|complete|completed|failed|paused|stopped|skipped|cancelled|canceled|interrupted|rejected|partial|detached)(?: \(([^()]{1,300})\))?(?:,|$)/;
+    function stepModels(text) {
+        const steps = [];
+        for (const line of String(text || '').split('\n')) {
+            const match = STEP_LINE.exec(line.trimEnd());
+            if (!match) continue;
+            const [, step, display, state, detail = ''] = match;
+            const named = /^(.*) \(([^()]+)\)$/.exec(display);
+            const parts = detail.split(' · ').map(part => part.trim()).filter(Boolean);
+            const thinking = parts.find(part => /^thinking \S+$/.test(part));
+            steps.push({ step, name: named ? named[1] : display, agent: named ? named[2] : '', state,
+                model: parts.find(part => part !== thinking) || '', thinking: thinking ? thinking.slice(9) : '' });
+            if (steps.length >= 50) break;
+        }
+        return steps;
+    }
     const RESUMABLE = new Set(['paused', 'stopped', 'failed', 'partial', 'complete']);
     const el = (tag, className, text) => {
         const node = document.createElement(tag);
@@ -97,7 +115,7 @@
                 card.append(list);
             }
             const actions = el('div', 'sa-run-actions');
-            actions.append(this.button(t('查看记录'), 'fa-regular fa-file-lines', () => this.transcript(run)));
+            actions.append(this.button(t('查看模型'), 'fa-solid fa-microchip', () => this.showModels(run)));
             if (ACTIVE.has(run.state)) {
                 actions.append(this.button(t('引导'), 'fa-regular fa-comment-dots', () => this.message(run, 'steer')));
                 const stop = this.button(t('停止'), 'fa-regular fa-circle-stop', () => this.stop(run)); stop.classList.add('danger');
@@ -164,10 +182,27 @@
             this.dialog.replaceChildren(heading, body, footer);
             this.dialog.showModal();
         }
-        async transcript(run) {
-            const data = await this.request('status', { id: run.id, view: 'transcript', lines: 200 });
-            const text = el('pre', 'sa-runs-transcript', data?.text || t('暂无记录。'));
-            this.openDialog(t('运行记录 · {0}', run.label), [el('p', 'pi-native-help', t('显示最近 200 行，内容由 pi-subagents 提供。')), text]);
+        async showModels(run) {
+            const models = stepModels((await this.request('status', { id: run.id }))?.text);
+            const thinking = { off: '关闭思考', minimal: '极低', low: '低', medium: '中等', high: '高', xhigh: '很高', max: '最高' };
+            const list = el('ul', 'sa-models');
+            for (const step of models) {
+                const item = el('li', 'sa-model');
+                const [stateLabel, iconClass, tone] = STATES[step.state === 'completed' ? 'complete' : step.state] || [step.state, 'fa-regular fa-circle', 'muted'];
+                const role = step.agent ? window.PiSubagentSettings?.roleName?.(step.agent) || step.agent : null;
+                const head = el('div', 'sa-model-head');
+                const icon = el('i', iconClass); icon.setAttribute('aria-hidden', 'true');
+                const state = el('span', 'sa-model-state'); state.dataset.tone = tone; state.title = t(stateLabel); state.append(icon);
+                head.append(state, el('strong', 'sa-model-name', step.name || step.step), el('span', 'sa-model-step', role ? `${role} · ${step.step}` : step.step));
+                const tags = el('div', 'sa-model-tags');
+                const model = el('code', 'sa-model-id', step.model || t('默认模型')); model.title = step.model || t('pi-subagents 未报告模型，使用继承的默认模型');
+                if (!step.model) model.classList.add('muted');
+                tags.append(model);
+                if (step.thinking) tags.append(el('span', 'sa-model-thinking', t('思考 {0}', t(thinking[step.thinking] || step.thinking))));
+                item.append(head, tags); list.append(item);
+            }
+            const content = models.length ? [list] : [el('p', 'pi-native-help', t('pi-subagents 没有报告此运行的模型信息。'))];
+            this.openDialog(t('模型 · {0}', run.label), content);
         }
         async stop(run) {
             if (!window.confirm(t('停止“{0}”？已完成的步骤会保留，进行中的工作会被中断。', run.label))) return;
@@ -228,5 +263,6 @@
             this.openDialog(t('子 Agent 用量与费用'), content);
         }
     }
+    PiSubagentRuns.stepModels = stepModels;
     window.PiSubagentRuns = PiSubagentRuns;
 })();

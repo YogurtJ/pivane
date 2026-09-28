@@ -2353,11 +2353,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const text = document.createElement('div');
                 text.className = 'pi-markdown';
                 // pi-subagents notices are Markdown reports; renderMarkdown sanitizes them.
-                if (role === 'assistant' || subagentNotice) text.innerHTML = renderMarkdown(block.text);
+                // Subagent notices start collapsed; their Markdown renders on first expansion.
+                if (subagentNotice) { text.dataset.pendingMarkdown = ''; text._piMarkdown = block.text || ''; }
+                else if (role === 'assistant') text.innerHTML = renderMarkdown(block.text);
                 else window.PiQuotes.renderUser(text, block.text);
                 body.appendChild(text);
                 if (role === 'user') foldLongUserText(text, block.text || '');
-                else if (subagentNotice) foldLongUserText(text, block.text || '', { chars: 1200, lines: 16 });
             } else if (block.type === 'thinking') {
                 body.appendChild(createThinkingBlock(block.thinking));
             } else if (block.type === 'toolCall') {
@@ -2391,6 +2392,7 @@ document.addEventListener('DOMContentLoaded', () => {
             body.appendChild(error);
         }
         article.appendChild(body);
+        if (subagentNotice) window.PiSubagentNotices.collapse(article, header, body, messageText(message.content), renderMarkdown);
         if (responseText && showReplyActions) {
             const actions = document.createElement('footer');
             actions.className = 'pi-message-actions';

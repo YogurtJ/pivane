@@ -8465,13 +8465,13 @@
     ,["正在使用 {0}", "Using {0}"]
     ,["{0} 轮", "{0} turns"]
     ,["{0} 次工具", "{0} tool calls"]
-    ,["查看记录", "View log"]
+    ,["查看模型", "View models"]
     ,["子 Agent 操作失败", "Subagent action failed"]
     ,["会话已切换", "The session changed"]
     ,["已刷新子 Agent 状态", "Subagent status refreshed"]
-    ,["暂无记录。", "No log yet."]
-    ,["运行记录 · {0}", "Run log · {0}"]
-    ,["显示最近 200 行，内容由 pi-subagents 提供。", "Showing the latest 200 lines, provided by pi-subagents."]
+    ,["默认模型", "Default model"]
+    ,["模型 · {0}", "Models · {0}"]
+    ,["思考 {0}", "Thinking {0}"]
     ,["停止“{0}”？已完成的步骤会保留，进行中的工作会被中断。", "Stop “{0}”? Completed steps are kept; work in progress is interrupted."]
     ,["已请求停止，状态更新后会显示在这里", "Stop requested. The status will update here."]
     ,["已发送停止请求", "Stop request sent"]
@@ -8900,6 +8900,8 @@
     ,['尚无交付物。Agent 使用 deliver_files 登记成果后会显示在这里。', 'No deliverables yet. Files published by the Agent with deliver_files appear here.']
     ,['仅展示最近 200 个文件；较早成果仍可通过原链接打开。', 'Showing the latest 200 files. Earlier deliverables remain accessible through their original links.']
     ,['搜索项目与线程标题', 'Search projects and thread titles']
+    ,["pi-subagents 未报告模型，使用继承的默认模型", "pi-subagents did not report a model; the inherited default is used"]
+    ,["pi-subagents 没有报告此运行的模型信息。", "pi-subagents did not report models for this run."]
 ];
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

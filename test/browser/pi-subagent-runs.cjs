@@ -70,7 +70,8 @@ async function check(browser, base, width, language) {
         if (cmd.type === 'get_messages') return reply(data());
         if (cmd.type === 'subagent_control') {
             commands.push({ method: cmd.method, params: cmd.params });
-            if (cmd.method === 'status' && cmd.params.view) return reply({ text: 'transcript line <b>1</b>\nline 2' });
+            if (cmd.method === 'status' && cmd.params.id) return reply({ text: ['Run: run-1', 'Dir: /private/async/run-1',
+                'Step 1: reviewer <b>x</b> (reviewer) running (claude-opus-4-5 · thinking high), active now', 'Step 2: scout (scout) complete'].join('\n') });
             if (cmd.method === 'status') return reply({ text: 'ok', snapshot: running });
             if (cmd.method === 'cost') return reply({ cost: { parent: { input: 1200, output: 300, cost: 0.012 }, childTotal: { input: 45000, output: 2000, cost: 0.31 },
                 total: { input: 46200, output: 2300, cost: 0.322 }, unresolvedAsyncChildren: 1, children: [{ label: 'reviewer: check auth', agent: 'reviewer', usage: { input: 45000, output: 2000, cost: 0.31 } }] } });
@@ -105,12 +106,28 @@ async function check(browser, base, width, language) {
     assert.match(await panel.locator('.sa-run-time').textContent(), en ? /1m \d+s/ : /1 分 \d+ 秒/);
     assert.match(await panel.locator('.sa-run-meta').textContent(), en ? /Workflow · Using read · 3 turns · 7 tool calls/ : /工作流 · 正在使用 read · 3 轮 · 7 次工具/);
 
-    // View log
-    await panel.getByRole('button', { name: en ? 'View log' : '查看记录' }).click();
+    // Models (the log view was removed)
+    assert.equal(await panel.getByRole('button', { name: en ? 'View log' : '查看记录' }).count(), 0);
+    await panel.getByRole('button', { name: en ? 'View models' : '查看模型' }).click();
     const dialog = page.locator('dialog.sa-runs-dialog[open]');
     await dialog.waitFor();
-    assert.equal(await dialog.locator('pre').textContent(), 'transcript line <b>1</b>\nline 2');
-    assert.deepEqual(commands.at(-1), { method: 'status', params: { id: 'run-1', view: 'transcript', lines: 200 } });
+    assert.deepEqual(commands.at(-1), { method: 'status', params: { id: 'run-1' } });
+    assert.equal(await dialog.evaluate(node => node.textContent.includes('/private')), false, 'only step lines are shown');
+    assert.deepEqual(await page.evaluate(() => window.PiSubagentRuns.stepModels([
+        'Step 1: reviewer running (anthropic/claude-opus-4 · thinking high), active now, error: later failed',
+        'Step 2/3 Agent 1/2: [review] auth check (reviewer) complete (gpt-5)',
+        'Workflow child s1: s1-source (worker) failed, error: boom', 'Agent 2/2: scout pending (thinking low)', 'Dir: /x'].join('\n'))), [
+        { step: 'Step 1', name: 'reviewer', agent: '', state: 'running', model: 'anthropic/claude-opus-4', thinking: 'high' },
+        { step: 'Step 2/3 Agent 1/2', name: 'auth check', agent: 'reviewer', state: 'complete', model: 'gpt-5', thinking: '' },
+        { step: 'Workflow child s1', name: 's1-source', agent: 'worker', state: 'failed', model: '', thinking: '' },
+        { step: 'Agent 2/2', name: 'scout', state: 'pending', agent: '', model: '', thinking: 'low' }]);
+    assert.equal(await dialog.locator('.sa-model').count(), 2);
+    assert.equal(await dialog.locator('.sa-model-name').first().textContent(), 'reviewer <b>x</b>');
+    assert.equal(await dialog.locator('.sa-model-id').first().textContent(), 'claude-opus-4-5');
+    assert.equal(await dialog.locator('.sa-model-thinking').first().textContent(), en ? 'Thinking High' : '思考 高');
+    assert.equal(await dialog.locator('.sa-model-id.muted').textContent(), en ? 'Default model' : '默认模型');
+    assert.ok(await dialog.evaluate(node => node.getBoundingClientRect().right <= innerWidth + 1 && [...node.querySelectorAll('.sa-model')].every(item => item.scrollWidth <= item.clientWidth + 1)));
+    await page.screenshot({ path: `/tmp/pivane-subagent-models-${width}-${language}.png` });
     await page.keyboard.press('Escape'); await dialog.waitFor({ state: 'detached' }).catch(() => {});
     assert.equal(await page.locator('dialog.sa-runs-dialog[open]').count(), 0);
 
@@ -182,11 +199,23 @@ async function check(browser, base, width, language) {
     // Transcript notices and tool titles
     await selectMessageView(page, 'full');
     const request = page.locator('.pi-message.pi-subagent-notice[data-subagent-tone="attention"]');
-    assert.equal(await request.locator('header strong').textContent(), en ? 'Subagent needs guidance' : '子 Agent 请求指示');
+    assert.equal(await request.locator('summary strong').textContent(), en ? 'Subagent needs guidance' : '子 Agent 请求指示');
+    assert.equal(await request.locator('.pi-subagent-notice-preview').textContent(), 'reviewer asks: may I edit tests?');
+    assert.equal(await request.locator('details').evaluate(node => node.open), false, 'notices start collapsed');
+    assert.equal(await request.locator('.pi-markdown strong').count(), 0, 'Markdown renders on expansion');
+    const rowHeight = await request.evaluate(node => node.getBoundingClientRect().height);
+    assert.ok(rowHeight <= 44, 'collapsed notice is one row: ' + rowHeight);
+    await request.scrollIntoViewIfNeeded(); await page.screenshot({ path: `/tmp/pivane-subagent-notices-collapsed-${width}-${language}.png` });
+    await request.locator('summary').click();
+    await request.locator('.pi-markdown strong').waitFor();
     assert.equal(await request.locator('.pi-markdown strong').textContent(), 'may I edit tests?');
     const result = page.locator('.pi-message.pi-subagent-notice[data-subagent-tone="result"]');
-    assert.equal(await result.locator('header strong').textContent(), en ? 'Subagent result' : '子 Agent 结果');
-    assert.equal(await result.locator('.pi-user-text-toggle').count(), 1, 'long reports fold');
+    assert.equal(await result.locator('summary strong').textContent(), en ? 'Subagent result' : '子 Agent 结果');
+    assert.equal(await result.locator('.pi-subagent-notice-preview').textContent(), 'Review result');
+    assert.ok(await result.evaluate(node => node.getBoundingClientRect().height) <= 44, 'long reports collapse to one row');
+    await result.locator('summary').click();
+    await result.locator('.pi-markdown li').first().waitFor();
+    assert.equal(await result.locator('.pi-markdown li').count(), 30);
     assert.equal(await page.evaluate(() => window.__xss), undefined);
     assert.equal(await page.locator('.pi-message-body [onerror]').count(), 0);
     assert.equal(await page.locator('.pi-message.custom:not(.pi-subagent-notice) header strong').first().textContent(), en ? 'System' : '系统');
