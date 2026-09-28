@@ -699,6 +699,12 @@ document.addEventListener('DOMContentLoaded', () => {
             sideChat.setEnabled(status.sideChat === true, status.sideChatContext === true, status.sideChatRetention === true, status.sideChatTools === true);
             window.PiReplyTts.setEnabled(status.replyTts === true);
             elements.tokenDialog.classList.add('hidden');
+            // Assistant projects do not depend on scanning every native project.
+            const initialParams = window.PiWorkspaceRoute?.current().params;
+            const initialAssistant = state.assistantMode ? refreshAssistant({ profileId: initialParams?.get('profileId'),
+                projectId: initialParams?.get('projectId'), sessionId: initialParams?.get('sessionId') }) : null;
+            const initialAssistantEpoch = state.assistantEpoch;
+            if (initialAssistant) setConnection('idle', translateUi('选择会话开始工作'));
             await loadProjects();
             state.activityEnabled = true;
             void refreshActivity();
@@ -707,11 +713,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const visibleProjects = orderedProjects();
             const project = visibleProjects.find(item => item.cwd === preferred)
                 || visibleProjects[0];
-            if (project) await selectProject(project.cwd, { restoreSession: !state.assistantMode });
-            else if (!state.assistantMode) openProjectDialog();
+            if (project && !state.assistantMode) await selectProject(project.cwd, { restoreSession: true });
+            else if (!project && !state.assistantMode) openProjectDialog();
             if (state.assistantMode) {
-                const params = window.PiWorkspaceRoute?.current().params;
-                refreshAssistant({ profileId: params?.get('profileId'), projectId: params?.get('projectId'), sessionId: params?.get('sessionId') });
+                if (initialAssistant) {
+                    await initialAssistant;
+                    void loadAssistantUnclassified(initialAssistantEpoch, state.assistantProfileId);
+                } else {
+                    const params = window.PiWorkspaceRoute?.current().params;
+                    refreshAssistant({ profileId: params?.get('profileId'), projectId: params?.get('projectId'), sessionId: params?.get('sessionId') });
+                }
             }
         } catch (error) {
             if (!elements.tokenDialog.classList.contains('hidden')) return;
@@ -767,7 +778,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderProjects();
         renderSessions();
         await Promise.allSettled(state.projects
-            .filter(project => state.expandedProjects.has(project.cwd) && !state.projectSessions.has(project.cwd))
+            .filter(project => !state.assistantMode && state.expandedProjects.has(project.cwd) && !state.projectSessions.has(project.cwd))
             .map(project => loadSessions(project.cwd)));
     }
 
@@ -1237,6 +1248,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function refreshAssistant(requested = {}) {
         const pending = loadAssistant(requested), epoch = state.assistantEpoch;
         void pending.catch(error => { if (state.assistantMode && state.assistantEpoch === epoch) showAssistantError(error); });
+        return pending;
     }
 
     async function loadAssistant(requested = {}) {
@@ -1282,7 +1294,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const groups = data.projects.filter(group => !group.archived && group.profileIds?.includes(chosen));
         const archivedGroups = data.projects.filter(group => group.archived && group.profileIds?.includes(chosen));
         const listedGroups = [...groups, ...archivedGroups];
-        const cwds = [...new Set([...state.projects.map(project => project.cwd), ...listedGroups.map(group => group.cwd)])];
+        const unclassifiedProject = requested.projectId || previousProjectId;
+        const unclassifiedCwd = unclassifiedProject?.startsWith('unclassified:') ? unclassifiedProject.slice('unclassified:'.length) : null;
+        const cwds = [...new Set([...listedGroups.map(group => group.cwd), ...(unclassifiedCwd ? [unclassifiedCwd] : [])])];
+        state.assistantDiscovery = { epoch, profileId: chosen, cwds: new Set(cwds) };
         state.assistantRevision = data.revision;
         state.assistantGroups = listedGroups;
         state.assistantProjectId = listedGroups.some(group => group.id === previousProjectId) ? previousProjectId : groups[0]?.id || null;
@@ -1314,12 +1329,46 @@ document.addEventListener('DOMContentLoaded', () => {
         status.textContent = '';
         syncActualIdentity();
         renderAssistantSessions();
+        void loadAssistantUnclassified(epoch, chosen);
         if (requested.sessionId) {
             const selected = state.assistantSessions.get(state.assistantProjectId)?.find(row => row.id === requested.sessionId);
             if (selected) {
                 if (selected.cwd !== state.cwd) await selectProject(selected.cwd);
                 if (epoch !== state.assistantEpoch || !state.assistantMode) return;
                 await openSession(selected);
+            }
+        }
+    }
+
+    async function loadAssistantUnclassified(epoch, profileId) {
+        const discovery = state.assistantDiscovery;
+        const current = () => state.assistantMode && state.assistantEpoch === epoch
+            && state.assistantProfileId === profileId && state.assistantDiscovery === discovery;
+        if (!discovery || discovery.epoch !== epoch || !current()) return;
+        // Reserve before awaiting; bootstrap and an identity refresh may both
+        // discover projects. Load unrelated directories without hiding ready rows.
+        for (const project of state.projects) {
+            if (!current()) return;
+            const cwd = project.cwd;
+            if (discovery.cwds.has(cwd)) continue;
+            discovery.cwds.add(cwd);
+            try {
+                const data = await apiFetch(`/api/pi/sessions?cwd=${encodeURIComponent(cwd)}`);
+                if (!current()) return;
+                const rows = (data.sessions || []).filter(session => !state.deletedSessions.has(JSON.stringify([cwd, session.id])));
+                state.projectSessions.set(cwd, rows);
+                if (cwd === state.cwd) state.sessions = rows;
+                const orphaned = rows.filter(session => session.agentProfile?.id === profileId && !session.assistantProject && !session.ephemeral);
+                if (orphaned.length) {
+                    const id = `unclassified:${cwd}`;
+                    state.assistantGroups.push({ id, name: translateUi('未分类'), cwd, unclassified: true });
+                    state.assistantSessions.set(id, orphaned);
+                    renderAssistantSessions();
+                }
+            } catch (error) {
+                if (!current()) return;
+                discovery.cwds.delete(cwd);
+                $('pi-assistant-profile-status').textContent = error.message;
             }
         }
     }
