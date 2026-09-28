@@ -39,7 +39,7 @@ function sessionListRevision(directory) {
             || descriptorPathSync(directoryFd) !== directory || !io.sameIdentityAtPath(directory, identity)
             || fs.realpathSync.native(directory) !== directory
             || JSON.stringify(names) !== JSON.stringify(fs.readdirSync(directory).filter(name => name.endsWith('.jsonl')).sort())) return null;
-        return JSON.stringify([stamp(before), identity, revisions]);
+        return JSON.stringify([directory, stamp(before), identity, revisions]);
     } catch { return null; }
     finally { if (directoryFd !== undefined) fs.closeSync(directoryFd); }
 }
