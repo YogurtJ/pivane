@@ -133,11 +133,12 @@ test('concurrent list readers share one native read, isolate results, and retry 
     rows[0][0].name = 'Only this caller';
     assert.equal(rows[1][0].name, 'Shared list');
     await store.listSessions(testRoot);
-    assert.equal(calls, 2, 'completed lists are not cached');
+    assert.equal(calls, 1, 'unchanged native identities reuse the disposable projection');
+    fs.appendFileSync(session.path, '\n');
     SessionManager.list = async () => { calls++; throw new Error('Synthetic read failure'); };
     const failed = await Promise.allSettled([store.listSessions(testRoot), store.listSessions(testRoot)]);
     assert.ok(failed.every(result => result.status === 'rejected'));
-    assert.equal(calls, 3);
+    assert.equal(calls, 2);
     SessionManager.list = original;
     assert.equal((await store.listSessions(testRoot))[0].name, 'Shared list');
     await store.deleteSession(testRoot, session.id);

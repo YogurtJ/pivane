@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import scope from './scope.js';
-import indexer from './index.js';
+import backgroundIndexer from './background-index.js';
 import mutation from './mutation-lock.js';
 import documentIndex from './document-index.js';
 import toolMutations from './tool-mutations.js';
@@ -40,7 +40,7 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
 
     let started = false;
     let stopped = false;
-    let sourceIndex: ReturnType<typeof indexer.createIndex> | null = null;
+    let sourceIndex: ReturnType<typeof backgroundIndexer.createBackgroundIndex> | null = null;
     let activeIdentity: any = null;
     const memoryMutation = mutation.createMutationLock(root);
     const knowledgePath = path.join(__dirname, 'knowledge-service.js');
@@ -53,7 +53,6 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
         } }, getAgentDir: async () => context.agentDir, bundlePath: bundle,
     }) : null;
     const knowledgeTools = knowledge ? toolMutations.createKnowledgeMemoryTools(knowledge, context.profileId) : null;
-    let coverage = { limited: true, initialSweepComplete: false };
     const allowed = (ctx: any) => started && !stopped && ctx?.mode === 'rpc'
         && scope.eligibleManager(ctx.sessionManager, context, ctx.cwd)
         && scope.sameActiveFile(ctx.sessionManager.getSessionFile(), activeIdentity);
@@ -87,8 +86,10 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
                         if ((tool.name === 'memory_search' || ['memory_add', 'memory_replace', 'memory_remove'].includes(tool.name))
                             && await indexUnavailable(args[1]?.target)) throw new Error('Profile document search index needs repair');
                         if (tool.name === 'session_search') {
-                            sourceIndex?.reconcile();
-                            if (sourceIndex) coverage = sourceIndex.coverage();
+                            if (!sourceIndex) throw new Error('Profile session index is unavailable');
+                            const result = await sourceIndex.search(args[1]);
+                            if (!allowed(args[args.length - 1])) throw new Error('Profile memory binding changed');
+                            return result;
                         }
                         if (tool.name === 'skill_manage') assertPrivateSkillTree(skillStore.getGlobalSkillsDir(), skillStore.getProjectSkillsDir());
                         const execute = async () => tool.execute(...args);
@@ -105,16 +106,6 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
                                 if (await indexUnavailable(args[1]?.target)) throw new Error('Profile document search index needs repair');
                                 return execute();
                             }) : await execute());
-                        if (tool.name === 'session_search') {
-                            const changed = sourceIndex?.reconcile();
-                            if (sourceIndex) coverage = sourceIndex.coverage();
-                            if (changed) throw new Error('Profile session sources changed; retry search');
-                        }
-                        if (tool.name === 'session_search') {
-                            result.details = { ...result.details, coverage };
-                            if (coverage.limited || !coverage.initialSweepComplete) result.content.push({ type: 'text',
-                                text: 'Profile session recall is partial; backfill is still progressing or the scan limit was reached.' });
-                        }
                         if (tool.name === 'memory_search' && await indexUnavailable(args[1]?.target))
                             throw new Error('Profile document search index changed during search');
                         return result;
@@ -183,27 +174,19 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
         }
         if (context.skills.learnedEnabled) await skillStore.ensureDiscoveredRoots();
         if (db) {
-            sourceIndex = indexer.createIndex(db, upstream, context);
-            try {
-                sourceIndex.reconcile();
-                sourceIndex.index(ctx.sessionManager.getSessionFile());
-                coverage = sourceIndex.advance();
-            } catch { coverage = { limited: true, initialSweepComplete: false }; }
+            sourceIndex = backgroundIndexer.createBackgroundIndex(context, bundle);
+            sourceIndex.schedule(ctx.sessionManager.getSessionFile());
         }
         started = true;
     });
     pi.on('agent_settled', (_event: any, ctx: any) => {
         if (!db || !allowed(ctx)) return;
-        try { sourceIndex?.index(ctx.sessionManager.getSessionFile()); if (sourceIndex) coverage = sourceIndex.advance(); }
-        catch { /* native sessions remain authoritative; search still checks persisted rows */ }
+        sourceIndex?.schedule(ctx.sessionManager.getSessionFile());
     });
-    pi.on('session_shutdown', (_event: any, ctx: any) => {
+    pi.on('session_shutdown', async () => {
         if (stopped) return;
-        if (db && allowed(ctx)) {
-            try { sourceIndex?.index(ctx.sessionManager.getSessionFile()); } catch { /* best effort */ }
-        }
         stopped = true;
-        sourceIndex?.close();
-        if (!sourceIndex) db?.close();
+        try { await sourceIndex?.close(); }
+        finally { db?.close(); }
     });
 }

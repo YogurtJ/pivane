@@ -404,7 +404,17 @@ inside it even when another worker supplied an older candidate. Legacy
 unproven derived rows are removed. Search
 reconciles all tracked sources before and after querying; deleted, edited,
 rebound or replaced sources cannot leak old snippets. A change detected after
-query preparation fails the result and asks for retry. Indexing advances a
+query preparation fails the result and asks for retry. A dedicated `worker_threads` worker owns historical
+index refresh and session search, including both source reconciliations; the Pi
+RPC event loop does not parse or index historical JSONL at startup or after a
+settled turn. Startup schedules a bounded refresh without awaiting it. Settled
+events coalesce into one running and one pending refresh, and a search waits for
+that work before verifying and querying. Shutdown drops the pending disposable
+refresh, waits for in-flight work, closes the index connection and joins the
+thread; it does not re-index the current session. A failed worker makes search
+fail closed; no unchecked parent-side fallback is used. Active-session binding
+verification and memory document operations retain their existing checks.
+Indexing advances a
 persisted cursor through bounded batches at startup and after settled turns,
 including sources beyond the first 20 or 5,000. It never scans raw JSONL
 through the upstream anchor fallback. Tool results report partial coverage while the

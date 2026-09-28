@@ -29,8 +29,9 @@ function isWithin(root, candidate) {
 
 class PiSessionStore {
     constructor() {
-        // Share only concurrent list reads; completed results are never cached.
+        // Concurrent reads share work; completed projections require fresh native proofs.
         this.sessionLists = new Map();
+        this.sessionListCache = new Map();
         const defaults = process.platform === 'win32'
             ? Array.from({ length: 26 }, (_, index) => `${String.fromCharCode(65 + index)}:\\`)
             : ['/'];
@@ -164,8 +165,24 @@ class PiSessionStore {
         if (!read || read.revision !== revision || read.profiles !== profiles || read.projects !== projects) {
             read = { revision, profiles, projects };
             // Reserve before starting the read, and remove on success or failure.
-            read.promise = Promise.resolve().then(() => this._listSessions(cwd, SessionManager, profiles, projects,
-                profileSnapshot?.state, projectSnapshot?.state)).finally(() => {
+            read.promise = Promise.resolve().then(async () => {
+                const { sessionListRevision } = require('./pi-session-list-revision');
+                // Pi's public factory resolves the native directory; an unflushed
+                // manager has no session file on disk and is never appended to.
+                const directory = SessionManager.create(cwd).getSessionDir();
+                const sourceRevision = sessionListRevision(directory);
+                const cached = this.sessionListCache.get(cwd);
+                if (sourceRevision && cached?.sourceRevision === sourceRevision && cached.revision === revision
+                    && cached.profiles === profiles && cached.projects === projects) return cached.result;
+                this.sessionListCache.delete(cwd);
+                const result = await this._listSessions(cwd, SessionManager, profiles, projects,
+                    profileSnapshot?.state, projectSnapshot?.state);
+                if (sourceRevision && sourceRevision === sessionListRevision(directory)) {
+                    if (this.sessionListCache.size >= 32) this.sessionListCache.delete(this.sessionListCache.keys().next().value);
+                    this.sessionListCache.set(cwd, { sourceRevision, revision, profiles, projects, result });
+                }
+                return result;
+            }).finally(() => {
                 if (this.sessionLists.get(cwd) === read) this.sessionLists.delete(cwd);
             });
             this.sessionLists.set(cwd, read);

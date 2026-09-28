@@ -93,6 +93,7 @@ test('active session beyond history page and 8 MiB retains tools while recall re
         getSessionId: () => active.header.id, getSessionFile: () => active.file };
     const ctx = { mode: 'rpc', cwd: f.cwd, sessionManager: manager };
     await events.get('session_start')({}, ctx);
+    t.after(() => events.get('session_shutdown')({}, ctx));
     assert.ok(tools.has('memory_add'));
     assert.ok(tools.has('skill_manage'));
     assert.equal((await tools.get('memory_add').execute('call', { target: 'memory', content: 'large-active-fact' }, undefined, undefined, ctx)).details.success, true);
@@ -119,12 +120,16 @@ test('active session beyond history page and 8 MiB retains tools while recall re
     } finally { fs.unlinkSync(unmirroredUser); }
     const result = await tools.get('session_search').execute('call', { query: 'older' }, undefined, undefined, ctx);
     assert.equal(result.details.coverage.initialSweepComplete, false);
-    for (let i = 0; i < 28; i++) await events.get('agent_settled')({}, ctx);
+    for (let i = 0; i < 28; i++) {
+        await events.get('agent_settled')({}, ctx);
+        // Search joins the asynchronous backfill; settled itself must not wait.
+        await tools.get('session_search').execute('call', { query: 'older' }, undefined, undefined, ctx);
+    }
     const afterSweep = await tools.get('session_search').execute('call', { query: 'older' }, undefined, undefined, ctx);
     assert.equal(afterSweep.details.coverage.initialSweepComplete, true);
     assert.equal(afterSweep.details.coverage.limited, true);
     assert.ok(events.get('resources_discover')({}, ctx).skillPaths.length);
-    events.get('session_shutdown')({}, ctx);
+    await events.get('session_shutdown')({}, ctx);
 });
 
 test('completed sweep distinguishes ineligible files from capped historical sources', { skip: gate }, async t => {

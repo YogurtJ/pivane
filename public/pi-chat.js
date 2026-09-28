@@ -1283,14 +1283,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const archivedGroups = data.projects.filter(group => group.archived && group.profileIds?.includes(chosen));
         const listedGroups = [...groups, ...archivedGroups];
         const cwds = [...new Set([...state.projects.map(project => project.cwd), ...listedGroups.map(group => group.cwd)])];
-        const [groupResults, unclassified] = await Promise.all([
-            Promise.all(listedGroups.map(group => apiFetch(`/api/pi/assistant-projects/${encodeURIComponent(group.id)}/sessions?profileId=${encodeURIComponent(chosen)}`))),
-            Promise.all(cwds.map(cwd => apiFetch(`/api/pi/sessions?cwd=${encodeURIComponent(cwd)}`)))
-        ]);
+        state.assistantRevision = data.revision;
+        state.assistantGroups = listedGroups;
+        state.assistantProjectId = listedGroups.some(group => group.id === previousProjectId) ? previousProjectId : groups[0]?.id || null;
+        renderAssistantSessions();
+        const unclassified = await Promise.all(cwds.map(cwd => apiFetch(`/api/pi/sessions?cwd=${encodeURIComponent(cwd)}`)));
         if (epoch !== state.assistantEpoch || chosen !== state.assistantProfileId || !state.assistantMode) return;
         state.assistantRevision = data.revision;
         state.assistantGroups = groups;
-        state.assistantSessions = new Map(listedGroups.map((group, index) => [group.id, (groupResults[index].sessions || []).filter(session => !state.deletedSessions.has(JSON.stringify([group.cwd, session.id])))]));
+        state.assistantSessions = new Map(listedGroups.map(group => [group.id,
+            (unclassified[cwds.indexOf(group.cwd)].sessions || []).filter(session => session.assistantProject?.id === group.id
+                && session.agentProfile?.id === chosen && !state.deletedSessions.has(JSON.stringify([group.cwd, session.id])))]));
         for (let i = 0; i < cwds.length; i++) {
             const cwd = cwds[i], rows = (unclassified[i].sessions || []).filter(session => !state.deletedSessions.has(JSON.stringify([cwd, session.id])));
             state.projectSessions.set(cwd, rows);
