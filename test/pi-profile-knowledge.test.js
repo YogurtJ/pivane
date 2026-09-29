@@ -306,16 +306,30 @@ test('the request journal keeps accepting writes after the active receipt window
     const first = { requestId: 'original-id', expectedRevision: (await service.snapshot(id)).revision,
         operation: 'create', kind: 'skill', name: 'journal-skill', description: 'Journal', content: 'One step.' };
     const saved = await service.mutate(id, first);
-    let revision = saved.revision;
+    let current = saved;
+    // Exercise all 206 real publications, but rotate one item's history rather than
+    // rescanning 206 unrelated skill directories to test a receipt-window boundary.
     for (let i = 0; i < 205; i++) {
-        const result = await service.mutate(id, { requestId: `journal-fill-${i}`, expectedRevision: revision,
-            operation: 'create', kind: 'skill', name: `journal-skill-${i}`, description: 'Journal', content: 'One step.' });
-        revision = result.revision;
+        current = await service.mutate(id, { requestId: `journal-fill-${i}`, expectedRevision: current.revision,
+            operation: 'update', kind: 'skill', itemId: current.item.id, itemRevision: current.item.revision,
+            name: 'journal-skill', description: 'Journal', content: `Step ${i}.` });
+        assert.equal(current.status, 'saved');
+        if ([197, 198, 199].includes(i)) {
+            const journal = (await service.snapshot(id)).capabilities.journal;
+            assert.deepEqual([journal.receipts, journal.archivedReceipts, journal.requests],
+                [Math.min(i + 2, 200), Math.max(i + 2 - 200, 0), i + 2]);
+        }
     }
     const data = JSON.parse(fs.readFileSync(path.join(root, '.pivane-knowledge.json'), 'utf8'));
     assert.equal(data.version, 2);
     assert.equal(data.receipts.length, 200);
     assert.equal(data.archive.length, 6);
+    assert.equal(data.sequence, 206);
+    assert.equal(Object.keys(data.records).length, 1);
+    assert.equal(data.records[saved.item.id].history.length, 200);
+    const historyIds = new Set(data.records[saved.item.id].history.map(row => row.receiptId));
+    for (const row of data.archive) assert.equal(historyIds.has(row.id), false);
+    assert.match((await service.getItem(id, saved.item.id)).item.content, /Step 204\./);
     const snapshot = await service.snapshot(id);
     assert.deepEqual(snapshot.capabilities.operations, ['create', 'update', 'delete', 'restore', 'enable', 'disable', 'undo', 'consolidate']);
     assert.deepEqual({ receipts: snapshot.capabilities.journal.receipts, archived: snapshot.capabilities.journal.archivedReceipts,
@@ -484,9 +498,11 @@ test('large skill histories stay readable beyond 2 MiB and give up the oldest un
     let saved = await mutate('create', 'skill', { name: 'large-proof', description: 'Large synthetic skill', content: body(0) });
     const first = saved.receipt;
     for (let i = 1; i <= 140; i++) {
-        const item = (await service.getItem(id, saved.item.id)).item;
-        saved = await mutate('update', 'skill', { itemId: item.id, itemRevision: item.revision, name: 'large-proof',
-            description: 'Large synthetic skill', content: body(i) });
+        // The mutation response already supplies both revisions. Avoid two extra
+        // full-ledger reads per preparation step; keep all real writes and final reads.
+        saved = await service.mutate(id, { requestId: `large-update-${i}`, expectedRevision: saved.revision,
+            operation: 'update', kind: 'skill', itemId: saved.item.id, itemRevision: saved.item.revision,
+            name: 'large-proof', description: 'Large synthetic skill', content: body(i) });
         assert.equal(saved.status, 'saved');
     }
     const ledgerBytes = fs.statSync(path.join(root, '.pivane-knowledge.json')).size;

@@ -72,15 +72,6 @@ Current source introduces Pivane configuration names and `PIVANE_` aliases for w
 
 Start with the [English user guide](docs/en/USER_GUIDE.md). Detailed feature, API and development documentation is currently primarily in Chinese and is linked from the [documentation index](docs/README.md). An Agent helping with deployment should begin with [the operational Agent guide](docs/AGENT_GUIDE.md); source contributors should read [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) and the [module map](docs/development/MODULES.md).
 
-In an isolated development environment:
-
-```bash
-node scripts/install.cjs
-npm test
-npm run check
-npm run check:docs
-npm audit --omit=dev
-npm run pack:trial
-```
+Prepare locked dependencies with `node scripts/install.cjs` in an isolated development environment. Use the [targeted test entry point](docs/development/WORKFLOW.md#node-测试入口与计时) during iteration and follow the [validation matrix](docs/development/WORKFLOW.md#验证矩阵) for source delivery and releases. Ordinary installations do not require development tests.
 
 Changes are recorded in [CHANGELOG.md](CHANGELOG.md). Pivane uses the [ISC license](LICENSE); dependencies retain their own licenses, listed in [Third-party notices](THIRD_PARTY_NOTICES.md).

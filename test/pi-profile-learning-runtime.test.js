@@ -446,11 +446,18 @@ test('last provided memory generation is reported as historical metadata, not a 
     assert.equal(result.provided, true);
 });
 
-test('classifier recognizes explicit corrections and preferences but rejects local-only instructions and quoted questions', () => {
-    assert.equal(correction('不是旧记录，而是新记录，请更正。'), true);
-    assert.equal(preference('请记住，以后按新流程执行。'), true);
-    assert.equal(preference('以后默认使用新流程。'), true);
-    assert.equal(temporary('仅本次按这个步骤，不要记住'), true);
+test('learning service forwards custom phrases and exclusions to trigger classifiers', () => {
+    // Phrase tables and language cases live in learning-safety; this only checks
+    // the service wrapper forwards its configuration rather than using defaults.
+    const phrases = { correction: ['fixture-correction'], preference: ['fixture-preference'],
+        temporary: ['fixture-temporary'], ignore: ['fixture-ignore'] };
+    for (const [classify, text] of [[correction, 'fixture-correction'], [preference, 'fixture-preference'],
+        [temporary, 'fixture-temporary']]) {
+        assert.equal(classify(text), false);
+        assert.equal(classify(text, phrases), true);
+        assert.equal(classify(`fixture-ignore ${text}`, phrases), classify === temporary,
+            'temporary requests still suppress learning even when an ignore phrase is present');
+    }
 });
 
 test('expired learning action request IDs refuse re-execution instead of filling the journal', async t => {

@@ -68,11 +68,27 @@ async function run(browser, base, viewport, preferences = {}) {
         title: document.querySelector('#pi-project-button').title,
         newChat: document.querySelector('#pi-new-session').textContent.trim(),
         search: (node => node.hidden ? null : { height: node.getBoundingClientRect().height, scroll: node.scrollWidth, client: node.clientWidth })(document.querySelector('#pi-search-conversations')),
-        tooltip: document.querySelector('[data-session-id="empty"] .pi-session-main').title,
+        tooltip: document.querySelector('[data-session-id="empty"] .pi-session-main').dataset.details,
+        tools: [...document.querySelectorAll('.pi-tool-rail button')].map(node => node.dataset.toolPane),
         taskTool: document.querySelectorAll('#pi-tool-tasks, #pi-mobile-tool-tasks, #pi-inspector-tasks').length
     }));
     assert.equal(header.newChat, 'New chat'); assert.equal(header.taskTool, 0, 'task cards stay above the composer only');
     assert.match(header.tooltip, /42 messages/); assert.match(header.tooltip, /Compacted 2 times · 12 messages/); assert.match(header.tooltip, /172k/); assert.match(header.tooltip, /model-x/);
+    assert.equal(header.tools[0], 'details', 'details is the first tool');
+    if (viewport.width > 900) {
+        // Styled hover card appears only after a deliberate pause and stays inside the viewport.
+        const row = page.locator('[data-session-id="empty"] .pi-session-main');
+        await row.hover(); await page.waitForTimeout(350);
+        assert.equal(await page.locator('#pi-session-hover:visible').count(), 0, 'hover card waits for a pause');
+        await page.locator('#pi-session-hover').waitFor({ state: 'visible', timeout: 2000 });
+        const card = await page.locator('#pi-session-hover').evaluate(node => { const r = node.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, font: parseFloat(getComputedStyle(node).fontSize), text: node.textContent, rows: node.querySelectorAll('li').length }; });
+        assert.ok(card.font >= 13 && card.rows >= 4 && card.left >= 0 && card.right <= viewport.width && card.bottom <= viewport.height, JSON.stringify(card));
+        assert.match(card.text, /42 messages/);
+        assert.equal(await row.getAttribute('aria-describedby'), 'pi-session-hover');
+        await page.mouse.move(viewport.width - 5, viewport.height / 2);
+        await page.locator('#pi-session-hover').waitFor({ state: 'hidden' });
+        if (evidence) { await row.hover(); await page.waitForTimeout(900); await page.screenshot({ path: path.join(evidence, `hover-${viewport.width}.png`) }); await page.mouse.move(viewport.width - 5, viewport.height / 2); }
+    }
     if (viewport.width > 900) {
         assert.equal(header.bar, 'none'); assert.match(header.project, /pi-connection-banner/); assert.match(header.context, /pi-connection-banner/);
         assert.ok(header.banner <= 56, JSON.stringify(header)); assert.match(header.title, /\/synthetic\/workbench/);

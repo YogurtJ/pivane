@@ -7,11 +7,18 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const { randomUUID } = require('node:crypto');
 const cwd = '/synthetic/assistant';
 const profileId = randomUUID(), sessionId = randomUUID();
-async function check(browser, base, width, language) {
+async function check(browser, base, width, language, scenario = 'normal') {
     const context = await browser.newContext({ viewport: { width, height: 900 }, locale: language, isMobile: width < 680, hasTouch: width < 680 });
     const page = await context.newPage(), errors = [], writes = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(language => { localStorage.setItem('pi.workspace.language', language); localStorage.setItem('pi.workspace.theme', 'daylight'); }, language);
+    if (scenario !== 'normal') await page.addInitScript(() => {
+        Object.defineProperty(Crypto.prototype, 'randomUUID', { value: undefined, configurable: true });
+        window.__cronLoadingSeen = false;
+        document.addEventListener('DOMContentLoaded', () => new MutationObserver(() => {
+            if (document.querySelector('.cron-loading')) window.__cronLoadingSeen = true;
+        }).observe(document.body, { subtree: true, childList: true }));
+    });
     const jobs = [], homes = [], now = Date.now();
     const limits = { maxRunsPerDay: 40, maxTokensPerDay: 400000, maxCostPerDay: null };
     await page.route('**/api/**', route => {
@@ -19,11 +26,11 @@ async function check(browser, base, width, language) {
         const send = data => route.fulfill({ json: data });
         if (req.method() !== 'GET') writes.push({ path: url.pathname, body });
         if (url.pathname === '/api/pi/status') return send({ ok: true, scheduledTasks: true, projectRoots: ['/synthetic'] });
-        if (url.pathname === '/api/pi/projects') return send({ projects: [{ cwd, name: 'Assistant', sessionCount: 1 }], roots: ['/synthetic'] });
+        if (url.pathname === '/api/pi/projects') return new Promise(resolve => setTimeout(() => { send({ projects: [{ cwd, name: 'Assistant', sessionCount: 1 }], roots: ['/synthetic'] }); resolve(); }, scenario === 'slow' ? 1800 : 0));
         if (url.pathname === '/api/pi/profiles') return send({ profiles: [{ id: profileId, name: 'Assistant <img src=x onerror=alert(1)>', enabled: true }] });
         if (url.pathname === '/api/pi/sessions') return send({ sessions: [{ id: sessionId, cwd, name: 'Main conversation', agentProfile: { id: profileId } }] });
         if (url.pathname === '/api/pi/activity') return send({ runtimes: [], replyNotices: [] });
-        if (url.pathname === '/api/pi/cron') return send({ jobs, homes, limits, today: { runs: 0, tokens: 0, cost: 0 } });
+        if (url.pathname === '/api/pi/cron') return new Promise(resolve => setTimeout(() => { send({ jobs, homes, limits, today: { runs: 0, tokens: 0, cost: 0 } }); resolve(); }, scenario === 'slow' ? 350 : 0));
         if (url.pathname === '/api/pi/cron/preview') return send({ times: Array.from({ length: 5 }, (_, i) => now + (i + 1) * 86400000) });
         if (url.pathname === '/api/pi/cron/jobs') { jobs.push({ ...body, revision: 1, nextAt: now + 86400000 }); return send(jobs.at(-1)); }
         if (url.pathname === `/api/pi/cron/homes/${profileId}`) {
@@ -36,6 +43,10 @@ async function check(browser, base, width, language) {
     });
     await page.goto(base + '/#/cron');
     const zh = language === 'zh-CN';
+    if (scenario === 'slow') {
+        assert.equal(await page.evaluate(() => window.__cronLoadingSeen), true, 'initial task loading should have a visible placeholder');
+        await page.locator('.cron-loading').waitFor({ state: 'detached', timeout: 1500 });
+    }
     await page.getByRole('button', { name: zh ? '新建任务' : 'New task', exact: true }).click();
     await page.getByLabel(zh ? '任务名称' : 'Task name').fill('Daily briefing <img src=x onerror=alert(1)>');
     await page.getByLabel(zh ? '工作目录' : 'Working directory', { exact: false }).fill(cwd);
@@ -53,6 +64,7 @@ async function check(browser, base, width, language) {
     await page.screenshot({ path: `/tmp/pivane-cron-form-${width}-${language}.png`, fullPage: true });
     await page.getByRole('button', { name: zh ? '保存任务' : 'Save task', exact: true }).click();
     await page.locator('.cron-detail-head').waitFor();
+    assert.match(jobs[0].id, /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/);
     assert.equal(jobs[0].schedule.expression, '0 17 * * *');
     assert.equal(jobs[0].target.sessionId, sessionId);
     assert.equal(jobs[0].enabled, false);
@@ -84,6 +96,7 @@ async function check(browser, base, width, language) {
     const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
     try {
         for (const width of [1440, 393, 320]) for (const language of ['zh-CN', 'en']) await check(browser, `http://127.0.0.1:${server.address().port}`, width, language);
-        console.log('Scheduled tasks: desktop/mobile, two languages, editing, preview, XSS and draft checks passed');
+        for (const language of ['zh-CN', 'en']) await check(browser, `http://127.0.0.1:${server.address().port}`, language === 'zh-CN' ? 1440 : 393, language, 'slow');
+        console.log('Scheduled tasks: desktop/mobile, two languages, HTTP UUID fallback, asynchronous loading and draft checks passed');
     } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

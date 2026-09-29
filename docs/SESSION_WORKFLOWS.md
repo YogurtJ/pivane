@@ -157,23 +157,8 @@ Web worker 使用 `-e server/pi-web-session-extension.ts` 显式加载桥接。`
 
 ## 验证与部署
 
-```bash
-npm test
-npm run check
-npm audit --omit=dev
-PLAYWRIGHT_MODULE=/path/to/playwright node test/browser/pi-session-workflows.cjs
-```
+测试入口见 [模块导航](development/MODULES.md)，执行范围见 [验证矩阵](development/WORKFLOW.md#验证矩阵)。工作流与待发送队列由隔离 Node/RPC 用例覆盖；浏览器工作流和消息操作专项需另行执行，不包含在 `npm test` 中。
 
-- `test/pi-deferred-messages.test.js`：持久化/权限/重复 ID、到期等待、过期恢复、不确定结果、暂停/取消/修改冲突、损坏与写失败、投递期间失败编辑竞态。
-- `test/pi-session-workflows.test.js`：真实官方 CLI + loopback SSE，压缩历史的 fork/clone/首轮分叉、原文件保留、图片/重试上下文、旧版本重启恢复、双 WebSocket 通知、互斥、无浏览器真实延迟投递、会话删除取消预约。全部临时 Agent 目录，不请求付费 Provider。
-- `test/browser/pi-session-workflows.cjs`：1440x1000、393x852、412x915 模拟 REST/WS；草稿、附件、编辑取消/冲突、延迟修改/暂停/取消、分叉/复制/版本恢复、移动抽屉、键盘、pageerror 和溢出。截图在 `/tmp/pi-workflows-*`，不创建真实会话/媒体。
+运行外部 URL 型浏览器专项前，按 [隔离要求](development/WORKFLOW.md#浏览器与重型专项) 分开身份、媒体、项目与预约队列路径，并显式传入脚本支持的测试 URL。尤其要固定独立的 `PI_WEB_DEFERRED_FILE`，避免操作生产预约；只换端口和队列路径仍不足以隔离身份。
 
-- `test/browser/pi-message-actions.cjs`：桌面及 393/412/320px 四视口，三主题；回复 footer/问题时间布局、原文复制与 HTTP fallback、消息/图片/工具安全、流式结束、重连、回复后分叉位置、过期操作及旧后端降级。所有 REST/WS 都是 fixture，截图位于 `/tmp/pi-message-actions-*`。
-
-隔离启动必须显式区分队列路径，避免操作生产预约：
-
-```bash
-PORT=3101 PI_WORKSPACE_BASE_URL=http://127.0.0.1:3101 PI_WEB_DEFERRED_FILE=/tmp/pi-workflows-3101-deferred.json node server.js
-```
-
-后端更新须在实例空闲时进行，按实际status核对能力；不能中断当前工作会话。
+后端更新须在实例空闲时进行，按实际 status 核对能力；不能中断当前工作会话。

@@ -1,6 +1,14 @@
 /* Scheduled tasks: the server owns schedules, budgets and native execution. */
 (() => {
     const t = (s, ...args) => globalThis.PiI18n?.t(s, ...args) || s;
+    // Web Crypto randomUUID is unavailable on ordinary HTTP LAN origins.
+    function randomId() {
+        if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+        const bytes = crypto.getRandomValues(new Uint8Array(16));
+        bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128;
+        const hex = [...bytes].map(byte => byte.toString(16).padStart(2, '0')).join('');
+        return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    }
     const node = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
     const statusNames = { waiting: '等待线程空闲', dispatching: '正在提交', running: '运行中', completed: '已完成', silent: '静默完成',
         skipped: '已跳过', failed: '执行失败', error: '执行失败', stopped: '已停止', cancelled: '已取消', uncertain: '需要核对' };
@@ -9,7 +17,7 @@
     function create({ api, currentCwd }) {
         const root = document.getElementById('cron-tab'); if (!root) return;
         let snapshot = null, profiles = [], projects = [], selected = '', draft = null, dirty = false, busy = false, visible = false, epoch = 0, query = '', filterProfile = '';
-        let runRequest = null, previewEpoch = 0;
+        let runRequest = null, previewEpoch = 0, projectsRequested = false;
         const header = node('header', 'cron-header'), heading = node('div');
         heading.append(node('span', 'cron-eyebrow', 'PIVANE'), node('h1', '', t('定时任务')), node('p', '', t('让日常安排，准时回到对话里。')));
         const actions = node('div', 'cron-actions');
@@ -50,15 +58,39 @@
             finally { busy = false; done(); for (const [control, disabled] of controls) control.disabled = disabled; }
         }
         const send = (url, body, method = 'POST') => api(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        function loading() {
+            stats.replaceChildren(); list.replaceChildren(); detail.replaceChildren();
+            const summary = node('div', 'cron-stat cron-placeholder'); summary.append(node('span', '', t('正在读取定时任务…'))); stats.append(summary);
+            list.append(node('p', 'cron-muted', t('正在读取定时任务…')));
+            const placeholder = node('div', 'cron-loading'); placeholder.setAttribute('role', 'status'); placeholder.setAttribute('aria-live', 'polite');
+            placeholder.append(node('i', 'fa-solid fa-calendar-days'), node('h2', '', t('正在读取定时任务…')),
+                node('p', '', t('正在确认任务、主线程和预算。')));
+            for (let i = 0; i < 3; i++) placeholder.append(node('div', 'cron-loading-line'));
+            detail.append(placeholder);
+        }
         async function load() {
             const version = ++epoch;
+            if (!snapshot && !draft) { message(); loading(); }
+            if (!projectsRequested) {
+                projectsRequested = true;
+                void api('/api/pi/projects').then(data => { projects = data.projects || []; }).catch(() => { projectsRequested = false; });
+            }
             try {
-                const [data, profileData, projectData] = await Promise.all([api('/api/pi/cron'), api('/api/pi/profiles'), api('/api/pi/projects')]);
+                const [data, profileData] = await Promise.all([api('/api/pi/cron'), api('/api/pi/profiles')]);
                 if (version !== epoch || !visible) return;
-                snapshot = data; profiles = profileData.profiles; projects = projectData.projects;
+                snapshot = data; profiles = profileData.profiles;
                 if (data.schedulerError) message(data.schedulerError, true);
+                else message();
                 renderList(); if (!draft) await renderDetail();
-            } catch (error) { if (version === epoch && visible) message(error.message, true); }
+            } catch (error) {
+                if (version !== epoch || !visible) return;
+                message(error.message, true);
+                if (!snapshot && !draft) {
+                    stats.replaceChildren(); list.replaceChildren(); detail.replaceChildren();
+                    detail.append(node('h2', '', t('定时任务暂时无法读取')), node('p', 'cron-muted', error.message),
+                        button('重试读取', 'fa-rotate', () => load(), 'primary'));
+                }
+            }
         }
         function renderList() {
             if (!snapshot) return;
@@ -96,7 +128,7 @@
             const top = node('div', 'cron-detail-head'), titles = node('div'); titles.append(back(), node('h2', '', job.name), node('p', '', job.schedule.timeZone));
             const controls = node('div', 'cron-actions');
             controls.append(button('运行一次', 'fa-play', b => action(b, job, 'run')), button(job.enabled ? '暂停' : '启用', job.enabled ? 'fa-pause' : 'fa-play', b => action(b, job, job.enabled ? 'pause' : 'resume')),
-                button('编辑', 'fa-pen', () => edit(job)), button('复制', 'fa-copy', () => edit({ ...job, id: crypto.randomUUID(), revision: undefined, enabled: false, name: `${job.name} · ${t('副本')}` })),
+                button('编辑', 'fa-pen', () => edit(job)), button('复制', 'fa-copy', () => edit({ ...job, id: randomId(), revision: undefined, enabled: false, name: `${job.name} · ${t('副本')}` })),
                 button('删除', 'fa-trash', async b => { if (await confirm('删除定时任务', '删除后保留执行记录和线程内容。', '删除')) await action(b, job, 'delete'); }));
             top.append(titles, controls); detail.append(top);
             const card = node('div', 'cron-card'), grid = node('dl', 'cron-facts');
@@ -139,14 +171,14 @@
         }
         function openThread(ref) { window.PiWorkspaceRoute.navigate('chat', { cwd: ref.cwd, sessionId: ref.sessionId }); }
         async function action(b, job, kind, extra = {}) {
-            const requestId = kind === 'run' ? (runRequest?.jobId === job.id ? runRequest.id : crypto.randomUUID()) : undefined;
+            const requestId = kind === 'run' ? (runRequest?.jobId === job.id ? runRequest.id : randomId()) : undefined;
             if (kind === 'run') runRequest = { jobId: job.id, id: requestId };
             await mutate(b, () => send(`/api/pi/cron/jobs/${job.id}/actions`, { action: kind, revision: job.revision, requestId, ...extra }));
             runRequest = null; await load();
         }
         async function edit(job, target) {
             if (!await leave()) return;
-            draft = structuredClone(job || { id: crypto.randomUUID(), name: '', prompt: '', enabled: false, mode: 'text',
+            draft = structuredClone(job || { id: randomId(), name: '', prompt: '', enabled: false, mode: 'text',
                 target: target || { kind: filterProfile ? 'profile' : 'thread', profileId: filterProfile || profiles[0]?.id || '', cwd: currentCwd() || projects[0]?.cwd || '', sessionId: '' },
                 schedule: { kind: 'cron', expression: '0 9 * * *', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' },
                 misfire: { policy: 'skip', graceMinutes: 30 }, execution: { maxCalls: 4, maxTokens: 32000, maxDurationSeconds: 300 }, budget: { maxRunsPerDay: 8, maxTokensPerDay: 200000, maxCostPerDay: null } });
@@ -178,7 +210,7 @@
                     const saveHome = async (b, create) => {
                         if (create && !await confirm('创建主线程', '将在所填工作目录创建一个持久线程，并设为此身份的主线程。', '创建')) return;
                         const result = await mutate(b, () => send(`/api/pi/cron/homes/${profile.value}`, { revision: home?.revision || 0,
-                            cwd: cwd.value, sessionId: sessions.value, create, requestId: crypto.randomUUID(), language: globalThis.PiI18n?.locale }, 'PUT'));
+                            cwd: cwd.value, sessionId: sessions.value, create, requestId: randomId(), language: globalThis.PiI18n?.locale }, 'PUT'));
                         snapshot.homes = snapshot.homes.filter(h => h.profileId !== profile.value); snapshot.homes.push({ ...result, profileId: profile.value });
                         await destinations();
                     };
@@ -276,7 +308,6 @@
             const sessions = field(form, '目标线程', 'select', '');
             const status = node('p', 'cron-muted'), controls = node('div', 'cron-actions'); form.append(status, controls); detail.append(form);
             let generation = 0, requestId = randomId();
-            function randomId() { return crypto.randomUUID(); }
             async function render(resetDirectory = false) {
                 const version = ++generation, id = profile.value, home = snapshot.homes.find(h => h.profileId === id);
                 if (resetDirectory || !cwd.value) cwd.value = home?.cwd || currentCwd() || projects[0]?.cwd || '';

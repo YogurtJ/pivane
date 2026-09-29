@@ -6,9 +6,6 @@ function rehearsalRoot(value, project = false) {
     const normalized = String(value).replace(/\\/g, '/');
     const root = project ? normalized.replace(/\/projects\/demo$/, '') : normalized;
     assert.ok(!project || root !== normalized, 'dedicated demo project required');
-    const historical = /^\/(?:home|Users)\/[^/]+\/pi-workspace(?:-mac-trial)?$/.test(root)
-        || /^[A-Za-z]:\/Users\/[^/]+\/pi-workspace-windows-trial\/rehearsal$/.test(root);
-    if (historical) return;
     const temp = fs.realpathSync.native(os.tmpdir());
     const actual = fs.realpathSync.native(root);
     const relative = path.relative(temp, actual);

@@ -17,14 +17,6 @@
 
 ## 验证入口
 
-```bash
-npm test
-npm run check
-npm run check:docs
-npm audit --omit=dev
-npm run pack:trial
-```
+统一的 [验证矩阵](WORKFLOW.md#验证矩阵) 定义日常迭代、源码交付和正式发行所需检查；[Node 测试入口](WORKFLOW.md#node-测试入口与计时) 提供定向运行、清单与耗时报告。
 
-Node 用例递归发现 `test/` 下的 `.test.js`；浏览器专项位于 `test/browser/`，真实归档演练位于 `test/release/`。专项脚本支持的 URL、CHROMIUM_PATH 和 PLAYWRIGHT_MODULE 以该脚本为准，不能把测试默认地址当成用户部署地址。
-
-测试必须使用独立身份、合成服务与哨兵保护。日常迭代、源码交付和正式发行需要的检查范围见 [验证矩阵](WORKFLOW.md#验证矩阵)。
+Node 用例递归发现 `test/` 下的 `.test.js`；浏览器专项位于 `test/browser/`，归档演练位于 `test/release/`，两者不由 `npm test` 执行。运行前按 [浏览器与重型专项](WORKFLOW.md#浏览器与重型专项) 核对依赖、URL 和隔离身份，不能把测试默认地址当成可安全操作的实例。

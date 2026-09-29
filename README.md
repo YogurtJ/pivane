@@ -117,16 +117,7 @@ Pi 原生会话是对话的唯一事实来源。不要让网页与外部 CLI 同
 
 ## 开发与许可
 
-在独立测试环境中运行：
-
-```bash
-node scripts/install.cjs
-npm test
-npm run check
-npm run check:docs
-npm audit --omit=dev
-npm run pack:trial
-```
+在独立开发环境运行 `node scripts/install.cjs` 准备锁定依赖。开发中使用 [定向测试入口](docs/development/WORKFLOW.md#node-测试入口与计时)，源码交付与发行按 [验证矩阵](docs/development/WORKFLOW.md#验证矩阵) 执行；普通安装不需要开发测试。
 
 `pack:trial` 构建带时间戳的开发快照；`pack:release` 根据应用版本构建发行包并拒绝覆盖同名包。发布使用允许清单，私有配置、维护记录、依赖目录、会话、用户媒体和备份不进入包内，流程见[发布文档](docs/development/RELEASING.md)。
 

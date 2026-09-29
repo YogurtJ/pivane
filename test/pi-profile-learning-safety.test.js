@@ -46,14 +46,14 @@ test('content scan leaves ordinary study and preference notes alone', () => {
 
 test('triggers recognise Chinese and English corrections, preferences and temporary requests', () => {
     for (const text of ['不对，应该用分部积分', '错了，这里是充分条件', 'No, use the chain rule instead', 'Actually, try the substitution first',
-        "That's wrong, the limit is zero", 'I told you to answer in Chinese']) assert.equal(triggers.correction(text), true, text);
+        "That's wrong, the limit is zero", 'I told you to answer in Chinese', '不是旧记录，而是新记录，请更正。']) assert.equal(triggers.correction(text), true, text);
     for (const text of ['No worries, thanks', 'Actually this looks great', 'Stop there for now', 'No, that is all', '今天天气不错'])
         assert.equal(triggers.correction(text), false, text);
     for (const text of ['以后讲题都先给思路', '请记住我在准备考研', 'From now on, reply in bullet points', 'Remember that I study at night',
-        'Always show the final answer first', 'I prefer short explanations']) assert.equal(triggers.preference(text), true, text);
+        'Always show the final answer first', 'I prefer short explanations', '请记住，以后按新流程执行。', '以后默认使用新流程。']) assert.equal(triggers.preference(text), true, text);
     assert.equal(triggers.preference('Remember when we met?'), false);
     assert.equal(triggers.preference('考完以后再说吧'), false);
-    for (const text of ['只在这次用英文回答', 'Just this once, skip the proof', "Don't remember this, it's a test"])
+    for (const text of ['只在这次用英文回答', 'Just this once, skip the proof', "Don't remember this, it's a test", '仅本次按这个步骤，不要记住'])
         assert.equal(triggers.temporary(text), true, text);
     assert.equal(triggers.intent('For example, no, use X'), false);
     assert.equal(triggers.intent('Should I use X?'), false);

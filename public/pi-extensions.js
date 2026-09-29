@@ -62,6 +62,16 @@
     function installation(entry) {
         if (inventoryState !== 'ready') return { state: inventoryState, label: inventoryState === 'loading' ? text('正在核对…', 'Checking…') : text('状态待核对', 'Status unknown') };
         if (entry.id === 'pi-hermes-memory' && inventory.profileMemoryInstalled) return { state: 'installed', label: text('档案适配已安装', 'Profile adapter installed') };
+        if (entry.id === 'ppt-master') {
+            const skills = Array.isArray(inventory.featuredSkills) ? inventory.featuredSkills.filter(item => item.id === entry.id) : [];
+            if (skills.length) {
+                const global = skills.some(item => item.scope === 'user');
+                const project = skills.some(item => item.scope === 'project');
+                const location = global && project ? text('全局与项目', 'Global & project') : project ? text('当前项目', 'Project') : text('所有项目', 'Global');
+                const enabled = skills.some(item => item.enabled);
+                return { state: enabled ? 'installed' : 'configured', label: text(enabled ? '已发现技能' : '已发现 · 已停用', enabled ? 'Skill found' : 'Found · disabled') + ' · ' + location };
+            }
+        }
         const bundled = inventory.packages.find(item => item.managedBy === 'pivane' && item.name === entry.id && item.installed);
         if (bundled) return { state: 'installed', label: text('Pivane 内置', 'Bundled with Pivane') + ' · ' + bundled.version };
         const matches = inventory.packages.filter(item => identity(item.source) === entry.source || identity(item.source) === `github:${repositories[entry.id]}`);
@@ -72,7 +82,8 @@
             return { state: 'installed', label: text('已安装', 'Installed') + ' · ' + (global && project ? text('全局与项目', 'Global & project') : project ? text('当前项目', 'Project') : text('所有项目', 'Global')) };
         }
         if (matches.length) return { state: 'configured', label: text('已配置 · 文件未就绪', 'Configured · files unavailable') };
-        if (!entry.source || inventory.scope === 'project' && !inventory.trust?.effective) return { state: 'unknown', label: text('需助手核对', 'Check with assistant') };
+        if (inventory.scope === 'project' && !inventory.trust?.effective || !entry.source && (!Array.isArray(inventory.featuredSkills) || inventory.featuredSkillNeedsReview)) return { state: 'unknown', label: text('需助手核对', 'Check with assistant') };
+        if (!entry.source) return { state: 'missing', label: text('未发现技能', 'Skill not found') };
         return { state: 'missing', label: text('未安装', 'Not installed') };
     }
     async function refreshInventory() {
@@ -92,11 +103,12 @@
             if (!status.nativeResources || !cwd) throw new Error(text('当前服务无法提供安装清单。', 'Installation inventory is unavailable on this server.'));
             const result = await host.apiFetch(`/api/pi/settings/native/resources?cwd=${encodeURIComponent(cwd)}&scope=${scope}`);
             if (!valid()) return;
-            if (!Array.isArray(result?.packages) || result.scope !== scope || !result.packages.every(item => typeof item.source === 'string' && typeof item.installed === 'boolean')) throw new Error(text('安装清单格式无效。', 'Invalid installation inventory.'));
+            if (!Array.isArray(result?.packages) || result.scope !== scope || !result.packages.every(item => typeof item.source === 'string' && typeof item.installed === 'boolean')
+                || result.featuredSkills !== undefined && (!Array.isArray(result.featuredSkills) || !result.featuredSkills.every(item => item.id === 'ppt-master' && ['user', 'project'].includes(item.scope) && typeof item.enabled === 'boolean'))) throw new Error(text('安装清单格式无效。', 'Invalid installation inventory.'));
             inventory = { ...result, profileMemoryInstalled: status.profileMemory?.installed === true }; inventoryState = 'ready';
             feedback.textContent = scope === 'project' && !result.trust?.effective
                 ? text('项目尚未受信任，仅能确认全局安装；其他项需进一步核对。', 'The project is not trusted. Only global installations can be confirmed; other items need checking.')
-                : text('按所选范围的登记来源核对；已安装不代表当前会话已加载。本地复制的技能需助手核对。', 'Checked against registered sources in the selected scope. Installed does not mean loaded in this session; manually copied skills need an assistant check.');
+                : text('按所选范围的登记来源和技能声明核对；发现技能不代表依赖就绪或当前会话已加载。无法证明来源的本地技能需助手核对。', 'Checked registered sources and skill declarations in the selected scope. A found skill does not mean dependencies are ready or it is loaded in this session. Local skills with unverified provenance need an assistant check.');
         } catch (error) {
             if (!valid()) return;
             inventory = null; inventoryState = 'unknown';

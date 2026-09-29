@@ -57,9 +57,9 @@
 
         const rail = document.createElement('nav'); rail.className = 'pi-tool-rail'; rail.setAttribute('aria-label', t('当前线程工具'));
         const tools = [
+            ['details', 'pi-details-tab', t('详情'), 'circle-info'],
             ['changes', 'pi-changes-tab', t('文件'), 'file-lines'],
-            ['history', 'pi-history-tab', t('历史'), 'clock-rotate-left'], ['side', 'pi-side-tab', t('侧聊'), 'comment-dots'],
-            ['details', 'pi-details-tab', t('详情'), 'circle-info']
+            ['history', 'pi-history-tab', t('历史'), 'clock-rotate-left'], ['side', 'pi-side-tab', t('侧聊'), 'comment-dots']
         ];
         // Tool owners initialize or resume their own context; the layout never caches reader state.
         const selectTool = (_mode, id) => $(id).click();

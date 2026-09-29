@@ -2,6 +2,7 @@ const privateFiles = require('./pi-private-files');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
+const { readVerifiedFile } = require('./pi-file-bytes');
 const { safeFile, read, json, atomic, fail } = require('./pi-native-service');
 const { resolveManagedResources, managedEntry, identify } = require('./pi-bundled-resources');
 const TYPES = ['extensions', 'skills', 'prompts', 'themes'];
@@ -36,9 +37,33 @@ class PiResourceService {
         }
         return config.packages?.find(p => this.packageMatch(ctx, item.metadata.source, item.metadata.scope, p, scope))?.[item.type] || [];
     }
+    async featuredSkills(ctx) {
+        const found = [];
+        let needsReview = false;
+        // Bound reads to Pi-discovered candidate files; the directory name alone
+        // never establishes the skill's identity or upstream provenance.
+        for (const item of ctx.resources) {
+            if (item.type !== 'skills' || !['auto', 'local'].includes(item.metadata.source) || !['user', 'project'].includes(item.metadata.scope)
+                || path.basename(item.path) !== 'SKILL.md' || path.basename(path.dirname(item.path)) !== 'ppt-master') continue;
+            try {
+                const root = item.metadata.scope === 'project' ? path.join(ctx.cwd, '.pi') : ctx.agentDir;
+                const within = filename => {
+                    const relative = path.relative(root, filename);
+                    if (!relative || relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) throw fail('技能路径不在所属范围');
+                };
+                const { bytes } = await readVerifiedFile(item.path, { check: within, maxBytes: 64 * 1024 });
+                const { frontmatter } = ctx.sdk.parseFrontmatter(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+                if (frontmatter.name === 'ppt-master' && frontmatter.metadata?.official_repository === 'https://github.com/hugohe3/ppt-master') {
+                    found.push({ id: 'ppt-master', scope: item.metadata.scope, enabled: item.enabled });
+                } else needsReview = true;
+            } catch { needsReview = true; /* Unreadable/changed metadata cannot establish provenance. */ }
+        }
+        return { found, needsReview };
+    }
     async snapshot(cwd, scope = 'project') {
         const ctx = await this.context(cwd, scope);
-        return { cwd: ctx.cwd, scope, revision: ctx.revision, trust: ctx.trust,
+        const { found: featuredSkills, needsReview: featuredSkillNeedsReview } = await this.featuredSkills(ctx);
+        return { cwd: ctx.cwd, scope, revision: ctx.revision, trust: ctx.trust, featuredSkills, featuredSkillNeedsReview,
             packages: ctx.manager.listConfiguredPackages().map(p => ({ source: p.source, scope: p.scope, installed: Boolean(p.installedPath), filtered: p.filtered,
                 ...(managedEntry(p.source) ? { managedBy: 'pivane', name: managedEntry(p.source).name, version: managedEntry(p.source).version } : {}) })),
             resources: ctx.resources.map(item => {

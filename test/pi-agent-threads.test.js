@@ -118,6 +118,9 @@ test('Agent creates a persistent task, runs immediately with defaults, preserves
         const chosen = await api('/agent-threads/create', { ...initial, requestId: 'chosen', provider: 'fixture', modelId: 'chosen-model', thinkingLevel: 'off' }, token);
         assert.equal(chosen.data.model.modelId, 'chosen-model');
         await deadline(async () => (await api('/agent-threads/status', { requestId: 'chosen' }, token)).data.status === 'completed');
+        // Completion can precede the source's idle-only receipt append; a user prompt
+        // must wait for that native write reservation instead of racing the fixture.
+        await deadline(() => !worker.operation && !worker.activity.snapshot().busy && worker.promptPending === 0);
         await worker.request('prompt', { message: 'CREATE_TASK_FIXTURE' });
         await deadline(async () => (await worker.request('get_messages')).messages.some(message => message.customType === TASK_RECEIPT));
         await deadline(() => !worker.activity.snapshot().busy && worker.promptPending === 0);

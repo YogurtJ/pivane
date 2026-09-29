@@ -142,6 +142,41 @@ test('native resource filters preserve sibling resources and project overrides; 
     assert.ok((await service.readSkill({ cwd, scope: 'project', name: 'audit-skill' })).content.endsWith('New line'));
 });
 
+test('featured PPT skill reflects verified native discovery, scope and enabled state', async () => {
+    const { PiNativeService } = require('../server/pi-native-service');
+    const { PiResourceService } = require('../server/pi-resource-service');
+    const native = new PiNativeService(store), service = new PiResourceService(native);
+    const userDir = path.join(root, 'agent/skills/ppt-master');
+    const projectDir = path.join(cwd, '.pi/skills/ppt-master');
+    fs.mkdirSync(userDir, { recursive: true }); fs.mkdirSync(projectDir, { recursive: true });
+    const userFile = path.join(userDir, 'SKILL.md'), projectFile = path.join(projectDir, 'SKILL.md');
+    const valid = '---\nname: ppt-master\ndescription: Fixture\nmetadata:\n  official_repository: https://github.com/hugohe3/ppt-master\n---\nFixture';
+    const snap = scope => service.snapshot(cwd, scope);
+    try {
+        assert.deepEqual((await snap('global')).featuredSkills, []);
+        fs.writeFileSync(userFile, valid.replace('hugohe3', 'not-the-author'));
+        let unverified = await snap('global');
+        assert.deepEqual(unverified.featuredSkills, [], 'name and directory alone do not establish identity');
+        assert.equal(unverified.featuredSkillNeedsReview, true);
+        fs.writeFileSync(userFile, valid);
+        assert.deepEqual((await snap('global')).featuredSkills, [{ id: 'ppt-master', scope: 'user', enabled: true }]);
+        let result = await snap('global'); const resource = result.resources.find(item => item.path === userFile);
+        await service.toggle({ cwd, scope: 'global', resourceId: resource.id, state: 'off', confirmed: true, expectedRevision: result.revision });
+        assert.deepEqual((await snap('global')).featuredSkills, [{ id: 'ppt-master', scope: 'user', enabled: false }]);
+        const trust = await native.snapshot(cwd);
+        if (!trust.trust.effective) await native.saveTrust({ cwd, decision: true, confirmed: true, expectedRevision: trust.revision });
+        fs.writeFileSync(projectFile, valid);
+        assert.deepEqual((await snap('project')).featuredSkills, [
+            { id: 'ppt-master', scope: 'project', enabled: true }, { id: 'ppt-master', scope: 'user', enabled: false }
+        ]);
+        assert.deepEqual((await snap('global')).featuredSkills, [{ id: 'ppt-master', scope: 'user', enabled: false }]);
+        fs.writeFileSync(projectFile, valid.replace('name: ppt-master', 'name: other'));
+        assert.deepEqual((await snap('project')).featuredSkills, [{ id: 'ppt-master', scope: 'user', enabled: false }]);
+    } finally {
+        fs.rmSync(userDir, { recursive: true, force: true }); fs.rmSync(projectDir, { recursive: true, force: true });
+    }
+});
+
 test('Skills can be disabled and restored through native filters without deleting files or changing sibling resources', async () => {
     const { PiNativeService } = require('../server/pi-native-service');
     const { PiResourceService } = require('../server/pi-resource-service');

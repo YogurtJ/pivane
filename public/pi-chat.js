@@ -1547,18 +1547,61 @@ document.addEventListener('DOMContentLoaded', () => {
         return '';
     }
 
-    // Native tooltip only: list metadata is precomputed by the server and never loads the session.
-    function sessionDetails(session, title) {
-        if (session.ephemeral) return title;
-        const stats = session.stats, lines = [title];
+    // Hover-card rows: list metadata is precomputed by the server and never loads the session.
+    function sessionDetails(session) {
+        if (session.ephemeral) return [];
+        const stats = session.stats, rows = [];
         const modified = new Date(session.modified);
-        if (!Number.isNaN(modified.getTime())) lines.push(translateUi('更新于 {0}', modified.toLocaleString(globalThis.PiI18n?.locale || undefined, { dateStyle: 'medium', timeStyle: 'short' })));
-        lines.push(translateUi('共 {0} 条消息', stats?.messages ?? session.messageCount ?? 0));
-        if (stats?.compactions) lines.push(translateUi('已压缩 {0} 次 · 当前上下文保留 {1} 条', stats.compactions, stats.context));
-        if (stats?.contextTokens) lines.push(translateUi('最近上下文约 {0} tokens', stats.contextTokens >= 1000 ? `${Math.round(stats.contextTokens / 1000)}k` : stats.contextTokens));
-        if (stats?.model?.id) lines.push(translateUi('最近模型：{0}', stats.model.id));
-        return lines.join('\n');
+        if (!Number.isNaN(modified.getTime())) rows.push(['clock', translateUi('更新于 {0}', modified.toLocaleString(globalThis.PiI18n?.locale || undefined, { dateStyle: 'medium', timeStyle: 'short' }))]);
+        rows.push(['comments', translateUi('共 {0} 条消息', stats?.messages ?? session.messageCount ?? 0)]);
+        if (stats?.compactions) rows.push(['compress', translateUi('已压缩 {0} 次 · 当前上下文保留 {1} 条', stats.compactions, stats.context)]);
+        if (stats?.contextTokens) rows.push(['gauge-high', translateUi('最近上下文约 {0} tokens', stats.contextTokens >= 1000 ? `${Math.round(stats.contextTokens / 1000)}k` : stats.contextTokens)]);
+        if (stats?.model?.id) rows.push(['microchip', translateUi('最近模型：{0}', stats.model.id)]);
+        return rows;
     }
+
+    // One shared, mouse-only hover card; built with safe DOM and shown after a deliberate pause.
+    (() => {
+        const DELAY = 700;
+        let card = null, timer = 0, target = null, pending = null;
+        const hide = () => {
+            clearTimeout(timer); timer = 0; pending = null;
+            if (target) target.removeAttribute('aria-describedby');
+            target = null; if (card) card.hidden = true;
+        };
+        const show = node => {
+            if (!node.isConnected || !node.matches(':hover')) return;
+            let rows; try { rows = JSON.parse(node.dataset.details || '[]'); } catch { rows = []; }
+            if (!card) { card = document.createElement('div'); card.id = 'pi-session-hover'; card.className = 'pi-session-hover'; card.setAttribute('role', 'tooltip'); document.body.append(card); }
+            const title = document.createElement('strong'); title.textContent = node.dataset.title || '';
+            const list = document.createElement('ul');
+            for (const [icon, text] of rows) {
+                const item = document.createElement('li'), glyph = document.createElement('i'), label = document.createElement('span');
+                glyph.className = `fa-solid fa-${String(icon).replace(/[^a-z-]/g, '')}`; glyph.setAttribute('aria-hidden', 'true'); label.textContent = text;
+                item.append(glyph, label); list.append(item);
+            }
+            card.replaceChildren(title, ...(rows.length ? [list] : []));
+            card.hidden = false; target = node; node.setAttribute('aria-describedby', card.id);
+            const row = node.closest('.pi-session-item')?.getBoundingClientRect() || node.getBoundingClientRect();
+            const box = card.getBoundingClientRect(), gap = 8, edge = 8;
+            let left = row.right + gap, top = row.top;
+            if (left + box.width > innerWidth - edge) { left = Math.max(edge, Math.min(row.left, innerWidth - box.width - edge)); top = row.bottom + gap; }
+            if (top + box.height > innerHeight - edge) top = Math.max(edge, (left > row.right ? row.bottom : row.top - gap) - box.height);
+            card.style.left = `${Math.round(left)}px`; card.style.top = `${Math.round(top)}px`;
+        };
+        document.addEventListener('pointerover', event => {
+            if (event.pointerType !== 'mouse') return;
+            const node = event.target.closest?.('.pi-session-main[data-details]');
+            if (node === target || (node && timer && node === pending)) return;
+            hide();
+            if (!node) return;
+            pending = node; timer = setTimeout(() => { timer = 0; pending = null; show(node); }, DELAY);
+        });
+        document.addEventListener('pointerdown', hide, true);
+        document.addEventListener('keydown', event => { if (event.key === 'Escape') hide(); }, true);
+        document.addEventListener('scroll', hide, true);
+        window.addEventListener('blur', hide);
+    })();
 
     function renderSessionItem(session, cwd) {
         const firstMessage = session.firstMessage === '(no messages)' ? '' : String(session.firstMessage || '').replace(/\s+/g, ' ').trim();
@@ -1572,10 +1615,10 @@ document.addEventListener('DOMContentLoaded', () => {
             preview = `${start ? '…' : ''}${firstMessage.slice(start, end)}${end < firstMessage.length ? '…' : ''}`;
         }
         const badge = session.agentProfile ? `<span class="pi-session-profile-tag">${escapeHtml(session.agentProfile.name || translateUi('身份不可用'))}</span>` : '';
-        const details = sessionDetails(session, title);
+        const details = JSON.stringify(sessionDetails(session));
         return `
             <article class="pi-session-item ${session.ephemeral ? 'ephemeral' : ''} ${state.cwd === cwd && state.session?.id === session.id ? 'active' : ''}" data-session-id="${escapeHtml(session.id)}" data-cwd="${escapeHtml(cwd)}">
-                <button class="pi-session-main" type="button" title="${escapeHtml(details)}">
+                <button class="pi-session-main" type="button" data-title="${escapeHtml(title)}" data-details="${escapeHtml(details)}">
                     <span class="pi-session-project" title="${escapeHtml(cwd)}">${escapeHtml(state.projects.find(project => project.cwd === cwd)?.name || getProjectName(cwd))}</span>
                     <span class="pi-session-title ${!named && !session.ephemeral ? 'pi-session-title-fallback' : ''}">${escapeHtml(title)}${badge}${session.ephemeral ? `<em>${translateUi("不保存")}</em>` : ''}</span>
                     ${preview ? `<span class="pi-session-preview">${escapeHtml(preview)}</span>` : ''}
