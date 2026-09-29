@@ -11,7 +11,6 @@
             this.value = null;
             this.root.hidden = true;
             this.root.open = false;
-            delete this.root.dataset.wasOpen;
         }
         apply(value) {
             const plan = value?.plan;

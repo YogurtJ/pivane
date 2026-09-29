@@ -7,11 +7,11 @@
     const chips = () => [...row.querySelectorAll(':scope > details.pi-status-chip')];
     const close = (except = null) => { for (const chip of chips()) if (chip !== except && chip.open) chip.open = false; };
     for (const chip of chips()) {
-        chip.addEventListener('toggle', () => { if (chip.parentElement === row && chip.open) close(chip); });
+        chip.addEventListener('toggle', () => { if (chip.open) close(chip); });
     }
     // Dialogs opened from a popover (logs, steering, cost) live outside the row.
     document.addEventListener('pointerdown', event => {
-        if (!chips().some(chip => chip.open) || row.contains(event.target) || event.target.closest?.('dialog, .pi-toast, #pi-tool-tasks, #pi-tools-toggle, #pi-inspector-title')) return;
+        if (!chips().some(chip => chip.open) || row.contains(event.target) || event.target.closest?.('dialog, .pi-toast')) return;
         close();
     });
     document.addEventListener('keydown', event => {

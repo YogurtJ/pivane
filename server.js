@@ -2,6 +2,7 @@ if (require.main === module && require('./server/pi-server-entry').handoff(__dir
 
 const express = require('express');
 const { WorkspaceAccessService } = require('./server/workspace-access-service');
+const { createStaticAssets } = require('./server/static-assets');
 const { exec, execFile } = require('child_process');
 const fetch = require('node-fetch');
 const path = require('path');
@@ -87,6 +88,13 @@ workspaceAccess.publicFiles.add('/vendor/mermaid-LICENSE.txt');
 process.env.PI_WORKSPACE_INTERNAL_TOKEN = workspaceAccess.internalToken;
 workspaceAccess.mount(app);
 app.use(express.json({ limit: '32mb' }));
+app.use(createStaticAssets([
+    ['/vendor/marked/', path.join(__dirname, 'node_modules', 'marked', 'lib')],
+    ['/vendor/dompurify/', path.join(__dirname, 'node_modules', 'dompurify', 'dist')],
+    ['/vendor/highlight/', path.join(__dirname, 'node_modules', '@highlightjs', 'cdn-assets')],
+    ['/vendor/katex-0.18.7/', path.join(__dirname, 'public', 'vendor', 'katex-0.18.7')],
+    ['/', path.join(__dirname, 'public')]
+]));
 app.use('/vendor/marked', express.static(path.join(__dirname, 'node_modules', 'marked', 'lib')));
 app.use('/vendor/dompurify', express.static(path.join(__dirname, 'node_modules', 'dompurify', 'dist')));
 app.use('/vendor/highlight', express.static(path.join(__dirname, 'node_modules', '@highlightjs', 'cdn-assets')));

@@ -89,7 +89,7 @@
             this.dialog.addEventListener('close', () => {
                 button.setAttribute('aria-expanded', 'false');
                 clearInterval(this.syncTimer);
-                if (innerWidth <= 680 && !button.getClientRects().length) document.getElementById('pi-mobile-composer-summary')?.focus({ preventScroll: true });
+                if (innerWidth <= 680 && !button.getClientRects().length) document.getElementById('pi-mobile-context-trigger')?.focus({ preventScroll: true });
             });
             this.dialog.addEventListener('click', event => {
                 if (event.target !== this.dialog) return;

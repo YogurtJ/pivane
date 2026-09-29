@@ -54,10 +54,11 @@
         if (app && managementPage) app.append(managementPage);
         const hostLabel = document.getElementById('workspace-host');
         if (hostLabel) hostLabel.textContent = window.location.host;
-        const routeTabs = new Set(['chat', 'assistant', 'media', 'profiles', 'extensions', 'settings']);
+        const routeTabs = new Set(['chat', 'assistant', 'cron', 'media', 'profiles', 'extensions', 'settings']);
         const settingsTabs = new Set(['providers', 'media', 'models', 'system-prompts', 'native', 'access', 'usage', 'updates']);
         const extensionTabs = new Set(['extensions', 'installed']);
-        const moreTabs = new Set(['media', 'profiles', 'extensions']);
+        const moreTabs = new Set(['cron', 'media', 'profiles', 'extensions']);
+        document.querySelectorAll('[data-cron-nav]').forEach(label => { label.textContent = translateUi('定时任务'); });
         const moreToggle = document.getElementById('workspace-more-toggle');
         const moreMenu = document.getElementById('workspace-more-menu');
         let lastConversation = '#/chat';
@@ -69,7 +70,7 @@
             if (restoreFocus && wasOpen) moreToggle?.focus({ preventScroll: true });
         }
         function parseRoute() {
-            const match = /^#\/(chat|assistant|media|profiles|extensions|settings)(?:\?(.*))?$/.exec(location.hash);
+            const match = /^#\/(chat|assistant|cron|media|profiles|extensions|settings)(?:\?(.*))?$/.exec(location.hash);
             if (!match) return { tab: 'chat', params: new URLSearchParams() };
             return { tab: match[1], params: new URLSearchParams(match[2] || '') };
         }

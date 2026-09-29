@@ -254,7 +254,9 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
         activeSide.messages.push(assistant); activeSide.busy = true; send(activeSide.ws, { type: 'agent_start' });
         send(activeSide.ws, { type: 'message_end', message: assistant });
         send(activeSide.ws, { type: 'tool_execution_start', toolCallId: call.id, toolName: call.name, args: call.arguments });
+        await page.waitForFunction(() => document.querySelector('#pi-agent-state').textContent === '侧聊运行中');
         askApproval(activeSide, 'approve-tool');
+        await page.waitForFunction(() => document.querySelector('#pi-agent-state').textContent === '侧聊等待确认');
         await page.locator('#pi-side-confirm:not([hidden])').waitFor();
         assert.equal(await page.locator('#pi-request-dialog').evaluate(node => node.open), false);
         assert.equal(await page.locator('#pi-side-tool-mode').textContent(), '等待确认');

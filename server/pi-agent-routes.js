@@ -116,6 +116,7 @@ function createPiAgentGateway(options = {}) {
     supervisor.on('attention', event => { void notifications.notify(event); });
     supervisor.on('completion', (notice, worker) => {
         if (worker) { void titles.auto(worker); void learning?.register(worker, 'settled'); }
+        if (worker?.cronRun) return;
         void notifications.notify(notice);
         try { preferences.recordReplyNotice(notice); }
         catch { console.error('Pi reply notice could not be persisted'); }
@@ -132,7 +133,7 @@ function createPiAgentGateway(options = {}) {
     require('./pi-update-service').mountUpdateRoutes(router, undefined, {
         maintenance, preferences,
         idle: () => !profiles.busy && !agentThreads.jobs.size && !agentThreads.catalogIndex.busy && !agentThreads.returns.busy && !agentThreads.messages.busy && !settingsService.mutating && !settingsService.loginService.busy && !nativeService.busy && !sessionTransfer.running
-            && !titles.jobs.size && !titles.savingModel && !learning?.busy && !deferred.running && !sideChat.connections.size && !sideChat.tickets.size
+            && !titles.jobs.size && !titles.savingModel && !learning?.busy && !cron.busy && !deferred.running && !sideChat.connections.size && !sideChat.tickets.size
             && ![...sideChat.parents.values()].some(parent => parent.preparing) && supervisor.isIdle()
             && !options.mediaLabService?.inFlight && !options.mediaLabService?.providerService?.busy && !options.mediaLabService?.providerService?.active,
         pause: () => deferred.pauseAll()
@@ -191,6 +192,10 @@ function createPiAgentGateway(options = {}) {
     const agentThreads = require('./pi-agent-threads').mountAgentThreads(router, { store, supervisor, settingsService, access,
         isSuspended: () => maintenance.locked });
 
+    const cron = new (require('./pi-cron-service').CronService)({ store, supervisor, profiles,
+        catalog: cwd => agentThreads.catalog(cwd), isSuspended: () => maintenance.locked, filename: options.cronFilePath });
+    require('./pi-cron-service').mountCron(router, cron);
+
     router.get('/status', async (req, res) => {
         const memoryConfiguration = await profileMemory.snapshot();
         res.json({
@@ -205,6 +210,7 @@ function createPiAgentGateway(options = {}) {
             defaultProject: store.defaultProject(),
             nativeResources: true,
             agentThreads: true,
+            scheduledTasks: true,
             agentProfiles: true,
             assistantProjects: true,
             profileDocuments: true,
@@ -409,7 +415,7 @@ function createPiAgentGateway(options = {}) {
 
     router.get('/activity', (req, res) => {
         res.set('Cache-Control', 'no-store');
-        res.json({ agentThreadLaunches: agentThreads.jobs.size, agentTaskIndexing: agentThreads.catalogIndex.busy, agentTaskReturns: agentThreads.returns.busy, agentMessages: agentThreads.messages.busy, learningBusy: learning.busy, learningRuns: learning.active.size, archives: archives(), titleRevision: titles.revisionId, titleGenerations: titles.jobs.size, runtimes: supervisor.getActivity(), profilesBusy: profiles.busy, nativeSettingsBusy: nativeService.busy || settingsService.mutating || Boolean(titles.savingModel) || auxiliaryModels.busy, sessionTransfers: sessionTransfer.running, pinnedProjects: pinnedProjects(), hiddenProjects: hiddenProjects(), replyNotices: replyNotices(), deferred: deferred.summary() });
+        res.json({ cronBusy: cron.busy, agentThreadLaunches: agentThreads.jobs.size, agentTaskIndexing: agentThreads.catalogIndex.busy, agentTaskReturns: agentThreads.returns.busy, agentMessages: agentThreads.messages.busy, learningBusy: learning.busy, learningRuns: learning.active.size, archives: archives(), titleRevision: titles.revisionId, titleGenerations: titles.jobs.size, runtimes: supervisor.getActivity(), profilesBusy: profiles.busy, nativeSettingsBusy: nativeService.busy || settingsService.mutating || Boolean(titles.savingModel) || auxiliaryModels.busy, sessionTransfers: sessionTransfer.running, pinnedProjects: pinnedProjects(), hiddenProjects: hiddenProjects(), replyNotices: replyNotices(), deferred: deferred.summary() });
     });
 
     router.patch('/projects/pin', (req, res) => {
@@ -531,6 +537,7 @@ function createPiAgentGateway(options = {}) {
                     await supervisor.stopSession(session.path);
                     await usage.preserveSession(session.path);
                     const result = await store.deleteSession(req.query.cwd, req.params.id);
+                    await cron.removing(session);
                     supervisor.emit('sessionRemoval', { ...session, deleted: true, result });
                     return result;
                 } catch (error) {
@@ -971,6 +978,7 @@ function createPiAgentGateway(options = {}) {
         await settingsService.loginService.dispose();
         const stoppingAuxiliaryModels = auxiliaryModels.dispose();
         const stoppingTitles = titles.dispose();
+        cron.stopping = true;
         const stoppingDeferred = deferred.dispose();
         const stoppingThreads = agentThreads.dispose();
         const stoppingSide = sideChat.dispose();
@@ -981,7 +989,8 @@ function createPiAgentGateway(options = {}) {
         await usage.dispose();
         await stoppingThreads;
         await Promise.all([stoppingDeferred, stoppingSide, stoppingTitles, stoppingAuxiliaryModels]);
-    }, store, supervisor, deferred, sideChat, titles, auxiliaryModels, learning, knowledgeService, agentThreads };
+        await cron.dispose();
+    }, store, supervisor, cron, deferred, sideChat, titles, auxiliaryModels, learning, knowledgeService, agentThreads };
 }
 
 module.exports = { createPiAgentGateway };

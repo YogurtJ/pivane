@@ -30,14 +30,18 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
 .pi-runtime-controls { margin-left: auto; }
 .pi-context-button { height: 36px; width: 110px; border: 0; background: transparent; }
 .pi-tools-toggle, #pi-toggle-side-chat, #pi-toggle-inspector { display: none; }
+/* The legacy lift moves a button out from under a pointer at its edge, causing hover flicker. */
+.pi-agent-page .icon-btn:hover, dialog .icon-btn:hover { transform: none; }
 .pi-session-pane { width: var(--split-size, 272px); flex-basis: var(--split-size, 272px); }
 .pi-session-pane .pi-session-heading { height: 106px; min-height: 106px; display: grid; grid-template-columns: minmax(0,1fr) auto; grid-template-rows: 34px 38px; gap: 10px 6px; padding: 14px 12px 10px; }
 .pi-session-pane .pi-session-heading h3 { font-size: .84rem; }
 .pi-session-pane .pi-session-heading .pi-search-field { grid-column: 1; grid-row: 1; width: 100%; }
 .pi-session-pane .pi-session-heading .pi-pane-actions { display: contents; }
 .pi-session-pane .pi-session-heading #pi-session-search-toggle { grid-column: 2; grid-row: 1; width: 34px; height: 34px; min-width: 34px; }
-.pi-session-pane .pi-session-heading #pi-new-session { grid-column: 1 / -1; grid-row: 2; width: 100%; min-height: 38px; height: 38px; display: flex; gap: 8px; align-items: center; justify-content: center; border-radius: 8px; font-size: .78rem; background: var(--green); color: var(--primary-contrast); }
-#pi-new-session:hover { background: var(--primary-hover); }
+/* Visible but secondary: the conversation stays the primary surface. */
+.pi-session-pane .pi-session-heading #pi-new-session { grid-column: 1 / -1; grid-row: 2; width: 100%; min-height: 36px; height: 36px; display: flex; gap: 7px; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, var(--green) 30%, var(--line)); border-radius: 8px; font-size: .77rem; font-weight: 600; background: var(--surface-2); color: var(--green); box-shadow: none; }
+.pi-session-pane .pi-session-heading #pi-new-session i { font-size: .72rem; }
+#pi-new-session:hover:not(:disabled) { background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 50%, var(--line)); }
 #pi-new-session:disabled { opacity: .5; }
 #pi-open-project { position: absolute; right: 54px; top: 14px; width: 34px; height: 34px; }
 #pi-open-project span, #pi-close-sessions span { display: none; }
@@ -74,12 +78,37 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
 }
 .pi-pane-footer { font-size: .66rem; padding: 9px 12px; gap: 5px; }
 #pi-session-count { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#pi-search-conversations { display: flex; width: auto; flex-shrink: 0; gap: 5px; font-size: .67rem; padding-inline: 6px; }
+#pi-search-conversations { display: inline-flex; align-items: center; flex: 0 0 auto; width: auto; height: 30px; gap: 5px; padding: 0 9px; border-radius: 7px; font-size: .67rem; white-space: nowrap; }
 #pi-search-conversations[hidden] { display: none; }
 .pi-connection-banner { height: 40px; flex-basis: 40px; background: var(--surface-transcript); padding-inline: 24px; gap: 9px; border-bottom-color: transparent; }
+/* Desktop: project + conversation + context share one header; the command bar is not needed. */
+@media (min-width: 901px) {
+    .pi-command-bar { display: none; }
+    .pi-connection-banner { height: 52px; flex-basis: 52px; padding: 0 16px 0 12px; gap: 8px; border-bottom: 1px solid var(--line); }
+    .pi-connection-banner > .pi-project-button { flex: 0 1 auto; max-width: min(260px, 32%); height: 34px; padding: 0 8px 0 6px; margin-right: 6px; display: flex; align-items: center; gap: 7px; border-radius: 7px; }
+    .pi-connection-banner > .pi-project-button::after { content: ''; flex: 0 0 1px; align-self: center; height: 16px; margin-left: 8px; margin-right: -14px; background: var(--line-strong); }
+    .pi-connection-banner > .pi-project-button .pi-project-mark { width: 20px; height: 20px; flex: 0 0 20px; border: 0; background: transparent; font-size: .82rem; }
+    .pi-connection-banner > .pi-project-button .pi-project-copy { min-width: 0; }
+    .pi-connection-banner > .pi-project-button .pi-project-copy strong { font-size: .8rem; font-weight: 650; }
+    .pi-connection-banner > .pi-project-button .pi-project-copy > span { display: none; }
+    .pi-connection-banner > .pi-project-button > i { flex: 0 0 auto; font-size: .6rem; }
+    .pi-connection-banner > .pi-status-dot { margin-left: 10px; }
+    .pi-connection-banner #pi-mobile-thread-title { flex: 0 1 auto; max-width: 42%; font-size: .82rem; }
+    /* The status text absorbs free space, so identity, context and the menu stay right-aligned. */
+    .pi-connection-banner #pi-connection-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pi-connection-banner > .pi-context-button { flex: 0 0 auto; width: auto; height: 30px; padding: 0 10px; display: flex; align-items: center; gap: 9px; border: 1px solid transparent; border-radius: 7px; background: transparent; }
+    .pi-connection-banner > .pi-context-button:hover { background: var(--surface-3); }
+    .pi-connection-banner > .pi-context-button .pi-context-copy { gap: 7px; }
+    .pi-connection-banner > .pi-context-button .pi-context-copy strong { font-size: .74rem; }
+    .pi-connection-banner > .pi-context-button .pi-context-track { width: 54px; margin-top: 0; }
+}
 #pi-mobile-thread-title { font-size: .79rem; max-width: 60%; }
 #pi-connection-text { font-size: .67rem; }
 .pi-transcript-content { padding: 28px max(28px, calc((100% - var(--workspace-reading-width)) / 2)) 38px; }
+/* Long provider errors, URLs and JSON must wrap inside the reading column, never pan the page sideways. */
+.pi-transcript { overflow-x: hidden; }
+.pi-transcript-content, .pi-message, .pi-message-body { min-width: 0; }
+.pi-inline-error { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; font-size: .84rem; line-height: 1.6; }
 .pi-message { font-size: .94rem; }
 .pi-markdown { font-size: .94rem; line-height: 1.8; }
 .pi-markdown p { margin-block: 0 1em; }
@@ -108,17 +137,33 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
 .pi-send-button, .pi-stop-button { border-radius: 9px; }
 .pi-composer-meta { min-height: 22px; height: auto; font-size: .64rem; line-height: 1.5; gap: 10px; }
 #pi-attachment-limit { display: none; }
-.pi-empty-state { align-items: flex-start; text-align: left; max-width: 720px; min-height: 360px; margin: 0 auto; padding: clamp(32px, 8vh, 92px) 10px 32px; }
-.pi-empty-state .pi-empty-mark { width: 44px; height: 44px; border-radius: 12px; margin-bottom: 22px; font-size: 24px; }
-.pi-empty-state h2 { font-size: clamp(1.4rem, 2.3vw, 2rem); line-height: 1.4; font-weight: 600; letter-spacing: -.6px; }
-.pi-empty-state p { max-width: 100%; margin-top: 12px; font-size: .86rem; line-height: 1.8; overflow-wrap: anywhere; }
-.pi-empty-actions { display: flex; flex-wrap: wrap; gap: 10px; width: 100%; margin-top: 24px; }
-.pi-empty-actions button { padding: 11px 15px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text-main); border-radius: 8px; font-size: .8rem; cursor: pointer; }
-.pi-empty-actions button:hover { border-color: var(--green); background: var(--green-soft); }
+.pi-empty-state { max-width: 680px; min-height: 100%; margin: 0 auto; padding: clamp(28px, 7vh, 80px) 8px 28px; justify-content: center; }
+.pi-empty-state p { max-width: 100%; margin-top: 10px; font-family: inherit; font-size: .86rem; line-height: 1.75; color: var(--text-muted); overflow-wrap: anywhere; }
+.pi-empty-state h2 { color: var(--text-main); font-size: clamp(1.35rem, 2.1vw, 1.8rem); line-height: 1.35; font-weight: 650; letter-spacing: -.02em; }
+.pi-start-hero { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.pi-start-logo { width: 44px; height: 44px; margin-bottom: 18px; border-radius: 12px; box-shadow: 0 6px 18px rgb(30 60 45 / 12%); }
+.pi-start-scope { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; margin-top: 14px; padding: 4px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); color: var(--text-muted); font-size: .72rem; }
+.pi-start-scope span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pi-start-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%; margin-top: 30px; }
+.pi-start-card { display: grid; grid-template-columns: 32px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 12px; row-gap: 2px; align-items: center; min-width: 0; padding: 13px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--text-main); text-align: left; cursor: pointer; transition: border-color 140ms ease, background 140ms ease, transform 140ms ease; }
+.pi-start-card i { grid-row: 1 / 3; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--green-soft); color: var(--green); font-size: .82rem; }
+.pi-start-card strong { min-width: 0; font-size: .84rem; font-weight: 650; }
+.pi-start-card span { min-width: 0; color: var(--text-muted); font-size: .74rem; line-height: 1.45; overflow-wrap: anywhere; }
+.pi-start-card:hover { border-color: color-mix(in srgb, var(--green) 45%, var(--line)); background: color-mix(in srgb, var(--green-soft) 45%, var(--surface-2)); transform: translateY(-1px); }
+.pi-start-card:focus-visible, .pi-empty-actions button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.pi-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: 100%; margin-top: 26px; }
+.pi-empty-actions button { max-width: 100%; padding: 10px 16px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text-main); border-radius: 9px; font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.pi-empty-actions button:hover { border-color: color-mix(in srgb, var(--green) 45%, var(--line)); background: var(--green-soft); }
 .pi-empty-actions button:disabled { opacity: .5; cursor: default; }
-.pi-empty-actions .pi-empty-primary { background: var(--green); color: var(--primary-contrast); border-color: var(--green); }
-.pi-empty-state .pi-empty-hint { font-size: .72rem; }
-.pi-empty-state .pi-explore-skills { margin-top: 20px; }
+.pi-empty-actions .pi-empty-primary { border-color: color-mix(in srgb, var(--green) 40%, var(--line)); color: var(--green); font-weight: 600; }
+.pi-empty-state .pi-empty-hint { margin-top: 14px; text-align: center; font-size: .72rem; }
+.pi-empty-state .extensions-explore { width: 100%; margin: 34px 0 0; padding-top: 16px; border-top: 1px solid var(--line); }
+.pi-empty-state .extensions-explore-heading { font-size: .74rem; }
+.pi-empty-state .extensions-explore-heading button { min-height: 30px; font-size: .74rem; }
+.pi-empty-state .extensions-explore-choices { justify-content: flex-start; gap: 8px; }
+.pi-empty-state .extensions-explore-choices button { flex: 0 1 auto; min-height: 34px; padding: 6px 14px; border-radius: 999px; background: transparent; font-size: .76rem; }
+.pi-empty-state .extensions-explore-choices button:hover { border-color: color-mix(in srgb, var(--green) 45%, var(--line)); color: var(--green); }
+@media (prefers-reduced-motion: reduce) { .pi-start-card { transition: none; } .pi-start-card:hover { transform: none; } }
 .pi-list-state-action { display: block; padding: 9px 12px; margin: 12px auto 0; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-2); color: var(--green); cursor: pointer; }
 .pi-tool-rail { flex: 0 0 var(--workspace-tool-width); width: var(--workspace-tool-width); min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 12px; border-left: 1px solid var(--line); background: var(--surface-sidebar); z-index: 1; }
 .pi-tool-rail button { width: 42px; min-height: 50px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 5px; padding: 6px 2px; border: 0; border-radius: 7px; background: transparent; color: var(--text-muted); font-size: .62rem; cursor: pointer; }
@@ -137,12 +182,6 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
 .pi-workbench:has(.pi-inspector.show-changes.files-expanded.open) > .pi-session-pane { display: flex; }
 .pi-workbench:has(.pi-inspector.show-changes.files-expanded.open) > [data-split-key="agent-sessions"] { display: block; }
 .pi-inspector-overlay > .pi-inspector.show-changes.files-expanded { width: min(1120px, calc(100% - var(--workspace-tool-width) - 32px)); flex-basis: auto; }
-.pi-inspector-tasks { min-height: 0; overflow-y: auto; padding: 16px; }
-#pi-task-dock > details { margin: 0 0 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
-#pi-task-dock > details > summary { min-height: 42px; display: flex; align-items: center; gap: 7px; padding: 10px; font-size: .76rem; cursor: pointer; }
-#pi-task-dock > details > summary + * { padding: 12px; }
-#pi-task-dock .pi-progress-current { display: none; }
-#pi-task-dock > details[hidden] { display: none; }
 .pi-tools-dialog { position: fixed; inset: 0; margin: auto; width: min(400px, calc(100vw - 28px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); color: var(--text-main); box-shadow: var(--shadow-float); }
 .pi-tools-dialog::backdrop { background: rgb(20 35 26 / 30%); }
 .pi-tools-dialog header { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 12px; }
@@ -174,6 +213,8 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
     #pi-open-project { display: none; }
     .pi-session-heading h3 { max-width: none; }
     .pi-workbench:has(.pi-inspector.show-changes.files-expanded.open) > [data-split-key="agent-sessions"] { display: none; }
+    /* A closed drawer's shadow must not tint the left edge of the conversation. */
+    .pi-session-pane:not(.open) { box-shadow: none; }
     .pi-composer-wrap { padding-inline: 20px; }
     .pi-transcript-content { padding-inline: 20px; }
 }
@@ -190,27 +231,41 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
     .pi-connection-banner #pi-mobile-thread-title { max-width: none; }
     .pi-composer-wrap { padding: 8px 12px 10px; }
     .pi-transcript-content { padding: 20px 14px 32px; }
-    .pi-composer { grid-template-columns: 44px minmax(0,1fr) auto; padding: 7px 8px; }
+    /* Phone composer: one quiet row (add, text, context ring, send). The model summary
+       appears above the text only while composing, running, or opened from the ring. */
+    .pi-composer { display: flex; flex-wrap: wrap; align-items: flex-end; column-gap: 4px; row-gap: 0; padding: 6px 7px; border-radius: 16px; }
     #pi-inspector-title { font-size: 16px; }
-    .pi-composer #pi-input { grid-column: 1 / -1; grid-row: 1; width: 100%; font-size: 16px; min-height: 48px; padding-inline: 6px; }
+    .pi-composer #pi-input { flex: 1 1 96px; width: 0; min-height: 40px; font-size: 16px; padding: 9px 4px; }
     .pi-composer-models { display: none; }
-    .pi-composer .pi-mobile-composer-summary { display: flex; grid-column: 1 / -1; grid-row: 2; width: 100%; height: 36px; border: 0; padding: 0 4px; }
-    .pi-composer[data-running="true"] .pi-mobile-composer-summary { padding-right: 4px; }
-    .pi-composer .pi-composer-add { grid-column: 1; grid-row: 3; }
-    .pi-composer .pi-composer-actions.right { grid-column: 2 / -1; grid-row: 3; }
-    .pi-mobile-context-trigger { display: none; }
-    .pi-composer[data-running="true"] #pi-delivery-mode.visible { position: static; width: 88px; height: 40px; margin-right: 4px; }
-    .pi-composer .pi-send-button, .pi-composer .pi-stop-button, #pi-composer-add-button { width: 44px; height: 44px; flex-basis: 44px; }
+    .pi-composer .pi-composer-actions { align-self: flex-end; }
+    .pi-composer .pi-send-button, .pi-composer .pi-stop-button, #pi-composer-add-button { width: 40px; height: 40px; flex-basis: 40px; border-radius: 12px; }
+    #pi-composer-add-button { border: 0; background: transparent; }
+    /* The ring and Send share one 40px touch column size. */
+    .pi-mobile-context-trigger { flex-basis: 40px; width: 40px; }
     .pi-composer-meta { font-size: .62rem; }
     .pi-composer-meta #pi-composer-status { white-space: normal; }
-    .pi-empty-state { min-height: 280px; padding: 28px 6px; }
-    .pi-empty-state h2 { font-size: 1.5rem; }
+    .pi-empty-state { padding: 20px 2px 18px; justify-content: flex-start; }
+    .pi-start-logo { width: 38px; height: 38px; margin-bottom: 14px; }
+    .pi-empty-state h2 { font-size: 1.3rem; }
     .pi-empty-state p { font-size: .82rem; }
+    .pi-start-cards { gap: 8px; margin-top: 22px; }
+    /* Phones show compact starters (icon + title) so the hero and composer fit together. */
+    .pi-start-card { grid-template-columns: 28px minmax(0, 1fr); column-gap: 9px; min-height: 48px; padding: 9px 10px; border-radius: 11px; }
+    .pi-start-card i { grid-row: auto; width: 28px; height: 28px; border-radius: 8px; font-size: .74rem; }
+    .pi-start-card strong { font-size: .8rem; }
+    .pi-start-card span { display: none; }
     .pi-empty-actions { margin-top: 18px; gap: 8px; }
     .pi-empty-actions button { flex: 1 1 130px; min-height: 44px; padding: 10px; }
+    .pi-empty-state .extensions-explore { margin-top: 24px; }
     .pi-project-disclosure, .pi-project-new, .pi-project-pin { min-height: 40px; }
     .pi-session-main { min-height: 54px; }
     .pi-recovery-notice { margin-inline: 12px; }
     .pi-composer-chips > .pi-status-chip > summary { gap: 5px; padding-inline: 9px; font-size: .72rem; }
+}
+/* Running on common phones keeps one row (Stop joins Send) while the text keeps at least 160px;
+   the narrowest phones keep the original second action row. */
+@media (min-width: 361px) and (max-width: 600px) {
+    .pi-composer[data-running="true"] #pi-input { flex: 1 1 96px; }
+    .pi-composer[data-running="true"] .pi-composer-actions.right { flex: 0 0 auto; }
 }
 @media (prefers-reduced-motion: reduce) { .sidebar, .pi-composer { transition: none; } }

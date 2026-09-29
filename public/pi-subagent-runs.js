@@ -58,7 +58,7 @@
         }
         reset() {
             this.epoch++; this.value = null; this.snapshot = null; this.background = null; this.busy = false;
-            this.root.hidden = true; this.root.open = false; delete this.root.dataset.wasOpen; this.list.replaceChildren(); this.footer.replaceChildren();
+            this.root.hidden = true; this.root.open = false; this.list.replaceChildren(); this.footer.replaceChildren();
             if (this.dialog.open) this.dialog.close();
         }
         hasActive() { return Boolean(this.snapshot?.runs.some(run => ACTIVE.has(run.state))); }

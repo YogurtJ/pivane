@@ -90,6 +90,7 @@ const pairs = branch => {
     let user;
     for (const entry of branch) {
         if (entry.type === 'custom' && entry.customType === LEARNING_BASELINE) { result = []; user = null; continue; }
+        if (entry.type === 'custom_message' && entry.customType === 'pivane-cron-message') { user = null; continue; }
         if (entry.type !== 'message') continue;
         if (entry.message?.role === 'user') user = entry;
         if (entry.message?.role === 'assistant' && user && effectiveText(branch, entry)

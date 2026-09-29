@@ -92,6 +92,7 @@
             $('pi-side-stop').hidden = !this.busy;
             $('pi-side-stop').disabled = !this.connected;
             $('pi-side-send').disabled = !this.connected || this.busy || this.submitting || (!this.input.value.trim() && !this.quotes.length);
+            this.manager.host.changed?.();
         }
         status(text, error = false) { $('pi-side-status').textContent = text; $('pi-side-status').dataset.error = String(error); }
         options(value = this.source.value) {
@@ -465,7 +466,6 @@
             $('pi-toggle-side-chat').addEventListener('click', () => this.run(() => this.open()));
             $('pi-side-tab').addEventListener('click', () => this.run(() => this.open()));
             $('pi-details-tab').addEventListener('click', () => this.showPane('details'));
-            $('pi-tasks-tab')?.addEventListener('click', () => this.showPane('tasks'));
             $('pi-inspector-tabs').addEventListener('keydown', event => {
                 if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || event.target.getAttribute('role') !== 'tab') return;
                 event.preventDefault();
@@ -474,6 +474,13 @@
                 const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
                 tabs[next].click(); tabs[next].focus();
             });
+        }
+        activity() {
+            const entry = this.current;
+            // Retained work from another thread must never decorate this thread.
+            if (!entry || entry.destroyed || (entry.retainOnSwitch ? entry.key : entry.parentKey) !== this.key()) return {};
+            return { busy: entry.connected && (entry.busy || entry.submitting), waiting: entry.connected && Boolean(entry.confirmation),
+                starting: Boolean(entry.starting), uncertain: Boolean(entry.uncertain) };
         }
         key(ctx = this.host.context()) { return JSON.stringify([ctx.cwd, ctx.session?.id]); }
         create(ctx, root = this.template.cloneNode(true)) {
@@ -566,9 +573,7 @@
             this.current.root.hidden = !side;
             $('pi-changes').hidden = mode !== 'changes';
             $('pi-history').hidden = mode !== 'history';
-            if ($('pi-inspector-tasks')) $('pi-inspector-tasks').hidden = mode !== 'tasks';
-            for (const [id, selected] of [['pi-details-tab', mode === 'details'], ['pi-tasks-tab', mode === 'tasks'], ['pi-side-tab', side], ['pi-changes-tab', mode === 'changes'], ['pi-history-tab', mode === 'history']]) {
-                if (!$(id)) continue;
+            for (const [id, selected] of [['pi-details-tab', mode === 'details'], ['pi-side-tab', side], ['pi-changes-tab', mode === 'changes'], ['pi-history-tab', mode === 'history']]) {
                 $(id).setAttribute('aria-selected', String(selected)); $(id).tabIndex = selected ? 0 : -1;
             }
             const panel = $('pi-inspector');

@@ -229,6 +229,7 @@
                 <section class="pi-profile-card"><h5>${html(t('能力与使用'))}</h5>
                 ${[['enabled', draft.enabled, '启用身份', '允许新建或重新打开的线程使用此身份。'], ['memoryEnabled', draft.memory.enabled, '长期记忆', '使用此身份保存的记忆；自动学习在“学习与技能”中设置。'], ['learnedEnabled', draft.skills.learnedEnabled, '已学习技能', '让此身份使用积累的可复用方法。']].map(([name, checked, label, note]) => `<label class="pi-profile-toggle"><span><strong>${html(t(label))}</strong><small>${html(t(note))}</small></span><input name="${name}" type="checkbox" role="switch" ${checked ? 'checked' : ''}></label>`).join('')}
                 <input name="autoLearn" type="checkbox" hidden ${draft.memory.autoLearn ? 'checked' : ''}></section>
+                ${draft.id ? `<section class="pi-profile-card"><h5>${html(t('主线程与定时任务'))}</h5><p class="pi-profile-note">${html(t('主线程按需创建，也可以指定已有线程作为定时任务的默认目标。'))}</p><button type="button" class="settings-secondary-button" data-profile-cron>${html(t('管理定时任务'))}</button></section>` : ''}
                 <section class="pi-profile-card pi-profile-limits"><h5>${html(t('文档容量'))}</h5><p class="pi-profile-note">${html(t('控制长期记忆与用户偏好的字符上限。缩小上限不会删除已有内容。'))}</p><div class="pi-profile-fields">
                 <label>${html(t('长期记忆 · MEMORY'))}<input type="number" name="memoryCharLimit" min="256" max="65536" required value="${draft.memory.memoryCharLimit ?? 16000}"><small>256–65,536 ${html(t('字符'))}</small></label>
                 <label>${html(t('用户偏好 · USER'))}<input type="number" name="userCharLimit" min="256" max="32768" required value="${draft.memory.userCharLimit ?? 8000}"><small>256–32,768 ${html(t('字符'))}</small></label></div></section></div>
@@ -555,6 +556,7 @@
             }
         });
         editor.addEventListener('click', event => {
+            if (event.target.closest('[data-profile-cron]') && selected) window.PiWorkspaceRoute?.navigate('cron', { profileId: selected });
             if (event.target.closest('[data-profile-create]')) void editProfile(null);
             if (event.target.closest('#pi-profile-list-back')) { listView = true; renderList(); $('pi-profile-add')?.focus({ preventScroll: true }); }
             if (event.target.closest('#pi-profile-editor-close')) void closeEditor();

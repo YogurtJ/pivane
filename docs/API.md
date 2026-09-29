@@ -33,6 +33,7 @@
 ## 1. 通用行为
 
 - JSON request body 上限由 Express 设置为 32 MB。
+- 公开静态 JS/CSS 可按 `Accept-Encoding` 返回 Brotli/gzip，设置 `Vary: Accept-Encoding`、表示专属 ETag 和 `Cache-Control: public, max-age=0`；HEAD 与条件 GET 保留。范围／前置条件请求回到原生 identity 表示；客户端禁止 identity 而无可交付压缩表示（包括并发饱和）时返回 406，压缩读取检测到文件变化时返回 409。API、WebSocket、HTML 与媒体不通过此压缩缓存。项目／线程列表字段保持兼容，服务器只复用经文件身份及目录成员核实的可丢弃摘要。
 - 私人 API 检查 Origin 与可选工作台身份；accessControl开启时使用HttpOnly Cookie或Bearer。相同Origin仅通过来源检查，不授予访问权。
 - `PI_ALLOWED_ORIGINS` 是附加跨域白名单，不会取代上述同 Host 规则。
 - `PI_WEB_TOKEN` 非空时，HTTP 使用 `Authorization: Bearer <token>`。
@@ -43,6 +44,10 @@
 ## 2. Pi REST API
 
 所有路径前缀为 `/api/pi`。
+
+### 定时任务
+
+`GET /status.scheduledTasks=true` 表示服务支持周期与单次任务，`GET /activity.cronBusy` 表示正在保存／调度／核对。`GET /cron` 读取任务、主线程、预算与状态，`PUT /cron/jobs` 使用稳定 UUID 和修订保存任务，`POST /cron/jobs/:id/actions` 提供暂停、启用、运行、停止与核对操作。创建主线程使用 `PUT /cron/homes/:profileId`，沿用原生线程身份和工作目录验证。完整字段、去重、时区与费用边界见[定时任务契约](SCHEDULED_TASKS.md#数据与接口)。
 
 ### 可选助手档案
 
@@ -260,6 +265,16 @@ Body: `{ "cwd": "/workspace/demo" }`。先经过 token/Origin/realpath 根检查
   ]
 }
 ```
+
+启用助手档案／项目功能时，列表项可附带 `stats: {messages, context, compactions, contextTokens, model}`，供线程行悬停提示使用；未启用相关功能或统计失败时省略此字段：
+
+- `messages`：当前原生分支中的 message 条目数，不是整棵会话树的消息数。
+- `context`：有压缩时由 `buildContextEntries()` 得到的 message 条目数，否则等于 `messages`。
+- `compactions`：当前分支中的压缩条目数。
+- `contextTokens`：最近一次压缩之后，最近有效 assistant 用量中的 input、cacheRead、cacheWrite 与 output 之和；错误／中止回复不参与，缺少有效统计时为 `null`，不是实时估算。
+- `model`：最近 assistant 消息或 model_change 条目的 `{provider,id}`；不可用时为 `null`。
+
+`sessionStats(manager)` 复用列表读取档案／项目绑定时已解析的 SessionManager，不为统计额外读取文件；这些字段不替代原有 `messageCount`，客户端须兼容缺失值。
 
 `path` 供当前可信单用户 UI 展示和 gateway 内部使用。不要把该接口暴露给不可信多用户。
 

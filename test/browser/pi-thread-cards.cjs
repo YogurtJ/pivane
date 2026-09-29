@@ -49,7 +49,7 @@ async function run(browser, base, width, locale) {
  await page.locator('[data-project-action="more-threads"]').click();
  const row=id=>page.locator(`#pi-session-list [data-session-id="${id}"]`);
  assert.equal(await page.locator('.pi-session-preview').count(),0,'normal cards have no duplicated first message');
- assert.equal(await row('named').locator('.pi-session-title').getAttribute('title'),sessions[0].name);
+ assert.equal((await row('named').locator('.pi-session-main').getAttribute('title')).split('\n')[0],sessions[0].name);assert.equal(await row('named').locator('.pi-session-title').getAttribute('title'),null,'title inherits the full row tooltip');
  assert.equal(await row('fallback').locator('.pi-session-title').innerText(),sessions[1].firstMessage);
  assert.equal(await row('empty').locator('.pi-session-title').innerText(),locale==='zh-CN'?'未命名会话':'Untitled session');
  assert.equal(await row('named').locator('.pi-session-activity').isVisible(),true,'retained idle runtime remains visible');

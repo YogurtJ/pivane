@@ -30,8 +30,25 @@
         const searchText = document.createElement('span'); searchText.textContent = t('搜正文'); $('pi-search-conversations').append(searchText);
         $('pi-session-search').placeholder = t('搜索项目与线程标题');
         $('pi-session-search').setAttribute('aria-label', t('搜索项目与线程标题'));
-        const newText = document.createElement('span'); newText.className = 'pi-new-session-label'; newText.textContent = t('新建线程'); $('pi-new-session').append(newText);
-        $('pi-new-session').setAttribute('aria-label', t('新建线程')); $('pi-new-session').title = t('在当前项目新建线程');
+        const newText = document.createElement('span'); newText.className = 'pi-new-session-label'; newText.textContent = t('新聊天'); $('pi-new-session').append(newText);
+        $('pi-new-session').setAttribute('aria-label', t('新聊天')); $('pi-new-session').title = t('在当前项目开始新聊天');
+        // Desktop has one conversation header: the same project/context controls move into
+        // the status strip, and back to the command bar on tablet/phone. Never copy handlers or state.
+        const project = $('pi-project-button'), context = $('pi-context-button'), banner = $('pi-connection-banner');
+        const projectHome = document.createComment('project control'), contextHome = document.createComment('context control');
+        project.before(projectHome); context.before(contextHome);
+        const desktopHeader = matchMedia('(min-width: 901px)');
+        const placeHeader = () => {
+            if (desktopHeader.matches) { banner.prepend(project); $('pi-current-thread-menu').before(context); }
+            else { projectHome.after(project); contextHome.after(context); }
+        };
+        desktopHeader.addEventListener('change', placeHeader); placeHeader();
+        // The compact header hides the path, so keep it available on hover.
+        const projectTitle = () => {
+            const path = $('pi-project-path').textContent.trim();
+            project.title = path && $('pi-project-name').textContent.trim() !== path ? `${t('切换项目目录')}\n${path}` : t('切换项目目录');
+        };
+        new MutationObserver(projectTitle).observe($('pi-project-path'), { childList: true, characterData: true, subtree: true }); projectTitle();
         const openProject = button('pi-open-project', t('打开项目目录'), 'folder-open'); openProject.className = 'icon-btn subtle';
         openProject.addEventListener('click', () => $('pi-project-button').click());
         document.querySelector('.pi-session-heading .pi-pane-actions').prepend(openProject);
@@ -40,12 +57,10 @@
 
         const rail = document.createElement('nav'); rail.className = 'pi-tool-rail'; rail.setAttribute('aria-label', t('当前线程工具'));
         const tools = [
-            ['changes', 'pi-changes-tab', t('文件'), 'file-lines'], ['tasks', 'pi-tasks-tab', t('任务'), 'list-check'],
+            ['changes', 'pi-changes-tab', t('文件'), 'file-lines'],
             ['history', 'pi-history-tab', t('历史'), 'clock-rotate-left'], ['side', 'pi-side-tab', t('侧聊'), 'comment-dots'],
             ['details', 'pi-details-tab', t('详情'), 'circle-info']
         ];
-        $('pi-tasks-tab').textContent = t('任务');
-        $('pi-task-dock-empty').textContent = t('任务开始后，这里会显示计划、子 Agent 和返回结果。');
         // Tool owners initialize or resume their own context; the layout never caches reader state.
         const selectTool = (_mode, id) => $(id).click();
         const toolButtons = tools.map(([mode, id, label, icon]) => {
@@ -185,31 +200,6 @@
             if ($('pi-session-search-field').hidden) $('pi-session-search-toggle').click();
             queueMicrotask(() => $('pi-session-search').focus({ preventScroll: true }));
         });
-        // Task cards move into the dock, retaining their own state, controls and identity.
-        const chips = $('pi-composer-chips'), dock = $('pi-task-dock');
-        const originalCards = [...chips.children];
-        let docked = false;
-        const hiddenCards = new Map(originalCards.map(card => [card, card.hidden]));
-        const syncDock = () => {
-            const visible = inspector.classList.contains('open') && !$('pi-inspector-tasks').hidden;
-            if (visible !== docked) {
-                docked = visible;
-                for (const card of originalCards) {
-                    if (visible) { card.dataset.wasOpen = String(card.open); dock.append(card); card.open = true; }
-                    else { chips.append(card); card.open = card.dataset.wasOpen === 'true'; delete card.dataset.wasOpen; }
-                }
-            }
-            for (const card of originalCards) {
-                if (docked && !card.hidden && (hiddenCards.get(card) || !Object.hasOwn(card.dataset, 'wasOpen'))) {
-                    card.dataset.wasOpen = 'false'; card.open = true;
-                }
-                hiddenCards.set(card, card.hidden);
-            }
-            $('pi-task-dock-empty').hidden = originalCards.some(card => !card.hidden);
-        };
-        new MutationObserver(syncDock).observe(inspector, { attributes: true, attributeFilter: ['class'] });
-        new MutationObserver(syncDock).observe($('pi-inspector-tasks'), { attributes: true, attributeFilter: ['hidden'] });
-        for (const card of originalCards) new MutationObserver(syncDock).observe(card, { attributes: true, attributeFilter: ['hidden'] });
         schedule();
     });
 })();

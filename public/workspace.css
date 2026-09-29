@@ -865,6 +865,7 @@ button.pi-action-pending:not(.icon-btn):not(.pi-message-action) .pi-spinner { ma
 .pi-connection-banner[data-state="error"] .pi-status-dot,
 .pi-status-dot[data-state="error"] { background: var(--danger); }
 .pi-status-dot[data-state="connecting"] { background: var(--blue); }
+.pi-status-dot[data-state="waiting"] { background: var(--amber); }
 
 @keyframes pi-pulse { 50% { opacity: 0.35; } }
 

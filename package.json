@@ -17,6 +17,7 @@
   },
   "workspaces": ["vendor/pi-subagents", "vendor/pi-hermes-memory"],
   "overrides": {
+    "undici": "8.11.2",
     "@earendil-works/pi-server": {
       "@earendil-works/chord": "0.87.1",
       "@earendil-works/pi-agent-core": "0.87.1",

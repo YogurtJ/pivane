@@ -19,6 +19,7 @@
     <link rel="stylesheet" href="workspace.css">
     <link rel="stylesheet" href="workspace-access.css">
     <link rel="stylesheet" href="pi-model-picker.css">
+    <link rel="stylesheet" href="pi-cron.css">
     <link rel="stylesheet" href="pi-agent-profiles.css">
     <link rel="stylesheet" href="pi-profile-knowledge.css">
     <link rel="stylesheet" href="pi-chat-knowledge.css">
@@ -68,8 +69,10 @@
                     <i class="fa-solid fa-comment" aria-hidden="true"></i><span>Pi Agent</span>
                 </button>
                 <button class="nav-btn" id="workspace-assistant-toggle" data-tab="assistant" type="button" title="助手对话" data-i18n-title="s2547"><i class="fa-solid fa-comments" aria-hidden="true"></i><span><!--i18n:s2547-->助手对话</span></button>
+                <button class="nav-btn" data-tab="cron" type="button"><i class="fa-regular fa-calendar-check" aria-hidden="true"></i><span data-cron-nav>定时任务</span></button>
                 <button class="nav-btn workspace-more-toggle" id="workspace-more-toggle" type="button" title="更多功能" aria-label="更多功能" aria-haspopup="menu" aria-expanded="false" aria-controls="workspace-more-menu" data-i18n-title="s2651" data-i18n-aria-label="s2651"><i class="fa-solid fa-layer-group" aria-hidden="true"></i><span><!--i18n:s2651-->更多功能</span></button>
                 <div id="workspace-more-menu" class="workspace-more-menu" role="menu" aria-label="更多功能" data-i18n-aria-label="s2651" hidden>
+                    <button type="button" role="menuitem" data-more-tab="cron"><i class="fa-regular fa-calendar-check" aria-hidden="true"></i><span data-cron-nav>定时任务</span></button>
                     <button type="button" role="menuitem" data-more-tab="media"><i class="fa-solid fa-flask" aria-hidden="true"></i><span><!--i18n:s1318-->多媒体实验室</span></button>
                     <button type="button" role="menuitem" data-more-tab="profiles"><i class="fa-solid fa-user-gear" aria-hidden="true"></i><span><!--i18n:s2468-->助手身份</span></button>
                     <button type="button" role="menuitem" data-more-tab="extensions"><i class="fa-solid fa-puzzle-piece" aria-hidden="true"></i><span><!--i18n:s530-->扩展</span></button>
@@ -304,7 +307,6 @@
                         <div>
                             <div id="pi-inspector-tabs" class="pi-inspector-tabs" role="tablist" aria-label="右侧面板" data-i18n-aria-label="s1376">
                                 <button id="pi-details-tab" type="button" role="tab" aria-selected="true" aria-controls="pi-inspector-details"><!--i18n:s1336-->会话详情</button>
-                                <button id="pi-tasks-tab" type="button" role="tab" aria-selected="false" aria-controls="pi-inspector-tasks" tabindex="-1"></button>
                                 <button id="pi-side-tab" type="button" role="tab" aria-selected="false" aria-controls="pi-side-chat" tabindex="-1" hidden><!--i18n:s1097-->侧聊</button>
                                 <button id="pi-history-tab" type="button" role="tab" aria-selected="false" aria-controls="pi-history" tabindex="-1" hidden><!--i18n:s1377-->历史</button>
                                 <button id="pi-changes-tab" type="button" role="tab" aria-selected="false" aria-controls="pi-changes" tabindex="-1"><!--i18n:s1378-->文件</button>
@@ -314,7 +316,6 @@
                             <i class="fa-solid fa-xmark"></i>
                         </button>
                     </div>
-                    <section id="pi-inspector-tasks" class="pi-inspector-tasks" role="tabpanel" aria-labelledby="pi-tasks-tab" hidden><div id="pi-task-dock"></div><p id="pi-task-dock-empty" class="pi-native-help"></p></section>
                     <div id="pi-inspector-details" role="tabpanel" aria-labelledby="pi-details-tab">
                     <div class="pi-inspector-section">
                         <div class="pi-runtime-state">
@@ -499,6 +500,7 @@
             </div>
         </main>
 
+        <main class="content-area tab-content cron-page" id="cron-tab"></main>
         <main class="content-area tab-content media-lab" id="media-tab">
             <header class="lab-header">
                 <h1><i class="fa-solid fa-flask" aria-hidden="true"></i><!--i18n:s1318--> 多媒体实验室</h1>
@@ -888,6 +890,7 @@
     <script src="pi-profile-dialog.js"></script>
     <script src="pi-profile-knowledge.js"></script>
     <script src="pi-chat-knowledge.js"></script>
+    <script src="pi-cron.js"></script>
     <script src="pi-agent-profiles.js"></script>
     <script src="settings.js"></script>
     <script src="media-fields.js"></script>

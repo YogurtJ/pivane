@@ -31,7 +31,7 @@ class PiShellExecution {
             || typeof input.command !== 'string' || !input.command.trim() || input.command.length > 32768 || input.command.includes('\0')
             || input.excludeFromContext !== undefined && typeof input.excludeFromContext !== 'boolean') throw new Error('Shell 命令须为非空文字，最多 32768 字符；仅支持 command / excludeFromContext');
         const w = this.worker;
-        if (this.busy || w.disposed || w.operation || w.controlPending || w.promptPending || w.compactPending || w.historyPending || w.historyWriting || w.resourceResults.size || w.contextCapture || w.pendingUi.size || w.activity.snapshot().busy) {
+        if (this.busy || w.cronRun || w.disposed || w.operation || w.controlPending || w.promptPending || w.compactPending || w.historyPending || w.historyWriting || w.resourceResults.size || w.contextCapture || w.pendingUi.size || w.activity.snapshot().busy) {
             throw new Error('请等待当前会话空闲后执行 Shell');
         }
         // Reserve before readiness/state awaits, including concurrent browser submissions.
@@ -41,7 +41,7 @@ class PiShellExecution {
         try {
             await w.ensureReady();
             const state = await w.request('get_state');
-            if (w.disposed || state.isStreaming || state.isCompacting || state.pendingMessageCount || w.pendingUi.size || w.activity.snapshot().busy) throw new Error('当前会话尚未空闲');
+            if (w.cronRun || w.disposed || state.isStreaming || state.isCompacting || state.pendingMessageCount || w.pendingUi.size || w.activity.snapshot().busy) throw new Error('当前会话尚未空闲');
             job.status = 'running';
             this.changed();
             // No request timeout: loss of the browser is not cancellation or permission to replay.

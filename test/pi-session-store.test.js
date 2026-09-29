@@ -116,12 +116,12 @@ test('concurrent list readers share one native read, isolate results, and retry 
     const store = new PiSessionStore();
     const session = await store.createSession(testRoot, 'Shared list');
     const { SessionManager } = await getSdk();
-    const original = SessionManager.list;
+    const original = store._nativeSessionMetadata;
     let release, entered, calls = 0;
     const gate = new Promise(resolve => { release = resolve; });
     const started = new Promise(resolve => { entered = resolve; });
-    SessionManager.list = async (...args) => { calls++; entered(); await gate; return original.apply(SessionManager, args); };
-    t.after(() => { SessionManager.list = original; release(); });
+    store._nativeSessionMetadata = async (...args) => { calls++; entered(); await gate; return original.apply(store, args); };
+    t.after(() => { store._nativeSessionMetadata = original; release(); });
     const alias = path.join(testRoot, 'concurrent-project-alias');
     fs.symlinkSync(testRoot, alias, 'junction');
     t.after(() => fs.unlinkSync(alias));
@@ -135,11 +135,11 @@ test('concurrent list readers share one native read, isolate results, and retry 
     await store.listSessions(testRoot);
     assert.equal(calls, 1, 'unchanged native identities reuse the disposable projection');
     fs.appendFileSync(session.path, '\n');
-    SessionManager.list = async () => { calls++; throw new Error('Synthetic read failure'); };
+    store._nativeSessionMetadata = async () => { calls++; throw new Error('Synthetic read failure'); };
     const failed = await Promise.allSettled([store.listSessions(testRoot), store.listSessions(testRoot)]);
     assert.ok(failed.every(result => result.status === 'rejected'));
     assert.equal(calls, 2);
-    SessionManager.list = original;
+    store._nativeSessionMetadata = original;
     assert.equal((await store.listSessions(testRoot))[0].name, 'Shared list');
     await store.deleteSession(testRoot, session.id);
 });
@@ -148,17 +148,17 @@ test('a newly created session cannot join a list snapshot started before creatio
     const store = new PiSessionStore();
     const first = await store.createSession(testRoot, 'Before list');
     const { SessionManager } = await getSdk();
-    const original = SessionManager.list;
+    const original = store._nativeSessionMetadata;
     let release, entered, calls = 0;
     const gate = new Promise(resolve => { release = resolve; });
     const started = new Promise(resolve => { entered = resolve; });
-    SessionManager.list = async (...args) => {
+    store._nativeSessionMetadata = async (...args) => {
         const firstRead = ++calls === 1;
-        const rows = await original.apply(SessionManager, args);
+        const rows = await original.apply(store, args);
         if (firstRead) { entered(); await gate; }
         return rows;
     };
-    t.after(() => { SessionManager.list = original; release(); });
+    t.after(() => { store._nativeSessionMetadata = original; release(); });
     const older = store.listSessions(testRoot);
     await started;
     const second = await store.createSession(testRoot, 'After list');
@@ -167,7 +167,7 @@ test('a newly created session cannot join a list snapshot started before creatio
     assert.ok(fresh.some(row => row.id === second.id));
     release();
     assert.equal((await older).some(row => row.id === second.id), false);
-    SessionManager.list = original;
+    store._nativeSessionMetadata = original;
     await store.deleteSession(testRoot, first.id); await store.deleteSession(testRoot, second.id);
 });
 
@@ -177,15 +177,15 @@ test('profile revision changes do not reuse a concurrent list projection', async
     let revision = 'before';
     store.profiles = { state: async () => ({ revision, state: { revision } }), describe: async (_manager, state) => ({ name: state.revision }) };
     const { SessionManager } = await getSdk();
-    const original = SessionManager.list;
+    const original = store._nativeSessionMetadata;
     let release, entered, calls = 0;
     const gate = new Promise(resolve => { release = resolve; });
     const started = new Promise(resolve => { entered = resolve; });
-    SessionManager.list = async (...args) => {
+    store._nativeSessionMetadata = async (...args) => {
         if (++calls === 1) { entered(); await gate; }
-        return original.apply(SessionManager, args);
+        return original.apply(store, args);
     };
-    t.after(() => { SessionManager.list = original; release(); });
+    t.after(() => { store._nativeSessionMetadata = original; release(); });
     const older = store.listSessions(testRoot);
     await started; revision = 'after';
     const fresh = await store.listSessions(testRoot);
@@ -193,11 +193,41 @@ test('profile revision changes do not reuse a concurrent list projection', async
     assert.equal(calls, 2);
     release();
     assert.equal((await older)[0].agentProfile.name, 'before');
-    SessionManager.list = original; store.profiles = null;
+    store._nativeSessionMetadata = original; store.profiles = null;
     await store.deleteSession(testRoot, session.id);
 });
 
 test('rejects projects outside configured roots', () => {
     const store = new PiSessionStore();
     assert.throws(() => store.resolveProject(os.tmpdir()), /outside allowed roots/);
+});
+
+test('thread hover stats summarize the current branch, compaction and latest model without extra reads', async () => {
+    const { sessionStats } = require('../server/pi-session-store');
+    const { SessionManager } = await getSdk();
+    const store = new PiSessionStore();
+    const created = await store.createSession(testRoot, 'Stats session');
+    const manager = SessionManager.open(created.path);
+    const usage = (input, output) => ({ input, output, cacheRead: 1000, cacheWrite: 0, totalTokens: input + output + 1000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } });
+    const assistant = (text, model, tokens) => ({ role: 'assistant', content: [{ type: 'text', text }], api: 'openai-responses', provider: 'fixture', model,
+        usage: usage(tokens, 50), stopReason: 'stop', timestamp: Date.now() });
+    assert.deepEqual(sessionStats(manager), { messages: 0, context: 0, compactions: 0, contextTokens: null, model: null });
+    manager.appendModelChange('fixture', 'chosen-model');
+    assert.deepEqual(sessionStats(manager).model, { provider: 'fixture', id: 'chosen-model' });
+    manager.appendMessage({ role: 'user', content: 'first', timestamp: Date.now() });
+    manager.appendMessage(assistant('one', 'old-model', 9000));
+    const kept = manager.appendMessage({ role: 'user', content: 'second', timestamp: Date.now() });
+    manager.appendMessage(assistant('two', 'old-model', 12000));
+    manager.appendCompaction('summary', kept, 20000);
+    let stats = sessionStats(manager);
+    assert.equal(stats.messages, 4); assert.equal(stats.compactions, 1); assert.equal(stats.context, 2);
+    assert.equal(stats.contextTokens, null, 'usage before the latest compaction is not current context');
+    assert.deepEqual(stats.model, { provider: 'fixture', id: 'old-model' });
+    manager.appendMessage({ role: 'user', content: 'third', timestamp: Date.now() });
+    manager.appendMessage(assistant('three', 'new-model', 3000));
+    stats = sessionStats(manager);
+    assert.equal(stats.messages, 6); assert.equal(stats.context, 4); assert.equal(stats.contextTokens, 3000 + 50 + 1000);
+    assert.deepEqual(stats.model, { provider: 'fixture', id: 'new-model' });
+    assert.equal(sessionStats({ getBranch() { throw new Error('broken'); } }), null);
+    await store.deleteSession(testRoot, created.id);
 });

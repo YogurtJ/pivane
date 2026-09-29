@@ -14,7 +14,7 @@
         waiting: '等待处理', completed: '已完成', error: '执行失败', stopped: '已停止', uncertain: '启动状态待核实' };
     const RESULT_LABELS = { completed: '本轮已结束', error: '执行失败', stopped: '已中止', needs_attention: '需要处理', uncertain: '状态待核实' };
     const handles = message => message?.role === 'custom' && (TASK.includes(message.customType) || RECEIPT.includes(message.customType)
-        || message.customType === RESULT || message.customType === MESSAGE);
+        || message.customType === RESULT || message.customType === MESSAGE || message.customType === 'pivane-cron-message');
 
     function preview(source) {
         return source.replace(/```[^\n]*\n?/g, ' ').replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+/gm, '').replace(/[*_`~]+/g, '')
@@ -57,7 +57,12 @@
         header.append(icon, title);
         const meta = [];
         let body = '', target = null, targetLabel = '', peer = '';
-        if (TASK.includes(message.customType)) {
+        if (message.customType === 'pivane-cron-message') {
+            article.dataset.agentCard = 'scheduled'; article.classList.add('pi-agent-turn-start');
+            icon.className = 'fa-regular fa-calendar-check'; title.textContent = t('定时任务');
+            peer = str(details.name, 120);
+            body = textOf(message.content).slice(Number.isInteger(details.bodyOffset) && details.bodyOffset >= 0 ? details.bodyOffset : 0);
+        } else if (TASK.includes(message.customType)) {
             article.dataset.agentCard = 'task'; article.classList.add('pi-agent-turn-start');
             icon.className = 'fa-solid fa-inbox'; title.textContent = t("来自 Agent 的任务");
             body = textOf(message.content);
@@ -94,7 +99,7 @@
         const when = time(message.timestamp);
         const metaText = [...meta, when].filter(Boolean).join(' · ');
         if (metaText) { const node = span('pi-agent-thread-meta', metaText); node.title = metaText; header.append(node); }
-        link(header, target, targetLabel);
+        if (target) link(header, target, targetLabel);
         article.append(header);
         if (body.trim()) {
             const container = document.createElement('div'); container.className = 'pi-message-body';

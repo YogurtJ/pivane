@@ -114,6 +114,7 @@ class AgentWorker extends EventEmitter {
     async request(type, payload = {}, timeoutMs, operationToken) {
         if (this.disposed || this.restarting) throw new Error('Pi runtime 已关闭或正在重新打开');
         if (['bash', 'abort_bash', 'set_steering_mode', 'set_follow_up_mode'].includes(type)) throw new Error('请使用受控运行入口');
+        if (this.cronRun && (!this.operation || operationToken !== this.operation) && !type.startsWith('get_') && type !== 'abort') throw new Error('定时任务正在运行或恢复设置，请等待结束或在定时任务页核对');
         if (this.shell.busy && !type.startsWith('get_')) throw new Error('Shell 正在执行，请等待命令终态');
         if (this.controlPending && !type.startsWith('get_')) throw new Error('正在停止或取回队列，请等待状态确认');
         if (this.operation && operationToken !== this.operation && !type.startsWith('get_')) throw new Error('会话操作进行中，请稍后重试');
@@ -256,8 +257,8 @@ class AgentWorker extends EventEmitter {
         return this.controls.snapshot();
     }
 
-    async exclusive(callback, { idle = true } = {}) {
-        if (idle && this.shell.busy || this.disposed || this.operation || this.controlPending || this.promptPending || this.compactPending || idle && (this.activity.snapshot().busy || this.historyWriting)) {
+    async exclusive(callback, { idle = true, cron = false } = {}) {
+        if (this.cronRun && !cron || idle && this.shell.busy || this.disposed || this.operation || this.controlPending || this.promptPending || this.compactPending || idle && (this.activity.snapshot().busy || this.historyWriting)) {
             const error = new Error('会话正在运行或处理其他操作，请等待空闲');
             error.code = 'SESSION_BUSY';
             throw error;
@@ -277,6 +278,10 @@ class AgentWorker extends EventEmitter {
             this.operation = null;
             this.lastUsedAt = Date.now();
         }
+    }
+
+    async cron(input) {
+        return this.exclusive(rpc => this.navigate(rpc, { mode: 'cron', input }, { timeoutMs: 30000 }), { cron: true });
     }
 
     async taskReturn(input) {
@@ -495,6 +500,7 @@ class AgentWorker extends EventEmitter {
                 && (item.sourceInfo?.path || item.path) === extensionPath
                 && isInternalCommand(item.name));
             if (!command) throw new Error('原生回退扩展未加载，请重新打开 runtime');
+            if (payload.mode === 'cron' && !command.description?.includes('cron-v1')) throw new Error('Scheduled task bridge is not loaded; reopen the idle thread');
             if (payload.mode === 'task-result' && !command.description?.includes('task-results-v1')) throw new Error('Task result bridge is not loaded');
             if (payload.mode === 'agent-message' && !command.description?.includes('agent-messages-v1')) throw new Error('Agent message bridge is not loaded; reopen the thread after it is idle');
             if (payload.mode === 'tree' && !command.description?.includes('tree-v1')) throw new Error('当前实例尚未加载会话树导航，请在任务结束后退出并重新打开线程');
@@ -581,6 +587,14 @@ class AgentWorker extends EventEmitter {
                         this.loadedAssistantProjectId = result.pivaneAssistantProjectLoaded;
                         this.loadedAssistantProjectRevision = result.projectRevision;
                         this.loadedAssistantProjectConfirmed = true;
+                    }
+                    return;
+                }
+                if (result && Object.hasOwn(result, 'pivaneCron')) {
+                    const state = result.pivaneCron;
+                    if (state?.sessionId === this.sessionId) {
+                        this.cronRun = state.active ? state.runId : null;
+                        this.cronState = state;
                     }
                     return;
                 }

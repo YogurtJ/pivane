@@ -27,11 +27,42 @@ function isWithin(root, candidate) {
     return candidate === root || candidate.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
 }
 
+// Hover metadata for the thread list: current-branch size, compaction state,
+// latest reported context tokens and the model used most recently.
+function sessionStats(manager) {
+    try {
+        const branch = manager.getBranch();
+        let messages = 0, compactions = 0, model = null, contextTokens = null, afterCompaction = true;
+        for (const entry of branch) {
+            if (entry.type === 'message') messages++;
+            else if (entry.type === 'compaction') compactions++;
+        }
+        for (let index = branch.length - 1; index >= 0; index--) {
+            const entry = branch[index];
+            if (entry.type === 'compaction') afterCompaction = false;
+            const message = entry.type === 'message' ? entry.message : null;
+            if (message?.role === 'assistant') {
+                if (!model && typeof message.model === 'string' && message.model) model = { provider: String(message.provider || ''), id: message.model };
+                const usage = message.usage;
+                if (contextTokens === null && afterCompaction && usage && message.stopReason !== 'error' && message.stopReason !== 'aborted') {
+                    const total = [usage.input, usage.cacheRead, usage.cacheWrite, usage.output].reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0);
+                    if (total > 0) contextTokens = total;
+                }
+            } else if (!model && entry.type === 'model_change') model = { provider: String(entry.provider || ''), id: String(entry.modelId || '') };
+            if (model && (contextTokens !== null || !afterCompaction)) break;
+        }
+        const context = compactions ? manager.buildContextEntries().filter(entry => entry.type === 'message').length : messages;
+        return { messages, context, compactions, contextTokens, model: model?.id ? model : null };
+    } catch { return null; }
+}
+
 class PiSessionStore {
     constructor() {
         // Concurrent reads share work; completed projections require fresh native proofs.
         this.sessionLists = new Map();
         this.sessionListCache = new Map();
+        this.sessionMetadata = new (require('./pi-session-metadata').SessionMetadataCache)();
+        this.sessionRows = new WeakMap();
         const defaults = process.platform === 'win32'
             ? Array.from({ length: 26 }, (_, index) => `${String.fromCharCode(65 + index)}:\\`)
             : ['/'];
@@ -77,8 +108,17 @@ class PiSessionStore {
     }
 
     async listProjects() {
-        const { SessionManager } = await getSdk();
-        const sessions = await SessionManager.listAll();
+        const sdk = await getSdk();
+        const { SessionManager } = sdk;
+        const root = path.join(sdk.getAgentDir(), 'sessions');
+        let directories;
+        try { directories = fs.readdirSync(root, { withFileTypes: true }).filter(entry => entry.isDirectory() || entry.isSymbolicLink()); }
+        catch { directories = []; }
+        const sessions = [];
+        for (const entry of directories) {
+            const directory = path.join(root, entry.name);
+            sessions.push(...await this.sessionMetadata.list(directory, sdk, () => SessionManager.listAll(directory)));
+        }
         const projects = new Map();
 
         for (const session of sessions) {
@@ -176,7 +216,7 @@ class PiSessionStore {
                     && cached.profiles === profiles && cached.projects === projects) return cached.result;
                 this.sessionListCache.delete(cwd);
                 const result = await this._listSessions(cwd, SessionManager, profiles, projects,
-                    profileSnapshot?.state, projectSnapshot?.state);
+                    profileSnapshot?.state, projectSnapshot?.state, revision);
                 if (sourceRevision && sourceRevision === sessionListRevision(directory)) {
                     if (this.sessionListCache.size >= 32) this.sessionListCache.delete(this.sessionListCache.keys().next().value);
                     this.sessionListCache.set(cwd, { sourceRevision, revision, profiles, projects, result });
@@ -192,14 +232,29 @@ class PiSessionStore {
         return structuredClone(result);
     }
 
-    async _listSessions(cwd, SessionManager, profiles, projects, profileState, projectState) {
-        const sessions = await SessionManager.list(cwd);
+    async _nativeSessionMetadata(cwd, SessionManager) {
+        const sdk = await getSdk();
+        const directory = SessionManager.create(cwd).getSessionDir();
+        return this.sessionMetadata.list(directory, sdk, () => SessionManager.list(cwd));
+    }
+
+    async _listSessions(cwd, SessionManager, profiles, projects, profileState, projectState, revision) {
+        const sessions = await this._nativeSessionMetadata(cwd, SessionManager);
         const result = [];
         for (const session of sessions) {
+            const cached = this.sessionRows.get(session);
+            if (cached && cached.revision === revision && cached.profiles === profiles && cached.projects === projects) {
+                result.push(cached.item); continue;
+            }
             const manager = profiles || projects ? this.profileManager(session, SessionManager) : null;
-            result.push(this._serializeSession(session, manager && profiles ? await profiles.describe(manager, profileState) : null,
+            const item = this._serializeSession(session, manager && profiles ? await profiles.describe(manager, profileState) : null,
                 manager && projects ? projects.describe(manager, cwd, projectState) : null,
-                manager ? require('./pi-profile-authoring').readProfileAuthoring(manager) : null));
+                manager ? require('./pi-profile-authoring').readProfileAuthoring(manager) : null);
+            // The manager is already parsed for bindings; summarizing its current branch adds no extra file read.
+            const stats = manager ? sessionStats(manager) : null;
+            if (stats) item.stats = stats;
+            this.sessionRows.set(session, { revision, profiles, projects, item });
+            result.push(item);
         }
         return result.sort((a, b) => b.modified.localeCompare(a.modified));
     }
@@ -207,7 +262,7 @@ class PiSessionStore {
     async getSession(cwdInput, id) {
         const cwd = this.resolveProject(cwdInput);
         const { SessionManager } = await getSdk();
-        const candidate = (await SessionManager.list(cwd)).find(item => item.id === id);
+        const candidate = (await this._nativeSessionMetadata(cwd, SessionManager)).find(item => item.id === id);
         if (!candidate) throw new Error('Session not found in this project');
         // One physical session must keep one supervisor key even when the OS accepts a case/symlink alias.
         const canonical = fs.realpathSync.native(candidate.path);
@@ -371,4 +426,4 @@ class PiSessionStore {
     }
 }
 
-module.exports = { PiSessionStore, getSdk };
+module.exports = { PiSessionStore, getSdk, sessionStats };

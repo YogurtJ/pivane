@@ -184,6 +184,9 @@ document.addEventListener('DOMContentLoaded', () => {
         activityEnabled: false,
         projectSessions: new Map(),
         loadingProjects: new Set(),
+        sessionListRequests: new Map(),
+        sessionListRevisions: new Map(),
+        projectSelectionEpoch: 0,
         expandedProjects: new Set(readStoredArray(EXPANDED_PROJECTS_KEY).filter(value => typeof value === 'string')),
         expandedThreadLists: new Set(),
         roots: [],
@@ -398,6 +401,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const sideChat = new window.PiSideChat({
+        changed: () => queueMicrotask(refreshAgentState),
         context: () => ({ cwd: state.cwd, session: state.session, token: state.token, connected: state.connected,
             busy: state.streaming || state.compacting || state.compactRequested, waiting: state.pendingUi.size > 0 }),
         prepare: options => requestRpc('prepare_side_chat', options, 65000),
@@ -589,10 +593,47 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.connectionText.textContent = text;
     }
 
+    // One projection for the footer: related work does not lock the main composer.
+    function refreshAgentState() {
+        if (state.connected) setAgentState('connected', translateUi('空闲'), state.model?.id || 'Pi Agent');
+    }
+
     function setAgentState(kind, title, detail) {
+        const labels = [];
+        if (state.connected) {
+            const controls = nativeControls.value;
+            const side = sideChat.activity();
+            const runs = controls?.subagents?.snapshot?.runs || [];
+            const active = runs.filter(run => ['queued', 'running'].includes(run.state)).length;
+            const attention = runs.filter(run => ['paused', 'partial', 'failed', 'rejected'].includes(run.state)).length;
+            const add = (condition, text) => { if (condition) labels.push(translateUi(text)); };
+            add(state.pendingUi.size > 0, '等待确认');
+            add(controls?.stopping || state.controlRequested, '正在停止 / 取回');
+            add(side.waiting, '侧聊等待确认');
+            add(state.treeBusy, '正在切换对话位置');
+            add(state.resourceRequested, '正在重新加载原生资源');
+            add(state.shellBusy, 'Shell 执行中');
+            add(state.retrying || state.compaction?.status === 'retrying', '重试中');
+            add(state.compacting || state.compactRequested, '压缩中');
+            add(state.streaming, '执行中');
+            add(state.modelRefreshOp, '正在刷新模型');
+            if (active) labels.push(translateUi('子 Agent 运行中 · {0}', active));
+            else add(controls?.subagents?.background?.active, '后台工作进行中');
+            add(side.busy, '侧聊运行中');
+            add(side.starting, '正在启动侧聊');
+            add(side.uncertain, '侧聊状态待核对');
+            const queued = (controls?.queue?.steering?.length || 0) + (controls?.queue?.followUp?.length || 0);
+            if (queued) labels.push(translateUi('待执行 {0} 条', queued));
+            if (attention) labels.push(translateUi('子 Agent 需处理 · {0}', attention));
+            title = labels[0] || translateUi('空闲');
+            kind = state.pendingUi.size || side.waiting || side.uncertain || attention && !active && !state.streaming && !side.busy && !controls?.subagents?.background?.active
+                ? 'waiting' : labels.length ? 'working' : 'connected';
+            detail = state.model ? `${state.model.provider}/${state.model.id}` : 'Pi Agent';
+        }
         elements.agentStateDot.dataset.state = kind;
         elements.agentState.textContent = title;
         elements.agentDetail.textContent = detail;
+        elements.agentState.parentElement.title = [...labels, detail].join('\n');
     }
 
     function formatTokens(value) {
@@ -624,6 +665,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => elements.tokenInput.focus(), 0);
     }
 
+    const cronPage = window.PiCron?.create({ api: apiFetch, currentCwd: () => state.cwd });
     const taskProgress = new window.PiTaskProgress(document.getElementById('pi-task-progress'));
     const taskResults = window.PiTaskResults?.create({ root: document.getElementById('pi-task-results'), fetch: apiFetch,
         scope: () => state.session && !state.session.ephemeral ? { cwd: state.cwd, id: state.session.id, generation: state.socketGeneration,
@@ -663,6 +705,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setConnection('connecting', translateUi("正在连接 Pi Agent"));
         try {
             const status = await apiFetch('/api/pi/status');
+            state.scheduledTasks = status.scheduledTasks === true;
             accessBootstrapped = true;
             state.modelCatalogSupported = status.modelCatalog === true;
             taskResults?.setEnabled(status.agentTaskResults === true);
@@ -709,20 +752,47 @@ document.addEventListener('DOMContentLoaded', () => {
                 projectId: initialParams?.get('projectId'), sessionId: initialParams?.get('sessionId') }) : null;
             const initialAssistantEpoch = state.assistantEpoch;
             if (initialAssistant) setConnection('idle', translateUi('选择会话开始工作'));
-            await loadProjects();
+            // Global discovery may scan every native project. Reserve it, but validate
+            // the saved cwd and visibility independently so its own thread can open first.
+            const selectionEpoch = state.projectSelectionEpoch;
+            const discovery = loadProjects();
+            void discovery.catch(() => {}); // The fallback below still observes failures.
+            let restored = false;
+            const savedProject = localStorage.getItem('pi.web.cwd');
+            if (!state.assistantMode && state.projectIdentity && savedProject) {
+                const preferenceRevision = state.projectPreferenceRevision;
+                try {
+                    const [resolved, activity] = await Promise.all([
+                        apiFetch(`/api/pi/projects/resolve?cwd=${encodeURIComponent(savedProject)}`),
+                        apiFetch('/api/pi/activity', { signal: AbortSignal.timeout(8000) })
+                    ]);
+                    if (resolved?.cwd && Array.isArray(activity?.hiddenProjects)
+                        && !activity.hiddenProjects.includes(resolved.cwd)
+                        && !state.hiddenProjects.includes(resolved.cwd)
+                        && preferenceRevision === state.projectPreferenceRevision
+                        && selectionEpoch === state.projectSelectionEpoch && !state.assistantMode) {
+                        state.projectAliases.set(savedProject, resolved.cwd);
+                        await selectProject(resolved.cwd, { restoreSession: true, passive: true });
+                        restored = true;
+                    }
+                } catch { /* Missing validation falls back to the authoritative project list. */ }
+            }
+            if (!restored && !state.assistantMode) {
+                await discovery;
+                if (selectionEpoch === state.projectSelectionEpoch && !state.assistantMode) {
+                    const preferred = state.projectAliases.get(savedProject) || savedProject;
+                    const visibleProjects = orderedProjects();
+                    const project = visibleProjects.find(item => item.cwd === preferred) || visibleProjects[0];
+                    if (project) await selectProject(project.cwd, { restoreSession: true });
+                    else openProjectDialog();
+                }
+            }
             state.activityEnabled = true;
             void refreshActivity();
-            const savedProject = localStorage.getItem('pi.web.cwd');
-            const preferred = state.projectAliases.get(savedProject) || savedProject;
-            const visibleProjects = orderedProjects();
-            const project = visibleProjects.find(item => item.cwd === preferred)
-                || visibleProjects[0];
-            if (project && !state.assistantMode) await selectProject(project.cwd, { restoreSession: true });
-            else if (!project && !state.assistantMode) openProjectDialog();
             if (state.assistantMode) {
                 if (initialAssistant) {
                     await initialAssistant;
-                    void loadAssistantUnclassified(initialAssistantEpoch, state.assistantProfileId);
+                    void discovery.then(() => loadAssistantUnclassified(initialAssistantEpoch, state.assistantProfileId)).catch(() => {});
                 } else {
                     const params = window.PiWorkspaceRoute?.current().params;
                     refreshAssistant({ profileId: params?.get('profileId'), projectId: params?.get('projectId'), sessionId: params?.get('sessionId') });
@@ -739,10 +809,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadProjects() {
         const revision = state.projectPreferenceRevision;
+        const selectionEpoch = state.projectSelectionEpoch;
         const recentProjects = readStoredArray(RECENT_PROJECTS_KEY)
             .filter(project => project && typeof project.cwd === 'string');
-        const recent = [...new Set([...recentProjects.map(item => item.cwd), ...state.projects.map(item => item.cwd),
-            ...state.expandedProjects, localStorage.getItem('pi.web.cwd')].filter(Boolean))].slice(0, 64);
+        const recent = [...new Set([localStorage.getItem('pi.web.cwd'), ...recentProjects.map(item => item.cwd),
+            ...state.projects.map(item => item.cwd), ...state.expandedProjects].filter(Boolean))].slice(0, 64);
         const query = state.projectIdentity ? `?recent=${encodeURIComponent(JSON.stringify(recent))}` : '';
         const data = await apiFetch(`/api/pi/projects${query}`);
         if (revision !== state.projectPreferenceRevision || state.visibilityRequests.size || state.pinRequests.size) return;
@@ -757,7 +828,8 @@ document.addEventListener('DOMContentLoaded', () => {
         state.expandedProjects = new Set([...state.expandedProjects].map(canonical).filter(Boolean));
         const serverProjects = data.projects || [];
         state.pinnedProjects = data.pinnedProjects || [];
-        applyHiddenProjects(data.hiddenProjects || []);
+        if (selectionEpoch === state.projectSelectionEpoch) applyHiddenProjects(data.hiddenProjects || []);
+        else state.hiddenProjects = data.hiddenProjects || [];
         applyArchives(data.archives);
         const projectsByCwd = new Map(serverProjects.map(project => [project.cwd, project]));
         const orderedCwds = [...new Set([
@@ -781,9 +853,15 @@ document.addEventListener('DOMContentLoaded', () => {
         state.roots = data.roots || state.roots;
         renderProjects();
         renderSessions();
-        await Promise.allSettled(state.projects
-            .filter(project => !state.assistantMode && state.expandedProjects.has(project.cwd) && !state.projectSessions.has(project.cwd))
-            .map(project => loadSessions(project.cwd)));
+        // Expanded unrelated histories must never delay restoration of the selected thread.
+        const saved = localStorage.getItem('pi.web.cwd');
+        for (const project of state.projects) {
+            if (!state.assistantMode && project.cwd !== state.cwd
+                && (state.cwd || project.cwd !== (state.projectAliases.get(saved) || saved))
+                && !state.hiddenProjects.includes(project.cwd)
+                && state.expandedProjects.has(project.cwd) && !state.projectSessions.has(project.cwd))
+                void loadSessions(project.cwd).catch(() => {});
+        }
     }
 
     function getProjectName(cwd) {
@@ -881,6 +959,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.projectAliases.set(cwd, resolved);
             state.pinnedProjects = data.pinnedProjects || [];
             applyHiddenProjects(data.hiddenProjects);
+            invalidateSessionList(cwd);
             state.projectSessions.delete(cwd);
             renderProjects();
             renderSessions();
@@ -1162,23 +1241,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function selectProject(cwd, options = {}) {
-        if (!cwd) return;
+        if (!cwd || options.passive && state.hiddenProjects.includes(state.projectAliases.get(cwd) || cwd)) return;
+        const selectionEpoch = ++state.projectSelectionEpoch;
+        const navigationEpoch = state.navigationEpoch;
+        const assistantMode = state.assistantMode;
         if (state.projectIdentity) {
             const input = cwd;
             cwd = state.projectAliases.get(input) || (await apiFetch(`/api/pi/projects/resolve?cwd=${encodeURIComponent(input)}`)).cwd;
+            if (selectionEpoch !== state.projectSelectionEpoch || navigationEpoch !== state.navigationEpoch || assistantMode !== state.assistantMode) return;
             if (!cwd) throw new Error(translateUi("无法确认项目路径"));
             state.projectAliases.set(input, cwd);
         }
         if (state.hiddenProjects.includes(cwd)) {
+            if (options.passive) return;
             state.projectPreferenceRevision++;
             try {
                 const data = await apiFetch('/api/pi/projects/visibility', {
                     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ cwd, hidden: false })
                 });
-                applyHiddenProjects(data.hiddenProjects || []);
+                if (selectionEpoch === state.projectSelectionEpoch && navigationEpoch === state.navigationEpoch && assistantMode === state.assistantMode)
+                    applyHiddenProjects(data.hiddenProjects || []);
             } finally { state.projectPreferenceRevision++; }
         }
+        if (selectionEpoch !== state.projectSelectionEpoch || navigationEpoch !== state.navigationEpoch || assistantMode !== state.assistantMode) return;
         const projectChanged = cwd !== state.cwd;
         elements.newSession.disabled = true;
         closeProjectDialog();
@@ -1202,6 +1288,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             await loadSessions(cwd);
+            if (selectionEpoch !== state.projectSelectionEpoch || navigationEpoch !== state.navigationEpoch || assistantMode !== state.assistantMode || cwd !== state.cwd) return;
+            const selectedRows = state.projectSessions.get(cwd) || [];
+            state.sessions = selectedRows;
             rememberProject(cwd);
             renderProjects();
             renderSessions();
@@ -1217,13 +1306,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function loadSessions(cwd = state.cwd, options = {}) {
-        if (!cwd) return [];
+    function invalidateSessionList(cwd) {
+        state.sessionListRevisions.set(cwd, (state.sessionListRevisions.get(cwd) || 0) + 1);
+    }
+
+    function loadSessions(cwd = state.cwd, options = {}) {
+        if (!cwd) return Promise.resolve([]);
+        const pending = state.sessionListRequests.get(cwd);
+        if (pending) return pending;
         const titleRevision = titleUiRevision;
+        const listRevision = state.sessionListRevisions.get(cwd) || 0;
         state.loadingProjects.add(cwd);
         if (options.render !== false) renderSessions();
-        try {
-            const data = await apiFetch(`/api/pi/sessions?cwd=${encodeURIComponent(cwd)}`);
+        // Install the reservation synchronously before the first network await.
+        const request = apiFetch(`/api/pi/sessions?cwd=${encodeURIComponent(cwd)}`).then(data => {
+            if (listRevision !== (state.sessionListRevisions.get(cwd) || 0)) return state.projectSessions.get(cwd) || [];
             const sessions = (data.sessions || []).filter(session => !state.deletedSessions.has(JSON.stringify([cwd, session.id])));
             if (titleRevision !== titleUiRevision) {
                 for (const session of sessions) {
@@ -1236,10 +1333,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const project = state.projects.find(item => item.cwd === cwd);
             if (project) project.sessionCount = sessions.length;
             return sessions;
-        } finally {
+        }).finally(() => {
+            state.sessionListRequests.delete(cwd);
             state.loadingProjects.delete(cwd);
             if (options.render !== false) renderSessions();
-        }
+        });
+        state.sessionListRequests.set(cwd, request);
+        return request;
     }
 
     function showAssistantError(error) {
@@ -1315,6 +1415,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 && session.agentProfile?.id === chosen && !state.deletedSessions.has(JSON.stringify([group.cwd, session.id])))]));
         for (let i = 0; i < cwds.length; i++) {
             const cwd = cwds[i], rows = (unclassified[i].sessions || []).filter(session => !state.deletedSessions.has(JSON.stringify([cwd, session.id])));
+            invalidateSessionList(cwd);
             state.projectSessions.set(cwd, rows);
             if (cwd === state.cwd) state.sessions = rows;
             const orphaned = rows.filter(session => session.agentProfile?.id === chosen && !session.assistantProject && !session.ephemeral);
@@ -1360,6 +1461,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await apiFetch(`/api/pi/sessions?cwd=${encodeURIComponent(cwd)}`);
                 if (!current()) return;
                 const rows = (data.sessions || []).filter(session => !state.deletedSessions.has(JSON.stringify([cwd, session.id])));
+                invalidateSessionList(cwd);
                 state.projectSessions.set(cwd, rows);
                 if (cwd === state.cwd) state.sessions = rows;
                 const orphaned = rows.filter(session => session.agentProfile?.id === profileId && !session.assistantProject && !session.ephemeral);
@@ -1445,6 +1547,19 @@ document.addEventListener('DOMContentLoaded', () => {
         return '';
     }
 
+    // Native tooltip only: list metadata is precomputed by the server and never loads the session.
+    function sessionDetails(session, title) {
+        if (session.ephemeral) return title;
+        const stats = session.stats, lines = [title];
+        const modified = new Date(session.modified);
+        if (!Number.isNaN(modified.getTime())) lines.push(translateUi('更新于 {0}', modified.toLocaleString(globalThis.PiI18n?.locale || undefined, { dateStyle: 'medium', timeStyle: 'short' })));
+        lines.push(translateUi('共 {0} 条消息', stats?.messages ?? session.messageCount ?? 0));
+        if (stats?.compactions) lines.push(translateUi('已压缩 {0} 次 · 当前上下文保留 {1} 条', stats.compactions, stats.context));
+        if (stats?.contextTokens) lines.push(translateUi('最近上下文约 {0} tokens', stats.contextTokens >= 1000 ? `${Math.round(stats.contextTokens / 1000)}k` : stats.contextTokens));
+        if (stats?.model?.id) lines.push(translateUi('最近模型：{0}', stats.model.id));
+        return lines.join('\n');
+    }
+
     function renderSessionItem(session, cwd) {
         const firstMessage = session.firstMessage === '(no messages)' ? '' : String(session.firstMessage || '').replace(/\s+/g, ' ').trim();
         const named = typeof session.name === 'string' && Boolean(session.name.trim());
@@ -1457,16 +1572,17 @@ document.addEventListener('DOMContentLoaded', () => {
             preview = `${start ? '…' : ''}${firstMessage.slice(start, end)}${end < firstMessage.length ? '…' : ''}`;
         }
         const badge = session.agentProfile ? `<span class="pi-session-profile-tag">${escapeHtml(session.agentProfile.name || translateUi('身份不可用'))}</span>` : '';
+        const details = sessionDetails(session, title);
         return `
             <article class="pi-session-item ${session.ephemeral ? 'ephemeral' : ''} ${state.cwd === cwd && state.session?.id === session.id ? 'active' : ''}" data-session-id="${escapeHtml(session.id)}" data-cwd="${escapeHtml(cwd)}">
-                <button class="pi-session-main" type="button">
+                <button class="pi-session-main" type="button" title="${escapeHtml(details)}">
                     <span class="pi-session-project" title="${escapeHtml(cwd)}">${escapeHtml(state.projects.find(project => project.cwd === cwd)?.name || getProjectName(cwd))}</span>
-                    <span class="pi-session-title ${!named && !session.ephemeral ? 'pi-session-title-fallback' : ''}" title="${escapeHtml(title)}">${escapeHtml(title)}${badge}${session.ephemeral ? `<em>${translateUi("不保存")}</em>` : ''}</span>
+                    <span class="pi-session-title ${!named && !session.ephemeral ? 'pi-session-title-fallback' : ''}">${escapeHtml(title)}${badge}${session.ephemeral ? `<em>${translateUi("不保存")}</em>` : ''}</span>
                     ${preview ? `<span class="pi-session-preview">${escapeHtml(preview)}</span>` : ''}
                     ${!session.ephemeral && isThreadArchived(cwd, session.id) ? `<span class="pi-session-archive-label">${state.archivedSessions.has(activityKey(cwd, session.id)) ? translateUi('已归档') : translateUi('随项目归档')}</span>` : ''}
                     <span class="pi-session-deferred" hidden></span>
                     <span class="pi-session-unread" hidden><i class="fa-solid fa-circle" aria-hidden="true"></i> ${translateUi("新回复")}</span>
-                    <span class="pi-session-foot"><span class="pi-session-activity"></span><span title="${escapeHtml(translateUi('{0} · {1} 条', formatDate(session.modified), session.messageCount))}">${session.ephemeral ? translateUi("临时") : formatDate(session.modified)}</span></span>
+                    <span class="pi-session-foot"><span class="pi-session-activity"></span><span>${session.ephemeral ? translateUi("临时") : formatDate(session.modified)}</span></span>
                 </button>
                 <div class="pi-session-actions">
                     <button type="button" data-action="menu" title="${translateUi("线程操作")}" aria-label="${translateUi("线程操作")}" aria-haspopup="menu" aria-expanded="false"><i class="fa-solid fa-ellipsis"></i></button>
@@ -1721,6 +1837,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     && assistantProjectId === state.assistantProjectId : route?.tab === 'chat');
             if (!stillSelected) { toast(translateUi('线程已创建在原项目，请从项目列表打开'), 'info'); return; }
             state.sessions.unshift(session);
+            invalidateSessionList(cwd);
             state.projectSessions.set(cwd, state.sessions);
             if (assistantProjectId) {
                 const list = state.assistantSessions.get(assistantProjectId) || [];
@@ -1779,6 +1896,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (window.PiWorkspaceRoute?.current().tab === tab) window.PiWorkspaceRoute.navigate(tab, params);
         }
         const nextSessions = (state.projectSessions.get(cwd) || []).filter(item => item.id !== session.id);
+        invalidateSessionList(cwd);
         state.projectSessions.set(cwd, nextSessions);
         for (const [id, sessions] of state.assistantSessions) state.assistantSessions.set(id, sessions.filter(item => item.id !== session.id || item.cwd !== cwd));
         if (state.cwd === cwd) state.sessions = nextSessions;
@@ -1839,6 +1957,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         document.body.appendChild(dialog); dialog.showModal(); closeButtons[1].focus();
+        if (state.scheduledTasks) {
+            submit.disabled = true;
+            try {
+                const snapshot = await apiFetch('/api/pi/cron', { signal: AbortSignal.timeout(8000) });
+                if (sessionDeleteDialog !== dialog || !dialog.isConnected) return;
+                const homes = new Set(snapshot.homes.filter(home => home.cwd === cwd && home.sessionId === session.id).map(home => home.profileId));
+                const affected = snapshot.jobs.filter(job => job.target.kind === 'thread' ? job.target.cwd === cwd && job.target.sessionId === session.id : homes.has(job.target.profileId));
+                if (affected.length) description.append(document.createTextNode(' ' + translateUi('同时暂停 {0} 个定时任务：{1}', affected.length, affected.map(job => job.name).slice(0, 5).join('、'))));
+                if (homes.size) description.append(document.createTextNode(' ' + translateUi('此线程也是身份的主线程；删除后需重新指定，不会自动重建。')));
+            } catch {
+                if (dialog.isConnected) description.append(document.createTextNode(' ' + translateUi('关联的定时任务会暂停，主线程引用需重新指定。')));
+            } finally { if (dialog.isConnected && !pending) submit.disabled = false; }
+        }
     }
 
     async function openSession(session) {
@@ -1957,6 +2088,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 sideChat.parentDisconnected();
                 state.connected = false;
                 nativeControls.disconnected();
+                setAgentState('idle', translateUi('连接已断开'), translateUi('状态待更新'));
                 setStreaming(state.streaming);
                 state.pendingUi.clear();
                 closeRequestDialog();
@@ -2001,6 +2133,7 @@ document.addEventListener('DOMContentLoaded', () => {
         composer.reset();
         state.connected = false;
         state.streaming = false;
+        state.retrying = false;
         nativeControls.reset();
         subagentRuns.reset();
         shell.reset(); state.shellBusy = false;
@@ -2639,46 +2772,74 @@ document.addEventListener('DOMContentLoaded', () => {
         workflows.decorate();
     }
 
+    // Starter prompts only fill the draft. The bracketed part is selected so it can be typed over.
+    const STARTERS = [
+        ['fa-compass', '熟悉项目', '梳理结构、模块和入口', '请先了解这个项目，梳理主要模块、入口和运行方式，暂时不要修改文件。'],
+        ['fa-stethoscope', '排查问题', '描述现象，一起定位原因', '我遇到了一个问题：（在这里描述现象、报错或复现步骤）\n请先确认范围，再开始定位原因。'],
+        ['fa-lightbulb', '规划想法', '讨论可行性，整理成步骤', '我有一个想法：（在这里描述）\n请先和我讨论可行性，再整理成可执行的计划。'],
+        ['fa-pen-to-square', '撰写文档', '说明、报告或总结', '请帮我写一份文档：（类型、主题和读者）\n先给出提纲让我确认。']
+    ];
+    function applyStarter(prompt) {
+        if (!state.connected || state.attachmentReads || state.submittingDrafts.has(state.composerSessionKey)) return toast(translateUi('请等待连接、附件读取或消息投递完成'), 'info');
+        const prefix = `${elements.input.value}${elements.input.value ? '\n\n' : ''}`, draft = prefix + prompt;
+        try { attachments.validateDraft(draft, state.attachmentFiles); } catch (error) { return toast(error.message, 'error'); }
+        elements.input.value = draft; autoResizeInput(); elements.input.focus();
+        const blank = /[（(][^）)]*[）)]/.exec(prompt);
+        if (blank) elements.input.setSelectionRange(prefix.length + blank.index, prefix.length + blank.index + blank[0].length);
+        else elements.input.setSelectionRange(draft.length, draft.length);
+    }
+
     function renderEmptySession() {
         const extension = state.session?.assistant?.kind === 'extensions';
-        const root = document.createElement('div'); root.className = 'pi-empty-state session-ready';
-        const mark = document.createElement('div'); mark.className = 'pi-empty-mark'; mark.textContent = 'π';
-        const title = document.createElement('h2'); title.textContent = extension ? getSessionTitle(state.session) : translateUi('把想法，推进一步。');
+        const root = document.createElement('div'); root.className = 'pi-empty-state session-ready pi-start';
+        const hero = document.createElement('header'); hero.className = 'pi-start-hero';
+        const mark = document.createElement('img'); mark.className = 'pi-start-logo'; mark.src = 'brand/logo-192.png'; mark.alt = ''; mark.width = 44; mark.height = 44;
+        const title = document.createElement('h2');
+        title.textContent = extension ? getSessionTitle(state.session) : state.session ? translateUi('今天想推进什么？') : translateUi('从一次对话开始');
         const description = document.createElement('p');
         description.textContent = extension ? translateUi('描述你想完成的任务，或粘贴技能、扩展包的链接。我会先检查已有能力，再查找适合的方案。')
-            : state.session ? translateUi('描述你想完成的事，或从一个具体问题开始。')
+            : state.session ? translateUi('描述目标、贴上资料，或从下面选一个开始。')
                 : state.assistantMode ? translateUi('选择助手项目与线程，继续你的工作。')
-                    : state.cwd ? translateUi('选择一个线程继续，或在当前项目开始新任务。') : translateUi('打开服务器上的项目目录，开始你的第一项工作。');
-        root.append(mark, title, description);
+                    : state.cwd ? translateUi('继续最近的聊天，或在当前项目开始新聊天。') : translateUi('打开服务器上的项目目录，开始你的第一项工作。');
+        hero.append(mark, title, description);
+        const projectName = state.cwd ? state.projects.find(project => project.cwd === state.cwd)?.name || getProjectName(state.cwd) : '';
+        if (projectName && !extension) {
+            const scope = document.createElement('span'); scope.className = 'pi-start-scope'; scope.title = state.cwd;
+            const icon = document.createElement('i'); icon.className = 'fa-regular fa-folder'; icon.setAttribute('aria-hidden', 'true');
+            const name = document.createElement('span'); name.textContent = projectName;
+            scope.append(icon, name); hero.append(scope);
+        }
+        root.append(hero);
         if (!extension) {
-            const actions = document.createElement('div'); actions.className = 'pi-empty-actions';
-            const action = (label, handler, primary = false) => {
-                const node = document.createElement('button'); node.type = 'button'; node.textContent = label;
-                if (primary) node.className = 'pi-empty-primary'; node.addEventListener('click', handler); actions.append(node); return node;
-            };
             if (state.session) {
-                for (const [label, prompt] of [
-                    [translateUi('了解这个项目'), translateUi('请先了解这个项目，梳理主要模块和入口，暂时不要修改文件。')],
-                    [translateUi('一起检查问题'), translateUi('请帮我检查一个问题。先和我确认要检查的范围与目标，再开始分析。')],
-                    [translateUi('讨论一个想法'), translateUi('我想先讨论一个想法的可行性，再把它整理成具体计划。')]
-                ]) action(label, () => {
-                    if (!state.connected || state.attachmentReads || state.submittingDrafts.has(state.composerSessionKey)) return toast(translateUi('请等待连接、附件读取或消息投递完成'), 'info');
-                    const draft = `${elements.input.value}${elements.input.value ? '\n\n' : ''}${prompt}`;
-                    try { attachments.validateDraft(draft, state.attachmentFiles); } catch (error) { return toast(error.message, 'error'); }
-                    elements.input.value = draft; autoResizeInput(); elements.input.focus();
-                });
-            } else if (state.assistantMode) {
-                action(translateUi('选择助手项目'), () => { if (innerWidth <= 900) elements.sessionPane.classList.add('open'); $('pi-assistant-profile').focus(); }, true);
-            } else if (!state.cwd) action(translateUi('打开服务器目录'), () => elements.projectButton.click(), true);
-            else {
-                const recent = state.sessions.find(item => !item.ephemeral && !isThreadArchived(state.cwd, item.id));
-                if (recent) action(translateUi('继续：{0}', getSessionTitle(recent)), () => openSession(recent).catch(error => toast(error.message, 'error')), true);
-                action(translateUi('新建线程'), () => createSession().catch(error => toast(error.message, 'error')), !recent);
+                const cards = document.createElement('div'); cards.className = 'pi-start-cards';
+                for (const [icon, label, detail, prompt] of STARTERS) {
+                    const card = document.createElement('button'); card.type = 'button'; card.className = 'pi-start-card';
+                    const glyph = document.createElement('i'); glyph.className = `fa-solid ${icon}`; glyph.setAttribute('aria-hidden', 'true');
+                    const name = document.createElement('strong'); name.textContent = translateUi(label);
+                    const note = document.createElement('span'); note.textContent = translateUi(detail);
+                    card.append(glyph, name, note); card.addEventListener('click', () => applyStarter(translateUi(prompt))); cards.append(card);
+                }
+                root.append(cards);
+            } else {
+                const actions = document.createElement('div'); actions.className = 'pi-empty-actions';
+                const action = (label, handler, primary = false) => {
+                    const node = document.createElement('button'); node.type = 'button'; node.textContent = label;
+                    if (primary) node.className = 'pi-empty-primary'; node.addEventListener('click', handler); actions.append(node); return node;
+                };
+                if (state.assistantMode) {
+                    action(translateUi('选择助手项目'), () => { if (innerWidth <= 900) elements.sessionPane.classList.add('open'); $('pi-assistant-profile').focus(); }, true);
+                } else if (!state.cwd) action(translateUi('打开服务器目录'), () => elements.projectButton.click(), true);
+                else {
+                    const recent = state.sessions.find(item => !item.ephemeral && !isThreadArchived(state.cwd, item.id));
+                    if (recent) action(translateUi('继续：{0}', getSessionTitle(recent)), () => openSession(recent).catch(error => toast(error.message, 'error')), true);
+                    action(translateUi('新聊天'), () => createSession().catch(error => toast(error.message, 'error')), !recent);
+                }
+                root.append(actions);
             }
-            root.append(actions);
             const hint = document.createElement('p'); hint.className = 'pi-empty-hint';
-            hint.textContent = state.session ? translateUi('示例只会追加到草稿，不会自动发送。') : state.cwd || translateUi('目录位于部署 Pivane 的服务器，不是当前浏览器所在设备。');
-            root.append(hint);
+            hint.textContent = state.session ? translateUi('点选后填入输入框，修改后再发送。') : state.cwd ? '' : translateUi('目录位于部署 Pivane 的服务器，不是当前浏览器所在设备。');
+            if (hint.textContent) root.append(hint);
         }
         elements.transcript.replaceChildren(root);
         if (!extension) window.PiExtensions?.mountExplore(root);
@@ -2781,11 +2942,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 void workflows.refresh(true).catch(() => {});
                 break;
             case 'agent_start':
+                state.retrying = false;
                 setStreaming(true);
                 setConnection('working', translateUi("Pi 正在执行"));
                 setAgentState('working', translateUi("执行中"), state.model?.id || 'Pi Agent');
                 break;
             case 'agent_settled':
+                state.retrying = false;
                 historyView.changed();
                 if (chatKnowledge?.settled) chatKnowledge.settled(); else void chatKnowledge?.refresh();
                 setStreaming(false);
@@ -2862,19 +3025,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.compaction = { ...state.compaction, status: 'retrying', attempt: event.attempt, maxAttempts: event.maxAttempts, delayMs: event.delayMs };
                 renderCompactionStatus();
                 setConnection('working', translateUi("压缩摘要等待重试"));
+                refreshAgentState();
                 break;
             case 'summarization_retry_attempt_start':
                 if (!state.compacting) break;
                 state.compaction = { ...state.compaction, status: 'running' };
                 renderCompactionStatus();
                 setConnection('working', translateUi("正在重试压缩摘要"));
+                refreshAgentState();
                 break;
             case 'summarization_retry_finished':
                 break;
             case 'auto_retry_start':
+                state.retrying = true; refreshAgentState();
                 appendEventNotice('retry', translateUi("请求失败，{0} 秒后进行第 {1} 次重试", Math.ceil((event.delayMs || 0) / 1000), event.attempt));
                 break;
             case 'auto_retry_end':
+                state.retrying = false; refreshAgentState();
                 appendEventNotice(event.success ? 'success' : 'error', event.success ? translateUi("自动重试成功") : event.finalError || translateUi("自动重试失败"));
                 break;
             case 'extension_ui_request':
@@ -3231,6 +3398,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.model = runtime.model || state.model;
         state.thinkingLevel = runtime.thinkingLevel || state.thinkingLevel;
         state.streaming = Boolean(runtime.isStreaming);
+        if (!state.streaming) state.retrying = false;
         transcriptView.setTailActive(state.streaming);
         state.compacting = Boolean(runtime.isCompacting);
         if (Object.hasOwn(runtime, 'webNavigation')) historyView.tree.apply(runtime.webNavigation);
@@ -3336,6 +3504,7 @@ document.addEventListener('DOMContentLoaded', () => {
         historyView.sync();
         workflows.update();
         sideChat.updateParent();
+        refreshAgentState();
         syncMobileHeader();
         if (state.recoveryNotice) renderRecoveryNotice();
         autoResizeInput();
@@ -3990,6 +4159,7 @@ document.addEventListener('DOMContentLoaded', () => {
             items = [
                 ...(historyItems.length ? [{ label: translateUi('历史与记录'), icon: 'fa-clock-rotate-left', children: historyItems }] : []),
                 ...(current ? [command(translateUi("消息显示…"), 'fa-eye', openMessageViewSetting)] : []),
+                ...(cronPage && state.scheduledTasks ? [command(translateUi('创建定时任务'), 'fa-calendar-check', () => cronPage.open({ cwd, sessionId: session.id }), { disabled: session.ephemeral })] : []),
                 command(translateUi("重命名"), 'fa-pen', () => renameCurrent(session, cwd), { disabled: session.ephemeral }),
                 ...(titleEditor?.enabled ? [command(translateUi('重新生成标题'), 'fa-wand-magic-sparkles', () => titleEditor.open(session, cwd), { disabled: session.ephemeral })] : []),
                 ...(workflows.enabled ? [command(translateUi("复制为新线程"), 'fa-code-branch', async () => {
@@ -4016,7 +4186,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 command(translateUi("复制项目路径"), 'fa-copy', () => copyTextToClipboard(cwd))
             ];
             items = [
-                command(translateUi("新建线程"), 'fa-plus', async () => { if (cwd !== state.cwd) await selectProject(cwd); await createSession(); }),
+                command(translateUi("新聊天"), 'fa-plus', async () => { if (cwd !== state.cwd) await selectProject(cwd); await createSession(); }),
                 command(translateUi('临时会话（不保存）'), 'fa-bolt', () => createEphemeralSession(cwd)),
                 command(state.pinnedProjects.includes(cwd) ? translateUi("取消置顶") : translateUi("置顶项目"), 'fa-thumbtack', () => toggleProjectPin(cwd), { disabled: state.pinRequests.has(cwd) }),
                 command(translateUi("刷新线程"), 'fa-rotate', () => loadSessions(cwd)),
@@ -4039,7 +4209,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const cwd = group.cwd;
         const command = (label, icon, run) => ({ label, icon, run: () => Promise.resolve().then(run).catch(error => toast(error.message, 'error')) });
         threadMenu.open(target, [
-            ...(!group.unclassified && !group.archived ? [command(translateUi('新建线程'), 'fa-plus', async () => {
+            ...(!group.unclassified && !group.archived ? [command(translateUi('新聊天'), 'fa-plus', async () => {
                 state.assistantProjectId = group.id;
                 if (cwd !== state.cwd) await selectProject(cwd);
                 await createSession();
@@ -4466,6 +4636,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.composerDrafts.set(JSON.stringify([session.cwd, session.id]), { text: draft, files: [] });
             const rows = state.projectSessions.get(session.cwd) || [];
             if (!rows.some(row => row.id === session.id)) rows.unshift(session);
+            invalidateSessionList(session.cwd);
             state.projectSessions.set(session.cwd, rows);
             if (state.cwd === session.cwd) state.sessions = rows;
             rememberProject(session.cwd); renderProjects(); renderSessions();

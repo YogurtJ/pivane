@@ -159,6 +159,8 @@ async function main() {
                 await page.locator('#workspace-more-toggle').click();
                 assert.equal(await page.locator('#workspace-more-menu').isVisible(), true);
                 assert.equal(await page.locator('#workspace-more-toggle').getAttribute('aria-expanded'), 'true');
+                assert.equal(await page.evaluate(() => document.activeElement?.dataset.moreTab), 'cron');
+                await page.keyboard.press('ArrowDown');
                 assert.equal(await page.evaluate(() => document.activeElement?.dataset.moreTab), 'media');
                 await page.keyboard.press('ArrowDown');
                 assert.equal(await page.evaluate(() => document.activeElement?.dataset.moreTab), 'profiles');

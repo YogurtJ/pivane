@@ -84,6 +84,13 @@ async function check(browser, base, width, language) {
     await page.locator('#pi-input').fill('Keep my draft');
     const panel = page.locator('#pi-subagent-runs');
     await panel.waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#pi-agent-state').textContent(), en ? 'Subagents running · 1' : '子 Agent 运行中 · 1');
+    emit({ type: 'agent_settled' });
+    await page.waitForTimeout(100);
+    assert.equal(await page.locator('#pi-agent-state').textContent(), en ? 'Subagents running · 1' : '子 Agent 运行中 · 1', 'main settlement must not hide child work');
+    emit({ type: 'auto_retry_start', attempt: 1, delayMs: 1000 });
+    await page.waitForFunction(label => document.querySelector('#pi-agent-state').textContent === label, en ? 'Retrying' : '重试中');
+    emit({ type: 'auto_retry_end', success: true });
     assert.equal(await panel.evaluate(node => node.open), false, 'running work stays collapsed');
     assert.ok(await panel.evaluate(node => node.getBoundingClientRect().height) <= 42, 'collapsed chip is one line');
     // With a plan too, both chips share one row; only one popover is open at a time.
@@ -183,6 +190,7 @@ async function check(browser, base, width, language) {
     emit({ type: 'gateway_controls', controls: controls(finished, false) });
     await page.waitForFunction(label => document.querySelector('#pi-subagent-runs .sa-runs-count').textContent === label, en ? '1 need attention' : '1 个需处理');
     assert.equal(await panel.locator('.sa-runs-keep').isVisible(), false);
+    assert.equal(await page.locator('#pi-agent-state').textContent(), en ? 'Subagents need attention · 1' : '子 Agent 需处理 · 1');
     await panel.getByRole('button', { name: en ? 'Continue' : '继续' }).click();
     await dialog.waitFor();
     await dialog.locator('textarea').fill('Finish the rest');
@@ -195,6 +203,23 @@ async function check(browser, base, width, language) {
     assert.equal(await panel.evaluate(node => node.open), false, 'updates respect manual collapse');
     emit({ type: 'gateway_controls', controls: controls(null, false) });
     await page.waitForFunction(() => document.querySelector('#pi-subagent-runs').hidden);
+
+    assert.equal(await page.locator('#pi-agent-state').textContent(), en ? 'Idle' : '空闲');
+    emit({ type: 'gateway_controls', controls: controls(null, true) });
+    await page.waitForFunction(label => document.querySelector('#pi-agent-state').textContent === label, en ? 'Background work in progress' : '后台工作进行中');
+    emit({ type: 'gateway_controls', controls: controls(null, false) });
+
+    const queuedControls = controls(null, false);
+    queuedControls.queue.followUp = ['next'];
+    emit({ type: 'gateway_controls', controls: queuedControls });
+    await page.waitForFunction(label => document.querySelector('#pi-agent-state').textContent === label, en ? '1 messages queued' : '待执行 1 条');
+    const stoppingControls = { ...controls(null, false), stopping: true };
+    emit({ type: 'gateway_controls', controls: stoppingControls });
+    await page.waitForFunction(label => document.querySelector('#pi-agent-state').textContent === label, en ? 'Stopping / recovering' : '正在停止 / 取回');
+    emit({ type: 'gateway_controls', controls: queuedControls }); // older revision must not resurrect queue state
+    await page.waitForTimeout(50);
+    assert.equal(await page.locator('#pi-agent-state').textContent(), en ? 'Stopping / recovering' : '正在停止 / 取回');
+    emit({ type: 'gateway_controls', controls: controls(null, false) });
 
     // Transcript notices and tool titles
     await selectMessageView(page, 'full');
@@ -231,6 +256,7 @@ async function check(browser, base, width, language) {
     if (width < 900) { await page.locator('#pi-toggle-sessions').click(); await page.locator('#pi-session-pane.open').waitFor(); }
     await page.locator('[data-session-id="empty"] .pi-session-main').click();
     await page.waitForFunction(() => document.querySelector('#pi-subagent-runs').hidden);
+    await page.waitForFunction(label => document.querySelector('#pi-agent-state').textContent === label, en ? 'Idle' : '空闲');
     if (width < 900) await page.locator('#pi-toggle-sessions').click();
     await page.locator('[data-session-id="main"] .pi-session-main').click();
     await panel.waitFor({ state: 'visible' });
@@ -240,6 +266,8 @@ async function check(browser, base, width, language) {
     assert.equal(await panel.locator('.sa-run').count(), 1, 'open_session snapshot restores the panel');
     assert.equal(await page.locator('#pi-input').inputValue(), 'Keep my draft');
     for (const theme of ['daylight', 'dark']) await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    socket.close({ code: 1000, reason: 'fixture disconnect' });
+    await page.waitForFunction(label => document.querySelector('#pi-agent-state').textContent === label, en ? 'Disconnected' : '连接已断开');
     assert.deepEqual(errors, []);
     await context.close();
 }

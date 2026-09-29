@@ -1,3 +1,4 @@
+import { registerCron } from './pi-cron-runtime.js';
 import { registerTaskProgress } from './pi-task-progress-extension.ts';
 import { registerDeliverables } from './pi-deliverables-extension.ts';
 import { registerToolProvenance } from './pi-tool-provenance.js';
@@ -31,6 +32,7 @@ function currentSystemPrompt(ctx: any, messages: any[]) {
 }
 
 export default async function (pi: ExtensionAPI) {
+    const cron = registerCron(pi);
     registerToolProvenance(pi);
     registerExtensionAssistant(pi);
     registerAgentThreads(pi);
@@ -68,11 +70,16 @@ export default async function (pi: ExtensionAPI) {
         }
     });
     pi.registerCommand(INTERNAL_COMMAND, {
-        description: `Pivane internal session navigation and context snapshot; managed-v1; task-v1; task-results-v1; agent-messages-v1; title-v1; model-catalog-v1; resources-v1; history-v1; tree-v1; tree-presentation-v1; history-presentation-v1; history-body-v1; system-prompt-v1; subagents-v1; reload-v1:${randomUUID()}`,
+        description: `Pivane internal session navigation and context snapshot; managed-v1; cron-v1; task-v1; task-results-v1; agent-messages-v1; title-v1; model-catalog-v1; resources-v1; history-v1; tree-v1; tree-presentation-v1; history-presentation-v1; history-body-v1; system-prompt-v1; subagents-v1; reload-v1:${randomUUID()}`,
         handler: async (args, ctx) => {
             const request = JSON.parse(args);
             if (ctx.mode !== 'rpc' || request.token !== process.env.PI_WEB_NAVIGATION_TOKEN) throw new Error('Invalid navigation request');
             const notify = (data: object) => ctx.ui.notify(JSON.stringify({ pivaneNavigation: request.id, ...data }));
+            if (request.mode === 'cron') {
+                try { notify({ success: true, data: await cron(ctx, request.input) }); }
+                catch (error) { notify({ success: false, error: error instanceof Error ? error.message : 'Scheduled task failed' }); }
+                return;
+            }
             if (request.mode === 'task-result') {
                 try { notify({ success: true, data: receiveTaskReturn(pi, ctx, request.input) }); }
                 catch (error) { notify({ success: false, error: error instanceof Error ? error.message : 'Task receipt failed' }); }

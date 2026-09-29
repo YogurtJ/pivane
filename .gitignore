@@ -20,6 +20,7 @@ pivane-notifications.json*
 pivane-workspace.json*
 pivane-deferred-messages*.json*
 pivane-usage/
+pivane-cron/
 *.log
 *.bak*
 *.tmp

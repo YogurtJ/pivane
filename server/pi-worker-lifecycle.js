@@ -13,6 +13,7 @@ function workerLifecycle(worker) {
     if (worker.resourceResults.size) operations.push('resources');
     if (worker.historyPending || worker.historyWriting) operations.push('history');
     if (worker.contextCapture) operations.push('context');
+    if (worker.cronRun) operations.push('scheduled-task');
     const blockers = [...operations];
     if (activity.busy) blockers.push('agent');
     if (worker.disposed || worker.restarting) blockers.push('lifecycle');

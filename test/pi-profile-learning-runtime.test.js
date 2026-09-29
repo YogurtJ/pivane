@@ -87,7 +87,10 @@ test('Chinese corrections take priority, temporary instructions never persist, d
     assert.ok(scope.eligibleManager(native, context, f.cwd), 'native binding');
     assert.ok(scope.verifyNativeSession(context, native), 'native descriptor proof');
     await Promise.all([f.service.register(f.session), f.service.register(f.session)]);
-    assert.ok((await f.service.snapshot(profileId)).jobs.length, 'verified native session should enqueue');
+    const enrolled = await f.service.snapshot(profileId);
+    // The synthetic provider may finish between concurrent registration and this
+    // snapshot; either queue presence or its completed receipt proves enrollment.
+    assert.ok(enrolled.jobs.length || enrolled.recentRuns.length, 'verified native session should enqueue or already settle');
     await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1);
     assert.equal(f.calls(), 1);
     assert.equal(f.mutations[0].category, 'correction');
