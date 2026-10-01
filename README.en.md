@@ -8,9 +8,9 @@
 
 Pivane is a self-hosted AI workspace powered by **Pi Coding Agent**. Work on code, manage projects and files, follow Agent tasks, and use your own image, video and speech models from a desktop, tablet or phone.
 
-[Download 1.3.0](https://github.com/YogurtJ/pivane/releases/tag/v1.3.0) · [Install](docs/en/INSTALL.md) · [User guide](docs/en/USER_GUIDE.md) · [Report an issue](https://github.com/YogurtJ/pivane/issues)
+[Download 1.4.0](https://github.com/YogurtJ/pivane/releases/tag/v1.4.0) · [Install](docs/en/INSTALL.md) · [User guide](docs/en/USER_GUIDE.md) · [Report an issue](https://github.com/YogurtJ/pivane/issues)
 
-Current source **1.4.0 candidate** pins Pi **0.99.1**, integrates native MCP/Codemode and replaces the legacy adapter's child-tool authorization boundary. Source, deployment and public release are verified separately; old archives remain unchanged. See [native MCP](docs/MCP.md) and the [1.4.0 candidate notes](docs/releases/1.4.0.md) for upgrade boundaries and pending validation.
+Stable release **1.4.0** pins Pi **0.99.1**, integrates native MCP/Codemode and nested tools, and improves side chat, long-session loading and settings. Legacy pi-mcp-adapter configuration requires explicit review and migration; OAuth is not converted automatically. Deployment and public release are verified separately; old archives remain unchanged. See [native MCP](docs/MCP.md) and the [1.4.0 release notes](docs/releases/1.4.0.md).
 
 ## From a question to completed work
 
@@ -40,7 +40,7 @@ The bilingual interface is included starting with **1.0.0-rc.2**. Version **1.0.
 
 ## Install
 
-The current stable release, **1.3.0**, is pinned to **Pi 0.87.1**. It adds scheduled tasks with identity main threads, managed read-only deliverables with file previews, and workspace layout, loading-performance and dependency-security improvements. See the [release notes](docs/releases/1.3.0.md). The final archive passed 486 Node tests, 8 change-related browser suites, independent installation, upgrade from 1.2.0, old web-updater installation and same-path restoration on Linux ARM64 with Node 22. macOS and Windows keep their historical baselines. Running instances change only after an explicit update.
+The current stable release, **1.4.0**, is pinned to **Pi 0.99.1**, with DOMPurify 3.4.16. See the [release notes](docs/releases/1.4.0.md). The exact archive passed 530 Node tests, 19 Chromium suites, independent installation, upgrade from 1.3.0 and byte-identical same-path restoration of 18 files on Linux ARM64 with Node 22. Production audit reports zero vulnerabilities. macOS and Windows keep their historical baselines. Running instances change only after an explicit update.
 
 Use **Node.js 22.x** and the locked dependencies. Validation results are attached to the exact archive SHA256. You do not need a global Pi installation or a frontend build. The current source bundles pi-subagents 0.71.0 and pi-hermes-memory 0.9.9; `node scripts/install.cjs` prepares both without rewriting your CLI package declarations and uses the SQLite binaries shipped in the dependency package. Older published archives without this installer retain their original `npm ci` instructions. SQLite may require Python and C/C++ build tools when no matching prebuilt binary exists. See [bundled capabilities](docs/BUNDLED_CAPABILITIES.md).
 
