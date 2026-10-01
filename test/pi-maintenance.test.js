@@ -123,14 +123,14 @@ function packageFixture(root) {
     const piDir = path.join(root, 'node_modules/@earendil-works/pi-coding-agent');
     fs.mkdirSync(piDir, { recursive: true });
     fs.writeFileSync(path.join(piDir, 'package.json'), JSON.stringify({ version: original.dependencies['@earendil-works/pi-coding-agent'] }));
-    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify(original));
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ ...original, pivaneCompatibility: undefined }));
     fs.writeFileSync(path.join(root, 'package-lock.json'), JSON.stringify({ packages: {} }));
 }
 
 test('staged install pins the entire Pi family, uses no model credentials and verifies the exact installed lock', async t => {
     const root = fixture(t), dir = path.join(root, 'release'), calls = [];
     const result = await stagePi({ root, directory: dir, version: '0.85.1', env: { PATH: process.env.PATH, HOME: os.homedir(), OPENAI_API_KEY: 'must-not-pass', PI_WEB_TOKEN: 'must-not-pass' },
-        copy(_root, target) { privateDir(target); packageFixture(target); },
+        copy(_root, target) { privateDir(target); packageFixture(target); privateDir(path.join(target, 'vendor')); atomicJson(path.join(target, 'vendor/manifest.json'), { version: 1, packages: [] }); },
         run: async (args, options) => {
             calls.push({ args, options }); assert.equal(options.env.OPENAI_API_KEY, undefined); assert.equal(options.env.PI_WEB_TOKEN, undefined);
             if (calls.length === 1) {
@@ -148,6 +148,11 @@ test('staged install pins the entire Pi family, uses no model credentials and ve
         } });
     assert.equal(result, dir); assert.equal(calls.length, 4); assert.ok(fs.existsSync(path.join(dir, 'PI_INSTALL_COMPLETE.json')));
     await assert.rejects(stagePi({ root, directory: path.join(root, 'bad'), version: 'latest' }), /exact/);
+    let installCalled = false;
+    await assert.rejects(stagePi({ root, directory: path.join(root, 'bound'), version: '0.99.2',
+        copy(_root, target) { privateDir(target); atomicJson(path.join(target, 'package.json'), require('../package.json')); },
+        run: async () => { installCalled = true; } }), /bound/);
+    assert.equal(installCalled, false, 'a bound release never installs an unreviewed Pi version');
     const envDir = privateDir(path.join(root, 'env'));
     const env = installEnvironment({ PATH: 'fixture', npm_config_token: 'secret', NODE_OPTIONS: 'bad', HTTPS_PROXY: 'http://localhost:1' }, envDir);
     assert.equal(env.npm_config_token, undefined); assert.equal(env.NODE_OPTIONS, undefined); assert.equal(env.HTTPS_PROXY, 'http://localhost:1');

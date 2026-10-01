@@ -63,3 +63,40 @@ test('RPC framing accepts CRLF input records', async () => {
     stream.end('{"type":"agent_settled"}\r\n');
     assert.equal((await eventPromise).type, 'agent_settled');
 });
+
+
+test('large image snapshots scan fragments linearly and preserve the following event', async () => {
+    const client = new PiRpcClient({ cwd: '/tmp', noSession: true }), stream = new PassThrough();
+    client._attachJsonlReader(stream);
+    const events = []; client.on('event', event => events.push(event));
+    const content = 'x'.repeat(12 * 1024 * 1024) + '中文\u2028尾部';
+    let response;
+    client.pending.set('snapshot', { resolve: value => { response = value; }, reject: error => { throw error; }, timer: null });
+    const bytes = Buffer.from(JSON.stringify({ type: 'response', id: 'snapshot', success: true, data: { content } })
+        + '\r\n' + JSON.stringify({ type: 'agent_settled' }) + '\n');
+    const original = String.prototype.indexOf; let searched = 0;
+    String.prototype.indexOf = function (needle, from = 0) {
+        if (needle === '\n') searched += Math.max(0, this.length - from);
+        return original.call(this, needle, from);
+    };
+    try {
+        for (let offset = 0; offset < bytes.length; offset += 16381) stream.write(bytes.subarray(offset, offset + 16381));
+        stream.end();
+    } finally { String.prototype.indexOf = original; }
+    assert.equal(response.content, content);
+    assert.equal(events.length, 1); assert.equal(events[0].type, 'agent_settled');
+    assert.ok(searched < bytes.length * 2, 'LF search work must stay proportional to received bytes');
+    assert.equal(client.pending.size, 0); assert.equal(client.stdoutBuffer, '');
+    assert.equal(client.stdoutChunks.length, 0);
+});
+
+test('framing flushes a fragmented unterminated record once and handles reentrant input in wire order', async () => {
+    const client = new PiRpcClient({ cwd: '/tmp', noSession: true }), stream = new PassThrough();
+    client._attachJsonlReader(stream); const events = [];
+    client.on('event', event => { events.push(event.type); if (event.type === 'first') stream.write('{"type":"third"}\n'); });
+    stream.write('{"type":"first"}\n{"type":"second"}\n');
+    stream.write('{"type":"last","text":"'); stream.end('中文"}\r');
+    await new Promise(resolve => stream.once('end', resolve));
+    assert.deepEqual(events, ['first', 'second', 'third', 'last']);
+    assert.equal(client.stdoutChunks.length, 0);
+});

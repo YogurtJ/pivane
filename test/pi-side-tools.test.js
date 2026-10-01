@@ -92,6 +92,8 @@ test('real side SDK reads, confirms edits/writes/commands, resets permission, de
     assert.equal(opened.state.toolMode, 'assist'); assert.equal(opened.state.toolAccess, 'read');
     assert.equal(side.worker.client.sessionPath, undefined);
     assert.equal(fs.existsSync(sentinel), false);
+    assert.equal((await side.handle({ type: 'set_side_model', provider: 'fixture', modelId: 'fixture' })).state.model.id, 'fixture');
+    assert.deepEqual(fs.readFileSync(path.join(agentDir, 'settings.json')), settings);
     const settled = () => events.filter(event => event.type === 'agent_settled').length;
     const ask = async message => { const count = settled(); await side.handle({ type: 'prompt', message }); return count; };
     let count = await ask('READ'); await waitFor(() => settled() > count);
@@ -102,6 +104,8 @@ test('real side SDK reads, confirms edits/writes/commands, resets permission, de
     const first = events.find(event => event.method === 'confirm'); assert.equal(first.title, CONFIRM_TITLE);
     assert.equal(fs.readFileSync(input, 'utf8'), 'before'); assert.equal(fs.existsSync(output), false);
     assert.equal((await side.handle({ type: 'get_state' })).pendingUi[0].id, first.id);
+    await assert.rejects(side.handle({ type: 'set_side_model', provider: 'fixture', modelId: 'fixture' }), { code: 'SESSION_BUSY' });
+    await assert.rejects(side.handle({ type: 'set_side_thinking', thinkingLevel: 'off' }), { code: 'SESSION_BUSY' });
     await assert.rejects(side.handle({ type: 'answer_side_confirmation', requestId: 'forged', confirmed: true }), /失效/);
     await assert.rejects(side.handle({ type: 'answer_side_confirmation', requestId: first.id, confirmed: 'yes' }), /无效/);
     await side.handle({ type: 'answer_side_confirmation', requestId: first.id, confirmed: true });
@@ -121,7 +125,24 @@ test('real side SDK reads, confirms edits/writes/commands, resets permission, de
     assert.deepEqual((await side.handle({ type: 'get_state' })).pendingUi, []);
     for (const type of ['extension_ui_response', 'bash', 'set_model', 'prepare_side_chat']) await assert.rejects(side.handle({ type }), /不支持/);
     assert.deepEqual(fs.readFileSync(path.join(agentDir, 'settings.json')), settings);
-    await ask('CLOSE'); await waitFor(() => events.filter(event => event.method === 'confirm').length === 4);
-    await side.dispose(); assert.equal(supervisor.ephemeralWorkers.size, 0);
+    // Real native idle guards also protect automatic expiry and new-segment close.
+    const finalVisible = (await side.handle({ type: 'get_messages' })).messages;
+    const final = await side.handle({ type: 'close_side_segment' });
+    assert.deepEqual(final.messages, finalVisible);
+    const fresh = await service.prepare(owner, source, { mode: 'blank', toolMode: 'assist' }, () => true);
+    const next = service.claim(fresh.ticket, { close() {} }, event => events.push(event));
+    await next.ready;
+    assert.deepEqual((await next.handle({ type: 'get_messages' })).messages, [], 'old side history never seeds the next Agent');
+    next.idleDeadline = Date.now() - 1;
+    await next.expire();
+    assert.ok(events.some(event => event.type === 'gateway_side_expired'));
+    assert.equal(supervisor.ephemeralWorkers.size, 0);
+    const closing = await service.prepare(owner, source, { mode: 'blank', toolMode: 'assist' }, () => true);
+    const closeSide = service.claim(closing.ticket, { close() {} }, event => events.push(event)); await closeSide.ready;
+    await closeSide.handle({ type: 'prompt', message: 'CLOSE' }); await waitFor(() => events.filter(event => event.method === 'confirm').length === 4);
+    closeSide.idleDeadline = Date.now() - 1;
+    await closeSide.expire(); assert.equal(closeSide.closed, false, 'pending confirmation is never expired');
+    closeSide.cancelExpiry();
+    await closeSide.dispose(); assert.equal(supervisor.ephemeralWorkers.size, 0);
     assert.equal(fs.readFileSync(output, 'utf8'), 'written', 'closing during confirmation must not execute the pending write');
 });

@@ -17,6 +17,7 @@ class PiProviderLoginService {
     constructor(createRuntime, options = {}) {
         this.createRuntime = createRuntime;
         this.timeoutMs = options.timeoutMs || 10 * 60 * 1000;
+        this.getDeviceId = options.getDeviceId;
         this.flow = null;
         this.closed = false;
     }
@@ -42,11 +43,15 @@ class PiProviderLoginService {
             const provider = runtime.getProvider(flow.providerId);
             if (!(flow.method === 'oauth' ? provider?.auth?.oauth?.login : provider?.auth?.apiKey?.login)) throw fail('Unsupported login method');
             flow.status = 'waiting'; flow.revision++;
+            // Native LoginOptions requires a synchronous getter. Persist the ID
+            // first, only for the OpenAI subscription flow that needs it.
+            const deviceId = this.getDeviceId && flow.providerId === 'openai' && flow.method === 'oauth' ? await this.getDeviceId() : undefined;
+            flow.controller.signal.throwIfAborted();
             await runtime.login(flow.providerId, flow.method, {
                 signal: flow.controller.signal,
                 prompt: prompt => this.prompt(flow, prompt),
                 notify: event => this.notify(flow, event)
-            });
+            }, deviceId ? { getDeviceId: () => deviceId } : undefined);
             // Cancellation can race a credential commit. Successful native completion is authoritative.
             flow.status = 'success';
         } catch (error) {

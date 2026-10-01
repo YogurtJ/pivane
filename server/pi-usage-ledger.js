@@ -76,6 +76,26 @@ class UsageLedger {
         });
         this.zones.set(zone, formatter);
     }
+    ingestSideChat({ cwd, sessionId, records }, catalog) {
+        const owner = createHash('sha256').update(JSON.stringify(['side-chat', cwd, sessionId])).digest('hex');
+        return this.transaction(() => {
+            this.db.prepare('INSERT INTO owners VALUES (?,?,?,?) ON CONFLICT(key) DO NOTHING')
+                .run(owner, `side-chat:${sessionId}`, cwd, '侧聊');
+            let inserted = 0;
+            for (const record of records) {
+                const key = createHash('sha256').update(JSON.stringify(['side-chat', sessionId, record.key])).digest('hex');
+                const correction = estimateCost(record, catalog);
+                // Explicit allowlist: never copy text, tool arguments or the inherited context
+                // into the usage ledger even if a future caller sends extra fields.
+                const row = { key, timestamp: record.timestamp, usage: record.usage, provider: record.provider,
+                    model: record.model, originalCost: record.cost, cost: correction.cost, pricing: correction.pricing };
+                if (!this.insertFact.run(row.key, row.timestamp, owner, row.provider, row.model, JSON.stringify(row)).changes) continue;
+                for (const [zone, formatter] of this.zones) this.saveDay(zone, formatter, owner, row);
+                inserted++;
+            }
+            return inserted;
+        });
+    }
     sync(input, catalog) {
         let duplicates = 0;
         const source = this.db.prepare('SELECT sources.signature,cwd,checkpoints.signature AS checkpointSignature FROM sources LEFT JOIN checkpoints USING(path) WHERE sources.path=?');
@@ -146,7 +166,7 @@ class UsageLedger {
             }
             return [...rows.values()];
         };
-        return { ...filter, generatedAt: new Date().toISOString(), scope: 'persistent-sessions', ledger: true,
+        return { ...filter, generatedAt: new Date().toISOString(), scope: 'persistent-sessions-and-side-chats', ledger: true,
             total, daily: [...daily.values()], weekly: periods('week'), monthly: periods('month'),
             providers: sorted(providers), models: sorted(models), projects: sorted(projects), sessions: sorted(sessions), coverage,
             partial: Boolean(coverage.skippedFiles || coverage.invalidDates || coverage.limited || total.missingUsage) };
@@ -157,6 +177,26 @@ async function runLedger(input) {
     const ledger = new UsageLedger(input.ledgerPath);
     try {
         ledger.ensureZone('UTC');
+        if (input.sideBatch) {
+            const { cwd, sessionId, records } = input.sideBatch;
+            if (typeof cwd !== 'string' || typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId)
+                || !Array.isArray(records) || records.length > 10000) throw new Error('Invalid side-chat usage batch');
+            const actual = fs.realpathSync.native(cwd);
+            if (actual !== cwd || !fs.statSync(actual).isDirectory() || !input.roots.some(root => within(root, actual)))
+                throw new Error('Side-chat project is outside allowed roots');
+            for (const row of records) {
+                if (!row || !/^[a-f0-9]{64}$/.test(row.key) || !Number.isSafeInteger(row.timestamp) || row.timestamp < 0
+                    || typeof row.provider !== 'string' || row.provider.length > 500 || typeof row.model !== 'string' || row.model.length > 500
+                    || !(row.cost === null || Number.isFinite(row.cost) && row.cost >= 0 && row.cost <= 1e9)
+                    || row.usage !== null && (!row.usage || !['input', 'output', 'cacheRead', 'cacheWrite'].every(
+                        field => Number.isSafeInteger(row.usage[field]) && row.usage[field] >= 0 && row.usage[field] <= 1e9)
+                        || row.usage.cacheWrite1h !== undefined && row.usage.cacheWrite1h !== null
+                        && (!Number.isSafeInteger(row.usage.cacheWrite1h) || row.usage.cacheWrite1h < 0
+                            || row.usage.cacheWrite1h > row.usage.cacheWrite)))
+                    throw new Error('Invalid side-chat usage fact');
+            }
+            return { inserted: ledger.ingestSideChat({ cwd, sessionId, records }, await officialPrices()), ledger: true };
+        }
         if (input.filter) ledger.ensureZone(input.filter.timeZone);
         const coverage = ledger.sync(input, await officialPrices());
         return input.filter ? ledger.report(input.filter, input.roots, coverage) : { coverage, ledger: true };

@@ -6,7 +6,7 @@
 
 2026-09-10 新增 liveRecovery/extensionDrafts/sessionSearch/runtimeConfiguration 标记。主连接 get_messages.webLive 为有界partial/tool展示快照，广播增加webRuntimeId/webSequence；主WS新增 ack_extension_draft、get_runtime_configuration、restart_runtime（空闲持久线程，runtimeId/expectedRevision/confirmed）。GET /sessions/search?q&cwd?&offset?&searchId? 提供受保护、可取消、有界原生正文跨线程检索。完整字段、预算、实际信任、配置修订、重开互斥与接受ACK语义见 [NATIVE_COMPLETION.md](NATIVE_COMPLETION.md)。不添加裸导航/工具权限、不存持久聊天副本。
 
-原生设置补齐：GET `/api/pi/settings/native` schema 增加 `defaultTools`（type=tools、choices/defaults/platform）与 `defaultProjectTrust`（ask/always/never、globalOnly）。原 PUT 接受工具名数组（允许 []，拒绝重复/未知名）、null 删除本层覆盖；项目数组整体替换全局数组。信任策略仅允许全局写入，项目范围即使 null 也拒绝。保存返回 requiresRuntimeRestart=true，不改变现有实例或逐项目信任决定；完整语义见 [NATIVE_SETTINGS.md](NATIVE_SETTINGS.md)。旧后端没有字段时网页隐藏对应分类，生产需空闲重载后检查实际 schema。
+原生设置：GET `/api/pi/settings/native` schema 提供 `defaultTools`（type=tools、choices/defaults/platform、maxEntries=1024/maxNameLength=500）、`codemode.mode`（on/only）、`codemode.inlineBudget`（0–1000000）与 `defaultProjectTrust`（ask/always/never、globalOnly）。PUT 接受普通／自定义工具名和顺序 +/- 条目；普通名称替换，只有修饰符时修改继承选择，重复修饰符保留，重复普通名拒绝。null 删除本层覆盖，Pivane [] 不默认启用任何工具；受信项目修饰符叠加全局 [] 不恢复默认。信任策略仅全局写入，项目范围即使 null 也拒绝。保存返回 requiresRuntimeRestart=true，不改变现有实例或逐项目信任决定；完整语义见 [NATIVE_SETTINGS.md](NATIVE_SETTINGS.md)。
 
 页面通知/提示音仅复用现有GET /api/pi/activity，不新增API；后台推送仍是显式可选功能，基础localhost通知无需调用订阅或VAPID接口。详见NOTIFICATIONS.md。
 
@@ -119,6 +119,18 @@
 
 `/settings/subagents` 提供内置 pi-subagents 的状态与模型/思考配置，返回 `plugin.managedBy:"pivane"`、`canInstall:false`、`upgradeFrom:null`。旧 `/settings/subagents/install` 和 `/settings/subagents/upgrade` 保留确认和修订检查，但返回 400，提示组件随 Pivane 安装或更新。未安装、停用或版本不匹配时不能保存，ready 不代表已加载进当前 worker。原生资源清单的内置包增加 `managedBy/name/version`，内置资源开关保存到 `pivaneBuiltins.subagents`；内置包不允许通过通用包操作独立安装、移除或更新。字段、修订和范围见[子 Agent 专属设置](NATIVE_SETTINGS.md#子-agent-专属设置)。
 
+当前绑定 Pi 的应用对 `POST /settings/updates/review {action:'update'}` 返回 409，需同时更新 Pivane 与已验证适配；备份、重启和应用票据保留原语义。
+
+Pi 0.99.1 候选的原生资源清单包含 `builtin:mcp`、`builtin:codemode`、`builtin:tool-search`、`builtin:llama.cpp`，沿用 `path/enabled/override` 开关语义；它们不是可独立安装的 npm 包。新增或更新可识别的旧 `pi-mcp-adapter` 包返回 400 管理说明，移除旧声明仍可执行。原生 MCP/Codemode 不新增 Pivane MCP HTTP 网关；嵌套工具事件沿用原生 `parentToolCallId`，当前工具调用仍受权限钩子。旧配置的显式停机迁移见 [MCP.md](MCP.md)。
+
+`nativeMcpManagement=true` 标记 MCP 网页接口：
+
+- GET `/settings/mcp?cwd&scope=global|project` 返回 `{cwd,scope,revision,trust,autoEnableCodemode:{global,project,value},servers,capabilities}`，只读取配置。服务器含 name/scope/valid/enabled/exposure/timeout/transport 与脱敏 config、secretFields；私密值为 null，`secretFields[字段路径]={present:true}`。五种 exposure 为 codemode/codemode-deferred/deferred/direct/hidden，toolExposure 保持原始工具名／模式顺序。损坏 JSON 整体失败，无效服务器只返回安全状态。
+- PUT `/settings/mcp` 接受 `{cwd,scope,expectedRevision,confirmed:true,action:'upsert'|'patch'|'remove'|'preferences',name?,config?,patch?,autoEnableCodemode?}`。普通控制字段直接提交、null 移除；command/args/cwd/url 和 env/headers/OAuth 字符串用 `{op:'keep'|'replace'|'remove',value?}`，maps 按字段提交，oauth.callbackPort 为整数／null。省略保留现值与未知字段；不能直接把 GET 脱敏 config 回传。偏好 null 恢复默认／继承。项目写入须受信，成功 requiresRuntimeRestart=true，保存不连接或重载。
+- GET `/sessions/:id/mcp?cwd&runtimeId` 或 POST 同路径 `{cwd,runtimeId,action:'snapshot'|'reconnect'|'login'|'logout',server?,confirmed:true}` 操作已有唯一持久 worker，不自动打开关闭的会话。非 snapshot 须明确 server／确认；旧 runtime、忙碌、后台工作或跨线程拒绝。返回 `{runtimeId,servers,tools,notices,outcome}`，outcome 为 completed/failed/cancelled/unknown；native handler 缺失时未知，不按工具注册推断健康。运行 scope 不由当前磁盘追认。
+- 网页原生 OAuth 沿用待确认输入；`gateway_mcp_authorization` 只在当前管理槽投影 `{authorization:{server,url,runtimeId}|null}`，重连快照 `mcpAuthorization` 可恢复正在处理的链接，完成立即清除。不写新凭据存储；URL 是待授权输入，不用于日志。迟到／未知私有 `pivaneMcp` 响应全部截获。操作参与 worker 生命周期，浏览器超时／断线不取消，也不自动重放。
+- 配置及运行响应 no-store，错误只为 `MCP_*` 安全代码；修订覆盖两范围 MCP、设置、trust 与 cwd。已保存配置与实际加载独立核对，细节见[原生 MCP](MCP.md)。
+
 `nativeSettings`、`nativeResources`、`projectTrust`、`modelAdvanced` 标记原生配置增强。设置 `/settings/native`、`/settings/native/trust`、`/settings/native/resources`、`/settings/native/packages`、`/settings/native/skill` 和 `/settings/models/advanced` 的方法、修订、范围和限额见 [NATIVE_SETTINGS.md](NATIVE_SETTINGS.md)。`GET /settings/native/resources` 另返回 `featuredSkills: [{id:'ppt-master',scope:'user'|'project',enabled:boolean}]`（可能为空），另有 `featuredSkillNeedsReview:boolean` 指示候选技能声明无法核实；只代表原生目录已发现且声明了匹配来源的本地技能，不证明依赖或运行会话已加载。主连接新增 `get_native_resources` 返回当前 worker 的实际 trust/资源来源，不返回系统提示正文或工具 schema；最多3000项/512KiB，不扩展裸 RPC 白名单。`/activity.nativeSettingsBusy` 供空闲部署检查。受管扩展原生换会话或直接导航被取消，网页入口保持。
 
 `systemPrompts=true` 标记系统提示词管理：GET `/settings/system-prompts?cwd` 返回 global/project × append/base 原生文件正文、推导来源、整体 revision 和 64 KiB 单文件预算；PUT 接受 `{cwd,scope,kind,content,expectedRevision}`，content=null 恢复默认/继承，成功返回 `{ok:true,requiresReload:true}`。修订覆盖四文件内容/身份和原生配置/trust，冲突409不覆盖，保存不重载或中断 worker。主连接 `get_system_prompt` 通过当前 worker 私有资源管道读取正文、基础/追加输入、上下文文件、Skills、实际工具、时间与运行身份，1 MiB 超限整体失败；`configured` 为当前文件与实际信任推导来源，`matchesSavedFiles` 仅比较基础/追加与信任，无法核对为 null，不表示最终供应商请求一致。原 `get_native_resources` 继续不返回正文；读取不调用模型、不写历史、不广播私有结果。完整失败、草稿与生效语义见 [NATIVE_SETTINGS.md](NATIVE_SETTINGS.md#系统提示词查看与编辑)。
@@ -149,9 +161,9 @@
 
 ### 版本检查与 Pi 受管维护
 
-`/status` 的 `appVersion` 表示 Pivane，原 `version` 继续表示实际 Pi 包版本。`GET /settings/updates?channel=stable或preview`只读当前版本与内存缓存；`POST /settings/updates/check`接受 JSON `{channel?}`，显式查询 GitHub/npm 并缓存 5 分钟，查询本身不安装。`POST /settings/updates/automatic`仅接受空 JSON `{}`，按持久 24 小时成功期限检查 Pi 正式版，失败按 1–24 小时指数退避；并发共享请求，不安装。`GET /settings/updates/notifications`返回 enabled、available、eligible、idle、currentVersion、version、lastSuccessAt/nextCheckAt（Unix 毫秒或 null）。`POST`同路径接受 `{enabled:boolean}` 或 `{action:"claim"或"snooze"或"ignore",version}`；claim 仅当前可提醒版本且空闲时返回 claimed:true，同版本仅一次，snooze 延后 3 天，ignore 仅忽略该版。过期版本动作 409、错误字段 400、存储/服务不可用 503。身份与 Origin 校验、no-store 沿用工作台；偏好保留无关字段，查询与提醒不会产生维护票据或执行请求。
+`/status` 的 `appVersion` 表示 Pivane，原 `version` 继续表示实际 Pi 包版本。`GET /settings/updates?channel=stable或preview`只读当前版本与内存缓存；`POST /settings/updates/check`接受 JSON `{channel?}`，显式查询 GitHub/npm 并缓存 5 分钟，查询本身不安装。只读检查省略 channel 时 Pivane 默认包含预发布版；stable 参数供旧客户端兼容，当前设置页不显示渠道切换。维护 review 省略 channel 时仍按本地版本选择原默认渠道，以保留旧客户端执行语义。`POST /settings/updates/automatic`仅接受空 JSON `{}`，按持久 24 小时成功期限检查 Pi 正式版，失败按 1–24 小时指数退避；并发共享请求，不安装。`GET /settings/updates/notifications`返回 enabled、available、eligible、idle、currentVersion、version、lastSuccessAt/nextCheckAt（Unix 毫秒或 null）。`POST`同路径接受 `{enabled:boolean}` 或 `{action:"claim"或"snooze"或"ignore",version}`；claim 仅当前可提醒版本且空闲时返回 claimed:true，同版本仅一次，snooze 延后 3 天，ignore 仅忽略该版。过期版本动作 409、错误字段 400、存储/服务不可用 503。身份与 Origin 校验、no-store 沿用工作台；偏好保留无关字段，查询与提醒不会产生维护票据或执行请求。
 
-`GET /settings/updates/maintenance`返回启动器能力、generation、busy、版本指针和最近维护结果；`POST /settings/updates/review`只接受 `{action:"update"或"backup"或"restart"}`，返回绑定服务端目标版本和进程代次的 10 分钟票据。`POST /settings/updates/execute`只接受 `{ticket,confirmed:true,draftsSaved:true,externalWritersStopped:true}`，再次检查空闲并暂停预约，接受返回 202。票据一次有效，不接受命令、URL、路径或版本覆盖；忙碌/过期/重复为 409，格式错误 400，不支持或交接失败 503。交接不确定不自动解锁或重试。
+以下维护接口暂保留供既有集成兼容及受控恢复，**当前设置页不调用也不显示执行入口**。`GET /settings/updates/maintenance`返回启动器能力、generation、busy、版本指针和最近维护结果；`POST /settings/updates/review`只接受 `{action:"update"或"backup"或"restart"}`，返回绑定服务端目标版本和进程代次的 10 分钟票据。`POST /settings/updates/execute`只接受 `{ticket,confirmed:true,draftsSaved:true,externalWritersStopped:true}`，再次检查空闲并暂停预约，接受返回 202。票据一次有效，不接受命令、URL、路径或版本覆盖；忙碌/过期/重复为 409，格式错误 400，不支持或交接失败 503。交接不确定不自动解锁或重试。
 
 所有接口复用身份/Origin、响应 no-store。`maintenance.job`增加脱敏 `output`、`outputTruncated`、`exitCode`、`fromVersion`与`installedVersion`；输出按行回传并保留有界尾部，只有实际退出后才返回退出码，成功后刷新版本卡片。普通`node server.js`与`npm start`自动支持，无需改服务启动命令；`--direct`为不含自动维护的开发入口。维护期间拒绝普通 API/WS 新工作；关闭页面不取消已接受操作。Pi 精确依赖在独立快照中安装并验证，然后停机备份和启动；Pivane 应用更新使用 `action:"application"`、可选 `channel` 复用 review/execute，票据绑定服务器选择的版本和 SHA256；能力以 `maintenance.appUpdateSupported` 为准。兼容字段 `installMode:"manual"`不表示受管维护不可用。字段、文件权限、预算、失败处理及恢复边界见[版本与更新](UPDATES.md)。
 
@@ -581,6 +593,12 @@ Web 删除源线程及显式 quit_session 清理该源的全部侧聊（含脱�
 
 侧连接允许 prompt、abort、get_state、get_messages、get_session_stats、quit_side_chat；assist 模式另允许 answer_side_confirmation。prompt 仅含普通文本（不接受 images/streamingBehavior），拒绝斜杠命令。超时/不确定投递后再次提交需 confirmUncertain=true，仍不能在忙碌期间重复提交。失败可带 errorCode。原始 bash/extension_ui_response 和其他管理/排队命令、嵌套侧聊均拒绝；Agent builtin 工具通过原生执行与下面的确认机制运行。
 
+`/status.sideChatLifecycle=true` 表示新页面采用首次发送创建。主 WS 的 `get_side_model_options` 返回认证可用模型的精简 provider/id/name/levels 及默认 model/thinkingLevel，不创建侧 worker、票据或捕获背景。`prepare_side_chat` 可带 `model:{provider,id}` 与 `thinkingLevel`；在真实目录及原生支持等级校验后，按目标模型预算构建背景，省略仍继承主聊。
+
+侧 WS `close_side_segment` 在原生空闲互斥内返回最终 `{state,messages,stats}` 后销毁 worker；忙碌或待确认拒绝。服务器在回复 settled 后闲置12小时检查空闲并发出 `{type:'gateway_side_expired',messages,stats,state,idleHours:12}`，随后关闭连接和释放名额。该事件不包含继承背景。新段不接受旧段历史作为 seed；浏览器仅作本页分段展示，清空/刷新/退出释放展示状态，无恢复或自动重发API。
+
+`/status.sideChatModels=true` 表示侧连接支持 `get_side_models`（返回精简 models 与当前模型 levels）、`set_side_model {provider,modelId}` 和 `set_side_thinking {thinkingLevel}`。两个写命令仅在侧 worker 空闲且无 pendingUi 时接受，返回 `{state,levels,limits}`；不修改主会话/全局模型，不重建侧会话。切换模型先校验可用认证模型目录、有效消息+系统+工具预算与图片能力；失败保留原记录、不截断或自动重试。原始 set_model/set_thinking_level 不透传。配置 RPC 超时终止该侧连接，防止未知配置继续发送。
+
 `/status.sideChatTools=true` 表示支持 `prepare_side_chat.toolMode='assist'|'none'`。新页面默认 assist；省略字段保持旧客户端 none。assist 下 context/quote/blank 均通过 SDK 内存会话运行，模型可见 read/grep/find/ls/edit/write 和平台命令工具。修改/命令的本次回复授权通过原生 `tool_call` + `ctx.ui.confirm` 发起，读取不额外确认。
 
 `state` 增加 toolMode、toolAccess（none/read/write）和 pendingUi（本侧有效确认）；权限更新事件 `{type:'gateway_side_tool_access', access:'read'|'write'}`。回答确认发送 `{type:'answer_side_confirmation', requestId, confirmed:boolean}`，只接受本段 worker pendingUi 中未过期的确认，返回 accepted:true 只表示交付确认，不能视为工具成功。过期/重复/伪造 ID 拒绝，不能回答主会话或其他侧聊的确认。原生 gateway_ui_resolved/agent_settled 清除界面状态，五分钟未处理按拒绝，不重放。每段独立渲染确认和工具结果；后台确认不会借用当前其他线程弹窗。
@@ -623,7 +641,7 @@ Shell仅空闲单项执行，期间消息/压缩/导航/重载及预约投递互
 
 ### 持久会话用量
 
-`/api/pi/status.usageStats=true` 启用 `GET /api/pi/settings/usage?from=YYYY-MM-DD&to=YYYY-MM-DD&timeZone=Asia%2FShanghai`。日期包含两端，最多366天，时区缺省UTC；非法或未知参数400、其他筛选扫描中429、线程失败503，复用Origin/Bearer与no-store。返回 total/daily/weekly/monthly/providers/models/projects/sessions、generatedAt、coverage及partial，不含聊天正文。`usageLedger=true` 标记持久账本能力，响应带 `ledger:true`；各汇总增加 recordedCost/estimatedRecords/unpricedRecords，coverage 增加 cachedFiles/syncedAt/appendedFiles/parsedBytes/verifiedBytes，区分未变文件、追加解析及前缀校验开销。后台每 5 分钟同步，打开统计及删除前另行触发。事务保存精简用量事实与日汇总，删除会话前须确认入账。去重、官方目录价补算、周期与时区、15秒缓存及读取预算见 [USAGE.md](USAGE.md)。不创建RPC worker、不读客户端指定路径。
+`/api/pi/status.usageStats=true` 启用 `GET /api/pi/settings/usage?from=YYYY-MM-DD&to=YYYY-MM-DD&timeZone=Asia%2FShanghai`。日期包含两端，最多366天，时区缺省UTC；非法或未知参数400、其他筛选扫描中429、线程失败503，复用Origin/Bearer与no-store。返回 total/daily/weekly/monthly/providers/models/projects/sessions、generatedAt、coverage及partial，不含聊天正文。`usageLedger=true` 标记持久账本能力，响应带 `ledger:true`、`scope:'persistent-sessions-and-side-chats'`；各汇总增加 recordedCost/estimatedRecords/unpricedRecords，coverage 增加 cachedFiles/syncedAt/appendedFiles/parsedBytes/verifiedBytes，区分未变文件、追加解析及前缀校验开销。新建 BTW 侧聊在内存原生边界之后的新用量单独入账，不继承主历史；此前已结束的侧聊及普通临时会话不补录。后台每 5 分钟同步，打开统计及删除前另行触发。事务保存精简用量事实与日汇总，删除会话前须确认入账。去重、官方目录价补算、周期与时区、15秒缓存及读取预算见 [USAGE.md](USAGE.md)。不创建RPC worker、不读客户端指定路径。
 
 ### Provider 和模型
 

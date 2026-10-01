@@ -452,7 +452,8 @@ Use the pinned upstream tarball; its SHA256 is
 (npm integrity
 `sha512-6EfhmlgBuMfN7bQwN+xHMDVwX/Tm0fKKi6X8lAIBZtcjqxS9Of0rboJzmxfO3r+rGMWb71ss4p+dY34aEsJ1dg==`).
 The reviewed isolated lock at `server/profile-memory/upstream-lock.json` has
-SHA256 `4f242aaee52d1be13c1d9a795d77595a2f6ef0070d18cf7546f21b01d7a2881b`.
+SHA256 `266c95bb61abb2451742b7f3613188978ff4fbd8baadf8703d422462f170ecfa`.
+This current recipe pins Pi 0.99.1 and the host TUI to 0.99.1; earlier published archives keep their own historical locks.
 The isolated installer retains the reviewed JSON lock and rejects a different lock, creates a
 fresh prefix, runs `npm ci
 --ignore-scripts` for that locked graph, then runs only pinned `better-sqlite3`

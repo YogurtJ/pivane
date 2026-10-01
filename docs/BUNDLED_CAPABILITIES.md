@@ -1,10 +1,10 @@
 # Pivane 内置能力包
 
-当前源码随应用交付 **pi-subagents 0.71.0** 和 **pi-hermes-memory 0.9.9**。版本由 Pivane 验证后统一更新；不改变已经发布的旧归档。
+当前源码 **1.4.0 候选锁定 Pi 0.99.1**，随应用交付 **pi-subagents 0.71.0** 和 **pi-hermes-memory 0.9.9**。版本由 Pivane 验证后统一更新；不改变已经发布的旧归档。
 
 ## 安装与配置
 
-在当前源码或包含内置组件的新归档目录运行 `node scripts/install.cjs`（仅生产依赖可加 `--omit=dev`），即可安装锁定依赖、准备 esbuild、校验上游文件、构建档案记忆 bundle，并检查当前 Node 的 SQLite FTS5/trigram 支持。两个上游包已经在归档的 `vendor/` 中，不再单独安装到 Pi 身份目录。安装失败会明确返回非零退出码，不能当作组件已就绪。此前已发布且没有该脚本的归档仍按其原安装说明使用 `npm ci`。
+在当前源码或包含内置组件的新归档目录运行 `node scripts/install.cjs`（仅生产依赖可加 `--omit=dev`），即可安装锁定依赖、准备 esbuild、校验上游文件、构建档案记忆 bundle，并检查当前 Node 的 SQLite FTS5/trigram 支持。两个上游包已经在归档的 `vendor/` 中，不再单独安装到 Pi 身份目录。vendor 不作为 npm workspace 安装：执行所需依赖由应用根 lockfile 锁定，不安装上游开发依赖及旧 Pi 副本。安装失败会明确返回非零退出码，不能当作组件已就绪。此前已发布且没有该脚本的归档仍按其原安装说明使用 `npm ci`。
 
 记忆依赖 `better-sqlite3@13.0.3` 随 npm 包提供的原生二进制。在 Windows、macOS 和 Linux 的受支持目标上优先使用这些文件。普通 `npm ci` 的生命周期推断可能忽略该包的 `gypfile:false`，无谓调用 node-gyp；统一安装入口使用 `npm ci --ignore-scripts` 后显式准备所需组件，因此不会为已有可用二进制的 Windows 安装要求 Visual Studio C++。不修改第三方文件。切换 Node 或平台后重新安装依赖，不复制其他平台的 `node_modules`。
 
@@ -35,7 +35,7 @@ node scripts/install-bundled-capabilities.cjs
 
 `server/pi-bundled-capabilities.js` 是 Pivane 的接入清单；`pi-bundled-resources.js` 在内存中生成受管资源视图；`pi-managed-runtime.mjs` 使用 Pi 的公开 SDK 与原生 RPC，保留 Supervisor 的唯一 worker 和原生身份。资源重载复用同一个原生 ResourceLoader 及其缓存清理生命周期。RPC 的会话和工具接口使用公开 SDK；代理与 HTTP 空闲超时初始化复用当前 Pi 的 `dist/core/http-dispatcher.js`，这一 CLI 初始化接口也需随 Pi 升级复核。
 
-`pi-bundled-subagents.mjs` 和 `pi-subagent-child-factory.mjs` 对接上游 0.71.0 的 child-session factory 注入接口。该接口当前位于上游内部模块，版本升级时必须重新检查；Pivane 只替换子会话 SDK 的资源加载器，上游继续拥有任务分配、会话存储、控制、通知和结束清理。没有修改上游文件或 `node_modules`。
+`pi-bundled-subagents.mjs` 和 `pi-subagent-child-factory.mjs` 对接上游 0.71.0 的 child-session factory 注入接口。该接口当前位于上游内部模块，版本升级时必须重新检查；Pivane 替换子会话 SDK 资源加载器，并用 Node 同步模块 hook 对上游单个旧 MCP 解析模块进行精确 import 映射，转向已连接的 Pi 原生工具目录；主线程和 detached runner 使用同一映射。子任务工具钩子同时约束嵌套调用。上游继续拥有任务分配、会话存储、控制、通知和结束清理。原生 MCP 配置／名称 helper 的内部路径同样绑定 Pi 0.99.1 复核，详见[原生 MCP](MCP.md)。没有修改上游文件或 `node_modules`。
 
 记忆适配继续只导出选定的存储、检索和工具组件，禁止调用上游默认 factory；生成 bundle 必须匹配已审查 SHA256，所有上游许可证随包保留。
 

@@ -50,7 +50,7 @@ function runNode(args, { cwd, env, timeout = 20 * 60 * 1000, signal, onOutput = 
 }
 async function prepareBundled({ directory, env, signal, run = runNode, onOutput, secretEnv }) {
     const manifest = JSON.parse(readSafe(path.join(directory, 'package.json')));
-    if (!manifest.workspaces?.includes('vendor/pi-subagents')) return; // Older release compatibility.
+    if (!manifest.workspaces?.includes('vendor/pi-subagents') && !fs.existsSync(path.join(directory, 'vendor/manifest.json'))) return; // Older release compatibility.
     const options = { cwd: directory, env, signal, onOutput, secretEnv };
     await run([npmCli(env), 'rebuild', 'esbuild', '--foreground-scripts', '--no-audit', '--no-fund'], options);
     await run([path.join(directory, 'scripts/install-bundled-capabilities.cjs')], options);
@@ -72,14 +72,17 @@ async function stagePi({ root, directory, version, env = process.env, signal, ru
     copy(root, directory);
     const manifestPath = path.join(directory, 'package.json');
     const manifest = JSON.parse(readSafe(manifestPath));
+    if (manifest.pivaneCompatibility?.piVersion && manifest.pivaneCompatibility.piVersion !== version) throw new Error('This Pivane release is bound to its reviewed Pi version; update Pivane and its adapter together');
     const baselinePi = manifest.pivaneManaged?.baselinePi || manifest.dependencies[PI_PACKAGES[0]];
-    for (const name of PI_PACKAGES) manifest.dependencies[name] = version;
+    for (const name of Object.keys(manifest.dependencies)) if (name.startsWith('@earendil-works/')) manifest.dependencies[name] = version;
     const overrides = manifest.overrides?.['@earendil-works/pi-server'];
     if (!overrides || typeof overrides !== 'object') throw new Error('Unknown Pi dependency layout');
     for (const name of Object.keys(overrides)) {
         if (!name.startsWith('@earendil-works/')) throw new Error('Unknown Pi override');
         overrides[name] = version;
     }
+    for (const name of Object.keys(manifest.overrides || {})) if (name.startsWith('@earendil-works/') && typeof manifest.overrides[name] === 'string'
+        && !manifest.overrides[name].startsWith('$')) manifest.overrides[name] = version;
     manifest.pivaneManaged = { baselinePi, piVersion: version, validation: 'isolated-sdk-rpc' };
     atomicJson(manifestPath, manifest);
     const installEnv = installEnvironment(env, directory);

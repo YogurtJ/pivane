@@ -22,18 +22,38 @@
                     // Ambiguous reused IDs cannot establish a reliable file association.
                     segment.calls.set(call.id, segment.calls.has(call.id) ? null : call);
                 }
-            } else if (message.role === 'toolResult' && message.toolCallId) segment.results.set(message.toolCallId, message);
+            } else if (message.role === 'toolResult' && message.toolCallId) {
+                const previous = segment.results.get(message.toolCallId);
+                // Identical authoritative replays are one result, not conflicting proof.
+                // Distinct results sharing an id are ambiguous and cannot own a file.
+                if (!segment.results.has(message.toolCallId)) segment.results.set(message.toolCallId, message);
+                else if (previous && JSON.stringify(previous) !== JSON.stringify(message)) segment.results.set(message.toolCallId, null);
+            }
         });
         return segments.flatMap((part, index) => {
             if (running && index === segments.length - 1) return [];
             const files = new Map();
+            const addNested = (id, call, result) => {
+                if (!result?.nestedCalls || !call || result.toolName && result.toolName !== call.name) return;
+                for (const nested of window.PiNestedTools?.mutations(id, result.nestedCalls, window.PiFilePolicy) || []) {
+                    // A model-issued id overlapping a native descendant is ambiguous.
+                    if ([...part.calls.keys()].some(other => other !== id && (other === nested.id || nested.id.startsWith(other + '/')))) continue;
+                    const path = nested.arguments.path;
+                    if (!files.has(path)) files.set(path, { path, edits: [], writes: [], firstId: id });
+                    const owner = `${call.name} → ${nested.name}`;
+                    if (nested.name === 'write') files.get(path).writes.push({ id: nested.id, content: nested.arguments.content, owner });
+                    else files.get(path).edits.push({ id: nested.id, result: null, source: 'native-nested-no-output', counts: null, owner });
+                }
+            };
             for (const [id, call] of part.calls) {
                 const result = part.results.get(id);
+                addNested(id, call, result);
                 if (!['edit', 'write'].includes(call?.name) || !result || result.isError || result.toolName && result.toolName !== call.name
-                    || typeof call.arguments?.path !== 'string' || !call.arguments.path.trim()) continue;
+                    || typeof call.arguments?.path !== 'string' || !call.arguments.path.trim() || call.arguments.path.length > 4096
+                    || /[\x00-\x1f\x7f]/.test(call.arguments.path) || window.PiFilePolicy.restricted(call.arguments.path)) continue;
                 const path = call.arguments.path;
                 if (call.name === 'write') {
-                    if (typeof call.arguments.content !== 'string' || window.PiFilePolicy.restricted(path)) continue;
+                    if (typeof call.arguments.content !== 'string' || new TextEncoder().encode(call.arguments.content).length > window.PiFilePolicy.maxBytes) continue;
                     if (!files.has(path)) files.set(path, { path, edits: [], writes: [], firstId: id });
                     files.get(path).writes.push({ id, content: call.arguments.content });
                 } else {
@@ -111,6 +131,8 @@
                 } else meta.append(translateUi("行数未知"));
             }
             if (file.writes.length) meta.append(translateUi("{0}写入 {1} 次", file.edits.length ? ' · ' : '', file.writes.length));
+            const owners = [...new Set([...file.edits, ...file.writes].map(record => record.owner).filter(Boolean))];
+            if (owners.length) { const attribution = document.createElement('small'); attribution.className = 'pi-edit-owner'; attribution.textContent = translateUi('嵌套来源：{0}', owners.join(' · ')); name.append(attribution); }
             meta.title = translateUi("编辑行数为累计；写入可能是新建，也可能覆盖已有文件");
             button.setAttribute('aria-label', translateUi("查看 {0} 的文件记录", file.path));
             if (selected) button.setAttribute('aria-current', 'true');
@@ -199,6 +221,9 @@
                 const load = () => {
                     if (!details.open || rendered) return;
                     rendered = true;
+                    if (!edit.result) {
+                        const note = document.createElement('p'); note.textContent = translateUi('嵌套编辑已成功；原生记录未保存输出，无法恢复差异'); details.append(note); return;
+                    }
                     details.append(window.PiToolDiff.panel(window.PiToolDiff.describe(edit.result), file.path, this.copy, this.notify));
                 };
                 details.addEventListener('toggle', load); details.open = index === 0; load(); diffs.append(details);
@@ -207,5 +232,6 @@
             this.renderedFile = { round, file };
         }
     }
+    PiTurnEdits.collect = collect;
     window.PiTurnEdits = PiTurnEdits;
 })();

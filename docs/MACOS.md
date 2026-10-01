@@ -4,7 +4,7 @@
 
 ## 安装前提
 
-当前源码的 `node scripts/install.cjs` 统一准备内置 pi-subagents 与 pi-hermes-memory，不再向共享 Pi 身份另行安装包；准备失败会返回安装错误。这个入口也避免 npm 对 SQLite 的无谓编译。下文以 1.2.0 为例，使用统一安装入口；旧归档没有此脚本时仍使用 `npm ci`。默认启用、旧配置兼容和平台依赖见[内置能力包](BUNDLED_CAPABILITIES.md)。
+当前源码的 `node scripts/install.cjs` 统一准备内置 pi-subagents 与 pi-hermes-memory，不再向共享 Pi 身份另行安装包；准备失败会返回安装错误。这个入口也避免 npm 对 SQLite 的无谓编译。下文以 1.3.0 为例，使用统一安装入口；旧归档没有此脚本时仍使用 `npm ci`。默认启用、旧配置兼容和平台依赖见[内置能力包](BUNDLED_CAPABILITIES.md)。
 
 - Node 22.x、npm、系统ripgrep。可以保留已有其他版本Node，为本实例指定独立Node22。
 - 安装包必须包含`native/pi-darwin-fd.node`、对应C源码与manifest；它们为同一批构建，不需现场编译该组件。缺失或不匹配时不启用全文/搜索/统计，不回退为较弱的路径检查。当前源码内置记忆的 SQLite 依赖另行安装适配当前 Node 的二进制，缺少预构建文件时需要 Python 与 Xcode Command Line Tools，见[内置能力包](BUNDLED_CAPABILITIES.md)。
@@ -29,14 +29,14 @@ rg --version
 先将发布包和同名.sha256下载到Downloads，并核对下载来源。以下为新实例示例，BASE必须尚不存在：
 
 ```sh
-ARCHIVE="$HOME/Downloads/pivane-1.2.0.tar.gz"
+ARCHIVE="$HOME/Downloads/pivane-1.3.0.tar.gz"
 (cd "$(dirname "$ARCHIVE")" && shasum -a 256 -c "$(basename "$ARCHIVE").sha256")
 BASE="$HOME/pivane"
 test ! -e "$BASE" || { echo "此目录已存在，请按更新流程操作或选择新的BASE"; exit 1; }
 umask 077
-mkdir -p "$BASE/releases/1.2.0" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
-tar -xzf "$ARCHIVE" -C "$BASE/releases/1.2.0" --strip-components=1 &&
-cd "$BASE/releases/1.2.0" &&
+mkdir -p "$BASE/releases/1.3.0" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
+tar -xzf "$ARCHIVE" -C "$BASE/releases/1.3.0" --strip-components=1 &&
+cd "$BASE/releases/1.3.0" &&
 node -e 'if (process.versions.node.split(".")[0] !== "22") { console.error("请先切换到 Node 22.x；当前 " + process.version); process.exit(1); } console.log(process.version, process.execPath)' &&
 npm --version &&
 rg --version &&

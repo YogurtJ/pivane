@@ -52,6 +52,7 @@ class AgentWorker extends EventEmitter {
         this.navigationResults = new Map();
         this.contextResults = new Map();
         this.modelCatalog = new (require('./pi-model-catalog').PiModelCatalog)(this);
+        this.mcpControl = new (require('./pi-mcp-runtime-control').PiMcpRuntimeControl)(this);
         this.resourceResults = new Map();
         this.subagentResults = new Map();
         this.loadedAgentProfileId = null;
@@ -163,7 +164,8 @@ class AgentWorker extends EventEmitter {
                     const result = { ...value, webProgress: structuredClone(this.progress), webLive: this.live.snapshot() };
                     Object.defineProperty(result, 'webSnapshot', { value: {
                         controls: structuredClone(this.controls.snapshot()), pendingUi: structuredClone(this.getPendingUi()),
-                        webCompaction: structuredClone(this.compaction), webShell: this.shell.snapshot(), webNavigation: this.navigation.snapshot()
+                        webCompaction: structuredClone(this.compaction), webShell: this.shell.snapshot(), webNavigation: this.navigation.snapshot(),
+                        mcpAuthorization: structuredClone(this.mcpControl.authorization)
                     } });
                     return result;
                 }
@@ -378,7 +380,7 @@ class AgentWorker extends EventEmitter {
     }
 
     async getNativeResources(systemPrompt = false, operationToken) {
-        if (this.disposed || this.resourceResults.size || this.operation && operationToken !== this.operation) throw new Error('资源读取或会话操作正在进行');
+        if (this.disposed || this.mcpControl.busy || this.resourceResults.size || this.operation && operationToken !== this.operation) throw new Error('资源读取或会话操作正在进行');
         const id = randomUUID();
         this.resourceResults.set(id, null);
         try {
@@ -566,7 +568,7 @@ class AgentWorker extends EventEmitter {
         if (event.type === 'extension_ui_request' && event.method === 'notify') {
             try {
                 const result = privateReply(JSON.parse(event.message));
-                if (this.modelCatalog.handle(result)) return;
+                if (this.modelCatalog.handle(result) || this.mcpControl.handle(result)) return;
                 if (result && Object.hasOwn(result, 'pivaneAgentProfileLoaded')) {
                     if (this.managed && !this.noSession && result.sessionId === this.sessionId
                         && (result.pivaneAgentProfileLoaded === null && result.profileRevision === null

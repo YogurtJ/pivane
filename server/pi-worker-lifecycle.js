@@ -11,6 +11,7 @@ function workerLifecycle(worker) {
     if (worker.modelChangesPending || worker.modelCatalog.inflight) operations.push('model');
     if (worker.titleResults.size) operations.push('title-read');
     if (worker.resourceResults.size) operations.push('resources');
+    if (worker.mcpControl?.busy) operations.push('mcp-management');
     if (worker.historyPending || worker.historyWriting) operations.push('history');
     if (worker.contextCapture) operations.push('context');
     if (worker.cronRun) operations.push('scheduled-task');

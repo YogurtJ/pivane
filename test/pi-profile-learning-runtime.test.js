@@ -1021,3 +1021,20 @@ test('a long-running thread above the 8 MiB index bound is still learned, up to 
     assert.equal(snap.recentRuns[0].status, 'completed');
     assert.match(JSON.stringify(snap.capabilities), new RegExp(`"maxSourceBytes":${64 * 1024 * 1024}\\b`));
 });
+
+
+test('periodic scans share one in-flight cycle and register a source once for all cursors', async t => {
+    const f = await fixture(t); let registrations = 0, release;
+    const gate = new Promise(resolve => { release = resolve; });
+    f.service.read = () => ({ cursors: Object.fromEntries(['correction', 'review', 'extraction']
+        .map(kind => [kind, { source: f.session }])) });
+    f.service.register = async () => { registrations++; await gate; };
+    f.service.wake = () => {};
+    const first = f.service.tick(), second = f.service.tick(), third = f.service.tick();
+    assert.equal(first, second); assert.equal(first, third);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(registrations, 1); assert.equal(f.service.scans.size, 1);
+    release(); await Promise.all([first, second, third]);
+    assert.equal(registrations, 1); assert.equal(f.service.scans.size, 0);
+    await f.service.tick(); assert.equal(registrations, 2, 'a completed scan allows the next cycle');
+});

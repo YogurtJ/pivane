@@ -21,7 +21,7 @@ async function settingsRun(browser, width) {
 let legacy = false;
     const native = project => {
         const effective = trusts.get(project) ?? values.global.defaultProjectTrust === 'always';
-        return { cwd: project, revision, trust: { effective, decision: trusts.get(project) ?? null, savedPath: trusts.has(project) ? project : null, defaultPolicy: values.global.defaultProjectTrust ?? 'ask', override: null }, schema: legacy ? Object.fromEntries(Object.entries(schema).filter(([k]) => !['defaultTools', 'defaultProjectTrust'].includes(k))) : schema,
+        return { cwd: project, revision, trust: { effective, decision: trusts.get(project) ?? null, savedPath: trusts.has(project) ? project : null, defaultPolicy: values.global.defaultProjectTrust ?? 'ask', override: null }, schema: legacy ? Object.fromEntries(Object.entries(schema).filter(([k]) => !['defaultTools', 'defaultProjectTrust', 'codemode.mode', 'codemode.inlineBudget'].includes(k))) : schema,
             settings: Object.fromEntries(Object.entries(schema).map(([k, f]) => {
                 const projectValue = effective && !f.globalOnly ? values.project[k] : null;
                 return [k, { value: projectValue ?? values.global[k] ?? (f.type === 'tools' ? f.defaults : f.type === 'boolean' ? true : f.type === 'select' ? f.choices[0] : f.type === 'lines' ? [] : 20000), source: projectValue != null ? 'project' : values.global[k] != null ? 'global' : 'default', global: values.global[k] ?? null, project: values.project[k] ?? null }];
@@ -76,7 +76,9 @@ let legacy = false;
     assert.equal(await page.evaluate(() => localStorage.getItem('pi.web.cwd')), cwd);
     await widthCheck(page); await page.screenshot({ path: `/tmp/pi-native-trust-${width}.png` });
     await page.keyboard.press('Escape');
-    if (width < 900) await page.locator('#pi-toggle-sessions').click();
+    if (width < 900 && await page.locator('#pi-session-pane').evaluate(node => node.classList.contains('open'))) {
+        await page.locator('#pi-close-sessions').click();
+    }
     await page.locator('#workspace-settings-toggle').click();
     await page.locator('[data-settings-tab="native"]').click();
     await page.locator('.native-setting-group').first().waitFor();
@@ -91,7 +93,7 @@ let legacy = false;
     assert.equal(await page.locator('#native-tools-runtime').isEnabled(), false);
     await page.locator('#native-tools-mode').selectOption('custom');
     for (const check of await page.locator('.native-tool-options input').all()) await check.uncheck();
-    assert.match(await page.locator('#native-tools-selection').textContent(), /未启用任何内置工具/);
+    assert.match(await page.locator('#native-tools-selection').textContent(), /显式空列表/);
     await page.locator('#native-settings-save').click();
     await page.waitForFunction(() => document.querySelector('#native-status').textContent.includes('已保存'));
     assert.deepEqual(writes.at(-1).body.values, { defaultTools: [] });

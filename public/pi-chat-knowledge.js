@@ -8,13 +8,25 @@
         if (className) item.className = className;
         return item;
     };
-    const button = (text, fn) => { const item = el('button', text, 'settings-secondary-button'); item.type = 'button'; item.onclick = fn; return item; };
+    const icon = (className, extra = '') => { const item = el('i', undefined, `${className} ${extra}`.trim()); item.setAttribute('aria-hidden', 'true'); return item; };
+    // Compact buttons shared by the card and the transcript hints; the text stays the accessible name.
+    const button = (text, fn, className = 'pi-ck-button', iconClass = '') => {
+        const item = el('button', undefined, className); item.type = 'button'; item.onclick = fn;
+        if (iconClass) item.append(icon(iconClass));
+        item.append(el('span', text)); return item;
+    };
     const id = () => globalThis.crypto?.randomUUID?.() || `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const rejected = error => [400, 403, 404, 413, 422, 429].includes(error?.status);
     const statusLabel = { ready: '就绪', pending: '待同步', missing: '缺失', disabled: '未启用', unsupported: '不支持', error: '错误', saved: '已保存' };
     const categoryLabel = { fact: '事实', preference: '偏好', correction: '纠错', failure: '失败经验', procedure: '流程' };
     const healthLabel = { ok: '学习正常', off: '学习已关闭', 'needs-model': '缺少学习模型配置', 'quota-exhausted': '今日学习额度已用完', failing: '最近学习连续失败', unavailable: '学习当前不可用', 'memory-full': '记忆已满' };
-    const healthTone = { ok: 'ok', off: 'off', 'needs-model': 'warn', 'quota-exhausted': 'warn', failing: 'bad', unavailable: 'bad' };
+    const healthTone = { ok: 'ok', off: 'off', 'needs-model': 'warn', 'quota-exhausted': 'warn', failing: 'bad', unavailable: 'bad', 'memory-full': 'warn' };
+    // Transcript hint identity: who wrote it decides the label and icon; the preview stays the body text.
+    const hintLabel = { skill: '学会技能', agent: 'Agent 记下', learning: '已记住' };
+    const hintIcon = { skill: 'fa-solid fa-graduation-cap', agent: 'fa-solid fa-pen-nib', learning: 'fa-solid fa-brain' };
+    // Non-ready injection states are valid server answers, not failures.
+    const injectionStatus = { disabled: '此身份的记忆未启用，不会注入记忆。', pending: '记忆正在同步，稍后再看。',
+        unsupported: '记忆插件未安装，无法预览注入。', missing: '身份不存在或已删除。' };
     function create({ root, fetch, scope, transcript, anchors }) {
         let key = '', identity = '', epoch = 0, busy = false, snapshot = null, draft = '', uncertain = null, notice = '', hintNotice = '', latest = null, conflict = false;
         // Background learning saves after the turn settles; follow queued/running jobs for a bounded time.
@@ -22,7 +34,9 @@
         // Contract fields (origin/preview/health) arrive later; absent fields keep the old card display.
         let learningSnapshot = null, anchorKeys = null, memoryFull = false;
         // U2.2: the session's next-turn injection (read-only preview), loaded on demand.
-        let injectionView = null, injectionEpoch = 0;
+        let injectionView = null, injectionEpoch = 0, injectionRawOpen = false;
+        // Receipt ids whose clamped preview the user expanded; kept across re-renders.
+        const expandedHints = new Set();
         // U2.4: the session reload button is disabled while the session is busy.
         let sessionBusy = false;
         const isBusy = () => sessionBusy || Boolean(scope()?.busy);
@@ -38,43 +52,64 @@
         // Only server-verified learning/agent receipts with a native source entry become "remembered" hints.
         const hintReceipts = () => sessionReceipts().filter(r => r.status === 'saved' && !r.superseded && ['learning', 'agent'].includes(r.origin) && r.source?.entryId);
         const hintPreview = receipt => receipt.preview || receipt.summary || '';
-        const hintText = receipt => receipt.kind === 'skill' ? t('已学习技能：{0}', hintPreview(receipt))
-            : receipt.origin === 'agent' ? t('Agent 记下：{0}', hintPreview(receipt)) : t('已记住：{0}', hintPreview(receipt));
+        const hintKind = receipt => receipt.kind === 'skill' ? 'skill' : receipt.origin === 'agent' ? 'agent' : 'learning';
         const transcriptHost = () => (typeof transcript === 'function' ? transcript() : transcript) || document.getElementById('pi-transcript-content');
         // U2.4: reload this chat session so a learned skill becomes active. The button only
         // appears when the current chat is the source session and is disabled while it is busy.
-        function reloadButton(receipt) {
+        function reloadButton(receipt, className = 'pi-ck-button') {
             const value = scope();
             if (!value?.sessionId || receipt?.source?.sessionId !== value.sessionId) return null;
-            const reload = button(t('重载会话'), () => globalThis.dispatchEvent?.(new CustomEvent('chat:reload-resources', { detail: { sessionId: value.sessionId } })));
+            const reload = button(t('重载会话'), () => globalThis.dispatchEvent?.(new CustomEvent('chat:reload-resources', { detail: { sessionId: value.sessionId } })),
+                className, 'fa-solid fa-rotate-right');
             reload.disabled = isBusy();
             reload.classList.add('pi-memory-hint-reload');
             return reload;
         }
         function hintBlock(receipt, fallback) {
+            const kind = hintKind(receipt), preview = hintPreview(receipt);
             const box = el('div', undefined, fallback ? 'pi-memory-hint pi-memory-hint-fallback' : 'pi-memory-hint');
             box.setAttribute('role', 'note');
-            if (receipt.kind === 'memory' && receipt.category) box.append(el('span', t(categoryLabel[receipt.category] || receipt.category), 'pi-memory-hint-tag'));
-            box.append(el('span', hintText(receipt), 'pi-memory-hint-text'));
-            if (receipt.kind === 'skill') {
-                box.append(el('small', t('需重载会话后生效')));
-                const reload = reloadButton(receipt);
-                if (reload) box.append(reload);
-            }
-            if (receipt.undoable === false) return box;
+            box.dataset.hintKind = kind;
+            if (receipt.kind === 'memory' && receipt.category) box.dataset.category = receipt.category;
+            box.append(icon(hintIcon[kind], 'pi-memory-hint-icon'));
+            const main = el('div', undefined, 'pi-memory-hint-main');
+            const meta = el('div', undefined, 'pi-memory-hint-meta');
+            meta.append(el('strong', t(hintLabel[kind]), 'pi-memory-hint-label'));
+            if (receipt.kind === 'memory' && receipt.category) meta.append(el('span', t(categoryLabel[receipt.category] || receipt.category), 'pi-memory-hint-tag'));
+            if (receipt.kind === 'skill') meta.append(el('small', t('需重载会话后生效'), 'pi-memory-hint-note'));
+            const text = el('p', preview, 'pi-memory-hint-text');
+            // Long previews clamp to two lines; the text itself toggles the full preview.
+            const expandKey = receipt.id || receipt.requestId || preview;
+            const setExpanded = value => {
+                text.classList.toggle('is-expanded', value); text.setAttribute('aria-expanded', String(value));
+                if (value) expandedHints.add(expandKey); else expandedHints.delete(expandKey);
+            };
+            text.tabIndex = 0; text.setAttribute('role', 'button'); text.title = t('点击展开或收起全文');
+            setExpanded(expandedHints.has(expandKey));
+            text.onclick = () => setExpanded(!text.classList.contains('is-expanded'));
+            text.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); text.click(); } };
+            main.append(meta, text);
+            box.append(main);
             const actions = el('div', undefined, 'pi-memory-hint-actions');
+            if (receipt.kind === 'skill') {
+                const reload = reloadButton(receipt, 'pi-memory-hint-action');
+                if (reload) actions.append(reload);
+            }
             // Project scope is edited through the management page with the verified session;
             // chat keeps only the jump-to-edit entry for it.
-            if (receipt.scope !== 'project') {
-                if (writable('undo', receipt.kind)) actions.append(button(t('撤销'), () => void submit('undo', receipt)));
-                if (receipt.kind === 'memory') {
-                    if (receipt.afterRevision && writable('delete', 'memory')) actions.append(button(t('不对'), () => {
-                        if (confirm(t('这条记忆不对吗？删除后学习不会再记回来。'))) void submit('delete', receipt);
-                    }));
-                } else if (writable('undo', receipt.kind)) actions.append(button(t('不对'), () => void submit('undo', receipt)));
+            if (receipt.undoable !== false) {
+                const action = (label, fn) => button(t(label), fn, 'pi-memory-hint-action');
+                if (receipt.scope !== 'project') {
+                    if (writable('undo', receipt.kind)) actions.append(action('撤销', () => void submit('undo', receipt)));
+                    if (receipt.kind === 'memory') {
+                        if (receipt.afterRevision && writable('delete', 'memory')) actions.append(action('不对', () => {
+                            if (confirm(t('这条记忆不对吗？删除后学习不会再记回来。'))) void submit('delete', receipt);
+                        }));
+                    } else if (writable('undo', receipt.kind)) actions.append(action('不对', () => void submit('undo', receipt)));
+                }
+                actions.append(action('编辑', () => reveal(receipt)));
             }
-            actions.append(button(t('编辑'), () => reveal(receipt)));
-            box.append(actions);
+            if (actions.childElementCount) box.append(actions);
             return box;
         }
         function reveal(receipt) {
@@ -95,8 +130,8 @@
             ensureAnchors();
             for (const node of root.querySelectorAll('.pi-memory-hint-fallback')) node.remove();
             const host = transcriptHost();
-            if (host) for (const node of host.querySelectorAll('.pi-memory-hint')) node.remove();
-            const fallback = [];
+            if (host) for (const node of host.querySelectorAll('.pi-memory-hints, .pi-memory-hint')) node.remove();
+            const fallback = [], groups = new Map();
             // Oldest first, each placed after any hints already under the same message.
             for (const receipt of [...hintReceipts()].reverse()) {
                 const anchorKey = anchorKeys?.get(receipt.source.entryId);
@@ -107,12 +142,20 @@
                 while (target && !target.matches('.pi-message.user') && target.previousElementSibling) target = target.previousElementSibling;
                 if (target && !target.matches('.pi-message.user')) target = null;
                 if (!target) { fallback.push(receipt); continue; }
-                let after = target;
-                while (after.nextElementSibling?.classList.contains('pi-memory-hint')) after = after.nextElementSibling;
-                after.after(hintBlock(receipt));
+                // One group per user message keeps a turn's receipts together as a single card.
+                let group = groups.get(target);
+                if (!group) {
+                    group = el('div', undefined, 'pi-memory-hints');
+                    group.setAttribute('role', 'group'); group.setAttribute('aria-label', t('本轮记忆更新'));
+                    target.after(group); groups.set(target, group);
+                }
+                group.append(hintBlock(receipt));
             }
             const list = root.querySelector('.pi-memory-hint-list');
-            if (list) list.replaceChildren(...fallback.map(receipt => hintBlock(receipt, true)));
+            if (list) {
+                list.replaceChildren(...fallback.map(receipt => hintBlock(receipt, true)));
+                list.closest('.pi-chat-knowledge-fallback')?.toggleAttribute('hidden', !fallback.length);
+            }
         }
         // entryId -> [role, timestamp, toolCallId] matches the transcript's data-message-key. The server
         // sends these anchors with the current context; entries outside it fall back to the card.
@@ -128,7 +171,8 @@
             injectionView = { loading: true };
             render();
             try {
-                const data = await fetch(`${base(value)}/knowledge/injection?${new URLSearchParams({ sessionId: value.sessionId })}`);
+                // base() already ends in /knowledge; the route is /profiles/:id/knowledge/injection.
+                const data = await fetch(`${base(value)}/injection?${new URLSearchParams({ sessionId: value.sessionId })}`);
                 if (request !== injectionEpoch || !current() || key !== captured) return;
                 injectionView = data?.version === 1 && typeof data.block === 'string' ? data : { error: t('注入内容不可用。') };
             } catch (error) {
@@ -139,55 +183,88 @@
         }
         function injectionBox() {
             const view = injectionView;
-            const box = el('div', undefined, 'pi-injection-preview');
+            const box = el('section', undefined, 'pi-injection-preview');
+            const head = el('header', undefined, 'pi-injection-head');
+            head.append(el('strong', t('下一轮注入预览')));
+            const close = button(t('收起注入内容'), () => { injectionView = null; injectionEpoch++; render(); }, 'pi-ck-icon-button', 'fa-solid fa-xmark');
+            close.title = t('收起注入内容'); close.querySelector('span').className = 'pi-ck-visually-hidden';
+            head.append(close); box.append(head);
             if (!view || view.loading) { box.append(el('p', t('正在读取…'), 'pi-knowledge-status')); return box; }
             if (view.error) { box.append(el('p', view.error, 'pi-knowledge-status pi-injection-error')); return box; }
-            const profile = view.profile && typeof view.profile === 'object' ? view.profile : view;
-            box.append(el('p', t('身份记忆：{0} 条 / {1} 字', Number.isFinite(profile.entries) ? profile.entries : '—',
-                Number.isFinite(profile.chars) ? profile.chars : '—'), 'pi-injection-stats'));
-            if (view.project && typeof view.project === 'object')
-                box.append(el('p', t('项目记忆：{0} 条 / {1} 字', Number.isFinite(view.project.entries) ? view.project.entries : '—',
-                    Number.isFinite(view.project.chars) ? view.project.chars : '—'), 'pi-injection-stats'));
-            if (view.lastRead && typeof view.lastRead === 'object')
-                box.append(el('p', t('上一轮已注入 {0} 条 / {1} 字', Number.isFinite(view.lastRead.entries) ? view.lastRead.entries : '—',
-                    Number.isFinite(view.lastRead.chars) ? view.lastRead.chars : '—'), 'pi-injection-stats'));
-            const details = el('details', undefined, 'pi-injection-body');
-            details.append(el('summary', t('查看注入原文')), el('pre', String(view.block || '')));
-            box.append(details);
+            const count = row => row && typeof row === 'object'
+                ? t('{0} 条 · {1} 字', Number.isFinite(row.entries) ? row.entries : '—', Number.isFinite(row.chars) ? row.chars : '—') : '—';
+            const stats = el('div', undefined, 'pi-injection-stats');
+            const tile = (label, row) => { const item = el('div', undefined, 'pi-injection-stat'); item.append(el('span', t(label)), el('strong', count(row))); stats.append(item); };
+            tile('身份记忆', view.profile && typeof view.profile === 'object' ? view.profile : view);
+            if (view.project && typeof view.project === 'object') tile('项目记忆', view.project);
+            if (view.lastRead && typeof view.lastRead === 'object') tile('上一轮已注入', view.lastRead);
+            box.append(stats);
+            if (view.status && view.status !== 'ready') box.append(el('p', t(injectionStatus[view.status] || '注入内容不可用。'), 'pi-injection-state'));
+            if (view.block) {
+                const details = el('details', undefined, 'pi-injection-body');
+                details.open = injectionRawOpen;
+                details.append(el('summary', t('查看注入原文')), el('pre', String(view.block)));
+                box.append(details);
+            } else if (!view.status || view.status === 'ready') box.append(el('p', t('当前没有可注入的记忆。'), 'pi-injection-state'));
             if (view.truncated === true) box.append(el('p', t('已截断，仅显示部分内容'), 'pi-profile-note'));
             box.append(el('p', t('注入不代表模型一定遵守。'), 'pi-profile-note'));
             return box;
         }
         function render() {
-            const wasOpen = root.querySelector('details')?.open;
+            const wasOpen = root.querySelector('.pi-chat-knowledge')?.open;
+            // Read synchronously: the async toggle event may not have fired before a re-render.
+            const rawOpen = root.querySelector('.pi-injection-body')?.open;
+            if (rawOpen !== undefined) injectionRawOpen = rawOpen;
             root.replaceChildren(); root.hidden = !key;
             if (!key) return;
             const panel = el('details', undefined, 'pi-chat-knowledge');
             // Collapsed by default; the summary always reports what this session has remembered.
             panel.open = Boolean(wasOpen || uncertain?.operation === 'create');
-            const summary = el('summary');
+            const summary = el('summary', undefined, 'pi-chat-knowledge-summary');
             const health = learningSnapshot?.health;
-            if (health?.state) summary.append(el('span', undefined, `pi-health-dot pi-health-${healthTone[health.state] || 'off'}`));
-            summary.append(el('span', `${t('纠错与记忆回执')} · ${t('本会话已记住 {0} 条', hintReceipts().length)}${learning ? ` · ${t('学习处理中')}` : ''}`));
+            summary.append(icon('fa-solid fa-brain', 'pi-chat-knowledge-icon'), el('strong', t('纠错与记忆回执'), 'pi-chat-knowledge-title'),
+                el('span', t('本会话已记住 {0} 条', hintReceipts().length), 'pi-chat-knowledge-count'));
+            if (health?.state) {
+                const chip = el('span', undefined, `pi-chat-knowledge-health pi-health-chip-${healthTone[health.state] || 'off'}`);
+                const label = t(healthLabel[health.state] || '学习当前不可用');
+                const dot = el('span', undefined, `pi-health-dot pi-health-${healthTone[health.state] || 'off'}`); dot.title = label;
+                chip.append(dot);
+                if (health.state !== 'ok') chip.append(el('span', label));
+                summary.append(chip);
+            }
+            if (learning) {
+                const chip = el('span', undefined, 'pi-chat-knowledge-learning');
+                chip.append(icon('fa-solid fa-circle-notch fa-spin'), el('span', t('学习处理中')));
+                summary.append(chip);
+            }
+            summary.append(icon('fa-solid fa-chevron-down', 'pi-chat-knowledge-chevron'));
             panel.append(summary);
             const body = el('div', undefined, 'pi-chat-knowledge-body');
-            const info = el('p', t('手动纠错属于当前助手范围，不会伪造聊天来源；仅经服务端核实的线程回执在此显示。'), 'pi-profile-note');
-            body.append(info);
+            const toolbar = el('div', undefined, 'pi-chat-knowledge-toolbar');
+            const problem = Boolean(notice || hintNotice);
+            const status = el('p', notice || hintNotice || (snapshot ? t('存储状态：{0}', t(statusLabel[snapshot.status] || snapshot.status)) : t('正在读取…')),
+                `pi-knowledge-status pi-chat-knowledge-status${problem ? ' is-notice' : ''}`);
+            status.setAttribute('role', 'status');
+            const entries = el('div', undefined, 'pi-knowledge-entries');
+            const showing = Boolean(injectionView);
+            const toggle = button(t(showing ? '收起注入内容' : '查看本会话注入内容'), () => {
+                if (injectionView) { injectionView = null; injectionEpoch++; render(); } else void loadInjection();
+            }, 'pi-ck-button', 'fa-solid fa-eye');
+            toggle.setAttribute('aria-expanded', String(showing));
+            entries.append(toggle, button(t('本项目记忆'), () => revealProjectMemory(), 'pi-ck-button', 'fa-solid fa-folder-open'),
+                button(t('刷新'), () => void refresh(), 'pi-ck-button', 'fa-solid fa-arrows-rotate'));
+            toolbar.append(status, entries);
+            body.append(toolbar);
             if (health?.state && health.state !== 'ok') {
                 const line = el('p', undefined, 'pi-knowledge-health');
                 line.append(el('span', undefined, `pi-health-dot pi-health-${healthTone[health.state] || 'off'}`),
                     el('span', t(healthLabel[health.state] || '学习当前不可用')));
                 body.append(line);
             }
-            const status = el('p', notice || hintNotice || (snapshot ? t('存储状态：{0}', t(statusLabel[snapshot.status] || snapshot.status)) : t('正在读取…')), 'pi-knowledge-status');
-            status.setAttribute('role', 'status'); body.append(status);
-            const entries = el('div', undefined, 'pi-knowledge-entries');
-            entries.append(button(t('查看本会话注入内容'), () => void loadInjection()), button(t('本项目记忆'), () => revealProjectMemory()));
-            body.append(entries);
             if (injectionView) body.append(injectionBox());
-            if (learning) body.append(el('p', t('后台学习正在处理本轮内容…'), 'pi-knowledge-status'));
+            if (learning) body.append(el('p', t('后台学习正在处理本轮内容…'), 'pi-knowledge-status pi-chat-knowledge-learning-line'));
             if (latest) {
-                const row = el('div', undefined, 'pi-knowledge-receipt');
+                const row = el('div', undefined, 'pi-knowledge-receipt pi-chat-knowledge-latest');
                 row.textContent = `${t(latest.operation === 'undo' ? '撤销' : '手动纠错')} · ${t(latest.status === 'pending' ? '待同步' : latest.status === 'saved' ? '已保存' : statusLabel[latest.status] || latest.status || '状态未知')}`;
                 if (latest.indexStatus === 'pending') row.append(el('small', t('索引待同步')));
                 if (latest.activation === 'reload-required') row.append(el('small', t('当前会话需重载')));
@@ -197,7 +274,7 @@
                     if (reload) row.append(reload);
                 }
                 if (latest.undoable && latest.id && writable('undo', latest.kind) && latest.kind === 'memory')
-                    row.append(button(t('撤销'), () => void submit('undo', latest)));
+                    row.append(button(t('撤销'), () => void submit('undo', latest), 'pi-memory-hint-action'));
                 body.append(row);
             }
             const hinted = new Set(hintReceipts());
@@ -207,19 +284,26 @@
                 row.append(el('small', [receipt.source.entryId && t('原生记录：{0}', receipt.source.entryId), receipt.summary,
                     receipt.indexStatus === 'pending' && t('索引待同步'), receipt.activation === 'reload-required' && t('当前会话需重载')].filter(Boolean).join(' · ')));
                 if (receipt.undoable && receipt.id && writable('undo', receipt.kind))
-                    row.append(button(t('撤销'), () => void submit('undo', receipt)));
+                    row.append(button(t('撤销'), () => void submit('undo', receipt), 'pi-memory-hint-action'));
                 body.append(row);
             }
             // Hints whose source message is not rendered (compacted away or off-branch) fall back to this card.
-            body.append(el('div', undefined, 'pi-memory-hint-list'));
+            const fallback = el('section', undefined, 'pi-chat-knowledge-fallback');
+            fallback.hidden = true;
+            fallback.append(el('h4', t('未在对话中定位的回执'), 'pi-chat-knowledge-heading'), el('div', undefined, 'pi-memory-hint-list pi-memory-hints'));
+            body.append(fallback);
             const form = el('form', undefined, 'pi-chat-knowledge-form');
-            const label = el('label', t('手动记录纠错')); const input = el('textarea'); input.rows = 3; input.required = true;
+            const label = el('label'); label.append(el('span', t('手动记录纠错'), 'pi-chat-knowledge-heading'));
+            const input = el('textarea'); input.rows = 3; input.required = true; input.placeholder = t('例如：回答数学题时先给结论，再给推导。');
             input.value = draft; input.maxLength = snapshot?.capabilities?.maxContentLength || 65536; input.oninput = () => { draft = input.value; }; label.append(input); form.append(label);
-            const save = el('button', t('保存纠错'), 'settings-primary-button'); save.type = 'submit';
+            const foot = el('div', undefined, 'pi-chat-knowledge-form-foot');
+            foot.append(el('small', t('手动纠错属于当前助手范围，不会伪造聊天来源；仅经服务端核实的线程回执在此显示。'), 'pi-chat-knowledge-footnote'));
+            const save = el('button', t('保存纠错'), 'pi-ck-button pi-ck-primary'); save.type = 'submit';
             save.disabled = busy || !!uncertain || !writable('create');
-            form.append(save); form.onsubmit = event => { event.preventDefault(); if (form.reportValidity()) void submit('create'); }; body.append(form);
-            if (uncertain && !busy) body.append(button(t('刷新回执核对'), () => void refresh()));
-            body.append(button(t('刷新'), () => void refresh())); panel.append(body); root.append(panel);
+            if (uncertain && !busy) foot.append(button(t('刷新回执核对'), () => void refresh()));
+            foot.append(save);
+            form.append(foot); form.onsubmit = event => { event.preventDefault(); if (form.reportValidity()) void submit('create'); }; body.append(form);
+            panel.append(body); root.append(panel);
             decorate();
         }
         async function refresh() {
@@ -287,7 +371,7 @@
                     keep();
                     ({ draft = '', uncertain = null, latest = null, notice = '', conflict = false, memoryFull = false, hintNotice = '' } = draftsByThread.get(nextIdentity) || {});
                 }
-                key = next; epoch++; snapshot = null; identity = nextIdentity; learning = false; anchorKeys = null; injectionView = null; injectionEpoch++;
+                key = next; epoch++; snapshot = null; identity = nextIdentity; learning = false; anchorKeys = null; injectionView = null; injectionEpoch++; injectionRawOpen = false;
             }
             polls = 0; clearTimeout(timer);
             render(); if (key) void refresh();

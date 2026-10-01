@@ -18,10 +18,10 @@ Pivane自身的代码使用[ISC许可证](LICENSE)。第三方软件、字体、
 
 | 依赖 | 版本 | 声明的许可证 |
 |---|---|---|
-| @earendil-works/pi-ai、pi-coding-agent、pi-server | 0.87.1 | MIT |
+| @earendil-works/pi-ai、pi-coding-agent、pi-server、pi-tui、pi-agent-core（及原生 pi-mcp / pi-codemode） | 0.99.1 | MIT |
 | @highlightjs/cdn-assets | 11.11.1 | BSD-3-Clause |
 | cors | 2.8.6 | MIT |
-| dompurify | 3.4.14 | MPL-2.0 OR Apache-2.0 |
+| dompurify | 3.4.16 | MPL-2.0 OR Apache-2.0 |
 | express | 5.2.1 | MIT |
 | https-proxy-agent | 7.0.6 | MIT |
 | marked | 18.0.11 | MIT |

@@ -405,19 +405,12 @@ document.addEventListener('DOMContentLoaded', () => {
         context: () => ({ cwd: state.cwd, session: state.session, token: state.token, connected: state.connected,
             busy: state.streaming || state.compacting || state.compactRequested, waiting: state.pendingUi.size > 0 }),
         prepare: options => requestRpc('prepare_side_chat', options, 65000),
+        modelOptions: () => requestRpc('get_side_model_options', {}, 45000),
         renderMarkdown, finalReplyIndices, copyText: copyTextToClipboard, toast,
         focusMain: () => {
             elements.inspector.classList.remove('open');
             if (state.pendingUi.size) openPendingRequest();
             else queueMicrotask(() => elements.input.focus());
-        },
-        insertDraft: text => {
-            if (!state.connected || state.attachmentReads) throw new Error(translateUi("请先连接主会话并等待附件读取完成"));
-            const draft = `${elements.input.value}${elements.input.value ? '\n\n' : ''}${text}`;
-            attachments.validateDraft(draft, state.attachmentFiles);
-            elements.input.value = draft; autoResizeInput();
-            if (innerWidth <= 900 || document.querySelector('.pi-workbench').classList.contains('pi-inspector-overlay')) elements.inspector.classList.remove('open');
-            queueMicrotask(() => elements.input.focus());
         }
     });
 
@@ -743,7 +736,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.archiveEnabled = status.archives === true;
             conversationSearch.setArchivesEnabled(state.archiveEnabled);
             workflows.setEnabled(status.sessionWorkflows === true);
-            sideChat.setEnabled(status.sideChat === true, status.sideChatContext === true, status.sideChatRetention === true, status.sideChatTools === true);
+            sideChat.setEnabled(status.sideChat === true, status.sideChatContext === true, status.sideChatRetention === true, status.sideChatTools === true, status.sideChatModels === true, status.sideChatLifecycle === true);
             window.PiReplyTts.setEnabled(status.replyTts === true);
             elements.tokenDialog.classList.add('hidden');
             // Assistant projects do not depend on scanning every native project.
@@ -2180,6 +2173,7 @@ document.addEventListener('DOMContentLoaded', () => {
         nativeControls.reset();
         subagentRuns.reset();
         shell.reset(); state.shellBusy = false;
+        state.mcpAuthorization = null; renderMcpAuthorization();
         state.controlRequested = false;
         state.controlsStopping = false;
         elements.queue.classList.add('hidden');
@@ -2308,10 +2302,12 @@ document.addEventListener('DOMContentLoaded', () => {
         state.renderedCompletion = snapshot.completion || null;
         window.PiPageNotifications?.observeCompletion(state.renderedCompletion);
         state.pendingUi = new Map((snapshot.pendingUi || []).map(event => [event.id, event]));
+        state.mcpAuthorization = snapshot.mcpAuthorization || null;
         renderPendingUi();
         void acknowledgeRenderedReply();
         updateStats(snapshot.stats);
         updateRuntimeState(snapshot.state || {});
+        renderMcpAuthorization();
         updateSessionMeta(snapshot.state);
         nativeControls.apply(snapshot.controls || snapshot.state?.webControls);
         elements.input.disabled = false;
@@ -2653,6 +2649,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function setToolOutput(row, result) {
         row._piResult = result;
         window.PiToolLabels?.update(row);
+        if (result.nestedCalls) window.PiNestedTools?.persisted(row, result.nestedCalls);
         if (row.querySelector('.pi-tool-detail')) renderToolOutput(row, result);
     }
 
@@ -2688,6 +2685,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         row.dataset.state = message.isError ? 'error' : 'done';
         row.querySelector('.pi-tool-status').textContent = message.isError ? translateUi("失败") : translateUi("完成");
+        window.PiNestedTools?.persisted(row, message.nestedCalls);
         setToolOutput(row, message);
         return existing ? null : row;
     }
@@ -3090,6 +3088,10 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'extension_ui_request':
                 handleExtensionUi(event);
                 break;
+            case 'gateway_mcp_authorization':
+                state.mcpAuthorization = event.authorization || null;
+                renderMcpAuthorization();
+                break;
             case 'gateway_ui_resolved':
                 state.pendingUi.delete(event.id);
                 if (state.shownUiId === event.id) closeRequestDialog();
@@ -3272,6 +3274,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateToolExecution(event, status) {
+        if (event.parentToolCallId) {
+            const parent = window.PiNestedTools?.live(state.toolRows, event);
+            if (parent) { markTranscriptDirty(parent); transcriptView.schedule(parent); scrollTranscript(); }
+            return;
+        }
         let row = state.toolRows.get(event.toolCallId)
             || elements.transcript.querySelector(`[data-tool-id="${CSS.escape(event.toolCallId || '')}"]`);
         if (!row?.isConnected || !row.classList.contains('pi-tool-row')) {
@@ -3323,6 +3330,21 @@ document.addEventListener('DOMContentLoaded', () => {
     function closeRequestDialog() {
         if (elements.requestDialog.open) elements.requestDialog.close();
         state.shownUiId = null;
+    }
+
+    function renderMcpAuthorization() {
+        document.getElementById('pi-mcp-authorization')?.remove();
+        const value = state.mcpAuthorization;
+        if (!value || value.runtimeId !== shell.value?.runtimeId) return;
+        let url;
+        try { url = new URL(value.url); } catch { return; }
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.href.length > 8192) return;
+        const banner = document.createElement('div'); banner.id = 'pi-mcp-authorization'; banner.className = 'pi-runtime-notice info';
+        const caption = document.createElement('span'); caption.textContent = translateUi('MCP 授权：{0}', value.server);
+        const link = document.createElement('a'); link.href = url.href; link.target = '_blank'; link.rel = 'noopener noreferrer';
+        link.textContent = translateUi('打开原生 OAuth 授权页面');
+        banner.append(caption, document.createTextNode(' · '), link);
+        elements.transcript.before(banner);
     }
 
     function renderPendingUi() {
@@ -4705,6 +4727,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     window.PiNativeRuntime = {
+        currentSession: () => state.connected && state.session && !state.session.ephemeral && shell.value?.runtimeId
+            ? { id: state.session.id, runtimeId: shell.value.runtimeId, cwd: state.cwd } : null,
         context: () => ({ cwd: state.cwd, sessionId: state.session?.id, generation: state.socketGeneration, connected: state.connected, supported: state.nativeResources,
             systemPrompts: state.systemPrompts, busy: state.treeBusy || state.shellBusy || state.streaming || state.compacting || state.compactRequested || state.controlRequested || state.resourceRequested || state.pendingUi.size > 0 }),
         systemPrompt: async () => {

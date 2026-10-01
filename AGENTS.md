@@ -4,7 +4,7 @@
 
 ## 开始工作
 
-首次接手依次读 README.md、docs/README.md、CONTRIBUTING.md；再按 [模块导航](docs/development/MODULES.md) 选择相关实现和契约。架构见 [ARCHITECTURE.md](docs/development/ARCHITECTURE.md)，验证与文档维护见 [开发流程](docs/development/WORKFLOW.md)。
+首次接手读 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [开发文档入口](docs/development/README.md)，再按 [模块导航](docs/development/MODULES.md) 找到本次任务的实现和契约；架构与已知技术债见 [ARCHITECTURE.md](docs/development/ARCHITECTURE.md)，验证与文档维护见 [开发流程](docs/development/WORKFLOW.md)。用户可见行为按 [文档目录](docs/README.md) 只打开相关功能文档，不需要通读。
 
 如果存在 `AGENTS.local.md`，读取其中的本机入口。私有维护资料可以在相邻的独立仓库，按入口给出的绝对路径读取；Pi 不会自动加载任意相邻目录。公开源码和发行包不依赖私有资料。
 

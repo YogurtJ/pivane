@@ -5,7 +5,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
-const publicRoot = path.resolve(__dirname, '../../public');
+const publicRoot = process.env.PI_SHELL_PUBLIC_ROOT || path.resolve(__dirname, '../../public');
 const evidence = process.env.PI_SHELL_EVIDENCE || path.join(require('node:os').tmpdir(), 'pivane-assistant-shell-evidence');
 const cwd = '/fixture/assistant-work';
 const profiles = [
@@ -270,6 +270,44 @@ async function main() {
                 await page.locator('#workspace-settings-close').click();
                 await page.waitForFunction(() => document.querySelectorAll('[data-assistant-project-id]').length === 3);
             }
+            await page.locator('#workspace-settings-toggle').click();
+            await page.locator('[data-settings-tab="models"]').click();
+            assert.equal(await page.locator('[data-appearance-theme="system"]').getAttribute('aria-pressed'), 'true');
+            assert.equal(await page.locator('[data-font-size="default"]').getAttribute('aria-pressed'), 'true');
+            await page.locator('[data-appearance-theme="slate"]').click();
+            assert.equal(await page.locator('html').getAttribute('data-theme'), 'slate');
+            assert.equal(await page.locator('#workspace-theme-menu [data-theme="slate"]').getAttribute('aria-checked'), 'true');
+            await page.locator('[data-appearance-theme="violet"]').click();
+            await page.locator('[data-font-size="xlarge"]').click();
+            assert.equal(await page.locator('html').evaluate(el => getComputedStyle(el).fontSize), '20px');
+            const appearance = await page.evaluate(() => ({ theme: localStorage.getItem('pi.workspace.theme'), font: localStorage.getItem('pi.workspace.fontSize'),
+                width: document.querySelector('.appearance-card').scrollWidth, client: document.querySelector('.appearance-card').clientWidth }));
+            assert.deepEqual([appearance.theme, appearance.font], ['violet', 'xlarge']);
+            assert.ok(appearance.width <= appearance.client + 1, `${width} appearance overflow: ${JSON.stringify(appearance)}`);
+            const sizing = await page.evaluate(() => ({ viewport: innerWidth, body: document.body.scrollWidth,
+                input: getComputedStyle(document.querySelector('#pi-input')).fontSize }));
+            assert.ok(sizing.body <= width + 1, `${width} large font page overflow: ${JSON.stringify(sizing)}`);
+            if (width < 700) assert.ok(parseFloat(sizing.input) >= 16, `${width} mobile input too small: ${JSON.stringify(sizing)}`);
+            if (width === 1440 || width === 393) await page.screenshot({ path: path.join(evidence, `appearance-${width}.png`) });
+            const reopened = await context.newPage();
+            await reopened.goto(`http://127.0.0.1:${server.address().port}/`, { waitUntil: 'domcontentloaded' });
+            assert.equal(await reopened.locator('html').getAttribute('data-theme'), 'violet');
+            assert.equal(await reopened.locator('html').evaluate(el => getComputedStyle(el).fontSize), '20px');
+            await reopened.close();
+            await page.locator('[data-appearance-theme="system"]').click();
+            assert.equal(await page.locator('[data-appearance-theme="system"]').getAttribute('aria-pressed'), 'true');
+            await page.locator('[data-font-size="default"]').click();
+            if (width === 393) {
+                await page.locator('#workspace-settings-close').click();
+                await page.locator('#workspace-theme-toggle').click();
+                await page.locator('#workspace-theme-menu [data-theme="mint"]').click();
+                await page.locator('#workspace-settings-toggle').click();
+                await page.locator('[data-settings-tab="models"]').click();
+                assert.equal(await page.locator('[data-appearance-theme="mint"]').getAttribute('aria-pressed'), 'true');
+                await page.locator('[data-appearance-theme="system"]').click();
+            }
+            await page.locator('#workspace-settings-close').click();
+            await page.waitForFunction(() => document.querySelector('.pi-transcript-shell')?.getBoundingClientRect().width > 0);
             const shell = await page.evaluate(() => ({ viewport: innerWidth, body: document.body.scrollWidth,
                 nav: document.querySelector('.sidebar').getBoundingClientRect().width,
                 pane: document.querySelector('#pi-session-pane').getBoundingClientRect().width,

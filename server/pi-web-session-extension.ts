@@ -19,6 +19,7 @@ import { registerProfileMemory } from './profile-memory/extension.ts';
 import { registerAssistantProject } from './pi-assistant-project-runtime.js';
 import { registerProfileAuthoring } from './pi-profile-authoring-extension.ts';
 import { registerSubagentHost, subagentControl } from './pi-subagent-host.ts';
+import { requestRegisteredNativeMcpControl } from './pi-native-mcp-control.mjs';
 
 // Pi 0.86 stores prompt/tool checkpoints as native system messages in the
 // transcript. They are provider context, not chat bubbles or side-chat input.
@@ -70,11 +71,38 @@ export default async function (pi: ExtensionAPI) {
         }
     });
     pi.registerCommand(INTERNAL_COMMAND, {
-        description: `Pivane internal session navigation and context snapshot; managed-v1; cron-v1; task-v1; task-results-v1; agent-messages-v1; title-v1; model-catalog-v1; resources-v1; history-v1; tree-v1; tree-presentation-v1; history-presentation-v1; history-body-v1; system-prompt-v1; subagents-v1; reload-v1:${randomUUID()}`,
+        description: `Pivane internal session navigation and context snapshot; managed-v1; cron-v1; task-v1; task-results-v1; agent-messages-v1; title-v1; model-catalog-v1; resources-v1; history-v1; tree-v1; tree-presentation-v1; history-presentation-v1; history-body-v1; system-prompt-v1; subagents-v1; mcp-v1; reload-v1:${randomUUID()}`,
         handler: async (args, ctx) => {
             const request = JSON.parse(args);
             if (ctx.mode !== 'rpc' || request.token !== process.env.PI_WEB_NAVIGATION_TOKEN) throw new Error('Invalid navigation request');
             const notify = (data: object) => ctx.ui.notify(JSON.stringify({ pivaneNavigation: request.id, ...data }));
+            if (request.mode === 'mcp') {
+                let response;
+                try {
+                    const ui = new Proxy(ctx.ui, { get(target, key) {
+                        if (key === 'notify') return (message: string) => {
+                            const server = request.input?.server;
+                            const prefix = `Sign in to MCP server "${server}" in your browser:\n`;
+                            if (request.input?.action !== 'login' || typeof message !== 'string' || !message.startsWith(prefix)) return;
+                            try {
+                                const url = new URL(message.slice(prefix.length));
+                                if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.href.length > 8192) return;
+                                ctx.ui.notify(JSON.stringify({ pivaneMcp: request.id, authorization: { server, url: url.href } }));
+                            } catch { /* Do not forward arbitrary native notices or transport errors. */ }
+                        };
+                        const value = Reflect.get(target, key);
+                        return typeof value === 'function' ? value.bind(target) : value;
+                    } });
+                    const nativeCtx = new Proxy(ctx, { get(target, key) { return key === 'ui' ? ui : Reflect.get(target, key); } });
+                    const data = await requestRegisteredNativeMcpControl(nativeCtx, request.input);
+                    response = { pivaneMcp: request.id, success: true, data };
+                } catch (error: any) {
+                    response = { pivaneMcp: request.id, success: false, code: /^MCP_[A-Z_]+$/.test(error?.code || '') ? error.code : 'MCP_NATIVE_ACTION_FAILED' };
+                }
+                if (Buffer.byteLength(JSON.stringify(response)) > 512 * 1024) response = { pivaneMcp: request.id, success: false, code: 'MCP_RESPONSE_TOO_LARGE' };
+                ctx.ui.notify(JSON.stringify(response));
+                return;
+            }
             if (request.mode === 'cron') {
                 try { notify({ success: true, data: await cron(ctx, request.input) }); }
                 catch (error) { notify({ success: false, error: error instanceof Error ? error.message : 'Scheduled task failed' }); }

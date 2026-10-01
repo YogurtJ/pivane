@@ -4650,8 +4650,8 @@
         "Daily usage"
     ],
     [
-        "此时间范围内没有持久会话用量记录。",
-        "No persistent-session usage records in this date range."
+        "此时间范围内没有持久会话或侧聊用量记录。",
+        "No persistent-session or side-chat usage records in this date range."
     ],
     [
         "已去重 {0} 条副本记录 · {1} 条用量记录 · {2} 条缺少价格／费用，{3} 条记录费用为零。",
@@ -8015,7 +8015,7 @@
     ,['了解这个技能', 'About this skill']
     ,['了解这个包', 'About this package']
     ,['排查问题', 'Troubleshoot']
-    ,['技能', 'skill']
+    ,['技能', 'Skills']
     ,['扩展包', 'package']
     ,['从链接安装', 'Install from a link']
     ,['高级设置', 'Advanced settings']
@@ -9054,7 +9054,182 @@
         ['侧聊运行中', 'Side chat running'],
         ['侧聊状态待核对', 'Side chat needs verification'],
         ['待执行 {0} 条', '{0} messages queued'],
-        ['子 Agent 需处理 · {0}', 'Subagents need attention · {0}']
+        ['子 Agent 需处理 · {0}', 'Subagents need attention · {0}'],
+        ['雾蓝', 'Slate blue'],
+        ['沉静柔和', 'Calm and soft'],
+        ['丁香', 'Lilac'],
+        ['清透雅致', 'Airy and refined'],
+        ['外观', 'Appearance'],
+        ['主题与配色', 'Theme and colors'],
+        ['字体大小', 'Font size'],
+        ['小', 'Small'],
+        ['大', 'Large'],
+        ['超大', 'Extra large'],
+        ['保持了解', 'Stay informed'],
+        ['查看当前版本与可用新版本。检查不会安装任何内容。', 'See your current and available versions. Checking never installs anything.'],
+        ['当前版本', 'Current version'],
+        ['最新版本', 'Latest version'],
+        ['发现新版本', 'New version available'],
+        ['已是最新', 'Up to date'],
+        ['当前版本较新', 'Running a newer version'],
+        ['版本无法比较', 'Cannot compare versions'],
+        ['暂无发布版本', 'No releases yet'],
+        ['暂时无法检查', 'Unable to check right now'],
+        ['Pivane 发布页面', 'Pivane releases'],
+        ['当前 Pi 与发布包配套版本不同。', 'Running Pi differs from the version bundled with this release.'],
+        ['尚未手动检查。Pi 可能显示自动检查的结果。', 'Not checked manually yet. Pi may show an automatic check result.'],
+        ['交给独立 Agent 协助更新', 'Ask an independent Agent to help update'],
+        ['在部署机器上使用独立 Agent；不要让正在被更新的 Pivane 会话重启自身。先让它核对并提出计划，确认后再执行。', 'Use an independent Agent on the host machine. Do not restart Pivane from the conversation it is hosting. Ask for a plan first, then confirm execution.'],
+        ['更新提示词', 'Update prompt'],
+        ['复制提示词', 'Copy prompt'],
+        ['无法自动复制，已选中提示词，请手动复制。', 'Could not copy automatically. The prompt is selected; copy it manually.'],
+        ['暂时无法读取版本信息，请稍后再试。', 'Could not read version information. Try again later.'],
+        ['查看版本', 'View versions'],
+        ['请协助我更新部署机器上的 Pivane，并评估是否需要同步更新其使用的 Pi Coding Agent。先只读核对当前运行实例、源码/运行版本、官方仓库发布版本、Pi 实际版本和锁定依赖；阅读 https://github.com/YogurtJ/pivane 的 docs/AGENT_GUIDE.md、docs/INSTALL_RECOVERY.md 及目标版本说明；只有涉及修改源码时再遵循仓库 AGENTS.md，不要用旧发布包覆盖尚未发布的修复。先向我说明差异、兼容性、备份范围、实施及回退计划，等我明确确认后才执行。执行前确认所有任务、子 Agent、Shell、侧聊、预约及外部共用身份的写入已安全结束，保存草稿与附件；停机备份身份、会话、配置、媒体与项目数据，校验下载来源及包哈希，保留旧版并验证升级后的版本和数据。不要自动重试不确定的操作，不要删除用户数据。如果你本身运行在待更新的 Pivane 实例里，不要在当前会话中停止或重启承载你的服务；请让部署机器上的独立 Agent 或管理员在安全窗口执行，并从外部核对结果。', 'Help me update Pivane on its host machine, and assess whether its Pi Coding Agent also needs updating. First, read-only: verify the running instance, source/runtime versions, official repository releases, actual Pi version and locked dependencies. Read docs/AGENT_GUIDE.md, docs/INSTALL_RECOVERY.md and the target release notes at https://github.com/YogurtJ/pivane; follow the repository AGENTS.md if source changes are needed. Do not overwrite unpublished fixes with an older release. Explain the differences, compatibility, backup scope, execution and rollback plan, then wait for my explicit approval. Before execution, ensure all tasks, subagents, Shell sessions, side chats, schedules and external writers sharing the identity have safely finished; save drafts and attachments. Back up identity, sessions, configuration, media and project data while stopped; verify download origin and archive hash, retain the old version and check versions and data after updating. Do not retry uncertain operations automatically or delete user data. If you are running inside the Pivane instance being updated, do not stop or restart the service hosting this conversation. Ask an independent Agent or administrator on the host to act in a safe window and verify the result externally.']
+    );
+    rows.push(
+        ['我的要求', 'My instructions'],
+        ['未添加额外要求', 'No extra instructions'],
+        ['沿用所有项目的要求', 'Use instructions for all projects'],
+        ['还没有额外要求。可以直接输入，或从示例开始。', 'No extra instructions yet. Start typing or choose an example.'],
+        ['告诉 AI 你希望它怎样回答、怎样做事。这里的要求会持续使用，不必每次重复。', 'Tell AI how you like it to answer and work. These instructions are reused, so you do not need to repeat yourself.'],
+        ['查看当前对话', 'View current conversation'],
+        ['1 · 这些要求用在哪里？', '1 · Where should these apply?'],
+        ['通用的回复偏好与工作习惯', 'Your usual preferences and working style'],
+        ['只为这个项目设置不同要求', 'Different instructions for this project only'],
+        ['2 · 希望 AI 怎么配合你？', '2 · How would you like AI to help?'],
+        ['例如：先给我结论，再解释原因。遇到不确定的地方请直接说明。', 'For example: Start with the conclusion, then explain why. Be clear when something is uncertain.'],
+        ['文件位置与范围说明', 'File location and scope details'],
+        ['当前项目已有专属设置，会优先使用项目内容。修改这里不会覆盖它。', 'This project has its own instructions, which take priority. Changes here will not replace them.'],
+        ['内容视图', 'Content view'],
+        ['未保存', 'Unsaved'],
+        ['基础提示', 'Base instructions'],
+        ['下方显示所有项目的要求。直接修改即可为此项目定制；保存后将替代通用要求，不会自动叠加。', 'The instructions for all projects appear below. Edit them to customize this project; saving replaces the shared instructions, rather than combining them.'],
+        ['这里的内容只用于当前项目，会替代所有项目的通用要求，不会自动叠加。', 'These instructions apply only to this project. They replace the shared instructions, rather than combining them.'],
+        ['保留 AI 默认能力，只补充你的偏好。有专属要求的项目会优先使用项目设置。', 'Keep the default AI behavior and add your preferences. Projects with their own instructions use those instead.'],
+        ['保存结果需要核对。请先刷新并核对草稿，不要重复提交。', 'The save needs checking. Refresh and review your draft before submitting again.'],
+        ['要求不能为空、包含空字符或超过 64 KiB。要移除要求，请使用恢复按钮。', 'Instructions cannot be blank, contain NUL characters, or exceed 64 KiB. Use the reset button to remove them.'],
+        ['{0} 字符', '{0} characters'],
+        ['保存恢复操作', 'Save reset'],
+        ['保存要求', 'Save instructions'],
+        ['阅读预览', 'Preview'],
+        ['试试添加', 'Try adding'],
+        ['简洁回答', 'Keep it concise'],
+        ['请简洁回答，优先给出重点，避免重复和不必要的铺垫。', 'Please keep answers concise, prioritize key points, and avoid repetition or unnecessary introductions.'],
+        ['先给结论', 'Conclusion first'],
+        ['请先给出结论或建议，再解释原因；需要时用具体例子帮助我理解。', 'Please start with the conclusion or recommendation, then explain why. Use concrete examples when helpful.'],
+        ['修改前先说明', 'Explain before editing'],
+        ['修改文件前，请先简要说明计划与影响范围；遇到可能丢失数据的操作，先征求我的确认。', 'Before editing files, briefly explain the plan and its scope. Ask for my confirmation before any operation that could lose data.'],
+        ['撤销本次修改', 'Discard changes'],
+        ['已保存要求。要让当前对话使用新设置，请在空闲时点击「更新当前对话」。', 'Saved instructions. To use them in this conversation, click “Update current conversation” when it is idle.'],
+        ['3 · 让当前对话用上新要求', '3 · Use them in this conversation'],
+        ['更新当前对话', 'Update current conversation'],
+        ['重新加载当前对话的全部原生资源，然后核对提示词。不会发送消息。', 'Reload all native resources for this conversation, then check the prompt. No message is sent.'],
+        ['保存后，新启动的对话会读取这些要求。要更新已有对话，请先连接这个项目中的对话。', 'Newly started conversations will read the saved instructions. To update an existing one, connect to a conversation in this project first.'],
+        ['当前对话正在工作。你可以先保存要求，等任务结束后再更新，不会打断任务。', 'This conversation is working. You can save now and update it after the task finishes, without interrupting it.'],
+        ['保存只更新设置，不会自动改变已打开的对话。更新会重新加载全部原生资源；其他对话需分别更新。', 'Saving changes settings, not open conversations. Updating reloads all native resources; update other conversations separately.'],
+        ['当前对话的系统提示词', 'System prompt for this conversation'],
+        ['查看 AI 在这段对话中收到的工作要求。只读，不会发送消息。', 'Read the instructions AI received for this conversation. Viewing does not send a message.'],
+        ['修改我的要求', 'Edit my instructions'],
+        ['组成与来源', 'Parts and sources'],
+        ['完整提示词', 'Full prompt'],
+        ['当前项目 · {0}', 'This project · {0}']
+    );
+    rows.push(
+        ['默认继承主聊；切换仅影响这段侧聊，保留记录。', 'Starts with the main model. Changes apply only here and keep the conversation.'],
+        ['侧聊模型设置已更新，记录保持不变', 'Side-chat model settings updated. Conversation preserved.']
+    );
+    rows.push(
+        ['默认工具选择', 'Default tool selection'],
+        ['Codemode 工具呈现', 'Codemode tool presentation'],
+        ['Codemode 内联声明 Token 预算', 'Codemode inline declaration token budget'],
+        ['替换工具列表', 'Replace tool list'],
+        ['原生工具名称与 +/- 修饰符', 'Native tool names and +/- modifiers'],
+        ['工具名称', 'Tool names'],
+        ['（自定义工具）', ' (custom tool)'],
+        ['显式空列表：Pivane 不默认启用任何工具，包括扩展和自定义工具。', 'Explicit empty list: Pivane initially enables no tools, including extension and custom tools.'],
+        ['仅 +/- 修饰符：修改继承的工具选择，按顺序应用。', 'Only +/- modifiers: change the inherited tool selection in order.'],
+        ['普通名称替换继承列表，再按顺序应用 +/- 修饰符。', 'Plain names replace the inherited list, then +/- modifiers apply in order.'],
+        ['每行一个名称或 +名称 / -名称。保留自定义名称；未知或未加载工具不代表已获授权。', 'One name or +name / -name per line. Custom names are retained; an unknown or unloaded tool is not an authorization grant.'],
+        ['设置模型初始工具选择；codemode / tool_search 需对应扩展已加载。此设置不连接 MCP 或扩大工具权限。扩展和自定义工具仍可启用；这不是只读或安全模式，也不控制手动 ! Shell。当前实际工具可在会话详情 → 当前加载的资源中查看。', 'Set the initial model tool selection; codemode / tool_search require their extensions to be loaded. This does not connect MCP or expand permissions. Extensions can still activate tools unless the selection is explicitly empty; this is not a read-only or security mode and does not control manual ! Shell. Inspect actual tools in session details → loaded resources.'],
+        ['嵌套调用 · 原生记录不保存输出；编辑差异不可恢复', 'Nested calls · native records do not store outputs; edit diffs cannot be recovered'],
+        ['嵌套调用 · 实时输出仅在本页保留', 'Nested calls · live output is retained only on this page'],
+        ['记录不完整或仍在执行', 'Record is incomplete or still running'],
+        ['未完成', 'Unfinished'],
+        ['参数未保留{0}', 'Arguments not retained{0}'],
+        ['原生记录未保存此调用的输出', 'The native record does not store this call’s output'],
+        ['尚无输出', 'No output yet'],
+        ['嵌套来源：{0}', 'Nested source: {0}'],
+        ['嵌套编辑已成功；原生记录未保存输出，无法恢复差异', 'The nested edit succeeded; native output was not stored, so its diff cannot be recovered'],
+        ['显示已截断', 'Display truncated'],
+        ['MCP 授权：{0}', 'MCP authorization: {0}'],
+        ['打开原生 OAuth 授权页面', 'Open native OAuth authorization page']
+    );
+    rows.push(
+        ['先写问题，发送时才开启侧聊。', 'Write a question; your first send starts the side chat.'],
+        ['更新背景并新开', 'Refresh background & start new'],
+        ['新开侧聊', 'New side chat'],
+        ['首次发送时创建。新段不继承此前侧聊。', 'Starts on your first send. Previous side chats are not inherited.'],
+        ['这段侧聊已过期', 'This side chat has expired'],
+        ['这段侧聊已结束', 'This side chat has ended'],
+        ['记录和草稿仅保留在本页。新开后不会继承旧讨论；需要的内容请自行复制。', 'Messages and drafts stay on this page only. A new chat does not inherit this discussion; copy anything you need.'],
+        ['本线程已保留 20 段侧聊，请先复制所需内容并清空侧聊；已有记录不会自动删除。', 'This thread holds 20 previous side chats. Copy what you need and clear them before starting another; nothing is deleted automatically.'],
+        ['将结束当前侧聊，下次发送使用新的背景。旧记录仍可查看，但不会传给新 Agent。继续？', 'End this side chat and use fresh background on your next send? Old messages remain readable but are not passed to the new Agent.'],
+        ['此前侧聊 · 仅本页可见', 'Previous side chats · this page only'],
+        ['侧聊 {0}', 'Side chat {0}'],
+        ['已过期', 'Expired'],
+        ['历史讨论，仅供你查看。未传给新侧聊；背景捕获于 {0}。', 'Historical discussion for you only, not passed to the new chat. Background captured: {0}.'],
+        ['发送时捕获背景', 'Background captured on send'],
+        ['新侧聊已准备，发送时才创建运行实例', 'Ready for a new side chat. Its runtime starts when you send.'],
+        ['连接已断开，记录仍可复制；请新开侧聊', 'Disconnected. Messages can still be copied; start a new side chat.'],
+        ['结束并清空当前主线程的全部侧聊、草稿和此前记录？主会话与其他线程不受影响。', 'End and clear all side chats, drafts and previous messages for this thread? The main conversation and other threads are unaffected.'],
+        ['闲置 12 小时，运行资源已释放', 'Idle for 12 hours. Runtime resources have been released.'],
+        ['先写问题，发送时才开启侧聊。背景取自发送时的主会话；此前侧聊不会传给新 Agent。', 'Write a question to begin. Sending starts the side chat with the main context at that moment; previous side chats are not passed to the new Agent.'],
+        ['本页最多同时运行 3 段侧聊，请先结束其他线程的侧聊；历史记录不会自动删除。', 'This page can run up to 3 side chats at once. End another thread’s side chat first; previous messages are not deleted automatically.']
+    );
+    rows.push(
+        ['关于侧聊', 'About side chat'],
+        ['关闭说明', 'Close help'],
+        ['背景与模型', 'Background & model'],
+        ['想问些什么？', 'What would you like to ask?'],
+        ['在这里聊，不打断主对话。', 'Chat here without interrupting the main conversation.'],
+        ['独立讨论，不打断主对话；可以参考主对话，也可以单独聊。', 'Discuss separately without interrupting the main conversation. Refer to it or start with no background.'],
+        ['新开侧聊不会继承此前讨论，需要的内容请自行复制。', 'A new side chat does not inherit previous discussions. Copy anything you need.'],
+        ['闲置 12 小时后结束运行。记录仅留在当前页面，刷新或关页后不保留。', 'The runtime ends after 12 idle hours. Messages stay on this page only and are lost on refresh or close.'],
+        ['修改文件或运行命令前，需要你确认。主侧共享文件，请避免同时修改同一处。', 'File changes and commands need your approval. Both chats share files; avoid editing the same place at the same time.']
+    );
+    rows.push(
+        ["不确定装什么、怎么配？", "Not sure what to install or how to set it up?"],
+        ["技能资源", "skill"],
+        ["扩展模块", "Extensions"],
+        ["终端主题", "Terminal themes"],
+        ["针对特定任务的说明与脚本（SKILL.md）。任务匹配时 Agent 会自动读取；停用后不再加载。", "Task-specific instructions and scripts (SKILL.md). The agent reads a skill when a task matches it; disabled skills are not loaded."],
+        ["为 Agent 增加工具、命令或自动行为的代码模块，随会话加载并可执行代码。只启用可信来源。", "Code modules that add tools, commands or automatic behavior to the agent. They load with the session and can run code; enable only trusted sources."],
+        ["可复用的提示词，在输入框输入 /模板名 即可插入。", "Reusable prompts. Type /template-name in the composer to insert one."],
+        ["Pi 终端界面（TUI）的配色，不影响 Pivane 网页外观，通常无需调整。", "Color schemes for the Pi terminal interface (TUI). They do not change how Pivane looks and rarely need changes."],
+        ["打包安装的能力合集，可能同时提供下方的技能、扩展模块、提示词模板和主题。更新与移除在“⋯”菜单中。", "Installed bundles. A package can provide any of the skills, extensions, prompt templates and themes below. Update or remove it from the “⋯” menu."],
+        ["点击右上角“安装扩展包”，或让助手帮你挑选。", "Use “Install package” at the top right, or ask the assistant to help you choose."],
+        ["查看全部 {0} 项{1}", "View all {0} {1}"],
+        ["此范围暂无此类资源。", "None in this scope."]
+    );
+    rows.push(
+        ["已记住", "Remembered"],
+        ["Agent 记下", "Agent noted"],
+        ["学会技能", "Skill learned"],
+        ["本轮记忆更新", "Memory updates in this turn"],
+        ["点击展开或收起全文", "Click to expand or collapse"],
+        ["收起注入内容", "Hide injected content"],
+        ["身份记忆", "Profile memory"],
+        ["项目记忆", "Project memory"],
+        ["上一轮已注入", "Injected last turn"],
+        ["{0} 条 · {1} 字", "{0} entries · {1} chars"],
+        ["当前没有可注入的记忆。", "No memory will be injected yet."],
+        ["此身份的记忆未启用，不会注入记忆。", "Memory is disabled for this profile, so nothing is injected."],
+        ["记忆正在同步，稍后再看。", "Memory is syncing; check again shortly."],
+        ["记忆插件未安装，无法预览注入。", "The memory extension is not installed, so the injection cannot be previewed."],
+        ["身份不存在或已删除。", "The profile does not exist or was deleted."],
+        ["未在对话中定位的回执", "Receipts not located in the conversation"],
+        ["例如：回答数学题时先给结论，再给推导。", "For example: for math questions, state the conclusion before the derivation."]
     );
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

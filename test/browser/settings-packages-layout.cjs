@@ -116,10 +116,16 @@ async function run(browser, width, locale, theme) {
     await page.locator('#pi-package-install-close').click();
     await page.locator('#native-installed-scope').selectOption('global');
     await page.locator('.native-resource-list [data-resource-id]').first().waitFor();
-    assert.equal(await page.locator('.native-resource-list [data-resource-id]').count(), 40);
+    // "All" previews six items per resource type; each section links to its full filtered list.
+    assert.equal(await page.locator('.native-resource-list [data-resource-id]').count(), 24);
+    assert.deepEqual(await page.locator('.native-installed-section[data-resource-type]').evaluateAll(nodes => nodes.map(n => n.dataset.resourceType)), ['skills', 'extensions', 'prompts', 'themes']);
     await check();
     await page.screenshot({ path: `/tmp/packages-layout-${locale}-${width}-${theme}.png` });
-    await page.locator('.native-resource-list > button').click(); assert.equal(await page.locator('.native-resource-list [data-resource-id]').count(), 46);
+    await page.locator('.native-installed-section[data-resource-type="skills"] .native-section-more').click();
+    assert.equal(await page.locator('[data-installed-filter="skills"]').getAttribute('aria-pressed'), 'true');
+    assert.equal(await page.locator('.native-resource-list [data-resource-id]').count(), 12);
+    assert.equal(await page.locator('.native-resource-list [data-package-source]').count(), 0);
+    await page.locator('[data-installed-filter="all"]').click();
     await page.locator('.native-installed-search input').fill('resource-45.md'); assert.equal(await page.locator('.native-resource-list [data-resource-id]').count(), 1);
     await page.locator('.native-resource-list .native-item-origin summary').click(); await check();
     assert.equal(await page.locator('.native-resource-list .native-item-origin code').textContent(), resources[45].path);

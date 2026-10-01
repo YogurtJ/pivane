@@ -4,7 +4,7 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { readVerifiedFile } = require('./pi-file-bytes');
 const { safeFile, read, json, atomic, fail } = require('./pi-native-service');
-const { resolveManagedResources, managedEntry, identify } = require('./pi-bundled-resources');
+const { resolveManagedResources, managedEntry, identify, obsoleteMcpAdapter } = require('./pi-bundled-resources');
 const TYPES = ['extensions', 'skills', 'prompts', 'themes'];
 const hash = value => createHash('sha256').update(value).digest('hex');
 const target = value => /^[!+-]/.test(value) ? value.slice(1) : value;
@@ -154,6 +154,7 @@ class PiResourceService {
         return this.native.mutate(input, async () => {
             const ctx = await this.context(input.cwd, input.scope);
             if (ctx.revision !== input.expectedRevision) throw fail('配置已变化，请刷新', 409);
+            if (obsoleteMcpAdapter(input.source, input.scope === 'project' ? path.join(ctx.cwd, '.pi') : ctx.agentDir) && input.action !== 'remove') throw fail('Pi 0.99.1 已原生内置 MCP；请配置原生 mcp.json，不要安装旧适配器');
             if (identify(input.source, input.scope === 'project' ? path.join(ctx.cwd, '.pi') : ctx.agentDir)) throw fail('此组件由 Pivane 管理，请随 Pivane 更新；资源开关可单独设置');
             if (input.scope === 'project' && !ctx.trust.effective) throw fail('请先信任项目');
             const wantedScope = input.scope === 'project' ? 'project' : 'user';

@@ -9,6 +9,8 @@ const { buildContextSeed } = require('../server/pi-side-context');
 const { PiAgentSupervisor } = require('../server/pi-agent-supervisor');
 const { PiSideChatService } = require('../server/pi-side-chat');
 const { PiSessionStore } = require('../server/pi-session-store');
+const { PiUsageService } = require('../server/pi-usage-service');
+const { DatabaseSync } = require('node:sqlite');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-side-context-'));
 process.env.PI_CODING_AGENT_DIR = path.join(root, 'agent');
 process.env.PI_PROJECT_ROOTS = root;
@@ -101,7 +103,8 @@ test('official memory RPC accepts large context with no tool protocol, hides inh
                 baseUrl: `http://127.0.0.1:${provider.address().port}/v1`, api, apiKey: 'fixture-key', models: [{ ...source.model, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }]
             } } }));
             fs.writeFileSync(path.join(process.env.PI_CODING_AGENT_DIR, 'settings.json'), JSON.stringify({ compaction: { enabled: false } }));
-            const supervisor = new PiAgentSupervisor(), service = new PiSideChatService({ store: new PiSessionStore(), supervisor });
+            const supervisor = new PiAgentSupervisor(), store = new PiSessionStore(), usageService = new PiUsageService(store);
+            const service = new PiSideChatService({ store, supervisor, usage: usageService });
             const owner = { readyState: 1 }, events = [];
             try {
                 const prepared = await service.prepare(owner, { cwd: root, captureContext: async () => structuredClone(source) }, { mode: 'context' }, () => true);
@@ -122,6 +125,21 @@ test('official memory RPC accepts large context with no tool protocol, hides inh
                 const stats = await side.handle({ type: 'get_session_stats' });
                 assert.equal(stats.cost, 0);
                 assert.equal(stats.userMessages, 1); assert.equal(stats.assistantMessages, 1);
+                await side.flushUsage();
+                const db = new DatabaseSync(path.join(process.env.PI_CODING_AGENT_DIR, 'pivane-usage', 'ledger.sqlite'), { readOnly: true });
+                try {
+                    const rows = db.prepare("SELECT data FROM facts WHERE owner IN (SELECT key FROM owners WHERE name='侧聊')").all()
+                        .map(row => JSON.parse(row.data));
+                    assert.equal(rows.length, requests.length, 'one new reply per side runtime, not inherited assistant/history');
+                    assert.equal(rows.at(-1).usage.input, 100);
+                    assert.equal(rows.at(-1).usage.output, 10);
+                    assert.equal(rows.at(-1).provider, 'fixture');
+                    assert.doesNotMatch(JSON.stringify(rows), /EARLY_CONSTRAINT|SIDE_ONLY_ANSWER|FULL_SOURCE_EVIDENCE|SIDE_ONLY_QUESTION/);
+                    const daily = db.prepare("SELECT SUM(records) records,SUM(input) input,SUM(output) output FROM daily WHERE zone='UTC'").get();
+                    assert.equal(daily.records, requests.length);
+                    assert.equal(daily.input, requests.length * 100);
+                    assert.equal(daily.output, requests.length * 10);
+                } finally { db.close(); }
                 assert.ok(!fs.existsSync(path.join(root, 'must-not-execute')));
                 const body = JSON.stringify(requests.at(-1));
                 assert.ok(body.includes('INHERITED_PROJECT_POLICY'));
@@ -137,7 +155,7 @@ test('official memory RPC accepts large context with no tool protocol, hides inh
                 assert.ok(!JSON.stringify(compacted).includes('FULL_SOURCE_EVIDENCE'));
                 assert.equal((await side.handle({ type: 'get_session_stats' })).contextUsage.tokens, null);
                 assert.ok(!JSON.stringify(events).includes('EARLY_CONSTRAINT_0'), 'native events must not replay private inherited context to the side browser');
-            } finally { await service.dispose(); await supervisor.dispose(); }
+            } finally { await service.dispose(); await usageService.dispose(); await supervisor.dispose(); }
         });
     }
 });

@@ -79,6 +79,6 @@ TTS 的字段来自 `TtsProviderService.getPublicConfig()`；已配置模型复�
 
 ## 验证和后续
 
-`test/media-lab-rpc.test.js` 通过真实 Pi 0.85.0 RPC 加载工具，以本地 SSE fixture 完成 capabilities → media_plan_request，验证只激活两个工具、保留结构化参数、无 ticket、无 session 文件；不调用付费 Provider。服务与浏览器测试覆盖 review/execute、参数修改、重复/过期/不确定提交、首帧、HTTP adapter、动态 TTS 与桌面/手机交互。
+`test/media-lab-rpc.test.js` 通过真实 Pi RPC 加载工具，以本地 SSE fixture 完成 capabilities → media_plan_request，验证只激活两个工具、保留结构化参数、无 ticket、无 session 文件；不调用付费 Provider。服务与浏览器测试覆盖 review/execute、参数修改、重复/过期/不确定提交、首帧、HTTP adapter、动态 TTS 与桌面/手机交互。
 
 持久队列、批量执行、进度、取消、重试和跨模块流水线仍在路线图中。不得由 Agent 或前端循环调用执行接口冒充队列。

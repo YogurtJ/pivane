@@ -6,7 +6,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { createRequire } = require('node:module');
 const { createHash } = require('node:crypto');
-const LOCK_SHA256 = '4f242aaee52d1be13c1d9a795d77595a2f6ef0070d18cf7546f21b01d7a2881b';
+const LOCK_SHA256 = '266c95bb61abb2451742b7f3613188978ff4fbd8baadf8703d422462f170ecfa';
 
 const prefix = process.argv[2];
 if (!prefix || !path.isAbsolute(prefix) || !fs.existsSync(path.join(prefix, 'package', 'profile-memory-bundle.mjs')))
@@ -17,9 +17,10 @@ const manifest = {
     name: 'pivane-profile-memory-isolated', version: '1.0.0', private: true,
     dependencies: {
         'pi-hermes-memory': '0.9.9', 'better-sqlite3': '13.0.3',
-        '@earendil-works/pi-coding-agent': '0.87.1', '@earendil-works/pi-ai': '0.87.1',
-        '@earendil-works/pi-tui': '0.80.10', 'typebox': '1.3.27', 'strip-ansi': '7.2.0',
+        '@earendil-works/pi-coding-agent': '0.99.1', '@earendil-works/pi-ai': '0.99.1',
+        '@earendil-works/pi-tui': '0.99.1', 'typebox': '1.3.27', 'strip-ansi': '7.2.0',
     },
+    overrides: { '@earendil-works/pi-tui': '0.99.1', undici: '8.11.2' },
 };
 const manifestFile = path.join(prefix, 'package.json');
 if (fs.existsSync(manifestFile)) {
@@ -44,7 +45,7 @@ try {
     db.exec('CREATE VIRTUAL TABLE verify_fts USING fts5(content, tokenize=trigram)');
 } finally { db.close(); }
 if (req('pi-hermes-memory/package.json').version !== '0.9.9'
-    || JSON.parse(fs.readFileSync(path.join(prefix, 'node_modules', '@earendil-works', 'pi-coding-agent', 'package.json'), 'utf8')).version !== '0.87.1'
+    || JSON.parse(fs.readFileSync(path.join(prefix, 'node_modules', '@earendil-works', 'pi-coding-agent', 'package.json'), 'utf8')).version !== '0.99.1'
     || JSON.parse(fs.readFileSync(path.join(prefix, 'package-lock.json'), 'utf8')).packages['node_modules/pi-hermes-memory'].integrity
         !== 'sha512-6EfhmlgBuMfN7bQwN+xHMDVwX/Tm0fKKi6X8lAIBZtcjqxS9Of0rboJzmxfO3r+rGMWb71ss4p+dY34aEsJ1dg==')
     throw new Error('Installed versions or upstream integrity differ from verified recipe');

@@ -1,4 +1,4 @@
-# 持久会话用量统计
+# 持久会话与侧聊用量统计
 
 设置 → 用量统计提供今天、最近 7 天、本月及自定义日期（最多 366 天），包含输入、输出、缓存读写、总 Token 和估算美元费用。趋势可以按日、周和自然月查看；周从周一开始，周期只累计所选日期范围，不把范围外的日期算入。供应商、模型、项目和会话明细按 Token 降序，每批显示 20 行。
 
@@ -6,7 +6,7 @@
 
 用量保存于 Pi Agent 身份目录的 `pivane-usage/ledger.sqlite`。这是只有用量事实、去重指纹、定价依据和归属信息的独立账本，不是聊天副本，不含正文、思考、工具参数或摘要。原生 SessionManager/JSONL 仍是唯一对话事实来源；统计不会修改 JSONL，也不会创建 RPC worker 或请求模型。
 
-- 首次同步从 `sessions/<project>/*.jsonl` 补录原生 v2/v3 用量，后续按完整文件身份、大小和纳秒 mtime/ctime 跳过未变化文件。
+- 首次同步从 `sessions/<project>/*.jsonl` 补录原生 v2/v3 用量，后续按完整文件身份、大小和纳秒 mtime/ctime 跳过未变化文件。新建 BTW 侧聊在原生内存会话中生成的实际调用，会在回合结束、压缩结束及关闭时按侧聊边界之后的条目单独入账；继承的主线程历史不入账。
 - 保存每个文件的字节位置、完整内容 SHA-256、末尾换行状态及头部元数据。文件增长时，先通过同一安全描述符流式校验旧前缀，确认未改写后只解析新增 JSONL。旧内容仍有校验 I/O，但不再重复 JSON 解析、载荷规范化、逐条去重和入账。文件替换、截断、前缀改变或旧结尾没有 LF 时重新解析；读取中变化的文件整批丢弃。游标与用量事务一起提交，失败不推进位置；旧账本首次读取时补建游标，不重复累计。
 - 服务每 5 分钟进行有界同步，打开统计时也同步；同一查询保留 15 秒内存缓存。服务关闭时等待进行中的账本操作退出。休眠或停机不依赖跨日定时任务，恢复后补录仍存在的历史文件。
 - 每笔事实和各时区日汇总在同一 SQLite 事务内提交，重复导入不再次累计；重启、会话删除或历史文件缩短不会扣回已入账用量。
@@ -26,7 +26,7 @@
 
 首次批量入账按会话创建时间和路径排序确定归属，后续保留第一次入账的归属。删除原始会话不会将用量转给副本。会话明细包括已删除会话的显式名称或 ID，各归属小计可以加和到总量。
 
-模型按 assistant.provider 和 responseModel（缺省 model）归属；工具与摘要单列，不猜测模型。临时会话、BTW 侧聊、标题生成、媒体 planner、模型测试和未落盘请求暂不在本账本范围。标题生成窗口的一次请求用量展示不等于累计标题日志。
+模型按 assistant.provider 和 responseModel（缺省 model）归属；工具与摘要单列，不猜测模型。侧聊以独立会话身份归属（名称“侧聊”），同一内存条目的重复回传只入账一次；每笔仅保存用量/价格/时间/归属，不保存引用、问题、回复或工具参数。入账失败会在侧聊存活期间及关闭时重试；若账本持续不可用而内存会话终止，尚未成功入账的临时用量无法事后恢复。此功能启用前已结束的旧侧聊亦无法补录。普通临时会话、标题生成、媒体 planner、模型测试和其他未落盘请求仍不在本账本范围。标题生成窗口的一次请求用量展示不等于累计标题日志。
 
 ## 官方参考价格
 
@@ -46,7 +46,7 @@
 
 沿用 Origin/Bearer 验证和 no-store。from/to 必须是真实 YYYY-MM-DD，包含两端且最多 366 天；timeZone 缺省 UTC，必须为 Intl 支持的 IANA 时区。未知参数拒绝，不接受客户端文件路径和额外项目根。
 
-- `from/to/timeZone/generatedAt/scope` 保留，scope 为 `persistent-sessions`，增加 `ledger:true`。
+- `from/to/timeZone/generatedAt/scope` 保留，scope 为 `persistent-sessions-and-side-chats`，增加 `ledger:true`。
 - `total`、`daily`、`providers/models/projects/sessions` 保留 `input/output/cacheRead/cacheWrite/total/cost/records/missingUsage/missingCost/zeroCost`。
 - 各汇总增加 `recordedCost`（原始费用合计）、`estimatedRecords`（官方价补算笔数）、`unpricedRecords`（非零用量但仍无确认价格的笔数）。
 - 增加 `weekly/monthly`，date 分别为周一日期或 YYYY-MM；只合计筛选内日期。
@@ -70,4 +70,4 @@ node --test test/pi-usage.test.js test/pi-usage-ledger.test.js
 PLAYWRIGHT_MODULE=/path/to/playwright PI_USAGE_TEST_URL=http://127.0.0.1:3123 node test/browser/pi-usage.cjs
 ```
 
-Node 覆盖原生复制去重、持久化/删除/重启、日周月和时区、阶梯价、事务失败回滚、损坏存储、项目范围、增量推进、删除检查、源文件不变、鉴权和并发。浏览器采用独立身份及 mock API，在桌面/手机核对图表、周期、边界宽度、空状态/错误、迟到响应和 pageerror，不向真实会话发测试消息。
+Node 覆盖原生复制去重、侧聊继承边界与实际调用入账/重试去重、持久化/删除/重启、日周月和时区、阶梯价、事务失败回滚、损坏存储、项目范围、增量推进、删除检查、源文件不变、鉴权和并发。浏览器采用独立身份及 mock API，在桌面/手机核对图表、周期、边界宽度、空状态/错误、迟到响应和 pageerror，不向真实会话发测试消息。

@@ -202,11 +202,11 @@ async function main() {
             run: runs[0] && { status: runs[0].status, reason: runs[0].reason, costStatus: runs[0].costStatus ?? runs[0].cost?.status } });
 
         // 4. The learned preference is shown under the user message that taught it (display only).
-        const learnedHint = chatView.page.locator('#pi-transcript-content > .pi-memory-hint').filter({ hasText: `已记住：${LEARNED}` });
+        const learnedHint = chatView.page.locator('#pi-transcript-content .pi-memory-hint[data-hint-kind="learning"]').filter({ hasText: LEARNED });
         await learnedHint.waitFor({ timeout: 20000 });
-        const hintAnchor = await chatView.page.evaluate(text => { const node = [...document.querySelectorAll('#pi-transcript-content > .pi-memory-hint')]
-            .find(item => item.textContent.includes(text)); const prev = node?.previousElementSibling;
-            return prev?.dataset.messageKey ? JSON.parse(prev.dataset.messageKey)[0] : null; }, `已记住：${LEARNED}`);
+        const hintAnchor = await chatView.page.evaluate(text => { const node = [...document.querySelectorAll('#pi-transcript-content .pi-memory-hint[data-hint-kind="learning"]')]
+            .find(item => item.textContent.includes(text)); const prev = node?.closest('.pi-memory-hints')?.previousElementSibling;
+            return prev?.dataset.messageKey ? JSON.parse(prev.dataset.messageKey)[0] : null; }, LEARNED);
         assert.equal(hintAnchor, 'user', 'learned hint sits under the teaching user message');
         assert.match(await chatView.page.locator('.pi-chat-knowledge summary').innerText(), /本会话已记住 1 条/);
         assert.ok(!fs.readFileSync(session.path, 'utf8').includes('已记住：'), 'hints are never written to the session');
@@ -282,12 +282,11 @@ async function main() {
         step('skill view');
 
         // 7b. The agent's own write is hinted under its assistant message; "不对" deletes it with a tombstone.
-        const agentHint = chatView.page.locator('#pi-transcript-content > .pi-memory-hint').filter({ hasText: `Agent 记下：${TOOL_FACT}` });
+        const agentHint = chatView.page.locator('#pi-transcript-content .pi-memory-hint[data-hint-kind="agent"]').filter({ hasText: TOOL_FACT });
         await agentHint.waitFor({ timeout: 20000 });
         // Query and inspect in one synchronous page call: hints are rebuilt on every render.
-        await chatView.page.waitForFunction(fact => [...document.querySelectorAll('#pi-transcript-content > .pi-memory-hint')]
-            .filter(node => node.textContent.includes(fact)).some(node => { let prev = node.previousElementSibling;
-                while (prev?.classList.contains('pi-memory-hint')) prev = prev.previousElementSibling;
+        await chatView.page.waitForFunction(fact => [...document.querySelectorAll('#pi-transcript-content .pi-memory-hint[data-hint-kind="agent"]')]
+            .filter(node => node.textContent.includes(fact)).some(node => { const prev = node.closest('.pi-memory-hints')?.previousElementSibling;
                 return Boolean(prev?.matches('.pi-message.user') && prev.textContent.includes('MEMORY_TOOL_FIXTURE')); }), TOOL_FACT, { timeout: 20000 });
         assert.ok(await agentHint.isVisible(), 'agent hint stays visible in the compact view');
         chatView.page.once('dialog', dialog => dialog.accept());
@@ -298,6 +297,16 @@ async function main() {
         step('agent hint rejected with 不对');
         assert.ok(!fs.readFileSync(session.path, 'utf8').includes('Agent 记下：'), 'hints are never written to the session');
         await chatView.page.screenshot({ path: path.join(screenshots, 'chat-hints-1440.png'), fullPage: true });
+
+        // 7b'. The chat card's injection button reaches the real route (a wrong client path 404s here).
+        if (!await chatView.page.locator('.pi-chat-knowledge').evaluate(node => node.open)) await chatView.page.locator('.pi-chat-knowledge > summary').click();
+        await chatView.page.locator('.pi-knowledge-entries button').filter({ hasText: '查看本会话注入内容' }).click();
+        await chatView.page.locator('.pi-injection-preview .pi-injection-stat').first().waitFor({ timeout: 20000 });
+        assert.equal(await chatView.page.locator('.pi-injection-preview .pi-injection-error').count(), 0, 'chat injection preview loads');
+        await chatView.page.locator('.pi-injection-preview details > summary').click();
+        assert.ok((await chatView.page.locator('.pi-injection-preview pre').innerText()).includes(LEARNED), 'chat preview shows the learned memory');
+        step('chat injection preview');
+        await chatView.page.screenshot({ path: path.join(screenshots, 'chat-injection-1440.png'), fullPage: true });
 
         // 7c. "编辑" opens the profile's knowledge page on that entry.
         await learnedHint.locator('button').filter({ hasText: '编辑' }).click();

@@ -15,7 +15,68 @@ const imports = [
     ['registerMemorySearchTool', 'tools/memory-search-tool'], ['registerSessionSearchTool', 'tools/session-search-tool'],
     ['registerSkillTool', 'tools/skill-tool'],
 ];
+// Pi ships an npm-shrinkwrap that npm applies ahead of root overrides. Keep the
+// reviewed fixed release from the root lockfile and remove only a known-vulnerable
+// nested copy so Node resolves the hoisted package. Fail closed on anything else.
+const SHRINKWRAP_FIXES = [{
+    name: 'brace-expansion', owner: '@earendil-works/pi-coding-agent', consumer: 'minimatch', fixed: '5.0.12',
+    vulnerable: version => /^4\.\d+\.\d+$/.test(version) || /^5\.0\.(\d|1[01])$/.test(version),
+}];
+function packageVersion(directory) {
+    const stat = fs.lstatSync(directory);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error(`Unexpected dependency layout: ${directory}`);
+    return JSON.parse(fs.readFileSync(path.join(directory, 'package.json'), 'utf8')).version;
+}
+function dependencyCopies(modules, name, depth = 0, found = []) {
+    if (depth > 12 || !fs.existsSync(modules)) return found;
+    for (const entry of fs.readdirSync(modules, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+        const dirs = entry.name.startsWith('@')
+            ? fs.readdirSync(path.join(modules, entry.name), { withFileTypes: true }).filter(item => item.isDirectory()).map(item => path.join(modules, entry.name, item.name))
+            : [path.join(modules, entry.name)];
+        for (const dir of dirs) {
+            if (path.relative(modules, dir) === name) found.push(dir);
+            dependencyCopies(path.join(dir, 'node_modules'), name, depth + 1, found);
+        }
+    }
+    return found;
+}
+function enforceShrinkwrapFixes(base = root, fixes = SHRINKWRAP_FIXES) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(base, 'package.json'), 'utf8'));
+    const lock = JSON.parse(fs.readFileSync(path.join(base, 'package-lock.json'), 'utf8'));
+    const modules = path.join(base, 'node_modules'), removed = [];
+    for (const fix of fixes) {
+        if (manifest.overrides?.[fix.name] !== fix.fixed || lock.packages?.[`node_modules/${fix.name}`]?.version !== fix.fixed
+            || packageVersion(path.join(modules, fix.name)) !== fix.fixed) throw new Error(`Reviewed ${fix.name} ${fix.fixed} is not installed`);
+        const nested = path.join(modules, fix.owner, 'node_modules', fix.name);
+        if (fs.existsSync(nested)) {
+            const version = packageVersion(nested);
+            if (version !== fix.fixed) {
+                if (!fix.vulnerable(version)) throw new Error(`Unexpected ${fix.name} ${version}; review the dependency fix`);
+                fs.rmSync(nested, { recursive: true });
+                removed.push(`${fix.name}@${version}`);
+            }
+        }
+        for (const copy of dependencyCopies(modules, fix.name))
+            if (fix.vulnerable(packageVersion(copy))) throw new Error(`Vulnerable ${fix.name} remains at ${path.relative(base, copy)}`);
+        const consumer = path.join(modules, fix.owner, 'node_modules', fix.consumer);
+        if (fs.existsSync(consumer)) {
+            // Node's module lookup order, without require.resolve's process cache.
+            let dir = consumer, version = null;
+            while (!version) {
+                const candidate = path.join(dir, 'node_modules', fix.name);
+                if (fs.existsSync(candidate)) version = packageVersion(candidate);
+                else if (dir === base || path.dirname(dir) === dir) break;
+                else dir = path.dirname(dir);
+            }
+            if (version !== fix.fixed) throw new Error(`${fix.consumer} does not resolve ${fix.name} ${fix.fixed}`);
+        }
+    }
+    return removed;
+}
 function install() {
+    const removed = enforceShrinkwrapFixes();
+    if (removed.length) console.log('[Pivane] Replaced shrinkwrapped ' + removed.join(', ') + ' with reviewed fixed release.');
     vendorFiles(root);
     for (const entry of catalog) {
         const metadata = JSON.parse(fs.readFileSync(path.join(packagePath(entry), 'package.json'), 'utf8'));
@@ -38,4 +99,4 @@ function install() {
     console.log('[Pivane] Bundled ' + catalog.map(entry => `${entry.name} ${entry.version}`).join(', ') + ' ready.');
 }
 if (require.main === module) { try { install(); } catch (error) { console.error(error.message); process.exitCode = 1; } }
-module.exports = { install };
+module.exports = { install, enforceShrinkwrapFixes, SHRINKWRAP_FIXES };

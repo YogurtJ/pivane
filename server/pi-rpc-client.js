@@ -167,22 +167,38 @@ class PiRpcClient extends EventEmitter {
     }
 
     _drainStdoutBuffer(flush) {
-        while (true) {
-            const newline = this.stdoutBuffer.indexOf('\n');
-            if (newline === -1) break;
-            let line = this.stdoutBuffer.slice(0, newline);
-            this.stdoutBuffer = this.stdoutBuffer.slice(newline + 1);
-            if (line.endsWith('\r')) line = line.slice(0, -1);
-            this._handleLine(line);
-        }
-
-        if (flush && this.stdoutBuffer) {
-            const line = this.stdoutBuffer.endsWith('\r')
-                ? this.stdoutBuffer.slice(0, -1)
-                : this.stdoutBuffer;
-            this.stdoutBuffer = '';
-            this._handleLine(line);
-        }
+        // Search only newly decoded chunks. Re-scanning/flattening the whole
+        // incomplete get_messages frame on every pipe chunk is quadratic for images.
+        this.stdoutChunks ||= [];
+        this.stdoutQueue ||= [];
+        if (this.stdoutBuffer) this.stdoutQueue.push(this.stdoutBuffer);
+        this.stdoutBuffer = '';
+        if (flush) this.stdoutFlush = true;
+        // Event listeners can synchronously feed another chunk; retain wire order.
+        if (this.stdoutDraining) return;
+        this.stdoutDraining = true;
+        try {
+            while (this.stdoutQueue.length) {
+                const chunk = this.stdoutQueue.shift();
+                let start = 0, newline;
+                while ((newline = chunk.indexOf('\n', start)) !== -1) {
+                    this.stdoutChunks.push(chunk.slice(start, newline));
+                    let line = this.stdoutChunks.join('');
+                    this.stdoutChunks = [];
+                    if (line.endsWith('\r')) line = line.slice(0, -1);
+                    this._handleLine(line);
+                    start = newline + 1;
+                }
+                if (start < chunk.length) this.stdoutChunks.push(chunk.slice(start));
+            }
+            if (this.stdoutFlush) {
+                this.stdoutFlush = false;
+                let line = this.stdoutChunks.join('');
+                this.stdoutChunks = [];
+                if (line.endsWith('\r')) line = line.slice(0, -1);
+                if (line) this._handleLine(line);
+            }
+        } finally { this.stdoutDraining = false; }
     }
 
     _handleLine(line) {

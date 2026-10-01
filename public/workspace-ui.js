@@ -30,10 +30,14 @@
     const THEME_KEY = 'pi.workspace.theme';
     const SIDEBAR_KEY = 'pi.workspace.sidebarCollapsed';
     const SPLIT_PREFIX = 'pi.workspace.split:';
-    const THEMES = new Set(['system', 'daylight', 'mint', 'dark']);
+    const THEMES = new Set(['system', 'daylight', 'mint', 'slate', 'violet', 'dark']);
+    const FONT_SIZE_KEY = 'pi.workspace.fontSize';
+    const FONT_SIZES = Object.freeze({ small: '15px', default: '16px', large: '18px', xlarge: '20px' });
     const THEME_COLORS = {
-        daylight: '#f7f9fc',
-        mint: '#f4f8f5',
+        daylight: '#edf1ee',
+        mint: '#eaf2ed',
+        slate: '#edf2f8',
+        violet: '#f3f0fa',
         dark: '#0d0f10'
     };
 
@@ -56,7 +60,7 @@
         if (hostLabel) hostLabel.textContent = window.location.host;
         const routeTabs = new Set(['chat', 'assistant', 'cron', 'media', 'profiles', 'extensions', 'settings']);
         const settingsTabs = new Set(['providers', 'media', 'models', 'system-prompts', 'native', 'access', 'usage', 'updates']);
-        const extensionTabs = new Set(['extensions', 'installed']);
+        const extensionTabs = new Set(['extensions', 'installed', 'mcp']);
         const moreTabs = new Set(['cron', 'media', 'profiles', 'extensions']);
         document.querySelectorAll('[data-cron-nav]').forEach(label => { label.textContent = translateUi('定时任务'); });
         const moreToggle = document.getElementById('workspace-more-toggle');
@@ -213,10 +217,35 @@
             themeMenu?.querySelectorAll('[data-theme]').forEach(button => {
                 button.setAttribute('aria-checked', String(button.dataset.theme === preference));
             });
+            document.querySelectorAll('[data-appearance-theme]').forEach(button => {
+                button.setAttribute('aria-pressed', String(button.dataset.appearanceTheme === preference));
+            });
         }
 
-        const savedTheme = localStorage.getItem(THEME_KEY);
-        setTheme(savedTheme || 'system');
+        function setFontSize(size, persist = true) {
+            const preference = Object.hasOwn(FONT_SIZES, size) ? size : 'default';
+            document.documentElement.style.fontSize = FONT_SIZES[preference];
+            if (persist) localStorage.setItem(FONT_SIZE_KEY, preference);
+            document.querySelectorAll('[data-font-size]').forEach(button => {
+                button.setAttribute('aria-pressed', String(button.dataset.fontSize === preference));
+            });
+            window.dispatchEvent(new Event('resize'));
+        }
+
+        setTheme(localStorage.getItem(THEME_KEY) || 'system', false);
+        setFontSize(localStorage.getItem(FONT_SIZE_KEY), false);
+        document.getElementById('appearance-themes')?.addEventListener('click', event => {
+            const button = event.target.closest('[data-appearance-theme]');
+            if (button) setTheme(button.dataset.appearanceTheme);
+        });
+        document.getElementById('appearance-font-sizes')?.addEventListener('click', event => {
+            const button = event.target.closest('[data-font-size]');
+            if (button) setFontSize(button.dataset.fontSize);
+        });
+        window.addEventListener('storage', event => {
+            if (event.key === THEME_KEY || event.key === null) setTheme(localStorage.getItem(THEME_KEY) || 'system', false);
+            if (event.key === FONT_SIZE_KEY || event.key === null) setFontSize(localStorage.getItem(FONT_SIZE_KEY), false);
+        });
         const onSystemThemeChange = () => {
             if ((localStorage.getItem(THEME_KEY) || 'system') === 'system') setTheme('system', false);
         };

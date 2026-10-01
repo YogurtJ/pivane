@@ -1,0 +1,10 @@
+.pi-nested-tools { min-width: 0; max-width: 100%; margin: 8px; padding: 8px; border-left: 2px solid var(--border-color, #888); }
+.pi-nested-note { font-size: 12px; opacity: .75; overflow-wrap: anywhere; }
+.pi-nested-call { min-width: 0; max-width: 100%; margin: 6px 0 6px 8px; }
+.pi-nested-call > summary { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; cursor: pointer; overflow-wrap: anywhere; }
+.pi-nested-call > summary strong { min-width: 0; overflow-wrap: anywhere; }
+.pi-nested-call > summary span { font-size: 12px; opacity: .75; }
+.pi-nested-detail { min-width: 0; max-width: 100%; }
+.pi-nested-detail pre { max-height: 320px; max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.pi-edit-owner { display: block; font-weight: normal; opacity: .75; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .pi-nested-tools { margin: 4px 0; padding: 4px; } .pi-nested-call { margin-left: 4px; } }

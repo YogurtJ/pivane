@@ -10,11 +10,13 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 
 **A self-hosted AI workspace powered by Pi Coding Agent. Code, manage files, and create images, video & audio from your desktop, tablet or phone. Bring your own models.**
 
-[下载 1.2.0 正式版](https://github.com/YogurtJ/pivane/releases/tag/v1.2.0) · [开始使用](docs/USER_GUIDE.md) · [安装与恢复](docs/INSTALL_RECOVERY.md) · [Agent 操作指南](docs/AGENT_GUIDE.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues)
+[下载 1.3.0 正式版](https://github.com/YogurtJ/pivane/releases/tag/v1.3.0) · [开始使用](docs/USER_GUIDE.md) · [安装与恢复](docs/INSTALL_RECOVERY.md) · [Agent 操作指南](docs/AGENT_GUIDE.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues)
 
-**1.2.0 正式版锁定 Pi 0.87.1**，新增助手身份、记忆管理与可选自学习、内置子 Agent、线程通信和简洁消息视图，并改进长会话性能与手机操作。[查看本版变化与升级说明](docs/releases/1.2.0.md)。
+**1.3.0 正式版锁定 Pi 0.87.1**，新增定时任务与身份主线程、受管交付物与文件预览，并改进工作台布局、加载性能和依赖安全。[查看本版变化与升级说明](docs/releases/1.3.0.md)。
 
-本版通过 Linux ARM64 / Node 22 的 444 项测试与 19 组浏览器专项；最终包通过独立安装、从 1.1.0 升级、旧版网页更新器安装及原路径恢复验收。精确归档、回归复用与平台范围见版本说明；运行实例需经正常更新流程切换后生效。
+本版最终包在 Linux ARM64 / Node 22 通过 486 项测试、8 组变更相关浏览器专项，以及独立安装、从 1.2.0 升级、旧版网页更新器安装和原路径恢复验收。精确归档、回归复用与平台范围见版本说明；运行实例需经正常更新流程切换后生效。
+
+当前源码 **1.4.0 候选**已锁定 Pi **0.99.1**，接入原生 MCP/Codemode，并迁移旧适配器的子任务授权边界；候选、运行切换和公开发布分别核对，不修改旧归档。配置与迁移见[原生 MCP](docs/MCP.md)，升级边界与待完成验收见[1.4.0 候选说明](docs/releases/1.4.0.md)。
 
 ## 为什么用 Pivane
 
@@ -28,7 +30,7 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 
 ### 长期工作有原生记录可循
 
-沿用 Pi 原生 SessionManager 与 JSONL 会话，提供搜索、书签、会话树、分叉、编辑重试和 HTML/JSONL 导入导出。可以围绕当前任务开一段临时侧聊，读取文件、检索代码，或在明确交办并确认本次执行权限后完成小范围修改；主侧共享目录，需避免并发修改同一文件。讨论后也可把选定内容追加到主草稿。
+沿用 Pi 原生 SessionManager 与 JSONL 会话，提供搜索、书签、会话树、分叉、编辑重试和 HTML/JSONL 导入导出。可以围绕当前任务开一段临时侧聊，读取文件、检索代码，或在明确交办并确认本次执行权限后完成小范围修改；主侧共享目录，需避免并发修改同一文件。首次发送才开启侧聊，闲置12小时回收运行资源；此前记录仅留在本页供阅读，新Agent不继承旧讨论，有用内容可自行复制到主草稿。
 
 ### 模型和部署由你选择
 
@@ -64,7 +66,7 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 
 ## 部署在你自己的机器上
 
-当前正式版 **1.2.0** 锁定 **Pi 0.87.1**，推荐 Node.js 22.x；历史版本资产保留。1.2.0 的精确包 SHA256、验收范围和限制见[版本说明](docs/releases/1.2.0.md)及 Release 附件。下表是历史平台基线，不表示本包已在每个平台重跑验收。
+当前正式版 **1.3.0** 锁定 **Pi 0.87.1**，推荐 Node.js 22.x；历史版本资产保留。1.3.0 的精确包 SHA256、验收范围和限制见[版本说明](docs/releases/1.3.0.md)及 Release 附件。下表是历史平台基线，不表示本包已在每个平台重跑验收。
 
 | 服务端平台 | 已验收范围 | 安装入口 |
 |---|---|---|
@@ -92,7 +94,7 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 - Windows 普通用户权限下另通过 **30 项检查**；Ubuntu x86_64 另完成同包安装、167 项测试和静态检查补验。
 - 各验收环境的生产依赖 audit 为 **0 漏洞**。测试使用独立身份与合成服务，不把这些结果称为所有真实媒体供应商或手机系统的验收。
 
-准确的历史平台、包 SHA256 和检查结果随 [RC1 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.1) 的 `validation.json` 提供。**1.2.0** 的变更和本包验证范围见[版本说明](docs/releases/1.2.0.md)及[1.2.0 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.2.0)附件；历史 RC 跨平台结果不冒充 1.2.0 实机验收。
+准确的历史平台、包 SHA256 和检查结果随 [RC1 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.1) 的 `validation.json` 提供。**1.3.0** 的变更和本包验证范围见[版本说明](docs/releases/1.3.0.md)及[1.3.0 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.3.0)附件；历史 RC 跨平台结果不冒充 1.3.0 实机验收。
 
 ## 文档与 Agent 入口
 
@@ -113,7 +115,7 @@ Pivane 面向个人独立部署，不提供多人共用同一实例的账户隔�
 
 Pi 原生会话是对话的唯一事实来源。不要让网页与外部 CLI 同时写同一会话；历史导航不会撤销文件或外部请求的副作用。媒体规划不会直接执行生成，失败或结果不确定的请求不会自动重放。
 
-升级前请结束任务、暂停预约、停机并整批备份。兼容既有 `PI_*` 配置、旧数据文件、API/RPC 和浏览器偏好。新源码采用 Pivane 标识并提供配置别名，目录改名使用单独的停机迁移流程，详见[命名与兼容](docs/development/NAMING.md)。当前源码在设置提供[版本检查、Pi 受管更新、停机备份与重启](docs/UPDATES.md)。`node server.js` 和 `npm start` 都自动支持网页执行与命令输出反馈，无需更改服务启动命令；Pivane 应用可从版本卡片安装新发布包，自动校验、安装锁定依赖并停机备份后切换；首次启用需加载支持应用更新的启动器。当前不包含离线模式。
+升级前请结束任务、暂停预约、停机并整批备份。兼容既有 `PI_*` 配置、旧数据文件、API/RPC 和浏览器偏好。新源码采用 Pivane 标识并提供配置别名，目录改名使用单独的停机迁移流程，详见[命名与兼容](docs/development/NAMING.md)。当前源码在设置提供[只读版本检查与可复制的独立 Agent 更新提示词](docs/UPDATES.md)，不从网页直接安装、备份或重启。已存在的受管维护后端接口和恢复工具暂保留兼容；需要升级时请在部署机器上由独立 Agent 或管理员先核对运行实例与方案，再在安全空闲时操作。当前不包含离线模式。
 
 ## 开发与许可
 

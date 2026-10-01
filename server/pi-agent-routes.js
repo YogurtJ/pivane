@@ -102,6 +102,7 @@ function createPiAgentGateway(options = {}) {
         createModelRuntime: () => settingsService.createModelRuntime() });
     settingsService.auxiliaryModelsService = auxiliaryModels;
     const nativeService = new (require('./pi-native-service').PiNativeService)(store);
+    const mcpSettingsService = new (require('./pi-mcp-settings-service').PiMcpSettingsService)(store, { nativeService });
     const resourceService = new (require('./pi-resource-service').PiResourceService)(nativeService);
     const subagentSettings = new (require('./pi-subagent-settings-service').PiSubagentSettingsService)(nativeService, resourceService, settingsService);
     const systemPrompts = new (require('./pi-system-prompt-service').PiSystemPromptService)(nativeService);
@@ -111,7 +112,7 @@ function createPiAgentGateway(options = {}) {
     const maintenance = options.maintenance || new (require('./pi-maintenance-client').MaintenanceClient)({ managed: false });
     Object.assign(profiles, { nativeService, settingsService, maintenance });
     const deferred = new PiDeferredMessages({ store, supervisor, filePath: options.deferredFilePath, isSuspended: () => maintenance.locked });
-    const sideChat = new PiSideChatService({ store, supervisor });
+    const sideChat = new PiSideChatService({ store, supervisor, usage });
     const notifications = new (require('./pi-notification-service').PiNotificationService)({ access, store });
     supervisor.on('attention', event => { void notifications.notify(event); });
     supervisor.on('completion', (notice, worker) => {
@@ -132,7 +133,7 @@ function createPiAgentGateway(options = {}) {
     router.use(access.middleware());
     require('./pi-update-service').mountUpdateRoutes(router, undefined, {
         maintenance, preferences,
-        idle: () => !profiles.busy && !agentThreads.jobs.size && !agentThreads.catalogIndex.busy && !agentThreads.returns.busy && !agentThreads.messages.busy && !settingsService.mutating && !settingsService.loginService.busy && !nativeService.busy && !sessionTransfer.running
+        idle: () => !profiles.busy && !agentThreads.jobs.size && !agentThreads.catalogIndex.busy && !agentThreads.returns.busy && !agentThreads.messages.busy && !settingsService.mutating && !settingsService.loginService.busy && !nativeService.busy && !mcpSettingsService.busy && !sessionTransfer.running
             && !titles.jobs.size && !titles.savingModel && !learning?.busy && !cron.busy && !deferred.running && !sideChat.connections.size && !sideChat.tickets.size
             && ![...sideChat.parents.values()].some(parent => parent.preparing) && supervisor.isIdle()
             && !options.mediaLabService?.inFlight && !options.mediaLabService?.providerService?.busy && !options.mediaLabService?.providerService?.active,
@@ -223,6 +224,7 @@ function createPiAgentGateway(options = {}) {
             subagentRuntime: true,
             extensionAssistant: true,
             nativeSettings: true,
+            nativeMcpManagement: true,
             systemPrompts: true,
             projectTrust: true,
             modelAdvanced: true,
@@ -259,6 +261,8 @@ function createPiAgentGateway(options = {}) {
             sideChatContext: true,
             sideChatRetention: true,
             sideChatTools: true,
+            sideChatModels: true,
+            sideChatLifecycle: true,
             manualUnread: true,
             archives: true,
             projectIdentity: true,
@@ -273,11 +277,13 @@ function createPiAgentGateway(options = {}) {
         try {
             if (mutation) {
                 settingsService.loginService.assertIdle();
-                if (settingsService.mutating || nativeService.busy) throw Object.assign(new Error('设置正在保存，请稍后再试'), { status: 409 });
+                if (settingsService.mutating || nativeService.busy || mcpSettingsService.busy) throw Object.assign(new Error('设置正在保存，请稍后再试'), { status: 409 });
             }
             res.json(await action(req));
         } catch (error) { res.status(error.status || error.statusCode || 400).json({ error: error.message }); }
     };
+    require('./routes/mcp').mountMcpSettingsRoutes(router, { mcpSettingsService, settingsService });
+    require('./routes/mcp-runtime').mountMcpRuntimeRoutes(router, { store, supervisor, settingsService, nativeService, mcpSettingsService });
     router.get('/settings/subagents', nativeRoute(req => subagentSettings.snapshot(req.query.cwd)));
     router.put('/settings/subagents', nativeRoute(req => subagentSettings.save(req.body), true));
     router.post('/settings/subagents/install', nativeRoute(req => subagentSettings.install(req.body), true));
@@ -678,7 +684,8 @@ function createPiAgentGateway(options = {}) {
                 return { session, state: { ...state, ...(live ? { isStreaming: live.running, isCompacting: live.compacting,
                     webCompaction: boundary.webCompaction, webShell: boundary.webShell, webNavigation: boundary.webNavigation } : {}) },
                     messages, stats, models, thinkingLevels, commands, completion,
-                    pendingUi: boundary?.pendingUi || worker.getPendingUi(), controls: boundary?.controls || worker.controls.snapshot() };
+                    pendingUi: boundary?.pendingUi || worker.getPendingUi(), controls: boundary?.controls || worker.controls.snapshot(),
+                    mcpAuthorization: boundary?.mcpAuthorization || null };
             }
 
             async function handleSocketMessage(message) {
@@ -712,7 +719,15 @@ function createPiAgentGateway(options = {}) {
                     if (!sideConnection) throw new Error('侧聊连接已失效，请重新打开');
                     const data = await sideConnection.handle(message);
                     safeSend(socket, { type: 'response', id: message.id, command: message.type, success: true, data });
-                    if (message.type === 'quit_side_chat') socket.close(1000, 'Side chat ended');
+                    if (['quit_side_chat', 'close_side_segment'].includes(message.type)) socket.close(1000, 'Side chat ended');
+                    return;
+                }
+                if (message.type === 'get_side_model_options') {
+                    const source = worker;
+                    if (!source) throw new Error('请先连接主会话');
+                    const data = await sideChat.modelOptions(source);
+                    if (socketClosed || worker !== source) throw new Error('主会话已切换');
+                    safeSend(socket, { type: 'response', id: message.id, command: message.type, success: true, data });
                     return;
                 }
                 if (message.type === 'prepare_side_chat') {
@@ -982,13 +997,14 @@ function createPiAgentGateway(options = {}) {
         const stoppingDeferred = deferred.dispose();
         const stoppingThreads = agentThreads.dispose();
         const stoppingSide = sideChat.dispose();
+        await stoppingSide; // Keep side workers alive until their in-memory usage is saved.
         await supervisor.dispose();
         await learning.flushRegistrations();
         await learning.dispose();
         await profiles.dispose();
         await usage.dispose();
         await stoppingThreads;
-        await Promise.all([stoppingDeferred, stoppingSide, stoppingTitles, stoppingAuxiliaryModels]);
+        await Promise.all([stoppingDeferred, stoppingTitles, stoppingAuxiliaryModels]);
         await cron.dispose();
     }, store, supervisor, cron, deferred, sideChat, titles, auxiliaryModels, learning, knowledgeService, agentThreads };
 }

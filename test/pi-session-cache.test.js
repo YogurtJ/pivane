@@ -88,6 +88,32 @@ test('unchanged/one-file metadata and project aggregation avoid unrelated body r
     t.diagnostic('deterministic metadata body parses: unchanged=0; project aggregation after session discovery=0; warm getSession=0; one-file change=one file');
 });
 
+test('store retries only invalidated native metadata reads, with a bounded fresh proof', async () => {
+    const sdk = await getSdk(), store = new PiSessionStore();
+    const cwd = path.join(root, 'read-retries'); fs.mkdirSync(cwd);
+    const session = await store.createSession(cwd, 'before');
+    const read = store.sessionMetadata.list.bind(store.sessionMetadata);
+    let calls = 0;
+    store.sessionMetadata.list = async (...args) => {
+        calls++;
+        if (calls === 1) {
+            sdk.SessionManager.open(session.path).appendSessionInfo('after');
+            throw new Error('Session file changed');
+        }
+        return read(...args);
+    };
+    assert.equal((await store.getSession(cwd, session.id)).name, 'after');
+    assert.equal(calls, 2);
+    calls = 0;
+    store.sessionMetadata.list = async () => { calls++; throw new Error('Session file changed'); };
+    await assert.rejects(store.getSession(cwd, session.id), /Session file changed/);
+    assert.equal(calls, 3, 'continuous writes must not cause an unbounded read loop');
+    calls = 0;
+    store.sessionMetadata.list = async () => { calls++; throw new Error('identity failure'); };
+    await assert.rejects(store.getSession(cwd, session.id), /identity failure/);
+    assert.equal(calls, 1, 'other identity/read failures are never retried');
+});
+
 test('registry revisions and branch markers refresh only changed-file projections', async () => {
     const sdk = await getSdk(); const store = new PiSessionStore();
     const cwd = path.join(root, 'bindings'); fs.mkdirSync(cwd);
@@ -160,4 +186,58 @@ test('synthetic native/cache before-after benchmark (no timing assertion)', asyn
     fs.appendFileSync(path.join(directory, '0.jsonl'), '\n' + JSON.stringify({ type: 'session_info', name: 'changed' }));
     const oneFile = await run(() => cache.list(directory, sdk, () => sdk.SessionManager.list(cwd)));
     t.diagnostic(JSON.stringify({ files: 24, approximateMiB: 7.5, nativeMs: baseline, coldMs: cold, unchangedMs: unchanged, oneFileMs: oneFile }));
+});
+
+
+test('large image records share native fallback and cache only proven metadata', async () => {
+    const sdk = await getSdk(), directory = path.join(root, 'image-records'); fs.mkdirSync(directory);
+    const file = fixture(directory, 'image', [header(root, 'image'), message('user', 'small preview'),
+        message('toolResult', [{ type: 'image', data: 'x'.repeat(2 * 1024 * 1024), mimeType: 'image/png' }])]);
+    const cache = new SessionMetadataCache(); let fallbacks = 0;
+    const fallback = async () => { fallbacks++; return sdk.SessionManager.listAll(directory); };
+    const rows = await Promise.all(Array.from({ length: 12 }, () => cache.list(directory, sdk, fallback)));
+    assert.equal(fallbacks, 1, 'concurrent lists share a native scan');
+    assert.ok(rows.every(list => list[0] === rows[0][0]), 'unchanged metadata retains projection identity');
+    assert.equal(rows[0][0].allMessagesText, undefined, 'search bodies are not retained');
+    const warm = await cache.list(directory, sdk, fallback);
+    assert.equal(fallbacks, 1, 'large unchanged records do not fall back on each refresh');
+    assert.equal(warm[0], rows[0][0]);
+    fs.appendFileSync(file, '\n' + JSON.stringify({ type: 'session_info', name: 'updated' }));
+    assert.equal((await cache.list(directory, sdk, fallback))[0].name, 'updated');
+    assert.equal(fallbacks, 2, 'append invalidates the native metadata proof');
+    assert.equal(cache.pending.size, 0);
+});
+
+test('native fallback is not cached across replacement or failed reads', async () => {
+    const sdk = await getSdk(), directory = path.join(root, 'fallback-race'); fs.mkdirSync(directory);
+    const file = fixture(directory, 'race', [header(root, 'race'), message('user', 'one\u2028two')]);
+    const cache = new SessionMetadataCache();
+    await assert.rejects(cache.list(directory, sdk, async () => {
+        const rows = await sdk.SessionManager.listAll(directory);
+        fs.renameSync(file, file + '.old'); fixture(directory, 'race', [header(root, 'replacement')]);
+        return rows;
+    }), /changed/);
+    assert.equal(cache.files.has(file), false);
+    assert.equal(cache.pending.size, 0);
+    assert.equal((await cache.list(directory, sdk, () => assert.fail('unexpected fallback')))[0].id, 'replacement');
+    fixture(directory, 'race', [header(root, 'retry'), message('user', 'one\u2028two')]);
+    await assert.rejects(cache.list(directory, sdk, () => Promise.reject(new Error('read failed'))), /read failed/);
+    assert.equal(cache.pending.size, 0);
+    assert.equal((await cache.list(directory, sdk, () => sdk.SessionManager.listAll(directory)))[0].id, 'retry');
+});
+
+
+test('sessions beyond the fast-path file budget retain native semantics and warm caching', async () => {
+    const sdk = await getSdk(), directory = path.join(root, 'oversized-session'); fs.mkdirSync(directory);
+    const file = fixture(directory, 'large', [header(root, 'oversized'), message('user', 'small preview')]);
+    const image = '\n' + JSON.stringify(message('toolResult', [{ type: 'image', data: 'x'.repeat(4 * 1024 * 1024), mimeType: 'image/png' }]));
+    for (let index = 0; index < 17; index++) fs.appendFileSync(file, image);
+    assert.ok(fs.statSync(file).size > 64 * 1024 * 1024);
+    const cache = new SessionMetadataCache(); let fallbacks = 0;
+    const fallback = () => { fallbacks++; return sdk.SessionManager.listAll(directory); };
+    const cold = await cache.list(directory, sdk, fallback);
+    assert.equal(cold[0].messageCount, 18);
+    assert.deepEqual(strip(cold), strip(await sdk.SessionManager.listAll(directory)));
+    assert.equal((await cache.list(directory, sdk, fallback))[0], cold[0]);
+    assert.equal(fallbacks, 1);
 });

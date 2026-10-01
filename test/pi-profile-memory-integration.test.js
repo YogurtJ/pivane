@@ -10,7 +10,7 @@ const { createHash } = require('node:crypto');
 const bundle = process.env.PIVANE_TEST_HERMES_BUNDLE;
 const jitiPath = process.env.PIVANE_TEST_PI_JITI;
 
-test('isolated Pi 0.87.1 upstream components enforce profile index, recall, skill and lifecycle', {
+test('isolated pinned Pi upstream components enforce profile index, recall, skill and lifecycle', {
     skip: !bundle || !jitiPath ? 'Set PIVANE_TEST_HERMES_BUNDLE and PIVANE_TEST_PI_JITI for isolated integration' : false,
 }, async t => {
     const base = fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-hermes-integration-'));

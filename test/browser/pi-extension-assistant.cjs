@@ -39,8 +39,9 @@ async function run(browser, base, width, locale, noProject = false) {
                 { source: 'git:github.com/nicobailon/pi-web-access@v1.0', scope: 'user', installed: true },
                 { source: 'npm:pi-hermes-memory', scope: 'user', installed: false },
                 { source: 'npm:@other/pi-computer-use', scope: 'user', installed: true },
-                ...(url.searchParams.get('scope') === 'project' && projectTrusted ? [{ source: 'npm:pi-mcp-adapter@2.0.0', scope: 'project', installed: true }] : [])
+                ...(url.searchParams.get('scope') === 'project' && projectTrusted ? [{ source: 'npm:project-fixture', scope: 'project', installed: true }] : [])
             ], resources: [
+                { id: 'native-mcp', type: 'extensions', path: 'builtin:mcp', source: 'builtin', enabled: true, scope: 'user', override: 'inherit' },
                 { id: 'fixture', type: 'skills', path: '/tmp/fixture/SKILL.md', source: 'npm:fixture', enabled: true, scope: 'user', override: 'inherit' },
                 { id: 'second', type: 'skills', path: 'C:\\Skills\\spreadsheet-helper\\SKILL.md', source: 'local', enabled: false, scope: 'user', override: 'inherit' },
                 { id: 'extension', type: 'extensions', path: '/tmp/packages/document-tools/extensions/index.ts', source: 'npm:@example/document-tools@1.2.3', enabled: true, scope: 'user', override: 'inherit' }
@@ -112,7 +113,7 @@ async function run(browser, base, width, locale, noProject = false) {
         await page.locator('#extension-ppt-master [data-installation="unknown"]').waitFor();
         projectTrusted = true;
         await page.locator('#extensions-refresh').click();
-        await page.locator('#extension-pi-mcp-adapter [data-installation="installed"]').waitFor();
+        await page.locator('#extension-pi-native-mcp [data-installation="installed"]').waitFor();
         pptSkill = [{ id: 'ppt-master', scope: 'project', enabled: true }];
         await page.locator('#extensions-refresh').click();
         await page.locator('#extension-ppt-master [data-installation="installed"]').waitFor();
@@ -122,12 +123,12 @@ async function run(browser, base, width, locale, noProject = false) {
         for (let i = 0; !releaseInventory && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 10));
         assert.ok(releaseInventory);
         await page.locator('#extensions-scope').selectOption('global');
-        await page.locator('#extension-pi-mcp-adapter [data-installation="missing"]').waitFor();
+        await page.locator('#extension-pi-native-mcp [data-installation="installed"]').waitFor();
         releaseInventory(); await new Promise(resolve => setTimeout(resolve, 100));
-        assert.equal(await page.locator('#extension-pi-mcp-adapter [data-installation="missing"]').count(), 1, 'late project inventory cannot replace global status');
+        assert.equal(await page.locator('#extension-pi-native-mcp [data-installation="installed"]').count(), 1, 'native built-in stays available in global scope');
         projectTrusted = false;
     }
-    assert.equal(await page.locator('#extensions-nav [data-extensions-tab]').count(), 2);
+    assert.equal(await page.locator('#extensions-nav [data-extensions-tab]').count(), 3);
     assert.equal(await page.locator('.workspace-settings-nav button:visible').count(), 0, 'settings tabs stay out of the extension centre');
     await page.locator('#extensions-search').fill('injaneity');
     assert.equal(await page.locator('.extensions-card').count(), 1);

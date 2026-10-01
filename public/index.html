@@ -13,7 +13,9 @@
         const savedTheme = localStorage.getItem('pi.workspace.theme') || 'system';
         document.documentElement.dataset.theme = savedTheme === 'system'
             ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'daylight')
-            : savedTheme;
+            : (['daylight', 'mint', 'slate', 'violet', 'dark'].includes(savedTheme) ? savedTheme : 'daylight');
+        const savedFontSize = localStorage.getItem('pi.workspace.fontSize');
+        document.documentElement.style.fontSize = ({ small: '15px', default: '16px', large: '18px', xlarge: '20px' })[savedFontSize] || '16px';
     </script>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="workspace.css">
@@ -31,6 +33,7 @@
     <link rel="stylesheet" href="pi-task-results.css">
     <link rel="stylesheet" href="pi-agent-cards.css">
     <link rel="stylesheet" href="pi-turn-edits.css">
+    <link rel="stylesheet" href="pi-nested-tools.css">
     <link rel="stylesheet" href="pi-file-viewer.css">
     <link rel="stylesheet" href="pi-file-browser.css">
     <link rel="stylesheet" href="pi-history.css">
@@ -98,6 +101,12 @@
                         </button>
                         <button type="button" data-theme="mint" role="menuitemradio" aria-checked="false">
                             <span class="theme-swatch mint"></span><span><strong><!--i18n:s1326-->薄荷</strong><small><!--i18n:s1327-->柔和自然</small></span><i class="fa-solid fa-check"></i>
+                        </button>
+                        <button type="button" data-theme="slate" role="menuitemradio" aria-checked="false">
+                            <span class="theme-swatch slate"></span><span><strong><!--i18n:s3260-->雾蓝</strong><small><!--i18n:s3261-->沉静柔和</small></span><i class="fa-solid fa-check"></i>
+                        </button>
+                        <button type="button" data-theme="violet" role="menuitemradio" aria-checked="false">
+                            <span class="theme-swatch violet"></span><span><strong><!--i18n:s3262-->丁香</strong><small><!--i18n:s3263-->清透雅致</small></span><i class="fa-solid fa-check"></i>
                         </button>
                         <button type="button" data-theme="dark" role="menuitemradio" aria-checked="false">
                             <span class="theme-swatch dark"></span><span><strong><!--i18n:s1328-->夜间</strong><small><!--i18n:s1329-->低光环境</small></span><i class="fa-solid fa-check"></i>
@@ -469,28 +478,40 @@
                         <div class="pi-side-heading">
                             <button id="pi-side-parent-state" type="button" title="返回主会话" data-i18n-title="s1451"></button>
                             <span id="pi-side-tool-mode" class="pi-side-mode"><!--i18n:s1452-->无工具</span>
+                            <button id="pi-side-info" class="icon-btn subtle pi-side-info" type="button" aria-expanded="false" aria-controls="pi-side-info-panel"><i class="fa-solid fa-circle-info" aria-hidden="true"></i></button>
                             <button id="pi-side-end" class="icon-btn subtle" type="button" title="结束并清空侧聊" aria-label="结束并清空侧聊" disabled data-i18n-title="s1453" data-i18n-aria-label="s1453"><i class="fa-solid fa-power-off"></i></button>
                         </div>
+                        <section id="pi-side-info-panel" class="pi-side-info-panel" aria-labelledby="pi-side-info-title" hidden>
+                            <div class="pi-side-info-heading"><strong id="pi-side-info-title"></strong><button id="pi-side-info-close" class="icon-btn subtle" type="button"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
+                            <ul id="pi-side-info-points"></ul>
+                        </section>
                         <details id="pi-side-reference" class="pi-side-reference">
-                            <summary title="展开或收起引用与设置" data-i18n-title="s1454"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i><span id="pi-side-reference-label"><!--i18n:s1072-->尚未引用上下文</span><span class="pi-side-reference-hint"><!--i18n:s1331-->设置</span></summary>
+                            <summary title="展开或收起引用与设置" data-i18n-title="s1454"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i><span class="pi-side-reference-meta"><span id="pi-side-reference-label"></span><span id="pi-side-model"><!--i18n:s1071-->临时侧聊</span></span><span class="pi-side-reference-hint"><!--i18n:s1331-->设置</span></summary>
                             <div class="pi-side-reference-body">
-                                <div class="pi-side-model-row"><span><!--i18n:s1455-->侧聊模型</span><span id="pi-side-model"><!--i18n:s1071-->临时侧聊</span></div>
+                                <div id="pi-side-model-controls" class="pi-side-model-controls" hidden>
+                                    <button id="pi-side-model-select" class="pi-side-model-trigger" type="button" disabled></button>
+                                    <select id="pi-side-thinking-select" aria-label="Thinking"></select>
+                                </div>
                                 <div class="pi-side-source-controls">
                                     <select id="pi-side-source" aria-label="侧聊引用范围" title="侧聊引用范围" data-i18n-aria-label="s1456" data-i18n-title="s1456"><option value="context" hidden><!--i18n:s1457-->接着当前任务聊</option><option value="recent-6"><!--i18n:s1458-->近期 6 条正文（旧版）</option><option value="recent-12"><!--i18n:s1459-->近期 12 条正文（旧版）</option><option value="blank"><!--i18n:s1460-->单独问个问题</option></select>
-                                    <button id="pi-side-refresh" class="icon-btn subtle" type="button" title="重新引用并开始新侧聊" aria-label="重新引用并开始新侧聊" data-i18n-title="s1461" data-i18n-aria-label="s1461"><i class="fa-solid fa-rotate"></i></button>
                                 </div>
+                                <button id="pi-side-refresh" class="pi-side-refresh" type="button"><i class="fa-solid fa-rotate" aria-hidden="true"></i><span></span></button>
                                 <div id="pi-side-reference-preview"></div>
                             </div>
                         </details>
+                        <div id="pi-side-session-note" class="pi-side-session-note" role="status" hidden>
+                            <div><strong id="pi-side-session-title"></strong><p id="pi-side-session-description"></p></div>
+                            <button id="pi-side-new" type="button"></button>
+                        </div>
                         <div id="pi-side-confirm" class="pi-side-confirm" role="status" aria-live="polite" hidden></div>
                         <div class="pi-transcript-viewport pi-side-viewport">
-                            <div id="pi-side-transcript" class="pi-transcript pi-side-transcript" tabindex="0" role="region" aria-label="侧聊消息" data-i18n-aria-label="s1462"><div id="pi-side-messages" aria-live="polite"></div></div>
+                            <div id="pi-side-transcript" class="pi-transcript pi-side-transcript" tabindex="0" role="region" aria-label="侧聊消息" data-i18n-aria-label="s1462"><div id="pi-side-content"><div id="pi-side-history" class="pi-side-history" hidden></div><div id="pi-side-messages" aria-live="polite"></div></div></div>
                             <div id="pi-side-track" class="pi-transcript-track inactive" role="scrollbar" tabindex="-1" aria-label="侧聊滚动位置" aria-controls="pi-side-transcript" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" data-i18n-aria-label="s1463"><div id="pi-side-thumb" class="pi-transcript-thumb"></div></div>
                             <button id="pi-side-latest" class="pi-jump-latest" type="button" title="回到最新侧聊" aria-label="回到最新侧聊" hidden data-i18n-title="s1464" data-i18n-aria-label="s1464"><i class="fa-solid fa-arrow-down"></i></button>
                         </div>
-                        <div id="pi-side-status" class="pi-side-status" role="status"><!--i18n:s1465-->尚未开始</div>
+                        <div id="pi-side-status" class="pi-side-status" role="status" hidden></div>
                         <form id="pi-side-form" class="pi-side-composer">
-                            <textarea id="pi-side-input" rows="2" placeholder="问一个旁路问题" aria-label="侧聊问题" disabled data-i18n-placeholder="s1466" data-i18n-aria-label="s1467"></textarea>
+                            <textarea id="pi-side-input" rows="2" aria-label="侧聊问题" disabled data-i18n-aria-label="s1467"></textarea>
                             <button id="pi-side-send" class="pi-send-button" type="submit" title="发送侧聊" aria-label="发送侧聊" disabled data-i18n-title="s1468" data-i18n-aria-label="s1468"><i class="fa-solid fa-arrow-up"></i></button>
                             <button id="pi-side-stop" class="pi-stop-button" type="button" title="停止侧聊回复" aria-label="停止侧聊回复" hidden data-i18n-title="s1469" data-i18n-aria-label="s1469"><i class="fa-solid fa-stop"></i></button>
                         </form>
@@ -666,6 +687,27 @@
                             </select>
                             <p id="workspace-language-status" role="status"></p>
                         </div>
+                        <section class="settings-feature-card appearance-card" aria-labelledby="appearance-title">
+                            <div class="appearance-heading"><strong id="appearance-title"><!--i18n:s3264-->外观</strong><span><!--i18n:s1535-->当前浏览器</span></div>
+                            <div class="appearance-group"><strong id="appearance-theme-title"><!--i18n:s3265-->主题与配色</strong>
+                                <div id="appearance-themes" class="appearance-grid appearance-themes" role="group" aria-labelledby="appearance-theme-title">
+                                    <button type="button" data-appearance-theme="system" aria-pressed="false"><span class="appearance-preview system" aria-hidden="true"><i class="fa-solid fa-circle-half-stroke"></i></span><span><!--i18n:s1322-->跟随系统</span></button>
+                                    <button type="button" data-appearance-theme="daylight" aria-pressed="false"><span class="appearance-preview daylight" aria-hidden="true"><i class="fa-regular fa-sun"></i></span><span><!--i18n:s1324-->晴空</span></button>
+                                    <button type="button" data-appearance-theme="mint" aria-pressed="false"><span class="appearance-preview mint" aria-hidden="true"><i class="fa-solid fa-leaf"></i></span><span><!--i18n:s1326-->薄荷</span></button>
+                                    <button type="button" data-appearance-theme="slate" aria-pressed="false"><span class="appearance-preview slate" aria-hidden="true"><i class="fa-solid fa-cloud"></i></span><span><!--i18n:s3260-->雾蓝</span></button>
+                                    <button type="button" data-appearance-theme="violet" aria-pressed="false"><span class="appearance-preview violet" aria-hidden="true"><i class="fa-solid fa-star"></i></span><span><!--i18n:s3262-->丁香</span></button>
+                                    <button type="button" data-appearance-theme="dark" aria-pressed="false"><span class="appearance-preview dark" aria-hidden="true"><i class="fa-regular fa-moon"></i></span><span><!--i18n:s1328-->夜间</span></button>
+                                </div>
+                            </div>
+                            <div class="appearance-group"><strong id="appearance-font-title"><!--i18n:s3266-->字体大小</strong>
+                                <div id="appearance-font-sizes" class="appearance-grid appearance-sizes" role="group" aria-labelledby="appearance-font-title">
+                                    <button type="button" data-font-size="small" aria-pressed="false"><span aria-hidden="true">Aa</span><span><!--i18n:s3267-->小</span></button>
+                                    <button type="button" data-font-size="default" aria-pressed="false"><span aria-hidden="true">Aa</span><span><!--i18n:s751-->默认</span></button>
+                                    <button type="button" data-font-size="large" aria-pressed="false"><span aria-hidden="true">Aa</span><span><!--i18n:s3268-->大</span></button>
+                                    <button type="button" data-font-size="xlarge" aria-pressed="false"><span aria-hidden="true">Aa</span><span><!--i18n:s3269-->超大</span></button>
+                                </div>
+                            </div>
+                        </section>
                         <section id="settings-message-view" class="settings-feature-card pi-message-view-card" aria-labelledby="settings-message-view-title">
                             <div class="pi-message-view-head"><strong id="settings-message-view-title"><!--i18n:s2891-->消息显示</strong><span><!--i18n:s1535-->当前浏览器</span></div>
                             <div id="pi-transcript-modes" class="pi-transcript-modes" role="group" aria-labelledby="settings-message-view-title" aria-describedby="pi-transcript-mode-hint">
@@ -875,7 +917,6 @@
     <script src="pi-editor-suggestions.js"></script>
     <script src="pi-native-context.js"></script>
     <link rel="stylesheet" href="pi-native-settings.css">
-    <script src="pi-maintenance.js"></script>
     <script src="pi-update-notifications.js"></script>
     <script src="pi-updates.js"></script>
     <link rel="stylesheet" href="pi-updates.css">
@@ -884,6 +925,8 @@
     <script src="pi-auxiliary-models.js"></script>
     <link rel="stylesheet" href="pi-auxiliary-models.css">
     <script src="pi-title-settings.js"></script>
+    <script src="pi-mcp-settings.js"></script>
+    <link rel="stylesheet" href="pi-mcp-settings.css">
     <script src="pi-extensions.js"></script>
     <link rel="stylesheet" href="pi-extensions.css">
     <script src="pi-assistant-projects.js"></script>
@@ -927,6 +970,7 @@
     <script src="pi-file-viewer.js"></script>
     <script src="pi-file-browser.js"></script>
     <script src="pi-files-panel.js"></script>
+    <script src="pi-nested-tools.js"></script>
     <script src="pi-turn-edits.js"></script>
     <dialog id="pi-template-dialog" class="pi-template-dialog" aria-labelledby="pi-template-title">
         <header><strong id="pi-template-title"><!--i18n:s1608-->提示词模板</strong><button id="pi-template-close" type="button" aria-label="关闭模板管理" data-i18n-aria-label="s1609">×</button></header>

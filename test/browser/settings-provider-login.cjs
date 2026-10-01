@@ -169,10 +169,11 @@ async function run(browser, viewport, theme) {
     await page.locator('[data-settings-tab="models"]').click();
     assert.ok(await page.locator('#settings-media-agent-form').isVisible());
     assert.ok(await page.locator('#settings-reply-tts').isVisible());
-    for (const tab of ['packages', 'skills']) await page.locator(`[data-settings-tab="${tab}"]`).click();
+    assert.equal(await page.locator('[data-settings-tab="packages"], [data-settings-tab="skills"]').count(), 0, 'resources live in the extension centre, not model settings');
     catalog.providerLogin = false; catalog.modelThinking = false;
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.locator('#workspace-settings-toggle').click();
+    await page.locator('[data-settings-tab="providers"]').click();
     await group('openai').locator('summary').click();
     assert.equal(await page.locator('[data-action="thinking"], [data-action="oauth"]').count(), 0, 'old backends do not advertise unsupported actions');
     await group('openai').locator('[data-action="key"]').click();

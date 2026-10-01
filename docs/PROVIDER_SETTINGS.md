@@ -14,7 +14,7 @@
 
 服务端刷新与会话操作、登录/配置写入互斥，同一worker刷新合并；已在切换模型或切换结果不确定时拒绝刷新。8秒原生signal、12秒RPC等待、最多5000模型/1MiB，仅输出选择所需字段，不返回认证或headers；私有响应包括未知/迟到均截获。超时/失去确认时关闭预先空闲且受互斥保护的worker再重连，不释放仍可能改变目录的实例供继续发送。旧后端保留原生只读列表刷新，并提示必要时空闲退出/重开。
 
-本功能通过 Pi 0.85.0 公开 ModelRuntime、SettingsManager 与 pi-ai 的 getSupportedThinkingLevels 接入，不修改 Pi 依赖包。代码已实现；生产是否启用以 `/api/pi/status.providerLogin`、`modelThinking` 为准。
+本功能通过 Pi 公开 ModelRuntime、SettingsManager 与 pi-ai 的 getSupportedThinkingLevels 接入，不修改 Pi 依赖包。代码已实现；生产是否启用以 `/api/pi/status.providerLogin`、`modelThinking` 为准。
 
 <a id="会话顶部快速选择模型"></a>
 

@@ -66,7 +66,7 @@ class UpdateService {
         this.cache = new Map();
         this.inflight = new Map();
     }
-    snapshot(channel = this.appVersion.includes('-') ? 'preview' : 'stable') {
+    snapshot(channel = 'preview') {
         if (!['stable', 'preview'].includes(channel)) throw Object.assign(new Error('Invalid update channel'), { status: 400 });
         const cached = this.cache.get(channel);
         const automatic = this.notifications?.cachedPi();
@@ -126,7 +126,7 @@ class UpdateService {
     }
     check(channel) {
         this.snapshot(channel); // Validate before any network access.
-        channel ||= this.appVersion.includes('-') ? 'preview' : 'stable';
+        channel ||= 'preview';
         if (this.inflight.has(channel)) return this.inflight.get(channel);
         if (this.cache.get(channel)?.expires > this.now()) return Promise.resolve(this.snapshot(channel));
         // Reserve synchronously, before network requests; callers share one check per channel.
@@ -185,6 +185,7 @@ function mountUpdateRoutes(router, service = new UpdateService(), hooks = {}) {
                 version = candidate.version; release = { version, sha256: match[1] };
             }
             if (action === 'update') {
+                if (require('../package.json').pivaneCompatibility?.piVersion) throw Object.assign(new Error('当前 Pivane 与已验证 Pi 版本绑定，请一起更新 Pivane 及原生适配，不单独升级 Pi'), { status: 409 });
                 const upstream = await service.pi(); version = upstream.version;
                 if (compareVersions(service.piVersion, version) !== -1) throw Object.assign(new Error('没有高于当前版本的 Pi 正式版'), { status: 409 });
             }

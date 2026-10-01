@@ -8,7 +8,9 @@
 
 Pivane is a self-hosted AI workspace powered by **Pi Coding Agent**. Work on code, manage projects and files, follow Agent tasks, and use your own image, video and speech models from a desktop, tablet or phone.
 
-[Download 1.2.0](https://github.com/YogurtJ/pivane/releases/tag/v1.2.0) · [Install](docs/en/INSTALL.md) · [User guide](docs/en/USER_GUIDE.md) · [Report an issue](https://github.com/YogurtJ/pivane/issues)
+[Download 1.3.0](https://github.com/YogurtJ/pivane/releases/tag/v1.3.0) · [Install](docs/en/INSTALL.md) · [User guide](docs/en/USER_GUIDE.md) · [Report an issue](https://github.com/YogurtJ/pivane/issues)
+
+Current source **1.4.0 candidate** pins Pi **0.99.1**, integrates native MCP/Codemode and replaces the legacy adapter's child-tool authorization boundary. Source, deployment and public release are verified separately; old archives remain unchanged. See [native MCP](docs/MCP.md) and the [1.4.0 candidate notes](docs/releases/1.4.0.md) for upgrade boundaries and pending validation.
 
 ## From a question to completed work
 
@@ -20,7 +22,7 @@ The default reading view groups consecutive thinking and tool records. Switch to
 
 Session history uses Pi's native SessionManager and JSONL files. Search conversations, add bookmarks, inspect the session tree, fork a discussion, edit and retry a question, or export HTML and the active JSONL branch.
 
-A temporary side chat can reference the main task's context, read files and search code. With `sideChatTools` enabled, explicit modification requests can use edit, write and command tools after an approval for that reply. Main and side agents share files; avoid concurrent edits to the same files. You can also explicitly append selected content to your main draft. Session navigation changes the conversation position; it does not undo files or external actions.
+A temporary side chat can reference the main task's context, read files and search code. With `sideChatTools` enabled, explicit modification requests can use edit, write and command tools after an approval for that reply. Main and side agents share files; avoid concurrent edits to the same files. Its runtime starts on the first send and expires after 12 idle hours. Previous messages remain readable on this page but are not inherited by a new Agent; copy useful content to your main draft. Session navigation changes the conversation position; it does not undo files or external actions.
 
 ## Your models and deployment
 
@@ -38,7 +40,7 @@ The bilingual interface is included starting with **1.0.0-rc.2**. Version **1.0.
 
 ## Install
 
-The current stable release, **1.2.0**, is pinned to **Pi 0.87.1**. It adds assistant identities, managed memory and opt-in learning, bundled subagents, direct thread messaging, compact conversation views and performance improvements. See the [release notes](docs/releases/1.2.0.md). The release passed 444 Node tests and 19 browser suites; the final archive passed independent installation, upgrade from 1.1.0, old web-updater installation and same-path restoration on Linux ARM64 with Node 22. The validation report distinguishes exact-archive checks, unchanged regression reuse and historical platform results. Running instances change only after an explicit update.
+The current stable release, **1.3.0**, is pinned to **Pi 0.87.1**. It adds scheduled tasks with identity main threads, managed read-only deliverables with file previews, and workspace layout, loading-performance and dependency-security improvements. See the [release notes](docs/releases/1.3.0.md). The final archive passed 486 Node tests, 8 change-related browser suites, independent installation, upgrade from 1.2.0, old web-updater installation and same-path restoration on Linux ARM64 with Node 22. macOS and Windows keep their historical baselines. Running instances change only after an explicit update.
 
 Use **Node.js 22.x** and the locked dependencies. Validation results are attached to the exact archive SHA256. You do not need a global Pi installation or a frontend build. The current source bundles pi-subagents 0.71.0 and pi-hermes-memory 0.9.9; `node scripts/install.cjs` prepares both without rewriting your CLI package declarations and uses the SQLite binaries shipped in the dependency package. Older published archives without this installer retain their original `npm ci` instructions. SQLite may require Python and C/C++ build tools when no matching prebuilt binary exists. See [bundled capabilities](docs/BUNDLED_CAPABILITIES.md).
 
@@ -64,7 +66,7 @@ Persistent sessions live on the server. Unsent drafts, attachments and temporary
 
 The default installation runs in the background. After configuring the instance, run `node scripts/install-service.cjs`: Linux uses a user systemd service, macOS a LaunchAgent, and Windows a login task. macOS and Windows also receive a desktop browser shortcut. Linux servers need linger or an equivalent system service for startup before login. See [service management and validation limits](docs/BACKGROUND_SERVICE.md). Foreground `npm start` is for trials and troubleshooting.
 
-The current source includes **Settings → Versions and updates** for version checks and official downloads, plus managed Pi updates, data backups and instance restarts. Both `node server.js` and `npm start` support these actions without changing service startup commands. The page displays the actual command output, exit code and final version. Pi is installed and checked in a separate directory before the service stops for backup and activation. Pivane application updates still use release archives. See [the user guide](docs/en/USER_GUIDE.md#versions-and-updates).
+**Settings → Versions and updates** now shows current and available Pivane/Pi versions, links to the official release pages, and offers a prompt to copy to an independent Agent on the host. It no longer provides in-page installation, backup, restart or archive downloads. Existing managed-maintenance backend APIs remain for compatibility; version checks do not execute them. See [the user guide](docs/en/USER_GUIDE.md#versions-and-updates).
 
 Current source introduces Pivane configuration names and `PIVANE_` aliases for workspace settings, while preserving existing files, browser preferences and Pi-native identity variables. Project directory moves require a verified offline migration; see [naming and compatibility](docs/development/NAMING.md).
 

@@ -62,6 +62,7 @@ test('local update snapshots never contact sources; stable and preview are disti
     assert.equal(preview.pi.status, 'available'); assert.equal(preview.dependencyMatches, false, 'the fixture represents an older runtime than the 0.86 workspace bundle');
     const stable = await service.check('stable');
     assert.equal(stable.pivane.version, '0.9.0'); assert.equal(stable.pivane.status, 'ahead');
+    assert.equal((await service.check()).pivane.version, '1.0.0-rc.10', 'default lookup includes prereleases even for stable local versions');
     for (const { opts } of requests) {
         assert.equal(opts.redirect, 'error'); assert.equal(opts.size, 2 * 1024 * 1024);
         assert.deepEqual(Object.keys(opts.headers).sort(), ['Accept', 'User-Agent']);

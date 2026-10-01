@@ -13,7 +13,7 @@ async function run(browser, width, language) {
     await page.route('**/api/**', route => {
         const pathname = new URL(route.request().url()).pathname;
         assert.equal(route.request().method(), 'GET');
-        return route.fulfill({ json: pathname.endsWith('/status') ? { ok: true, sideChat: true, sideChatContext: true, sideChatTools: true, projectRoots: ['/fixture'] }
+        return route.fulfill({ json: pathname.endsWith('/status') ? { ok: true, sideChat: true, sideChatContext: true, sideChatTools: true, sideChatModels: true, projectRoots: ['/fixture'] }
             : pathname.endsWith('/projects') ? { roots: ['/fixture'], projects: [{ cwd, name: 'Fixture', sessionCount: 1 }] }
             : pathname.endsWith('/sessions') ? { sessions: [session] }
             : pathname.endsWith('/activity') ? { runtimes: [], pinnedProjects: [], hiddenProjects: [], replyNotices: [] } : { configured: false } });
@@ -24,6 +24,8 @@ async function run(browser, width, language) {
         if (cmd.type === 'open_session') data = { session, state: { model, isStreaming: false }, messages: { messages: [] }, stats: {}, models: { models: [model] }, thinkingLevels: { levels: ['off'] }, commands: { commands: [] } };
         else if (cmd.type === 'prepare_side_chat') { assert.equal(cmd.toolMode, 'assist'); data = { ticket: 'fixture-ticket', reference, limits: { messageCharacters: 8000 } }; }
         else if (cmd.type === 'open_side_chat') { side = ws; data = { state: { model, toolMode: 'assist', toolAccess: access, pendingUi: [] }, reference, messages: [], stats: {}, limits: { messageCharacters: 8000 } }; }
+        else if (cmd.type === 'get_side_models') data = { models: [model, { ...model, id: 'alternate', name: 'Alternate model' }], levels: ['off'] };
+        else if (cmd.type === 'set_side_model') { assert.equal(busy, false); model.id = cmd.modelId; data = { state: { model, thinkingLevel: 'off' }, levels: ['off'], limits: { messageCharacters: 8000 } }; }
         else if (cmd.type === 'answer_side_confirmation') {
             assert.equal(cmd.requestId, pending[0].id); answers.push(cmd.confirmed); pending = []; access = cmd.confirmed ? 'write' : 'read';
             send({ type: 'gateway_ui_resolved', id: cmd.requestId }); send({ type: 'gateway_side_tool_access', access });
@@ -36,12 +38,24 @@ async function run(browser, width, language) {
     await page.waitForFunction(() => !document.querySelector('#pi-input').disabled);
     await openInspector(page, 'side');
     await page.waitForFunction(() => !document.querySelector('#pi-side-input').disabled);
+    await page.locator('#pi-side-reference > summary').click();
+    await page.waitForFunction(() => !document.querySelector('#pi-side-model-select').disabled);
+    await page.locator('#pi-side-input').fill('Keep my draft');
+    await page.locator('#pi-side-model-select').click();
+    await page.locator('dialog.pi-model-dialog[open] .pi-model-all').click();
+    await page.locator('dialog.pi-model-dialog[open] .pi-model-option').filter({ hasText: 'Alternate model' }).click();
+    await page.waitForFunction(() => !document.querySelector('#pi-side-model-select').disabled);
+    assert.equal(model.id, 'alternate');
+    assert.equal(await page.locator('#pi-side-input').inputValue(), 'Keep my draft');
+    assert.ok(await page.locator('#pi-side-model-controls').evaluate(node => node.scrollWidth <= node.clientWidth + 1));
+    await page.screenshot({ path: `/tmp/pivane-side-model-${width}-${language}.png` });
     const english = language.startsWith('en');
     assert.equal(await page.locator('#pi-side-tool-mode').textContent(), english ? 'Can read' : '可读取');
     for (const [index, allowed] of [true, false].entries()) {
         pending = [{ type: 'extension_ui_request', id: `confirmation-${index}`, method: 'confirm', title: '允许侧聊本次回复修改文件和运行命令？', message: JSON.stringify({ tool: 'bash', arguments: { command: 'long-command-'.repeat(90) + '<script>window.xssSide=true</script>' } }) }];
         busy = true; send({ type: 'agent_start' }); send(pending[0]);
         await page.locator('#pi-side-confirm:not([hidden])').waitFor();
+        assert.equal(await page.locator('#pi-side-model-select').isDisabled(), true);
         assert.equal(await page.locator('#pi-side-confirm strong').textContent(), english ? 'Allow changes and commands for this side reply?' : pending[0].title);
         for (const selector of ['body', '#pi-side-chat', '#pi-side-confirm', '#pi-side-confirm pre']) assert.ok(await page.locator(selector).evaluate(node => node.scrollWidth <= node.clientWidth + 1), selector);
         assert.equal(await page.evaluate(() => window.xssSide), undefined);

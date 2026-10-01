@@ -35,13 +35,24 @@ class PiLiveState {
             }
         }
         if (event.type === 'message_end' && event.message?.role === 'assistant') this.message = null;
-        if (event.type === 'message_end' && event.message?.role === 'toolResult') this.tools.delete(event.message.toolCallId);
+        if (event.type === 'message_end' && event.message?.role === 'toolResult') {
+            // Pi's parent result now owns the bounded native nestedCalls summary.
+            // Drop its live descendants too, so reconnect cannot show stale orphans.
+            const completed = new Set([event.message.toolCallId]);
+            for (let pass = 0; pass < MAX_TOOLS; pass++) {
+                const before = completed.size;
+                for (const [id, row] of this.tools) if (completed.has(row.parentToolCallId)) completed.add(id);
+                if (completed.size === before) break;
+            }
+            for (const id of completed) this.tools.delete(id);
+        }
         if (['tool_execution_start', 'tool_execution_update', 'tool_execution_end'].includes(event.type)) {
             if (!this.tools.has(event.toolCallId) && this.tools.size >= MAX_TOOLS) { this.truncated = true; return; }
             let row = clone(event);
             if (JSON.stringify(row).length > MAX_TOOL) {
                 const result = event.partialResult || event.result;
                 row = { type: event.type, toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError,
+                    ...(typeof event.parentToolCallId === 'string' && event.parentToolCallId.length <= 256 ? { parentToolCallId: event.parentToolCallId } : {}),
                     args: JSON.stringify(event.args || {}).slice(0, 8192),
                     ...(result ? { result: { content: [{ type: 'text', text: '[恢复预览已截断，仅显示输出尾部]\n' + (typeof result.content === 'string' ? result.content : Array.isArray(result.content) ? result.content.filter(b => b?.type === 'text').map(b => b.text).join('\n') : '').slice(-32768) }] } } : {}) };
                 this.truncated = true;

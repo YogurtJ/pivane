@@ -34,7 +34,8 @@
         } catch { return []; }
     }
     class PiModelPicker {
-        constructor({ button, onSelect, api }) {
+        constructor({ button, onSelect, api, id = 'pi-model-dialog' }) {
+            this.events = new AbortController();
             this.api = api || favoritesApi;
             this.revision = -1;
             this.favoriteReady = false;
@@ -53,13 +54,13 @@
             button.replaceChildren(this.label, node('b', 'pi-model-trigger-chevron', '⌄'));
             button.setAttribute('aria-haspopup', 'dialog');
             button.setAttribute('aria-expanded', 'false');
-            button.setAttribute('aria-controls', 'pi-model-dialog');
+            button.setAttribute('aria-controls', id);
             this.dialog = node('dialog', 'pi-model-dialog');
-            this.dialog.id = 'pi-model-dialog';
-            this.dialog.setAttribute('aria-labelledby', 'pi-model-dialog-title');
+            this.dialog.id = id;
+            this.dialog.setAttribute('aria-labelledby', id + '-title');
             const header = node('div', 'pi-model-dialog-header');
             const title = node('h2', '', t('选择模型'));
-            title.id = 'pi-model-dialog-title';
+            title.id = id + '-title';
             const close = node('button', 'pi-model-close', '×');
             close.type = 'button';
             close.setAttribute('aria-label', t('关闭'));
@@ -74,7 +75,7 @@
             this.search.autocomplete = 'off';
             this.search.spellcheck = false;
             this.results = node('div', 'pi-model-results');
-            this.results.id = 'pi-model-results';
+            this.results.id = id === 'pi-model-dialog' ? 'pi-model-results' : id + '-results';
             this.status = node('p', 'pi-model-status');
             this.status.setAttribute('role', 'status');
             this.toggle = node('button', 'pi-model-all');
@@ -89,7 +90,7 @@
             this.dialog.addEventListener('close', () => {
                 button.setAttribute('aria-expanded', 'false');
                 clearInterval(this.syncTimer);
-                if (innerWidth <= 680 && !button.getClientRects().length) document.getElementById('pi-mobile-context-trigger')?.focus({ preventScroll: true });
+                if (innerWidth <= 680 && !button.getClientRects().length && id === 'pi-model-dialog') document.getElementById('pi-mobile-context-trigger')?.focus({ preventScroll: true });
             });
             this.dialog.addEventListener('click', event => {
                 if (event.target !== this.dialog) return;
@@ -109,16 +110,16 @@
                 const next = index < 0 ? (event.key === 'ArrowDown' ? 0 : options.length - 1) : (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
                 options[next]?.focus();
             });
-            window.addEventListener('resize', () => { if (this.dialog.open) this.position(); });
+            window.addEventListener('resize', () => { if (this.dialog.open) this.position(); }, { signal: this.events.signal });
             window.addEventListener('storage', event => {
                 if (event.key === FAVORITES || event.key === RECENT || event.key === null) {
                     if (!this.favoriteReady) this.favorites = readKeys(FAVORITES, 5000);
                     this.recent = readKeys(RECENT, 5);
                     if (this.dialog.open) { this.render(); void this.refreshFavorites(); }
                 }
-            });
-            window.addEventListener('focus', () => { if (this.started) void this.refreshFavorites(); });
-            document.addEventListener('visibilitychange', () => { if (!document.hidden && this.started) void this.refreshFavorites(); });
+            }, { signal: this.events.signal });
+            window.addEventListener('focus', () => { if (this.started) void this.refreshFavorites(); }, { signal: this.events.signal });
+            document.addEventListener('visibilitychange', () => { if (!document.hidden && this.started) void this.refreshFavorites(); }, { signal: this.events.signal });
         }
         applyFavorites(data) {
             if (data?.version !== 1 || !Number.isSafeInteger(data.revision) || data.revision < 0 || !Array.isArray(data.favorites)
@@ -129,6 +130,7 @@
             this.favoriteReady = true;
         }
         refreshFavorites() {
+            if (this.disposed) return Promise.resolve();
             if (this.favoriteBusy) return Promise.resolve();
             if (this.syncPromise) return this.syncPromise;
             const before = [this.revision, this.favoriteReady, this.syncMessage];
@@ -213,7 +215,8 @@
             this.dialog.style.top = `${Math.max(12, Math.min(rect.bottom + 8, innerHeight - this.dialog.offsetHeight - 12))}px`;
         }
         open() {
-            if (this.button.disabled || this.dialog.open) return;
+            if (this.disposed || this.button.disabled || this.dialog.open) return;
+            this.recent = readKeys(RECENT, 5);
             this.search.value = ''; this.all = false; this.limit = 60;
             this.render();
             this.dialog.showModal(); this.position();
@@ -227,7 +230,12 @@
             this.syncTimer = setInterval(() => { if (!document.hidden) void this.refreshFavorites(); }, 5000);
         }
         close() { if (this.dialog.open) this.dialog.close(); }
+        dispose() {
+            this.disposed = true; this.close(); clearInterval(this.syncTimer);
+            this.events.abort(); this.dialog.remove();
+        }
         render({ preserveScroll = false } = {}) {
+            if (this.disposed) return;
             const focus = document.activeElement;
             const focusKey = this.results.contains(focus) ? focus.dataset.key : null;
             const focusStar = focus?.classList.contains('pi-model-star');

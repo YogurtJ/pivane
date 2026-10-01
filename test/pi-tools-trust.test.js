@@ -65,7 +65,9 @@ test('default tools preserve empty, inherited and native defaults, with actual n
         const strict = await supervisor.createEphemeralWorker(cwd, { extraArgs: ['--tools', 'read'] });
         assert.deepEqual(await active(strict), ['read'], 'CLI allowlist excludes extension tools');
         await strict.dispose();
-        for (const value of ['read', ['unknown'], ['read', 'read'], [null], {}]) await assert.rejects(save({ defaultTools: value }), /设置/);
+        await save({ defaultTools: ['unknown'] });
+        assert.deepEqual((await service.snapshot(cwd)).settings.defaultTools.global, ['unknown']);
+        for (const value of ['read', ['read', 'read'], [null], {}]) await assert.rejects(save({ defaultTools: value }), /设置/);
         await save({ defaultTools: null });
         snap = await service.snapshot(cwd);
         assert.equal(snap.settings.defaultTools.source, 'default');

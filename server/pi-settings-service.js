@@ -94,7 +94,14 @@ function assistantText(message) {
 class PiSettingsService {
     constructor(options = {}) {
         this.cwdFallback = options.cwd || process.cwd();
-        this.loginService = new PiProviderLoginService(() => this.createModelRuntime());
+        this.loginService = new PiProviderLoginService(() => this.createModelRuntime(), { getDeviceId: async () => {
+            const { SettingsManager, getAgentDir } = await getSdk();
+            const settings = SettingsManager.create(this.cwdFallback, getAgentDir(), { projectTrusted: false });
+            const id = settings.getOrCreateDeviceId();
+            await settings.flush();
+            if (settings.drainErrors().length) throw new Error('Could not save the native login installation ID');
+            return id;
+        } });
         this.mutating = false;
         this.workspacePreferencesService = options.workspacePreferencesService || new WorkspacePreferencesService(options.workspacePreferencesOptions);
     }

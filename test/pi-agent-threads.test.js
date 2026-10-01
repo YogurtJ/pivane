@@ -122,7 +122,9 @@ test('Agent creates a persistent task, runs immediately with defaults, preserves
         // must wait for that native write reservation instead of racing the fixture.
         await deadline(() => !worker.operation && !worker.activity.snapshot().busy && worker.promptPending === 0);
         await worker.request('prompt', { message: 'CREATE_TASK_FIXTURE' });
-        await deadline(async () => (await worker.request('get_messages')).messages.some(message => message.customType === TASK_RECEIPT));
+        // This tool starts a second cold managed worker before returning the receipt.
+        // Under memory pressure that launch can exceed the generic 20s polling window.
+        await deadline(async () => (await worker.request('get_messages')).messages.some(message => message.customType === TASK_RECEIPT), 60000);
         await deadline(() => !worker.activity.snapshot().busy && worker.promptPending === 0);
         const messages = (await worker.request('get_messages')).messages;
         assert.ok(messages.some(message => message.role === 'toolResult' && message.toolName === 'agent_thread' && !message.isError));

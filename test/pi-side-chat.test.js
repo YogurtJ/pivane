@@ -6,6 +6,7 @@ const path = require('node:path');
 const http = require('node:http');
 const express = require('express');
 const { once } = require('node:events');
+const { DatabaseSync } = require('node:sqlite');
 const { WebSocket } = require('ws');
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-side-chat-'));
@@ -141,7 +142,9 @@ test('real side RPC is tool-free, ephemeral, parallel, auth-protected and isolat
     fs.writeFileSync(path.join(process.env.PI_CODING_AGENT_DIR, 'extensions', 'sentinel.ts'), `import {writeFileSync} from 'node:fs'; export default function(pi) { writeFileSync(${JSON.stringify(marker)}, 'loaded'); pi.registerCommand('sentinel', {handler: async () => {}}); pi.registerProvider('extension-only', ${JSON.stringify(extensionProvider)}); }`);
     fs.writeFileSync(path.join(root, 'AGENTS.md'), 'DO_NOT_LOAD_PROJECT_CONTEXT_IN_SIDE');
     fs.writeFileSync(path.join(process.env.PI_CODING_AGENT_DIR, 'models.json'), JSON.stringify({ providers: { fixture: {
-        baseUrl: `http://127.0.0.1:${provider.address().port}/v1`, api: 'openai-completions', apiKey: 'fixture-key', models: [{ id: 'fixture', name: 'Fixture', input: ['text'], reasoning: false, contextWindow: 16000, maxTokens: 1000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }]
+        baseUrl: `http://127.0.0.1:${provider.address().port}/v1`, api: 'openai-completions', apiKey: 'fixture-key', models: [{ id: 'fixture', name: 'Fixture', input: ['text'], reasoning: false, contextWindow: 16000, maxTokens: 1000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+            { id: 'small', name: 'Small', input: ['text'], reasoning: false, contextWindow: 1024, maxTokens: 256 },
+            { id: 'alternate', name: 'Alternate', input: ['text'], reasoning: true, contextWindow: 32000, maxTokens: 1000 }]
     } } }));
     const settingsPath = path.join(process.env.PI_CODING_AGENT_DIR, 'settings.json');
     fs.writeFileSync(settingsPath, JSON.stringify({ defaultProvider: 'fixture', defaultModel: 'fixture', compaction: { enabled: false } }));
@@ -171,6 +174,20 @@ test('real side RPC is tool-free, ephemeral, parallel, auth-protected and isolat
     await waitFor(() => main.events.some(event => event.error === 'Invalid gateway command'));
     assert.ok(fs.existsSync(marker)); fs.unlinkSync(marker);
     const source = gateway.supervisor.getActiveWorker(session.path);
+    const initialOptions = await main.call('get_side_model_options');
+    assert.equal(initialOptions.success, true, JSON.stringify(initialOptions));
+    assert.ok(initialOptions.data.models.some(model => model.id === 'fixture'));
+    assert.equal(gateway.supervisor.ephemeralWorkers.size, 0, 'model choices do not allocate a side runtime');
+    const beforeModelOptions = fs.readFileSync(session.path);
+    const preselected = await main.call('prepare_side_chat', { mode: 'blank', model: { provider: 'fixture', id: 'alternate' }, thinkingLevel: 'high' });
+    assert.equal(preselected.success, true, JSON.stringify(preselected));
+    const preselectedSide = await connect(url);
+    const preselectedOpen = await preselectedSide.call('open_side_chat', { ...auth, ticket: preselected.data.ticket });
+    assert.equal(preselectedOpen.success, true);
+    assert.equal(preselectedOpen.data.state.model.id, 'alternate');
+    assert.equal(preselectedOpen.data.state.thinkingLevel, 'high');
+    assert.deepEqual(fs.readFileSync(session.path), beforeModelOptions);
+    await preselectedSide.call('quit_side_chat'); preselectedSide.close();
     assert.equal((await main.call('prompt', { message: 'MAIN HOLD' })).success, true);
     await waitFor(() => held.has('MAIN HOLD'));
     const before = fs.readFileSync(session.path);
@@ -186,6 +203,16 @@ test('real side RPC is tool-free, ephemeral, parallel, auth-protected and isolat
     assert.equal(opened.success, true, JSON.stringify(opened));
     assert.equal(opened.data.state.model.id, 'fixture');
     assert.equal(opened.data.state.sessionFile, undefined);
+    const catalog = await side.call('get_side_models');
+    assert.equal(catalog.success, true);
+    assert.ok(catalog.data.models.some(model => model.id === 'fixture'));
+    assert.deepEqual(catalog.data.levels, ['off']);
+    assert.equal((await side.call('set_side_model', { provider: 'missing', modelId: 'fixture' })).success, false);
+    assert.equal((await side.call('set_side_thinking', { thinkingLevel: 'invalid' })).success, false);
+    const configured = await side.call('set_side_model', { provider: 'fixture', modelId: 'fixture' });
+    assert.equal(configured.success, true, JSON.stringify(configured));
+    assert.equal(configured.data.state.model.id, 'fixture');
+    assert.equal((await side.call('set_side_thinking', { thinkingLevel: 'off' })).success, true);
     assert.deepEqual(opened.data.messages, [], 'inherited main messages stay out of the side transcript');
     assert.equal(opened.data.stats.totalMessages, 0);
     assert.equal(opened.data.stats.cost, 0);
@@ -212,6 +239,16 @@ test('real side RPC is tool-free, ephemeral, parallel, auth-protected and isolat
     assert.ok(!JSON.stringify(request.messages).includes('NEW_PROJECT_TEXT_MUST_NOT_LOAD_IN_SIDE'), 'does not reload project context in the side runtime');
     assert.ok(!(await side.call('get_messages')).data.messages.some(message => userText(message).includes('MAIN HOLD')));
     assert.deepEqual(fs.readFileSync(session.path), before, 'side prompts never enter the main JSONL');
+    const visibleBeforeSwitch = (await side.call('get_messages')).data.messages;
+    assert.equal((await side.call('set_side_model', { provider: 'fixture', modelId: 'small' })).success, false, 'do not silently truncate context');
+    const alternate = await side.call('set_side_model', { provider: 'fixture', modelId: 'alternate' });
+    assert.equal(alternate.success, true, JSON.stringify(alternate));
+    assert.equal(alternate.data.state.model.id, 'alternate');
+    assert.ok(alternate.data.levels.includes('high'));
+    assert.equal((await side.call('set_side_thinking', { thinkingLevel: 'high' })).success, true);
+    assert.deepEqual((await side.call('get_messages')).data.messages, visibleBeforeSwitch);
+    assert.deepEqual(fs.readFileSync(session.path), before, 'side model changes do not alter main history');
+    assert.equal((await side.call('set_side_model', { provider: 'fixture', modelId: 'fixture' })).success, true);
     assert.equal(source.activity.snapshot().busy, true);
     assert.equal((await main.call('prompt', { message: '/btw must-not-leak' })).success, false);
     answer(held.get('MAIN HOLD'), 'Main completed'); held.delete('MAIN HOLD');
@@ -228,10 +265,17 @@ test('real side RPC is tool-free, ephemeral, parallel, auth-protected and isolat
     assert.ok(!JSON.stringify((await main.call('get_messages')).data).includes('Explain side'));
     assert.equal((await side.call('prompt', { message: 'SIDE HOLD' })).success, true);
     await waitFor(() => held.has('SIDE HOLD'));
+    assert.equal((await side.call('set_side_model', { provider: 'fixture', modelId: 'fixture' })).errorCode, 'SESSION_BUSY');
     assert.equal((await side.call('abort')).success, true);
     assert.equal(source.disposed, false);
     assert.equal((await side.call('quit_side_chat')).success, true);
     await waitFor(() => gateway.supervisor.ephemeralWorkers.size === 0);
+    const ledger = new DatabaseSync(path.join(process.env.PI_CODING_AGENT_DIR, 'pivane-usage', 'ledger.sqlite'), { readOnly: true });
+    try {
+        const sideRows = ledger.prepare("SELECT data FROM facts WHERE owner IN (SELECT key FROM owners WHERE name='侧聊')").all();
+        assert.ok(sideRows.length >= 2, 'multi-turn side calls remain recorded after closing the ephemeral worker');
+        assert.doesNotMatch(sideRows.map(row => row.data).join(''), /Explain side|Follow up|MAIN HOLD|Reply: /);
+    } finally { ledger.close(); }
     assert.deepEqual(fs.readFileSync(settingsPath), settings);
     assert.equal((await gateway.store.listSessions(root)).length, 1, 'no side JSONL or parallel session history');
     const temp = await connect(url);

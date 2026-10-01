@@ -37,9 +37,11 @@ require('./pi-process-shutdown').registerProcessShutdown(cleanup);
         const { data } = await new PiSessionTransfer({ store: gateway.store, supervisor: gateway.supervisor }).export(directory, session.id, 'jsonl');
         assert.ok(validateImport(data.toString('utf8')).some(entry => entry.type === 'context_edit'));
         assert.ok(Array.isArray((await worker.request('get_commands')).commands));
-        if (require('../package.json').workspaces?.includes('vendor/pi-subagents')) {
+        if (fs.existsSync(path.join(__dirname, '../vendor/manifest.json'))) {
             const resources = await worker.getNativeResources();
             assert.equal(resources.tools.filter(tool => tool.name === 'subagents_enable').length, 1);
+            assert.ok(resources.tools.some(tool => tool.name === 'codemode'));
+            assert.ok(resources.commands.some(command => command.name === 'mcp'));
             assert.ok(resources.skills.some(skill => skill.name === 'pi-subagents'));
             await worker.subagentRequest({ method: 'status', params: {} });
             const memory = await new (require('./profile-memory/config').ProfileMemoryConfiguration)().snapshot();

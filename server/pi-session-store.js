@@ -235,7 +235,15 @@ class PiSessionStore {
     async _nativeSessionMetadata(cwd, SessionManager) {
         const sdk = await getSdk();
         const directory = SessionManager.create(cwd).getSessionDir();
-        return this.sessionMetadata.list(directory, sdk, () => SessionManager.list(cwd));
+        // Native writers (including title/receipt appends) can invalidate a proof
+        // between asynchronous metadata reads. Start a fresh, fully checked read;
+        // never return the invalidated rows or retry any session mutation.
+        for (let attempt = 0; ; attempt++) {
+            try { return await this.sessionMetadata.list(directory, sdk, () => SessionManager.list(cwd)); }
+            catch (error) {
+                if (error.message !== 'Session file changed' || attempt >= 2) throw error;
+            }
+        }
     }
 
     async _listSessions(cwd, SessionManager, profiles, projects, profileState, projectState, revision) {
@@ -353,9 +361,9 @@ class PiSessionStore {
             this.sessionLists.delete(session.cwd);
             result = await this.getSession(session.cwd, source.getSessionId());
         } else if (branch.length) {
-            // Native branching preserves IDs/references, but defers its file until
-            // an assistant exists. Materialize the native export privately so an
-            // early fork is immediately visible without re-appending/re-IDing entries.
+            // Native branching preserves IDs/references. Pi 0.99 persists when
+            // the branch has user input; retain the older deferred-file fallback
+            // only when the manager has not materialized its native file.
             source.createBranchedSession(targetId);
             if (this.profiles) source.appendCustomEntry(require('./pi-profile-state').PROFILE_ENTRY,
                 { version: 1, sessionId: source.getSessionId(), profileId: inheritedProfileId });
@@ -363,18 +371,20 @@ class PiSessionStore {
                 { version: 1, sessionId: source.getSessionId(), projectId: groupBinding.projectId, cwd: groupBinding.cwd });
             source.appendSessionInfo(`${session.name || '会话'} · 分叉`.slice(0, 120));
             source.appendCustomEntry('pivane-web-fork-origin', { sessionId: session.id, entryId: targetId });
-            const privateFiles = require('./pi-private-files');
-            const temporary = fs.mkdtempSync(path.join(source.getSessionDir(), '.pivane-fork-'));
-            try {
-                privateFiles.privateDirectory(temporary);
-                const output = path.join(temporary, 'branch.jsonl');
-                const { AgentSession } = await getSdk();
-                AgentSession.prototype.exportToJsonl.call({ sessionManager: source }, output);
-                privateFiles.privateFileMode(output);
-                fs.linkSync(output, source.getSessionFile());
-                this.sessionLists.delete(session.cwd);
-                result = await this.getSession(session.cwd, source.getSessionId());
-            } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
+            if (!fs.existsSync(source.getSessionFile())) {
+                const privateFiles = require('./pi-private-files');
+                const temporary = fs.mkdtempSync(path.join(source.getSessionDir(), '.pivane-fork-'));
+                try {
+                    privateFiles.privateDirectory(temporary);
+                    const output = path.join(temporary, 'branch.jsonl');
+                    const { AgentSession } = await getSdk();
+                    AgentSession.prototype.exportToJsonl.call({ sessionManager: source }, output);
+                    privateFiles.privateFileMode(output);
+                    fs.linkSync(output, source.getSessionFile());
+                } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
+            }
+            this.sessionLists.delete(session.cwd);
+            result = await this.getSession(session.cwd, source.getSessionId());
         } else {
             result = await this.createSession(session.cwd, `${session.name || '会话'} · 分叉`,
                 { inheritedProfileId, assistantProjectId: groupBinding?.projectId });

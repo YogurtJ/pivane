@@ -7,6 +7,8 @@ html[data-theme="daylight"] {
     --primary: #247458; --accent: #247458; --green: #247458; --primary-hover: #1d654b;
     --green-soft: #e1eee5; --line: #dce4dd; --line-strong: #bdcec1; --glass-border: #dce4dd;
 }
+html[data-theme="slate"] { --text-muted: #586b80; --text-soft: #718399; --surface-transcript: #fff; --surface-sidebar: #eaf0f8; --surface-1: #f6f8fc; --surface-2: #fff; --surface-3: #e9eff7; }
+html[data-theme="violet"] { --text-muted: #6c607c; --text-soft: #887c98; --surface-transcript: #fff; --surface-sidebar: #f1ecf8; --surface-1: #f9f7fc; --surface-2: #fff; --surface-3: #f0eaf7; }
 html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface-transcript: #151b17; --surface-sidebar: #111914; --surface-1: #18201b; --surface-2: #1c261f; --surface-3: #253229; }
 .workspace-nav-short { display: none; }
 .sidebar { background: var(--surface-sidebar); }

@@ -46,6 +46,31 @@ test('durable daily/weekly/monthly totals survive deletion, restart, new timezon
         assert.equal(JSON.parse(fact).pricing.appliedRates.input, 4);
     } finally { ledger.close(); }
 });
+test('side-chat batches persist only new calls, deduplicate retries and exclude inherited context', async t => {
+    const f = fixture(t);
+    const sessionId = '7416bd66-1e34-4b51-b0a2-779097a20b90';
+    const sideRow = { key: 'a'.repeat(64), timestamp: Date.parse('2026-09-20T23:30:00Z'),
+        usage: { input: 100, output: 10, cacheRead: 20, cacheWrite: 0 }, cost: 0,
+        provider: 'fixture', model: 'side-model', content: 'SECRET_BODY_MUST_NOT_PERSIST' };
+    const batch = { cwd: f.project, sessionId, records: [sideRow] };
+    const before = await runLedger(f.input);
+    assert.equal((await runLedger({ ...f.input, filter: null, sideBatch: batch })).inserted, 1);
+    assert.equal((await runLedger({ ...f.input, filter: null, sideBatch: batch })).inserted, 0);
+    const after = await runLedger(f.input);
+    assert.equal(after.total.records, before.total.records + 1);
+    assert.equal(after.total.total, before.total.total + 130);
+    assert.equal(after.sessions.find(row => row.name === '侧聊').records, 1);
+    assert.equal(after.daily.find(row => row.date === '2026-09-21').records, 2);
+    const ledger = new UsageLedger(f.input.ledgerPath);
+    try {
+        const rows = ledger.db.prepare('SELECT data FROM facts').all().map(row => row.data);
+        assert.equal(rows.length, 2);
+        assert.doesNotMatch(rows.join(''), /SECRET_BODY_MUST_NOT_PERSIST/);
+        assert.equal(ledger.db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
+    } finally { ledger.close(); }
+    await assert.rejects(runLedger({ ...f.input, filter: null, sideBatch: { ...batch, cwd: path.dirname(f.base) } }), /outside allowed roots/);
+    await assert.rejects(runLedger({ ...f.input, filter: null, sideBatch: { ...batch, records: [{ ...sideRow, usage: { ...sideRow.usage, input: -1 } }] } }), /Invalid side-chat usage fact/);
+});
 test('append ingests only new facts; transaction rollback cannot double book and roots stay isolated', async t => {
     const f = fixture(t); await runLedger(f.input);
     fs.appendFileSync(f.file, JSON.stringify(f.message('two')) + '\n');

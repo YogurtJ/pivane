@@ -244,8 +244,8 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
     await page.locator('#pi-close-inspector').click();
     await page.locator('#pi-input').fill('保留主草稿');
     await openInspector(page, 'side');
-    await page.locator('#pi-side-messages [data-side-action="insert"]').last().click();
-    assert.match(await page.locator('#pi-input').inputValue(), /^保留主草稿\n\n## 侧聊回答/);
+    assert.equal(await page.locator('#pi-side-messages [data-side-action="insert"]').count(), 0);
+    assert.equal(await page.locator('#pi-input').inputValue(), '保留主草稿');
     assert.equal(mainPrompts.length, 0);
     await openInspector(page, 'side');
     if (fullContext) {
@@ -310,7 +310,7 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
     assert.equal(await page.locator('#pi-side-input').inputValue(), '切换背景前的草稿');
     acceptDialogs = true;
     await page.locator('#pi-side-source').selectOption('blank');
-    await page.waitForFunction(() => document.querySelector('#pi-side-source').value === 'blank' && document.querySelector('#pi-side-status').textContent === '侧聊已就绪');
+    await page.waitForFunction(() => document.querySelector('#pi-side-source').value === 'blank' && document.querySelector('#pi-side-status').textContent === '侧聊已就绪' && document.querySelector('#pi-side-reference-preview').textContent.includes('无主会话背景'));
     assert.equal(preparations.at(-1).mode, 'blank');
     assert.equal(preparations.at(-1).quote, undefined);
     assert.match(await page.locator('#pi-side-reference-preview').textContent(), /无主会话背景/);
@@ -339,7 +339,7 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
     assert.equal(sideCount, countBefore, 'no silent ephemeral reconnect or resend');
     assert.ok((await page.locator('#pi-side-messages').textContent()).includes('停止这条侧聊'));
     await page.locator('#pi-side-end').click();
-    await page.waitForFunction(() => document.querySelector('#pi-side-messages').textContent.startsWith('在这里旁路讨论'));
+    await page.waitForFunction(() => document.querySelector('#pi-side-messages').textContent.startsWith('在这里聊'));
     assert.equal(await page.locator('#pi-side-reference-preview').textContent(), '');
     assert.equal(await page.locator('#pi-side-input').inputValue(), '');
     sendMode = 'normal'; holdOpen = true;
@@ -355,7 +355,7 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
     await page.locator('#pi-side-refresh').click();
     await page.waitForFunction(() => document.querySelector('#pi-side-status').textContent === '侧聊已就绪');
     await page.locator('#pi-side-input').fill('切换前的侧聊'); await page.locator('#pi-side-send').click();
-    await page.waitForFunction(() => document.querySelector('#pi-side-stop').hidden && document.querySelector('#pi-side-input').value === '' && document.querySelector('#pi-side-messages [data-side-action="insert"]'));
+    await page.waitForFunction(() => document.querySelector('#pi-side-stop').hidden && document.querySelector('#pi-side-input').value === '' && document.querySelector('#pi-side-messages [data-side-action="copy"]'));
     if (retention) {
         const switchThread = async id => {
             await page.locator('#pi-close-inspector').click();
@@ -401,8 +401,8 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
         assert.ok(!(await page.locator('#pi-side-messages').textContent()).includes('B 独立问题'));
         assert.ok(Math.abs(await page.locator('#pi-side-transcript').evaluate(node => node.scrollTop) - readingTop) <= 4, 'return restores the side reading position');
         assert.equal(await page.locator('#pi-side-chat').count(), 1, 'only the selected thread DOM is attached');
-        await page.locator('#pi-side-messages [data-side-action="insert"]').last().click();
-        assert.ok((await page.locator('#pi-input').inputValue()).includes('A 后台继续回答'));
+        await page.locator('#pi-side-messages [data-side-action="copy"]').last().click();
+        assert.ok((await page.evaluate(() => window.__sideCopies.at(-1))).includes('A 后台继续回答'));
         await openInspector(page, 'side');
         await switchThread('third');
         await openInspector(page, 'side');
@@ -411,7 +411,7 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
         await switchThread('fourth');
         const atLimit = sideCount;
         await openInspector(page, 'side');
-        await page.waitForFunction(() => document.querySelector('#pi-side-status').textContent.includes('最多保留 3 段'));
+        await page.waitForFunction(() => document.querySelector('#pi-side-status').textContent.includes('最多同时运行 3 段'));
         assert.equal(sideCount, atLimit);
         assert.ok([retainedA, retainedB, retainedC].every(side => !side.closed));
         await switchThread('other'); await openInspector(page, 'side');
@@ -460,8 +460,7 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
         await page.waitForFunction(() => document.querySelector('#pi-meta-id').textContent === 'other');
         acceptDialogs = false;
         await openInspector(page, 'side');
-        await page.locator('#pi-side-messages [data-side-action="insert"]').last().click();
-        await page.waitForFunction(() => document.querySelector('#pi-side-status').textContent.includes('主会话已切换'));
+        assert.equal(await page.locator('#pi-side-messages [data-side-action="insert"]').count(), 0);
         assert.equal(await page.locator('#pi-input').inputValue(), '', 'old side replies cannot be inserted into a different main thread');
         acceptDialogs = true;
         await page.locator('#pi-side-end').click();

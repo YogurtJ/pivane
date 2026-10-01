@@ -88,6 +88,25 @@ test('OAuth bridge handles selection, device/link events, callback prompt cancel
     await login.dispose();
 });
 
+test('OpenAI subscription login receives a stable synchronous native device ID without exposing it', async () => {
+    const deviceId = 'f5bf7bf9-ef95-4aac-9d48-c42f497ef615';
+    let calls = 0;
+    const runtime = { getProvider: () => ({ auth: { oauth: { login() {} } } }),
+        async login(_id, _method, _interaction, options) {
+            assert.equal(options.getDeviceId(), deviceId);
+            assert.equal(typeof options.getDeviceId(), 'string');
+            calls++;
+        } };
+    const login = new PiProviderLoginService(async () => runtime, { getDeviceId: async () => deviceId });
+    for (let i = 0; i < 2; i++) {
+        const initial = await login.start('openai', 'oauth');
+        await until(() => login.snapshot(initial.id).finished);
+        assert.equal(login.snapshot(initial.id).status, 'success');
+        assert.ok(!JSON.stringify(login.snapshot(initial.id)).includes(deviceId));
+    }
+    assert.equal(calls, 2); await login.dispose();
+});
+
 test('committed credentials are reported separately from failed synchronization', async () => {
     const runtime = { getProvider: () => ({ auth: { oauth: { login() {} } } }),
         async login() { throw Object.assign(new Error('private synchronization details'), { name: 'CredentialSynchronizationError', credential: { access: 'private-access' } }); } };

@@ -26,10 +26,10 @@ Pivane 媒体和预约数据按实例保存，Pi 身份默认与 CLI 共用；`P
 
 ## 2. 从源码发布包安装
 
-以下以 1.2.0 归档为例，正式可下载版本以 [Releases](https://github.com/YogurtJ/pivane/releases) 为准。先下载 `pivane-1.2.0.tar.gz` 及同名 .sha256 到 Downloads，核对发布来源，然后检查哈希：
+以下以 1.3.0 归档为例，正式可下载版本以 [Releases](https://github.com/YogurtJ/pivane/releases) 为准。先下载 `pivane-1.3.0.tar.gz` 及同名 .sha256 到 Downloads，核对发布来源，然后检查哈希：
 
 ```bash
-ARCHIVE="$HOME/Downloads/pivane-1.2.0.tar.gz"
+ARCHIVE="$HOME/Downloads/pivane-1.3.0.tar.gz"
 (cd "$(dirname "$ARCHIVE")" && sha256sum -c "$(basename "$ARCHIVE").sha256")
 ```
 
@@ -39,9 +39,9 @@ ARCHIVE="$HOME/Downloads/pivane-1.2.0.tar.gz"
 BASE="$HOME/pivane"
 test ! -e "$BASE" || { echo "此目录已存在，请按更新流程操作或选择新的BASE"; exit 1; }
 umask 077
-mkdir -p "$BASE/releases/1.2.0" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
-tar -xzf "$ARCHIVE" -C "$BASE/releases/1.2.0" --strip-components=1
-cd "$BASE/releases/1.2.0"
+mkdir -p "$BASE/releases/1.3.0" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
+tar -xzf "$ARCHIVE" -C "$BASE/releases/1.3.0" --strip-components=1
+cd "$BASE/releases/1.3.0"
 node scripts/install.cjs
 ```
 
@@ -176,7 +176,7 @@ chmod 600 "$AGENT_BACKUP.sha256"
 
 当前源码默认端口为 `11408`。旧 3001 安装升级时，把实际 `.env`、服务环境覆盖中的 `PORT` 改为 `11408`，并同步工作台地址、桌面快捷方式及反向代理目标。更换端口前，如未显式指定预约队列，先将 `PI_WEB_DEFERRED_FILE` 固定为原队列的实际绝对路径；不要复制出第二个同时工作的队列。完成下述停机备份与更新后，使用新地址验证。用户仍可显式指定自定义端口。
 
-可先在设置 → [版本与更新](UPDATES.md)检查 Pivane/Pi 版本，取得官方发布说明、发布包和校验文件。支持应用受管更新的实例可直接在版本卡片安装 Pivane；手动更新按本节执行。普通 `node server.js` 或 `npm start` 启动后，工作台内的 Pi 还可在设置中单独更新，并执行停机备份或重启。全局 Pi CLI 的更新不改变工作台内核。
+可先在设置 → [版本与更新](UPDATES.md)只读检查 Pivane/Pi 版本，打开官方发布页面，或复制提示词交给部署机器上的独立 Agent。网页不再提供安装、备份、重启或包/校验文件下载按钮；按本节在安全停机窗口操作。既有受管维护接口保留兼容，不等于网页会自动执行。全局 Pi CLI 的更新不改变工作台内核。
 
 受管 Pi 版本位于原安装目录的 `.pivane-runtime` 中，始终从原目录启动。升级 Pivane 应用采用新的发布目录并沿用原数据配置，不将旧受管快照覆盖到新发布目录。备份、恢复及源码开发与受管快照的关系见[维护说明](UPDATES.md)。
 

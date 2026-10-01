@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createAgentSessionRuntime, createAgentSessionServices, createAgentSessionFromServices,
     getAgentDir, SessionManager, SettingsManager, ProjectTrustStore, runRpcMode, parseArgs,
     resolveCliModel, resolveModelScopeWithDiagnostics, initTheme } from '@earendil-works/pi-coding-agent';
+import './pi-subagent-native-loader.mjs';
 import { managedLoaderOptions, reloadableLoader } from './pi-bundled-loader.mjs';
 
 let runtime;
@@ -15,6 +16,10 @@ try {
     // Upstream subprocesses resolve the exact host Pi SDK even with our entrypoint.
     const piRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../node_modules/@earendil-works/pi-coding-agent');
     process.env.PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT = piRoot;
+    // Detached vendor runners resolve their tool plan before the injected child
+    // factory loads. Preload the same exact import seam in those Node processes.
+    const nativePreload = `--import=${new URL('./pi-subagent-native-loader.mjs', import.meta.url).href}`;
+    process.env.NODE_OPTIONS = [process.env.NODE_OPTIONS, nativePreload].filter(Boolean).join(' ');
     // Preserve the CLI's proxy/idle-timeout setup when embedding its RPC SDK.
     // This small host seam is reviewed alongside the pinned Pi version.
     const http = await import(pathToFileURL(path.join(piRoot, 'dist/core/http-dispatcher.js')).href);

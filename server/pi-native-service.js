@@ -7,7 +7,9 @@ const fail = (message, status = 400) => Object.assign(new Error(message), { stat
 const own = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 const get = (object, key) => key.split('.').reduce((value, part) => value?.[part], object);
 const schema = {
-    defaultTools: { label: '默认启用的内置工具', type: 'tools' },
+    defaultTools: { label: '默认工具选择', type: 'tools' },
+    'codemode.mode': { label: 'Codemode 工具呈现', type: 'select', choices: ['on', 'only'] },
+    'codemode.inlineBudget': { label: 'Codemode 内联声明 Token 预算', type: 'number', min: 0, max: 1000000 },
     defaultProjectTrust: { label: '未决项目的默认信任策略', type: 'select', choices: ['ask', 'always', 'never'], globalOnly: true },
     steeringMode: { label: '引导消息投递', type: 'select', choices: ['one-at-a-time', 'all'] },
     followUpMode: { label: '后续消息投递', type: 'select', choices: ['one-at-a-time', 'all'] },
@@ -31,8 +33,15 @@ const schema = {
 function nativeSchema(sdk, cwd) {
     // Public factories only construct tools; no runtime, discovery or tool execution.
     const defaults = sdk.createCodingTools(cwd).map(tool => tool.name);
-    const choices = [...new Set([...defaults, ...sdk.createReadOnlyTools(cwd).map(tool => tool.name), sdk.createPowerShellTool(cwd).name])];
-    return { ...schema, defaultTools: { ...schema.defaultTools, choices, defaults, platform: process.platform } };
+    const choices = [...new Set([...defaults, ...sdk.createReadOnlyTools(cwd).map(tool => tool.name), sdk.createPowerShellTool(cwd).name, 'codemode', 'tool_search'])];
+    return { ...schema, defaultTools: { ...schema.defaultTools, choices, defaults, platform: process.platform, maxEntries: 1024, maxNameLength: 500 } };
+}
+
+function validToolEntries(value, field) {
+    if (!Array.isArray(value) || value.length > field.maxEntries) return false;
+    const plain = value.filter(entry => typeof entry === 'string' && !/^[+-]/.test(entry));
+    return new Set(plain).size === plain.length && value.every(entry => typeof entry === 'string'
+        && entry.replace(/^[+-]/, '').trim() && entry.length <= field.maxNameLength && !/[\s\x00-\x1f\x7f]/.test(entry));
 }
 
 // All paths are selected by the server. Never offer an arbitrary settings-file editor.
@@ -111,9 +120,21 @@ class PiNativeService {
     }
     async snapshot(cwd) {
         const ctx = await this.context(cwd), s = ctx.settings, fields = nativeSchema(ctx.sdk, ctx.cwd);
+        // Native files are not schema-validated by Pi. Do not silently repair malformed tool preferences.
+        for (const data of [ctx.global, ctx.project]) {
+            for (const key of ['defaultTools', 'codemode.mode', 'codemode.inlineBudget']) {
+                const value = get(data, key), field = fields[key];
+                if (value === undefined) continue;
+                if (field.type === 'tools' && !validToolEntries(value, field)
+                    || field.type === 'select' && !field.choices.includes(value)
+                    || field.type === 'number' && (!Number.isSafeInteger(value) || value < field.min || value > field.max)) throw fail('设置值无效：' + field.label);
+            }
+        }
         const values = {
-            defaultTools: s.getDefaultTools() ?? fields.defaultTools.defaults,
+            defaultTools: require('./pi-bundled-resources').defaultToolSelection(s) ?? fields.defaultTools.defaults,
             defaultProjectTrust: s.getDefaultProjectTrust(),
+            'codemode.mode': s.getSettings().codemode?.mode ?? 'on',
+            'codemode.inlineBudget': s.getSettings().codemode?.inlineBudget ?? 3000,
             steeringMode: s.getSteeringMode(), followUpMode: s.getFollowUpMode(), transport: s.getTransport(),
             ...Object.fromEntries(Object.entries(s.getCompactionSettings()).map(([k, v]) => ['compaction.' + k, v])),
             ...Object.fromEntries(Object.entries(s.getRetrySettings()).map(([k, v]) => ['retry.' + k, v])),
@@ -151,8 +172,8 @@ class PiNativeService {
             if (!field || !own(schema, key) || input.scope === 'project' && field.globalOnly) throw fail('不支持此设置');
             if (value === null) continue;
             if (field.type === 'boolean' && typeof value !== 'boolean' || field.type === 'select' && !field.choices.includes(value)
-                || field.type === 'number' && (!Number.isInteger(value) || value < field.min || value > field.max)
-                || field.type === 'tools' && (!Array.isArray(value) || value.length > field.choices.length || new Set(value).size !== value.length || value.some(v => !field.choices.includes(v)))
+                || field.type === 'number' && (!Number.isSafeInteger(value) || value < field.min || value > field.max)
+                || field.type === 'tools' && !validToolEntries(value, field)
                 || field.type === 'lines' && (!Array.isArray(value) || value.length > 200 || value.some(v => typeof v !== 'string' || !v.trim() || v.length > 500 || /[\x00-\x1f]/.test(v)))) throw fail('设置值无效：' + field.label);
         }
         return this.mutate(input, async ctx => {
@@ -162,6 +183,8 @@ class PiNativeService {
             const lock = file + '.lock';
             try { fs.mkdirSync(lock, { mode: 0o700 }); } catch { throw fail('原生设置正在写入，请稍后再试', 409); }
             try {
+                const revision = createHash('sha256').update(JSON.stringify([ctx.cwd, read(ctx.globalFile), read(ctx.projectFile), read(ctx.trustFile), process.env.PI_WEB_APPROVE_PROJECTS || ''])).digest('hex');
+                if (revision !== ctx.revision) throw fail('配置已变化，请刷新后再保存', 409);
                 const data = json(read(file));
                 for (const [key, value] of Object.entries(input.values)) patch(data, key, value);
                 atomic(file, JSON.stringify(data, null, 2) + '\n');

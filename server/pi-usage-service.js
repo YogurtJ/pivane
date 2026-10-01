@@ -16,7 +16,7 @@ function usageQuery(query = {}) {
 }
 
 class PiUsageService {
-    constructor(store) { this.store = store; this.pending = null; this.cache = null; this.stopped = false; }
+    constructor(store) { this.store = store; this.pending = null; this.cache = null; this.stopped = false; this.sideWrites = new Set(); }
     start() {
         if (this.timer || this.stopped) return;
         this.timer = setInterval(() => {
@@ -24,11 +24,18 @@ class PiUsageService {
         }, 5 * 60000);
         this.timer.unref();
     }
-    sync(onlyFile) {
-        if (this.pending) return this.pending.promise.then(() => this.sync(onlyFile));
+    sync(onlyFile, sideBatch) {
+        if (this.pending) return this.pending.promise.then(() => this.sync(onlyFile, sideBatch));
         // Reserve before SDK initialization or worker creation.
-        const promise = this.scan(null, onlyFile).finally(() => { this.pending = null; this.cache = null; });
+        const promise = this.scan(null, onlyFile, sideBatch).finally(() => { this.pending = null; this.cache = null; });
         this.pending = { key: null, promise };
+        return promise;
+    }
+    recordSideChat(batch) {
+        if (this.stopped) return Promise.reject(new Error('Usage service is stopped'));
+        const promise = this.sync(null, batch);
+        this.sideWrites.add(promise);
+        void promise.finally(() => this.sideWrites.delete(promise)).catch(() => {});
         return promise;
     }
     async preserveSession(filename) {
@@ -38,6 +45,7 @@ class PiUsageService {
     async dispose() {
         this.stopped = true; clearInterval(this.timer);
         if (this.pending) await this.pending.promise.catch(() => {});
+        await Promise.allSettled([...this.sideWrites]);
     }
     async report(query) {
         const filter = usageQuery(query);
@@ -54,12 +62,12 @@ class PiUsageService {
         this.pending = { key, promise };
         return promise;
     }
-    async scan(filter, onlyFile) {
+    async scan(filter, onlyFile, sideBatch) {
         const { getAgentDir } = await getSdk();
         return new Promise((resolve, reject) => {
             const worker = new Worker(path.join(__dirname, 'pi-usage-worker.js'), {
                 workerData: { root: path.join(getAgentDir(), 'sessions'), roots: this.store.roots, filter,
-                    ledgerPath: path.join(getAgentDir(), 'pivane-usage', 'ledger.sqlite'), onlyFile },
+                    ledgerPath: path.join(getAgentDir(), 'pivane-usage', 'ledger.sqlite'), onlyFile, sideBatch },
                 resourceLimits: { maxOldGenerationSizeMb: 192 }
             });
             let finished = false;

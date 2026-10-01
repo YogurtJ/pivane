@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import * as sdk from '@earendil-works/pi-coding-agent';
 import bundled from './pi-bundled-resources.js';
+import { nativeExtensionFactories, selectedNativeBuiltins } from './pi-native-mcp.mjs';
 
 // Build the same native resource inventory used by Settings, then let Pi load
 // only selected paths. Filtering happens before any third-party factory runs.
@@ -8,6 +9,7 @@ export async function managedLoaderOptions({ cwd, agentDir, settings, parsed }) 
     const { resolved, settingsView } = await bundled.resolveManagedResources(sdk, { cwd, agentDir, settings });
     const paths = type => resolved[type].filter(item => item.enabled).map(item => item.path);
     const explicit = values => (values || []).filter(file => {
+        if (bundled.obsoleteMcpAdapter(file, cwd)) return false;
         const entry = bundled.identify(file, cwd);
         if (!entry) return true;
         return entry.mode === 'package' && bundled.packageAt(file)?.root === fileURLToPath(new URL('../vendor/' + entry.name, import.meta.url));
@@ -16,8 +18,9 @@ export async function managedLoaderOptions({ cwd, agentDir, settings, parsed }) 
         ? fileURLToPath(new URL('./pi-bundled-subagents.mjs', import.meta.url)) : file;
     return { settingsView, options: {
         noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true,
+        extensionFactories: await nativeExtensionFactories(),
         noContextFiles: parsed.noContextFiles, systemPrompt: parsed.systemPrompt, appendSystemPrompt: parsed.appendSystemPrompt,
-        additionalExtensionPaths: [...explicit(parsed.extensions), ...(parsed.noExtensions ? [] : paths('extensions'))].map(extensionPath),
+        additionalExtensionPaths: [...new Set([...selectedNativeBuiltins(settingsView, parsed), ...explicit(parsed.extensions), ...(parsed.noExtensions ? [] : paths('extensions'))])].map(extensionPath),
         additionalSkillPaths: [...explicit(parsed.skills), ...(parsed.noSkills ? [] : paths('skills'))],
         additionalPromptTemplatePaths: [...explicit(parsed.promptTemplates), ...(parsed.noPromptTemplates ? [] : paths('prompts'))],
         additionalThemePaths: [...explicit(parsed.themes), ...(parsed.noThemes ? [] : paths('themes'))],

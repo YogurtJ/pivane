@@ -220,19 +220,24 @@ async function runFixture(browser, base, width, locale) {
     assert.equal(dismiss.body.action, 'dismiss-legacy');
     // U1.1: contract receipts render under their source message; unknown entries fall back to the card.
     await page.locator('#pi-chat-knowledge summary').click();
-    await page.waitForFunction(() => document.querySelectorAll('#pi-transcript-content > .pi-memory-hint').length === 2);
-    const hints = await page.locator('#pi-transcript-content > .pi-memory-hint').evaluateAll(nodes => nodes.map(node => ({
-        text: node.textContent, after: node.previousElementSibling?.textContent })));
+    await page.waitForFunction(() => document.querySelectorAll('#pi-transcript-content .pi-memory-hint').length === 2);
+    // Each turn's receipts share one group placed right after that turn's user message.
+    const hints = await page.locator('#pi-transcript-content .pi-memory-hint').evaluateAll(nodes => nodes.map(node => ({
+        text: node.textContent, label: node.querySelector('.pi-memory-hint-label')?.textContent,
+        after: node.closest('.pi-memory-hints')?.previousElementSibling?.textContent })));
     assert.equal(hints.length, 2, JSON.stringify(hints));
-    assert.ok(hints[0].text.includes(say('已记住：以后默认用 pnpm 安装依赖', 'Remembered: 以后默认用 pnpm 安装依赖')), JSON.stringify(hints));
+    assert.equal(hints[0].label, say('已记住', 'Remembered'), JSON.stringify(hints));
+    assert.ok(hints[0].text.includes('以后默认用 pnpm 安装依赖'), JSON.stringify(hints));
     assert.equal(hints[0].after, 'First question');
-    assert.ok(hints[1].text.includes(say('已学习技能：', 'Learned skill: ')) && hints[1].text.includes('pnpm-install'), JSON.stringify(hints));
+    assert.equal(hints[1].label, say('学会技能', 'Skill learned'), JSON.stringify(hints));
+    assert.ok(hints[1].text.includes('pnpm-install'), JSON.stringify(hints));
     assert.equal(hints[1].after, 'Second question');
     assert.ok(hints[0].text.includes(say('偏好', 'Preference')), JSON.stringify(hints[0]));
     assert.ok(hints[1].text.includes(say('需重载会话后生效', 'Reload the session to apply')), JSON.stringify(hints[1]));
     const fallback = page.locator('.pi-memory-hint-fallback');
     assert.equal(await fallback.count(), 1);
-    assert.ok((await fallback.innerText()).includes(say('Agent 记下：', 'Agent noted: ')));
+    assert.ok((await fallback.innerText()).includes(say('Agent 记下', 'Agent noted')));
+    assert.ok(await page.locator('.pi-chat-knowledge-fallback').isVisible(), 'the fallback section shows when a hint has no rendered anchor');
     assert.ok((await text('#pi-chat-knowledge summary')).includes(say('本会话已记住 3 条', '3 entries remembered in this session')));
     assert.equal(await page.locator('.pi-chat-knowledge-receipt').count(), 1, 'old receipts keep the previous card rows');
     // Compat: without the injection endpoint the learning area keeps the old display and
@@ -241,17 +246,20 @@ async function runFixture(browser, base, width, locale) {
     await page.locator('.pi-knowledge-entries button').filter({ hasText: say('查看本会话注入内容', "View this session's injected content") }).click();
     await page.waitForFunction(() => Boolean(document.querySelector('.pi-injection-preview .pi-injection-error')));
     assert.ok((await text('.pi-injection-preview')).includes(say('注入内容不可用', 'Injected content is unavailable')), await text('.pi-injection-preview'));
+    // The same toolbar button hides the preview again.
+    await page.locator('.pi-knowledge-entries button').filter({ hasText: say('收起注入内容', 'Hide injected content') }).click();
+    await page.waitForFunction(() => !document.querySelector('.pi-injection-preview'));
     // The undoable:false skill hint keeps only its session-reload button; the two memory hints keep three buttons each.
     assert.equal(await page.locator('.pi-memory-hint button').count(), 7);
     // Undo posts the receipt identity with the confirmed revision.
-    await page.locator('#pi-transcript-content > .pi-memory-hint').first().locator('button').filter({ hasText: say('撤销', 'Undo') }).click();
+    await page.locator('#pi-transcript-content .pi-memory-hint').first().locator('button').filter({ hasText: say('撤销', 'Undo') }).click();
     await page.waitForFunction(() => window.calls.some(call => call.body && call.body.operation === 'undo'));
     const undo = await page.evaluate(() => window.calls.filter(call => call.body && call.body.operation === 'undo').at(-1));
     assert.deepEqual(Object.keys(undo.body).sort(), ['expectedRevision', 'kind', 'operation', 'receiptId', 'requestId']);
     assert.equal(undo.body.receiptId, 'receipt-learning');
     assert.equal(undo.body.expectedRevision, hash('a'));
     // "不对" deletes the memory (anti-revival tombstone) after confirmation.
-    await page.locator('#pi-transcript-content > .pi-memory-hint').first().locator('button').filter({ hasText: say('不对', 'Not right') }).click();
+    await page.locator('#pi-transcript-content .pi-memory-hint').first().locator('button').filter({ hasText: say('不对', 'Not right') }).click();
     await page.waitForFunction(() => window.calls.some(call => call.body && call.body.operation === 'delete'));
     const removal = await page.evaluate(() => window.calls.filter(call => call.body && call.body.operation === 'delete').at(-1));
     assert.deepEqual(Object.keys(removal.body).sort(), ['expectedRevision', 'itemId', 'itemRevision', 'kind', 'operation', 'requestId']);
@@ -259,12 +267,12 @@ async function runFixture(browser, base, width, locale) {
     assert.equal(removal.body.itemRevision, hash('c'));
     assert.ok(dialogs.some(message => message.includes(say('这条记忆不对吗', 'Is this memory wrong'))), JSON.stringify(dialogs));
     // "编辑" jumps to the identity page memory management and locates the entry.
-    await page.locator('#pi-transcript-content > .pi-memory-hint').first().locator('button').filter({ hasText: say('编辑', 'Edit') }).click();
+    await page.locator('#pi-transcript-content .pi-memory-hint').first().locator('button').filter({ hasText: say('编辑', 'Edit') }).click();
     assert.deepEqual(await page.evaluate(() => window.calls.at(-1)), { reveal: ['profile-one', hash('a'), 'memory', 'thread-one'] });
     assert.deepEqual(await page.evaluate(() => window.events.at(-1)), { tab: 'profiles', profileId: 'profile-one', section: 'skills' });
     // A 409 on a hint refreshes and tells the user instead of silently failing.
     state.hintConflict = true;
-    await page.locator('#pi-transcript-content > .pi-memory-hint').first().locator('button').first().click();
+    await page.locator('#pi-transcript-content .pi-memory-hint').first().locator('button').first().click();
     await page.waitForFunction(() => /conflict|冲突/i.test(document.querySelector('#pi-chat-knowledge .pi-knowledge-status')?.textContent || ''));
     assert.ok((await text(chatStatus)).includes(say('已刷新数据', 'data refreshed')));
     // Mobile: 16px form controls, no horizontal overflow, no page errors.
@@ -396,21 +404,22 @@ async function runChat(browser, base, width, locale) {
     await page.locator('#pi-input:not([disabled])').waitFor();
     const zh = locale.startsWith('zh');
     const say = (source, english) => zh ? source : english;
-    await page.waitForFunction(() => document.querySelectorAll('#pi-transcript-content > .pi-memory-hint').length === 3);
-    const placed = await page.locator('#pi-transcript-content > .pi-memory-hint').evaluateAll(nodes => nodes.map(node => ({
-        text: node.textContent, previous: node.previousElementSibling?.className })));
-    // Both hints sit under the turn's user message (tool-call messages fold away), oldest first.
-    assert.match(placed[0].previous || '', /pi-message user/);
-    assert.match(placed[1].previous || '', /pi-memory-hint/);
-    assert.ok(placed.some(row => row.text.includes(say('已记住：记下端口 4321', 'Remembered: 记下端口 4321'))), JSON.stringify(placed));
-    assert.ok(placed.some(row => row.text.includes(say('Agent 记下：用 pnpm 安装', 'Agent noted: 用 pnpm 安装'))), JSON.stringify(placed));
+    await page.waitForFunction(() => document.querySelectorAll('#pi-transcript-content .pi-memory-hint').length === 3);
+    const placed = await page.locator('#pi-transcript-content .pi-memory-hint').evaluateAll(nodes => nodes.map(node => ({
+        text: node.textContent, label: node.querySelector('.pi-memory-hint-label')?.textContent,
+        group: node.parentElement?.className, previous: node.parentElement?.previousElementSibling?.className })));
+    // All hints sit in one group under the turn's user message (tool-call messages fold away), oldest first.
+    assert.equal(await page.locator('#pi-transcript-content > .pi-memory-hints').count(), 1);
+    assert.ok(placed.every(row => row.group === 'pi-memory-hints' && /pi-message user/.test(row.previous || '')), JSON.stringify(placed));
+    assert.ok(placed.some(row => row.label === say('已记住', 'Remembered') && row.text.includes('记下端口 4321')), JSON.stringify(placed));
+    assert.ok(placed.some(row => row.label === say('Agent 记下', 'Agent noted') && row.text.includes('用 pnpm 安装')), JSON.stringify(placed));
     assert.ok((await page.locator('#pi-chat-knowledge summary').innerText()).includes(say('本会话已记住 3 条', '3 entries remembered in this session')));
     // U2.4: the learned-skill hint reloads the current chat session through pi-chat.js.
-    await page.locator('#pi-transcript-content > .pi-memory-hint').filter({ hasText: 'pnpm-install' }).locator('button').filter({ hasText: say('重载会话', 'Reload the session') }).click();
+    await page.locator('#pi-transcript-content .pi-memory-hint').filter({ hasText: 'pnpm-install' }).locator('button').filter({ hasText: say('重载会话', 'Reload the session') }).click();
     const reloadEnd = Date.now() + 10000;
     while (Date.now() < reloadEnd && !reloads.length) await page.waitForTimeout(100);
     assert.deepEqual(reloads, ['reload_resources'], 'session reload reaches the native runtime');
-    await page.locator('#pi-transcript-content > .pi-memory-hint').filter({ hasText: say('已记住：记下端口 4321', 'Remembered: 记下端口 4321') }).locator('button').filter({ hasText: say('撤销', 'Undo') }).click();
+    await page.locator('#pi-transcript-content .pi-memory-hint').filter({ hasText: '记下端口 4321' }).locator('button').filter({ hasText: say('撤销', 'Undo') }).click();
     const end = Date.now() + 10000;
     while (Date.now() < end && !writes.some(write => write.body?.operation === 'undo')) await page.waitForTimeout(100);
     const undo = writes.filter(write => write.body?.operation === 'undo').at(-1);
@@ -471,7 +480,8 @@ async function runWave2(browser, base, width, locale) {
         const snapshot = () => ({ version: 1, status: 'ready', revision: hash('a'), items, receipts, hasMore: false,
             usage: state.usage, capabilities: { memory: true, skill: true, projectWrites: false, projectWritesBySession: true,
                 operations: ['create', 'update', 'delete', 'undo', 'consolidate'], maxContentLength: 65536 } });
-        if (p.endsWith('/knowledge/injection') && req.method() === 'GET')
+        // Exact route: a client URL with a doubled /knowledge segment must miss this mock (the real server 404s).
+        if (/^\/api\/pi\/profiles\/[^/]+\/knowledge\/injection$/.test(p) && req.method() === 'GET')
             return fulfill(url.searchParams.get('sessionId')
                 ? { version: 1, status: 'ready', block: 'PROFILE BLOCK\nPROJECT BLOCK', chars: 40, entries: 5,
                     profile: { chars: 21, entries: 3 }, project: { chars: 19, entries: 2 },
@@ -575,12 +585,19 @@ async function runWave2(browser, base, width, locale) {
     await page.locator('.pi-knowledge-entries button').filter({ hasText: say('查看本会话注入内容', "View this session's injected content") }).click();
     await page.waitForFunction(() => Boolean(document.querySelector('.pi-injection-preview pre')));
     const preview = page.locator('.pi-injection-preview');
-    assert.ok((await preview.innerText()).includes(say('项目记忆：2 条 / 19 字', 'Project memory: 2 entries / 19 chars')), await preview.innerText());
-    assert.ok((await preview.innerText()).includes(say('上一轮已注入 4 条 / 30 字', 'The previous turn received 4 entries / 30 chars')), await preview.innerText());
+    const stats = await preview.locator('.pi-injection-stat').evaluateAll(nodes => nodes.map(node => [node.querySelector('span')?.textContent, node.querySelector('strong')?.textContent]));
+    assert.deepEqual(stats, [[say('身份记忆', 'Profile memory'), say('3 条 · 21 字', '3 entries · 21 chars')],
+        [say('项目记忆', 'Project memory'), say('2 条 · 19 字', '2 entries · 19 chars')],
+        [say('上一轮已注入', 'Injected last turn'), say('4 条 · 30 字', '4 entries · 30 chars')]]);
     await preview.locator('summary').click();
     assert.match(await preview.locator('pre').innerText(), /PROJECT BLOCK/);
     const askedInjection = await page.evaluate(() => window.calls.filter(call => call.url.includes('/knowledge/injection')).at(-1));
     assert.ok(askedInjection.url.includes('sessionId=thread-one'), askedInjection.url);
+    assert.equal(new URL(askedInjection.url, 'http://fixture').pathname, '/api/pi/profiles/profile-one/knowledge/injection', askedInjection.url);
+    // The raw block stays open across re-renders (busy changes re-render the card).
+    await page.evaluate(() => window.chat.setBusy(true));
+    assert.equal(await preview.locator('details').evaluate(node => node.open), true, 'raw block stays open after a re-render');
+    await page.evaluate(() => window.chat.setBusy(false));
     // U2.3: a project hint keeps only the edit entry, and "edit" opens the management page
     // with the session id; the card's project entry does the same.
     const projectHint = page.locator('#pi-transcript-content .pi-memory-hint').filter({ hasText: 'Project entry' });

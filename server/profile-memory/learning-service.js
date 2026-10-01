@@ -263,7 +263,10 @@ class ProfileLearningService {
     }
     tick() {
         if (this.closed) return Promise.resolve();
-        const pending = this._tick();
+        // A slow native scan must not accumulate another scan on every timer tick.
+        // Existing scans also cover instances already scanning during a code refresh.
+        if (this.scans.size) return this.scans.values().next().value;
+        const pending = Promise.resolve().then(() => this._tick());
         this.scans.add(pending);
         void pending.then(() => this.scans.delete(pending), () => this.scans.delete(pending));
         return pending;
@@ -273,8 +276,16 @@ class ProfileLearningService {
             for (const profile of (await this.profiles.state()).state.profiles) {
                 if (this.closed) break;
                 const state = this.read(await this.location(profile.id));
-                for (const cursor of Object.values(state.cursors)) if (cursor?.source)
+                const sources = new Set();
+                for (const cursor of Object.values(state.cursors)) {
+                    if (this.closed) break;
+                    if (!cursor?.source) continue;
+                    const key = JSON.stringify([cursor.source.cwd, cursor.source.sessionId, cursor.source.sessionPath]);
+                    // One registration already evaluates correction, review and extraction.
+                    if (sources.has(key)) continue;
+                    sources.add(key);
                     await this.register(cursor.source, 'periodic');
+                }
                 this.wake(profile.id);
             }
         }

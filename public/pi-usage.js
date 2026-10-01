@@ -86,7 +86,7 @@ window.PiUsage = (() => {
             result.append(cards);
             if (data.ledger) result.append(node('p', translateUi("已持久入账，删除会话后仍保留统计。{0} 条记录按官方目录价补算，{1} 条非零用量仍无可确认价格。", number(total.estimatedRecords), number(total.unpricedRecords)), 'pi-usage-muted'));
             result.append(node('p', translateUi("已去重 {0} 条副本记录 · {1} 条用量记录 · {2} 条缺少价格／费用，{3} 条记录费用为零。", number(c.duplicates), number(total.records), number(total.missingCost), number(total.zeroCost)), 'pi-usage-muted'));
-            if (!total.records) result.append(node('p', translateUi("此时间范围内没有持久会话用量记录。"), 'settings-empty'));
+            if (!total.records) result.append(node('p', translateUi("此时间范围内没有持久会话或侧聊用量记录。"), 'settings-empty'));
             const chart = node('section', undefined, 'pi-usage-section'); chart.append(node('h4', translateUi("每日用量")));
             const metric = node('select'); metric.setAttribute('aria-label', translateUi("每日趋势指标"));
             for (const [value, label] of [['total', translateUi("总 Token")], ['input', translateUi("输入 Token")], ['output', translateUi("输出 Token")], ['cacheRead', translateUi("缓存读取")], ['cacheWrite', translateUi("缓存写入")], ['cost', translateUi("估算费用（USD）")]]) {

@@ -113,7 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.modelSnapshot) state.modelSnapshot.preferences.sessionTitles = settings;
     } });
     const usagePanel = window.PiUsage.create({ apiFetch });
-    window.PiExtensions?.connect?.({ apiFetch, currentCwd });
+    window.PiExtensions?.connect?.({ apiFetch, currentCwd, currentSession: () => window.PiNativeRuntime?.currentSession?.() || null });
     const nativeSettings = window.PiNativeSettings.create({ apiFetch, currentCwd, toast });
     const updatesPanel = window.PiUpdates.create({ apiFetch });
     const subagentSettings = window.PiSubagentSettings.create({ apiFetch, currentCwd });
@@ -124,7 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let settingsViewEpoch = 0;
     let settingsOpen = false;
     let activeProfileMetadata = null;
-    const extensionTabs = new Set(['extensions', 'installed']);
+    const extensionTabs = new Set(['extensions', 'installed', 'mcp']);
     function openSettings(tab = state.activeTab, metadata = {}) {
         settingsOpen = true;
         elements.dialog.classList.remove('hidden');
@@ -791,7 +791,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const params = route === 'profiles' ? { profileId: detail.profileId, section: detail.section, authoringSession: detail.authoringSession?.id, authoringCwd: detail.authoringSession?.cwd }
             : { tab };
         window.PiWorkspaceRoute?.navigate(route, params);
-        if (detail.updatePi === true && tab === 'updates') updatesPanel.reviewUpdate();
     });
     window.addEventListener('workspace:settings-route', event => {
         const { tab, settingsTab, profileId, section, authoringSession, authoringCwd, resourceType } = event.detail;

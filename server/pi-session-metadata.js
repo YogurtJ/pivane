@@ -74,7 +74,7 @@ async function projectMetadata(bytes, file, stat, parseSessionEntries) {
 }
 
 class SessionMetadataCache {
-    constructor() { this.files = new Map(); this.bytes = 0; }
+    constructor() { this.files = new Map(); this.bytes = 0; this.pending = new Map(); }
     put(file, record) {
         const old = this.files.get(file);
         if (old) this.bytes -= old.bytes;
@@ -120,8 +120,24 @@ class SessionMetadataCache {
         } finally { if (fd !== undefined) fs.closeSync(fd); }
     }
     async list(directory, sdk, fallback) {
-        // Alias paths and unavailable/oversized proofs retain native discovery behavior.
+        // Existing cache instances can adopt this read-only implementation in place.
+        this.pending ||= new Map();
         const proof = sessionListRevision(directory);
+        let read = this.pending.get(directory);
+        if (!read || read.proof !== proof || read.sdk !== sdk) {
+            read = { proof, sdk };
+            // Reserve before any asynchronous read; project discovery and session
+            // lists share the same work, including the native fallback path.
+            read.promise = Promise.resolve().then(() => this.listProven(directory, sdk, fallback, proof))
+                .finally(() => { if (this.pending.get(directory) === read) this.pending.delete(directory); });
+            this.pending.set(directory, read);
+        }
+        const rows = await read.promise;
+        if (proof && proof !== sessionListRevision(directory)) throw new Error('Session file changed');
+        return rows;
+    }
+    async listProven(directory, sdk, fallback, proof) {
+        // Alias paths and unavailable proofs retain native discovery behavior.
         if (!proof) return fallback();
         const members = JSON.parse(proof)[3];
         const rows = [];
@@ -131,8 +147,18 @@ class SessionMetadataCache {
                 if (row) rows.push(row);
             }
         } catch (error) {
-            if (error.message === 'Session metadata proof unavailable') return fallback();
-            throw error;
+            if (error.message !== 'Session metadata proof unavailable') throw error;
+            // Large files/records still use Pi's native discovery, but their
+            // compact metadata must obey the same identity cache as small files.
+            // Never retain allMessagesText (native search text can be enormous).
+            const native = await fallback();
+            if (proof !== sessionListRevision(directory)) throw new Error('Session file changed');
+            const projected = new Map(native.map(({ allMessagesText, ...row }) => [row.path, row]));
+            for (const [name, memberStamp, identity] of members) {
+                const file = path.join(directory, name);
+                this.put(file, { revision: JSON.stringify([memberStamp, identity]), metadata: projected.get(file) || null });
+            }
+            return native.map(row => this.files.get(row.path)?.metadata || projected.get(row.path));
         }
         if (proof !== sessionListRevision(directory)) throw new Error('Session file changed');
         return rows.sort((a, b) => b.modified.getTime() - a.modified.getTime());

@@ -16,9 +16,9 @@
 .pi-inspector-split { display: none; }
 #pi-side-chat { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
 .pi-side-heading { display: flex; align-items: center; gap: 8px; padding: 3px 12px; min-height: 38px; flex-shrink: 0; }
-.pi-side-model-row { display: flex; gap: 10px; padding: 9px 12px 0; color: var(--text-muted); }
-.pi-side-model-row > span:first-child { flex-shrink: 0; }
-#pi-side-model { min-width: 0; overflow-wrap: anywhere; font-size: 0.76rem; color: var(--text-main); }
+.pi-side-reference-meta { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
+#pi-side-model { flex: 0 1 auto; max-width: 45%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.7rem; color: var(--text-main); }
+.pi-side-reference[open]:has(.pi-side-model-controls:not([hidden])) #pi-side-model { display: none; }
 .pi-side-mode { flex-shrink: 0; font-size: 0.69rem; color: var(--text-muted); }
 #pi-side-parent-state { flex: 1; min-width: 0; border: 0; background: none; color: var(--text-muted); font-size: 0.72rem; text-align: left; padding: 6px 0; cursor: pointer; overflow-wrap: anywhere; }
 #pi-side-parent-state[data-waiting="true"] { color: var(--amber); }
@@ -27,7 +27,7 @@
 .pi-side-reference summary::-webkit-details-marker { display: none; }
 .pi-side-reference summary > i { font-size: 0.6rem; transition: transform 120ms ease; }
 .pi-side-reference[open] summary > i { transform: rotate(90deg); }
-#pi-side-reference-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+#pi-side-reference-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pi-side-reference-hint { flex-shrink: 0; font-size: 0.68rem; }
 .pi-side-reference-body { max-height: min(280px, 38dvh); overflow-y: auto; }
 #pi-side-reference-preview { padding: 2px 12px 10px; }
@@ -45,9 +45,11 @@
 #pi-side-messages .pi-message-actions { margin-top: 5px; }
 #pi-side-messages .pi-markdown pre { max-width: 100%; }
 .pi-side-empty { color: var(--text-muted); font-size: 0.82rem; padding: 12px 0; }
+.pi-side-status[hidden] { display: none; }
 .pi-side-status { padding: 7px 12px; min-height: 29px; font-size: 0.73rem; color: var(--text-muted); border-top: 1px solid var(--line); overflow-wrap: anywhere; }
 .pi-side-status[data-error="true"] { color: var(--danger); }
-.pi-side-composer { display: flex; align-items: flex-end; gap: 7px; padding: 0 12px 8px; }
+.pi-side-composer { display: flex; align-items: flex-end; gap: 7px; padding: 8px 12px; border-top: 1px solid var(--line); }
+.pi-side-status:not([hidden]) + .pi-side-quotes + .pi-side-composer { padding-top: 0; border-top: 0; }
 .pi-side-composer textarea { flex: 1; width: 0; min-width: 0; min-height: 54px; max-height: 160px; resize: vertical; padding: 8px; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--surface-1); color: var(--text-main); font-size: 0.86rem; line-height: 1.5; }
 .pi-side-usage { min-height: 24px; padding: 0 12px 7px; color: var(--text-muted); font-size: 0.68rem; }
 @media (min-width: 901px) {
@@ -66,3 +68,45 @@
     .pi-side-source-controls select { height: 40px; }
     .pi-inspector-tabs button { min-height: 36px; }
 }
+
+/* Optional help uses a compact, keyboard-accessible inline disclosure. */
+.pi-side-info { flex-shrink: 0; }
+.pi-side-info[aria-expanded="true"] { color: var(--green); background: var(--surface-1); }
+.pi-side-info-panel { flex: 0 0 auto; max-height: min(300px, 38dvh); overflow-y: auto; overscroll-behavior: contain; margin: 0 12px 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-1); font-size: .76rem; }
+.pi-side-info-panel[hidden] { display: none; }
+.pi-side-info-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-main); }
+.pi-side-info-panel ul { margin: 6px 0 2px; padding-left: 18px; color: var(--text-muted); line-height: 1.6; }
+.pi-side-info-panel li + li { margin-top: 6px; }
+.pi-side-info:focus-visible, .pi-side-info-panel button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+@media (max-width: 900px) { .pi-side-info, #pi-side-info-close { min-width: 36px; min-height: 36px; } }
+
+/* Independent side model controls remain inside the quiet settings disclosure. */
+.pi-side-model-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin: 8px 12px 12px; }
+.pi-side-model-controls[hidden] { display: none; }
+.pi-side-model-controls select, .pi-side-model-trigger { width: 100%; min-width: 0; max-width: 100%; min-height: 36px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-1); color: var(--text-main); padding: 6px 10px; }
+@media (max-width: 900px) { .pi-side-model-controls select, .pi-side-model-trigger { font-size: 16px; min-height: 42px; } }
+
+.pi-side-model-trigger { display: flex; align-items: center; gap: 8px; text-align: left; font: inherit; cursor: pointer; }
+.pi-side-model-trigger:hover:not(:disabled) { border-color: var(--green); }
+.pi-side-model-trigger:disabled { opacity: .6; cursor: default; }
+.pi-side-model-trigger:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+/* Session lifecycle: quiet secondary action, readable local-only archive. */
+.pi-side-refresh { display: flex; align-items: center; justify-content: center; gap: 8px; width: calc(100% - 24px); margin: 0 12px 10px; padding: 8px 10px; min-height: 36px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-1); color: var(--text-main); cursor: pointer; font: inherit; }
+.pi-side-refresh:hover:not(:disabled) { border-color: var(--green); }
+.pi-side-refresh:disabled, .pi-side-session-note button:disabled { opacity: .5; cursor: not-allowed; }
+.pi-side-session-note { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px; margin: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-1); font-size: .76rem; }
+.pi-side-session-note[hidden], .pi-side-history[hidden] { display: none; }
+.pi-side-session-note p { color: var(--text-muted); line-height: 1.55; margin: 5px 0 0; }
+.pi-side-session-note button { padding: 7px 12px; border: 1px solid var(--green); color: var(--text-main); background: transparent; border-radius: 7px; cursor: pointer; min-height: 36px; }
+.pi-side-history { margin-bottom: 18px; min-width: 0; }
+.pi-side-history-title { color: var(--text-muted); font-size: .69rem; margin: 0 0 9px; letter-spacing: .02em; }
+.pi-side-archive { border: 1px solid var(--line); border-radius: 9px; margin-bottom: 8px; overflow: hidden; }
+.pi-side-archive > summary { cursor: pointer; padding: 10px; font-size: .76rem; color: var(--text-main); }
+.pi-side-archive > summary span { display: block; color: var(--text-muted); font-size: .68rem; margin: 5px 0 0 13px; overflow-wrap: anywhere; }
+.pi-side-archive-body { padding: 0 10px 10px; min-width: 0; }
+.pi-side-archive-note { font-size: .7rem; color: var(--text-muted); line-height: 1.6; padding: 8px 0; margin: 0; }
+#pi-side-content .pi-message { min-width: 0; margin-bottom: 18px; }
+#pi-side-content .pi-message-body { font-size: .82rem; }
+#pi-side-content pre { max-width: 100%; }
+@media (max-width: 900px) { .pi-side-refresh, .pi-side-session-note button { min-height: 42px; } }

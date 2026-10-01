@@ -2,7 +2,7 @@
 
 Pi WebUI 的主聊天回复、BTW 侧聊回复与 Markdown 文件预览共用本地 KaTeX 0.18.7。刷新页面生效，无需重启服务。已有会话仍保存原始 Markdown，重新打开后按新渲染器显示。
 
-当前 Pi 0.85.0 的终端 Markdown 组件内置 `renderLatex` 和 LaTeX tokenizer，用终端字符布局展示公式；RPC 传递文本而非终端布局。WebUI 使用独立浏览器排版，不修改 Pi 依赖或原生 JSONL。原生 HTML 导出仍由上游模板决定，不因这次网页更新自动增加 KaTeX。
+Pi 的终端 Markdown 组件内置 `renderLatex` 和 LaTeX tokenizer，用终端字符布局展示公式；RPC 传递文本而非终端布局。WebUI 使用独立浏览器排版，不修改 Pi 依赖或原生 JSONL。原生 HTML 导出仍由上游模板决定，不因这次网页更新自动增加 KaTeX。
 
 ## 写法
 

@@ -14,11 +14,11 @@
             description: ['把资料整理成可编辑的 PPT，支持模板填充与版式设计。', 'Turn source material into editable presentations, with template filling and slide design.'],
             requirement: ['需要 Python 3.10+ 和项目依赖；由助手核对 Pi 技能接入方式。', 'Requires Python 3.10+ and project dependencies; the assistant checks how to integrate the skill with Pi.'],
             example: ['把这份项目资料做成一份十页汇报 PPT。', 'Turn these project notes into a ten-slide presentation.'] },
-        { id: 'pi-mcp-adapter', name: 'pi-mcp-adapter', author: 'nicobailon', kind: ['扩展包 · MCP', 'Package · MCP'], icon: 'fa-plug',
-            url: 'https://pi.dev/packages/pi-mcp-adapter', source: 'npm:pi-mcp-adapter',
+        { id: 'pi-native-mcp', name: 'Pi MCP', author: 'Earendil Works', kind: ['Pi 内置 · MCP', 'Built-in · MCP'], icon: 'fa-plug',
+            url: 'https://github.com/earendil-works/pi/blob/v0.99.1/packages/coding-agent/docs/mcp.md',
             title: ['连接外部工具', 'Connect external tools'],
             description: ['连接 MCP 服务，让 Agent 使用你需要的数据和工具。', 'Connect MCP servers so your agent can use the data and tools you need.'],
-            requirement: ['安装后需配置 MCP 服务；部分服务需要账号授权。', 'Configure MCP servers after installation; some services require account authorization.'],
+            requirement: ['Pi 0.99.1 原生能力，无需安装适配器；配置 mcp.json，部分服务需 OAuth 授权。', 'Native to Pi 0.99.1; no adapter installation needed. Configure mcp.json; some servers require OAuth authorization.'],
             example: ['帮我接入一个 MCP 服务，并检查有哪些可用工具。', 'Help me connect an MCP server and check its available tools.'] },
         { id: 'pi-web-access', name: 'pi-web-access', author: 'nicobailon', kind: ['扩展包 · 检索', 'Package · Research'], icon: 'fa-globe',
             url: 'https://pi.dev/packages/pi-web-access', source: 'npm:pi-web-access',
@@ -50,8 +50,9 @@
         const el = node('button', label, { type: 'button', ...attrs });
         el.addEventListener('click', action); return el;
     };
+    let mcpPanel;
     let enabled = false, host, generation = 0, view = '', inventory = null, inventoryState = 'unknown', renderCards = () => {}, subnav = null;
-    const repositories = { 'ppt-master': 'hugohe3/ppt-master', 'pi-mcp-adapter': 'nicobailon/pi-mcp-adapter', 'pi-web-access': 'nicobailon/pi-web-access', 'pi-computer-use': 'injaneity/pi-computer-use', 'pi-subagents': 'nicobailon/pi-subagents', 'pi-hermes-memory': 'chandra447/pi-hermes-memory' };
+    const repositories = { 'ppt-master': 'hugohe3/ppt-master', 'pi-web-access': 'nicobailon/pi-web-access', 'pi-computer-use': 'injaneity/pi-computer-use', 'pi-subagents': 'nicobailon/pi-subagents', 'pi-hermes-memory': 'chandra447/pi-hermes-memory' };
     function identity(source) {
         if (typeof source !== 'string') return '';
         const npm = /^npm:((?:@[^/@]+\/)?[^/@]+)(?:@[^/]+)?$/.exec(source);
@@ -61,6 +62,11 @@
     }
     function installation(entry) {
         if (inventoryState !== 'ready') return { state: inventoryState, label: inventoryState === 'loading' ? text('正在核对…', 'Checking…') : text('状态待核对', 'Status unknown') };
+        if (entry.id === 'pi-native-mcp') {
+            const builtin = inventory.resources?.find(item => item.path === 'builtin:mcp');
+            return builtin ? { state: builtin.enabled ? 'installed' : 'configured', label: text(builtin.enabled ? 'Pi 原生内置' : 'Pi 内置 · 已停用', builtin.enabled ? 'Native Pi built-in' : 'Built-in · disabled') }
+                : { state: 'unknown', label: text('需核对 Pi 版本', 'Check Pi version') };
+        }
         if (entry.id === 'pi-hermes-memory' && inventory.profileMemoryInstalled) return { state: 'installed', label: text('档案适配已安装', 'Profile adapter installed') };
         if (entry.id === 'ppt-master') {
             const skills = Array.isArray(inventory.featuredSkills) ? inventory.featuredSkills.filter(item => item.id === entry.id) : [];
@@ -119,6 +125,9 @@
         let need = entry ? text(
             `我想了解并配置 ${entry.name}。来源：${entry.url}${entry.source ? `，Pi 包来源：${entry.source}` : ''}。用途：${text(...entry.description)} 示例：${text(...entry.example)} 请先只读检查已有安装、当前版本、许可、依赖和平台兼容性，说明安装范围与方案，等我确认后再安装；不要重复安装已有能力。安装后分别核对文件、依赖与当前会话加载状态。`,
             `I want to learn about and configure ${entry.name}. Source: ${entry.url}${entry.source ? `; Pi package source: ${entry.source}` : ''}. Purpose: ${text(...entry.description)} Example: ${text(...entry.example)} First inspect existing installations, versions, licenses, dependencies and platform compatibility read-only. Explain the scope and plan, then wait for my confirmation before installing. Avoid duplicate installations. After installation, check files, dependencies and current-session loading separately.`) : '';
+        if (entry?.id === 'pi-native-mcp') need = text(
+            '请帮我配置 Pi 0.99.1 原生 MCP。先检查全局或受信项目的 mcp.json、连接和工具暴露策略；不要安装 pi-mcp-adapter，不要展示凭据。使用 Pi 原生 MCP/Codemode 接口，写配置和授权前说明方案并等我确认。',
+            'Help configure native Pi 0.99.1 MCP. Inspect global or trusted-project mcp.json, connections and tool exposure. Do not install pi-mcp-adapter or display credentials. Use native MCP/Codemode; explain the plan and wait for confirmation before configuration changes or sign-in.');
         if (entry && ['pi-subagents', 'pi-hermes-memory'].includes(entry.id)) need = text(
             `请帮我配置 Pivane 内置的 ${entry.name}。该组件随 Pivane 安装和更新，请先检查当前版本、资源开关、身份与会话加载状态，再调整配置，不要另行安装或修改上游源码。`,
             `Help me configure ${entry.name}, bundled with Pivane. Check its version, resource toggles, profile and actual session loading before adjusting settings. It updates with Pivane; do not install another copy or modify upstream source.`);
@@ -145,7 +154,8 @@
     }
     const extensionTabLabels = {
         extensions: ['发现', 'Discover'],
-        installed: ['已安装', 'Installed']
+        installed: ['已安装', 'Installed'],
+        mcp: ['原生 MCP', 'Native MCP']
     };
     function mountSubnav() {
         const dialog = document.getElementById('workspace-settings-dialog');
@@ -154,7 +164,10 @@
         subnav = node('nav', null, { class: 'extensions-nav', id: 'extensions-nav', 'aria-label': text('扩展分类', 'Extension categories'), hidden: '' });
         const tabs = node('div', null, { class: 'extensions-nav-tabs' });
         for (const [tab, label] of Object.entries(extensionTabLabels)) {
-            const item = button(text(...label), () => window.PiWorkspaceRoute?.navigate('extensions', { tab }), { 'data-extensions-tab': tab, type: 'button' });
+            const item = button(text(...label), () => {
+                window.PiWorkspaceRoute?.navigate('extensions', { tab });
+                if (tab === 'mcp') window.PiExtensions.setView('extensions', 'mcp');
+            }, { 'data-extensions-tab': tab, type: 'button' });
             item.classList.add('extensions-nav-tab');
             tabs.append(item);
         }
@@ -167,7 +180,14 @@
         header.after(subnav);
     }
     window.PiExtensions = {
-        connect(value) { host = value; },
+        connect(value) {
+            host = value;
+            mcpPanel?.close(); mcpPanel?.root.remove();
+            if (window.PiMcpSettings) {
+                mcpPanel = window.PiMcpSettings.create(value);
+                document.querySelector('.workspace-settings-content')?.append(mcpPanel.root);
+            }
+        },
         mountExplore,
         setAssistantEnabled(value) {
             enabled = Boolean(value);
@@ -188,6 +208,10 @@
                     if (active) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current');
                 });
             }
+            if (view === 'mcp') {
+                document.querySelectorAll('[data-settings-panel]').forEach(panel => panel.classList.remove('active'));
+                mcpPanel?.open();
+            } else mcpPanel?.close();
             if (view === 'extensions') void refreshInventory();
             const close = document.getElementById('workspace-settings-close');
             if (close) close.title = close.ariaLabel = extensionView ? text('关闭扩展', 'Close extensions') : text('关闭设置', 'Close settings');
