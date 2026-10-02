@@ -10,15 +10,13 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 
 **A self-hosted AI workspace powered by Pi Coding Agent. Code, manage files, and create images, video & audio from your desktop, tablet or phone. Bring your own models.**
 
-[下载 1.4.0 正式版](https://github.com/YogurtJ/pivane/releases/tag/v1.4.0) · [开始使用](docs/USER_GUIDE.md) · [安装与恢复](docs/INSTALL_RECOVERY.md) · [Agent 操作指南](docs/AGENT_GUIDE.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues)
+[下载 1.5.0 正式版](https://github.com/YogurtJ/pivane/releases/tag/v1.5.0) · [开始使用](docs/USER_GUIDE.md) · [安装与恢复](docs/INSTALL_RECOVERY.md) · [Agent 操作指南](docs/AGENT_GUIDE.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues)
 
-**1.4.0 正式版锁定 Pi 0.99.1**，接入原生 MCP/Codemode 与嵌套工具，改进侧聊、长会话加载、提示词和扩展设置，并修复 DOMPurify 安全公告。[查看本版变化与升级说明](docs/releases/1.4.0.md)。
+**1.5.0 正式版锁定 Pi 1.0.0**，内置 pi-subagents 0.74.0，新增模型速度、语音输入、线程跨项目移动与知识写前比较，并改进公式和模型设置。[查看本版变化与升级说明](docs/releases/1.5.0.md)。
 
-本版最终包在 Linux ARM64 / Node 22 通过 530 项测试、19 组 Chromium 专项，以及独立安装、从 1.3.0 升级和 18 文件原路径逐项哈希恢复验收，生产 audit 为 0 漏洞。精确归档与平台范围见版本说明；运行实例需经正常更新流程切换后生效。
+本版最终包在 Linux ARM64 / Node 22.23.2 通过 589 项测试、480 文件语法、71 文档检查、28 组 Chromium 专项，以及独立安装、从正式 1.4.0 升级和 18 文件原路径逐项哈希恢复验收，生产 audit 为 0 漏洞。精确归档与平台范围见版本说明；运行实例需经正常更新流程切换后生效。
 
 旧 pi-mcp-adapter 配置须先审查、备份再显式迁移，不自动转换 OAuth；其他扩展和原生数据保留。配置与迁移见[原生 MCP](docs/MCP.md)。公开发布与运行切换分别核对，旧归档不修改。
-
-当前源码为 **1.5.0 候选 / Pi 1.0.0**，新增模型速度、语音输入、线程跨项目移动与知识写前比较，并更新内置子 Agent。尚未公开发布，升级边界及验证状态见[候选说明](docs/releases/1.5.0.md)。
 
 ## 为什么用 Pivane
 
@@ -68,7 +66,7 @@ Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里
 
 ## 部署在你自己的机器上
 
-当前正式版 **1.4.0** 锁定 **Pi 0.99.1**，推荐 Node.js 22.x；历史版本资产保留。1.4.0 的精确包 SHA256、验收范围和限制见[版本说明](docs/releases/1.4.0.md)及 Release 附件。下表是历史平台基线，不表示本包已在每个平台重跑验收。
+当前正式版 **1.5.0** 锁定 **Pi 1.0.0**，推荐 Node.js 22.x；历史版本资产保留。1.5.0 的精确包 SHA256、验收范围和限制见[版本说明](docs/releases/1.5.0.md)及 Release 附件。下表是历史平台基线，不表示本包已在每个平台重跑验收。
 
 | 服务端平台 | 已验收范围 | 安装入口 |
 |---|---|---|
