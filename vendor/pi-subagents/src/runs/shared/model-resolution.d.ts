@@ -17,6 +17,16 @@ export interface ParentModel {
 }
 export declare function normalizeParentModel(model: unknown): ParentModel | undefined;
 /**
+ * Provider/id ids of the host session's scoped-model snapshot (`ctx.scopedModels`).
+ * Pi reports an empty set when the session is unscoped (nothing configured, or no
+ * pattern matched), and then allows every model; `scoped` narrows that to `inherit`.
+ */
+export declare function scopedModelIdsFromContext(ctx: {
+    scopedModels?: ReadonlyArray<{
+        model?: unknown;
+    }>;
+}): string[];
+/**
  * Normalize a model id or provider segment for fuzzy comparison: case-fold,
  * treat dots/underscores as dashes (so `4.5` matches `4-5`), and collapse
  * repeated separators.

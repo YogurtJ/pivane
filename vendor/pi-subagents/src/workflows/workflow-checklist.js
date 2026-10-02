@@ -1,3 +1,4 @@
+import { childThinkingLevel } from "../shared/model-info.js";
 import { sanitizeDisplayText } from "../shared/display-text.js";
 import { workflowPreflightLaneForRuntimeKey as laneFor } from "./workflow-preflight.js";
 const MAX_TEXT = 160;
@@ -78,12 +79,14 @@ function stepKey(step) {
 }
 function stepItem(step, index, phase, key = stepKey(step) ?? `step-${index + 1}`, label = step.label ?? step.description ?? stepKey(step) ?? step.agent ?? key, preflight) {
     const state = checklistState(step);
+    const thinking = childThinkingLevel(step);
     return {
         key: keyText(key, `step-${index + 1}`),
         label: keyText(label, key),
         phase,
         state,
         ...(text(step.agent) ? { agent: text(step.agent) } : {}),
+        ...(thinking ? { thinking } : {}),
         ...(step.context ? { context: step.context } : {}),
         ...(finite(step.startedAt) !== undefined ? { startedAt: finite(step.startedAt) } : {}),
         ...(duration(step, undefined, state) !== undefined ? { durationMs: duration(step, undefined, state) } : {}),

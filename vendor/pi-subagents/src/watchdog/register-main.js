@@ -1,7 +1,7 @@
 import { Text } from "@earendil-works/pi-tui";
 import { resolveEffectiveThinking, splitKnownThinkingSuffix, THINKING_LEVELS } from "../shared/model-info.js";
 import { SLASH_TEXT_RESULT_TYPE } from "../shared/types.js";
-import { captureWatchdogDiffBaseline } from "./diff-tool.js";
+import { startWatchdogDiffBaselineCapture } from "./diff-tool.js";
 import { formatWatchdogRecommendation, recommendWatchdogModel, resolveWatchdogModelInput, parseWatchdogThinkingInput } from "./model-selection.js";
 import { renderWatchdogWarning } from "./render.js";
 import { createMainWatchdogReview } from "./review.js";
@@ -385,7 +385,7 @@ export function registerMainWatchdog(pi, options = {}) {
     });
     pi.on("session_start", (_event, ctx) => {
         rememberContext(ctx);
-        diffBaseline = captureWatchdogDiffBaseline(ctx.cwd);
+        diffBaseline = startWatchdogDiffBaselineCapture(ctx.cwd);
         runtime.bindSession(ctx);
     });
     pi.on("before_agent_start", (event, ctx) => {

@@ -212,7 +212,7 @@ subscribe to the `subagent:child-status` event advertised by RPC `ping` as
 `version: 1`, `runId`, `childId`, `status` (`"started"`, `"stopping"`, or
 `"stopped"`), `ts`, and optional child metadata such as `asyncDir`, `stepIndex`,
 `agent`, `childRunId`, `workflowKey`, `phase`, and `label`. Async
-`workflowScript` roots emit `"started"` once the keyed child has a concrete
+Workflow script roots emit `"started"` once the keyed child has a concrete
 launch identity; `childId` and `workflowKey` are the stable workflow key, while
 `stepIndex` is only a convenience projection for the current status snapshot.
 These events are observer hints only. They can duplicate across the live event
@@ -300,7 +300,7 @@ Session files are stored under a per-run session directory. With `context: "fork
 
 ## Completion notifications
 
-Async completions belong only to the originating session. The result watcher emits `subagent:async-complete`, and the extension consumes that event to record completion state.
+Async completions belong only to the originating session. The result watcher emits `subagent:async-complete` for detached runs. Awaited workflow children emit it when they settle, with `awaitedByWorkflow: true`, `parentWorkflowRunId`, and `triggerTurn: false`. They do not send a separate child notification or turn.
 
 Successful sibling completions are held briefly and delivered as a quiet grouped completion when they finish within a short window (see `completionBatch` in [configuration.md](configuration.md)), avoiding unread markers on inactive tabs. Failed and paused completions remain visible and fire immediately.
 
@@ -311,7 +311,7 @@ Async events:
 - `subagent:async-started`
 - `subagent:async-complete`
 
-For regular async starts, the `subagent:async-started` payload includes redacted `task` and `goal` prompt fields. Async `workflowScript` roots emit the same event with `mode: "workflow"` after their initial `status.json` is durable; workflow roots can omit `task`, and any included prompt fields are redacted. Their keyed children are then announced dynamically through `subagent:child-status`. Companion UI extensions can combine those hints with the authoritative live lifecycle artifacts under `asyncDir` without scraping terminal output.
+For regular async starts, the `subagent:async-started` payload includes redacted `task` and `goal` prompt fields. Async workflow script roots emit the same event with `mode: "workflow"` after their initial `status.json` is durable; workflow roots can omit `task`, and any included prompt fields are redacted. Their keyed children are then announced dynamically through `subagent:child-status`. Companion UI extensions can combine those hints with the authoritative live lifecycle artifacts under `asyncDir` without scraping terminal output.
 
 Intercom delivery events:
 

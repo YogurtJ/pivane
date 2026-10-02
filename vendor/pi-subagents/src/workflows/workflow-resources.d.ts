@@ -38,6 +38,15 @@ export declare function normalizeWorkflowArgs(value: unknown): {
     error: string;
 };
 export declare function deepFreezeWorkflowArgs<T extends Record<string, unknown>>(args: T): Readonly<T>;
+/**
+ * Expand data-only `tasks` or `chain` input into a package-owned workflow script with a one-use permit.
+ * Only the executor calls this, after its own feature and input checks; public named lookup cannot reach it.
+ */
+export declare function resolveStructuredWorkflowResource(input: {
+    kind: "tasks" | "chain";
+    steps: unknown;
+    task?: unknown;
+}): WorkflowResourceResolution;
 /** Resolve only extension-owned resources so policy can distinguish them from raw scripts; caller-provided script text is never consulted. */
 export declare function resolveWorkflowResource(nameValue: unknown, argsValue?: unknown, sessionId?: string): WorkflowResourceResolution;
 //# sourceMappingURL=workflow-resources.d.ts.map

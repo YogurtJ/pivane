@@ -26,6 +26,7 @@ async function officialPrices() {
 }
 function estimateCost(row, catalog) {
     if (!row.usage || (row.cost !== null && row.cost > 0)) return { cost: row.cost, pricing: null };
+    if (row.speed && (typeof row.speed.costMultiplier !== 'number' || !Number.isFinite(row.speed.costMultiplier) || row.speed.costMultiplier < 0.5 || row.speed.costMultiplier > 100)) return { cost: row.cost, pricing: null };
     const price = catalog.get(row.model);
     if (!price || row.usage.cacheWrite1h === null || !(price.rates.input > 0 || price.rates.output > 0)) return { cost: row.cost, pricing: null };
     const input = row.usage.input + row.usage.cacheRead + row.usage.cacheWrite;
@@ -38,8 +39,10 @@ function estimateCost(row, catalog) {
     // A missing cache-write price must not turn a billable write into a free operation.
     if (row.usage.cacheWrite > 0 && rates.cacheWrite === 0) return { cost: row.cost, pricing: null };
     const longWrite = row.usage.cacheWrite1h || 0;
-    const cost = fields.reduce((sum, key) => sum + row.usage[key] * rates[key] / 1e6, 0)
-        + longWrite * (rates.input * 2 - rates.cacheWrite) / 1e6;
-    return { cost, pricing: { ...price, appliedRates: rates, basis: 'official-catalog-estimate' } };
+    const multiplier = row.speed?.costMultiplier ?? 1;
+    const cost = (fields.reduce((sum, key) => sum + row.usage[key] * rates[key] / 1e6, 0)
+        + longWrite * (rates.input * 2 - rates.cacheWrite) / 1e6) * multiplier;
+    const appliedRates = row.speed ? { ...rates, ...Object.fromEntries(fields.map(key => [key, rates[key] * multiplier])) } : rates;
+    return { cost, pricing: { ...price, appliedRates, ...(row.speed ? { speed: row.speed } : {}), basis: 'official-catalog-estimate' } };
 }
 module.exports = { officialPrices, estimateCost };

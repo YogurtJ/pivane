@@ -29,6 +29,8 @@ export interface SubagentRunConfig {
     childSessionFactoryModule?: string;
     /** The launching executor's own child runtime when it was itself an in-process child. */
     inheritedChildRuntime?: InheritedChildRuntime;
+    /** The launching session's project trust; undefined keeps Pi's default for hosts without trust. */
+    projectTrusted?: boolean;
     worktreeSetupHook?: string;
     worktreeSetupHookTimeoutMs?: number;
     worktreeBaseDir?: string;
@@ -153,6 +155,7 @@ interface SingleStepContext {
     childSessions: ChildSessionFactory;
     /** The launching executor's own child runtime; nested route, depth, and ceilings come from here. */
     inheritedChildRuntime?: InheritedChildRuntime;
+    projectTrusted?: boolean;
     registerInterrupt?: (interrupt: (() => void) | undefined) => void;
     registerTimeout?: (interrupt: (() => void) | undefined) => void;
     registerStop?: (stop: (() => void) | undefined) => void;

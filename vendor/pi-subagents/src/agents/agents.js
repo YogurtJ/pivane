@@ -354,7 +354,7 @@ function collectPackageSubagentPaths(cwd, options = { includeUser: true, include
         packageRoots.push(...collectScopedSettingsRoots("user", path.join(agentDir, "settings.json"), agentDir).map((root) => ({ root, scope: "user" })));
     }
     if (options.includeUser) {
-        const globalRoot = getGlobalNpmRoot();
+        const globalRoot = options.globalNpmRoot === undefined ? getGlobalNpmRoot() : options.globalNpmRoot;
         if (globalRoot) {
             packageRoots.push(...collectPackageRootsFromNodeModules(globalRoot, watchPaths).map((root) => ({ root, scope: "user" })));
         }
@@ -713,6 +713,12 @@ function parseBuiltinOverrideEntry(name, value, filePath) {
         else {
             throw new Error(`Builtin override '${name}' in '${filePath}' has invalid 'description'; expected a non-empty string.`);
         }
+    }
+    if ("advertise" in input) {
+        if (typeof input.advertise === "boolean")
+            override.advertise = input.advertise;
+        else
+            throw new Error(`Builtin override '${name}' in '${filePath}' has invalid 'advertise'; expected a boolean.`);
     }
     if ("output" in input) {
         if ((typeof input.output === "string" && input.output.trim()) || input.output === false)
@@ -1148,6 +1154,8 @@ function applyBuiltinOverride(agent, override, meta) {
     };
     if (override.description !== undefined)
         next.description = override.description;
+    if (override.advertise !== undefined)
+        next.advertise = override.advertise;
     if (override.machine !== undefined) {
         if (override.machine === false)
             delete next.machine;
@@ -2264,10 +2272,11 @@ function discoveryFingerprint(sources) {
         .map((filePath) => `${filePath}:${watchPathSignature(filePath, sources.exclusionRoots.length && !unfilteredPaths.has(filePath) ? sources.isExcluded : undefined)}`)
         .join("\n");
 }
-function discoveryCacheKey(cwd, preferredModelProvider) {
+function discoveryCacheKey(cwd, preferredModelProvider, globalNpmRoot) {
     return JSON.stringify([
         path.resolve(cwd),
         preferredModelProvider ?? null,
+        globalNpmRoot === undefined ? ["default"] : ["override", globalNpmRoot],
         getProjectConfigDir(path.resolve(cwd)),
         getAgentDir(),
         os.homedir(),
@@ -2295,7 +2304,7 @@ function packageEntryIncluded(scope, packageScopes) {
         return true;
     return packageScopes.has(scope);
 }
-function buildAgentDiscoverySources(cwd, preferredModelProvider) {
+function buildAgentDiscoverySources(cwd, preferredModelProvider, globalNpmRoot) {
     const effectiveCwd = path.resolve(cwd);
     const userDirOld = path.join(getAgentDir(), "agents");
     const userDirNew = path.join(os.homedir(), ".agents");
@@ -2304,7 +2313,7 @@ function buildAgentDiscoverySources(cwd, preferredModelProvider) {
     const { readDirs: projectChainDirs, preferredDir: projectChainDir } = resolveNearestProjectChainDirs(effectiveCwd);
     const userSettingsPath = getUserAgentSettingsPath();
     const projectSettingsPath = getProjectAgentSettingsPath(effectiveCwd);
-    const packageSubagentPaths = collectPackageSubagentPaths(effectiveCwd);
+    const packageSubagentPaths = collectPackageSubagentPaths(effectiveCwd, { includeUser: true, includeProject: true, globalNpmRoot });
     const exclusionRoots = agentExclusionRoots(userSettingsPath, projectSettingsPath);
     const isExcluded = agentExclusions(exclusionRoots);
     const userScanDirs = settingsAgentScanDirs(readConfiguredAgentScanDirs(userSettingsPath), isExcluded);
@@ -2391,8 +2400,8 @@ function ensureDiscoveryChains(sources) {
     sources.chainWatchPaths = watchPaths;
     sources.watchPaths = [...new Set([...sources.watchPaths, ...watchPaths])];
 }
-function getAgentDiscoverySources(cwd, preferredModelProvider, includeChains = false) {
-    const key = discoveryCacheKey(cwd, preferredModelProvider);
+function getAgentDiscoverySources(cwd, preferredModelProvider, includeChains = false, globalNpmRoot) {
+    const key = discoveryCacheKey(cwd, preferredModelProvider, globalNpmRoot);
     const cached = agentDiscoveryCache.get(key);
     if (cached && cached.fingerprint === discoveryFingerprint(cached.sources)) {
         if (includeChains) {
@@ -2401,7 +2410,7 @@ function getAgentDiscoverySources(cwd, preferredModelProvider, includeChains = f
         }
         return cached.sources;
     }
-    const sources = buildAgentDiscoverySources(cwd, preferredModelProvider);
+    const sources = buildAgentDiscoverySources(cwd, preferredModelProvider, globalNpmRoot);
     const entry = { sources, fingerprint: discoveryFingerprint(sources) };
     agentDiscoveryCache.set(key, entry);
     if (includeChains) {
@@ -2568,10 +2577,10 @@ function buildAllDiscovery(sources, includeChains, settingsScope) {
 }
 export function discoverAgentSnapshot(cwd, scope, preferredModelProvider, options = {}) {
     const includeChains = options.includeChains !== false;
-    const sources = getAgentDiscoverySources(cwd, preferredModelProvider, includeChains);
+    const sources = getAgentDiscoverySources(cwd, preferredModelProvider, includeChains, options.globalNpmRoot);
     return { effective: buildEffectiveDiscovery(sources, scope), all: buildAllDiscovery(sources, includeChains, scope) };
 }
-function discoverAgentsUncached(cwd, scope, preferredModelProvider) {
+function discoverAgentsUncached(cwd, scope, preferredModelProvider, options = {}) {
     const effectiveCwd = path.resolve(cwd);
     const userDirOld = path.join(getAgentDir(), "agents");
     const userDirNew = path.join(os.homedir(), ".agents");
@@ -2587,7 +2596,7 @@ function discoverAgentsUncached(cwd, scope, preferredModelProvider) {
     const defaultExtensions = resolveSubagentDefaultExtensions(userSettings, projectSettings, projectSettingsPath);
     const defaultSubagentOnlyExtensions = resolveSubagentDefaultSubagentOnlyExtensions(userSettings, projectSettings, projectSettingsPath);
     const modelScope = projectSettings.modelScope ?? userSettings.modelScope;
-    const packageSubagentPaths = collectPackageSubagentPaths(effectiveCwd, { includeUser: scope !== "project", includeProject: scope !== "user" });
+    const packageSubagentPaths = collectPackageSubagentPaths(effectiveCwd, { includeUser: scope !== "project", includeProject: scope !== "user", globalNpmRoot: options.globalNpmRoot });
     const isExcluded = agentExclusions(agentExclusionRoots(userSettingsPath, projectSettingsPath));
     const directories = [reportAgentDefinitionDirectory("builtin", BUILTIN_AGENTS_DIR, BUILTIN_AGENT_DEFINITION_INSPECTION)];
     const builtinLoaded = loadAgentsFromDefinitionFiles(BUILTIN_AGENT_DEFINITION_FILES, "builtin");
@@ -2627,13 +2636,13 @@ function discoverAgentsUncached(cwd, scope, preferredModelProvider) {
     const agentDiagnostics = [...builtinLoaded.diagnostics, ...userLoaded.flatMap((loaded) => loaded.diagnostics), ...projectLoaded.flatMap((loaded) => loaded.diagnostics), ...packageLoaded.flatMap((loaded) => loaded.diagnostics)];
     return { agents, agentDiagnostics, projectAgentsDir, cwd: effectiveCwd, scope, directories, ...(modelScope !== undefined ? { modelScope } : {}), ...(maxThinking !== undefined ? { maxThinking } : {}) };
 }
-export function discoverAgents(cwd, scope, preferredModelProvider) {
+export function discoverAgents(cwd, scope, preferredModelProvider, options = {}) {
     if (scope !== "both")
-        return discoverAgentsUncached(cwd, scope, preferredModelProvider);
-    const sources = getAgentDiscoverySources(cwd, preferredModelProvider);
+        return discoverAgentsUncached(cwd, scope, preferredModelProvider, options);
+    const sources = getAgentDiscoverySources(cwd, preferredModelProvider, false, options.globalNpmRoot);
     return buildEffectiveDiscovery(sources, scope);
 }
-export function discoverAgentsAll(cwd, preferredModelProvider) {
-    return discoverAgentSnapshot(cwd, "both", preferredModelProvider).all;
+export function discoverAgentsAll(cwd, preferredModelProvider, options = {}) {
+    return discoverAgentSnapshot(cwd, "both", preferredModelProvider, options).all;
 }
 //# sourceMappingURL=agents.js.map

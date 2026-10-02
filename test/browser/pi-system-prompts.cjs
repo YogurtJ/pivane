@@ -90,8 +90,14 @@ async function run(browser, base, width, locale) {
     await page.waitForFunction(() => document.activeElement.id === 'pi-system-prompt-view');
     await page.locator('#pi-close-inspector').click();
     await page.locator('#workspace-settings-toggle').click();
+    const settingsNavigation = () => page.locator('.workspace-settings-nav').evaluate(e => {
+        const s = getComputedStyle(e);
+        return { display: s.display, columns: s.gridTemplateColumns, height: e.clientHeight, overflow: s.overflowX };
+    });
+    const standardNavigation = await settingsNavigation();
     await page.locator('[data-settings-tab="system-prompts"]').click();
     await page.locator('#system-prompt-append-text').waitFor();
+    assert.deepEqual(await settingsNavigation(), standardNavigation, 'prompt page must share the standard settings navigation layout');
     const widthCheck = async () => {
         const sizes = await page.evaluate(() => [...document.querySelectorAll('body,.workspace-settings-content,#system-prompts-panel,.system-prompt-card,.system-prompt-card form,.system-prompt-preview,#system-prompt-dialog[open],#system-prompt-runtime-body,.system-prompt-runtime-sources,.system-prompt-full,#pi-attachments')].filter(e => e.clientWidth && e.getClientRects().length).map(e => ({ id: e.id || e.className, w: e.clientWidth, s: e.scrollWidth })));
         assert.ok(sizes.every(s => s.s <= s.w + 1), JSON.stringify(sizes));
@@ -118,7 +124,6 @@ async function run(browser, base, width, locale) {
     await page.locator('#system-prompts-panel').evaluate(e => { e.scrollTop = 0; });
     await widthCheck();
     await page.screenshot({ path: `/tmp/pi-system-prompts-overview-${width}-${locale}.png` });
-    if (width < 900) assert.ok(await page.locator('.workspace-settings-nav').evaluate(e => e.clientHeight < 80), 'mobile navigation leaves room for editing');
     const draft = '# Custom heading\n\n中文原文 <img src=x onerror="window.promptXss=true">\n' + 'LongText'.repeat(100);
     await page.locator('#system-prompt-append-text').fill(draft);
     await page.locator('[data-prompt-kind="append"] [data-view="preview"]').click();
@@ -170,7 +175,7 @@ async function run(browser, base, width, locale) {
     await page.locator('#system-prompt-dialog-close').click();
     await page.locator('#system-prompt-append-reset').click();
     await page.locator('#system-prompt-append-save').click();
-    await page.waitForFunction(() => document.querySelector('#system-prompt-append-save').disabled);
+    await page.waitForFunction(() => /已保存|Saved/.test(document.querySelector('#system-prompts-status').textContent) && !document.querySelector('#system-prompt-append-text').disabled);
     assert.equal(await page.locator('#system-prompt-append-text').inputValue(), draft);
     assert.equal(await page.locator('#system-prompt-append-text').isEnabled(), true);
     assert.equal(writes.at(-1).content, null); assert.equal(content.global.append, draft);

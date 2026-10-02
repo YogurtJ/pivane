@@ -2,119 +2,7 @@
  * TypeBox schemas for subagent tool parameters
  */
 import { Type } from "typebox";
-export declare const ParallelTaskSchema: Type.TObject<{
-    agent: Type.TString;
-    task: Type.TOptional<Type.TString>;
-    phase: Type.TOptional<Type.TString>;
-    label: Type.TOptional<Type.TString>;
-    as: Type.TOptional<Type.TString>;
-    outputSchema: Type.TOptional<Type.TUnsafe<unknown>>;
-    cwd: Type.TOptional<Type.TString>;
-    machine: Type.TOptional<Type.TString>;
-    count: Type.TOptional<Type.TInteger>;
-    output: Type.TOptional<Type.TUnsafe<unknown>>;
-    outputMode: Type.TOptional<Type.TString>;
-    reads: Type.TOptional<Type.TUnsafe<unknown>>;
-    progress: Type.TOptional<Type.TBoolean>;
-    skill: Type.TOptional<Type.TUnsafe<unknown>>;
-    model: Type.TOptional<Type.TString>;
-    fast: Type.TOptional<Type.TBoolean>;
-    toolBudget: Type.TOptional<Type.TObject<{
-        soft: Type.TOptional<Type.TInteger>;
-        hard: Type.TInteger;
-        block: Type.TOptional<Type.TUnsafe<unknown>>;
-    }>>;
-    acceptance: Type.TOptional<Type.TUnsafe<unknown>>;
-    agentContract: Type.TOptional<Type.TObject<{
-        version: Type.TInteger;
-    }>>;
-    gateOn: Type.TOptional<Type.TString>;
-}>;
-export declare const DynamicExpandSchema: Type.TObject<{
-    from: Type.TObject<{
-        output: Type.TString;
-        path: Type.TString;
-    }>;
-    item: Type.TOptional<Type.TString>;
-    key: Type.TOptional<Type.TString>;
-    maxItems: Type.TOptional<Type.TInteger>;
-    onEmpty: Type.TOptional<Type.TString>;
-}>;
-export declare const DynamicParallelTemplateSchema: Type.TObject<{
-    agent: Type.TString;
-    task: Type.TOptional<Type.TString>;
-    phase: Type.TOptional<Type.TString>;
-    label: Type.TOptional<Type.TString>;
-    outputSchema: Type.TOptional<Type.TUnsafe<unknown>>;
-    cwd: Type.TOptional<Type.TString>;
-    machine: Type.TOptional<Type.TString>;
-    output: Type.TOptional<Type.TUnsafe<unknown>>;
-    outputMode: Type.TOptional<Type.TString>;
-    reads: Type.TOptional<Type.TUnsafe<unknown>>;
-    progress: Type.TOptional<Type.TBoolean>;
-    skill: Type.TOptional<Type.TUnsafe<unknown>>;
-    model: Type.TOptional<Type.TString>;
-    fast: Type.TOptional<Type.TBoolean>;
-    toolBudget: Type.TOptional<Type.TObject<{
-        soft: Type.TOptional<Type.TInteger>;
-        hard: Type.TInteger;
-        block: Type.TOptional<Type.TUnsafe<unknown>>;
-    }>>;
-    acceptance: Type.TOptional<Type.TUnsafe<unknown>>;
-    agentContract: Type.TOptional<Type.TObject<{
-        version: Type.TInteger;
-    }>>;
-    gateOn: Type.TOptional<Type.TString>;
-}>;
-export declare const DynamicCollectSchema: Type.TObject<{
-    as: Type.TString;
-    outputSchema: Type.TOptional<Type.TUnsafe<unknown>>;
-}>;
-export declare const ChainItem: Type.TObject<{
-    agent: Type.TOptional<Type.TString>;
-    task: Type.TOptional<Type.TString>;
-    phase: Type.TOptional<Type.TString>;
-    label: Type.TOptional<Type.TString>;
-    as: Type.TOptional<Type.TString>;
-    outputSchema: Type.TOptional<Type.TUnsafe<unknown>>;
-    cwd: Type.TOptional<Type.TString>;
-    machine: Type.TOptional<Type.TString>;
-    output: Type.TOptional<Type.TUnsafe<unknown>>;
-    outputMode: Type.TOptional<Type.TString>;
-    reads: Type.TOptional<Type.TUnsafe<unknown>>;
-    progress: Type.TOptional<Type.TBoolean>;
-    skill: Type.TOptional<Type.TUnsafe<unknown>>;
-    model: Type.TOptional<Type.TString>;
-    fast: Type.TOptional<Type.TBoolean>;
-    toolBudget: Type.TOptional<Type.TObject<{
-        soft: Type.TOptional<Type.TInteger>;
-        hard: Type.TInteger;
-        block: Type.TOptional<Type.TUnsafe<unknown>>;
-    }>>;
-    acceptance: Type.TOptional<Type.TUnsafe<unknown>>;
-    agentContract: Type.TOptional<Type.TObject<{
-        version: Type.TInteger;
-    }>>;
-    gateOn: Type.TOptional<Type.TString>;
-    parallel: Type.TOptional<Type.TUnsafe<unknown>>;
-    expand: Type.TOptional<Type.TObject<{
-        from: Type.TObject<{
-            output: Type.TString;
-            path: Type.TString;
-        }>;
-        item: Type.TOptional<Type.TString>;
-        key: Type.TOptional<Type.TString>;
-        maxItems: Type.TOptional<Type.TInteger>;
-        onEmpty: Type.TOptional<Type.TString>;
-    }>>;
-    collect: Type.TOptional<Type.TObject<{
-        as: Type.TString;
-        outputSchema: Type.TOptional<Type.TUnsafe<unknown>>;
-    }>>;
-    concurrency: Type.TOptional<Type.TNumber>;
-    failFast: Type.TOptional<Type.TBoolean>;
-    worktree: Type.TOptional<Type.TBoolean>;
-}>;
+import type { DisabledFeatureSurface } from "../shared/disabled-features.ts";
 export declare const SubagentParams: Type.TObject<{
     agent: Type.TOptional<Type.TString>;
     task: Type.TOptional<Type.TString>;
@@ -161,10 +49,8 @@ export declare const SubagentParams: Type.TObject<{
     runStatus: Type.TOptional<Type.TString>;
     summary: Type.TOptional<Type.TString>;
     config: Type.TOptional<Type.TUnsafe<unknown>>;
-    workflow: Type.TOptional<Type.TString>;
+    workflow: Type.TOptional<Type.TUnsafe<string | true>>;
     args: Type.TOptional<Type.TUnsafe<unknown>>;
-    workflowScript: Type.TOptional<Type.TString>;
-    workflowScriptPath: Type.TOptional<Type.TString>;
     globalConcurrencyLimit: Type.TOptional<Type.TInteger>;
     maxSubagentSpawnsPerRun: Type.TOptional<Type.TInteger>;
     preflight: Type.TOptional<Type.TObject<{
@@ -241,7 +127,7 @@ export declare const SubagentParams: Type.TObject<{
     acceptance: Type.TOptional<Type.TUnsafe<unknown>>;
     gate: Type.TOptional<Type.TUnsafe<unknown>>;
 }>;
-export declare function createSubagentParamsSchema(): typeof SubagentParams;
+export declare function createSubagentParamsSchema(disabled?: DisabledFeatureSurface): typeof SubagentParams;
 export declare const SubagentWaitParams: Type.TObject<{
     id: Type.TOptional<Type.TString>;
     nonBlocking: Type.TOptional<Type.TBoolean>;

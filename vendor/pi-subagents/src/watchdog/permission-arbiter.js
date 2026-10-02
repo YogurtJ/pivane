@@ -1,6 +1,5 @@
 import { Agent } from "@earendil-works/pi-agent-core";
 import { convertToLlm } from "@earendil-works/pi-coding-agent";
-import { streamSimple } from "@earendil-works/pi-ai/compat";
 import { Type } from "typebox";
 import { appendPermissionAudit, permissionArgsPreview } from "../runs/shared/permissions.js";
 import { agentStreamOptions } from "../shared/agent-stream-options.js";
@@ -74,10 +73,7 @@ export function createWatchdogPermissionArbiter(options = {}) {
                 const selection = await resolveWatchdogReviewModel(request.ctx, config);
                 const auth = selection.auth;
                 const sessionId = request.ctx.sessionManager.getSessionId();
-                const registeredProvider = request.ctx.modelRegistry.getRegisteredProviderConfig?.(selection.model.provider);
-                const baseStreamFn = options.streamFn ?? (registeredProvider?.streamSimple && registeredProvider.api === selection.model.api
-                    ? registeredProvider.streamSimple
-                    : streamSimple);
+                const baseStreamFn = options.streamFn ?? ((model, context, streamOptions) => request.ctx.modelRegistry.streamSimple(model, context, streamOptions));
                 const streamFn = (model, context, streamOptions) => baseStreamFn(model, context, {
                     ...streamOptions,
                     ...(auth.apiKey ? { apiKey: auth.apiKey } : {}),

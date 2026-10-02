@@ -10,14 +10,16 @@
     };
     class PiSessionTransfer {
         constructor(options) {
-            this.options = options; this.enabled = false; this.epoch = 0; this.busy = false;
+            this.options = options; this.enabled = false; this.movesEnabled = false; this.epoch = 0; this.busy = false; this.moving = false;
             this.dialog = node('dialog', undefined, 'pi-transfer-dialog');
             this.dialog.id = 'pi-transfer-dialog';
             this.dialog.setAttribute('aria-labelledby', 'pi-transfer-title');
             const header = node('header');
             this.title = node('h2'); this.title.id = 'pi-transfer-title';
             const close = node('button', translateUi("关闭"), 'pi-secondary-button'); close.type = 'button';
-            close.addEventListener('click', () => this.dialog.close());
+            close.addEventListener('click', () => { if (!this.moving) this.dialog.close(); });
+            this.closeButton = close;
+            this.dialog.addEventListener('cancel', event => { if (this.moving) event.preventDefault(); });
             header.append(this.title, close);
             this.body = node('div', undefined, 'pi-transfer-body');
             this.status = node('p', '', 'pi-transfer-status'); this.status.setAttribute('role', 'status');
@@ -79,6 +81,74 @@
                 } catch (error) { if (epoch === this.epoch) this.status.textContent = error.message; }
                 finally { this.setBusy(false); }
             });
+            return true;
+        }
+        openMove(session, cwd) {
+            if (!this.movesEnabled || !session || session.ephemeral || !this.begin(translateUi('移动到项目…'))) return false;
+            const epoch = this.epoch;
+            this.body.append(node('p', session.name || session.firstMessage || translateUi('未命名会话'), 'pi-transfer-session'));
+            this.body.append(node('p', translateUi('保留会话 ID、完整历史、分支和书签。后续使用目标项目的工作目录与指令；项目文件需要另行准备。')));
+            const projectLabel = node('label', translateUi('目标项目'));
+            const project = node('select'); project.id = 'pi-transfer-project';
+            for (const value of [...new Set(this.options.projects().map(p => p.cwd).filter(value => value && value !== cwd))]) {
+                const option = node('option', value); option.value = value; project.append(option);
+            }
+            const other = node('option', translateUi('其他项目路径…')); other.value = ''; project.append(other); projectLabel.append(project);
+            const pathLabel = node('label', translateUi('项目绝对路径'));
+            const customPath = node('input'); customPath.id = 'pi-transfer-path'; customPath.type = 'text'; customPath.autocomplete = 'off';
+            customPath.placeholder = translateUi('选择允许范围内已存在的项目目录'); pathLabel.append(customPath); pathLabel.hidden = Boolean(project.value);
+            const preview = node('div'); preview.setAttribute('role', 'status');
+            this.body.append(projectLabel, pathLabel, preview);
+            let reviewed = null, confirming = false;
+            const submit = this.button(translateUi('检查并预览'), async () => {
+                if (this.busy) return;
+                const targetCwd = project.value || customPath.value.trim();
+                if (!targetCwd) { this.status.textContent = translateUi('请选择目标项目。'); return; }
+                if (reviewed) {
+                    if (!this.options.canMove?.()) return;
+                    confirming = true; this.moving = true; this.closeButton.disabled = true;
+                    submit.textContent = translateUi('正在移动线程…');
+                }
+                this.setBusy(true); submit.setAttribute('aria-busy', 'true');
+                const spinner = node('span', undefined, 'pi-spinner'); spinner.setAttribute('aria-hidden', 'true');
+                submit.replaceChildren(spinner, node('span', translateUi(reviewed ? '正在移动线程…' : '正在检查线程和关联引用…')));
+                this.status.textContent = translateUi(reviewed ? '正在移动线程…' : '正在检查线程和关联引用…');
+                try {
+                    if (!reviewed) {
+                        const result = await this.options.apiFetch('/api/pi/sessions/' + encodeURIComponent(session.id) + '/move?cwd=' + encodeURIComponent(cwd) + '&targetCwd=' + encodeURIComponent(targetCwd), { signal: AbortSignal.timeout(120000) });
+                        if (epoch !== this.epoch) return;
+                        preview.replaceChildren(node('p', translateUi('来源项目：{0}', result.source.cwd)), node('p', translateUi('目标项目：{0}', result.targetCwd)));
+                        for (const blocker of result.blockers) preview.append(node('p', translateUi(blocker)));
+                        this.status.textContent = result.canMove ? translateUi('检查通过。确认后移动原线程，归档、提醒、用量和历史交付随线程保留。') : translateUi('请先处理以上关联，再重新检查。');
+                        if (result.canMove) { reviewed = result; submit.textContent = translateUi('确认移动'); }
+                    } else {
+                        const requestId = 'move-' + crypto.randomUUID();
+                        const result = await this.options.apiFetch('/api/pi/sessions/' + encodeURIComponent(session.id) + '/move', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(120000),
+                            body: JSON.stringify({ cwd, targetCwd: reviewed.targetCwd, expectedRevision: reviewed.revision, requestId }) });
+                        try { await this.options.moved?.(cwd, result.session); }
+                        catch { this.options.toast(translateUi('线程已移动，打开或刷新列表失败，请从目标项目重新打开。'), 'info'); }
+                        if (epoch !== this.epoch) return;
+                        this.body.replaceChildren(node('p', translateUi('线程已移动到 {0}', result.session.cwd)));
+                        this.status.textContent = translateUi('会话已保存，旧地址仍可定位到此线程。'); this.footer.replaceChildren();
+                        this.button(translateUi('打开线程'), async () => {
+                            this.dialog.close();
+                            try { await this.options.open(result.session); } catch (error) { this.options.toast(error.message, 'error'); }
+                        });
+                    }
+                } catch (error) {
+                    if (epoch === this.epoch) {
+                        this.status.textContent = confirming ? translateUi('{0}。未自动重试，请先核对来源与目标项目的线程列表。', error.message) : error.message;
+                        if (confirming) submit.remove();
+                    }
+                } finally {
+                    submit.removeAttribute('aria-busy');
+                    if (!confirming) submit.textContent = translateUi(reviewed ? '确认移动' : '检查并预览');
+                    this.moving = false; this.closeButton.disabled = false; this.setBusy(false);
+                }
+            });
+            const changed = () => { reviewed = null; preview.replaceChildren(); this.status.textContent = ''; submit.textContent = translateUi('检查并预览'); pathLabel.hidden = Boolean(project.value); };
+            project.addEventListener('change', changed); customPath.addEventListener('input', changed);
             return true;
         }
         openImport(cwd) {

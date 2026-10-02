@@ -7,6 +7,8 @@ export interface SubagentControlMessageDetails {
     asyncDir?: string;
     childIntercomTarget?: string;
     noticeText?: string;
+    /** Status-only copy of a supervisor request; the tracker sends the notice later if the request is still unanswered. */
+    noticeDeferred?: boolean;
 }
 export declare function controlNoticeTarget(details: SubagentControlMessageDetails): string | undefined;
 export declare function formatSubagentControlNotice(details: SubagentControlMessageDetails, content?: string): string;

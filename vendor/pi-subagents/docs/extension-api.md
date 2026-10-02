@@ -19,7 +19,7 @@ registerWorkflowResource({
 }): { dispose(): void }
 ```
 
-Names are case-sensitive, at most 128 characters, and match `[A-Za-z0-9][A-Za-z0-9._-]*`; use an extension prefix. Versions are positive safe integers. Registration throws for invalid input, protected builtins (`review`, `run-ci`), or duplicate names within the same session. Different sessions may register the same name. Dispose before replacement; there is no silent overwrite.
+Names are case-sensitive, at most 128 characters, and match `[A-Za-z0-9][A-Za-z0-9._-]*`; use an extension prefix. Versions are positive safe integers. Registration throws for invalid input, protected builtins (`review`, `run-ci`, and `chain` and `tasks`, which back the tool's structured inputs), or duplicate names within the same session. Different sessions may register the same name. Dispose before replacement; there is no silent overwrite.
 
 Register in `session_start` using **`ctx.sessionManager.getSessionId()`**, not the session file path or a tool argument. Dispose in `session_shutdown`. New/resumed/forked sessions and reloads need registration from the replacement runtime's `session_start`; do not retain old `pi`/`ctx` references. The extension owns cleanup, not an automatic registration lifecycle manager. Disposal is idempotent and cannot remove a newer replacement. Missing cleanup can cause a duplicate-registration failure on reload.
 
@@ -108,7 +108,7 @@ pi.events.emit("subagents:rpc:v1:request", {
   requestId,
   method: "spawn",
   params: {
-    workflowScript: `return runs.run("main", { agent: "reviewer", task: "Review the current diff" })`,
+    script: `return runs.run("main", { agent: "reviewer", task: "Review the current diff" })`,
     context: "fresh"
   }
 });
@@ -119,7 +119,7 @@ The RPC methods are `ping`, `status`, `manage`, `spawn`, `steer`, `interrupt`, `
 Method notes:
 
 - `manage` exposes a narrow schedule-only allowlist: `schedule.list`, `schedule.show`, `schedule.history`, `schedule.pause`, `schedule.resume`, `schedule.run`, and `schedule.delete`. All actions except `schedule.list` require `id`. Mission, agent, config, worktree, and arbitrary management actions are rejected before executor dispatch. `ping.capabilities.managementActions` advertises the exact allowlist.
-- `spawn` accepts structured single-child execution (`agent`, `task?`), inline `workflowScript`, or `workflowScriptPath` and is async-only: omit `async` or set `async: true`, omit `clarify`, and do not pass management `action` values. Relative script paths resolve against the request `cwd`. It goes through the same executor as the `subagent` tool, so agent discovery, validation, session attribution, configured spawn caps, child-safety depth, artifacts, and async status all behave the same.
+- `spawn` accepts structured single-child execution (`agent`, `task?`), inline script text as `script`, or `workflow` with a script path (containing `/`, such as `"./ci/sweep.js"`) or a named workflow resource. `workflow: true` is rejected because RPC requests have no assistant reply to read a block from; the removed `workflowScript` and `workflowScriptPath` fields are rejected with errors naming `script` and `workflow`. Spawn is async-only: omit `async` or set `async: true`, omit `clarify`, and do not pass management `action` values. Relative script paths resolve against the request `cwd`. It goes through the same executor as the `subagent` tool, so agent discovery, validation, session attribution, configured spawn caps, child-safety depth, artifacts, and async status all behave the same.
 - `steer` requires an async run `id` (plus optional child `index`) and a non-empty `message`; its reply preserves the normal acknowledged-delivery result. Optional `mode` values are `steer` (default), `follow_up`, and `auto`, and receipts include `deliveryStatus: "delivered" | "queued"`. RPC steering disables the direct tool's pause-and-revive recovery in every mode so an extension keeps authority over the exact child it spawned; `ping.capabilities.nonRecoveringSteer` advertises this guarantee.
 - `resume` requires a run target and non-empty `message`. It delegates to the existing revival path, which validates current-session ownership, persisted session/recovery metadata, stopped/live state, capability ceilings, and the exclusive session lease before returning the new async run details. Callers may request a `file-only` output path for the revived result without overriding its model, tools, or budgets. `ping.capabilities.resume` advertises this seam.
 - `cost` returns the same parent-plus-child accounting `/subagent-cost` renders, as data: `{ version: 1, parent, children, childTotal, total, unresolvedAsyncChildren }`, where each usage is `{ input, output, cacheRead, cacheWrite, cost, turns }` and each child carries `label`, `agent`, `runId`, `usage`, and `sessionFile` when known. It is read-only and walks the current session branch plus existing run artifacts, so request it on your own turn boundaries (for example after `agent_settled` or an async completion wake), not on a timer. `unresolvedAsyncChildren` counts async children whose metadata could not be read; treat `childTotal` as a lower bound when it is non-zero, exactly as documented for `/subagent-cost` in [observability.md](observability.md). `ping.capabilities.cost` advertises `{ version: 1 }`.
@@ -262,7 +262,8 @@ Preflight covers ordinary single-agent launch resolution:
 
 - Selected agent identity and shadowed candidates.
 - A parsed-definition digest, including system prompt and launch-affecting model, tool, skill, extension, output, and memory fields. Runtime overlays such as the Intercom bridge never change it.
-- Fresh/fork context, effective model and thinking, skill and tool resolution, direct MCP selections, runtime/configured extensions.
+- Fresh/fork context, effective model and thinking, skill and tool resolution, direct MCP selections, runtime/configured extensions. Pass your extension's `pi` as `runtimeSnapshotHost` so `mcp:` selections resolve against Pi's built-in MCP the way a launch does. Without it, preflight cannot see built-in MCP and resolves `mcp:` selections through pi-mcp-adapter's configuration, as before.
+- Model scope allow lists accept the reserved tokens `inherit` and `scoped`; `scoped` expands to the caller-supplied `scopedModelIds` snapshot, degrading to `inherit` when it is omitted. Callers whose `modelScope.allow` uses `scoped` must pass `scopedModelIds` (the session's `/scoped-models` snapshot) alongside `parentModel`, otherwise preflight resolves it as `inherit` and may reject models the actual launch allows.
 - The resolved Intercom bridge state (`intercomBridge.mode` and `intercomBridge.active`). An active bridge appends the bridge instruction to the child prompt and adds `contact_supervisor` to a declared tool list, exactly as execution does.
 - Artifact/session paths, async lifecycle/status/result/event/process-terminal paths, package/lifecycle versions, capability-ceiling audit data, and stable digests.
 
@@ -437,7 +438,7 @@ The provider returns handles with `providerJobId`, `state`, optional `handleUrl`
 
 `followUp(input)` is optional. When it is present, a completed external-job run can be continued with `subagent({ action: "resume", id: "<run>", message: "..." })`. Pi sends the completed parent provider job id plus a stable `requestId` and `requestDigest`. The provider must continue that parent conversation or fail closed. It must not open a fresh thread when the parent conversation is missing.
 
-The async runner process does not import provider internals. It writes operation requests into its async run directory. The parent Pi process services those requests against the registered provider and writes operation responses. If the provider is not registered, the bridge fails closed with an actionable error. If a run is recovered after provider job metadata exists, the runner calls `reattach` and `result`; it does not call `start` or `follow-up` again.
+The async runner process does not import provider internals. It writes operation requests into its async run directory. The Pi process of the session that launched the run services those requests against the registered provider and writes operation responses. A child session services the external-job runs it launches. Register the provider in that child too, for example through the child agent's `extensions`. If the provider is not registered, the bridge fails closed with an actionable error. If a run is recovered after provider job metadata exists, the runner calls `reattach` and `result`; it does not call `start` or `follow-up` again.
 
 ## Inspect integration
 
@@ -450,7 +451,69 @@ subagent({ action: "inspector.status", id: "<run-id>", index: 0 })
 subagent({ action: "inspector.close", id: "<run-id>", index: 0 })
 ```
 
-`inspector.command` returns a standalone runner command without contacting a host or writing a binding. `inspector.open` selects an available bundled inspector plugin. `status` and `close` select the plugin that owns the run binding and report clearly when that plugin does not support the requested lifecycle action. Without an available plugin, `open` fails closed with an actionable message; ordinary launches remain headless. Closing an inspector never stops the run.
+`inspector.command` returns a standalone runner command without contacting a host or writing a binding. `inspector.open` selects an available built-in or externally registered inspector plugin. `status` and `close` select the plugin that owns the run binding and report clearly when that plugin does not support the requested lifecycle action. Without an available plugin, `open` fails closed with an actionable message; ordinary launches remain headless. Closing an inspector never stops the run.
+
+### Register an external inspector
+
+A loaded Pi extension can add an inspector through the synchronous
+`pi-subagents:inspector-register:v1` event. This lets terminal integrations use
+Fleet's existing Enter/H actions without modifying pi-subagents. Registration
+adds no runner, tool, or configuration option.
+
+```ts
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { InspectorRegistration, InspectorRegistrationRequest } from "pi-subagents/inspectors";
+import { myInspector } from "./my-inspector.ts"; // Your InspectorPlugin implementation.
+
+export default function (pi: ExtensionAPI) {
+  let registration: InspectorRegistration | undefined;
+  pi.on("session_start", () => {
+    registration?.dispose();
+    const request: InspectorRegistrationRequest = { version: 1, plugin: myInspector };
+    pi.events.emit("pi-subagents:inspector-register:v1", request);
+    if (!request.result) throw new Error("pi-subagents inspector registration is unavailable.");
+    if (!request.result.ok) throw request.result.error;
+    registration = request.result.registration;
+  });
+  pi.on("session_shutdown", () => registration?.dispose());
+}
+```
+
+`pi-subagents/inspectors` exports the event name as `INSPECTOR_REGISTER_EVENT`,
+the request and registration types, and the existing `InspectorPlugin`,
+`InspectorContext`, `InspectorLaunch`, `InspectorParams`, and `InspectorTarget`
+types. When pi-subagents is a resolvable dependency, `registerInspector(pi, plugin)`
+emits the same request and returns the registration or throws. Independently
+installed extensions can use the event directly; type-only imports need only a
+development dependency and create no runtime module dependency.
+
+An `InspectorPlugin` supplies:
+
+- `name`: 1–128 letters, digits, dots, underscores, or hyphens, starting with a letter or digit.
+- `available(context)`: whether this terminal host can open an inspector; may be async.
+- `open(context, launch, params)`: open the supplied inspector command and return an `AgentToolResult<Details>`, like the built-in plugins. `launch.executable` and `launch.argv` carry the existing runner, target, trusted session roots, and steer/stop permission flags. Preserve these arguments and respect `params.focus`.
+- `owns(context)`: synchronously check whether the provider owns an inspector binding for this target.
+- Optional `status(context)` and `close(context)`: inspect or close that binding, returning the same result type. Closing an inspector must not stop the subagent.
+
+The existing dispatcher tries Herdr, then Ghostty, then external providers in
+registration order. Names are case-sensitive; duplicate names and the built-in
+names `herdr` and `ghostty` are rejected. A selected provider's failure is not
+retried through another provider. Status/close use the first provider whose
+`owns` returns true; unavailable lifecycle methods remain explicit errors.
+Providers own their pane bindings and must verify ownership before closing one.
+
+Registrations belong to the pi-subagents runtimes listening on the Pi event bus,
+not the consumer module; they survive runtime replacement, are isolated from
+child runtimes and other Pi instances, and are cleared when the last owner shuts
+down or reloads. Disposal is idempotent, removes callbacks without closing panes,
+and takes effect even while Fleet is open because it resolves providers per
+action. Providers receive the current action context, so do not capture a stale
+session context; dispose before re-registering on session changes. Unsupported
+versions and malformed plugins return `{ ok: false, error }`, and the first owner
+to fill `result` handles the request.
+
+This is a trusted-code integration, not a sandbox. Registration does not change
+run resolution, child-safe restrictions, authority policy, or supervisor routing.
 
 ### Herdr inspector plugin
 

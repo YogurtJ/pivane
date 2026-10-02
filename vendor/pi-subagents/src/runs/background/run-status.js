@@ -33,6 +33,7 @@ import { formatTimeoutRecoveryLines } from "../shared/mutation-evidence.js";
 import { formatWorkflowChecklistText, projectWorkflowChecklist } from "../../workflows/workflow-checklist.js";
 import { validHostStepNodes } from "../shared/host-step-status.js";
 import { workflowAsyncChildSteeringGuidance } from "../shared/workflow-async-child-guidance.js";
+import { formatWorkflowKeyRevival, projectWorkflowKeyRevival } from "../../workflows/workflow-revival.js";
 function formatProcessTerminal(value) {
     if (!value)
         return "missing";
@@ -603,6 +604,7 @@ export function inspectSubagentStatus(params, deps = {}) {
                 status.parentWorkflowRunId ? `Workflow parent: ${status.parentWorkflowRunId}${status.workflowKey ? ` (${status.workflowKey})` : ""}` : undefined,
                 status.mode === "workflow" && workflowReturnPreview !== undefined ? `Return: ${workflowReturnPreview}` : undefined,
                 status.mode === "workflow" && workflowEmitPreview !== undefined ? `Latest emit: ${workflowEmitPreview}` : undefined,
+                status.mode === "workflow" && (workflowReturnPreview?.endsWith("…") || workflowEmitPreview?.endsWith("…")) ? `Full return value and emits: ${path.join(asyncDir, "status.json")} (workflow.value, workflow.emits)` : undefined,
                 `Progress: ${progressLabel}`,
                 ...(status.mode === "workflow" ? formatWorkflowChecklistText(projectWorkflowChecklist({
                     graph: status.workflowGraph,
@@ -643,6 +645,11 @@ export function inspectSubagentStatus(params, deps = {}) {
                 lines.push(`${stepLineLabel(status, index)}: ${phase}${display} ${step.status}${modelText}${stepActivityText ? `, ${stepActivityText}` : ""}${steeringSuffix}${acceptanceText}${budgetText}${errorText}`);
                 if (status.mode === "workflow" && step.runId)
                     lines.push(`  Child run: ${step.runId}`);
+                if (status.mode === "workflow" && step.runId && step.workflowKey && step.status === "failed") {
+                    const revival = projectWorkflowKeyRevival(asyncDirRoot, status.runId, step.workflowKey, step.runId);
+                    if (revival)
+                        lines.push(`  ${formatWorkflowKeyRevival(revival)}`);
+                }
                 const structuredOutputPreview = step.structuredOutput === undefined ? undefined : formatWorkflowJsonPreview(step.structuredOutput, 4_000);
                 if (structuredOutputPreview !== undefined)
                     lines.push(`  Structured output: ${structuredOutputPreview}`);

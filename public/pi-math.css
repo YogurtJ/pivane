@@ -1,10 +1,12 @@
 .pi-markdown .pi-math {
     display: inline-block;
+    box-sizing: border-box;
     max-width: 100%;
     vertical-align: middle;
     overflow-x: auto;
     overflow-y: hidden;
-    padding: .15em 0;
+    /* KaTeX subscripts extend 2px beyond their measured inline width. */
+    padding: .15em max(.15em, 3px);
     text-indent: 0;
     overflow-wrap: normal;
     line-height: normal;
@@ -12,7 +14,7 @@
 .pi-markdown .pi-math-display {
     display: block;
     margin: .8em 0;
-    padding: .35em .15em;
+    padding-block: .35em;
 }
 .pi-markdown .pi-math .katex { font-size: 1.1em; color: inherit; }
 .pi-markdown .pi-math .katex-display { margin: 0; width: max-content; min-width: 100%; }

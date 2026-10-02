@@ -12,7 +12,7 @@ async function run(browser, base, width, locale) {
     let models = [model, ...Array.from({ length: 550 }, (_, i) => ({ ...model, provider: 'openrouter', id: `vendor/model-${String(i).padStart(3, '0')}`, name: `Research model ${String(i).padStart(3, '0')}` }))];
     const defaults = { global: { model: null, thinking: null }, project: { model: null, thinking: null } };
     const roles = ['delegate', 'evidence-auditor', 'oracle', 'researcher', 'reviewer', 'scout', 'worker', '<custom-role>', 'toString'].map(name => ({ name, global: { model: null, thinking: null }, project: { model: null, thinking: null } }));
-    const snapshot = () => ({ version: 1, cwd, revision: String(revision), trust: { effective: true }, plugin: { ...(bundled ? { managedBy: 'pivane' } : {}), status, name: 'pi-subagents', version: '0.71.0', installedVersions: status === 'missing' ? [] : [installed], canInstall: status === 'missing', upgradeFrom: status === 'ready' && installed !== '0.71.0' ? installed : null }, defaults, roles });
+    const snapshot = () => ({ version: 1, cwd, revision: String(revision), trust: { effective: true }, plugin: { ...(bundled ? { managedBy: 'pivane' } : {}), status, name: 'pi-subagents', version: '0.74.0', installedVersions: status === 'missing' ? [] : [installed], canInstall: status === 'missing', upgradeFrom: status === 'ready' && installed !== '0.74.0' ? installed : null }, defaults, roles });
     page.on('pageerror', error => errors.push(error.message));
     await page.route('https://**', route => route.abort());
     await page.route('**/api/**', async route => {
@@ -22,7 +22,7 @@ async function run(browser, base, width, locale) {
         else if (url.pathname === '/api/pi/projects') data = { projects: [], roots: ['/fixture'] };
         else if (url.pathname === '/api/pi/activity') data = { runtimes: [], replyNotices: [] };
         else if (url.pathname === '/api/pi/settings/subagents/install') { writes.push(req.postDataJSON()); status = 'ready'; revision++; data = { ok: true }; }
-        else if (url.pathname === '/api/pi/settings/subagents/upgrade') { writes.push({ upgrade: req.postDataJSON() }); installed = '0.71.0'; revision++; data = { ok: true, version: '0.71.0' }; }
+        else if (url.pathname === '/api/pi/settings/subagents/upgrade') { writes.push({ upgrade: req.postDataJSON() }); installed = '0.74.0'; revision++; data = { ok: true, version: '0.74.0' }; }
         else if (url.pathname === '/api/pi/settings/subagents') {
             if (req.method() === 'PUT') {
                 const body = req.postDataJSON(); writes.push(body);
@@ -119,7 +119,7 @@ async function run(browser, base, width, locale) {
     // Explicit, confirmed upgrade of an older reviewed release; cancelling sends nothing.
     const upgrade = card.locator('.sa-upgrade');
     await upgrade.waitFor();
-    assert.match(await upgrade.textContent(), /0\.69\.0.*0\.71\.0/);
+    assert.match(await upgrade.textContent(), /0\.69\.0.*0\.74\.0/);
     const beforeUpgrade = writes.length;
     page.once('dialog', dialog => dialog.dismiss()); await upgrade.locator('button').click();
     assert.equal(writes.length, beforeUpgrade);
@@ -128,7 +128,7 @@ async function run(browser, base, width, locale) {
     assert.equal(writes.at(-1).upgrade.confirmed, true);
     assert.equal(await card.locator('.sa-upgrade').count(), 0);
     if (width < 700) assert.ok(await card.evaluate(el => el.scrollWidth <= el.clientWidth + 1));
-    installed = '0.71.0'; bundled = true;
+    installed = '0.74.0'; bundled = true;
     await card.locator('.sa-refresh').click(); await trigger.waitFor();
     await card.getByText(locale === 'en' ? 'Bundled with Pivane; updated with the app' : 'Pivane 内置，随应用更新').waitFor();
     assert.equal(await card.locator('.sa-upgrade').count(), 0);

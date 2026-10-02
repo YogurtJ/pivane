@@ -93,10 +93,6 @@
 #system-prompt-dialog .system-prompt-metadata { font-size: .73rem; }
 .system-prompt-copy-buffer { position: fixed; left: 0; top: 0; opacity: 0; pointer-events: none; }
 @media (max-width: 900px) {
-    /* Keep the editor usable on phones without changing other settings pages. */
-    #workspace-settings-dialog .workspace-settings-body:has(#system-prompts-panel.active) .workspace-settings-nav { display: flex; flex-direction: row; flex-wrap: nowrap; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain; }
-    #workspace-settings-dialog .workspace-settings-body:has(#system-prompts-panel.active) .workspace-settings-nav button { flex: 0 0 auto; flex-direction: row; min-height: 44px; padding: 8px 12px; white-space: nowrap; }
-    #workspace-settings-dialog .workspace-settings-body:has(#system-prompts-panel.active) .workspace-settings-nav-links { display: flex; flex: 0 0 auto; gap: 4px; margin: 0; padding: 0 0 0 4px; border-top: 0; border-left: 1px solid var(--line); }
     :is(#system-prompts-panel, #system-prompt-dialog) :is(input, select, textarea) { font-size: 16px; }
     :is(#system-prompts-panel, #system-prompt-dialog) button { min-height: 44px; }
     #system-prompts-panel .system-prompt-examples button { min-height: 38px; }

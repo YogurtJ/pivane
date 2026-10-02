@@ -14,6 +14,7 @@
  * avoids signaling a PID that the extension cannot prove belongs to the runner.
  */
 import * as fs from "node:fs";
+import { writeAtomicJson } from "../../shared/atomic-json.ts";
 export type ControlChannelFs = Pick<typeof fs, "mkdirSync" | "existsSync" | "rmSync" | "watch" | "readdirSync" | "readFileSync" | "realpathSync">;
 export type ControlChannelTimers = {
     setInterval: typeof setInterval;
@@ -66,6 +67,8 @@ export declare function stopRequestsDir(asyncDir: string): string;
 /** Directory of parent-to-runner steering requests. */
 export declare function steerRequestsDir(asyncDir: string): string;
 export declare function steerInboxClosedPath(asyncDir: string): string;
+export declare function stopInboxClosedPath(asyncDir: string): string;
+export declare function closeStopInbox(asyncDir: string): void;
 export declare function closeSteerInbox(asyncDir: string, state: string, write?: (filePath: string, payload: object) => void): void;
 export declare function writeSteerRequestToDir(dir: string, request: SteerRequest): string;
 export declare function writeSteerRequestToExistingDir(dir: string, request: SteerRequest): string;
@@ -81,6 +84,7 @@ export declare function requestAsyncTimeout(asyncDir: string, payload?: Omit<Tim
 }): string;
 export declare function requestAsyncStop(asyncDir: string, payload?: Omit<StopRequest, "type">, deps?: {
     now?: () => number;
+    write?: typeof writeAtomicJson;
 }): string;
 export declare function requestAsyncSteer(asyncDir: string, payload: {
     message: string;

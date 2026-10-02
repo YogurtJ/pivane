@@ -44,6 +44,25 @@ export interface McpRuntimeSnapshotHost {
     events: {
         emit(event: string, request: McpRuntimeSnapshotRequest): void;
     };
+    getAllTools?(): readonly McpHostToolInfo[];
+    getCommands?(): readonly {
+        name: string;
+        sourceInfo: {
+            path: string;
+        };
+    }[];
+    /** Pi 0.99: servers extensions added with `pi.registerMcpServer()`. */
+    getMcpServers?(): readonly {
+        name: string;
+    }[];
+}
+/** A `pi.getAllTools()` entry; `exposure` and `namespace` exist only from Pi 0.99. */
+export interface McpHostToolInfo {
+    name: string;
+    exposure?: string;
+    namespace?: {
+        name: string;
+    };
 }
 export interface McpDirectToolResolution {
     selections: ResolvedMcpDirectToolSelection[];
@@ -51,9 +70,18 @@ export interface McpDirectToolResolution {
     /** Normal loaded config plus the selected runtime server definitions. */
     mcpConfig?: McpConfig;
     runtimeServerNames?: string[];
+    /** Set when the selectors were resolved against Pi's built-in MCP instead of pi-mcp-adapter. */
+    builtin?: true;
 }
 export declare function resolveMcpDirectToolResolution(mcpDirectTools: string[] | undefined, cwd?: string, runtimeSnapshotHost?: McpRuntimeSnapshotHost, configOverride?: McpConfig): McpDirectToolResolution;
 export declare function resolveMcpDirectToolSelections(mcpDirectTools: string[] | undefined, cwd?: string, runtimeSnapshotHost?: McpRuntimeSnapshotHost): ResolvedMcpDirectToolSelection[];
+export declare function formatUnresolvedBuiltinMcpSelectors(agentName: string | undefined, selectors: readonly string[]): string;
+/**
+ * Selected servers that only an extension registered, which a child without ambient extensions
+ * never has. A server of the same name in an `mcp.json` the child reads takes precedence; like Pi,
+ * the project file is read only when the project is trusted.
+ */
+export declare function extensionOnlyMcpServers(selections: readonly ResolvedMcpDirectToolSelection[], host: McpRuntimeSnapshotHost, cwd: string, projectTrusted: boolean): string[];
 export declare function resolveMcpDirectToolNames(mcpDirectTools: string[] | undefined, cwd?: string): string[];
 export declare function computeMcpServerHash(definition: ServerEntry): string;
 //# sourceMappingURL=mcp-direct-tool-allowlist.d.ts.map

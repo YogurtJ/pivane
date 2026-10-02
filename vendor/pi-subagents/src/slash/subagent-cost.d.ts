@@ -21,7 +21,8 @@ export declare const SUBAGENT_COST_REPORT_VERSION: 1;
 /**
  * Collect parent and child usage for the current session branch. Foreground
  * children come from persisted `subagent`/`bg_wait` tool-result details; async
- * workflow children are resolved through receipts and artifact metadata.
+ * workflow children are resolved through receipts, and other async runs through
+ * their status steps, then artifact metadata.
  */
 export declare function collectSubagentCost(ctx: ExtensionContext, state: Pick<SubagentState, "baseCwd" | "artifactDirPreference">): SubagentCostReport;
 /** The `/subagent-cost` text rendering of a collected report. */

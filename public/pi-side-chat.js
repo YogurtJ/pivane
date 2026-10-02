@@ -84,6 +84,9 @@
             });
             this.pickerId = `pi-side-model-dialog-${manager.nextPickerId++}`;
             $('pi-side-thinking-select').addEventListener('change', () => this.run(() => this.changeModel(true)));
+            this.speedSelect = document.createElement('select'); this.speedSelect.className = 'pi-side-speed-select'; this.speedSelect.hidden = true;
+            this.speedSelect.setAttribute('aria-label', translateUi('速度')); $('pi-side-model-controls').append(this.speedSelect);
+            this.speedSelect.addEventListener('change', () => this.run(() => this.changeSpeed()));
             this.render([]);
         }
 
@@ -126,6 +129,7 @@
             if (this.modelPicker) this.modelPicker.setDisabled(modelDisabled);
             else $('pi-side-model-select').disabled = true;
             $('pi-side-thinking-select').disabled = !ready || locked || !$('pi-side-thinking-select').options.length;
+            this.speedSelect.disabled = !this.connected || !ready || locked || !this.modelState?.speed?.levels?.length;
             if (this.configuring) { this.input.disabled = true; $('pi-side-send').disabled = true; }
             this.manager.host.changed?.();
         }
@@ -135,6 +139,11 @@
             $('pi-side-model').title = `${state.model?.provider}/${state.model?.id}`;
             this.modelPicker?.update(this.catalog || [], state.model, $('pi-side-model-select').disabled);
             $('pi-side-thinking-select').value = state.thinkingLevel || 'off';
+            const speed = state.speed, levels = speed?.levels || [];
+            this.speedSelect.hidden = levels.length === 0;
+            const labels = { auto: translateUi('跟随供应商'), standard: translateUi('标准 Standard'), fast: 'Fast', ultrafast: 'Ultrafast' };
+            this.speedSelect.replaceChildren(...levels.map(level => new Option(`${translateUi('速度')} · ${labels[level]}${speed.modes[level] ? ` · ${translateUi('费用 {0}×', speed.modes[level].costMultiplier)}` : ''}`, level)));
+            this.speedSelect.value = speed?.level || 'auto';
         }
         async loadModels() {
             if (!this.manager.modelsEnabled) return;
@@ -155,6 +164,15 @@
         }
         showLevels(levels) {
             $('pi-side-thinking-select').replaceChildren(...levels.map(level => { const option = document.createElement('option'); option.value = level; option.textContent = `Thinking · ${level}`; return option; }));
+        }
+        async changeSpeed() {
+            if (!this.connected || this.configuring || this.busy || this.confirmation || this.starting || this.destroyed) return;
+            const speed = this.modelState?.speed, generation = this.generation; if (!speed) return;
+            const level = this.speedSelect.value; this.configuring = true; this.controls();
+            try {
+                const data = await this.request('set_side_speed', { runtimeId: speed.runtimeId, revision: speed.revision, provider: speed.provider, modelId: speed.modelId, level });
+                if (generation === this.generation) this.showModel(data.state);
+            } finally { if (generation === this.generation) { this.configuring = false; await this.synchronize(); this.controls(); } }
         }
         async changeModel(thinking, selection = this.modelState?.model) {
             if (this.manager.current !== this || this.destroyed || this.busy || this.confirmation || this.configuring || this.submitting || this.starting) return;
@@ -370,28 +388,91 @@
         }
         renderConfirmation() {
             const panel = $('pi-side-confirm');
+            const sameRequest = panel.dataset.requestId === this.confirmation?.id;
+            const detailsOpen = sameRequest && panel.querySelector('details')?.open;
+            const scrollTop = sameRequest ? panel.querySelector('.pi-side-confirm-body')?.scrollTop || 0 : 0;
+            panel.dataset.requestId = this.confirmation?.id || '';
             panel.replaceChildren(); panel.hidden = !this.confirmation;
-            if (!this.confirmation) return;
+            if (!this.confirmation) { this.confirmationAnswer = null; return; }
             const request = this.confirmation;
-            const title = document.createElement('strong'); title.textContent = translateUi(request.title);
-            const scope = document.createElement('p');
-            scope.textContent = translateUi('允许后，本次回复可编辑、写入和运行命令；结束后恢复询问。主侧共享目录，请避免同时修改相同文件。');
-            const preview = document.createElement('pre'); preview.textContent = request.message || '';
-            const actions = document.createElement('div'); actions.className = 'pi-side-confirm-actions';
+            const node = (tag, className, text) => {
+                const element = document.createElement(tag); element.className = className;
+                if (text !== undefined) element.textContent = text;
+                return element;
+            };
+            let operation;
+            try {
+                const value = JSON.parse(request.message || '');
+                if (value && !Array.isArray(value) && typeof value.tool === 'string' && value.tool.length <= 128
+                    && value.arguments && typeof value.arguments === 'object' && !Array.isArray(value.arguments)) operation = value;
+            } catch { /* Older/unstructured confirmations retain their exact text preview. */ }
+            const deciding = this.confirmationAnswer?.id === request.id && this.confirmationAnswer.generation === this.generation;
+            panel.setAttribute('aria-busy', String(Boolean(deciding)));
+            const header = node('header', 'pi-side-confirm-header');
+            const shield = node('span', 'pi-side-confirm-icon'); shield.setAttribute('aria-hidden', 'true');
+            shield.append(node('i', 'fa-solid fa-shield-halved'));
+            const heading = node('div', 'pi-side-confirm-heading');
+            const title = node('strong', '', translateUi('允许侧聊执行操作？')); title.id = 'pi-side-confirm-title';
+            title.title = translateUi(request.title);
+            heading.append(title, node('span', 'pi-side-confirm-badge', translateUi('仅本次回复')));
+            header.append(shield, heading);
+            const body = node('div', 'pi-side-confirm-body');
+            body.append(node('p', 'pi-side-confirm-scope', translateUi('允许后，本次回复可修改文件和运行命令；结束后重新询问。')));
+            const preview = (label, text) => {
+                const section = node('div', 'pi-side-confirm-preview');
+                const code = node('pre', '', text); code.tabIndex = 0; code.setAttribute('aria-label', translateUi(label));
+                section.append(node('span', 'pi-side-confirm-caption', translateUi(label)), code);
+                body.append(section);
+            };
+            if (operation) {
+                const captions = { bash: '运行命令', powershell: '运行命令', edit: '编辑文件', write: '写入文件' };
+                const action = node('div', 'pi-side-confirm-operation');
+                action.append(node('span', '', translateUi(captions[operation.tool] || '待执行操作')), node('code', 'pi-side-confirm-tool', operation.tool));
+                body.append(action);
+                for (const [label, text] of [['工作目录', operation.cwd], ['文件', operation.arguments.path]]) {
+                    if (typeof text !== 'string' || !text) continue;
+                    const row = node('div', 'pi-side-confirm-location');
+                    row.append(node('span', '', translateUi(label)), node('code', '', text)); body.append(row);
+                }
+                const args = operation.arguments;
+                if (['bash', 'powershell'].includes(operation.tool) && typeof args.command === 'string') preview('命令', args.command);
+                else if (operation.tool === 'write' && typeof args.content === 'string') preview('写入内容', args.content);
+                else if (operation.tool === 'edit' && typeof args.oldText === 'string' && typeof args.newText === 'string') {
+                    preview('替换前', args.oldText); preview('替换后', args.newText);
+                } else if (operation.tool === 'edit' && Array.isArray(args.edits)) preview('修改内容', JSON.stringify(args.edits, null, 2));
+                const details = node('details', 'pi-side-confirm-details'); details.open = Boolean(detailsOpen);
+                const parameters = node('pre', '', request.message || ''); parameters.tabIndex = 0; parameters.setAttribute('aria-label', translateUi('查看完整参数'));
+                details.append(node('summary', '', translateUi('查看完整参数')), parameters);
+                body.append(details);
+            } else preview('待执行操作', request.message || '');
+            const footer = node('div', 'pi-side-confirm-footer');
+            footer.append(node('p', 'pi-side-confirm-note', translateUi('主侧共享文件，请避免同时修改同一处。')));
+            const actions = node('div', 'pi-side-confirm-actions');
             for (const [allowed, label] of [[false, '取消执行'], [true, '允许本次回复执行']]) {
-                const button = document.createElement('button'); button.type = 'button'; button.textContent = translateUi(label);
+                const button = node('button', allowed ? 'pi-side-confirm-allow' : 'pi-side-confirm-deny'); button.type = 'button';
+                button.dataset.sideConfirmed = String(allowed); button.disabled = Boolean(deciding);
+                const pending = deciding && this.confirmationAnswer.allowed === allowed;
+                if (pending) { const spinner = node('i', 'fa-solid fa-spinner fa-spin'); spinner.setAttribute('aria-hidden', 'true'); button.append(spinner); }
+                button.append(node('span', '', translateUi(pending ? '正在提交确认…' : label)));
                 button.addEventListener('click', () => this.run(async () => {
-                    if (this.manager.current !== this || this.confirmation?.id !== request.id) return;
+                    if (this.manager.current !== this || this.confirmation?.id !== request.id
+                        || this.confirmationAnswer?.id === request.id && this.confirmationAnswer.generation === this.generation) return;
                     const generation = this.generation;
-                    for (const node of actions.children) node.disabled = true;
+                    const answer = { id: request.id, generation, allowed };
+                    this.confirmationAnswer = answer; this.renderConfirmation();
                     try {
                         await this.request('answer_side_confirmation', { requestId: request.id, confirmed: allowed });
                         if (generation === this.generation && this.confirmation?.id === request.id) { this.confirmation = null; this.renderConfirmation(); }
-                    } finally { if (generation === this.generation) for (const node of actions.children) node.disabled = false; }
+                    } finally {
+                        if (this.confirmationAnswer === answer) {
+                            this.confirmationAnswer = null;
+                            if (generation === this.generation) this.renderConfirmation();
+                        }
+                    }
                 }));
-                actions.appendChild(button);
+                actions.append(button);
             }
-            panel.append(title, scope, preview, actions);
+            footer.append(actions); panel.append(header, body, footer); body.scrollTop = scrollTop;
         }
         request(type, payload = {}, timeout = 45000) {
             if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error(translateUi("侧聊未连接")));
@@ -473,6 +554,9 @@
                 this.confirmation = null; this.toolAccess = 'read'; this.renderConfirmation();
                 this.render(event.messages || this.messages); this.updateUsage(event.stats); this.dropSocket();
                 this.status(translateUi('闲置 12 小时，运行资源已释放')); this.updateSessionNote(); this.controls(); return;
+            }
+            if (event.type === 'gateway_model_speed') {
+                this.showModel({ ...this.modelState, speed: event.speed }); this.controls(); return;
             }
             if (event.type === 'gateway_side_tool_access') {
                 this.revision++; this.toolAccess = event.access === 'write' ? 'write' : 'read'; this.controls(); return;

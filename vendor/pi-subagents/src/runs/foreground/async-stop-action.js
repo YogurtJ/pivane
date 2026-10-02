@@ -3,11 +3,12 @@ import * as path from "node:path";
 import { writeAtomicJson } from "../../shared/atomic-json.js";
 import { DIRS } from "../../shared/types.js";
 import { updateActiveRunIndex } from "../background/active-run-index.js";
-import { deliverStopRequest } from "../background/control-channel.js";
+import { deliverStopRequest, stopInboxClosedPath } from "../background/control-channel.js";
 import { readProcessTerminal } from "../background/process-terminal.js";
 import { resultFilePath, resultPayloadPathForSessionRun, writeAsyncResultFile } from "../background/result-files.js";
 import { reconcileAsyncRun } from "../background/stale-run-reconciler.js";
-import { isStoppableAsyncStatusStep, resolveAsyncStatusChild } from "../shared/child-identity.js";
+import { readStatus } from "../../shared/utils.js";
+import { isStoppableAsyncStatusStep, resolveAsyncStatusChild, stopStoppableAsyncStatusChildren } from "../shared/child-identity.js";
 function getAsyncStopTarget(state, runId, location) {
     if (location?.asyncDir) {
         return {
@@ -100,6 +101,19 @@ function sealPausedRun(asyncDir, status) {
 }
 export function stopAsyncRun(state, runId, kill, location, childId) {
     const target = getAsyncStopTarget(state, runId, location);
+    // An async workflow runs in this process: it has no runner to read a stop request, so stop it through its controller.
+    const workflowRunId = target?.asyncId ?? runId;
+    const workflowController = childId === undefined && workflowRunId ? state.workflowControllers?.get(workflowRunId) : undefined;
+    const workflowAsyncDir = workflowController && workflowRunId ? target?.asyncDir ?? state.asyncJobs.get(workflowRunId)?.asyncDir : undefined;
+    const workflowStatus = workflowAsyncDir ? readStatus(workflowAsyncDir) : undefined;
+    // Controllers outlive a session switch; a workflow owned by another session falls through to the ownership check below.
+    const foreignWorkflow = Boolean(state.currentSessionId && workflowStatus && workflowStatus.sessionId !== state.currentSessionId);
+    if (workflowController && workflowRunId && !foreignWorkflow) {
+        if (workflowStatus)
+            stopStoppableAsyncStatusChildren(workflowStatus, state.workflowChildStops?.get(workflowRunId), "Workflow stopped.");
+        workflowController.abort(new Error("Workflow stopped."));
+        return { content: [{ type: "text", text: `Stop requested for async workflow ${workflowRunId}.` }], details: { mode: "management", results: [] } };
+    }
     if (!target)
         return null;
     const status = reconcileAsyncRun(target.asyncDir, { kill }).status;
@@ -138,7 +152,9 @@ export function stopAsyncRun(state, runId, kill, location, childId) {
         }
     }
     try {
-        deliverStopRequest({ asyncDir: target.asyncDir, pid: typeof status.pid === "number" ? status.pid : undefined, kill, source: "stop-action", targetIndex: child?.index, childId: child?.id ?? childId });
+        // A paused run whose runner closed its inbox can only be sealed from exact exit proof below.
+        if (!(pausedWholeRun && fs.existsSync(stopInboxClosedPath(target.asyncDir))))
+            deliverStopRequest({ asyncDir: target.asyncDir, pid: typeof status.pid === "number" ? status.pid : undefined, kill, source: "stop-action", targetIndex: child?.index, childId: child?.id ?? childId });
         if (pausedWholeRun) {
             const failure = sealPausedRun(target.asyncDir, status);
             if (failure) {

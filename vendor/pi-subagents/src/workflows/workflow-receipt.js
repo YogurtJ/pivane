@@ -4,6 +4,7 @@ import { writePrivateAtomicJson } from "../shared/atomic-json.js";
 import { parseWorkflowChildSummary } from "./workflow-child-summary.js";
 import { HOST_STEP_MAX_COUNT, assertUniqueHostStepIds, parseHostStepNode } from "../runs/shared/host-step-status.js";
 import { assertWorkflowLaneKey, normalizeWorkflowLaneMetadata } from "../runs/shared/lane-metadata.js";
+import { projectWorkflowKeyRevival } from "./workflow-revival.js";
 export const WORKFLOW_RECEIPT_VERSION = 1;
 export const WORKFLOW_RECEIPT_FILE = "workflow-receipt.json";
 const MAX_WORKFLOW_RECEIPT_BYTES = 2 * 1024 * 1024;
@@ -429,9 +430,14 @@ export function resolveWorkflowReceiptResumeEntry(input) {
         throw new Error("Keyed workflow receipt resume requires latest: true.");
     const key = assertKey(input.reference.key, "keyed resume key");
     const receipt = readWorkflowReceipt(input.asyncDirRoot, input.reference.workflowRunId.trim());
-    const entry = receipt.entries[key];
-    if (!entry)
+    const recorded = receipt.entries[key];
+    if (!recorded)
         throw new Error(`Workflow receipt '${receipt.workflowRunId}' has no child key '${key}'.`);
+    // A detached top-level revival after the receipt was written continues this key's lineage.
+    const revival = recorded.latestRunId ? projectWorkflowKeyRevival(input.asyncDirRoot, receipt.workflowRunId, key, recorded.latestRunId) : undefined;
+    const entry = revival
+        ? { ...recorded, latestRunId: revival.latestRunId, continuation: { runIds: [...recorded.continuation.runIds, ...revival.revivedRunIds] } }
+        : recorded;
     assertResumableEntry(entry, receipt.workflowRunId, key);
     input.assertResumable?.(entry.latestRunId);
     return entry;

@@ -11,9 +11,13 @@ import { createNativeSupervisorChannel, NATIVE_SUPERVISOR_TOOL_NAME, resolveSupe
 import { readStatus } from "../shared/utils.js";
 import { resolveSubagentIntercomTarget } from "../intercom/intercom-bridge.js";
 import { createSubagentParamsSchema } from "./schemas.js";
+import { resolveDisabledFeatureSurface } from "../shared/disabled-features.js";
 import { finalizeToolResult } from "./tool-result.js";
+import { removedModelWorkflowFieldError } from "./public-execution.js";
 import { loadConfig, resolveAsyncByDefault } from "./config.js";
 import { SUBAGENT_ASYNC_STARTED_EVENT } from "../shared/types.js";
+import { createChildExternalJobBridgeSweeper } from "../runs/shared/external-job-bridge.js";
+import { MODEL_ONLY_TOOL } from "../shared/extension-context.js";
 function getSubagentSessionRoot(parentSessionFile) {
     if (parentSessionFile) {
         const baseName = path.basename(parentSessionFile, ".jsonl");
@@ -201,21 +205,34 @@ export default function registerFanoutChildSubagentExtension(pi, childConfig) {
         activateSupervisorTransport: supervisorChannel.activateTransport,
         findPendingAsks: supervisorChannel.findPendingAsks,
     });
-    const params = createSubagentParamsSchema();
+    const disabledFeatures = resolveDisabledFeatureSurface(config);
+    const listEnabled = (actions) => actions.filter((action) => !disabledFeatures.actions.has(action)).join(", ");
+    const blockedActions = listEnabled(["create", "update", "delete", "eject", "disable", "enable", "reset", "grant-spawn-budget", "lane.recordMerge", "lane.recordSupersession"]);
+    const params = createSubagentParamsSchema(disabledFeatures);
     const tool = {
         name: "subagent",
+        ...MODEL_ONLY_TOOL,
         label: "Subagent",
         description: [
             "Delegate to subagents from child-safe fanout mode.",
-            "Allowed management/control actions: list, get, status, lane.status, interrupt, resume, steer, doctor.",
-            "Mutating management actions (create, update, delete, eject, disable, enable, reset, grant-spawn-budget, lane.recordMerge, lane.recordSupersession) are blocked in this mode.",
+            `Allowed management/control actions: ${listEnabled(["list", "get", "status", "lane.status", "interrupt", "resume", "steer", "doctor"])}.`,
+            ...(blockedActions ? [`Mutating management actions (${blockedActions}) are blocked in this mode.`] : []),
         ].join("\n"),
         parameters: params,
         async execute(id, params, signal, onUpdate, ctx) {
+            const removedField = removedModelWorkflowFieldError(params);
+            if (removedField)
+                throw new Error(removedField);
             return finalizeToolResult(await executor.executePublic(id, params, signal ?? new AbortController().signal, onUpdate, ctx));
         },
     };
     pi.registerTool(tool);
+    const bridgeSweeper = createChildExternalJobBridgeSweeper();
+    const unsubscribeBridgeStarted = pi.events.on(SUBAGENT_ASYNC_STARTED_EVENT, (payload) => {
+        const info = payload;
+        if (info.id && info.asyncDir && info.sessionId === state.currentSessionId)
+            bridgeSweeper.track(info.id, info.asyncDir);
+    });
     let unsubscribeAsyncStarted;
     pi.on("session_start", (_event, ctx) => {
         supervisorChannel.registerTools();
@@ -237,6 +254,8 @@ export default function registerFanoutChildSubagentExtension(pi, childConfig) {
     });
     pi.on("session_shutdown", () => {
         unsubscribeAsyncStarted?.();
+        unsubscribeBridgeStarted?.();
+        bridgeSweeper.dispose();
         asyncChildren.clear();
         foregroundChannels.clear();
         supervisorChannel.dispose();

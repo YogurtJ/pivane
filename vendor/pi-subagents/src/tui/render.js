@@ -16,6 +16,8 @@ import { formatNestedAggregate } from "../runs/shared/nested-render.js";
 import { aggregateStepStatus, formatActivityLabel, formatAgentRunningLabel, formatParallelOutcome } from "../shared/status-format.js";
 import { contextModeBadge, contextModePrefix } from "../runs/shared/context-mode.js";
 import { shouldSuppressSingleStep, stripRepeatedAgentPrefix, withDuplicateLabelDiscriminators } from "./render-helpers.js";
+import { runningTone } from "./running-tone.js";
+import { childThinkingLevel } from "../shared/model-info.js";
 import { buildWorkflowChatProgressRows } from "../workflows/chat-progress.js";
 import { formatWorkflowPreflight, formatWorkflowPreflightPlanSummary, formatWorkflowPreflightWarningSummary, formatWorkflowPreflightWarnings } from "../workflows/workflow-preflight.js";
 import { encodeAsyncStatusSnapshotWidget } from "../runs/background/async-status-snapshot.js";
@@ -820,7 +822,7 @@ function resultStatusLine(result, output) {
 function semanticResultPresentation(input) {
     if (input.running) {
         const glyph = input.frame !== undefined ? runningGlyph((input.seed ?? 0) + input.frame) : runningGlyph(input.seed);
-        return { glyph, label: "running", tone: "accent" };
+        return { glyph, label: "running", tone: "accent", ...(input.thinking ? { thinking: input.thinking } : {}) };
     }
     if (input.detached)
         return { glyph: "■", label: "detached", tone: "warning" };
@@ -868,16 +870,21 @@ function resultPresentation(result, output, running = isResultRunning(result), s
         completedWithoutOutput: hasEmptyTextOutputWithoutOutputTarget(result.task, output),
         seed,
         frame,
+        thinking: childThinkingLevel(result, result.progress),
     });
+}
+function presentationTone(presentation, theme) {
+    return presentation.label === "running" ? runningTone(theme, presentation.thinking) : (text) => theme.fg(presentation.tone, text);
 }
 function resultGlyph(result, output, theme, running = isResultRunning(result), seed = progressRunningSeed(result.progress ?? result.progressSummary), frame) {
     const presentation = resultPresentation(result, output, running, seed, frame);
-    return theme.fg(presentation.tone, presentation.glyph);
+    return presentationTone(presentation, theme)(presentation.glyph);
 }
 function styledResultPresentation(presentation, theme) {
+    const tone = presentationTone(presentation, theme);
     return {
-        glyph: theme.fg(presentation.tone, presentation.glyph),
-        label: theme.fg(presentation.tone, presentation.label),
+        glyph: tone(presentation.glyph),
+        label: tone(presentation.label),
     };
 }
 function compactCurrentActivity(progress) {
@@ -1159,9 +1166,12 @@ function widgetJobsRunningSeed(jobs) {
         seed = runningSeed(seed, widgetJobRunningSeed(job));
     return seed;
 }
+function activeHeaderTone(theme, hasActive) {
+    return hasActive ? runningTone(theme) : (text) => theme.fg("dim", text);
+}
 function widgetStatusGlyph(job, theme, frame) {
     if (job.status === "running")
-        return theme.fg("accent", runningGlyph(animatedSeed(widgetJobRunningSeed(job), frame)));
+        return runningTone(theme, job.mode === "single" ? childThinkingLevel(job.steps?.[0]) : undefined)(runningGlyph(animatedSeed(widgetJobRunningSeed(job), frame)));
     if (job.status === "queued")
         return theme.fg("muted", "◦");
     if (job.status === "complete")
@@ -1172,9 +1182,9 @@ function widgetStatusGlyph(job, theme, frame) {
         return theme.fg("warning", "■");
     return theme.fg("error", "✗");
 }
-function widgetStepGlyph(status, theme, seed, frame) {
+function widgetStepGlyph(status, theme, seed, frame, thinking) {
     if (status === "running")
-        return theme.fg("accent", runningGlyph(animatedSeed(seed, frame)));
+        return runningTone(theme, thinking)(runningGlyph(animatedSeed(seed, frame)));
     if (status === "complete" || status === "completed")
         return theme.fg("success", "✓");
     if (status === "failed")
@@ -1185,9 +1195,9 @@ function widgetStepGlyph(status, theme, seed, frame) {
         return theme.fg("warning", "■");
     return theme.fg("muted", "◦");
 }
-function widgetStepStatus(status, theme) {
+function widgetStepStatus(status, theme, thinking) {
     if (status === "running")
-        return theme.fg("accent", "running");
+        return runningTone(theme, thinking)("running");
     if (status === "complete" || status === "completed")
         return theme.fg("success", "complete");
     if (status === "failed")
@@ -1207,7 +1217,7 @@ function workflowChecklistStateLabel(state) {
 }
 function workflowChecklistGlyph(item, theme, frame) {
     if (item.state === "running")
-        return theme.fg("accent", runningGlyph(animatedSeed(runningSeed(item.startedAt, item.durationMs, item.toolCount, item.currentToolStartedAt), frame)));
+        return runningTone(theme, item.thinking)(runningGlyph(animatedSeed(runningSeed(item.startedAt, item.durationMs, item.toolCount, item.currentToolStartedAt), frame)));
     if (item.state === "complete")
         return theme.fg("success", "✓");
     if (item.state === "blocked")
@@ -1318,6 +1328,7 @@ function compactWorkflowLaneRow(key, items, lane = items.find((item) => item.pre
         key: boundedLaneValue(key, 40) ?? key,
         state,
         agent: compactWorkflowLaneOwner(items),
+        ...(items.length === 1 && items[0]?.thinking ? { thinking: items[0].thinking } : {}),
         ...(lane?.mode ? { mode: lane.mode } : {}),
         ...(lane?.decision ? { decision: boundedLaneValue(lane.decision, 56) } : {}),
         ...(lane?.claims?.length ? { claims: boundedLaneValue(lane.claims.join(", "), 56) } : {}),
@@ -1403,7 +1414,7 @@ function compactWorkflowLaneLine(row, theme, indent, frame) {
         row.expectedOutput,
         !row.mode && row.label ? row.label : undefined,
     ].filter((value) => Boolean(value));
-    return `${indent}${workflowChecklistGlyph({ state: row.state, durationMs: row.durationMs, toolCount: row.toolUses }, theme, frame)} ${theme.bold(row.key)}${owner ? ` ${theme.fg("dim", `· ${owner}`)}` : ""}${state ? ` ${theme.fg("dim", `· ${state}`)}` : ""}${intent.length ? ` ${theme.fg("dim", `· ${intent.join(" · ")}`)}` : ""}`;
+    return `${indent}${workflowChecklistGlyph({ state: row.state, durationMs: row.durationMs, toolCount: row.toolUses, thinking: row.thinking }, theme, frame)} ${theme.bold(row.key)}${owner ? ` ${theme.fg("dim", `· ${owner}`)}` : ""}${state ? ` ${theme.fg("dim", `· ${state}`)}` : ""}${intent.length ? ` ${theme.fg("dim", `· ${intent.join(" · ")}`)}` : ""}`;
 }
 function compactWorkflowShortId(job) {
     return job.asyncId.slice(0, 8);
@@ -1543,7 +1554,8 @@ function widgetParallelAgentDetails(job, theme, expanded = false, width = getTer
         const modelDisplay = modelThinkingBadge(theme, step.model, step.thinking);
         const label = compactTaskText(step.description, step.label);
         const display = step.sessionName?.trim() || (label ? `${label} (${step.agent})` : step.agent);
-        lines.push(`  ${theme.fg("dim", `${marker} ${widgetStepGlyph(step.status, theme, widgetStepRunningSeed(step, index), frame)} ${itemTitle} ${index + 1}/${total}: ${display} · ${widgetStepStatus(step.status, theme)}${modelDisplay}${activity ? ` · ${activity}` : ""}`)}`);
+        const thinking = childThinkingLevel(step);
+        lines.push(`  ${theme.fg("dim", `${marker} ${widgetStepGlyph(step.status, theme, widgetStepRunningSeed(step, index), frame, thinking)} ${itemTitle} ${index + 1}/${total}: ${display} · ${widgetStepStatus(step.status, theme, thinking)}${modelDisplay}${activity ? ` · ${activity}` : ""}`)}`);
         const lane = projectAsyncLane(job, step);
         if (lane)
             lines.push(...formatLaneProjectionLines(lane, theme, "    "));
@@ -2022,9 +2034,9 @@ function nestedRunName(run) {
         return formatWidgetAgents(run.agents);
     return run.id;
 }
-function nestedStatusGlyph(state, theme, seed) {
+function nestedStatusGlyph(state, theme, seed, thinking) {
     if (state === "running")
-        return theme.fg("accent", runningGlyph(seed));
+        return runningTone(theme, thinking)(runningGlyph(seed));
     if (state === "complete" || state === "completed")
         return theme.fg("success", "✓");
     if (state === "failed")
@@ -2116,7 +2128,7 @@ function formatNestedWidgetLines(children, theme, width, expanded, snapshotNow, 
             const name = "status" in step ? childDisplayName(step) : nestedRunName(step);
             rows.push({
                 prefix,
-                text: `${nestedTimestampPrefix(timestamp)}${nestedStatusGlyph(state, theme)} ${name} · ${state}${modelThinking ? ` · ${modelThinking}` : ""}${activity ? ` · ${activity}` : ""}${error}`,
+                text: `${nestedTimestampPrefix(timestamp)}${nestedStatusGlyph(state, theme, undefined, childThinkingLevel(step))} ${name} · ${state}${modelThinking ? ` · ${modelThinking}` : ""}${activity ? ` · ${activity}` : ""}${error}`,
             });
         };
         for (const child of children) {
@@ -2127,7 +2139,7 @@ function formatNestedWidgetLines(children, theme, width, expanded, snapshotNow, 
                 const ownerError = child.error ? ` · ${child.error}` : "";
                 rows.push({
                     prefix: "↳ ",
-                    text: `OWNER ${nestedStatusGlyph(child.state, theme, nestedRunSeed(child))} ${nestedRunName(child)} · ${child.state}${ownerModelThinking ? ` · ${ownerModelThinking}` : ""}${ownerActivity ? ` · ${ownerActivity}` : ""}${ownerError}`,
+                    text: `OWNER ${nestedStatusGlyph(child.state, theme, nestedRunSeed(child), childThinkingLevel(child))} ${nestedRunName(child)} · ${child.state}${ownerModelThinking ? ` · ${ownerModelThinking}` : ""}${ownerActivity ? ` · ${ownerActivity}` : ""}${ownerError}`,
                 });
                 for (const step of steps)
                     appendLeaf(step, "↳ │  ", child.lastUpdate);
@@ -2172,7 +2184,7 @@ function formatNestedWidgetLines(children, theme, width, expanded, snapshotNow, 
             const activity = nestedActivity(child, child.state, snapshotNow ?? child.lastUpdate);
             const error = child.error ? ` · ${child.error}` : "";
             const modelThinking = formatModelThinking(child.model, child.thinking);
-            lines.push(theme.fg("dim", `${prefix}↳ ${nestedTimestampPrefix(formatClockTime(nestedRunEventTime(child)))}${nestedStatusGlyph(child.state, theme, nestedRunSeed(child))} ${nestedRunName(child)} · ${child.state}${modelThinking ? ` · ${modelThinking}` : ""} · ${activity}${error}`));
+            lines.push(theme.fg("dim", `${prefix}↳ ${nestedTimestampPrefix(formatClockTime(nestedRunEventTime(child)))}${nestedStatusGlyph(child.state, theme, nestedRunSeed(child), childThinkingLevel(child))} ${nestedRunName(child)} · ${child.state}${modelThinking ? ` · ${modelThinking}` : ""} · ${activity}${error}`));
             if (depth === maxDepth) {
                 const aggregate = formatNestedAggregate([...(child.steps?.flatMap((step) => step.children ?? []) ?? []), ...(child.children ?? [])]);
                 if (aggregate && lines.length < lineBudget)
@@ -2183,7 +2195,7 @@ function formatNestedWidgetLines(children, theme, width, expanded, snapshotNow, 
                 if (lines.length >= lineBudget)
                     return;
                 const modelThinking = formatModelThinking(step.model, step.thinking);
-                lines.push(theme.fg("dim", `${prefix}  ↳ ${nestedTimestampPrefix(nestedStepTimestamp(step, child.lastUpdate))}${nestedStatusGlyph(step.status, theme)} ${childDisplayName(step)} · ${step.status}${modelThinking ? ` · ${modelThinking}` : ""} · ${nestedActivity(step, step.status, snapshotNow ?? child.lastUpdate)}`));
+                lines.push(theme.fg("dim", `${prefix}  ↳ ${nestedTimestampPrefix(nestedStepTimestamp(step, child.lastUpdate))}${nestedStatusGlyph(step.status, theme, undefined, childThinkingLevel(step))} ${childDisplayName(step)} · ${step.status}${modelThinking ? ` · ${modelThinking}` : ""} · ${nestedActivity(step, step.status, snapshotNow ?? child.lastUpdate)}`));
                 append(step.children, depth + 1, `${prefix}    `);
             }
             append(child.children, depth + 1, `${prefix}  `);
@@ -2195,7 +2207,8 @@ function formatNestedWidgetLines(children, theme, width, expanded, snapshotNow, 
 function foregroundStyleWidgetStepLines(job, theme, step, itemTitle, index, total, expanded, width, frame, options) {
     const rowIndent = options?.rowIndent ?? "  ";
     const detailIndent = options?.detailIndent ?? "    ";
-    const status = widgetStepStatus(step.status, theme);
+    const thinking = childThinkingLevel(step);
+    const status = widgetStepStatus(step.status, theme, thinking);
     const stats = widgetStepStats(theme, step, job.updatedAt);
     const modelDisplay = modelThinkingBadge(theme, step.model, step.thinking);
     const collapseDetails = shouldCollapseSingleChildDetails(job, step);
@@ -2206,7 +2219,7 @@ function foregroundStyleWidgetStepLines(job, theme, step, itemTitle, index, tota
     const stageIdentity = stageName && stageName !== displayName ? `${stageName} (${displayName})` : stageName ?? displayName;
     const rowLabel = collapseDetails ? displayName : (options?.rowLabel ?? `${itemTitle} ${index}/${total}: ${itemTitle === "Stage" ? stageIdentity : displayName}`);
     const rowMarker = options?.rowMarker ? `${options.rowMarker} ` : "";
-    const lines = [`${rowIndent}${rowMarker}${widgetStepGlyph(step.status, theme, widgetStepRunningSeed(step, index - 1), frame)} ${themeBold(theme, rowLabel)}${contextModeBadge(theme, step.context)} ${theme.fg("dim", "·")} ${status}${modelDisplay}${stats ? ` ${theme.fg("dim", "·")} ${stats}` : ""}`];
+    const lines = [`${rowIndent}${rowMarker}${widgetStepGlyph(step.status, theme, widgetStepRunningSeed(step, index - 1), frame, thinking)} ${themeBold(theme, rowLabel)}${contextModeBadge(theme, step.context)} ${theme.fg("dim", "·")} ${status}${modelDisplay}${stats ? ` ${theme.fg("dim", "·")} ${stats}` : ""}`];
     const lane = projectAsyncLane(job, step);
     if (lane)
         lines.push(...formatLaneProjectionLines(lane, theme, detailIndent));
@@ -2358,7 +2371,8 @@ function compactSingleWidgetLines(job, theme, width, frame, projection = buildWo
     lines.push(parallelWidgetGroupHeader(group, theme, frame));
     for (const [rowIndex, row] of rows.entries()) {
         const step = row.step;
-        const status = widgetStepStatus(step.status, theme);
+        const thinking = childThinkingLevel(step);
+        const status = widgetStepStatus(step.status, theme, thinking);
         const activity = widgetStepActivityLine(step, width, false, job.updatedAt);
         const stepStats = widgetStepStats(theme, step, job.updatedAt);
         const activitySuffix = activity ? ` ${theme.fg("dim", "·")} ${theme.fg("dim", activity)}` : "";
@@ -2366,7 +2380,7 @@ function compactSingleWidgetLines(job, theme, width, frame, projection = buildWo
         const task = compactTaskText(step.description, step.label);
         const taskSuffix = task ? ` ${theme.fg("dim", "·")} ${theme.fg("dim", `task: ${task}`)}` : "";
         const marker = rowIndex === rows.length - 1 && rowIndex >= group.total - 1 ? "└─" : "├─";
-        lines.push(`    ${marker} ${widgetStepGlyph(step.status, theme, widgetStepRunningSeed(step, row.index), frame)} ${themeBold(theme, row.rowLabel)}${contextModeBadge(theme, step.context)} ${theme.fg("dim", "·")} ${status}${modelDisplay}${taskSuffix}${activitySuffix}${stepStats ? ` ${theme.fg("dim", "·")} ${stepStats}` : ""}`);
+        lines.push(`    ${marker} ${widgetStepGlyph(step.status, theme, widgetStepRunningSeed(step, row.index), frame, thinking)} ${themeBold(theme, row.rowLabel)}${contextModeBadge(theme, step.context)} ${theme.fg("dim", "·")} ${status}${modelDisplay}${taskSuffix}${activitySuffix}${stepStats ? ` ${theme.fg("dim", "·")} ${stepStats}` : ""}`);
         const lane = projectAsyncLane(job, step);
         if (lane)
             lines.push(...formatLaneProjectionLines(lane, theme, "      "));
@@ -2430,7 +2444,8 @@ function buildSingleLineWidgetLines(jobs, theme, width, frame) {
     }
     if (!hasActive && counts.complete.length > 0)
         parts.push(`${counts.complete.length}/${jobs.length} done`);
-    return [truncLine(`${theme.fg(hasActive ? "accent" : "dim", glyph)} ${theme.fg(hasActive ? "accent" : "dim", "subagents")} (${parts.join(", ") || `${jobs.length} total`})`, width)];
+    const tone = activeHeaderTone(theme, hasActive);
+    return [truncLine(`${tone(glyph)} ${tone("subagents")} (${parts.join(", ") || `${jobs.length} total`})`, width)];
 }
 function orderedWidgetJobs(jobs) {
     return [
@@ -2487,13 +2502,32 @@ function selectProgressiveJobKeys(jobs, previousKeys, bodyRows) {
     }
     return selected;
 }
-function progressiveHeaderLine(jobs, theme, width, frame) {
+// Counts the leaf entries collectFleetStatusEntries (fleet-status.ts) makes for a running async job,
+// so this matches FleetView's "N active agents": a workflow counts only its loaded child runs;
+// another job counts its active steps, synthesized from `agents` when it has no steps.
+function runningLeafAgentCount(job, projectionFor) {
+    if (job.mode === "workflow")
+        return (projectionFor(job).children ?? []).reduce((total, child) => total + runningLeafAgentCount(child, projectionFor), 0);
+    if (job.status !== "running")
+        return 0;
+    const sequential = job.mode === "chain" && !job.activeParallelGroup;
+    const current = job.currentStep ?? 0;
+    const steps = job.steps?.length
+        ? job.steps
+        : job.agents?.map((_, index) => ({ index, status: sequential && index !== current ? "pending" : "running" }));
+    if (!steps?.length)
+        return 1;
+    return steps.filter((step, offset) => ["running", "queued", "pending"].includes(step.status)
+        && !(step.status === "pending" && sequential && (step.index ?? offset) !== current)).length;
+}
+function progressiveHeaderLine(jobs, theme, width, frame, projectionFor) {
     const counts = widgetHeaderCounts(jobs);
     const hasActive = counts.running.length > 0 || counts.queued.length > 0;
     const glyph = counts.running.length > 0 ? runningGlyph(animatedSeed(widgetJobsRunningSeed(counts.running), frame)) : hasActive ? "●" : "○";
     const parts = [];
-    if (counts.running.length > 0)
-        parts.push(formatAgentRunningLabel(counts.running.length));
+    const runningAgents = jobs.reduce((total, job) => total + runningLeafAgentCount(job, projectionFor), 0);
+    if (runningAgents > 0)
+        parts.push(formatAgentRunningLabel(runningAgents));
     if (counts.queued.length > 0)
         parts.push(`${counts.queued.length} queued`);
     if (!hasActive) {
@@ -2506,11 +2540,11 @@ function progressiveHeaderLine(jobs, theme, width, frame) {
         if (counts.complete.length > 0)
             parts.push(`${counts.complete.length}/${jobs.length} done`);
     }
-    return truncLine(`${theme.fg(hasActive ? "accent" : "dim", glyph)} ${theme.fg(hasActive ? "accent" : "dim", "Async agents")} ${theme.fg("dim", "·")} ${theme.fg("dim", parts.join(", ") || `${jobs.length} total`)}`, width);
+    const tone = activeHeaderTone(theme, hasActive);
+    return truncLine(`${tone(glyph)} ${tone("Async agents")} ${theme.fg("dim", "·")} ${theme.fg("dim", parts.join(", ") || `${jobs.length} total`)}`, width);
 }
-function progressiveJobLine(job, theme, width, frame, projection = buildWorkflowWidgetProjection(job)) {
+function progressiveJobLine(job, theme, width, frame, projection = buildWorkflowWidgetProjection(job), compactRows = job.mode === "workflow" ? compactWorkflowLaneRows(job, projection.checklist) : undefined) {
     const compactWorkflow = job.mode === "workflow";
-    const compactRows = compactWorkflow ? compactWorkflowLaneRows(job, projection.checklist) : undefined;
     const stats = compactWorkflow ? compactWorkflowStats(job, compactRows ?? [], theme, projection) : widgetStats(job, theme, projection, true);
     if (compactWorkflow) {
         const bottleneck = compactWorkflowBottleneck(compactRows ?? [], job);
@@ -2551,7 +2585,7 @@ function progressiveHiddenLine(hiddenJobs, theme, width) {
 function buildProgressiveWidgetLines(jobs, theme, width, lockedRows, previousKeys, frame, projectionFor = workflowWidgetProjectionLookup()) {
     const rowCount = Math.max(1, lockedRows);
     if (rowCount === 1)
-        return { lines: buildSingleLineWidgetLines(jobs, theme, width, frame), visibleJobKeys: [] };
+        return { lines: buildSingleLineWidgetLines(jobs, theme, width, frame), visibleJobKeys: [], contentRows: 1 };
     const bodyRows = rowCount - 1;
     let visibleJobKeys = selectProgressiveJobKeys(jobs, previousKeys, bodyRows);
     const jobsByKey = new Map(jobs.map((job) => [progressiveJobKey(job), job]));
@@ -2563,15 +2597,26 @@ function buildProgressiveWidgetLines(jobs, theme, width, lockedRows, previousKey
         visibleJobKeys = visibleJobs.map(progressiveJobKey);
         hiddenJobs = jobs.filter((job) => !visibleJobKeys.includes(progressiveJobKey(job)));
     }
-    const lines = [
-        progressiveHeaderLine(jobs, theme, width, frame),
-        ...visibleJobs.map((job) => progressiveJobLine(job, theme, width, frame, projectionFor(job))),
-    ];
+    // Rows left after every visible job line show the visible workflows' lanes.
+    let spareRows = rowCount - 1 - visibleJobs.length - (hiddenJobs.length > 0 ? 1 : 0);
+    const lines = [progressiveHeaderLine(jobs, theme, width, frame, projectionFor)];
+    for (const job of visibleJobs) {
+        const projection = projectionFor(job);
+        const laneRows = job.mode === "workflow" ? compactWorkflowLaneRows(job, projection.checklist) : undefined;
+        lines.push(progressiveJobLine(job, theme, width, frame, projection, laneRows));
+        if (!laneRows || projection.inlineFleetCovered)
+            continue;
+        const shownLanes = laneRows.slice(0, Math.max(0, spareRows));
+        for (const row of shownLanes)
+            lines.push(truncLine(compactWorkflowLaneLine(row, theme, "    ", frame), width));
+        spareRows -= shownLanes.length;
+    }
     if (hiddenJobs.length > 0 && lines.length < rowCount)
         lines.push(progressiveHiddenLine(hiddenJobs, theme, width));
+    const contentRows = Math.min(lines.length, rowCount);
     while (lines.length < rowCount)
         lines.push(" ");
-    return { lines: lines.slice(0, rowCount), visibleJobKeys };
+    return { lines: lines.slice(0, rowCount), visibleJobKeys, contentRows };
 }
 function collapsedWidgetLineBudget(rows) {
     return Math.max(10, Math.min(14, Math.floor(rows * 0.35)));
@@ -2609,9 +2654,17 @@ function fitAdaptiveWidgetLines(jobs, buildLines, theme, width, expanded, frame,
         return buildSingleLineWidgetLines(jobs, theme, width, frame);
     }
     if (hasMatchingSession && widgetLayoutSession?.tier === "progressive" && widgetLayoutSession.lockedRows !== undefined) {
-        const rendered = buildProgressiveWidgetLines(jobs, theme, width, widgetLayoutSession.lockedRows, widgetLayoutSession.visibleJobKeys, frame, projectionFor);
-        widgetLayoutSession.visibleJobKeys = rendered.visibleJobKeys;
-        return rendered.lines;
+        const session = widgetLayoutSession;
+        const lockedRows = widgetLayoutSession.lockedRows;
+        let rendered = buildProgressiveWidgetLines(jobs, theme, width, lockedRows, session.visibleJobKeys, frame, projectionFor);
+        // A job that starts after a content-sized lock can be hidden while the cap has room: grow the lock, never shrink it.
+        const capRows = Math.min(availableRows, collapsedWidgetLineBudget(rows));
+        if (rendered.visibleJobKeys.length < jobs.length && lockedRows < capRows) {
+            rendered = buildProgressiveWidgetLines(jobs, theme, width, capRows, session.visibleJobKeys, frame, projectionFor);
+            session.lockedRows = Math.max(lockedRows, rendered.contentRows);
+        }
+        session.visibleJobKeys = rendered.visibleJobKeys;
+        return rendered.lines.slice(0, session.lockedRows);
     }
     const lines = buildLines();
     if (lines.length <= availableRows) {
@@ -2626,10 +2679,11 @@ function fitAdaptiveWidgetLines(jobs, buildLines, theme, width, expanded, frame,
         widgetLayoutSession = { expanded, rows, columns, tier: "single-line", visibleJobKeys: [] };
         return buildSingleLineWidgetLines(jobs, theme, width, frame);
     }
-    const lockedRows = Math.min(availableRows, collapsedWidgetLineBudget(rows));
-    const rendered = buildProgressiveWidgetLines(jobs, theme, width, lockedRows, [], frame, projectionFor);
+    // Lock to the rows the content fills so the fixed-height card has no blank padding.
+    const rendered = buildProgressiveWidgetLines(jobs, theme, width, Math.min(availableRows, collapsedWidgetLineBudget(rows)), [], frame, projectionFor);
+    const lockedRows = rendered.contentRows;
     widgetLayoutSession = { expanded, rows, columns, tier: "progressive", lockedRows, visibleJobKeys: rendered.visibleJobKeys };
-    return rendered.lines;
+    return rendered.lines.slice(0, lockedRows);
 }
 const asyncWidgetUpdates = new WeakMap();
 const inlineWorkflowCoverage = new WeakMap();
@@ -2830,7 +2884,8 @@ function buildWidgetLinesWithProjection(jobs, theme, width = getTermWidth(), exp
     const lines = [];
     const hasActive = running.length > 0 || queued.length > 0;
     const headerGlyph = running.length > 0 ? runningGlyph(animatedSeed(widgetJobsRunningSeed(running), frame)) : hasActive ? "●" : "○";
-    lines.push(truncLine(`${theme.fg(hasActive ? "accent" : "dim", headerGlyph)} ${theme.fg(hasActive ? "accent" : "dim", "Async agents")} ${theme.fg("dim", "· background")}`, width));
+    const tone = activeHeaderTone(theme, hasActive);
+    lines.push(truncLine(`${tone(headerGlyph)} ${tone("Async agents")} ${theme.fg("dim", "· background")}`, width));
     const items = [];
     let hiddenRunning = 0;
     let hiddenFinished = 0;
@@ -2981,23 +3036,23 @@ function renderSingleCompact(d, r, theme, layout, frame, foregroundDetachShortcu
         c.addChild(new Text(truncLine(theme.fg("dim", `${detailIndent}full output: ${shortenPath(r.truncation.artifactPath)}`), width), 0, 0));
     return c;
 }
-function workflowRowGlyph(row, theme, frame) {
+function workflowRowGlyph(row, theme, frame, thinking) {
     if (row.state === "planned")
         return theme.fg("muted", "◦");
     if (row.state === "running")
-        return theme.fg("accent", runningGlyph(frame));
+        return runningTone(theme, thinking)(runningGlyph(frame));
     if (row.state === "complete")
         return theme.fg("success", "✓");
     if (row.state === "detached" || row.state === "stopped")
         return theme.fg("warning", "■");
     return theme.fg("error", "✗");
 }
-function workflowRowStateLabel(row, theme) {
+function workflowRowStateLabel(row, theme, thinking) {
     const label = (row.state === "complete" ? "complete" : row.state).padEnd(8);
     if (row.state === "planned")
         return theme.fg("dim", label);
     if (row.state === "running")
-        return theme.fg("accent", label);
+        return runningTone(theme, thinking)(label);
     if (row.state === "complete")
         return theme.fg("success", label);
     if (row.state === "detached" || row.state === "stopped")
@@ -3042,6 +3097,7 @@ function foregroundWorkflowChecklist(details) {
                 label: node?.label ?? workflowLabelForResult(details, resultIndex) ?? result.task ?? result.agent,
                 phase: node?.phase,
                 agent: result.agent,
+                thinking: result.thinking ?? progress?.thinking,
                 status,
                 context: result.context,
                 activityState: progress?.activityState,
@@ -3076,7 +3132,7 @@ function renderWorkflowChatProgress(d, result, theme, layout, frame, expanded = 
     const workflow = d.workflow;
     const rows = workflow ? buildWorkflowChatProgressRows(workflow.trace, d.preflight) : d.preflight ? buildWorkflowChatProgressRows([], d.preflight) : [];
     const state = workflowOverallState(rows, workflow?.value !== undefined, result.isError);
-    const glyph = state === "running" ? theme.fg("accent", runningGlyph(frame)) : state === "complete" ? theme.fg("success", "✓") : state === "paused" ? theme.fg("warning", "■") : theme.fg("error", "✗");
+    const glyph = state === "running" ? runningTone(theme)(runningGlyph(frame)) : state === "complete" ? theme.fg("success", "✓") : state === "paused" ? theme.fg("warning", "■") : theme.fg("error", "✗");
     const width = getTermWidth() - 4;
     const runId = d.runId ? d.runId.slice(0, 12) : "workflow";
     const repoLabel = d.chatProgress?.repoLabel ?? (d.chatProgress?.repoRelation === "same" ? "same repo" : "other repo");
@@ -3100,8 +3156,10 @@ function renderWorkflowChatProgress(d, result, theme, layout, frame, expanded = 
     const visible = visibleWorkflowRows(rows);
     if (visible.hiddenRows > 0)
         c.addChild(new Text(truncLine(theme.fg("dim", `${rowIndent}… ${visible.hiddenRows} older workflow rows hidden`), width), 0, 0));
+    const childLevels = new Map((d.workflowChildren?.children ?? []).map((child) => [child.childId, childThinkingLevel(child)]));
     for (const row of visible.rows) {
-        const status = workflowRowStateLabel(row, theme);
+        const thinking = childLevels.get(row.key);
+        const status = workflowRowStateLabel(row, theme, thinking);
         const label = row.label && row.label !== row.key ? ` ${oneLine(row.label)}` : "";
         const duration = row.durationMs !== undefined ? ` ${theme.fg("dim", `· ${formatDuration(row.durationMs)}`)}` : "";
         const run = row.runId ? ` ${theme.fg("dim", `[${row.runId.slice(0, 8)}]`)}` : "";
@@ -3113,7 +3171,7 @@ function renderWorkflowChatProgress(d, result, theme, layout, frame, expanded = 
             row.preflight.expectedOutput ? `expected:${row.preflight.expectedOutput}` : undefined,
             row.preflight.independence ? `independence:${row.preflight.independence}` : undefined,
         ].filter((value) => Boolean(value)).join(" · ") : "";
-        c.addChild(new Text(truncLine(`${rowIndent}${workflowRowGlyph(row, theme, frame)} ${status} ${theme.bold(row.key)}${label}${run}${duration}${error}${hints ? ` ${theme.fg("dim", `· ${hints}`)}` : ""}`, width), 0, 0));
+        c.addChild(new Text(truncLine(`${rowIndent}${workflowRowGlyph(row, theme, frame, thinking)} ${status} ${theme.bold(row.key)}${label}${run}${duration}${error}${hints ? ` ${theme.fg("dim", `· ${hints}`)}` : ""}`, width), 0, 0));
     }
     if (workflow?.preflightWarnings?.length) {
         const warningLines = expanded
@@ -3168,7 +3226,7 @@ function renderMultiCompact(d, theme, layout, frame) {
         seed: runningSeed(progressRunningSeed(totalSummary), d.currentStepIndex),
         frame,
     });
-    const glyph = theme.fg(aggregatePresentation.tone, aggregatePresentation.glyph);
+    const glyph = presentationTone(aggregatePresentation, theme)(aggregatePresentation.glyph);
     const contextBadge = contextModeBadge(theme, d.context);
     const c = new Container();
     const width = getTermWidth() - 4;
@@ -3275,7 +3333,7 @@ export function renderSubagentSummary(result, options, theme) {
     const partial = Boolean(details && workflowGraphHasStatus(details, ["partial"]));
     const state = running ? "running" : failed ? "failed" : stopped ? "stopped" : paused ? "paused" : partial ? "partial" : "completed";
     const glyph = state === "running"
-        ? theme.fg("accent", STATIC_RUNNING_GLYPH)
+        ? runningTone(theme, details?.mode === "single" && results.length === 1 ? childThinkingLevel(results[0], results[0]?.progress) : undefined)(STATIC_RUNNING_GLYPH)
         : state === "completed"
             ? theme.fg("success", "✓")
             : state === "failed"

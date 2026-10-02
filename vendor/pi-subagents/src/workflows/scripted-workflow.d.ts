@@ -1,10 +1,10 @@
-import type { AcceptanceRecoveryMetadata, HostStepNode, SingleResult } from "../shared/types.ts";
+import type { AcceptanceRecoveryMetadata, HostStepNode, SingleResult, WorkflowScriptFailureKind } from "../shared/types.ts";
 import { type WorkflowHostCommandParams, type WorkflowHostCommandResult } from "./host-command.ts";
 export interface WorkflowScriptValidationError {
     message: string;
     line?: number;
     column?: number;
-    kind?: "spawn-budget";
+    kind?: "spawn-budget" | "agent";
 }
 export interface WorkflowScriptValidationWarning {
     message: string;
@@ -17,6 +17,8 @@ export interface WorkflowScriptValidationResult {
 }
 export interface WorkflowScriptValidationOptions {
     maxSubagentSpawnsPerRun?: number;
+    /** Returns why launch-time resolution would reject this literal child agent name. */
+    agentNameError?: (name: string) => string | undefined;
 }
 export interface WorkflowScriptChildResult {
     key: string;
@@ -58,6 +60,8 @@ export interface WorkflowScriptChildResult {
     };
     artifactPaths: string[];
     results?: SingleResult[];
+    /** Came from a runtime-replaced run of the same script and args (its saved result, or its still-running child re-attached); this run launched nothing. */
+    reused?: boolean;
 }
 export interface WorkflowScriptTraceEntry {
     operation: "run" | "status" | "steer" | "host";
@@ -74,6 +78,8 @@ export interface WorkflowScriptTraceEntry {
     generatedLaneKey?: string;
     lane?: import("../shared/types.ts").WorkflowLaneMetadata;
     warning?: string;
+    /** The settled result came from a previous run of the same script and args; no child was launched. */
+    reused?: boolean;
 }
 /** Bounded plan metadata emitted when a workflow materializes a runs.lanes graph. */
 export interface WorkflowLanePlanStage {
@@ -127,8 +133,8 @@ export interface WorkflowScriptResult {
 }
 export declare class WorkflowScriptError extends Error {
     readonly partial: Omit<WorkflowScriptResult, "value">;
-    readonly errorKind?: "detached-child" | "timeout";
-    constructor(message: string, partial: Omit<WorkflowScriptResult, "value">, errorKind?: "detached-child" | "timeout");
+    readonly errorKind?: WorkflowScriptFailureKind;
+    constructor(message: string, partial: Omit<WorkflowScriptResult, "value">, errorKind?: WorkflowScriptFailureKind, options?: ErrorOptions);
 }
 export type WorkflowChildSettledOutcome = "completed" | "failed" | "paused" | "stopped";
 export interface WorkflowChildSettledNotification {
@@ -139,6 +145,8 @@ export interface WorkflowChildSettledNotification {
     outputReference?: string;
     error?: string;
     workflowRunning: boolean;
+    /** The script-visible result, exactly as returned to the script. */
+    result: WorkflowScriptChildResult;
 }
 export interface RunWorkflowScriptOptions {
     script: string;
@@ -189,6 +197,8 @@ export interface SimpleWorkflowRunPreview {
 }
 /** Display-only preview for the exact simple `return runs.run(key, {...})` form. */
 export declare function previewSimpleWorkflowRun(script: string | undefined): SimpleWorkflowRunPreview | undefined;
+/** Canonical launch-params identity; matches the worker's stableRunJson(canonicalRunParams(params)). */
+export declare function workflowRunParamsFingerprint(params: Record<string, unknown>): string;
 /** Parse a workflowScript and apply only rules that are decidable from its local syntax. */
 export declare function validateWorkflowScript(script: string, options?: WorkflowScriptValidationOptions): WorkflowScriptValidationResult;
 export declare function runWorkflowScript(options: RunWorkflowScriptOptions): Promise<WorkflowScriptResult>;

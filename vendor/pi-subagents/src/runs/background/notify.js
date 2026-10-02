@@ -127,6 +127,8 @@ function formatChildOutputBlock(children) {
         const runId = child.runId ? boundedSafeText(child.runId) : "unavailable";
         const status = boundedSafeText(child.status) || "unavailable";
         lines.push(`- key=${key} run=${runId} status=${status}`);
+        if (child.revival)
+            lines.push(`  ${boundedSafeText(child.revival)}`);
         lines.push(`  Saved output: ${child.savedOutputPath ? boundedSafeText(child.savedOutputPath) : "unavailable"}`);
         if (child.outputArtifactPath)
             lines.push(`  Output artifact (retention-managed): ${boundedSafeText(child.outputArtifactPath)}`);
@@ -519,6 +521,7 @@ export function buildCompletionDetails(result) {
                 ...(runId ? { runId } : {}),
                 ...(typeof child.agent === "string" ? { agent: child.agent } : {}),
                 status: childStatus(child, result.state),
+                ...(typeof child.revival === "string" && child.revival ? { revival: child.revival } : {}),
                 ...(savedOutputPath ? { savedOutputPath } : {}),
                 ...(outputArtifact.status === "verified" ? { outputArtifactPath: outputArtifact.path } : {}),
                 ...(structuredOutput.status === "verified" ? { structuredOutputPath: structuredOutput.path } : {}),
@@ -704,6 +707,8 @@ export default function registerSubagentNotify(pi, state, options = {}) {
         return completion;
     };
     const unsubscribeAsync = pi.events.on(SUBAGENT_ASYNC_COMPLETE_EVENT, (data) => {
+        if (data.awaitedByWorkflow === true)
+            return;
         void deliver(data);
     });
     const unsubscribeForeground = pi.events.on(SUBAGENT_FOREGROUND_COMPLETE_EVENT, (data) => {

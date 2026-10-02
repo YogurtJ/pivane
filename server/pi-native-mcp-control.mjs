@@ -1,4 +1,4 @@
-// Version-reviewed Pi 0.99.1 boundary. Capture, never replace, native /mcp.
+// Version-reviewed Pi 1.0.0 boundary. Capture, never replace, native /mcp.
 export const nativePiEntry = () => import.meta.resolve('@earendil-works/pi-coding-agent');
 const handlers = new WeakMap();
 const running = new WeakSet();
@@ -67,7 +67,11 @@ export function parseNativeMcpStatus(text) {
 function authorizationNotice(message, server) {
     const prefix = `Sign in to MCP server "${server}" in your browser:\n`;
     if (typeof message !== 'string' || !message.startsWith(prefix) || message.length > 8192) return null;
-    try { const url = new URL(message.slice(prefix.length)); if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null; return { kind: 'authorization', url: url.href }; } catch { return null; }
+    const authorizationUrl = message.slice(prefix.length);
+    // Native RPC emits one URL.href line. URL parsing otherwise silently strips
+    // controls, potentially folding arbitrary notification text into the link.
+    if (/[\u0000-\u0020\u007f]/.test(authorizationUrl)) return null;
+    try { const url = new URL(authorizationUrl); if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null; return { kind: 'authorization', url: url.href }; } catch { return null; }
 }
 // Caller must already own the managed worker's idle/exclusive slot and verify runtime identity.
 // No timeout here: caller timeout does not release native OAuth/connection ownership.

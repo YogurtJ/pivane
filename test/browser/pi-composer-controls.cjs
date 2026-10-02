@@ -1,18 +1,22 @@
 const assert = require('node:assert/strict');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const base = process.env.PI_COMPOSER_TEST_URL || 'http://127.0.0.1:3001';
+const express = require('express');
+const path = require('node:path');
+let base;
 const cwd = '/srv/composer-fixture';
 const sessions = ['a', 'b', 'c'].map(id => ({ id, cwd, name: `会话 ${id}`, messageCount: 3 }));
 const model = { provider: 'fixture', id: 'fixture', name: 'Fixture', input: ['text', 'image'], contextWindow: 32000 };
 const controls = id => ({ runtimeId: id, revision: 1, stopping: false, queue: { steering: [], followUp: [] }, recoveries: [], extension: { title: '', statuses: [], widgets: [] } });
 async function run(browser, viewport, legacy = false) {
-    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
+    const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900, permissions: ['microphone'] });
     const page = await context.newPage();
     const errors = [], writes = [], commands = [], sockets = [];
     const states = new Map(sessions.map(s => [s.id, { isStreaming: s.id !== 'c', isCompacting: false, model, thinkingLevel: 'off' }]));
     const views = new Map(sessions.map(s => [s.id, controls(s.id)]));
     const history = new Map(sessions.map(s => [s.id, [{ role: 'user', content: `历史问题 ${s.id}`, timestamp: 1 }]]));
-    let pendingOpen, pendingStop, failStop = false;
+    let pendingOpen, pendingStop, pendingTranscription, failStop = false;
+    const uploads = [];
+    const voiceModel = { id: JSON.stringify(['fixture', 'mimo-v2.5-asr']), name: 'Fixture ASR' };
     const reply = (ws, cmd, data, error) => ws.send(JSON.stringify({ type: 'response', id: cmd.id, command: cmd.type, success: !error, data, error }));
     const emit = (socket, event) => socket.ws.send(JSON.stringify(event));
     const snapshot = id => ({ session: sessions.find(s => s.id === id), state: states.get(id), controls: legacy ? undefined : views.get(id),
@@ -21,8 +25,12 @@ async function run(browser, viewport, legacy = false) {
     await page.addInitScript(({ cwd }) => { localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem(`pi.web.session:${cwd}`, 'a'); }, { cwd });
     await page.route('**/api/**', route => {
         const req = route.request(), endpoint = new URL(req.url()).pathname;
+        if (endpoint === '/api/pi/composer/transcription') {
+            if (req.method() === 'GET') return route.fulfill({ json: { revision: 'voice-fixture', models: [voiceModel] } });
+            uploads.push(req.postDataJSON()); pendingTranscription = route; return;
+        }
         if (req.method() !== 'GET') { writes.push(endpoint); return route.fulfill({ json: {} }); }
-        if (endpoint === '/api/pi/status') return route.fulfill({ json: { ok: true, projectRoots: ['/srv'], runtimeControls: !legacy, version: '0.85.0' } });
+        if (endpoint === '/api/pi/status') return route.fulfill({ json: { ok: true, projectRoots: ['/srv'], runtimeControls: !legacy, transcription: true, version: '0.85.0' } });
         if (endpoint === '/api/pi/projects') return route.fulfill({ json: { projects: [{ cwd, name: 'Fixture', sessionCount: 3 }], roots: ['/srv'] } });
         if (endpoint === '/api/pi/sessions') return route.fulfill({ json: { sessions } });
         if (endpoint === '/api/pi/activity') return route.fulfill({ json: { runtimes: [], pinnedProjects: [], hiddenProjects: [], replyNotices: [] } });
@@ -58,6 +66,7 @@ async function run(browser, viewport, legacy = false) {
             throw Error('unexpected ' + cmd.type);
         });
     });
+    const delivery = async mode => { await page.locator('#pi-composer-add-button').click(); await page.locator('#pi-delivery-mode').selectOption(mode); };
     const choose = async id => {
         if (viewport.width < 900) await page.locator('#pi-toggle-sessions').click();
         await page.locator(`[data-session-id="${id}"] .pi-session-main`).click();
@@ -65,8 +74,12 @@ async function run(browser, viewport, legacy = false) {
     await page.goto(base, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => !document.querySelector('#pi-input').disabled);
     assert.equal(await page.locator('#pi-stop-button').isVisible(), true);
-    assert.equal(await page.locator('#pi-send-button').isVisible(), true);
+    assert.equal(await page.locator('#pi-send-button').isVisible(), false);
+    await page.locator('#pi-input').fill('  ');
+    assert.equal(await page.locator('#pi-stop-button').isVisible(), true);
     await page.locator('#pi-input').fill('A 的引导');
+    assert.equal(await page.locator('#pi-stop-button').isVisible(), false);
+    assert.equal(await page.locator('#pi-send-button').isVisible(), true);
     await page.locator('#pi-send-button').click();
     await page.waitForFunction(() => document.querySelector('#pi-input').value === '');
     assert.ok(commands.some(c => c.session === 'a' && c.type === 'steer' && c.message === 'A 的引导'));
@@ -87,18 +100,18 @@ async function run(browser, viewport, legacy = false) {
     // A late reply from the old stop cannot control B.
     try { reply(oldStop.socket.ws, oldStop.cmd, views.get('a')); } catch {}
     await page.locator('#pi-input').fill('B 的中途补充');
-    await page.locator('#pi-delivery-mode').selectOption('steer');
+    await delivery('steer');
     await page.locator('#pi-send-button').click();
     await page.waitForFunction(() => document.querySelector('#pi-input').value === '');
     await page.locator('#pi-input').fill('B 完成后继续');
-    await page.locator('#pi-delivery-mode').selectOption('follow_up');
+    await delivery('follow_up');
     assert.equal(await page.locator('#pi-send-button').getAttribute('aria-label'), '发送后续消息');
     await page.locator('#pi-send-button').click();
     await page.waitForFunction(() => document.querySelector('#pi-input').value === '');
     assert.deepEqual(commands.filter(c => c.session === 'b' && ['steer', 'follow_up'].includes(c.type)).map(c => [c.type, c.message]), [['steer', 'B 的中途补充'], ['follow_up', 'B 完成后继续']]);
     assert.equal(await page.locator('#pi-stop-button').isVisible(), true);
-    assert.equal(await page.locator('#pi-send-button').isVisible(), true);
-    if (viewport.width <= 600) assert.ok((await page.locator('#pi-input').boundingBox()).width >= 160, 'mobile composer retains room for text');
+    assert.equal(await page.locator('#pi-send-button').isVisible(), false);
+    if (viewport.width <= 600) assert.ok((await page.locator('#pi-input').boundingBox()).width >= 96, 'mobile composer retains room for text with the microphone');
     await page.screenshot({ path: `/tmp/pi-composer-${viewport.width}-${legacy ? 'legacy' : 'native'}.png` });
     failStop = true;
     await page.locator('#pi-stop-button').click();
@@ -145,15 +158,60 @@ async function run(browser, viewport, legacy = false) {
     await page.waitForFunction(() => !document.querySelector('#pi-input').disabled && document.querySelector('#pi-meta-id').textContent === 'c');
     assert.equal(await page.locator('#pi-stop-button').isVisible(), false);
     assert.equal(await page.locator('#pi-input').inputValue(), '');
+    // Record through a synthetic browser microphone, then preserve concurrent typing.
+    await page.waitForFunction(() => document.querySelector('#pi-voice-model').options.length === 1);
+    await page.locator('#pi-transcribe-button').click();
+    await page.waitForFunction(() => document.querySelector('#pi-transcribe-button').dataset.recording === 'true' && document.querySelector('#pi-voice-bar').textContent.includes('1 秒'));
+    await page.locator('#pi-transcribe-button').click();
+    await page.waitForFunction(() => document.querySelector('#pi-transcribe-button').disabled);
+    while (!pendingTranscription) await page.waitForTimeout(10);
+    assert.equal(uploads.length, 1); assert.equal(uploads[0].audio.format, 'wav'); assert.equal(uploads[0].confirmed, true);
+    assert.equal(Buffer.from(uploads[0].audio.data, 'base64').toString('ascii', 0, 4), 'RIFF');
+    await page.locator('#pi-input').fill('正在补充的草稿');
+    await pendingTranscription.fulfill({ json: { text: '语音文字' } });
+    await page.waitForFunction(() => document.querySelector('#pi-input').value === '正在补充的草稿\n\n语音文字');
+    assert.equal(await page.locator('#pi-voice-bar').isVisible(), false);
+    assert.ok(!commands.some(cmd => cmd.message?.includes('语音文字')), 'transcript must not send automatically');
+    // A late transcript after switching threads is retained for manual use.
+    pendingTranscription = null;
+    await page.locator('#pi-transcribe-button').click();
+    await page.waitForFunction(() => document.querySelector('#pi-transcribe-button').dataset.recording === 'true' && document.querySelector('#pi-voice-bar').textContent.includes('1 秒'));
+    await page.locator('#pi-transcribe-button').click();
+    while (!pendingTranscription) await page.waitForTimeout(10);
+    views.get('a').stopping = false;
+    await choose('a');
+    await page.waitForFunction(() => document.querySelector('#pi-meta-id').textContent === 'a' && !document.querySelector('#pi-input').disabled);
+    await pendingTranscription.fulfill({ json: { text: '旧线程的录音' } });
+    await page.locator('#pi-voice-result').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#pi-input').inputValue(), '');
+    assert.equal(await page.locator('#pi-voice-result').inputValue(), '旧线程的录音');
+    await page.locator('#pi-voice-bar').getByRole('button', { name: '收起', exact: true }).click();
+    // Attachments count as sendable content while the agent is running.
+    await page.locator('#pi-file-input').setInputFiles({ name: 'fixture.txt', mimeType: 'text/plain', buffer: Buffer.from('attachment fixture') });
+    await page.waitForFunction(() => !document.querySelector('#pi-send-button').disabled);
+    assert.equal(await page.locator('#pi-stop-button').isVisible(), false);
+    assert.equal(await page.locator('#pi-send-button').isVisible(), true);
+    // Cancelling microphone permission/recording never uploads audio.
+    await page.locator('#pi-transcribe-button').click();
+    await page.waitForFunction(() => document.querySelector('#pi-transcribe-button').dataset.recording === 'true');
+    await page.locator('#pi-voice-bar').getByRole('button', { name: '取消录音' }).click();
+    assert.equal(uploads.length, 2);
     assert.deepEqual(await page.evaluate(() => ['body', '.pi-composer', '#pi-transcript-content'].filter(s => { const n = document.querySelector(s); return n.scrollWidth > n.clientWidth + 1; })), []);
     assert.deepEqual(errors, []); assert.deepEqual(writes, []);
-    console.log(`PASS ${viewport.width} ${legacy ? 'legacy' : 'native'}: send/stop coexist, click steer/follow-up on running historical threads, delayed switch/old stop isolation, native cancellation versus real failure, draft and width`);
+    console.log(`PASS ${viewport.width} ${legacy ? 'legacy' : 'native'}: draft-dependent send/stop, menu steer/follow-up, recorded WAV and transcript isolation, attachments, delayed switch/old stop isolation, native cancellation versus real failure, draft and width`);
     await context.close();
 }
 (async () => {
-    const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', args: ['--no-sandbox'], headless: true });
+    const app = express(), root = path.resolve(__dirname, '../..');
+    app.use('/vendor/marked', express.static(path.join(root, 'node_modules/marked/lib')));
+    app.use('/vendor/dompurify', express.static(path.join(root, 'node_modules/dompurify/dist')));
+    app.use('/vendor/highlight', express.static(path.join(root, 'node_modules/@highlightjs/cdn-assets')));
+    app.use(express.static(path.join(root, 'public')));
+    const server = await new Promise(resolve => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+    base = `http://127.0.0.1:${server.address().port}`;
+    const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', args: ['--no-sandbox', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'], headless: true });
     try {
         for (const viewport of [{ width: 1440, height: 1000 }, { width: 393, height: 852 }, { width: 320, height: 740 }]) await run(browser, viewport);
         await run(browser, { width: 393, height: 852 }, true);
-    } finally { await browser.close(); }
+    } finally { await browser.close(); server.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -18,6 +18,7 @@ import { captureWatchdogDiffBaseline, createWatchdogDiffTool, WATCHDOG_DIFF_TOOL
 import { inheritedNestedRouteOf } from "./nested-events.js";
 import { registerWaitTool } from "../background/wait-tool.js";
 import { drainOutstandingWork } from "../background/auto-drain.js";
+import { MODEL_ONLY_TOOL } from "../../shared/extension-context.js";
 import { childSupervisorMetadata, evaluateChildToolDiagnostic, } from "./child-runtime-config.js";
 const STRUCTURED_OUTPUT_INSTRUCTIONS = [
     "This subagent step has a strict structured output contract.",
@@ -401,6 +402,7 @@ function registerStructuredOutputTool(pi, structured) {
     const registerTool = pi.registerTool;
     registerTool({
         name: "structured_output",
+        ...MODEL_ONLY_TOOL,
         label: "Structured Output",
         description: "Submit the required final structured output for this subagent step. This terminates the step.",
         parameters,

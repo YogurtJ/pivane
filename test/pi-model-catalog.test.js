@@ -20,6 +20,29 @@ test('an already-open empty runtime discovers later credentials in place without
  const worker=gateway.supervisor.getActiveWorker(session.path);worker.client.emit('event',{type:'agent_start'});await assert.rejects(main.call('refresh_models'),{code:'SESSION_BUSY'});worker.client.emit('event',{type:'agent_settled'});
  await settings.logout('catalog-fixture');assert.equal((await main.call('refresh_models')).models.length,0,'logout removes availability from the same worker');assert.equal(calls,1);
 });
+test('an extension-backed session reloads edited context limits without changing model identity', {timeout:60000}, async t => {
+ const {createPiAgentGateway}=require('../server/pi-agent-routes');const {PiSettingsService}=require('../server/pi-settings-service');
+ const providerId='overlap-catalog-fixture',modelId='model/context:v1';
+ const extensionDir=path.join(process.env.PI_CODING_AGENT_DIR,'extensions');fs.mkdirSync(extensionDir,{recursive:true});
+ const extensionPath=path.join(extensionDir,'overlap-fixture.ts');
+ const definition={baseUrl:'http://127.0.0.1:65530/v1',api:'openai-completions',apiKey:'private-overlap-fixture-key',models:[{id:modelId,name:'Extension model',reasoning:false,input:['text'],contextWindow:1050000,maxTokens:128000,cost:{input:0,output:0,cacheRead:0,cacheWrite:0}}]};
+ fs.writeFileSync(extensionPath,`export default function(pi) { pi.registerProvider(${JSON.stringify(providerId)}, ${JSON.stringify(definition)}); }`);
+ const settings=new PiSettingsService({cwd:root});await settings.upsertCustomProvider({id:providerId,baseUrl:definition.baseUrl,api:definition.api,authHeader:true});
+ const {modelsPath}=await settings.paths();const initial=settings.readModelsFile(modelsPath);initial.providers[providerId].models=definition.models;await settings.writeModelsFile(initial);
+ const gateway=createPiAgentGateway(),app=require('express')();app.use(require('express').json());gateway.mount(app);const server=http.createServer(app);gateway.attachWebSocket(server);server.listen(0,'127.0.0.1');await once(server,'listening');const base='http://127.0.0.1:'+server.address().port;
+ const ws=new WebSocket(base.replace('http:','ws:')+'/api/pi/ws',{origin:base}),pending=new Map();let seq=0;
+ ws.on('message',raw=>{const e=JSON.parse(raw),p=pending.get(e.id);if(e.type==='response'&&p){pending.delete(e.id);clearTimeout(p.timer);e.success?p.resolve(e.data):p.reject(Object.assign(Error(e.error),{code:e.errorCode}))}});
+ t.after(async()=>{ws.terminate();await gateway.dispose();server.closeAllConnections();await new Promise(r=>server.close(r));fs.rmSync(extensionPath);await settings.deleteCustomProvider(providerId)});
+ await once(ws,'open');const call=(type,data={})=>new Promise((resolve,reject)=>{const id=String(++seq),timer=setTimeout(()=>reject(Error('timeout '+type)),20000);pending.set(id,{resolve,reject,timer});ws.send(JSON.stringify({id,type,...data}))});
+ const session=await gateway.store.createSession(root,'Extension context limits');await call('open_session',{cwd:root,sessionId:session.id});await call('set_model',{provider:providerId,modelId});
+ assert.equal((await call('get_state')).model.contextWindow,1050000);
+ await settings.upsertCustomModel(providerId,{id:modelId,name:'Edited model',contextWindow:272000,maxTokens:32000});
+ const fresh=await call('refresh_models');assert.equal(fresh.models.find(m=>m.provider===providerId&&m.id===modelId).contextWindow,272000);
+ await call('reload_resources');
+ const state=await call('get_state');assert.equal(state.model.provider,providerId);assert.equal(state.model.id,modelId);assert.equal(state.model.contextWindow,272000);assert.equal(state.model.maxTokens,32000);
+ assert.equal(gateway.supervisor.workers.size,1);assert.doesNotMatch(JSON.stringify(state),/private-overlap-fixture-key/);
+});
+
 test('catalog responses remain private and an uncertain refresh closes the reserved idle worker',async()=>{
  const {PiModelCatalog}=require('../server/pi-model-catalog');let disposed=false,reserved=false;const events=[];const worker={navigationToken:'fixture',_broadcast:e=>events.push(e),async dispose(){assert.equal(reserved,true);disposed=true},async exclusive(fn){reserved=true;try{return await fn()}finally{reserved=false}},client:{async request(type){if(type==='get_commands')return {commands:[{name:'pi5-web-navigate',description:'model-catalog-v1'}]};throw Object.assign(Error('Pi RPC command timed out: prompt'),{code:'RPC_TIMEOUT'})}}};const catalog=new PiModelCatalog(worker);assert.equal(catalog.handle({pi5Models:'late',data:{models:[]}}),true);await assert.rejects(catalog.refresh(),{code:'RPC_TIMEOUT'});assert.equal(disposed,true);assert.equal(catalog.pending.size,0);assert.ok(events.some(e=>e.type==='gateway_reconnect'));
 });

@@ -25,7 +25,7 @@ export function isMcpServerDefinition(value) {
         if (value[field] !== undefined && !isStringRecord(value[field]))
             return false;
     }
-    for (const field of ["exposeResources", "literalEnv"]) {
+    for (const field of ["exposeResources", "literalEnv", "inheritEnv"]) {
         if (value[field] !== undefined && typeof value[field] !== "boolean")
             return false;
     }

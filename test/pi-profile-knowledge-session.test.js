@@ -109,7 +109,7 @@ test('session project edits refuse client project keys, foreign sessions and oth
     // A session cannot be used to edit profile-wide memory.
     const profileItem = (await service.mutate(id, await input('create', { category: 'fact', content: 'Profile fact.' }))).item;
     await assert.rejects(service.mutate(id, await input('delete', { scope: 'project', sessionId: own.sessionId,
-        itemId: profileItem.id, itemRevision: profileItem.revision })), /limited to its project memory/);
+        itemId: profileItem.id, itemRevision: profileItem.revision })), /limited to its project knowledge/);
     // A header whose cwd is not canonical is not a project identity.
     const moved = session(agent, 'moved');
     moved.write(moved.lines.map(row => row.type === 'session' ? { ...row, cwd: `${moved.cwd}/../${path.basename(moved.cwd)}` } : row));
@@ -118,6 +118,45 @@ test('session project edits refuse client project keys, foreign sessions and oth
     const twin = session(agent, 'twin');
     fs.copyFileSync(twin.file, path.join(path.dirname(twin.file), `2026-02-01T00-00-00-000Z_${hash('file:twin-copy').slice(0, 36)}.jsonl`));
     await assert.rejects(service.mutate(id, await input('create', { ...base, sessionId: twin.sessionId })), /ambiguous/);
+});
+
+test('manual project skill deletion and undo prove the session without claiming a user-message source', { skip: !bundle }, async t => {
+    const { service, agent, root, input, hooks } = setup(t);
+    const own = session(agent, 'skill-owner');
+    const elsewhere = session(agent, 'skill-elsewhere');
+    const foreign = session(agent, 'skill-foreign', { profileId: other });
+    const native = { sessionId: own.sessionId, sessionPath: own.file, cwd: own.cwd, entryId: 'user-1' };
+    const created = await service.mutateFromNative(id, await input('create', { kind: 'skill', scope: 'project',
+        name: 'synthetic-topic', description: 'Synthetic task procedure', content: '# Synthetic\nVerify a result.' }), native);
+    const file = path.join(root, 'projects', own.projectKey, 'skills', 'synthetic-topic', 'SKILL.md');
+    const fields = { kind: 'skill', scope: 'project', sessionId: own.sessionId,
+        itemId: created.item.id, itemRevision: created.item.revision };
+    assert.equal((await service.snapshot(id)).capabilities.projectSkillDeletesBySession, true);
+    await assert.rejects(service.mutate(id, await input('delete', { ...fields, sessionId: foreign.sessionId })), /not bound/);
+    await assert.rejects(service.mutate(id, await input('delete', { ...fields, sessionId: elsewhere.sessionId })), /verified cwd/);
+    await assert.rejects(service.mutate(id, await input('delete', { ...fields, projectKey: own.projectKey })), /verified cwd/);
+    await assert.rejects(service.mutate(id, await input('delete', { kind: 'skill', itemId: created.item.id,
+        itemRevision: created.item.revision })), /verified cwd/);
+    const changed = await input('delete', fields);
+    hooks.beforeProfile = () => own.write(own.lines.map(row => row.customType === 'pivane-agent-profile'
+        ? { ...row, data: { ...row.data, profileId: other } } : row));
+    await assert.rejects(service.mutate(id, changed), /Session changed or is not bound/);
+    assert.ok(fs.existsSync(file));
+    own.write(own.lines);
+    const removed = await service.mutate(id, await input('delete', fields));
+    assert.equal(removed.item.state, 'deleted');
+    assert.equal(fs.existsSync(file), false);
+    assert.deepEqual([removed.receipt.origin, removed.receipt.source], ['manual', { sessionId: own.sessionId }]);
+    const restored = await service.mutate(id, await input('undo', { kind: 'skill', scope: 'project',
+        sessionId: own.sessionId, receiptId: removed.receipt.id }));
+    assert.equal(restored.item.state, 'active');
+    assert.ok(fs.existsSync(file));
+    const profileSkill = await service.mutate(id, await input('create', { kind: 'skill', name: 'profile-procedure',
+        description: 'Synthetic shared workflow', content: '# Procedure\nCheck output.' }));
+    await assert.rejects(service.mutate(id, await input('delete', { ...fields,
+        itemId: profileSkill.item.id, itemRevision: profileSkill.item.revision })), /limited to its project knowledge/);
+    await assert.rejects(service.mutate(id, await input('undo', { kind: 'skill', scope: 'project',
+        sessionId: own.sessionId, receiptId: profileSkill.receipt.id })), /limited to its project knowledge/);
 });
 
 test('a session rebound to another profile during the write is refused before publication', { skip: !bundle }, async t => {

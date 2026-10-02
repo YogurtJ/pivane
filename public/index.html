@@ -284,16 +284,20 @@
                                 <button id="pi-composer-add-button" class="icon-btn subtle" type="button" title="添加附件或延迟发送" aria-label="添加操作" aria-haspopup="menu" aria-expanded="false" aria-controls="pi-composer-add-menu" data-i18n-title="s1365" data-i18n-aria-label="s1366"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
                                 <div id="pi-composer-add-menu" class="pi-composer-add-menu" role="menu" aria-label="添加操作" hidden data-i18n-aria-label="s1366">
                                     <button id="pi-attach-button" type="button" role="menuitem" tabindex="-1" title="从手机或电脑上传附件" data-i18n-title="s1367"><i class="fa-solid fa-paperclip" aria-hidden="true"></i><span><!--i18n:s1003-->添加附件<small><!--i18n:s1368-->上传图片、文本或代码文件</small></span></button>
+                                    <label class="pi-delivery-setting" role="none"><span><!--i18n:s1371-->运行中消息投递方式</span>
+                                        <select id="pi-delivery-mode" aria-label="运行中消息投递方式" data-i18n-aria-label="s1371" tabindex="-1">
+                                            <option value="steer"><!--i18n:s860-->引导</option>
+                                            <option value="follow_up"><!--i18n:s859-->后续</option>
+                                        </select>
+                                    </label>
+                                    <button id="pi-transcribe-settings" type="button" role="menuitem" tabindex="-1" hidden><i class="fa-solid fa-microphone" aria-hidden="true"></i><span class="pi-transcribe-settings-label"></span></button>
                                     <button id="pi-schedule-button" type="button" role="menuitem" tabindex="-1" title="延迟发送" hidden data-i18n-title="s992"><i class="fa-regular fa-clock" aria-hidden="true"></i><span><!--i18n:s992-->延迟发送<small><!--i18n:s1369-->指定时间发送消息</small></span></button>
                                 </div>
                             </div>
                             <textarea id="pi-input" rows="1" placeholder="发送消息给 Pi" disabled data-i18n-placeholder="s1370"></textarea>
                             <div class="pi-composer-actions right">
                                 <button id="pi-mobile-context-trigger" class="pi-mobile-context-trigger" type="button" aria-haspopup="dialog" aria-controls="pi-mobile-session-dialog" aria-label="上下文用量暂无统计"><span id="pi-mobile-context-percent">--</span></button>
-                                <select id="pi-delivery-mode" title="运行中消息投递方式" aria-label="运行中消息投递方式" data-i18n-title="s1371" data-i18n-aria-label="s1371">
-                                    <option value="steer"><!--i18n:s860-->引导</option>
-                                    <option value="follow_up"><!--i18n:s859-->后续</option>
-                                </select>
+                                <button id="pi-transcribe-button" class="icon-btn subtle" type="button" disabled hidden><i class="fa-solid fa-microphone" aria-hidden="true"></i></button>
                                 <button id="pi-send-button" class="pi-send-button" type="button" title="发送" aria-label="发送" disabled data-i18n-title="s255" data-i18n-aria-label="s255">
                                     <i class="fa-solid fa-arrow-up"></i>
                                 </button>
@@ -503,7 +507,7 @@
                             <div><strong id="pi-side-session-title"></strong><p id="pi-side-session-description"></p></div>
                             <button id="pi-side-new" type="button"></button>
                         </div>
-                        <div id="pi-side-confirm" class="pi-side-confirm" role="status" aria-live="polite" hidden></div>
+                        <div id="pi-side-confirm" class="pi-side-confirm" role="region" aria-labelledby="pi-side-confirm-title" hidden></div>
                         <div class="pi-transcript-viewport pi-side-viewport">
                             <div id="pi-side-transcript" class="pi-transcript pi-side-transcript" tabindex="0" role="region" aria-label="侧聊消息" data-i18n-aria-label="s1462"><div id="pi-side-content"><div id="pi-side-history" class="pi-side-history" hidden></div><div id="pi-side-messages" aria-live="polite"></div></div></div>
                             <div id="pi-side-track" class="pi-transcript-track inactive" role="scrollbar" tabindex="-1" aria-label="侧聊滚动位置" aria-controls="pi-side-transcript" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" data-i18n-aria-label="s1463"><div id="pi-side-thumb" class="pi-transcript-thumb"></div></div>
@@ -978,6 +982,7 @@
         <div id="pi-template-body"></div>
     </dialog>
     <script src="pi-composer-tools.js"></script>
+    <script src="pi-composer-voice.js"></script>
     <script src="pi-session-tree.js"></script>
     <script src="pi-session-search.js"></script>
     <script src="pi-history.js"></script>
@@ -988,6 +993,7 @@
     <script src="pi-task-results.js"></script>
     <script src="pi-agent-cards.js"></script>
     <script src="pi-model-picker.js?v=favorites-sync-2"></script>
+    <script src="pi-model-speed.js"></script>
     <link rel="stylesheet" href="pi-workbench.css">
     <script src="pi-workbench.js"></script>
     <script src="pi-chat.js?v=subagent-runtime-1"></script>

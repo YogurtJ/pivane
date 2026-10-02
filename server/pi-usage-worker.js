@@ -46,7 +46,14 @@ function recordFromEntry(entry, dayOf, filter) {
     const payload = assistant || tool ? entry.message : { summary: entry.summary, usage: entry.usage, type: entry.type };
     const key = createHash('sha256').update(JSON.stringify(canonical([entry.id, entry.timestamp, payload]))).digest('hex');
     const safeName = value => typeof value === 'string' ? value.slice(0, 500) : '未知';
-    return { key, timestamp, day, usage, cost, provider: assistant ? safeName(entry.message.provider) : '工具与摘要',
+    const rawSpeed = assistant && entry.message.pivaneSpeed;
+    const speed = rawSpeed ? {
+        requested: ['auto', 'standard', 'fast', 'ultrafast'].includes(rawSpeed.requested) ? rawSpeed.requested : null,
+        serviceTier: ['auto', 'default', 'flex', 'scale', 'priority', 'fast', 'ultrafast'].includes(rawSpeed.serviceTier) ? rawSpeed.serviceTier : null,
+        costMultiplier: typeof rawSpeed.costMultiplier === 'number' && Number.isFinite(rawSpeed.costMultiplier) && rawSpeed.costMultiplier >= 0.5 && rawSpeed.costMultiplier <= 100 ? rawSpeed.costMultiplier : null,
+        costBasis: ['reported-tier', 'requested-tier-estimate'].includes(rawSpeed.costBasis) ? rawSpeed.costBasis : null
+    } : null;
+    return { key, timestamp, day, usage, cost, ...(speed ? { speed } : {}), provider: assistant ? safeName(entry.message.provider) : '工具与摘要',
         model: assistant ? safeName(entry.message.responseModel || entry.message.model) : '工具与摘要（未归属模型）' };
 }
 

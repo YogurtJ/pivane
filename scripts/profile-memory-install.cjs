@@ -6,7 +6,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { createRequire } = require('node:module');
 const { createHash } = require('node:crypto');
-const LOCK_SHA256 = '266c95bb61abb2451742b7f3613188978ff4fbd8baadf8703d422462f170ecfa';
+const LOCK_SHA256 = '3fc436fd2cbd63e932ef896a58ea5ebe51ba3ff42b5b3f79e12d8f4199949acc';
 
 const prefix = process.argv[2];
 if (!prefix || !path.isAbsolute(prefix) || !fs.existsSync(path.join(prefix, 'package', 'profile-memory-bundle.mjs')))
@@ -17,10 +17,11 @@ const manifest = {
     name: 'pivane-profile-memory-isolated', version: '1.0.0', private: true,
     dependencies: {
         'pi-hermes-memory': '0.9.9', 'better-sqlite3': '13.0.3',
-        '@earendil-works/pi-coding-agent': '0.99.1', '@earendil-works/pi-ai': '0.99.1',
-        '@earendil-works/pi-tui': '0.99.1', 'typebox': '1.3.27', 'strip-ansi': '7.2.0',
+        '@earendil-works/pi-coding-agent': '1.0.0', '@earendil-works/pi-ai': '1.0.0',
+        '@earendil-works/pi-tui': '1.0.0', 'typebox': '1.3.27', 'strip-ansi': '7.2.0',
+        'brace-expansion': '5.0.12', undici: '8.11.2',
     },
-    overrides: { '@earendil-works/pi-tui': '0.99.1', undici: '8.11.2' },
+    overrides: { '@earendil-works/pi-tui': '1.0.0', undici: '8.11.2', 'brace-expansion': '5.0.12' },
 };
 const manifestFile = path.join(prefix, 'package.json');
 if (fs.existsSync(manifestFile)) {
@@ -35,7 +36,7 @@ fs.copyFileSync(lockSource, path.join(prefix, 'package-lock.json'));
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const flags = ['--no-audit', '--no-fund', '--fetch-retries=1', '--fetch-timeout=30000'];
 execFileSync(npm, ['ci', '--prefix', prefix, '--ignore-scripts', ...flags], { stdio: 'inherit', timeout: 600000 });
-execFileSync(npm, ['ci', '--prefix', prefix, '--ignore-scripts', ...flags], { stdio: 'inherit', timeout: 600000 });
+require('./install-bundled-capabilities.cjs').enforceShrinkwrapFixes(prefix);
 // Only this pinned native dependency's trusted install script runs, in the isolated prefix.
 execFileSync(npm, ['rebuild', '--prefix', prefix, 'better-sqlite3', '--foreground-scripts', ...flags], { stdio: 'inherit', timeout: 600000 });
 const req = createRequire(path.join(prefix, 'package.json'));
@@ -45,7 +46,7 @@ try {
     db.exec('CREATE VIRTUAL TABLE verify_fts USING fts5(content, tokenize=trigram)');
 } finally { db.close(); }
 if (req('pi-hermes-memory/package.json').version !== '0.9.9'
-    || JSON.parse(fs.readFileSync(path.join(prefix, 'node_modules', '@earendil-works', 'pi-coding-agent', 'package.json'), 'utf8')).version !== '0.99.1'
+    || JSON.parse(fs.readFileSync(path.join(prefix, 'node_modules', '@earendil-works', 'pi-coding-agent', 'package.json'), 'utf8')).version !== '1.0.0'
     || JSON.parse(fs.readFileSync(path.join(prefix, 'package-lock.json'), 'utf8')).packages['node_modules/pi-hermes-memory'].integrity
         !== 'sha512-6EfhmlgBuMfN7bQwN+xHMDVwX/Tm0fKKi6X8lAIBZtcjqxS9Of0rboJzmxfO3r+rGMWb71ss4p+dY34aEsJ1dg==')
     throw new Error('Installed versions or upstream integrity differ from verified recipe');

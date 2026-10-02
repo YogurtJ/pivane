@@ -18,7 +18,7 @@ export interface AsyncRetentionOptions {
     hostname?: string;
     processStartIdentity?: string;
     isProcessAlive?: (pid: number) => boolean | undefined;
-    getProcessStartIdentity?: (pid: number) => string | undefined;
+    getProcessStartIdentity?: (pid: number) => Promise<string | undefined>;
     lstatSync?: typeof fs.lstatSync;
     signal?: AbortSignal;
     discoveryWorkerUrl?: URL;

@@ -34,6 +34,10 @@ export declare function toModelInfo(model: RegistryModelLike): ModelInfo;
  * and an explicit thinking config value. Returns `undefined` when no thinking is applicable
  * (e.g. no model was specified, or the model has no suffix and no config was provided). */
 export declare function resolveEffectiveThinking(model: string | undefined, configThinking: string | false | undefined): string | undefined;
+/** The recorded thinking level of one child: the first known level among the places it is recorded. */
+export declare function childThinkingLevel(...sources: Array<{
+    thinking?: string;
+} | undefined>): ThinkingLevel | undefined;
 export declare function splitKnownThinkingSuffix(model: string): {
     baseModel: string;
     thinkingSuffix: string;

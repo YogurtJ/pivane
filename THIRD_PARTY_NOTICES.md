@@ -33,7 +33,7 @@ Pivane自身的代码使用[ISC许可证](LICENSE)。第三方软件、字体、
 
 ## 内置第三方能力
 
-[pi-subagents](https://github.com/nicobailon/pi-subagents) 0.71.0（Nico Bailon，MIT）官方 npm 发布内容原样保存于 `vendor/pi-subagents/`，包含 JavaScript、声明、source map、角色、技能、提示词和文档；原始 LICENSE 随包保留。Pivane 的安装与运行适配独立于上游文件，版本随应用更新。
+[pi-subagents](https://github.com/nicobailon/pi-subagents) 0.74.0（Nico Bailon，MIT）官方 npm 发布内容原样保存于 `vendor/pi-subagents/`，包含 JavaScript、声明、source map、角色、技能、提示词和文档；原始 LICENSE 随包保留。Pivane 的安装与运行适配独立于上游文件，版本随应用更新。
 
 ## 可选档案记忆组件
 

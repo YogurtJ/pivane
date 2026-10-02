@@ -1,6 +1,6 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { type AgentConfig } from "./agents.ts";
+import { type AgentConfig, discoverAgentsAll } from "./agents.ts";
 import type { Details, ExtensionConfig } from "../shared/types.ts";
 import { type RuntimeAgentOwner } from "./runtime-agent-registry.ts";
 type ManagementContext = Pick<ExtensionContext, "cwd" | "modelRegistry"> & {
@@ -9,6 +9,7 @@ type ManagementContext = Pick<ExtensionContext, "cwd" | "modelRegistry"> & {
     currentSessionId?: string;
     runtimeAgentOwner?: RuntimeAgentOwner;
     onAgentsChanged?: () => void;
+    discoverAgentsAll?: typeof discoverAgentsAll;
 };
 interface ManagementParams {
     action?: string;

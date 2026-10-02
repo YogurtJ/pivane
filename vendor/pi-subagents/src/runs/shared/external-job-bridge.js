@@ -3,11 +3,14 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { writeAtomicJson } from "../../shared/atomic-json.js";
+import { readStatus } from "../../shared/utils.js";
+import { isActiveAsyncState } from "../background/active-run-index.js";
 import { ExternalJobProviderError, getExternalJobProvider, validateExternalJobHandle, validateExternalJobResult, } from "../../api/external-job-provider.js";
 export const EXTERNAL_JOB_BRIDGE_REQUEST_DIR = "external-job-requests";
 const EXTERNAL_JOB_BRIDGE_RESPONSE_DIR = "external-job-responses";
 const DEFAULT_OPERATION_TIMEOUT_MS = 120_000;
 const POLL_INTERVAL_MS = 50;
+const CHILD_BRIDGE_SWEEP_INTERVAL_MS = 1_000;
 const MAX_REQUESTS_PER_SWEEP = 100;
 const inFlight = new Set();
 function requestDir(asyncDir) {
@@ -262,6 +265,66 @@ function readClaimHandle(provider, claimDir) {
     catch {
         return undefined;
     }
+}
+export function externalJobBridgeEligibility(steps) {
+    if (!Array.isArray(steps))
+        return "unknown";
+    for (const step of steps) {
+        const runner = step?.runner;
+        if (runner === undefined)
+            continue;
+        if (!runner || typeof runner !== "object" || Array.isArray(runner))
+            return "unknown";
+        const runnerType = runner.type;
+        if (typeof runnerType !== "string")
+            return "unknown";
+        if (runnerType === "external-job")
+            return "required";
+        if (runnerType !== "pi" && runnerType !== "external-cli")
+            return "unknown";
+    }
+    return "not-required";
+}
+/** Services the bridges of external-job runs that a child session launched; only the root has an async job tracker. */
+export function createChildExternalJobBridgeSweeper() {
+    const runs = new Map();
+    let timer;
+    const sweep = () => {
+        for (const [runId, asyncDir] of runs) {
+            try {
+                const status = readStatus(asyncDir);
+                // The launch status has no runner metadata until the runner starts, so re-check on every sweep.
+                if (externalJobBridgeEligibility(status?.steps) !== "not-required")
+                    serviceExternalJobBridgeRequests(asyncDir);
+                if (status && !isActiveAsyncState(status.state))
+                    runs.delete(runId);
+            }
+            catch (error) {
+                console.error(`Failed to service external-job bridge requests for '${asyncDir}':`, error);
+            }
+        }
+        if (runs.size === 0 && timer) {
+            clearInterval(timer);
+            timer = undefined;
+        }
+        return runs.size;
+    };
+    return {
+        track(runId, asyncDir) {
+            runs.set(runId, asyncDir);
+            if (timer)
+                return;
+            timer = setInterval(sweep, CHILD_BRIDGE_SWEEP_INTERVAL_MS);
+            timer.unref?.();
+        },
+        sweep,
+        dispose() {
+            runs.clear();
+            if (timer)
+                clearInterval(timer);
+            timer = undefined;
+        },
+    };
 }
 export function serviceExternalJobBridgeRequests(asyncDir) {
     let files;

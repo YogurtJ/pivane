@@ -317,6 +317,7 @@ class MediaAgentService {
             extraArgs: [
                 '--no-extensions',
                 '--extension', this.extensionPath,
+                '--extension', path.join(__dirname, 'pi-model-speed-cli.ts'),
                 '--no-skills',
                 '--no-prompt-templates',
                 '--no-context-files',

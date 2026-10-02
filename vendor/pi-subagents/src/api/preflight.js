@@ -193,7 +193,7 @@ export async function resolveSubagentLaunchContract(input) {
     }
     const availableModels = normalizeAvailableModels(input.availableModels);
     const preferredProvider = agent.modelProvider ?? input.preferredProvider ?? input.parentModel?.provider;
-    const modelScopes = resolveModelScopesForAgent(discovered.modelScope, agent.name, input.parentModel);
+    const modelScopes = resolveModelScopesForAgent(discovered.modelScope, agent.name, input.parentModel, input.scopedModelIds);
     const modelOrigin = resolveModelOrigin({ explicitModel: input.model, agentModel: agent.model, parentModel: input.parentModel });
     const primaryModel = externalRunner
         ? undefined
@@ -239,6 +239,7 @@ export async function resolveSubagentLaunchContract(input) {
             capabilityCeiling: effectiveCapabilityCeiling,
             agentName: agent.name,
             permissionRules,
+            runtimeSnapshotHost: input.runtimeSnapshotHost,
         });
     }
     catch (error) {

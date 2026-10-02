@@ -59,6 +59,59 @@ test('manages custom providers and API keys through Pi stores', async () => {
     assert.deepEqual(await service.listCustomProviders(), []);
 });
 
+test('custom model edits take precedence over extension registrations and preserve unrelated settings', async () => {
+    const providerId = 'extension-overlap-fixture';
+    const modelId = 'fixture/model:version@latest';
+    await service.upsertCustomProvider({ id: providerId, baseUrl: 'http://127.0.0.1:65530/v1', api: 'openai-completions', authHeader: true });
+    const { modelsPath } = await service.paths();
+    const data = service.readModelsFile(modelsPath);
+    const otherOverride = { contextWindow: 64000, futureField: 'keep-other-model' };
+    data.providers[providerId].models = [{ id: modelId, name: 'Original', reasoning: true, input: ['text'],
+        contextWindow: 1050000, maxTokens: 128000, cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.2 },
+        compat: { supportsStore: false }, futureField: { keep: true } }];
+    data.providers[providerId].modelOverrides = { [modelId]: { contextWindow: 500000, compat: { supportsStore: false }, futureField: 'keep-target' }, other: otherOverride };
+    data.providers[providerId].futureProviderField = 'keep-provider';
+    await service.writeModelsFile(data);
+    const runtime = await service.createModelRuntime();
+    const extension = { baseUrl: 'http://127.0.0.1:65530/v1', api: 'openai-completions', apiKey: 'synthetic-fixture-key', models: [
+        { id: modelId, name: 'Extension', reasoning: true, input: ['text'], contextWindow: 1050000, maxTokens: 128000,
+            cost: { input: 3, output: 4, cacheRead: 0.3, cacheWrite: 0.4 } }
+    ] };
+    runtime.registerProvider(providerId, extension);
+    assert.equal(runtime.getModel(providerId, modelId).contextWindow, 500000);
+    const custom = (await service.listCustomProviders()).find(p => p.id === providerId);
+    assert.equal(custom.models[0].contextWindow, 500000, 'editor reads the existing effective user override');
+    await service.upsertCustomModel(providerId, { id: modelId, name: 'User choice', reasoning: false, imageInput: true,
+        contextWindow: 272000, maxTokens: 32000 });
+    await runtime.refresh({ allowNetwork: false });
+    runtime.registerProvider(providerId, extension); // Resource reload re-registers the same extension.
+    const effective = runtime.getModel(providerId, modelId);
+    assert.equal(effective.name, 'User choice');
+    assert.equal(effective.reasoning, false);
+    assert.deepEqual(effective.input, ['text', 'image']);
+    assert.equal(effective.contextWindow, 272000);
+    assert.equal(effective.maxTokens, 32000);
+    assert.equal(effective.cost.input, 3, 'unsubmitted extension pricing is not pinned by the basic editor');
+    const saved = service.readModelsFile(modelsPath).providers[providerId];
+    assert.equal(saved.futureProviderField, 'keep-provider');
+    assert.deepEqual(saved.models[0].futureField, { keep: true });
+    assert.deepEqual(saved.models[0].cost, data.providers[providerId].models[0].cost);
+    assert.deepEqual(saved.modelOverrides.other, otherOverride);
+    assert.equal(saved.modelOverrides[modelId].futureField, 'keep-target');
+    assert.deepEqual(saved.modelOverrides[modelId].compat, { supportsStore: false });
+    assert.equal((await service.getModelSnapshot()).models.find(m => m.provider === providerId && m.id === modelId).contextWindow, 272000);
+    await service.deleteCustomModel(providerId, modelId);
+    const deleted = service.readModelsFile(modelsPath).providers[providerId];
+    assert.deepEqual(deleted.modelOverrides[modelId], { compat: { supportsStore: false }, futureField: 'keep-target' });
+    assert.deepEqual(deleted.modelOverrides.other, otherOverride);
+    await runtime.refresh({ allowNetwork: false });
+    assert.equal(runtime.getModel(providerId, modelId).contextWindow, 1050000, 'deleting the custom model clears its editor overrides');
+    await service.upsertCustomModel(providerId, { id: modelId, contextWindow: 64000, maxTokens: 4096 });
+    await runtime.refresh({ allowNetwork: false });
+    assert.equal(runtime.getModel(providerId, modelId).contextWindow, 64000, 'recreation cannot inherit an old window');
+    await service.deleteCustomProvider(providerId);
+});
+
 test('installs, resolves, and removes local packages with the Pi package manager', async () => {
     const skillDir = path.join(packageDir, 'skills', 'package-test-skill');
     fs.mkdirSync(skillDir, { recursive: true });

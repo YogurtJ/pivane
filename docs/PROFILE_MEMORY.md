@@ -1,7 +1,7 @@
 # Profile memory adapter (source candidate)
 
 The adapter uses selected components from **pi-hermes-memory 0.9.9** (MIT) with
-Pi 0.87.1. It never loads upstream's default factory: that factory scans the
+the application-pinned Pi 1.0.0. It never loads upstream's default factory: that factory scans the
 shared Pi sessions root, migrates global state, and may spawn an unscoped Pi
 child. Native JSONL is the conversation authority. Profile-local `sessions.db`
 is a disposable derived search index, not a parallel chat transcript tree.
@@ -57,9 +57,14 @@ Global profile memory and generated skills live under
 project memory/skills do not alias same-name cwd folders. Installed shared Pi
 skills are read-only when refusing a skill collision; profile skill operations
 reject symlinks in their owned trees. The active agent's
-`skill_manage` guidance recommends deliberate profile-only skill improvements
-after useful procedures or corrections. Pi discovers newly created skills
-after session reload. The memory and learned-skill flags are independent. Each saved profile may also set
+`skill_manage` guidance first checks existing skills and prefers focused updates
+for verified general workflow improvements. Task complexity, trial and error,
+tool-call count, useful explanations and individual study favorites do not
+justify a new skill. Requested study content belongs in the designated notes.
+A new skill requires an explicit user request or a distinct, durable procedure
+that transfers across tasks and cannot reasonably fit an existing skill.
+This is Agent guidance, not a semantic write-time enforcement check. Pi discovers
+newly created or updated skills after session reload. The memory and learned-skill flags are independent. Each saved profile may also set
 `memoryCharLimit` (256..65536, default 16000) and `userCharLimit`
 (256..32768, default 8000) within `memory`. Server context, worker runtime
 verification and both global/project MemoryStore instances carry those actual
@@ -127,7 +132,9 @@ specify which kind is writable. The additive `capabilities.journal` object
 reports live receipt/request/tombstone counts, their windows and real limits.
 `projectWrites:false` still means HTTP cannot write project memory without a
 session; `projectWritesBySession:true` (memory enabled and installed) means it can
-with a verified `sessionId` (below). Only a verified native source or a verified
+with a verified `sessionId` (below). `projectSkillDeletesBySession:true`
+(learned skills enabled) additionally permits project skill deletion and undo
+through a verified session. Only a verified native source or a verified
 session can write the physical cwd scope. No logical assistant
 project isolation is claimed. Installed Pi skills are never writable.
 
@@ -187,7 +194,9 @@ Publication uses the same pending marker (it carries the whole next journal), so
 a failure after publication is repaired by retrying the same requestId and input.
 
 HTTP project memory edits use `scope:'project', sessionId` with `kind:'memory'`
-and `create|update|delete|undo`; a client `projectKey` is still refused. The
+and `create|update|delete|undo`. Project skills use the same verified session
+with `kind:'skill'` for `delete|undo` only; create/update remain unavailable
+through this path. A client `projectKey` is still refused. The
 service finds the unique native file `*_<sessionId>.jsonl` under the sessions
 root, streams its header and custom entries (64 MiB budget, 413 beyond it), and
 requires exactly one current-ID binding to this profile and a canonical header
@@ -248,7 +257,10 @@ conflicts) return a failed tool result (`details.success=false` with a readable
 error, plus `details.code` and `details.errorDetails` when the service gives a
 structured code such as `memory-full`) like upstream tools; uncertain outcomes
 (5xx or publication-unknown errors) keep throwing and are never reported as a
-clean success or failure.
+clean success or failure. The deterministic `knowledge-duplicate` case is
+reported as already represented (`details.success:true, unchanged:true,
+existing:{itemId,itemRevision,kind,scope,target?,name?,readOnly}`), explicitly
+without a saved receipt or a new memory/skill card.
 Agent `target: "failure"` writes become ordinary profile `MEMORY.md` entries
 (target `memory`, scope `profile`) and are injected on the next turn. An
 optional `failure_reason` (trimmed, at most 200 characters, single line) is
@@ -299,6 +311,47 @@ re-running the action, and retired IDs stay remembered in a spent hash list;
 learning job IDs are server-generated and never collide with client request
 IDs, and the state file reports its real `maxActions`/`actionValidityDays`
 limits. A saved document is not evidence of successful indexing or activation in an already-running worker.
+
+## Agent write-time comparison
+
+Pivane implements comparison in its own adapter and knowledge service; the
+pi-hermes-memory vendor sources and dependencies are unchanged. Native
+`memory_add` and `skill_manage(action:'create')` first return
+`details.comparisonRequired:true`, `saved:false`, related candidates and a
+`comparisonToken`, without writing knowledge or calling another model. The
+assistant reads those entries: an already covered fact/workflow is skipped;
+a clear supplement/correction uses `memory_replace` or a skill update after
+reading the complete existing entry; only independent new information submits
+the unchanged create arguments with the returned token. This internal check
+requires no extra user approval. Existing-record content is untrusted data.
+
+The token uses an ephemeral worker signing key, expires after ten minutes, and
+binds the canonical native session/cwd, profile, complete create payload and
+knowledge revision. Reload invalidates old tokens. Changing the content,
+target, scope, session or knowledge revision requires a fresh comparison.
+This never converts a create into an update, bypasses native source proof, or
+permits uncertain-write replay. Read-only skill actions retain the upstream
+view path, and updates/deletes retain their existing identity/CAS checks.
+
+Comparison scans at most 400 entries at one revision and offers at most 12
+ranked candidates within 1,800 UTF-8 bytes before IDs are expanded for the
+tool response. Only profile entries and the verified current cwd are exposed;
+other projects are excluded. Full selected memory entries are read by ID when
+the listing was truncated; entries that cannot fit are explicitly truncated
+and cannot be used for automatic background updates. The shortlist supports
+semantic judgement, not guaranteed recognition of every paraphrase.
+
+All knowledge create/update/consolidate paths also apply an atomic exact
+comparison under the original mutation lock. Memory equivalence is conservative:
+Unicode NFC, outer whitespace and native trailing metadata only; case, inner
+whitespace, numbers and identifiers are preserved. Profile USER and MEMORY are
+compared together; physical project scopes remain separate. Skill comparison
+ignores frontmatter/name headings and conventional section-heading case for
+substantive bodies (at least 80 characters), retaining the description when
+there is no applicability section. Installed names remain reserved.
+`409 knowledge-duplicate` identifies the existing item and revision, without
+changing either entry. The native tool reports `unchanged:true` and creates
+no saved receipt/card. Deleted-memory protection and explicit restore remain.
 
 ## Content scan
 
@@ -356,13 +409,27 @@ tool adapter.
   Pairs before the last `pivane-learning-baseline` custom entry on the branch
   (written when older conversations are imported) are never learned from, in
   any kind or at a boundary; forks keep the baseline.
+- **Comparison and decisions**: every ordinary review, correction and extraction
+  offers related active USER/MEMORY entries and existing skill references to
+  the already-configured auxiliary model in the same single call. The answer
+  must explicitly choose `skip`, `create`, `update` or `propose_merge`; the old
+  implicit content-only create answer is refused. Stable personal facts and
+  preferences can be created in USER, resource entries in MEMORY. A supplement
+  returns only the new user-stated detail, which the server appends to the full
+  original entry (at most 1,200 characters combined); an explicit user correction
+  may replace a complete offered editable entry while retaining other valid
+  facts. Unoffered IDs, truncated/read-only entries and unsupported decisions
+  are refused. A multi-entry merge of one target creates a proposal for manual
+  review, never retires source entries automatically. Existing active skills
+  are not rewritten by background learning; an independent user-stated reusable
+  procedure can only become an inactive skill draft.
 - **Writes** go only through `mutateFromNative` with the verified user entry
   as source, so they carry receipts, CAS, tombstones and the source-proof
-  checks above. A correction may CAS-replace one matching old record;
-  otherwise it creates a new record. A reusable procedure can only become a
-  `draft` profile skill that the user must enable.
+  checks above. The source and knowledge revision are rechecked after the
+  model returns, together with the learning settings and selected model.
 - **Bounds**: UTC daily reservation of 6000 tokens per attempt, at most 2
-  concurrent runs globally and 1 per profile, a ~2400 character excerpt,
+  concurrent runs globally and 1 per profile, a native excerpt of up to ~2400
+  characters reduced to a UTF-8-safe 1,800-byte model excerpt,
   prompt plus excerpt ≤ 5000 UTF-8 bytes, ≤ 320 output tokens, no tools, no
   CLI/subagent fallback, 20 s abort followed by waiting for real settlement.
   Queue 64 jobs, 128 cursors; deep branch rewrites block a cursor and are
@@ -452,15 +519,13 @@ Use the pinned upstream tarball; its SHA256 is
 (npm integrity
 `sha512-6EfhmlgBuMfN7bQwN+xHMDVwX/Tm0fKKi6X8lAIBZtcjqxS9Of0rboJzmxfO3r+rGMWb71ss4p+dY34aEsJ1dg==`).
 The reviewed isolated lock at `server/profile-memory/upstream-lock.json` has
-SHA256 `266c95bb61abb2451742b7f3613188978ff4fbd8baadf8703d422462f170ecfa`.
-This current recipe pins Pi 0.99.1 and the host TUI to 0.99.1; earlier published archives keep their own historical locks.
+SHA256 `3fc436fd2cbd63e932ef896a58ea5ebe51ba3ff42b5b3f79e12d8f4199949acc`.
+This source recipe pins Pi and the host TUI to 1.0.0 and verifies brace-expansion 5.0.12 / undici 8.11.2 through the shared installation boundary; earlier published archives keep their own historical locks.
 The isolated installer retains the reviewed JSON lock and rejects a different lock, creates a
 fresh prefix, runs `npm ci
 --ignore-scripts` for that locked graph, then runs only pinned `better-sqlite3`
 trusted native rebuild and checks the real Node ABI/FTS5. Dependencies,
-LICENSE and license metadata remain in the isolated prefix. It never patches
-`node_modules`, modifies real Pi settings or enables upstream as a global Pi
-package. Use a private identity and an empty prefix; do not install under the
+LICENSE and license metadata remain in the isolated prefix. It verifies the reviewed dependency layout without patching upstream implementation files, modifying real Pi settings or enabling upstream as a global Pi package. Use a private identity and an empty prefix; do not install under the
 running service during this review.
 
 ```sh

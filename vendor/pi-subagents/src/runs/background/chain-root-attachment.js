@@ -88,7 +88,7 @@ function outputFromTerminalStatus(root, status, step) {
         ...(step?.transcriptPath ? { transcriptPath: step.transcriptPath } : {}),
     };
 }
-function outputFromTimeout(root, status, message) {
+function outputFromTimeout(root, status, message, stopped = false) {
     const step = selectedStatusStep(status, root.index);
     return {
         agent: step?.agent ?? status?.steps?.[root.index]?.agent ?? "subagent",
@@ -96,7 +96,7 @@ function outputFromTimeout(root, status, message) {
         success: false,
         exitCode: 1,
         error: message,
-        timedOut: true,
+        ...(stopped ? { stopped: true } : { timedOut: true }),
         ...(step?.sessionName ? { sessionName: step.sessionName } : {}),
         ...(step?.sessionFile ?? status?.sessionFile ? { sessionFile: step?.sessionFile ?? status?.sessionFile } : {}),
         ...(step?.model ? { model: step.model } : {}),
@@ -159,7 +159,7 @@ export async function waitForImportedAsyncRoot(root, options = {}) {
     for (;;) {
         const status = readStatus(root.asyncDir);
         if (options.shouldAbort?.())
-            return outputFromTimeout(root, status, options.timeoutMessage ?? "Subagent timed out.");
+            return outputFromTimeout(root, status, options.timeoutMessage ?? "Subagent timed out.", options.abortedAsStopped === true);
         const result = readImportedResultFile(root, status);
         if (result)
             return buildImportedResult(root, status, result);

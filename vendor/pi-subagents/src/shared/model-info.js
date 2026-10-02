@@ -26,6 +26,15 @@ export function resolveEffectiveThinking(model, configThinking) {
         return thinkingSuffix.slice(1);
     return THINKING_LEVELS.find((level) => level === configThinking);
 }
+/** The recorded thinking level of one child: the first known level among the places it is recorded. */
+export function childThinkingLevel(...sources) {
+    for (const source of sources) {
+        const level = THINKING_LEVELS.find((candidate) => candidate === source?.thinking);
+        if (level)
+            return level;
+    }
+    return undefined;
+}
 export function splitKnownThinkingSuffix(model) {
     const colonIdx = model.lastIndexOf(":");
     if (colonIdx === -1)

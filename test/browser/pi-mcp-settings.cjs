@@ -23,7 +23,7 @@ const server = http.createServer((req, res) => {
                 const host = { currentCwd: () => '/mock/project', currentSession: () => window.selected, apiFetch: async (url, options) => {
                     if (options) { const body = JSON.parse(options.body); window.writes.push({ url, body }); if (window.conflict) throw Error('secret-error-must-not-render'); if (url.includes('/sessions/')) return { runtimeId: body.runtimeId, servers: [{ name: 'fixture', state: 'unknown', toolCount: 1, exposure: 'codemode' }], tools: [{ name: '<script>' + 'x'.repeat(350), active: true }] }; return { ok: true, requiresRuntimeRestart: true }; }
                     window.reads.push(url); const scope = new URL(url, location.origin).searchParams.get('scope');
-                    return { cwd: '/mock/project', scope, revision: 'r1', trust: { effective: window.trusted }, autoEnableCodemode: { global: null, project: null, value: true }, servers: [{ name: 'fixture', scope, valid: true, enabled: true, exposure: 'codemode', timeout: 60, transport: 'http', config: { url: null, headers: { Authorization: null }, toolExposure: { ['long_' + 'x'.repeat(400)]: 'hidden' } }, secretFields: { url: { present: true }, 'headers.Authorization': { present: true } } }] };
+                    return { cwd: '/mock/project', scope, revision: 'r1', trust: { effective: window.trusted }, autoEnableCodemode: { global: null, project: null, value: true }, servers: [{ name: 'fixture', scope, valid: true, enabled: true, exposure: 'codemode', timeout: 60, transport: 'http', config: { description: '<script>Safe description</script>', auth: scope === 'global' ? { provider: 'fixture-provider' } : undefined, oauth: { clientName: null, authServerMetadataUrl: null }, url: null, headers: { Authorization: null }, toolExposure: { ['long_' + 'x'.repeat(400)]: 'hidden' } }, secretFields: { 'oauth.clientName': { present: true }, 'oauth.authServerMetadataUrl': { present: true }, url: { present: true }, 'headers.Authorization': { present: true } } }] };
                 } };
                 window.panel = PiMcpSettings.create(host); document.querySelector('.workspace-settings-content').append(panel.root); panel.open();
             });
@@ -34,10 +34,18 @@ const server = http.createServer((req, res) => {
             await page.getByRole('button', { name: 'Save server', exact: true }).click();
             await page.getByRole('status').filter({ hasText: 'Configuration saved' }).waitFor();
             let body = await page.evaluate(() => writes[0].body);
-            assert.equal(body.expectedRevision, 'r1'); assert.equal(body.config.url, undefined); assert.equal(body.config.headers, undefined); assert.equal(body.config.args, undefined); assert.equal(body.config.type, 'http');
+            assert.equal(body.expectedRevision, 'r1'); assert.equal(body.config.url, undefined); assert.equal(body.config.headers, undefined); assert.equal(body.config.args, undefined); assert.equal(body.config.type, 'http'); assert.equal(body.config.auth, undefined); assert.equal(body.config.oauth, undefined); assert.equal(body.config.description, undefined);
             assert.equal(await page.getByRole('button', { name: 'Edit', exact: true }).isDisabled(), true);
             await page.getByRole('button', { name: 'Refresh saved configuration' }).click();
             await page.getByRole('button', { name: 'Edit', exact: true }).click();
+            assert.equal(await page.getByRole('textbox', { name: 'auth.provider', exact: true }).inputValue(), 'fixture-provider');
+            assert.equal(await page.locator('.mcp-editor option[value="codemode-deferred"]').count(), 0);
+            await page.getByRole('textbox', { name: 'Server description', exact: true }).fill('Search fixture docs');
+            await page.getByRole('textbox', { name: 'auth.provider', exact: true }).fill('new-fixture-provider');
+            for (const [key, value] of [['clientName', 'Fixture client'], ['authServerMetadataUrl', 'https://fixture.invalid/metadata']]) {
+                await page.locator('label').filter({ hasText: new RegExp('^oauth\\.' + key + ' ·') }).locator('select').selectOption('replace');
+                await page.getByRole('textbox', { name: `oauth.${key} replacement`, exact: true }).fill(value);
+            }
             await page.locator('label').filter({ hasText: /^headers.Authorization/ }).locator('select').selectOption('replace');
             await page.getByRole('textbox', { name: 'headers.Authorization replacement', exact: true }).fill('Bearer ${MOCK_SECRET}');
             await page.locator('label').filter({ hasText: /^url ·/ }).locator('select').selectOption('remove');
@@ -46,6 +54,9 @@ const server = http.createServer((req, res) => {
             await page.getByRole('status').filter({ hasText: 'Save conflicted' }).waitFor();
             body = await page.evaluate(() => writes[1].body);
             assert.deepEqual(body.config.headers.Authorization, { op: 'replace', value: 'Bearer ${MOCK_SECRET}' }); assert.deepEqual(body.config.url, { op: 'remove' });
+            assert.equal(body.config.description, 'Search fixture docs'); assert.deepEqual(body.config.auth, { provider: 'new-fixture-provider' });
+            assert.deepEqual(body.config.oauth.clientName, { op: 'replace', value: 'Fixture client' });
+            assert.deepEqual(body.config.oauth.authServerMetadataUrl, { op: 'replace', value: 'https://fixture.invalid/metadata' });
             assert.equal(await page.getByRole('button', { name: 'Save server', exact: true }).isDisabled(), true);
             assert.equal(await page.getByRole('textbox', { name: 'headers.Authorization replacement', exact: true }).inputValue(), 'Bearer ${MOCK_SECRET}');
             assert.equal(await page.getByRole('status').textContent().then(s => s.includes('secret-error')), false);
@@ -82,6 +93,7 @@ const server = http.createServer((req, res) => {
             for (const [from, to] of [['global', 'project'], ['project', 'global']]) {
                 await page.getByRole('combobox', { name: 'Configuration scope', exact: true }).selectOption(from);
                 await page.getByRole('button', { name: 'Edit', exact: true }).click();
+                assert.equal(await page.getByRole('textbox', { name: 'auth.provider', exact: true }).isDisabled(), from === 'project');
                 await page.locator('label').filter({ hasText: /^headers.Authorization/ }).locator('select').selectOption('replace');
                 await page.getByRole('textbox', { name: 'headers.Authorization replacement', exact: true }).fill('retained-scope-draft');
                 cancelDiscard = true;
@@ -89,9 +101,11 @@ const server = http.createServer((req, res) => {
                 assert.equal(await page.getByRole('combobox', { name: 'Configuration scope', exact: true }).inputValue(), from);
                 assert.equal(await page.getByRole('textbox', { name: 'headers.Authorization replacement', exact: true }).inputValue(), 'retained-scope-draft');
                 cancelDiscard = false;
+                if (from === 'global') await page.getByRole('textbox', { name: 'auth.provider', exact: true }).fill('');
                 await page.getByRole('button', { name: 'Save server', exact: true }).click();
                 await page.getByRole('status').filter({ hasText: 'Configuration saved' }).waitFor();
                 assert.equal(await page.evaluate(() => writes.at(-1).body.scope), from);
+                assert.deepEqual(await page.evaluate(() => writes.at(-1).body.config.auth), from === 'global' ? { provider: null } : undefined);
                 await page.getByRole('button', { name: 'Refresh saved configuration' }).click();
             }
             assert.ok(await page.evaluate(() => [...document.querySelectorAll('.mcp-settings input,.mcp-settings select,.mcp-settings textarea')].every(n => parseFloat(getComputedStyle(n).fontSize) >= 16)));

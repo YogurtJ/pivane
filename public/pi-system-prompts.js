@@ -247,9 +247,6 @@
                 const snapshot = await apiFetch('/api/pi/settings/system-prompts?cwd=' + encodeURIComponent(cwd));
                 if (valid(n, cwd)) {
                     render(cwd, remember(snapshot, projects.get(cwd)));
-                    requestAnimationFrame(() => {
-                        if (valid(n, cwd) && matchMedia('(max-width: 900px)').matches) $('system-prompts-nav')?.scrollIntoView({ block: 'nearest', inline: 'center' });
-                    });
                 }
             } catch (e) { if (active && n === epoch) panel.replaceChildren(node('p', e.message), button(translateUi("重试读取"), '', () => open())); }
         }

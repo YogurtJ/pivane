@@ -1,0 +1,1 @@
+{"version":3,"file":"upgrade-notice.d.ts","sourceRoot":"","sources":["../../../src/extension/upgrade-notice.ts"],"names":[],"mappings":"AAYA,wBAAsB,iBAAiB,CACtC,GAAG,EAAE;IAAE,KAAK,EAAE,OAAO,CAAC;IAAC,EAAE,EAAE;QAAE,MAAM,CAAC,OAAO,EAAE,MAAM,EAAE,IAAI,EAAE,MAAM,GAAG,IAAI,CAAA;KAAE,CAAA;CAAE,EAC5E,QAAQ,SAA2C,EACnD,aAAa,SAAgE,EAC7E,OAAO,SAAsB,GAC3B,OAAO,CAAC,IAAI,CAAC,CAsBf"}

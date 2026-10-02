@@ -2,7 +2,7 @@
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const catalog = Object.freeze([
-    Object.freeze({ id: 'subagents', name: 'pi-subagents', version: '0.71.0', directory: 'vendor/pi-subagents',
+    Object.freeze({ id: 'subagents', name: 'pi-subagents', version: '0.74.0', directory: 'vendor/pi-subagents',
         repository: 'nicobailon/pi-subagents', mode: 'package' }),
     Object.freeze({ id: 'memory', name: 'pi-hermes-memory', version: '0.9.9', directory: 'vendor/pi-hermes-memory',
         repository: 'chandra447/pi-hermes-memory', mode: 'adapter' })

@@ -14,6 +14,19 @@
 .pi-composer-add-menu small { display: block; margin-top: 3px; color: var(--text-muted); font-size: .72rem; }
 .pi-composer-add-menu button:hover, .pi-composer-add-menu button:focus-visible { background: var(--green-soft); outline: 1px solid var(--green); outline-offset: -1px; }
 .pi-composer-add-menu button:disabled { opacity: .5; cursor: default; }
+.pi-delivery-setting { display: flex; flex-direction: column; gap: 8px; padding: 10px; font-size: .8rem; border-top: 1px solid var(--line); }
+.pi-delivery-setting #pi-delivery-mode { width: 100%; height: 36px; opacity: 1; padding: 0 8px; pointer-events: auto; font-size: 16px; }
+#pi-transcribe-button { width: 34px; height: 34px; flex: 0 0 34px; border: 0; border-radius: 9px; }
+#pi-transcribe-button[data-recording="true"] { background: var(--danger); color: white; }
+#pi-transcribe-button[hidden], .pi-voice-bar[hidden] { display: none !important; }
+.pi-voice-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; margin-bottom: 6px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-2); font-size: .8rem; }
+.pi-voice-bar select { flex: 1 1 160px; min-width: 0; max-width: 100%; padding: 7px; font-size: 16px; color: var(--text-main); background: var(--surface-1); border: 1px solid var(--line); border-radius: 6px; }
+.pi-voice-bar p, .pi-voice-bar textarea { flex: 1 0 100%; margin: 0; overflow-wrap: anywhere; }
+.pi-voice-bar textarea { box-sizing: border-box; width: 100%; min-width: 0; min-height: 80px; font: inherit; font-size: 16px; color: var(--text-main); background: var(--surface-1); border: 1px solid var(--line); border-radius: 6px; }
+.pi-voice-bar button { border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; min-height: 36px; cursor: pointer; color: var(--text-main); background: var(--surface-1); font: inherit; }
+.pi-voice-bar button:disabled { opacity: .5; cursor: default; }
+.pi-voice-bar [hidden] { display: none !important; }
+@media (max-width: 680px) { .pi-composer #pi-transcribe-button { width: 40px; height: 40px; flex-basis: 40px; border-radius: 12px; } }
 .pi-template-dialog { margin: auto; max-width: calc(100vw - 24px); width: min(700px, calc(100vw - 24px)); max-height: min(780px, calc(100dvh - 32px)); padding: 18px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface-2); color: var(--text-main); box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; }
 .pi-template-dialog[open] { display: flex; flex-direction: column; }
 .pi-template-dialog > header, .pi-template-dialog > input { flex-shrink: 0; }

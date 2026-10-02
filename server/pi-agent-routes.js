@@ -95,6 +95,10 @@ function createPiAgentGateway(options = {}) {
     usage.start();
     const sessionSearch = new (require('./pi-session-search').PiSessionSearch)(store, preferences);
     const settingsService = new PiSettingsService({ workspacePreferencesService: preferences });
+    const transcription = new (require('./pi-transcription-service').PiTranscriptionService)({
+        createModelRuntime: () => settingsService.createModelRuntime(),
+        blocked: () => settingsService.mutating || maintenance?.locked
+    });
     const titles = new (require('./pi-session-title-service').PiSessionTitleService)({ preferences,
         createModelRuntime: () => settingsService.createModelRuntime() });
     let learning;
@@ -133,8 +137,8 @@ function createPiAgentGateway(options = {}) {
     router.use(access.middleware());
     require('./pi-update-service').mountUpdateRoutes(router, undefined, {
         maintenance, preferences,
-        idle: () => !profiles.busy && !agentThreads.jobs.size && !agentThreads.catalogIndex.busy && !agentThreads.returns.busy && !agentThreads.messages.busy && !settingsService.mutating && !settingsService.loginService.busy && !nativeService.busy && !mcpSettingsService.busy && !sessionTransfer.running
-            && !titles.jobs.size && !titles.savingModel && !learning?.busy && !cron.busy && !deferred.running && !sideChat.connections.size && !sideChat.tickets.size
+        idle: () => !profiles.busy && !agentThreads.jobs.size && !agentThreads.catalogIndex.busy && !agentThreads.returns.busy && !agentThreads.messages.busy && !settingsService.mutating && !settingsService.loginService.busy && !nativeService.busy && !mcpSettingsService.busy && !sessionTransfer.running && !sessionMoves.running
+            && !titles.jobs.size && !titles.savingModel && !transcription.active && !learning?.busy && !cron.busy && !deferred.running && !sideChat.connections.size && !sideChat.tickets.size
             && ![...sideChat.parents.values()].some(parent => parent.preparing) && supervisor.isIdle()
             && !options.mediaLabService?.inFlight && !options.mediaLabService?.providerService?.busy && !options.mediaLabService?.providerService?.active,
         pause: () => deferred.pauseAll()
@@ -191,10 +195,10 @@ function createPiAgentGateway(options = {}) {
     require('./pi-profile-avatar').mountProfileAvatarRoutes(router, profileResources);
     require('./pi-profile-authoring').mountProfileAuthoringRoutes(router, { store, profiles });
     const agentThreads = require('./pi-agent-threads').mountAgentThreads(router, { store, supervisor, settingsService, access,
-        isSuspended: () => maintenance.locked });
+        isSuspended: () => maintenance.locked || Boolean(store.sessionMoves?.running) });
 
     const cron = new (require('./pi-cron-service').CronService)({ store, supervisor, profiles,
-        catalog: cwd => agentThreads.catalog(cwd), isSuspended: () => maintenance.locked, filename: options.cronFilePath });
+        catalog: cwd => agentThreads.catalog(cwd), isSuspended: () => maintenance.locked || Boolean(store.sessionMoves?.running), filename: options.cronFilePath });
     require('./pi-cron-service').mountCron(router, cron);
 
     router.get('/status', async (req, res) => {
@@ -228,10 +232,12 @@ function createPiAgentGateway(options = {}) {
             systemPrompts: true,
             projectTrust: true,
             modelAdvanced: true,
+            modelSpeed: true,
             sessionTitles: true,
             sessionTitleModels: true,
             auxiliaryModels: true,
             sessionTransfer: true,
+            sessionMoves: true,
             runtimeConfiguration: true,
             sessionSearch: descriptorBackendAvailable(),
             liveRecovery: true,
@@ -242,6 +248,7 @@ function createPiAgentGateway(options = {}) {
             historyBody: true,
             historyPresentation: true,
             composerTools: true,
+            transcription: true,
             modelCatalog: true,
             fileViewer: descriptorBackendAvailable(),
             fileBrowser: descriptorBackendAvailable(),
@@ -421,7 +428,7 @@ function createPiAgentGateway(options = {}) {
 
     router.get('/activity', (req, res) => {
         res.set('Cache-Control', 'no-store');
-        res.json({ cronBusy: cron.busy, agentThreadLaunches: agentThreads.jobs.size, agentTaskIndexing: agentThreads.catalogIndex.busy, agentTaskReturns: agentThreads.returns.busy, agentMessages: agentThreads.messages.busy, learningBusy: learning.busy, learningRuns: learning.active.size, archives: archives(), titleRevision: titles.revisionId, titleGenerations: titles.jobs.size, runtimes: supervisor.getActivity(), profilesBusy: profiles.busy, nativeSettingsBusy: nativeService.busy || settingsService.mutating || Boolean(titles.savingModel) || auxiliaryModels.busy, sessionTransfers: sessionTransfer.running, pinnedProjects: pinnedProjects(), hiddenProjects: hiddenProjects(), replyNotices: replyNotices(), deferred: deferred.summary() });
+        res.json({ cronBusy: cron.busy, agentThreadLaunches: agentThreads.jobs.size, agentTaskIndexing: agentThreads.catalogIndex.busy, agentTaskReturns: agentThreads.returns.busy, agentMessages: agentThreads.messages.busy, learningBusy: learning.busy, learningRuns: learning.active.size, archives: archives(), titleRevision: titles.revisionId, titleGenerations: titles.jobs.size, transcriptionActive: transcription.active, runtimes: supervisor.getActivity(), profilesBusy: profiles.busy, nativeSettingsBusy: nativeService.busy || settingsService.mutating || Boolean(titles.savingModel) || auxiliaryModels.busy, sessionTransfers: sessionTransfer.running, sessionMoves: sessionMoves.running, pinnedProjects: pinnedProjects(), hiddenProjects: hiddenProjects(), replyNotices: replyNotices(), deferred: deferred.summary() });
     });
 
     router.patch('/projects/pin', (req, res) => {
@@ -528,6 +535,8 @@ function createPiAgentGateway(options = {}) {
         }
     });
 
+    const sessionMoveListeners = new Set();
+    supervisor.on('sessionMove', event => { for (const listener of sessionMoveListeners) listener(event); });
     const sessionRemovalListeners = new Set();
     supervisor.on('sessionRemoval', event => {
         for (const listener of sessionRemovalListeners) listener(event);
@@ -560,7 +569,13 @@ function createPiAgentGateway(options = {}) {
 
     mountSessionWorkflows(router, { store, supervisor, deferred, preferences });
     const sessionTransfer = require('./pi-session-transfer').mountSessionTransfer(router, { store, supervisor, preferences });
+    const sessionMoves = require('./pi-session-moves').mountSessionMoves(router, { store, supervisor, preferences, usage, deferred, cron, sideChat,
+        isSuspended: () => maintenance.locked,
+        busy: () => Boolean(agentThreads.jobs.size || agentThreads.messages.busy || agentThreads.returns.busy
+            || titles.jobs.size || cron.busy || deferred.running || profiles.busy || sessionTransfer.running
+            || [...sideChat.parents.values()].some(parent => parent.preparing)) });
 
+    require('./pi-transcription-service').mountTranscriptionRoutes(router, transcription, store);
     require('./routes/settings').mountSettingsRoutes(router, { settingsService, nativeService, auxiliaryModels, titles, preferences, usage, store });
 
     require('./routes/media').mountMediaRoutes(router, { mediaAgentService, mediaLabService: options.mediaLabService, preferences, store });
@@ -611,6 +626,12 @@ function createPiAgentGateway(options = {}) {
                 socket.close(event.deleted ? 4004 : 1012, event.deleted ? 'Session deleted' : 'Session deletion failed');
             };
             sessionRemovalListeners.add(sessionRemoval);
+            const sessionMove = event => {
+                if (event.source.path !== workerSessionPath) return;
+                if (!event.failed) safeSend(socket, { type: 'gateway_session_moved', sourceCwd: event.source.cwd, session: event.session });
+                socket.close(event.failed ? 1012 : 4005, event.failed ? 'Session move failed' : 'Session moved');
+            };
+            sessionMoveListeners.add(sessionMove);
             const authTimer = setTimeout(() => socket.close(4401, 'Authentication timeout'), 10000);
             authTimer.unref?.();
 
@@ -878,6 +899,12 @@ function createPiAgentGateway(options = {}) {
                     } finally { settingsService.mutating = false; }
                     return;
                 }
+                if (message.type === 'set_model_speed') {
+                    const { id, type, token, ...input } = message;
+                    const data = await worker.modelSpeed.set(input);
+                    safeSend(socket, { type: 'response', id, command: type, success: true, data });
+                    return;
+                }
                 if (message.type === 'refresh_models') {
                     if (Object.keys(message).some(k => !['id', 'type', 'token'].includes(k))) throw new Error('模型刷新不接收其他参数');
                     if (worker.modelCatalog.inflight) {
@@ -971,6 +998,7 @@ function createPiAgentGateway(options = {}) {
 
             socket.on('close', () => {
                 sessionRemovalListeners.delete(sessionRemoval);
+                sessionMoveListeners.delete(sessionMove);
                 socketClosed = true;
                 clearTimeout(authTimer);
                 void sideConnection?.dispose();
@@ -993,8 +1021,10 @@ function createPiAgentGateway(options = {}) {
         await settingsService.loginService.dispose();
         const stoppingAuxiliaryModels = auxiliaryModels.dispose();
         const stoppingTitles = titles.dispose();
+        const stoppingTranscription = transcription.dispose();
         cron.stopping = true;
         const stoppingDeferred = deferred.dispose();
+        const stoppingMoves = sessionMoves.dispose();
         const stoppingThreads = agentThreads.dispose();
         const stoppingSide = sideChat.dispose();
         await stoppingSide; // Keep side workers alive until their in-memory usage is saved.
@@ -1004,9 +1034,9 @@ function createPiAgentGateway(options = {}) {
         await profiles.dispose();
         await usage.dispose();
         await stoppingThreads;
-        await Promise.all([stoppingDeferred, stoppingTitles, stoppingAuxiliaryModels]);
+        await Promise.all([stoppingDeferred, stoppingTitles, stoppingAuxiliaryModels, stoppingMoves, stoppingTranscription]);
         await cron.dispose();
-    }, store, supervisor, cron, deferred, sideChat, titles, auxiliaryModels, learning, knowledgeService, agentThreads };
+    }, store, supervisor, cron, deferred, sideChat, titles, auxiliaryModels, learning, knowledgeService, agentThreads, sessionMoves, transcription };
 }
 
 module.exports = { createPiAgentGateway };

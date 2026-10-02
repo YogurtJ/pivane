@@ -183,7 +183,7 @@ export function registerPromptTemplateDelegationBridge(options) {
                         requestId: legacy.requestId,
                         messages: [],
                         isError: true,
-                        errorText: "Legacy prompt-template tasks/worktree orchestration was removed; use workflowScript.",
+                        errorText: "Legacy prompt-template tasks/worktree orchestration was removed; use a workflow script.",
                     });
                     return;
                 }
@@ -195,7 +195,7 @@ export function registerPromptTemplateDelegationBridge(options) {
                 ...legacyRequest,
                 messages: [],
                 isError: true,
-                errorText: "Legacy prompt-template direct delegation was removed; use workflowScript through the subagent tool or structured delegation.",
+                errorText: "Legacy prompt-template direct delegation was removed; use a workflow script through the subagent tool or structured delegation.",
             });
             return;
         }

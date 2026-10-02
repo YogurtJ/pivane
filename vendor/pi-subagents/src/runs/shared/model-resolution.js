@@ -1,5 +1,5 @@
 import { splitKnownThinkingSuffix as splitThinkingSuffix } from "../../shared/model-info.js";
-import { checkModelScope } from "./model-scope.js";
+import { checkModelScope, SCOPED_PATTERN } from "./model-scope.js";
 export { splitThinkingSuffix };
 /** Aliases apply only to the resolved launch candidate (without its thinking suffix) and the exact raw response ID. */
 export function formatSubagentModelVerificationError(expectedModel, observedModel, availableModels, modelResponseAliases) {
@@ -34,6 +34,24 @@ export function normalizeParentModel(model) {
     if (!candidate.provider || !candidate.id)
         return undefined;
     return { provider: candidate.provider, id: candidate.id };
+}
+/**
+ * Provider/id ids of the host session's scoped-model snapshot (`ctx.scopedModels`).
+ * Pi reports an empty set when the session is unscoped (nothing configured, or no
+ * pattern matched), and then allows every model; `scoped` narrows that to `inherit`.
+ */
+export function scopedModelIdsFromContext(ctx) {
+    const scoped = ctx.scopedModels;
+    if (!Array.isArray(scoped))
+        return [];
+    const ids = [];
+    for (const entry of scoped) {
+        const model = entry?.model;
+        const normalized = normalizeParentModel(model);
+        if (normalized)
+            ids.push(`${normalized.provider}/${normalized.id}`);
+    }
+    return ids;
 }
 /**
  * Normalize a model id or provider segment for fuzzy comparison: case-fold,
@@ -114,7 +132,13 @@ function resolveBaseModelCandidate(baseModel, availableModels, preferredProvider
         if (exactId)
             return exactId;
     }
-    return fuzzyResolveModel(baseModel, availableModels, preferredProvider);
+    const fuzzy = fuzzyResolveModel(baseModel, availableModels, preferredProvider);
+    if (fuzzy || queryProvider === undefined)
+        return fuzzy;
+    // Some catalogs (OpenRouter's `openrouter/auto-beta`) repeat the provider inside the id.
+    const queryId = normalizeModelSegment(baseModel);
+    const prefixedIdMatches = availableModels.filter((entry) => normalizeModelSegment(entry.id) === queryId && normalizeModelSegment(entry.provider) === queryProvider);
+    return prefixedIdMatches.length === 1 ? prefixedIdMatches[0].fullId : undefined;
 }
 /**
  * Fuzzy-resolve a base model id (thinking suffix already stripped) against the
@@ -212,13 +236,16 @@ function defaultScopeWarn(violation) {
 function configuredScopes(scope) {
     return scope ? (Array.isArray(scope) ? scope : [scope]) : [];
 }
-function throwForUnresolvedEnforcedInheritScope(scope, includeMixed = false) {
-    const unresolvedInheritScope = configuredScopes(scope)
-        .find((entry) => entry.enforce === true && (includeMixed ? entry.allow?.includes(INHERIT_MODEL) : entry.allow?.length === 1 && entry.allow[0] === INHERIT_MODEL));
-    if (!unresolvedInheritScope)
+function throwForUnresolvedEnforcedReservedScope(scope, includeMixed = false) {
+    const unresolvedReservedScope = configuredScopes(scope)
+        .find((entry) => entry.enforce === true && (includeMixed
+        ? entry.allow?.some((pattern) => pattern === INHERIT_MODEL || pattern === SCOPED_PATTERN)
+        : entry.allow?.length === 1 && (entry.allow[0] === INHERIT_MODEL || entry.allow[0] === SCOPED_PATTERN)));
+    if (!unresolvedReservedScope)
         return;
-    const origin = unresolvedInheritScope.origin ?? "modelScope";
-    throw new Error(`Cannot enforce subagent model scope (${origin}): 'inherit' requires a current parent session model.`);
+    const origin = unresolvedReservedScope.origin ?? "modelScope";
+    const token = unresolvedReservedScope.allow?.includes(INHERIT_MODEL) ? INHERIT_MODEL : SCOPED_PATTERN;
+    throw new Error(`Cannot enforce subagent model scope (${origin}): '${token}' requires a current parent session model.`);
 }
 function enforceModelScopes(model, scope, source, onWarn) {
     const violations = configuredScopes(scope)
@@ -252,7 +279,7 @@ export function resolveSubagentModelOverride(requestedModel, parentModel, availa
     const trimmed = typeof requestedModel === "string" ? requestedModel.trim() : "";
     const explicit = trimmed && trimmed !== INHERIT_MODEL ? trimmed : undefined;
     if (!parentModel)
-        throwForUnresolvedEnforcedInheritScope(options?.scope, explicit === undefined || options?.source === "inherited");
+        throwForUnresolvedEnforcedReservedScope(options?.scope, explicit === undefined || options?.source === "inherited");
     let resolved;
     let resolvedFromRegistry = explicit === undefined;
     if (explicit === undefined) {
@@ -302,7 +329,7 @@ export function inheritsParentModel(explicitModel, agentModel, parentModel) {
 }
 export function resolveModelSelection(model, availableModels, preferredProvider, options) {
     if (!model)
-        throwForUnresolvedEnforcedInheritScope(options?.scope, true);
+        throwForUnresolvedEnforcedReservedScope(options?.scope, true);
     const origin = options?.origin ?? (options?.primaryModelFromParent ? "inherited" : "configured");
     const requestedModel = origin === "inherited" ? undefined : model;
     const scopes = configuredScopes(options?.scope);

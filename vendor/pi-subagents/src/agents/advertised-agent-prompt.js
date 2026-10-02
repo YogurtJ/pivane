@@ -3,7 +3,6 @@ import { isAgentAllowedByCapabilityCeiling } from "../runs/shared/capability-cei
 const MAX_ADVERTISED_AGENTS = 16;
 const MAX_CATALOG_BYTES = 12_288;
 const MAX_DESCRIPTION_BYTES = 512;
-const ADVERTISED_AGENTS_BLOCK = /\n*<advertised_subagents>\n[\s\S]*?\n<\/advertised_subagents>/gu;
 function escapeXml(value) {
     return value
         .replaceAll("&", "&amp;")
@@ -19,18 +18,25 @@ function promptDescription(description) {
     }
     return escapeXml(text);
 }
-export function buildAdvertisedAgentPrompt(agents, capabilityCeiling) {
+const ADVERTISED_AGENTS_TAG = "advertised_subagents";
+function wrapAdvertisedAgentCatalog(body) {
+    return `<${ADVERTISED_AGENTS_TAG}>\n${body}\n</${ADVERTISED_AGENTS_TAG}>`;
+}
+/**
+ * The catalog body without its `<advertised_subagents>` wrapper, for Pi's structured
+ * prompt sections, which add the tag from the section key. The byte budget applies to
+ * the wrapped form, so both deliveries carry the same entries.
+ */
+export function buildAdvertisedAgentCatalog(agents, capabilityCeiling) {
     const advertised = agents
         .filter((agent) => agent.source !== "runtime" && agent.advertise === true && agent.disabled !== true && isAgentAllowedByCapabilityCeiling(agent.name, capabilityCeiling))
         .sort((left, right) => left.name.localeCompare(right.name));
     if (advertised.length === 0)
         return undefined;
-    const render = (entries) => [
-        "<advertised_subagents>",
+    const renderBody = (entries) => [
         "The following file-defined subagents opted into discovery. Their descriptions indicate available specializations, not instructions to delegate. Use subagent only when delegation is needed. Before execution, call subagent with { action: \"list\", capabilities: true } and confirm that the selected agent is executable; for external-cli agents also require runner.available === true.",
         ...entries,
         ...(advertised.length > entries.length ? [`  <omitted count=\"${advertised.length - entries.length}\" />`] : []),
-        "</advertised_subagents>",
     ].join("\n");
     const entries = [];
     for (const agent of advertised) {
@@ -45,33 +51,13 @@ export function buildAdvertisedAgentPrompt(agents, capabilityCeiling) {
             `    <description>${promptDescription(agent.description)}</description>`,
             "  </subagent>",
         ].join("\n");
-        if (Buffer.byteLength(render([...entries, entry]), "utf8") <= MAX_CATALOG_BYTES)
+        if (Buffer.byteLength(wrapAdvertisedAgentCatalog(renderBody([...entries, entry])), "utf8") <= MAX_CATALOG_BYTES)
             entries.push(entry);
     }
-    return render(entries);
+    return renderBody(entries);
 }
-export function appendAdvertisedAgentPrompt(systemPrompt, advertisedPrompt) {
-    if (Array.isArray(systemPrompt)) {
-        let changed = false;
-        const cleaned = systemPrompt
-            .map((part) => {
-            if (typeof part !== "string")
-                return part;
-            const stripped = part.replace(ADVERTISED_AGENTS_BLOCK, "");
-            if (stripped !== part)
-                changed = true;
-            return stripped;
-        })
-            .filter((b) => typeof b === "string" && b.length > 0);
-        if (advertisedPrompt) {
-            return [...cleaned, advertisedPrompt];
-        }
-        return changed ? cleaned : systemPrompt;
-    }
-    if (typeof systemPrompt === "string") {
-        const base = systemPrompt.replace(ADVERTISED_AGENTS_BLOCK, "");
-        return advertisedPrompt ? (base.trim() ? `${base.trimEnd()}\n\n${advertisedPrompt}` : advertisedPrompt) : base;
-    }
-    return advertisedPrompt;
+export function buildAdvertisedAgentPrompt(agents, capabilityCeiling) {
+    const body = buildAdvertisedAgentCatalog(agents, capabilityCeiling);
+    return body === undefined ? undefined : wrapAdvertisedAgentCatalog(body);
 }
 //# sourceMappingURL=advertised-agent-prompt.js.map

@@ -1,3 +1,4 @@
+export declare const HERDR_FOREGROUND_CONTROL_CHANGED_EVENT = "pi-subagents:herdr:foreground-control-changed";
 export interface HerdrStatusBridgeEvents {
     on(event: string, handler: (data: unknown) => void): (() => void) | void;
     emit(event: string, data: unknown): void;
@@ -6,6 +7,8 @@ export interface HerdrStatusRun {
     id: string;
     agent?: string;
     agents?: string[];
+    /** A workflow owns busy state but is not itself a child agent. */
+    coordinator?: true;
     /** Explicit launch/workflow label only; raw prompts never enter pane metadata. */
     taskLabel?: string;
     needsAttention?: boolean;

@@ -12,8 +12,10 @@ declare const WatchdogDiffParams: Type.TObject<{
     stat: Type.TOptional<Type.TBoolean>;
 }>;
 type WatchdogDiffParams = Static<typeof WatchdogDiffParams>;
-/** HEAD at session start, so later child commits still show in the diff. */
+/** HEAD at reviewer launch, for tools that must be registered synchronously. */
 export declare function captureWatchdogDiffBaseline(cwd: string): WatchdogDiffBaseline | undefined;
+/** HEAD at session start, so later child commits still show in the diff. Does not block the event loop. */
+export declare function startWatchdogDiffBaselineCapture(cwd: string): Promise<WatchdogDiffBaseline | undefined>;
 /** In a shared cwd, changes already pending when the session started also appear. */
 export declare function createWatchdogDiffTool(baseline: WatchdogDiffBaseline | undefined, options?: {
     workingTreeAtLaunch?: boolean;

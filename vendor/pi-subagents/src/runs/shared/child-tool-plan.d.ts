@@ -30,6 +30,8 @@ export interface ResolvePiLaunchToolPlanInput {
     agentName?: string;
     permissionRules?: PermissionRules;
     runtimeSnapshotHost?: McpRuntimeSnapshotHost;
+    /** The parent's built-in MCP selections; the background runner has no host to resolve selectors against. */
+    builtinMcpTools?: ResolvedMcpDirectToolSelection[];
 }
 export interface PiLaunchToolPlan {
     capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
@@ -40,6 +42,8 @@ export interface PiLaunchToolPlan {
     resolvedMcpSelections: ResolvedMcpDirectToolSelection[];
     effectiveMcpSelections: ResolvedMcpDirectToolSelection[];
     effectiveMcpTools: string[];
+    /** Effective selections granted from Pi's built-in MCP; undefined when the selectors did not resolve against it. */
+    builtinMcpTools?: ResolvedMcpDirectToolSelection[];
     explicitToolAllowlist: boolean;
     internalTools: string[];
     effectiveToolAllowlist: string[];

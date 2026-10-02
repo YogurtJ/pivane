@@ -11,6 +11,13 @@ interface ExternalJobBridgeRequest {
     claimedAt?: number;
 }
 export type ExternalJobBridgeCancel = () => ExternalJobProviderError | undefined;
+export declare function externalJobBridgeEligibility(steps: unknown): "required" | "not-required" | "unknown";
+/** Services the bridges of external-job runs that a child session launched; only the root has an async job tracker. */
+export declare function createChildExternalJobBridgeSweeper(): {
+    track(runId: string, asyncDir: string): void;
+    sweep: () => number;
+    dispose(): void;
+};
 export declare function serviceExternalJobBridgeRequests(asyncDir: string): void;
 export declare function serviceExternalJobBridgeRequestFile(asyncDir: string, file: string): void;
 export declare function requestExternalJobOperation<T extends ExternalJobHandle | ExternalJobResult>(asyncDir: string, request: Omit<ExternalJobBridgeRequest, "id" | "createdAt">, timeoutMs?: number, cancel?: ExternalJobBridgeCancel): Promise<T>;

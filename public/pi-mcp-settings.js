@@ -12,7 +12,7 @@
     const select = (items, value) => { const n = el('select'); for (const [v, text] of items) n.append(el('option', text, { value: v })); n.value = value; return n; };
     const label = (text, field) => { const n = el('label', text); n.append(field); return n; };
     const badge = (text, kind = '') => { const n = el('span', text, { class: 'mcp-badge' }); if (kind) n.dataset.kind = kind; return n; };
-    const exposures = ['codemode', 'codemode-deferred', 'deferred', 'direct', 'hidden'].map(v => [v, v]);
+    const exposures = ['codemode', 'deferred', 'direct', 'hidden'].map(v => [v, v]);
     // Card heading: icon, title, optional explanation and trailing actions.
     function heading(glyph, title, description, ...actions) {
         const head = el('div', null, { class: 'mcp-card-head' });
@@ -195,8 +195,12 @@
             control('exposure', t('工具暴露', 'Tool exposure'), select(exposures, server?.exposure || 'codemode'), n => n.value);
             const timeout = el('input', null, { type: 'number', min: '0', step: 'any' }); timeout.value = server?.timeout ?? 60;
             control('timeout', t('超时（秒）', 'Timeout (seconds)'), timeout, n => { const v = Number(n.value); if (!n.value || !Number.isFinite(v) || v <= 0) throw new Error('timeout'); return v; });
+            const description = el('textarea', null, { maxlength: '4096', 'aria-label': t('服务器说明', 'Server description') }); description.value = server?.config?.description || '';
+            description.dataset.mcpWrite = ''; fields.append(fieldLabel(t('服务器说明', 'Server description'), 'description', description, true));
+            const previousDescription = description.value;
+            readers.push(config => { if (description.value === previousDescription) return; if (description.value.length > 4096) throw new Error('description'); config.description = description.value || null; });
             const tools = el('textarea', null, { spellcheck: 'false' }); tools.value = JSON.stringify(server?.config?.toolExposure || {}, null, 2);
-            control('toolExposure', t('逐个工具暴露（有序 JSON）', 'Per-tool exposure (ordered JSON)'), tools, n => { const v = JSON.parse(n.value); if (!v || Array.isArray(v) || typeof v !== 'object' || Object.values(v).some(x => !exposures.some(([e]) => e === x))) throw new Error('toolExposure'); return v; }, true);
+            control('toolExposure', t('逐个工具暴露（有序 JSON）', 'Per-tool exposure (ordered JSON)'), tools, n => { const v = JSON.parse(n.value); if (!v || Array.isArray(v) || typeof v !== 'object' || Object.values(v).some(x => x !== 'codemode-deferred' && !exposures.some(([e]) => e === x))) throw new Error('toolExposure'); return v; }, true);
             editor.append(fields);
             function group(title, description) {
                 const box = el('fieldset', null, { class: 'mcp-group' });
@@ -235,8 +239,14 @@
                 adder.append(label(t('新增字段：', 'New field: ') + kind, newKey), writeButton(t('添加字段', 'Add field'), () => { const k = newKey.value.trim(); if (!k || ['__proto__', 'constructor', 'prototype'].includes(k) || keys.has(k)) return; keys.add(k); privateField(rows, `${kind}.${k}`, false); newKey.value = ''; controls(); }, { glyph: 'fa-plus' }));
                 box.append(adder);
             }
-            const oauth = group('OAuth');
-            for (const key of ['clientId', 'clientSecret', 'callbackUrl', 'scope']) privateField(oauth, `oauth.${key}`, server?.secretFields?.[`oauth.${key}`]?.present === true);
+            const providerAuth = group(t('供应商认证', 'Provider authentication'), t('仅适用于全局 HTTP 配置（HTTPS 或本机回环）。使用 /login 的供应商凭据；优先于 OAuth，有令牌时替换 Authorization 请求头。更改供应商前请明确移除该请求头；不会自动删除 OAuth 设置。', 'Global HTTP only (HTTPS or loopback). Uses /login provider credentials; takes precedence over OAuth and replaces the Authorization header when a token is available. Explicitly remove that header before changing provider; OAuth settings are retained.'));
+            const provider = el('input', null, { 'aria-label': 'auth.provider', autocomplete: 'off' }); provider.value = server?.config?.auth?.provider || '';
+            if (snapshot.scope === 'global') provider.dataset.mcpWrite = ''; else provider.disabled = true;
+            providerAuth.append(fieldLabel(t('供应商 ID', 'Provider ID'), 'auth.provider', provider));
+            const previousProvider = provider.value;
+            readers.push(config => { if (provider.value !== previousProvider) config.auth = { provider: provider.value || null }; });
+            const oauth = group('OAuth', t('元数据地址必须为 HTTPS 或本机回环 HTTP；仅填写可信的授权服务器文档地址。', 'Metadata URL must use HTTPS or loopback HTTP; use only an authorization server document you trust.'));
+            for (const key of ['clientId', 'clientSecret', 'callbackUrl', 'scope', 'clientName', 'authServerMetadataUrl']) privateField(oauth, `oauth.${key}`, server?.secretFields?.[`oauth.${key}`]?.present === true);
             const port = el('input', null, { type: 'number', min: '1', max: '65535', 'aria-label': 'oauth.callbackPort' }); port.value = server?.config?.oauth?.callbackPort ?? ''; port.dataset.mcpWrite = '';
             oauth.append(fieldLabel('', 'oauth.callbackPort', port)); const previousPort = port.value;
             readers.push(config => { if (port.value === previousPort) return; const value = port.value === '' ? null : Number(port.value); if (value !== null && (!Number.isInteger(value) || value < 1 || value > 65535)) throw new Error('callbackPort'); config.oauth ||= Object.create(null); config.oauth.callbackPort = value; });

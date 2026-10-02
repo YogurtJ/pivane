@@ -23,6 +23,7 @@ interface ReconcileAsyncRunOptions {
     startedRun?: StartedRunMetadata;
     missingStatusGraceMs?: number;
     staleAlivePidMs?: number;
+    pidNamespaceScope?: () => string | undefined;
 }
 interface ReconcileAsyncRunResult {
     status: AsyncStatus | null;

@@ -71,6 +71,7 @@ export interface RunChildSessionInput {
     timeoutMessage?: string;
     stopMessage?: string;
     onChildEvent?: (event: ChildEvent) => void;
+    onContextWindow?: (contextWindow: number) => void;
     transcriptWriter?: ChildTranscriptWriter;
     toolTimeoutMs?: number;
     runDeadlineAt?: number;

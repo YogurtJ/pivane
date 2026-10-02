@@ -395,6 +395,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <div class="settings-row-actions">
                         ${state.modelSnapshot.modelThinking ? '<button type="button" data-action="thinking">Thinking</button>' : ''}
+                        ${state.modelSnapshot.modelSpeed && model.speedSupported ? `<button type="button" data-action="speed">${translateUi('速度')}</button>` : ''}
                         <button type="button" data-action="test" ${model.available ? '' : 'disabled'}><i class="fa-solid fa-vial"></i> ${translateUi("测试")}</button>
                         ${isDefault ? '' : `<button type="button" data-action="default"><i class="fa-solid fa-star"></i> ${translateUi("设为默认")}</button>`}
                         ${editable ? `<button type="button" data-action="edit" aria-label="${translateUi("编辑模型")}"><i class="fa-solid fa-pen"></i></button><button type="button" class="danger" data-action="delete" aria-label="${translateUi("删除模型")}"><i class="fa-solid fa-trash"></i></button>` : ''}
@@ -509,6 +510,66 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             pollLogin(login);
         }, 750);
+    }
+
+    function openSpeedEditor(provider, modelId) {
+        const snapshot = state.modelSnapshot;
+        const model = snapshot.models.find(item => item.provider === provider && item.id === modelId);
+        const modes = model.speed?.modes || {};
+        const labels = { auto: translateUi('跟随供应商'), standard: translateUi('标准 Standard'), fast: 'Fast', ultrafast: 'Ultrafast' };
+        openEditor(`${model.name} · ${translateUi('速度')}`, `
+            <form id="settings-speed-form" class="settings-form">
+                <p>${translateUi('默认速度用于新会话；已有会话保留其选择。配置保存后，空闲重开运行实例或刷新模型目录生效。')}</p>
+                <label><span>${translateUi('此模型默认速度')}</span><select name="level"></select></label>
+                <details class="settings-thinking-advanced"><summary>${translateUi('高级：此渠道支持的速度与费用倍率')}</summary>
+                    <p>${translateUi('仅按渠道实际能力启用。倍率相对于此模型的标准价格，快速度可能增加费用。未启用加速档位时，会话隐藏速度选择器。')}</p>
+                    ${['fast', 'ultrafast'].map(level => `<div class="settings-thinking-map-row" data-speed="${level}">
+                        <label class="settings-checkbox-field"><input name="${level}" type="checkbox" ${modes[level] ? 'checked' : ''}><span>${level === 'fast' ? 'Fast' : 'Ultrafast'}</span></label>
+                        <label><span>${translateUi('服务档位')}</span><select name="${level}Tier">${(level === 'fast' ? ['fast', 'priority'] : ['ultrafast']).map(tier => `<option>${tier}</option>`).join('')}</select></label>
+                        <label><span>${translateUi('费用倍率')}</span><input name="${level}Multiplier" type="number" min="1" max="100" step="0.01" value="${modes[level]?.costMultiplier || (level === 'fast' ? 2 : 6)}"></label>
+                    </div>`).join('')}
+                </details>
+                <p id="settings-speed-error" role="alert"></p>
+                <div class="settings-form-actions"><button type="button" id="settings-speed-reset">${translateUi('恢复内置速度配置')}</button><button class="settings-primary-button" type="submit">${translateUi('保存')}</button></div>
+            </form>`);
+        const epoch = state.editorEpoch, form = $('settings-speed-form');
+        let selected = model.speed?.defaultLevel || 'auto';
+        const sync = () => {
+            selected = form.elements.level.value || selected;
+            const levels = ['auto'];
+            if (form.elements.fast.checked || form.elements.ultrafast.checked) levels.push('standard');
+            for (const level of ['fast', 'ultrafast']) {
+                const enabled = form.elements[level].checked;
+                form.elements[level + 'Tier'].disabled = form.elements[level + 'Multiplier'].disabled = !enabled;
+                if (enabled) levels.push(level);
+            }
+            form.elements.level.replaceChildren(...levels.map(level => new Option(labels[level], level)));
+            form.elements.level.value = levels.includes(selected) ? selected : 'auto';
+        };
+        for (const level of ['fast', 'ultrafast']) {
+            form.elements[level + 'Tier'].value = modes[level]?.serviceTier || level;
+            form.elements[level].addEventListener('change', sync);
+        }
+        sync();
+        const save = async (speed, button) => {
+            const buttons = [...form.querySelectorAll('button')]; buttons.forEach(node => { node.disabled = true; });
+            setBusy(button, true, translateUi('保存'));
+            try {
+                await apiFetch('/api/pi/settings/models/speed', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ provider, modelId, expectedRevision: snapshot.revision, speed }) });
+                if (state.editorEpoch === epoch) closeEditor();
+                state.modelSnapshot = null; await loadModels(true);
+                toast(translateUi('速度配置已保存'), 'success');
+            } catch (error) { if (state.editorEpoch === epoch) $('settings-speed-error').textContent = error.message; }
+            finally { buttons.forEach(node => { node.disabled = false; }); setBusy(button, false); }
+        };
+        form.addEventListener('submit', event => {
+            event.preventDefault(); const modes = {};
+            for (const level of ['fast', 'ultrafast']) if (form.elements[level].checked) modes[level] = {
+                serviceTier: form.elements[level + 'Tier'].value, costMultiplier: Number(form.elements[level + 'Multiplier'].value) };
+            void save({ modes, defaultLevel: form.elements.level.value }, form.querySelector('[type=submit]'));
+        });
+        $('settings-speed-reset').addEventListener('click', event => void save(null, event.currentTarget));
     }
 
     function openThinkingEditor(provider, modelId) {
@@ -692,7 +753,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 await apiFetch(`/api/pi/settings/custom-providers/${encodeURIComponent(targetProvider)}/models`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
                 });
-                closeEditor(); state.modelSnapshot = null; await loadModels(true); toast(translateUi("自定义模型已保存"), 'success');
+                closeEditor(); state.modelSnapshot = null; await loadModels(true); toast(translateUi("已保存。重新加载资源或下次打开会话后生效。"), 'success', 6500);
             } catch (error) { toast(error.message, 'error'); }
             finally { setBusy(submit, false); }
         });
@@ -890,6 +951,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const provider = row.dataset.providerId; const modelId = row.dataset.modelId; const action = button.dataset.action;
         const custom = customProvider(provider)?.models.find(model => model.id === modelId);
         if (action === 'thinking') openThinkingEditor(provider, modelId);
+        if (action === 'speed') openSpeedEditor(provider, modelId);
         if (action === 'test') testModel(provider, modelId, button);
         if (action === 'default') setDefaultModel(provider, modelId, button);
         if (action === 'edit') openModelEditor(provider, custom);

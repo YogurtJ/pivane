@@ -1,6 +1,7 @@
 // Project-owned SDK entrypoint. Inherits context through a private pipe, never argv or a session file.
 import { Socket } from 'node:net';
 import sideTools from './pi-side-tools.js';
+import { registerModelSpeed } from './pi-model-speed-extension.mjs';
 import {
     createAgentSessionRuntime, createAgentSessionServices, createAgentSessionFromServices,
     getAgentDir, SessionManager, SettingsManager, runRpcMode,
@@ -31,7 +32,8 @@ try {
         let gateLoaded = false;
         const services = await createAgentSessionServices({ cwd, agentDir, settingsManager,
             resourceLoaderOptions: { noExtensions: true, noSkills: true, noPromptTemplates: true, noContextFiles: true, noThemes: true,
-                extensionFactories: tools.length ? [{ name: 'pivane-side-tools', factory: pi => { sideTools.sideToolGate(pi); gateLoaded = true; } }] : [],
+                extensionFactories: [pi => registerModelSpeed(pi, { agentDir, inherited: seed.speed, bridge: true, command: true, preserveExisting: false }),
+                    ...(tools.length ? [{ name: 'pivane-side-tools', factory: pi => { sideTools.sideToolGate(pi); gateLoaded = true; } }] : [])],
                 systemPromptOverride: () => seed.systemPrompt, appendSystemPromptOverride: () => [],
                 agentsFilesOverride: () => ({ agentsFiles: [] }) },
             resourceLoaderReloadOptions: { projectTrusted: false },

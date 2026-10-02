@@ -13,6 +13,8 @@
  * inputs so it can be unit-tested without touching the filesystem or config.
  */
 import { splitKnownThinkingSuffix } from "../../shared/model-info.js";
+export const SCOPED_PATTERN = "scoped";
+const MAX_RENDERED_PATTERNS = 8;
 function stripThinkingSuffix(model) {
     return splitKnownThinkingSuffix(model).baseModel;
 }
@@ -46,17 +48,28 @@ export function checkModelScope(model, scope, source) {
     const baseModel = stripThinkingSuffix(model);
     const severity = source === "explicit" || scope.strict === true ? "error" : "warn";
     const origin = scope.origin ?? "modelScope";
+    const rendered = allow.length <= MAX_RENDERED_PATTERNS
+        ? allow.join(", ")
+        : `${allow.slice(0, MAX_RENDERED_PATTERNS).join(", ")}, … (${allow.length} patterns total)`;
     return {
         model: baseModel,
         severity,
         allowedPatterns: allow,
         origin,
         message: `Model '${baseModel}' is outside the configured subagent model scope (${origin}). ` +
-            `Allowed patterns: ${allow.join(", ")}.`,
+            `Allowed patterns: ${rendered}.`,
     };
 }
-function expandInheritPattern(pattern, parentModel) {
-    return pattern === "inherit" && parentModel ? `${parentModel.provider}/${parentModel.id}` : pattern;
+/** An empty scoped snapshot degrades `scoped` to `inherit`; absent inputs stay literal so enforced resolution fails closed. */
+function expandReservedPatterns(pattern, parentModel, scopedModelIds) {
+    if (pattern === SCOPED_PATTERN) {
+        if (scopedModelIds?.length)
+            return [...scopedModelIds];
+        return parentModel ? [`${parentModel.provider}/${parentModel.id}`] : [pattern];
+    }
+    if (pattern === "inherit")
+        return parentModel ? [`${parentModel.provider}/${parentModel.id}`] : [pattern];
+    return [pattern];
 }
 function assertRecord(value, field, meta, expected = "an object") {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -99,24 +112,27 @@ function parseScopeRule(input, field, meta) {
     return rule;
 }
 /** Resolve the global and matching agent policies into independent launch-time checks. */
-export function resolveModelScopesForAgent(config, agentName, parentModel) {
+export function resolveModelScopesForAgent(config, agentName, parentModel, scopedModelIds) {
     if (!config)
         return [];
     const scopes = [];
     if (config.allow) {
-        scopes.push({
-            ...(config.enforce !== undefined ? { enforce: config.enforce } : {}),
-            ...(config.strict !== undefined ? { strict: config.strict } : {}),
-            allow: config.allow.map((pattern) => expandInheritPattern(pattern, parentModel)),
+        const globalScope = {
+            allow: config.allow.flatMap((pattern) => expandReservedPatterns(pattern, parentModel, scopedModelIds)),
             origin: "modelScope",
-        });
+        };
+        if (config.enforce !== undefined)
+            globalScope.enforce = config.enforce;
+        if (config.strict !== undefined)
+            globalScope.strict = config.strict;
+        scopes.push(globalScope);
     }
     const agentScope = config.agents?.[agentName];
     if (agentScope?.allow) {
         scopes.push({
             enforce: agentScope.enforce ?? config.enforce,
             strict: agentScope.strict ?? config.strict,
-            allow: agentScope.allow.map((pattern) => expandInheritPattern(pattern, parentModel)),
+            allow: agentScope.allow.flatMap((pattern) => expandReservedPatterns(pattern, parentModel, scopedModelIds)),
             origin: `modelScope.agents.${agentName}`,
         });
     }

@@ -64,13 +64,27 @@ async function main() {
                     return sse(res, { content: JSON.stringify({ groups: ids.length >= 2 ? [{ itemIds: ids, content: MERGED, category: 'preference' }] : [] }) }, 'stop');
                 }
                 // An English correction whose learned text carries a credential must be refused by the scan.
-                if (raw.includes('SECRET_LEARN_FIXTURE') && !raw.includes('consolidate')) return sse(res, { content: JSON.stringify({ content: `Deploy with token ${SECRET}.` }) }, 'stop');
-                // Only the explicit preference is durable; anything else yields no proposal.
-                return sse(res, { content: JSON.stringify(raw.includes('pnpm') && !raw.includes(LEARNED) ? { content: LEARNED } : {}) }, 'stop');
+                if (raw.includes('SECRET_LEARN_FIXTURE') && !raw.includes('consolidate')) return sse(res, { content: JSON.stringify({ action: 'create', kind: 'memory', target: 'memory', category: 'fact', content: `Deploy with token ${SECRET}.` }) }, 'stop');
+                // The synthetic learner makes the explicit decision required by the current comparison protocol.
+                return sse(res, { content: JSON.stringify(raw.includes('pnpm') && !raw.includes(LEARNED)
+                    ? { action: 'create', kind: 'memory', target: 'memory', category: 'preference', content: LEARNED }
+                    : { action: 'skip' }) }, 'stop');
             }
             chat.push({ system: JSON.stringify(body.messages?.[0] || ''), last: body.messages?.at(-1) });
             const last = body.messages?.at(-1);
-            if (last?.role === 'tool') return sse(res, { content: 'Tool step finished.' }, 'stop');
+            if (last?.role === 'tool') {
+                let comparison;
+                try { const data = JSON.parse(typeof last.content === 'string' ? last.content : last.content.map(p => p.text || '').join(''));
+                    if (data.status === 'comparison-required') comparison = data; } catch {}
+                if (comparison) {
+                    const issued = body.messages.findLast(message => message.role === 'assistant' && message.tool_calls)?.tool_calls.find(call => call.id === last.tool_call_id);
+                    assert.ok(issued, 'comparison result belongs to the synthetic create call');
+                    const args = JSON.parse(issued.function.arguments);
+                    assert.ok(!comparison.candidates.some(item => item.content === args.content), 'synthetic caller reads candidates before choosing an independent create');
+                    return sse(res, toolCall(issued.function.name, { ...args, comparisonToken: comparison.comparisonToken }), 'tool_calls');
+                }
+                return sse(res, { content: 'Tool step finished.' }, 'stop');
+            }
             const said = JSON.stringify(last?.content || '');
             if (said.includes('MEMORY_TOOL_FIXTURE')) return sse(res, toolCall('memory_add', { target: 'memory', content: TOOL_FACT }), 'tool_calls');
             if (said.includes('FAILURE_TOOL_FIXTURE')) return sse(res, toolCall('memory_add', { target: 'failure', category: 'failure',
@@ -229,11 +243,14 @@ async function main() {
         step('memory injected and agent tool write journaled', { memoryReadEntries: read.length });
 
         // 6. Upstream guidance steers corrections to target "failure"; record what really happens.
+        const previousToolCount = SessionManager.open(session.path).getEntries()
+            .filter(e => e.type === 'message' && e.message.role === 'toolResult' && e.message.toolName === 'memory_add').length;
         await send(chatView, 'FAILURE_TOOL_FIXTURE: note that npm failed.');
-        await until('failure tool settled', async () => chat.at(-1)?.last?.role === 'tool' && chat.at(-1));
-        const toolResults = SessionManager.open(session.path).getEntries()
-            .filter(e => e.type === 'message' && e.message.role === 'toolResult' && e.message.toolName === 'memory_add');
-        const failureResult = toolResults.at(-1).message;
+        const failureResult = await until('failure tool committed after comparison', async () => {
+            const results = SessionManager.open(session.path).getEntries()
+                .filter(e => e.type === 'message' && e.message.role === 'toolResult' && e.message.toolName === 'memory_add');
+            return results.length > previousToolCount && results.at(-1).message.details?.success === true && results.at(-1).message;
+        });
         assert.equal(failureResult.details?.success, true, `failure write: ${JSON.stringify(failureResult.content)}`);
         // A concurrent learning write can leave the listing briefly pending; read until ready.
         const failureItem = await until('failure memory listed', async () => {

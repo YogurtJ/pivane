@@ -158,14 +158,17 @@ async function run(browser, base, viewport, preferences = {}) {
     });
     assert.deepEqual(groups.preview.rows, ['s0', 's1', 's2', 's3', 's4', 's5', 's8']);
     assert.equal(groups.search.rows.length, 9); assert.equal(groups.preview.unsafe, 0); assert.equal(groups.unchanged, true);
-    // Running input keeps steering/follow-up, send and stop, without reducing text width.
+    // Running input with a draft keeps Send; queue mode lives in the plus menu.
     streaming = true; emit({ type: 'agent_start' });
-    await page.locator('#pi-delivery-mode.visible').waitFor();
+    await page.waitForFunction(() => document.querySelector('.pi-composer').dataset.running === 'true');
+    await page.locator('#pi-composer-add-button').click();
+    assert.equal(await page.locator('#pi-delivery-mode').isVisible(), true);
+    await page.keyboard.press('Escape');
     const running = await measure();
-    // Desktop keeps the full text width while running; phones keep the original single row with Stop added.
+    // Running and idle keep the same main action width.
     if (viewport.width > 680) assert.ok(Math.abs(running.input.width - before.input.width) < 2);
     else assert.ok(running.input.width >= 96, JSON.stringify(running.input));
-    assert.equal(await page.locator('#pi-send-button').isVisible(), true); assert.equal(await page.locator('#pi-stop-button').isVisible(), true);
+    assert.equal(await page.locator('#pi-send-button').isVisible(), true); assert.equal(await page.locator('#pi-stop-button').isVisible(), false);
     // A long unbroken provider error wraps; the transcript never scrolls or pans sideways.
     const failure = { role: 'assistant', content: [], stopReason: 'error', timestamp: Date.now(), provider: 'fixture', model: 'model',
         errorMessage: '503: ' + JSON.stringify({ message: 'auth_unavailable: no auth available providers=codex,model=gpt;' + 'x'.repeat(260), type: 'server_error', code: 'internal_server_error' }) };

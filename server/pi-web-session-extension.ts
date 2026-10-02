@@ -1,3 +1,4 @@
+import { registerModelSpeed } from './pi-model-speed-extension.mjs';
 import { registerCron } from './pi-cron-runtime.js';
 import { registerTaskProgress } from './pi-task-progress-extension.ts';
 import { registerDeliverables } from './pi-deliverables-extension.ts';
@@ -34,6 +35,7 @@ function currentSystemPrompt(ctx: any, messages: any[]) {
 
 export default async function (pi: ExtensionAPI) {
     const cron = registerCron(pi);
+    const modelSpeed = registerModelSpeed(pi, { agentDir: getAgentDir(), bridge: true });
     registerToolProvenance(pi);
     registerExtensionAssistant(pi);
     registerAgentThreads(pi);
@@ -71,7 +73,7 @@ export default async function (pi: ExtensionAPI) {
         }
     });
     pi.registerCommand(INTERNAL_COMMAND, {
-        description: `Pivane internal session navigation and context snapshot; managed-v1; cron-v1; task-v1; task-results-v1; agent-messages-v1; title-v1; model-catalog-v1; resources-v1; history-v1; tree-v1; tree-presentation-v1; history-presentation-v1; history-body-v1; system-prompt-v1; subagents-v1; mcp-v1; reload-v1:${randomUUID()}`,
+        description: `Pivane internal session navigation and context snapshot; managed-v1; cron-v1; task-v1; task-results-v1; agent-messages-v1; title-v1; model-catalog-v1; speed-v1; resources-v1; history-v1; tree-v1; tree-presentation-v1; history-presentation-v1; history-body-v1; system-prompt-v1; subagents-v1; mcp-v1; reload-v1:${randomUUID()}`,
         handler: async (args, ctx) => {
             const request = JSON.parse(args);
             if (ctx.mode !== 'rpc' || request.token !== process.env.PI_WEB_NAVIGATION_TOKEN) throw new Error('Invalid navigation request');
@@ -101,6 +103,11 @@ export default async function (pi: ExtensionAPI) {
                 }
                 if (Buffer.byteLength(JSON.stringify(response)) > 512 * 1024) response = { pivaneMcp: request.id, success: false, code: 'MCP_RESPONSE_TOO_LARGE' };
                 ctx.ui.notify(JSON.stringify(response));
+                return;
+            }
+            if (request.mode === 'speed') {
+                try { ctx.ui.notify(JSON.stringify({ pivaneSpeedReply: request.id, success: true, data: modelSpeed.control(ctx, request.input) })); }
+                catch (error: any) { ctx.ui.notify(JSON.stringify({ pivaneSpeedReply: request.id, success: false, error: error.message })); }
                 return;
             }
             if (request.mode === 'cron') {
@@ -146,10 +153,11 @@ export default async function (pi: ExtensionAPI) {
                     if (!ctx.isIdle() || ctx.hasPendingMessages()) throw new Error('busy');
                     const refreshed = await ctx.modelRegistry.refresh({ allowNetwork: false, signal: AbortSignal.timeout(8000) });
                     if (refreshed.aborted) throw new Error('aborted');
+                    modelSpeed.reload(ctx);
                     const available = ctx.modelRegistry.getAvailable();
                     if (available.length > 5000) throw new Error('model-limit');
                     const models = available.map(m => ({ id: m.id, provider: m.provider, name: m.name, input: m.input,
-                        reasoning: m.reasoning, contextWindow: m.contextWindow, maxTokens: m.maxTokens, cost: m.cost }));
+                        reasoning: m.reasoning, contextWindow: m.contextWindow, maxTokens: m.maxTokens, cost: m.cost, speed: modelSpeed.capability(m) }));
                     const response = { pivaneModels: request.id, success: true, data: { models } };
                     if (Buffer.byteLength(JSON.stringify(response)) > 1024 * 1024) throw new Error('model-budget');
                     ctx.ui.notify(JSON.stringify(response));
@@ -231,6 +239,7 @@ export default async function (pi: ExtensionAPI) {
                     });
                     response = { pivaneContext: request.id, success: true, snapshot: {
                         systemPrompt: currentSystemPrompt(ctx, context.messages), messages, thinkingLevel: pi.getThinkingLevel(),
+                        speed: modelSpeed.snapshot(ctx),
                         model: ctx.model && { provider: ctx.model.provider, id: ctx.model.id, name: ctx.model.name,
                             contextWindow: ctx.model.contextWindow, maxTokens: ctx.model.maxTokens, input: ctx.model.input },
                         source: { cwd: ctx.cwd, sessionId: ctx.sessionManager.getSessionId(), name: ctx.sessionManager.getSessionName() || '主会话' },

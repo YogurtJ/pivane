@@ -9,12 +9,14 @@ const { createHash } = require('node:crypto');
 
 const bundle = process.env.PIVANE_TEST_HERMES_BUNDLE;
 const jitiPath = process.env.PIVANE_TEST_PI_JITI;
+const { withComparison } = require('./helpers/profile-knowledge-call');
 
 test('isolated pinned Pi upstream components enforce profile index, recall, skill and lifecycle', {
     skip: !bundle || !jitiPath ? 'Set PIVANE_TEST_HERMES_BUNDLE and PIVANE_TEST_PI_JITI for isolated integration' : false,
 }, async t => {
     const base = fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-hermes-integration-'));
-    t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+    const closers = [];
+    t.after(async () => { await Promise.allSettled(closers.map(close => close())); fs.rmSync(base, { recursive: true, force: true }); });
     const agent = path.join(base, 'agent');
     const sessionsRoot = path.join(agent, 'sessions');
     const cwdA = path.join(base, 'one', 'shared');
@@ -52,7 +54,7 @@ test('isolated pinned Pi upstream components enforce profile index, recall, skil
         const events = new Map(), tools = new Map();
         return { events, tools, records: [], on(name, fn) { events.set(name, [...(events.get(name) || []), fn]); },
             appendEntry(type, data) { this.records.push({ type, data }); },
-            registerTool(tool) { tools.set(tool.name, tool); },
+            registerTool(tool) { tools.set(tool.name, { ...tool, execute: withComparison(tool.execute.bind(tool)) }); },
             async emit(name, event, ctx) { for (const fn of events.get(name) || []) await fn(event, ctx); } };
     };
     const jiti = require(jitiPath).createJiti(path.join(__dirname, '..', 'server/profile-memory/extension.ts'));
@@ -68,26 +70,42 @@ test('isolated pinned Pi upstream components enforce profile index, recall, skil
         const ctx = { mode: 'rpc', cwd: session.cwd, sessionManager: manager(session) };
         await pi.emit('session_start', {}, ctx);
         await new Promise(resolve => setTimeout(resolve, 80));
-        return { pi, ctx, root: context.profileRoot, close: () => pi.emit('session_shutdown', {}, ctx) };
+        const close = () => pi.emit('session_shutdown', {}, ctx);
+        closers.push(close);
+        return { pi, ctx, root: context.profileRoot, close };
     };
     t.after(() => { delete process.env.PIVANE_AGENT_PROFILE_CONTEXT; delete process.env.PIVANE_HERMES_BUNDLE;
         delete process.env.PIVANE_PROFILE_MEMORY_REVIEW_MODEL; });
     const alpha = await start(a, alphaId);
     assert.ok(alpha.pi.tools.has('memory_add'));
+    const skillGuidelines = alpha.pi.tools.get('skill_manage').promptGuidelines;
+    assert.equal(skillGuidelines.includes('Use the skill_manage tool after completing complex tasks that required trial and error or multiple tool calls.'), false,
+        'the adapter must remove the upstream automatic skill-write trigger');
+    assert.ok(skillGuidelines.includes("Use 'view' before patching or updating when you need to inspect an existing skill."),
+        'ordinary upstream skill inspection guidance remains available');
     const add = alpha.pi.tools.get('memory_add');
+    const { validateToolArguments } = await import('@earendil-works/pi-ai');
+    const validated = validateToolArguments(add, { type: 'toolCall', id: 'schema-probe', name: 'memory_add',
+        arguments: { target: 'memory', content: 'Independent synthetic fact.', comparisonToken: 'schema-only-probe' } });
+    assert.equal(validated.comparisonToken, 'schema-only-probe', 'Pivane extended schemas remain valid in the actual Pi argument validator');
+    assert.doesNotThrow(() => validateToolArguments(add, { type: 'toolCall', id: 'first-probe', name: 'memory_add',
+        arguments: { target: 'memory', content: 'Independent synthetic fact.' } }), 'the comparison token stays optional on the first read-only attempt');
     const payloads = ['极限推导法', '线性代数的秩', '数据结构栈'];
-    // Concurrent same-base writes race on the profile-local mutation lock; a 409
-    // "Knowledge revision changed" is the documented optimistic-concurrency gate,
-    // and a fresh retry deterministically reconciles (PROFILE_MEMORY.md).
-    const writes = await Promise.all(payloads.map(async content => {
-        for (let attempt = 0; attempt < 8; attempt++) {
-            const result = await add.execute('call', { target: 'memory', content }, undefined, undefined, alpha.ctx);
-            if (result.details.success) return result;
-            if (!/revision/i.test(String(result.details.error || '')) || attempt === 7) return result;
-            await new Promise(resolve => setTimeout(resolve, 40));
+    // First exercise the real concurrent gate. After all attempts settle, a
+    // caller may reread/recompare a confirmed rejection and commit sequentially.
+    // This avoids assuming every optimistic write succeeds in the same race.
+    const concurrentWrites = async tasks => {
+        const results = await Promise.all(tasks.map(task => task()));
+        for (const [index, result] of results.entries()) {
+            if (result.details.success) continue;
+            assert.equal(result.details.status, 409, JSON.stringify(result.details));
+            assert.match(result.details.error, /^Knowledge (?:revision|changed during comparison)/);
+            results[index] = await tasks[index](); // fresh comparison; no rejected token reused
         }
-        throw Error('unreachable');
-    }));
+        return results;
+    };
+    const writes = await concurrentWrites(payloads.map(content =>
+        () => add.execute('call', { target: 'memory', content }, undefined, undefined, alpha.ctx)));
     assert.ok(writes.every(result => result.details.success), JSON.stringify(writes.map(result => result.details)));
     const replaced = await alpha.pi.tools.get('memory_replace').execute('call', {
         target: 'memory', old_text: '极限推导法', content: '极限证明法',
@@ -151,9 +169,9 @@ test('isolated pinned Pi upstream components enforce profile index, recall, skil
     fs.writeFileSync(archives[24].file, archives[24].entries.filter(item => item.type !== 'message').map(item => JSON.stringify(item)).join('\n') + '\n');
     const editedArchive = await same.pi.tools.get('session_search').execute('call', { query: 'archive-key-24' }, undefined, undefined, same.ctx);
     assert.equal(editedArchive.details.count, 0, 'removed messages must be deleted from the derived index');
-    const parallel = await Promise.all([
-        add.execute('call', { target: 'memory', content: 'parallel-alpha' }, undefined, undefined, alpha.ctx),
-        same.pi.tools.get('memory_add').execute('call', { target: 'memory', content: 'parallel-beta' }, undefined, undefined, same.ctx),
+    const parallel = await concurrentWrites([
+        () => add.execute('call', { target: 'memory', content: 'parallel-alpha' }, undefined, undefined, alpha.ctx),
+        () => same.pi.tools.get('memory_add').execute('call', { target: 'memory', content: 'parallel-beta' }, undefined, undefined, same.ctx),
     ]);
     assert.ok(parallel.every(result => result.details.success), JSON.stringify(parallel.map(result => result.details)));
     const beforePrompt = await Promise.all((same.pi.events.get('before_agent_start') || [])

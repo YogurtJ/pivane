@@ -224,6 +224,35 @@ class WorkspacePreferencesService {
         return data;
     }
 
+    captureSessionReferences(source, target) {
+        const document = this.readDocument();
+        const matches = item => item?.sessionId === source.id && [source.cwd, target.cwd].includes(item.cwd);
+        return { archives: (document.archives?.sessions || []).filter(matches),
+            notices: (document.replyNotices || []).filter(matches),
+            inheritedArchive: (document.archives?.projects || []).includes(source.cwd) };
+    }
+
+    moveSessionReferences(source, target, snapshot) {
+        const document = this.readDocument();
+        const matches = item => item?.sessionId === source.id && [source.cwd, target.cwd].includes(item.cwd);
+        const archived = snapshot.inheritedArchive || snapshot.archives.some(item => item.cwd === source.cwd);
+        const sessions = (document.archives?.sessions || []).filter(item => !matches(item));
+        if (archived) sessions.push({ cwd: target.cwd, sessionId: source.id });
+        const notices = (document.replyNotices || []).filter(item => !matches(item));
+        notices.push(...snapshot.notices.filter(item => item.cwd === source.cwd).map(item => ({ ...item, cwd: target.cwd })));
+        this.writeDocument({ ...document, archives: { ...document.archives, sessions,
+            revision: (document.archives?.revision || 0) + 1 }, replyNotices: notices });
+    }
+
+    restoreSessionReferences(source, target, snapshot) {
+        const document = this.readDocument();
+        const matches = item => item?.sessionId === source.id && [source.cwd, target.cwd].includes(item.cwd);
+        this.writeDocument({ ...document, archives: { ...document.archives,
+            sessions: [...(document.archives?.sessions || []).filter(item => !matches(item)), ...snapshot.archives],
+            revision: (document.archives?.revision || 0) + 1 },
+            replyNotices: [...(document.replyNotices || []).filter(item => !matches(item)), ...snapshot.notices] });
+    }
+
     getReplyNotices() {
         const notices = this.readDocument().replyNotices;
         if (!Array.isArray(notices)) return [];

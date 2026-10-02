@@ -24,10 +24,10 @@ class PiUsageService {
         }, 5 * 60000);
         this.timer.unref();
     }
-    sync(onlyFile, sideBatch) {
-        if (this.pending) return this.pending.promise.then(() => this.sync(onlyFile, sideBatch));
+    sync(onlyFile, sideBatch, move) {
+        if (this.pending) return this.pending.promise.then(() => this.sync(onlyFile, sideBatch, move));
         // Reserve before SDK initialization or worker creation.
-        const promise = this.scan(null, onlyFile, sideBatch).finally(() => { this.pending = null; this.cache = null; });
+        const promise = this.scan(null, onlyFile, sideBatch, move).finally(() => { if (this.pending?.promise === promise) this.pending = null; this.cache = null; });
         this.pending = { key: null, promise };
         return promise;
     }
@@ -42,6 +42,17 @@ class PiUsageService {
         if (this.pending) await this.pending.promise;
         return this.sync(filename);
     }
+    withSessionRelocation(operation) {
+        const previous = this.pending?.promise;
+        const promise = Promise.resolve().then(async () => {
+            await previous;
+            return operation({ preserve: file => this.scan(null, file),
+                relocate: (from, to) => this.scan(null, null, null, { from, to }) });
+        }).finally(() => { if (this.pending?.promise === promise) this.pending = null; this.cache = null; });
+        this.pending = { key: 'session-move', promise };
+        return promise;
+    }
+    relocateSession(from, to) { return this.sync(null, null, { from, to }); }
     async dispose() {
         this.stopped = true; clearInterval(this.timer);
         if (this.pending) await this.pending.promise.catch(() => {});
@@ -58,16 +69,16 @@ class PiUsageService {
         const promise = this.scan(filter).then(value => {
             this.cache = { key, at: Date.now(), value };
             return value;
-        }).finally(() => { this.pending = null; });
+        }).finally(() => { if (this.pending?.promise === promise) this.pending = null; });
         this.pending = { key, promise };
         return promise;
     }
-    async scan(filter, onlyFile, sideBatch) {
+    async scan(filter, onlyFile, sideBatch, move) {
         const { getAgentDir } = await getSdk();
         return new Promise((resolve, reject) => {
             const worker = new Worker(path.join(__dirname, 'pi-usage-worker.js'), {
                 workerData: { root: path.join(getAgentDir(), 'sessions'), roots: this.store.roots, filter,
-                    ledgerPath: path.join(getAgentDir(), 'pivane-usage', 'ledger.sqlite'), onlyFile, sideBatch },
+                    ledgerPath: path.join(getAgentDir(), 'pivane-usage', 'ledger.sqlite'), onlyFile, sideBatch, move },
                 resourceLimits: { maxOldGenerationSizeMb: 192 }
             });
             let finished = false;

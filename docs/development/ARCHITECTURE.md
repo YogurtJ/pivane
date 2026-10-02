@@ -40,11 +40,13 @@ Pi 0.86 的原生 system message 是供应商 transcript 的提示词/工具检�
 
 Pi 0.87 的 `context_edit` 只改变模型上下文。主聊天快照从唯一 worker 的一次 `get_entries` 响应，通过公开 `buildContextEntries` / `sessionEntryToContextMessages` 投影原始记录，保留既有压缩范围和 stdout 同步快照边界，不建立聊天副本。完整上下文侧聊继续使用 `buildSessionContext` 的编辑后投影；历史、搜索、分叉与导出保留原生 entry 与引用。
 
+单线程跨项目移动由 `pi-session-moves` 协调，复用离线迁移的字节／原生语义校验。Supervisor 同时预占来源与目标规范文件路径，在空闲独占区停止来源 worker；会话存储拒绝在途及未完成日志涉及的会话读写。私有移动日志只保存操作身份、哈希、作用域内偏好与原始备份证据，不保存平行会话。用量服务持有整个移动周期的串行槽，在 SQLite FULL 事务中转移已有事实和日报的归属；历史交付仍需当前原生分支引用、原会话 ID 和移动前缀证明，不改快照清单。成功记录支持旧 cwd+ID 解析；中断不自动重放。任务／消息关系、助手绑定和父会话交叉引用首版在预检查中拒绝。
+
 相关契约：[运行恢复](../NATIVE_COMPLETION.md)、[会话工作流](../SESSION_WORKFLOWS.md)、[历史](../HISTORY.md)、[导入导出](../SESSION_TRANSFER.md)。
 
 ## 辅助工作与扩展
 
-Pi 0.99.1 原生 MCP/Codemode 经 `pi-native-mcp.mjs` 和受管 ResourceLoader 显式装配，官方扩展拥有连接、OAuth、调用、工具发现与清理。旧适配器在资源解析前过滤。`pi-subagent-native-loader.mjs` 对 vendor 单个旧 MCP resolver 做精确 import 映射，不改上游字节；父会话注册的原生工具名称通过有界、无凭据的进程环境快照交给 detached runner，并绑定 cwd 与当前服务器配置 hash，子会话工具 gate 防止 Codemode 绕过授权。快照是可丢弃的授权输入，不是会话事实或工具结果副本；缺失／变化均失败关闭。侧聊与媒体规划不加载该能力，迁移只在显式停机入口执行。见[原生 MCP](../MCP.md)。
+Pi 1.0.0 原生 MCP/Codemode 经 `pi-native-mcp.mjs` 和受管 ResourceLoader 显式装配，官方扩展拥有连接、OAuth、调用、工具发现与清理。旧适配器在资源解析前过滤。`pi-subagent-native-loader.mjs` 对 vendor MCP resolver 和 detached host alias resolver 做精确 import 映射，不改上游字节；宿主适配只为经过核对的 Pi 1.0.0 省略已移除且未被 vendor 调用的 pi-agent-core/node 检查，其他缺失导出仍失败。`pi-codemode-policy.mjs` 为官方 Codemode execute 提供每次新建的冻结模型注册表外观，保留目录与分类，只拒绝未经过媒体确认的图像生成入口；主／子工厂均装配此边界。父会话注册的原生工具名称通过有界、无凭据的进程环境快照交给 detached runner，并绑定 cwd 与当前服务器配置 hash，子会话工具 gate 防止 Codemode 绕过授权。快照是可丢弃的授权输入，不是会话事实或工具结果副本；缺失／变化均失败关闭。侧聊与媒体规划不加载该能力，迁移只在显式停机入口执行。见[原生 MCP](../MCP.md)。
 
 - 原生 MCP 网页配置由 `PiMcpSettingsService` 做不求值的脱敏文件投影，保存保留未知字段及显式秘密编辑操作，与原生设置共享保存互斥。运行管理不另建客户端：版本审查过的官方 `/mcp` handler 通过按 sessionId/cwd 登记的跨 ESM/Jiti 进程 Symbol seam 调用，配置／工具名／状态只做有界安全投影。`PiMcpRuntimeControl` 预占唯一 worker 的管理槽并等待原生完成，OAuth 沿用原生 UI；超时／断线不是取消，迟到私有响应仍截获。管理槽参加生命周期与维护投影，不建立持久 MCP 状态库。
 - 嵌套工具展示与文件归属只消费原生 `parentToolCallId` 事件及父结果 `nestedCalls`；原生保存不含子调用输出，网页不补写 JSONL、不建立差异副本。实时恢复预览保留父关联，父权威结果到达后清除后代临时状态；历史摘要按上游参数／调用预算限制，未保留输出不得推断完整编辑差异。
@@ -83,6 +85,8 @@ POSIX 私密权限和目录刷盘、Windows 受保护 DACL 和写透替换分别
 `pi-session-metadata` 是可丢弃的逐文件列表摘要缓存，不保存完整 entries、会话经理或全文搜索文本。元数据使用公开 `parseSessionEntries` 解析经过描述符证明的字节，在适配边界派生与锁定 SDK `SessionManager.list` 一致的名称、时间、数量和首条消息。列表每次核实完整目录成员、文件身份和修订；档案／项目投影按同一文件对象及注册表修订复用。目标查找复用该发现结果，保留重复 ID 的原生列表选择顺序；冷查找仍可能遍历目录全部正文，不宣称 O(1)。变化文件有 64 MiB 读取预算，256 KiB 分块异步读取、64 KiB 解码批次让出事件循环，超过 1 MiB 字符的单条记录、原生 Unicode 分隔差异或无法证明身份时回退原生发现。摘要最多 5000 条／16 MiB，单条保留上限 1 MiB；该缓存不迁移、不写回 JSONL。原生回退扫描按目录证明与 SDK 身份共享在途读取，超出快路径预算的会话也缓存精简元数据，不保留 `allMessagesText`。原生写入导致 `Session file changed` 时，`pi-session-store` 入口最多重新读取两次，每次重新核实证明；缓存底层仍拒绝失效结果，其他身份／读取失败不重试，持续变化最终报错。
 
 `static-assets` 只在现有访问校验之后为公开 JS/CSS 增加 Brotli/gzip，身份响应、范围请求和普通错误继续由 Express static 处理。压缩分支保留隐藏组件排除、规范根、内核描述符路径与完整身份、前后修订和 size+1 有界读取；缓存上限 24 个表示／8 MiB，源文件上限 4 MiB，最多 4 个在途压缩。协商禁止 identity 时不在饱和或失败分支静默返回原文，而返回 406；已检测到文件变化返回 409。表示 ETag 绑定压缩字节，未版本化 URL 继续重新验证；API、HTML、媒体与 WS 不进入该缓存。
+
+模型速度由 `pi-model-speed` 投影精确渠道能力和 models.json 模型覆盖，`pi-model-speed-extension` 在原生 branch 恢复 custom entry、通过公开 provider hooks 添加 service_tier 和记录实际档位；`pi-model-speed-runtime` 从 token/原生阶梯价计算一次估算费用，并为独立辅助调用使用模型默认值。`pi-model-speed-control` 复用唯一 worker 的空闲独占槽和私有命令，未知/迟到回复截获，超时关闭该预先空闲 worker 后重连，不另存会话选择或建立轮询。主侧 UI 只消费 runtimeId/revision 和模型身份投影，未知能力隐藏控件。
 
 ## 浏览器
 

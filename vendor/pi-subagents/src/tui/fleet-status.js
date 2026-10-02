@@ -7,6 +7,8 @@ import { formatWorkflowJsonPreview } from "../workflows/scripted-workflow.js";
 import { hostStepReportName, hostStepVerdictLabel } from "../runs/shared/host-step-status.js";
 import { isStaleExtensionContextError } from "../shared/extension-context.js";
 import { inlineWorkflowRenderKey } from "./render.js";
+import { runningTone } from "./running-tone.js";
+import { childThinkingLevel } from "../shared/model-info.js";
 import { formatWorkflowChecklistBottleneck, formatWorkflowChecklistPhase, formatWorkflowChecklistSummary, projectWorkflowChecklist } from "../workflows/workflow-checklist.js";
 export const FLEET_STATUS_WIDGET_KEY = "subagent-fleet-status";
 // Six rows fit the accepted collapsed hierarchy: one owner, four visible descendants, and overflow.
@@ -125,9 +127,9 @@ function isWorkflowRowTerminal(row) {
         return row.state === "done" || row.state === "cancelled" || row.state === "error";
     return row.state === "complete" || row.state === "completed";
 }
-function nestedStatusGlyph(state, theme) {
+function nestedStatusGlyph(state, theme, thinking) {
     if (state === "running")
-        return theme.fg("accent", "●");
+        return runningTone(theme, thinking)("●");
     if (state === "queued" || state === "pending" || state === "planned")
         return theme.fg("muted", "◦");
     if (state === "complete" || state === "completed")
@@ -170,6 +172,7 @@ function nestedFleetRows(children, visibleLimit) {
                     }
                     const step = steps[stepIndex];
                     const modelThinking = formatModelThinking(step.model, step.thinking) || undefined;
+                    const thinking = childThinkingLevel(step);
                     const activity = nestedActivity(step);
                     rows.push({
                         name: step.agent,
@@ -177,6 +180,7 @@ function nestedFleetRows(children, visibleLimit) {
                         state: step.status,
                         depth,
                         ...(modelThinking ? { modelThinking } : {}),
+                        ...(thinking ? { thinking } : {}),
                         ...(activity ? { activity } : {}),
                         ...(step.startedAt !== undefined ? { startedAt: step.startedAt } : {}),
                         ...(step.endedAt !== undefined ? { endedAt: step.endedAt } : {}),
@@ -195,6 +199,7 @@ function nestedFleetRows(children, visibleLimit) {
                     return false;
                 }
                 const modelThinking = formatModelThinking(child.model, child.thinking) || undefined;
+                const thinking = childThinkingLevel(child);
                 const activity = nestedActivity(child);
                 rows.push({
                     name: nestedRunLabel(child),
@@ -202,6 +207,7 @@ function nestedFleetRows(children, visibleLimit) {
                     state: child.state,
                     depth,
                     ...(modelThinking ? { modelThinking } : {}),
+                    ...(thinking ? { thinking } : {}),
                     ...(activity ? { activity } : {}),
                     ...(child.startedAt !== undefined ? { startedAt: child.startedAt } : {}),
                     ...(child.endedAt !== undefined ? { endedAt: child.endedAt } : {}),
@@ -491,6 +497,8 @@ export class SubagentFleetStatus {
     selectedKey = "main";
     inspectorOpen = false;
     lastRenderKey = "";
+    lastPaint;
+    prepaint;
     entries = [];
     workflowSnapshots = new Map();
     onWorkflowCoverageChange;
@@ -539,6 +547,7 @@ export class SubagentFleetStatus {
         this.lastRenderKey = "";
     }
     refresh() {
+        this.prepaint = undefined;
         const ctx = this.getActiveUiContext();
         if (!ctx)
             return;
@@ -616,19 +625,37 @@ export class SubagentFleetStatus {
             return;
         }
         const renderKey = this.getRenderKey();
-        if (!this.active || renderKey !== this.lastRenderKey)
+        if (!this.active)
             this.clearWorkflowCoverage();
+        // The async widget paints above the roster, so recompute coverage (structure and row fit) now.
+        // Clearing it instead would flash the full workflow tree on every live-stat tick.
+        else if (renderKey !== this.lastRenderKey && this.lastPaint) {
+            const { width, theme } = this.lastPaint;
+            this.prepaint = { key: renderKey, width, theme, lines: this.render(width, theme) };
+        }
         if (!this.widgetRegistered) {
             ctx.ui.setWidget(FLEET_STATUS_WIDGET_KEY, (tui, theme) => {
                 this.tui = tui;
                 return {
-                    render: (width) => this.render(width, theme),
+                    render: (width) => {
+                        this.lastPaint = { width, theme };
+                        const prepaint = this.prepaint;
+                        this.prepaint = undefined;
+                        if (prepaint && prepaint.key === this.lastRenderKey && prepaint.key === this.getRenderKey()
+                            && prepaint.width === width && prepaint.theme === theme && !this.state.widgetsSuspended
+                            && !this.inspectorOpen && !this.state.fleetInspectorOpen)
+                            return prepaint.lines;
+                        return this.render(width, theme);
+                    },
                     invalidate: () => {
                         this.lastRenderKey = "";
+                        this.prepaint = undefined;
                     },
                     dispose: () => {
                         if (this.tui !== tui)
                             return;
+                        this.prepaint = undefined;
+                        this.lastPaint = undefined;
                         this.clearWorkflowCoverage();
                         this.widgetRegistered = false;
                         this.tui = undefined;
@@ -841,13 +868,13 @@ export class SubagentFleetStatus {
             return truncateToWidth(`${indent}${marker} ${theme.fg("dim", `+${row.overflow} nested leaves`)}`, width);
         const modelThinking = row.modelThinking ? ` (${row.modelThinking})` : "";
         const activity = row.activity ? ` · ${row.activity}` : "";
-        const left = `${indent}${marker} ${nestedStatusGlyph(row.state, theme)} ${theme.fg(fleetAgentIdentityColor(row.agentIdentity ?? row.name), `${row.name}${modelThinking}`)} · ${row.state}${activity}`;
+        const left = `${indent}${marker} ${nestedStatusGlyph(row.state, theme, row.thinking)} ${theme.fg(fleetAgentIdentityColor(row.agentIdentity ?? row.name), `${row.name}${modelThinking}`)} · ${row.state}${activity}`;
         const elapsed = detailElapsed(row);
         return truncateToWidth(`${left}${elapsed !== undefined ? theme.fg("dim", ` · ${elapsed}`) : ""}`, width);
     }
     workflowRowGlyph(row, theme) {
         if (!row.kind)
-            return nestedStatusGlyph(row.state, theme);
+            return nestedStatusGlyph(row.state, theme, row.thinking);
         const state = row.state;
         if (state === "pending")
             return theme.fg("muted", "◦");
@@ -862,7 +889,7 @@ export class SubagentFleetStatus {
     workflowRowStateLabel(row, theme) {
         const state = row.kind ? hostStepVerdictLabel(row.state, row.verdict) : row.state;
         if (state === "running")
-            return theme.fg("accent", state);
+            return row.kind ? theme.fg("accent", state) : runningTone(theme, row.thinking)(state);
         if (state === "pending" || state === "queued")
             return theme.fg("muted", state);
         if (state === "pass" || state === "complete" || state === "completed")
@@ -876,7 +903,7 @@ export class SubagentFleetStatus {
         const glyph = phase.state === "complete"
             ? theme.fg("success", "✓")
             : phase.state === "running"
-                ? theme.fg("accent", "●")
+                ? runningTone(theme)("●")
                 : phase.state === "blocked" || phase.state === "failed"
                     ? theme.fg("error", phase.state === "blocked" ? "!" : "✗")
                     : phase.state === "queued"
@@ -1024,6 +1051,7 @@ export class SubagentFleetStatus {
         }
     }
     clearWidget() {
+        this.prepaint = undefined;
         this.clearWorkflowCoverage();
         if (!this.widgetRegistered)
             return;
@@ -1040,6 +1068,7 @@ export class SubagentFleetStatus {
         this.tui = undefined;
     }
     clearUiRegistration() {
+        this.prepaint = undefined;
         this.clearWorkflowCoverage();
         if (this.timer)
             clearInterval(this.timer);

@@ -1,6 +1,7 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { type AgentConfig, type AgentDiscoveryDiagnostic, type AgentScope, type UnknownAgentDiagnosticContext } from "../../agents/agents.ts";
+import { discoverAgentsAll, type AgentConfig, type AgentDiscoveryDiagnostic, type AgentScope, type UnknownAgentDiagnosticContext } from "../../agents/agents.ts";
+import { type DisabledFeatureSurface } from "../../shared/disabled-features.ts";
 import type { MainWatchdogRuntime } from "../../watchdog/runtime.ts";
 import { type ModelOrigin } from "../shared/model-resolution.ts";
 import { type ModelScopeConfig } from "../shared/model-scope.ts";
@@ -15,7 +16,7 @@ import type { ChildRuntimeConfig } from "../shared/child-runtime-config.ts";
 import { type MissionLaunchBinding } from "../../missions/lifecycle.ts";
 import { type WorkflowSteerOptions, type WorkflowSteerResult } from "../../workflows/scripted-workflow.ts";
 import { type AcceptanceInput, type AgentContract, type ControlConfig, type Details, type ExtensionConfig, type IntercomBridgeConfig, type JsonSchemaObject, type MaxOutputConfig, type ResolvedControlConfig, type RunFanoutBudgetDescriptor, type SteeringRecoveryDescriptor, type SingleResult, type ToolBudgetConfig, type UsageBudgetConfig, type SubagentState, type ScheduleOrigin } from "../../shared/types.ts";
-export declare function unknownSubagentActionMessage(action: string): string;
+export declare function unknownSubagentActionMessage(action: string, disabled?: DisabledFeatureSurface): string;
 interface TaskParam {
     agent: string;
     task: string;
@@ -63,8 +64,8 @@ export interface SubagentParamsLike {
     mode?: SteerDeliveryMode | "plan" | "apply";
     repo?: string;
     planId?: string;
+    /** Internal script carrier (slash, prompt-workflow, scheduled, RPC, named resources). The model-facing tool rejects it. */
     workflowScript?: string;
-    workflowScriptPath?: string;
     globalConcurrencyLimit?: number;
     maxSubagentSpawnsPerRun?: number;
     preflight?: import("../../shared/types.ts").WorkflowPreflight;
@@ -90,7 +91,7 @@ export interface SubagentParamsLike {
     runFanoutAdmitted?: boolean;
     /** Internal inherited tool/agent ceiling for delegated child launches. */
     capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
-    /** Internal durable-run compatibility fields. Public callers must use workflowScript. */
+    /** Internal durable-run compatibility fields. Public callers must use workflow. */
     chain?: ChainStep[];
     tasks?: TaskParam[];
     concurrency?: number;
@@ -126,8 +127,8 @@ export interface SubagentParamsLike {
     modelOrigin?: ModelOrigin;
     fast?: boolean;
     thinking?: string | false;
-    /** Public named workflow resource. Resolved before entering the workflow sandbox. */
-    workflow?: string;
+    /** true = the ```js workflow block in the calling reply; a string containing "/" or "\" = script path; otherwise a named workflow resource. */
+    workflow?: string | true;
     args?: Record<string, unknown>;
     scope?: string;
     target?: string;
@@ -182,6 +183,7 @@ interface ExecutorDeps {
         scope?: AgentScope;
         directories?: UnknownAgentDiagnosticContext["directories"];
     };
+    discoverAgentsAll?: typeof discoverAgentsAll;
     onAgentsChanged?: () => void;
     allowMutatingManagementActions?: boolean;
     activateSupervisorTransport?: () => void;

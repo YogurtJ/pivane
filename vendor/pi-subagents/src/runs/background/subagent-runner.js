@@ -19,7 +19,7 @@ import { createCapacityResilientJsonWriter } from "../../shared/capacity-resilie
 import { isStorageCapacityError } from "../../shared/file-system-retry.js";
 import { updateActiveRunIndex } from "./active-run-index.js";
 import { createChildTranscriptWriter } from "../../shared/child-transcript.js";
-import { closeSteerInbox, consumeInterruptRequest, consumeSteerRequests, consumeStopRequestPayloads, deliverInterruptRequest, deliverStopRequest, deliverTimeoutRequest, watchAsyncControlInbox } from "./control-channel.js";
+import { closeSteerInbox, closeStopInbox, consumeInterruptRequest, consumeSteerRequests, consumeStopRequestPayloads, deliverInterruptRequest, deliverStopRequest, deliverTimeoutRequest, watchAsyncControlInbox } from "./control-channel.js";
 import { appendJsonl as appendRawJsonl, formatOutputArtifactContent, getArtifactPaths, writeArtifact, writeMetadata } from "../../shared/artifacts.js";
 import { PI_CODING_AGENT_PACKAGE, resolveInstalledPiPackageRoot } from "../shared/pi-spawn.js";
 import { preflightLaunchCwd } from "../shared/launch-cwd.js";
@@ -47,6 +47,7 @@ import { nestedSummaryFromAsyncStatus, projectNestedEvents, resolveNestedAsyncDi
 import { isContextOverflow } from "../shared/model-resolution.js";
 import { processTerminalPath, writeProcessTerminalCandidate } from "./process-terminal.js";
 import { persistRunnerStartupFailure } from "./runner-startup-failure.js";
+import { currentPidNamespaceScope } from "./pid-namespace.js";
 import { createSteeringStatus, recordSteeringRequest, steeringStatus, terminalSteeringNoticeState, unconsumedSteerReason, updateSteeringTarget } from "./steering.js";
 import { PROMPT_REDACTED, detectSubagentError, extractTextFromContent, extractToolArgsPreview, formatEmptyTerminalAssistantResponseError, getAgentDir, hasEmptyTerminalAssistantResponse, readStatus } from "../../shared/utils.js";
 import { planAbortRecovery } from "../shared/abort-recovery.js";
@@ -511,6 +512,7 @@ export async function runSingleStepInner(step, ctx) {
             fast: step.fast,
             model: step.model,
             mcpDirectTools: step.mcpDirectTools,
+            builtinMcpTools: step.builtinMcpTools,
             cwd: step.cwd ?? ctx.cwd,
             requireReadTool: Boolean(step.skills?.length),
             structuredOutput: Boolean(effectiveStructuredOutput),
@@ -810,9 +812,9 @@ export async function runSingleStepInner(step, ctx) {
             const message = error instanceof Error ? error.message : String(error);
             return omitUndefinedProperties({ agent: step.agent, output: message, error: message, exitCode: 1, context: step.context, thinkingCeiling: step.thinkingCeiling });
         }
+        const attemptModel = omitUndefinedProperties({ model: candidate, thinking: resolveEffectiveThinking(candidate, step.thinking) });
         ctx.onAttemptStart?.(omitUndefinedProperties({
-            model: candidate,
-            thinking: resolveEffectiveThinking(candidate, step.thinking),
+            ...attemptModel,
             contextLimit: findModelInfo(candidate, step.modelVerificationRegistry)?.contextWindow,
         }));
         const outputSnapshot = captureSingleOutputSnapshot(step.outputPath);
@@ -868,6 +870,7 @@ export async function runSingleStepInner(step, ctx) {
                 fast: step.fast,
                 model: step.model,
                 mcpDirectTools: step.mcpDirectTools,
+                builtinMcpTools: step.builtinMcpTools,
                 cwd: step.cwd ?? ctx.cwd,
                 requireReadTool: Boolean(step.skills?.length),
                 structuredOutput: Boolean(effectiveStructuredOutput),
@@ -934,6 +937,7 @@ export async function runSingleStepInner(step, ctx) {
             timeoutMessage: ctx.timeoutMessage,
             stopMessage: ctx.stopMessage,
             onChildEvent: ctx.onChildEvent,
+            onContextWindow: (contextLimit) => ctx.onAttemptStart?.({ ...attemptModel, contextLimit }),
             transcriptWriter,
             toolTimeoutMs: ctx.toolTimeoutMs,
             runDeadlineAt: ctx.deadlineAt,
@@ -1673,6 +1677,7 @@ export async function runSubagent(config, childSessions) {
         ...(config.toolBudget ? { toolBudget: initialToolBudgetState(config.toolBudget) } : {}),
         ...(config.usageBudget ? { usageBudget: usageBudgetState(config.usageBudget, undefined) } : {}),
         pid: process.pid,
+        pidNamespaceScope: currentPidNamespaceScope(),
         cwd,
         currentStep: 0,
         chainStepCount: steps.length,
@@ -3464,6 +3469,7 @@ export async function runSubagent(config, childSessions) {
                     artifactsDir, artifactConfig, id,
                     flatIndex: fi, flatStepCount: Math.max(statusPayload.steps.length, 1),
                     outputFile: path.join(asyncDir, `output-${fi}.log`),
+                    projectTrusted: config.projectTrusted,
                     piPackageRoot: config.piPackageRoot,
                     childSessions,
                     inheritedChildRuntime: config.inheritedChildRuntime,
@@ -3886,6 +3892,7 @@ export async function runSubagent(config, childSessions) {
                         sessionDir: taskSessionDir,
                         artifactsDir, artifactConfig, id,
                         flatIndex: fi, flatStepCount: Math.max(statusPayload.steps.length, 1),
+                        projectTrusted: config.projectTrusted,
                         outputFile: path.join(asyncDir, `output-${fi}.log`),
                         piPackageRoot: config.piPackageRoot,
                         childSessions,
@@ -4279,6 +4286,7 @@ export async function runSubagent(config, childSessions) {
                     outputs: statusPayload.mode === "single" ? undefined : outputs,
                     sessionDir: config.sessionDir,
                     artifactsDir, artifactConfig, id,
+                    projectTrusted: config.projectTrusted,
                     flatIndex, flatStepCount: Math.max(statusPayload.steps.length, 1),
                     outputFile: path.join(asyncDir, `output-${flatIndex}.log`),
                     piPackageRoot: config.piPackageRoot,
@@ -4626,6 +4634,13 @@ export async function runSubagent(config, childSessions) {
         timedOut = true;
     }
     disposeControlInbox();
+    try {
+        closeStopInbox(asyncDir);
+    }
+    catch (error) {
+        // Result publication must not depend on the marker; without it a late stop is accepted as before.
+        appendJsonl(eventsPath, JSON.stringify({ type: "subagent.run.stop_inbox_close_failed", ts: Date.now(), runId: id, message: error instanceof Error ? error.message : String(error) }));
+    }
     for (const request of consumeStopRequestPayloads(asyncDir))
         stopChildStep(request);
     const signalTerminated = !stopped && !timedOut && !interrupted && results.some((result) => result.exitCode !== 0 && isUnexplainedProcessSignal(omitUndefinedProperties({

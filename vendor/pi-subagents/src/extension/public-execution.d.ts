@@ -53,10 +53,19 @@ export type PublicSubagentExecutionNormalization<T> = {
     error: string;
     mode: PublicSubagentExecutionMode;
 };
+/** A workflow value containing "/" or "\" is a script path; named workflow resource names contain neither. */
+export declare function isWorkflowScriptPath(workflow: string): boolean;
+/**
+ * Model tool calls supply script text only through workflow: true (the reply block) or a script path.
+ * workflowScript remains the internal carrier for slash, prompt-workflow, scheduled, RPC, and named-resource launches.
+ */
+export declare function removedModelWorkflowFieldError(params: object): string | undefined;
 export declare function validateWorkflowCapacityOverrides(params: PublicSubagentExecutionParams): string | undefined;
 /**
  * Enforce the public execution cutover before requests reach the executor.
  * Internal runs.run children and structured owned delegation bypass this boundary.
  */
-export declare function normalizePublicSubagentExecution<T extends PublicSubagentExecutionParams>(params: T): PublicSubagentExecutionNormalization<T>;
+export declare function normalizePublicSubagentExecution<T extends PublicSubagentExecutionParams>(params: T, options?: {
+    structuredWorkflows?: boolean;
+}): PublicSubagentExecutionNormalization<T>;
 //# sourceMappingURL=public-execution.d.ts.map

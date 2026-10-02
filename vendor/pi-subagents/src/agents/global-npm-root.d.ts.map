@@ -1,0 +1,1 @@
+{"version":3,"file":"global-npm-root.d.ts","sourceRoot":"","sources":["../../../src/agents/global-npm-root.ts"],"names":[],"mappings":"AAIA,mFAAmF;AACnF,wBAAsB,oBAAoB,CAAC,OAAO,GAAE;IACnD,GAAG,CAAC,EAAE,MAAM,CAAC,UAAU,CAAC;IACxB,QAAQ,CAAC,EAAE,MAAM,CAAC,QAAQ,CAAC;IAC3B,SAAS,CAAC,EAAE,MAAM,CAAC;CACd,GAAG,OAAO,CAAC,MAAM,GAAG,IAAI,CAAC,CAgD9B"}

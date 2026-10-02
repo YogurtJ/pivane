@@ -92,7 +92,15 @@ async function run(browser, viewport) {
     await shared.locator('[data-action="edit"]').click();
     await page.locator('#workspace-settings-editor').waitFor();
     assert.ok((await page.locator('#settings-model-form').textContent()).length > 0);
-    await page.locator('#workspace-settings-editor-close').click();
+    await page.locator('#settings-model-form [name="contextWindow"]').fill('272000');
+    await page.locator('#settings-model-form [name="maxTokens"]').fill('32000');
+    await page.locator('#settings-model-form [type="submit"]').click();
+    await page.locator('#workspace-settings-editor').waitFor({ state: 'hidden' });
+    assert.equal(writes.at(-1).path, `/api/pi/settings/custom-providers/${encodeURIComponent(personal)}/models`);
+    assert.equal(writes.at(-1).body.contextWindow, '272000');
+    assert.equal(writes.at(-1).body.maxTokens, '32000');
+    assert.equal(writes.at(-1).body.id, 'shared-id');
+    await page.getByText('已保存。重新加载资源或下次打开会话后生效。', { exact: true }).waitFor();
     await page.locator('#settings-model-provider').selectOption('');
     await page.locator('#settings-model-search').fill('last-catalog-model');
     await group(personal).locator('[data-model-id="last-catalog-model"]').waitFor();
@@ -120,7 +128,7 @@ async function run(browser, viewport) {
     await page.keyboard.press('Enter');
     assert.equal(await groups.first().evaluate(el => el.open), false);
     assert.deepEqual(errors, []);
-    assert.equal(writes.length, 2, 'only explicitly tested mock actions may write');
+    assert.equal(writes.length, 3, 'only explicitly tested mock actions may write');
     console.log(JSON.stringify({ viewport, initial, groups: 3, pageSize: 20, errors, mockActions: writes.length }));
     await context.close();
 }

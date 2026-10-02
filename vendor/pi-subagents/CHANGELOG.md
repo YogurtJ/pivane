@@ -2,6 +2,140 @@
 
 ## [Unreleased]
 
+## [0.74.0] - 2026-09-30
+
+### Highlights
+
+- Workflow scripts are now written as a normal ```` ```js workflow ```` code block in the reply and run with `workflow: true`, with no JSON escaping. This replaces `workflowScript` and `workflowScriptPath`.
+- On models that cannot add a tool mid-conversation, `subagent` is now available from the start, so turning it on no longer reprocesses the whole conversation at full price.
+- The new `disabledFeatures` setting hides parts of the `subagent` tool you do not use, and with `workflow-scripts` turned off you can run children with simple `chain` and `tasks` lists.
+- `/reload` and session resumes no longer kill running background workflows, and relaunching one reuses the children that already finished.
+- Subagent children now respect an untrusted project the same way the main session does.
+
+### Added
+
+- `disabledFeatures` in `config.json` removes feature groups you do not use from the `subagent` tool, such as agent management, watchdog, panes, missions, lane management, and per-call options like `toolBudget` or `machine`. Their parameters disappear from the tool, the tool description stops mentioning them, and calls that still use them fail with an error that names the setting. `scheduledRuns.enabled: false` now removes the schedule parameters the same way, and a malformed `scheduledRuns` value is now a config error. Nothing changes unless you opt in. With everything disabled, the tool declaration shrinks from 18,239 to 10,263 characters. See [configuration](docs/configuration.md#disabledfeatures). Thanks to [@tmustier](https://github.com/tmustier) for [#2542](https://github.com/nicobailon/pi-subagents/pull/2542).
+- `disabledFeatures` also accepts `workflow-scripts`. It removes the `workflow`, `args`, `preflight`, `globalConcurrencyLimit`, and `maxSubagentSpawnsPerRun` parameters and the `validate` action, and the tool description no longer explains how to write scripts. In their place, the tool takes `tasks: [{ agent, task }]` to run children in parallel and `chain: [{ agent, task?, as? } | { parallel: [{ agent, task }] }]` to run steps in order. Chain tasks can use `{task}` (the top-level `task`), `{previous}`, and `{outputs.name}`. If a child fails, the run fails but still returns the results of the children that finished. Scripts that still arrive from RPC, `/prompt-workflow`, saved schedules, or delegated launches fail with an error that names the setting; `/run` still works. This mode saves about 2,000 more characters of tool declaration. Without it, the tool is unchanged. In both modes, extensions can no longer register workflow resources named `chain` or `tasks`. See [configuration](docs/configuration.md#chain-and-tasks-without-workflow-scripts).
+- On Pi 0.99 and later without pi-mcp-adapter, `mcp:server` and `mcp:server/tool` entries in an agent's `tools` now select tools from Pi's built-in MCP, and the child gets exactly those tools. Servers from `mcp.json` work in foreground and background children; servers that extensions add with `pi.registerMcpServer()` work in background children. With pi-mcp-adapter installed, nothing changes. Thanks to [@fmoda3](https://github.com/fmoda3) for [#2555](https://github.com/nicobailon/pi-subagents/issues/2555).
+- `subagents.modelScope` allow lists accept a `scoped` token, which stands for the parent session's scoped models (Pi's `/scoped-models`). Subagent model limits then follow Pi's model scoping without a second copy of the list. In an unscoped session, `scoped` means the same as `inherit`. Error messages list at most 8 patterns before summarizing the rest. Thanks to [@coreyryanhanson](https://github.com/coreyryanhanson) for [#2538](https://github.com/nicobailon/pi-subagents/pull/2538).
+- `subagents.agentOverrides.<name>.advertise` lists an agent in the parent's agent catalog from settings, so you no longer have to copy a builtin agent file just to advertise it. Agents registered at runtime still cannot be advertised. Thanks to [@strive-run](https://github.com/strive-run) for [#2534](https://github.com/nicobailon/pi-subagents/pull/2534).
+- Native Pi subagents can use Pi's built-in `codemode` tool when their tool selection allows it. It is loaded only in the child, so the main session can keep codemode off. Older Pi versions without codemode still report it as unavailable when an agent asks for it. Thanks to [@albertgwo](https://github.com/albertgwo) for [#2574](https://github.com/nicobailon/pi-subagents/pull/2574).
+- After you upgrade pi-subagents, your first interactive session shows a short notice with the highlights of each new version and a link to the changelog. It is shown once and never enters the conversation, so it does not affect the model's context or prompt cache. Fresh installs and child sessions show nothing.
+
+### Changed
+
+- **Breaking:** Workflow scripts had to be passed to the `subagent` tool as a JSON string, so every quote and newline was escaped. The tool now takes one `workflow` field with three forms: `workflow: true` runs the single ```` ```js workflow ```` code block written in the same reply; a string containing `/` (such as `"./ci/sweep.js"`) loads a script file relative to `cwd`; any other string runs a named workflow. The `workflowScript` and `workflowScriptPath` parameters were removed, and calls that still pass them fail with an error that shows the new forms. RPC `spawn` takes inline script text as `script` and a path or workflow name as `workflow`. Saved schedules and run records keep working.
+- On models that cannot take a new tool mid-conversation, calling `subagents_enable` made the provider reprocess the whole conversation at the uncached price. New sessions on those models now start with `subagent` already available. Models that can add tools mid-conversation still start with `subagents_enable`. Resumed sessions keep the tools they had, and switching models mid-session does not change them. The new `toolActivation` setting in `config.json` chooses `"auto"` (the default), `"dynamic"` (always start with `subagents_enable`, the old behavior), or `"eager"` (always start with `subagent`, like `--exclude-tools subagents_enable`). See [configuration](docs/configuration.md#toolactivation). Thanks to [@tinoy1336](https://github.com/tinoy1336) for [#2589](https://github.com/nicobailon/pi-subagents/issues/2589).
+- After `subagents_enable`, the model was sometimes told to wait for the next prompt even when `subagent` was already usable. It is now told to check its tool list: use `subagent` if it is there, otherwise wait for the next prompt instead of retrying.
+- CI now runs the tool-activation smoke test as a required check. Thanks to [@quifox](https://github.com/quifox) for [#2528](https://github.com/nicobailon/pi-subagents/pull/2528).
+
+### Fixed
+
+- Subagent children now follow the parent session's project trust. Before, a child in an untrusted project still loaded that project's settings, system prompt files, skills and, for background children, its extensions. Fixes [#2569](https://github.com/nicobailon/pi-subagents/issues/2569).
+- `/reload`, a session resume, or a pi-web project switch stopped running background workflows and their children, and relaunching the script ran every child again, including ones that had already finished. Background children now keep running, the workflow's notice says to relaunch it, and relaunching the same script with the same args reuses finished children and waits for running ones. Failed children run again. The stop is recorded as `workflow.stopCause: "runtime-replaced"`. Fixes [#2546](https://github.com/nicobailon/pi-subagents/issues/2546).
+- Stopping a background workflow by a short id, its tool-call id, its run directory, or from the Fleet view did nothing, so the workflow and its children kept running. These stops now work, and the workflow ends as stopped. Fixes [#2571](https://github.com/nicobailon/pi-subagents/issues/2571).
+- Reviving a failed background workflow child with `subagent({ action: "resume", id })` did not show up in the workflow: its status, receipt and keyed `latest: true` resume still pointed at the failed run. Workflow `status` now shows `Revived → <run>: <state>` under the failed key, keyed resume continues from the revived run, and a workflow that finishes afterwards records the revival in its receipt and completion notice. The workflow's return value is unchanged. Thanks to [@l3gz](https://github.com/l3gz) for reporting [#2579](https://github.com/nicobailon/pi-subagents/issues/2579).
+- When a workflow script failed and stopped a sibling that was still running, the sibling got a "Workflow child failed" notice whose error began with a "Run fan-out: N/M used, K remaining" line. The notice now says the child was stopped and gives only the reason. Fixes [#2562](https://github.com/nicobailon/pi-subagents/issues/2562) and [#2567](https://github.com/nicobailon/pi-subagents/issues/2567).
+- After pi-subagents was updated on disk while Pi was running, for example by `git pull` in a local checkout or a package update, the first `subagent` call could fail with an error such as `(0 , _publicExecution.isWorkflowScriptPath) is not a function`, because it mixed new and old code. pi-subagents now loads all of its code shortly after a session starts, without slowing startup. After an update, run `/reload` or restart Pi to use the new version.
+- With Pi 0.99's `codemode` turned on, codemode scripts could call `subagent`, `subagents_enable`, `subagent_supervisor`, `contact_supervisor` and `structured_output`, none of which work from a script: a `subagent` run there had no progress card and was cancelled unless awaited, `contact_supervisor` blocked the script, and `structured_output` had no effect. Codemode also added the whole `subagent` schema to its own description, about 2,200 extra tokens per request. The model can still call these tools directly, but scripts can no longer call them. Older Pi versions are unaffected.
+- With the `subagent` tool registered, every request to llama.cpp (`llama-server --jinja`) failed with a 400 error because one parameter's pattern was not anchored at both ends, which llama.cpp requires. The pattern is now anchored and accepts the same values. Thanks to [@tychart](https://github.com/tychart) for reporting [#2581](https://github.com/nicobailon/pi-subagents/issues/2581).
+- With pi-mcp-adapter 3.x on Pi 0.99 or later, `mcp:` entries in an agent's `tools` looked up Pi's built-in MCP instead of the adapter, so choosing an adapter server failed the launch. The adapter now takes priority whenever it is loaded. Fixes [#2575](https://github.com/nicobailon/pi-subagents/issues/2575).
+- After upgrading pi-mcp-adapter to 3.1.0, `mcp:` tool selections for stdio servers stopped resolving, because the adapter started including `inheritEnv` and `literalEnv` in its config hash. pi-subagents now computes the same hash. Thanks to [@qsgy-edge](https://github.com/qsgy-edge) for [#2539](https://github.com/nicobailon/pi-subagents/pull/2539).
+- When the async widget did not have room for its full view, its compact card showed one line per run and filled the rest with blank rows, hiding a workflow's lanes. The card now shows the lanes in that space and is only as tall as its content. Thanks to [@l3gz](https://github.com/l3gz) for reporting [#2578](https://github.com/nicobailon/pi-subagents/issues/2578).
+- The async widget and the Fleet view counted running agents differently: with a 4-lane workflow and one other run, the widget said `2 agents running` and the Fleet view said `5 active agents`. The widget now counts each running workflow lane and each agent of a parallel run, like the Fleet view. Thanks to [@l3gz](https://github.com/l3gz) for reporting [#2578](https://github.com/nicobailon/pi-subagents/issues/2578).
+- Herdr's subagent count no longer counts a workflow's coordinator as a child, and it updates as soon as a foreground workflow child starts or finishes instead of up to 45 seconds later. Thanks to [@xadips](https://github.com/xadips) for [#2556](https://github.com/nicobailon/pi-subagents/pull/2556).
+- Dynamic tool activation now works when Pi runs inside another app, such as pi-web. Those hosts no longer print "Could not locate the running Pi installation" and no longer fall back to keeping `subagent` always loaded. Thanks to [@q107580018](https://github.com/q107580018) for [#2526](https://github.com/nicobailon/pi-subagents/issues/2526).
+- Answering a background subagent's supervisor request no longer triggers a stale "needs attention" notice afterwards. The notice now waits 60 seconds and is sent only if the request is still unanswered and the run is still active. Status views still show the request right away.
+- `inheritSkills: false` now also removes skills that extensions add to a child session (for example through `subagents.defaultExtensions`), so they no longer appear next to the agent's own skills. Thanks to [@zeezooz](https://github.com/zeezooz) for [#2540](https://github.com/nicobailon/pi-subagents/issues/2540).
+- A child that was aborted by compaction now recovers when Pi reports the compaction late. Thanks to [@jiuai233](https://github.com/jiuai233) for [#2537](https://github.com/nicobailon/pi-subagents/pull/2537).
+- Old background runs that belong to a finished or deleted mission are now cleaned up like other old runs instead of being kept forever. Fixes [#2535](https://github.com/nicobailon/pi-subagents/issues/2535). Thanks to [@LCorleone](https://github.com/LCorleone) for [#2536](https://github.com/nicobailon/pi-subagents/pull/2536).
+- On Windows, the Pi interface froze for about 0.45 seconds once per process while background run cleanup waited on a PowerShell query. The query no longer blocks the interface. Thanks to [@localhedge](https://github.com/localhedge) for reporting [#2559](https://github.com/nicobailon/pi-subagents/issues/2559).
+- On Windows, an idle session no longer checks for supervisor requests every 250 ms for its whole lifetime. Checking stops when no subagent work is pending and starts again when new work begins, as it already did on macOS. Thanks to [@localhedge](https://github.com/localhedge) for reporting [#2558](https://github.com/nicobailon/pi-subagents/issues/2558).
+- Starting, reloading, resuming, or forking a session no longer pauses Pi while the watchdog records the current Git commit (about 50 ms per session start on Windows, even with the watchdog off). The check now runs in the background. Thanks to [@localhedge](https://github.com/localhedge) for reporting [#2560](https://github.com/nicobailon/pi-subagents/issues/2560).
+- Worktree diffs now work with older Git versions that lack the `--default-prefix` option. Thanks to [@quifox](https://github.com/quifox) for [#2527](https://github.com/nicobailon/pi-subagents/pull/2527).
+- Updated `undici` from 8.10.0 to 8.10.2, outside the range of [GHSA-3wwx-pv8p-q78v](https://github.com/advisories/GHSA-3wwx-pv8p-q78v), so projects that install pi-subagents no longer fail `npm audit` because of it. pi-subagents does not use the affected WebSocket client. Thanks to [@advaitpaliwal](https://github.com/advaitpaliwal) for [#2548](https://github.com/nicobailon/pi-subagents/pull/2548).
+- A package-discovery test no longer fails when the system temp directory is inside a Pi project. Thanks to [@abdwhb-png](https://github.com/abdwhb-png) for [#2553](https://github.com/nicobailon/pi-subagents/pull/2553).
+
+## [0.73.1] - 2026-09-27
+
+### Highlights
+
+- Turning on `subagent` mid-session no longer throws away the prompt cache, so the next message no longer resends the whole conversation.
+
+### Fixed
+
+- Turning on `subagent` no longer throws away the prompt cache. The catalog of advertised agents is now sent as its own `advertised_subagents` prompt section, which Pi adds at the end of the conversation. Before, pi-subagents rewrote the whole system prompt, so the first message after `subagents_enable` resent the entire conversation to the cache. Fixes [#2518](https://github.com/nicobailon/pi-subagents/issues/2518). Thanks to [@javapacr](https://github.com/javapacr) for [#2519](https://github.com/nicobailon/pi-subagents/pull/2519).
+- Stopping a background run while it was shutting down could report "Stop requested" even though the runner never read the stop, so an interrupted run finished as paused instead of stopped. The stop now fails with a message to retry once the runner has exited, and that retry stops a paused run.
+
+## [0.73.0] - 2026-09-27
+
+### Highlights
+
+- Failed workflows now say what kind of failure happened, such as a bad script, a failed child, or a timeout, so callers can react without parsing error text.
+- Huge workflow results no longer flood the parent's context. Output is capped, every cut is marked, and the full text is saved to a file.
+- A typo in a workflow's agent name now stops the workflow before any child starts, and `validate` suggests the name you probably meant.
+- Running subagent spinners now use the same thinking-level colors as Pi's prompt box.
+- `mcp:` tool selections work with pi-mcp-adapter 3.0's `mcp-adapter.json` files.
+
+### Changed
+
+- Failed workflows now include a `failureKind` in foreground details and async status: `validation`, `script`, `child`, `return-serialization`, `timeout`, `detached-child`, or `runtime`. Callers no longer need to parse the error text to tell these apart. Fixes [#2506](https://github.com/nicobailon/pi-subagents/issues/2506).
+- A running subagent's spinner now uses Pi's prompt-box thinking color. A spinner for one child uses that child's thinking level, or the main session's level when the child has none. A spinner for several children, such as a widget header, a parallel or chain card, or a workflow phase, uses the main session's level. `thinking` labels still show the configured level. Thanks to [@pwguler](https://github.com/pwguler) for [#2512](https://github.com/nicobailon/pi-subagents/pull/2512).
+
+### Fixed
+
+- `mcp:` direct-tool selections now read pi-mcp-adapter 3.0's `mcp-adapter.json` files (the global one and a project's `.pi/mcp-adapter.json`), so a migrated setup no longer fails to launch children with `Unresolved MCP direct-tool selectors`. Pi's own `mcp.json` files are no longer read, because they belong to Pi's built-in MCP support. If your adapter servers are still listed there, move them to `mcp-adapter.json`. Thanks to [@qsgy-edge](https://github.com/qsgy-edge) for [#2511](https://github.com/nicobailon/pi-subagents/pull/2511).
+- Large workflow results no longer flood the parent's context. A foreground workflow caps its Return, Emitted, and Console sections and its failure error at 200 KB or 5000 lines (or your `maxOutput`), shortens each call-trace error to 500 characters, marks each cut, and saves the full text to a file. Async completion notices and `action: "status"` now end cut text in `…` and point to the run's `status.json`. Before, they cut the return value without saying so and showed the full error however long it was. Fixes [#2505](https://github.com/nicobailon/pi-subagents/issues/2505).
+- A workflow script with a misspelled agent name now fails before any child starts, instead of running the earlier children first. `action: "validate"` reports the same error with its line, column, and the closest agent name when there is one (for example `Did you mean 'reviewer'?`). Names built at runtime, and children with their own `cwd`, `agentScope`, or `resume`, are still checked when they launch. Fixes [#2504](https://github.com/nicobailon/pi-subagents/issues/2504).
+- On providers that fix the tool list for a whole prompt, such as bridges to another agent SDK, `subagent` only appears after the next user prompt. The `subagents_enable` result now says so, which stops the model from retrying `subagent` in the same prompt, and it names `--exclude-tools subagents_enable` for keeping `subagent` always available. Fixes [#2513](https://github.com/nicobailon/pi-subagents/issues/2513).
+- A `timeoutMs` or `maxRuntimeMs` above 2,147,483,647 ms (about 24.8 days), the longest delay Node.js timers support, is now rejected before launch, and `action: "resume"` checks its `timeoutMs` the same way. Node shortened such a timer to about 1 ms, so the run timed out almost immediately. Thanks to [@quifox](https://github.com/quifox) for [#2517](https://github.com/nicobailon/pi-subagents/pull/2517).
+
+## [0.72.1] - 2026-09-26
+
+### Fixed
+
+- pi-subagents is published with npm provenance again, so pnpm's `trustPolicy: no-downgrade` accepts it. Releases now go out only through the GitHub `Release` workflow after maintainer approval. The code is the same as 0.72.0, which was published without provenance. Thanks to [@williameckert1](https://github.com/williameckert1) for [#2453](https://github.com/nicobailon/pi-subagents/issues/2453).
+
+## [0.72.0] - 2026-09-26
+
+### Highlights
+
+- Pi starts faster with pi-subagents installed: startup no longer waits on global agent discovery, and the executor and Fleet load the first time you use them.
+- The package no longer bundles its own copy of TypeBox, so installs are smaller and Pi stops warning about the manifest.
+- Models from complete provider extensions now work everywhere pi-subagents calls a model, including the watchdog, permission checks, and Prompt Audit.
+- Other extensions can plug their own inspectors into Fleet.
+- Async runs are more dependable: child sessions can start and resume their own external jobs, `/subagent-cost` counts every async launch, and live runs are no longer marked failed when containers share a temp directory.
+
+### Added
+
+- Extensions can register their own inspector providers with the `pi-subagents/inspectors` helper or the `pi-subagents:inspector-register:v1` event. Fleet uses them for inspector actions, while the built-in inspectors and runner controls keep working as before. Thanks to [@ninjapenguin](https://github.com/ninjapenguin) for [#2482](https://github.com/nicobailon/pi-subagents/pull/2482).
+
+### Changed
+
+- Pi starts faster with pi-subagents enabled. The foreground executor and the Fleet view now load on first use, which cuts the extension's own startup modules from 264 to 199. Tools, commands, and prompts are registered exactly as before. Thanks to [@h4yfans](https://github.com/h4yfans) for the measurements in [#2480](https://github.com/nicobailon/pi-subagents/issues/2480).
+- TypeBox is now provided by Pi instead of bundled with the package. Pi no longer warns about the manifest, and the extension, its children, and background runners all use Pi's copy. Thanks to [@felipemm](https://github.com/felipemm) for [#2454](https://github.com/nicobailon/pi-subagents/issues/2454) and [#2455](https://github.com/nicobailon/pi-subagents/pull/2455).
+
+### Fixed
+
+- The watchdog, permission checks, and Prompt Audit now reach models from complete provider extensions (`pi.registerProvider(provider)`). They used an older lookup that only knew config-style providers, so these calls failed even though ordinary children could use the same model. Thanks to [@chem](https://github.com/chem) for [#2496](https://github.com/nicobailon/pi-subagents/issues/2496).
+- Model names such as `openrouter/auto-beta` now resolve when the provider's own model id already starts with the provider name. They used to fail with `Unknown subagent model`. Thanks to [@schmlblk](https://github.com/schmlblk) for [#2487](https://github.com/nicobailon/pi-subagents/issues/2487).
+- `fast: true` accepts any `openai-codex/*` model instead of only two named models, so newer Codex models no longer fail before launch. Other providers are still rejected. Thanks to [@jtabke](https://github.com/jtabke) for [#2452](https://github.com/nicobailon/pi-subagents/issues/2452).
+- Async status shows a child's real context limit once its session starts, including a limit raised by an extension. Thanks to [@johnhenaot](https://github.com/johnhenaot) for [#2448](https://github.com/nicobailon/pi-subagents/pull/2448).
+- Session startup no longer freezes while pi-subagents looks for globally installed agents. The first agent prompt and `subagents_enable` still wait until discovery finishes. Thanks to [@trading-bl](https://github.com/trading-bl) for [#2474](https://github.com/nicobailon/pi-subagents/issues/2474).
+- `subagents_enable` ignores extra arguments instead of rejecting the call. DeepSeek V4.1 Flash sends `subagents_enable({ action: "enable" })`, which used to fail every time. Thanks to [@crusaderky](https://github.com/crusaderky) for [#2483](https://github.com/nicobailon/pi-subagents/issues/2483).
+- An older `pi-ai` installed next to the package no longer turns off on-demand tool loading, so `subagent` stays hidden behind `subagents_enable` until it is needed. Thanks to [@abdwhb-png](https://github.com/abdwhb-png) for [#2471](https://github.com/nicobailon/pi-subagents/pull/2471).
+- `/council` works when Pi runs with `--no-skills`. It now loads its instructions through `subagent({ action: "guide", topic: "council" })`. Thanks to [@felipemm](https://github.com/felipemm) for [#2467](https://github.com/nicobailon/pi-subagents/issues/2467).
+- External-job runs that a child session launches now start instead of staying queued. Thanks to [@juanpprieto](https://github.com/juanpprieto) for [#2449](https://github.com/nicobailon/pi-subagents/issues/2449).
+- A child session can follow up its own external-job runs with `resume`, and a repeated resume no longer sends the follow-up twice. Thanks to [@juanpprieto](https://github.com/juanpprieto) for [#2465](https://github.com/nicobailon/pi-subagents/issues/2465).
+- A background run that is still working is no longer reported failed when Pi processes in different containers share one `PI_SUBAGENTS_TEMP_ROOT`. Pi could not see the runner's process from another container and treated it as gone. Such runs now fall back to the usual 24-hour stale check. Thanks to [@zeezooz](https://github.com/zeezooz) for [#2494](https://github.com/nicobailon/pi-subagents/issues/2494) and [#2495](https://github.com/nicobailon/pi-subagents/issues/2495).
+- `/subagent-cost` includes async single, chain, and parallel launches, which it used to report as having no child usage. Thanks to [@zeezooz](https://github.com/zeezooz) for [#2484](https://github.com/nicobailon/pi-subagents/issues/2484).
+- Awaited workflow children send the `subagent:async-complete` event without an extra child notification. Thanks to [@mmarabel](https://github.com/mmarabel) for [#2456](https://github.com/nicobailon/pi-subagents/issues/2456).
+- Worktree labels stay within 256 bytes when shortened in the middle of a multi-byte character, so async status stays readable. Thanks to [@chenhaoxiang](https://github.com/chenhaoxiang) for [#2446](https://github.com/nicobailon/pi-subagents/pull/2446).
+- A launch blocked by the session's capability ceiling now fails before any fork work starts. It used to branch the parent session or prepare the fork summary first. Thanks to [@antonioc-cl](https://github.com/antonioc-cl) for [#2481](https://github.com/nicobailon/pi-subagents/pull/2481).
+- The `subagent` schema and guides describe preflight, timeout aliases, budget limits, and child extension bindings accurately, and an empty `usageBudget` is now rejected. Thanks to [@amchen2310](https://github.com/amchen2310) for [#2473](https://github.com/nicobailon/pi-subagents/issues/2473).
+- The async workflow widget no longer flickers while the inline Fleet roster is open. Thanks to [@gustavo-neiva](https://github.com/gustavo-neiva) for [#2468](https://github.com/nicobailon/pi-subagents/pull/2468).
+- `subagent_supervisor` `pending` shows each request's question, so you can answer a request after missing its notice ([#2460](https://github.com/nicobailon/pi-subagents/issues/2460)).
+
 ## [0.71.0] - 2026-09-23
 
 ### Highlights

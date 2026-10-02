@@ -51,7 +51,7 @@
             this.addMenu.hidden = true; this.addButton.setAttribute('aria-expanded', 'false');
             if (focus) this.addButton.focus();
         }
-        actionItems() { return [...this.addMenu.querySelectorAll('button')].filter(b => !b.hidden && !b.disabled); }
+        actionItems() { return [...this.addMenu.querySelectorAll('button, select')].filter(b => !b.hidden && !b.disabled); }
         openActions(last = false) {
             this.hide(); this.addMenu.hidden = false; this.addButton.setAttribute('aria-expanded', 'true');
             const items = this.actionItems(); (last ? items.at(-1) : items[0])?.focus();
@@ -60,7 +60,7 @@
             if (e.isComposing || e.keyCode === 229) return;
             if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.closeActions(true); return; }
             if (e.key === 'Tab') { this.closeActions(true); return; }
-            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+            if (e.target.tagName === 'SELECT' || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
             const items = this.actionItems(); if (!items.length) return;
             e.preventDefault(); const index = items.indexOf(document.activeElement);
             const next = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1 : (index + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;

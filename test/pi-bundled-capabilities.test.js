@@ -17,7 +17,7 @@ test.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
 test('vendor inventory is byte-identical upstream and excludes dependency trees', () => {
     const files = require('../scripts/vendor-files.cjs').vendorFiles(path.resolve(__dirname, '..'));
-    assert.equal(files.length, 1300);
+    assert.equal(files.length, 1344);
     assert.equal(files.some(file => file.includes('/node_modules/')), false);
     for (const entry of catalog) assert.ok(files.includes(`${entry.directory}/LICENSE`));
 });
@@ -105,6 +105,15 @@ test('bundled subagent runs against a synthetic provider, with native host contr
                 pi.events.emit('subagents:rpc:v1:request', { version: 1, requestId, method: 'spawn', source: { extension: 'fixture' }, params: { agent: 'fixture', task: 'Reply BUNDLED_CHILD_OK', async: true } });
             });
         } });
+        pi.registerCommand('fixture-workflow', { description: 'Synthetic workflow protocol', handler: async (args, ctx) => {
+            const requestId = 'fixture-workflow-' + (args === 'old' ? 'old' : 'new');
+            await new Promise((resolve, reject) => {
+                const timer = setTimeout(() => reject(new Error('workflow timeout')), 30000);
+                const off = pi.events.on('subagents:rpc:v1:reply:' + requestId, reply => { clearTimeout(timer); off(); ctx.ui.notify('FIXTURE_WORKFLOW:' + JSON.stringify(reply)); resolve(); });
+                pi.events.emit('subagents:rpc:v1:request', { version: 1, requestId, method: 'spawn', source: { extension: 'fixture' },
+                    params: args === 'old' ? { workflowScript: 'return \"WORKFLOW_RPC_OK\";', async: true } : { script: 'return \"WORKFLOW_RPC_OK\";', async: true } });
+            });
+        } });
         pi.registerCommand('fixture-foreground', { description: 'Synthetic foreground child', handler: async (_args, ctx) => {
             await new Promise((resolve, reject) => {
                 const timer = setTimeout(() => reject(new Error('foreground timeout')), 30000);
@@ -151,6 +160,24 @@ test('bundled subagent runs against a synthetic provider, with native host contr
     assert.match(JSON.stringify(foreground), /BUNDLED_CHILD_OK/);
     assert.equal(fs.existsSync(marker), false);
     assert.equal(fs.readFileSync(settingsFile, 'utf8'), JSON.stringify(settings));
+    for (const legacy of [false, true]) {
+        let workflow;
+        const offWorkflow = worker.subscribe(event => { if (event.type === 'extension_ui_request' && event.message?.startsWith('FIXTURE_WORKFLOW:')) workflow = JSON.parse(event.message.slice(17)); });
+        await worker.request('prompt', { message: '/fixture-workflow' + (legacy ? ' old' : '') });
+        for (let i = 0; i < 300 && !workflow; i++) await new Promise(resolve => setTimeout(resolve, 100));
+        offWorkflow(); assert.ok(workflow, 'workflow RPC response');
+        assert.equal(workflow.success, !legacy, JSON.stringify(workflow));
+        if (legacy) assert.match(JSON.stringify(workflow), /workflowScript was removed/);
+        else {
+            let completed;
+            for (let i = 0; i < 100; i++) {
+                completed = await worker.subagentRequest({ method: 'status', params: {} });
+                if (completed.snapshot?.runs.some(run => run.kind === 'workflow' && ['complete', 'failed'].includes(run.state))) break;
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            assert.ok(completed.snapshot?.runs.some(run => run.kind === 'workflow' && run.state === 'complete'), JSON.stringify(completed));
+        }
+    }
     for (let i = 0; i < 300 && (!worker.isIdle() || worker.retainsBackgroundWork()); i++) await new Promise(resolve => setTimeout(resolve, 100));
     assert.ok(worker.isIdle() && !worker.retainsBackgroundWork(), 'completion notifications settled before reload');
     // Native reload must recompute resource filters without restarting or losing

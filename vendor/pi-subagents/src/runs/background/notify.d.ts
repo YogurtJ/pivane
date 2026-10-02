@@ -14,6 +14,8 @@ export interface SubagentNotifyChildOutput {
     runId?: string;
     agent?: string;
     status: string;
+    /** Latest detached revival of this failed child, e.g. `Revived → <run>: completed`. */
+    revival?: string;
     savedOutputPath?: string;
     outputArtifactPath?: string;
     structuredOutputPath?: string;
@@ -83,6 +85,7 @@ export interface CompletionNotification {
         agent?: string;
         status?: string;
         state?: string;
+        revival?: string;
         success?: boolean;
         output?: string;
         structuredOutput?: unknown;

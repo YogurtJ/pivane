@@ -1,126 +1,82 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as piAi from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { PI_CODING_AGENT_PACKAGE_ROOT_ENV } from "../shared/utils.js";
-import { PI_CODING_AGENT_PACKAGE, resolveInstalledPiPackageRoot, resolveRunningPiPackageRoot } from "../runs/shared/pi-spawn.js";
+import { MODEL_ONLY_TOOL } from "../shared/extension-context.js";
 const LOADER_NAME = "subagents_enable";
 const SUBAGENT_NAME = "subagent";
-const MINIMUM_DYNAMIC_TOOLS_VERSION = [0, 86, 1];
-const UNSUPPORTED_HOST_MESSAGE = "Dynamic tool activation requires Pi 0.86.1 or newer";
 let warnedUnsupportedHost = false;
-/** Returns why dynamic tool activation is unavailable, or undefined when the host supports it. */
-export function unsupportedDynamicToolsReason(pi, deps = {}) {
-    if (typeof pi.getAllTools !== "function" || typeof pi.getActiveTools !== "function" || typeof pi.setActiveTools !== "function" || typeof piAi.getCurrentTools !== "function")
-        return UNSUPPORTED_HOST_MESSAGE;
-    const probe = probeHostPiVersion(deps);
-    if ("reason" in probe)
-        return probe.reason;
-    return supportsMinimumVersion(probe.version) ? undefined : `${UNSUPPORTED_HOST_MESSAGE} (detected ${probe.version} in ${probe.root})`;
-}
-/**
- * The host SDK is not a dependency of this package, so a bare module
- * resolution only works where it happens to be installed next to us (a
- * repository checkout with devDependencies). Distributed installs read the
- * version from the Pi that owns the session instead: argv ownership, Pi's
- * package directory, the explicit subagents override, then validated compiled
- * image layouts. A
- * selected root must expose a valid manifest — failures are reported rather
- * than silently falling through to a different Pi installation.
- */
-function probeHostPiVersion(deps) {
-    const runningRoot = resolveRunningPiPackageRoot(deps);
-    // Only the running host and an explicit override identify the Pi that owns this
-    // session. An SDK reached through our own install tree cannot be proven to be
-    // that installation, so it may inform the reason but never the gate: dynamic
-    // activation stays off until the host is verified.
-    if (runningRoot && "reason" in runningRoot)
-        return runningRoot;
-    if (runningRoot)
-        return readHostPiManifest(runningRoot.root, runningRoot.source === "PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT", deps.readFileSync, deps.platform);
-    const installedRoot = resolveInstalledPiPackageRoot();
-    return { reason: installedRoot
-            ? `Could not verify the running Pi installation; ${installedRoot} is not confirmed to be the host that owns this session`
-            : "Could not locate the running Pi installation to verify dynamic tool support" };
-}
-function readHostPiManifest(root, fromOverride, readFileSync = (filePath, encoding) => fs.readFileSync(filePath, encoding), platform = process.platform) {
-    const manifestPath = (platform === "win32" ? path.win32 : path.posix).join(root, "package.json");
-    let source;
-    try {
-        source = readFileSync(manifestPath, "utf-8");
-    }
-    catch (error) {
-        return { reason: `Could not read the Pi package manifest at ${manifestPath}: ${errorMessage(error)}` };
-    }
-    let parsed;
-    try {
-        parsed = JSON.parse(source);
-    }
-    catch (error) {
-        return { reason: `Invalid Pi package manifest at ${manifestPath}: ${errorMessage(error)}` };
-    }
-    if (!isRecord(parsed) || parsed.name !== PI_CODING_AGENT_PACKAGE) {
-        return { reason: `${manifestPath} is not ${PI_CODING_AGENT_PACKAGE}${fromOverride ? ` (${PI_CODING_AGENT_PACKAGE_ROOT_ENV} override)` : ""}` };
-    }
-    return typeof parsed.version === "string" && parsed.version
-        ? { version: parsed.version, root }
-        : { reason: `The Pi package manifest at ${manifestPath} has no version` };
-}
-function errorMessage(error) {
-    return error instanceof Error ? error.message : String(error);
-}
-function isRecord(value) {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-export function supportsMinimumVersion(version) {
-    const parsed = version.split(".").slice(0, 3).map(Number);
-    if (parsed.length !== 3 || parsed.some((part) => !Number.isInteger(part) || part < 0))
-        return false;
-    for (let index = 0; index < 3; index++) {
-        const part = parsed[index];
-        const minimum = MINIMUM_DYNAMIC_TOOLS_VERSION[index];
-        if (part !== minimum)
-            return part > minimum;
-    }
-    return true;
-}
 function hasNativeToolSelection(messages) {
-    return messages.some((message) => !!message && typeof message === "object"
+    return messages.some((message) => message.role === "system"
         && (Object.hasOwn(message, "toolsAdded") || Object.hasOwn(message, "toolsRemoved")));
 }
-function setSelection(pi, includeSubagent) {
-    const active = pi.getActiveTools();
-    const next = includeSubagent ? [...active, SUBAGENT_NAME] : active.filter((name) => name !== SUBAGENT_NAME);
-    if (!next.includes(LOADER_NAME))
+function setSelection(pi, includeSubagent, includeLoader) {
+    const next = pi.getActiveTools().filter((name) => (includeSubagent || name !== SUBAGENT_NAME) && (includeLoader || name !== LOADER_NAME));
+    if (includeSubagent)
+        next.push(SUBAGENT_NAME);
+    if (includeLoader)
         next.push(LOADER_NAME);
     pi.setActiveTools([...new Set(next)]);
 }
-function applyRecordedSelection(pi, ctx) {
+// Mirrors pi-ai's per-API transcript handling: without these flags, a mid-conversation tool change
+// makes Pi resend the conversation under a new leading system message, missing the prompt cache.
+function addsToolsWithoutCheckpoint(model) {
+    const compat = model?.compat;
+    if (!model || compat?.supportsMidConvoSystemMessages !== true)
+        return false;
+    switch (model.api) {
+        case "anthropic-messages": return compat.supportsMidConvoToolChanges === true;
+        case "openai-completions": return compat.supportsMidConvoToolAdditions === true;
+        case "openai-responses":
+        case "openai-codex-responses":
+        case "azure-openai-responses": return compat.supportsAdditionalTools === true || compat.supportsToolSearch === true;
+        default: return false;
+    }
+}
+// Returns whether the loader is selected for this session.
+function applyRecordedSelection(pi, ctx, mode) {
     const available = pi.getAllTools();
     if (!Array.isArray(available) || !Array.isArray(pi.getActiveTools()))
-        return;
+        return true;
     if (!available.some((tool) => tool.name === LOADER_NAME))
-        return;
+        return true;
     // SAFETY: The running Pi session manager exposes buildSessionContext, but its read-only extension type omits it.
     const messages = ctx.sessionManager.buildSessionContext().messages;
     if (hasNativeToolSelection(messages)) {
-        setSelection(pi, piAi.getCurrentTools(messages).some((tool) => tool.name === SUBAGENT_NAME));
-        return;
+        // Replayed here because a package-local pi-ai may be older than the running Pi.
+        const recorded = new Set();
+        for (const message of messages) {
+            if (message.role !== "system")
+                continue;
+            for (const tool of message.toolsRemoved ?? [])
+                recorded.delete(tool.name);
+            for (const tool of message.toolsAdded ?? [])
+                recorded.add(tool.name);
+        }
+        // "auto" never adds the loader to a transcript that did not declare it: that is itself a tool change.
+        const loaderSelected = mode === "dynamic" || recorded.has(LOADER_NAME);
+        setSelection(pi, recorded.has(SUBAGENT_NAME), loaderSelected);
+        return loaderSelected;
     }
-    setSelection(pi, messages.length > 0 && pi.getActiveTools().includes(SUBAGENT_NAME));
+    // "auto" goes eager only for an empty session; any history keeps the tools it already sent.
+    const eager = mode === "auto" && messages.length === 0 && !addsToolsWithoutCheckpoint(ctx.model);
+    setSelection(pi, eager || (messages.length > 0 && pi.getActiveTools().includes(SUBAGENT_NAME)), !eager);
+    return !eager;
 }
 export function registerSubagentToolActivation(pi, options) {
-    const unsupportedReason = unsupportedDynamicToolsReason(pi);
-    if (unsupportedReason) {
+    const mode = options.mode ?? "auto";
+    // Same as --exclude-tools subagents_enable: without the loader, subagent stays active.
+    if (mode === "eager")
+        return;
+    if (typeof pi.getAllTools !== "function" || typeof pi.getActiveTools !== "function" || typeof pi.setActiveTools !== "function") {
         if (!warnedUnsupportedHost) {
             warnedUnsupportedHost = true;
-            console.warn(`[pi-subagents] ${unsupportedReason}; keeping subagent eagerly available.`);
+            console.warn("[pi-subagents] Dynamic tool activation requires Pi 0.86.1 or newer; keeping subagent eagerly available.");
         }
         return;
     }
-    const parameters = Type.Object({}, { additionalProperties: false });
+    // Takes no arguments, but a stray one (DeepSeek sends `{ action: "enable" }`) must not fail validation.
+    const parameters = Type.Object({});
     const loader = {
         name: LOADER_NAME,
+        ...MODEL_ONLY_TOOL,
         label: "Enable Subagents",
         description: "Enable pi-subagents delegation and management tools without launching work. Call when delegation is authorized by the current request or applicable user/project instructions, or when managing existing runs. Direct execution is the default; complexity alone never authorizes delegation. Full tools are available on the next model request.",
         promptSnippet: "pi-subagents is installed. For authorized specialist, independent-review, or parallel work, call subagents_enable, then subagent. Authorization must come from the current request or applicable instructions; complexity alone is not authorization.",
@@ -133,7 +89,7 @@ export function registerSubagentToolActivation(pi, options) {
                     details: { unavailable: [SUBAGENT_NAME] },
                 };
             try {
-                setSelection(pi, true);
+                setSelection(pi, true, true);
             }
             catch (error) {
                 return {
@@ -148,17 +104,21 @@ export function registerSubagentToolActivation(pi, options) {
                     content: [{ type: "text", text: "Activation failed: subagent." }],
                     details: { missing: [SUBAGENT_NAME] },
                 };
-            const advertised = options.advertisedPrompt();
+            const advertised = await options.advertisedPrompt();
             return {
-                content: [{ type: "text", text: `Enabled: subagent. On the next model request, call subagent({action:\"list\",capabilities:true}) for current capabilities.${advertised ? `\n\n${advertised}` : ""}` }],
+                content: [{ type: "text", text: `Enabled: subagent. If your tool list includes subagent (possibly prefixed), call subagent({action:\"list\",capabilities:true}). Otherwise, wait for the next user prompt; do not retry now. Start Pi with --exclude-tools subagents_enable to keep subagent always available.${advertised ? `\n\n${advertised}` : ""}` }],
                 details: { enabled: [SUBAGENT_NAME] },
             };
         },
     };
     pi.registerTool(loader);
-    pi.on("session_start", (_event, ctx) => applyRecordedSelection(pi, ctx));
-    pi.on("session_tree", (_event, ctx) => applyRecordedSelection(pi, ctx));
+    // Decided at session start and tree navigation only; switching models keeps the session's tools.
+    let loaderSelected = true;
+    pi.on("session_start", (_event, ctx) => { loaderSelected = applyRecordedSelection(pi, ctx, mode); });
+    pi.on("session_tree", (_event, ctx) => { loaderSelected = applyRecordedSelection(pi, ctx, mode); });
     pi.on("before_agent_start", (event) => {
+        if (!loaderSelected)
+            return;
         const available = pi.getAllTools();
         if (!Array.isArray(available) || !available.some((tool) => tool.name === LOADER_NAME))
             return;

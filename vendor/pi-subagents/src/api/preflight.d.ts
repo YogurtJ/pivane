@@ -3,7 +3,7 @@ import { type AvailableModelInfo, type ParentModel } from "../runs/shared/model-
 import { type ThinkingLevel } from "../shared/thinking-ceiling.ts";
 import { type ArtifactDirPreference, type ArtifactPaths, type IntercomBridgeConfig, type IntercomBridgeMode, type JsonSchemaObject, type OutputMode } from "../shared/types.ts";
 import { type ResolvedSubagentCapabilityCeiling, type SubagentCapabilityAudit } from "../runs/shared/capability-ceiling.ts";
-import type { ResolvedMcpDirectToolSelection } from "../runs/shared/mcp-direct-tool-allowlist.ts";
+import type { McpRuntimeSnapshotHost, ResolvedMcpDirectToolSelection } from "../runs/shared/mcp-direct-tool-allowlist.ts";
 import { AGENT_DEFINITION_PROJECTION_VERSION } from "../shared/launch-contract.ts";
 import { type ExtensionBindings } from "../runs/shared/extension-bindings.ts";
 export declare const SUBAGENT_LAUNCH_CONTRACT_VERSION: 3;
@@ -26,6 +26,8 @@ export interface SubagentLaunchContractInput {
     thinkingCeiling?: ThinkingLevel;
     inheritedThinkingCeiling?: ThinkingLevel;
     parentModel?: ParentModel;
+    /** Scoped-model snapshot (`provider/id` strings); drives the `scoped` allow token. Omitting it degrades `scoped` to `inherit`, so callers comparing preflight with execution must pass the session snapshot. */
+    scopedModelIds?: readonly string[];
     availableModels?: ReadonlyArray<AvailableModelInfo | {
         provider: string;
         id: string;
@@ -53,6 +55,8 @@ export interface SubagentLaunchContractInput {
     nestedRootRunId?: string;
     capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
     inheritedCapabilityCeiling?: ResolvedSubagentCapabilityCeiling;
+    /** The calling extension's `pi`, so `mcp:` selectors resolve against the MCP the launch uses. Without it, preflight cannot see Pi's built-in MCP and resolves through pi-mcp-adapter's configuration. */
+    runtimeSnapshotHost?: McpRuntimeSnapshotHost;
     /** Per-launch bridge config; replaces the global `intercomBridge` config exactly as the tool and delegation overrides do. */
     intercomBridge?: IntercomBridgeConfig;
     /**

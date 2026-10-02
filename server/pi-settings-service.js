@@ -5,9 +5,13 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { WorkspacePreferencesService } = require('./workspace-preferences-service');
 const { PiProviderLoginService, literal } = require('./pi-provider-login-service');
-const { createHash } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const aiPromise = import('@earendil-works/pi-ai');
+const modelSpeed = require('./pi-model-speed');
 const THINKING_MAP_KEYS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+// These editor fields are user choices. Native modelOverrides apply after both
+// models.json definitions and extension registrations, including on reload.
+const CUSTOM_MODEL_OVERRIDE_FIELDS = ['name', 'reasoning', 'input', 'contextWindow', 'maxTokens'];
 
 function cleanModelId(value) {
     if (typeof value !== 'string' || !value.trim() || value.length > 500 || /[\u0000-\u0020\u007f]/.test(value) || ['__proto__', 'prototype', 'constructor'].includes(value)) throw new Error('Invalid model ID');
@@ -131,7 +135,10 @@ class PiSettingsService {
         const available = await runtime.getAvailable(undefined, { signal: AbortSignal.timeout(20000) });
         const availableSet = new Set(available.map(model => `${model.provider}\u0000${model.id}`));
         const { getSupportedThinkingLevels } = await aiPromise;
+        const { agentDir: speedAgentDir } = await this.paths();
+        const speedConfig = modelSpeed.readSpeedConfig(speedAgentDir);
         const models = runtime.getModels().map(model => ({ ...modelSummary(model, availableSet),
+            speed: modelSpeed.speedCapability(model, speedConfig), speedSupported: modelSpeed.APIS.has(model.api),
             thinkingLevels: getSupportedThinkingLevels(model), thinkingLevelMap: model.thinkingLevelMap || {} }));
         const modelCounts = new Map();
         for (const model of models) modelCounts.set(model.provider, (modelCounts.get(model.provider) || 0) + 1);
@@ -165,6 +172,7 @@ class PiSettingsService {
             providerLogin: true,
             modelThinking: true,
             modelAdvanced: true,
+            modelSpeed: true,
             thinkingMapKeys: THINKING_MAP_KEYS,
             revision: await this.configRevision(),
             providers,
@@ -282,13 +290,15 @@ class PiSettingsService {
         const model = runtime.getModel(provider, modelId);
         if (!model) throw new Error('Model not found');
         const startedAt = Date.now();
-        const response = await runtime.completeSimple(model, {
+        const { completeWithSpeed } = await import('./pi-model-speed-runtime.mjs');
+        const { agentDir } = await this.paths();
+        const response = await completeWithSpeed(runtime, model, {
             messages: [{ role: 'user', content: prompt, timestamp: Date.now() }]
         }, {
             maxTokens: 64,
             signal: AbortSignal.timeout(90000),
             sessionId: `pi-web-model-test-${Date.now()}`
-        });
+        }, agentDir);
         if (response.stopReason === 'error' || response.stopReason === 'aborted') {
             throw new Error(response.errorMessage || `Model test ${response.stopReason}`);
         }
@@ -319,11 +329,12 @@ class PiSettingsService {
     async writeModelsFile(data) {
         const { modelsPath, agentDir } = await this.paths();
         fs.mkdirSync(agentDir, { recursive: true, mode: 0o700 });
+        const writeId = randomUUID();
         if (fs.existsSync(modelsPath)) {
             const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-            privateFiles.writePrivateFileSync(`${modelsPath}.bak-web-${stamp}`, fs.readFileSync(modelsPath));
+            privateFiles.writePrivateFileSync(`${modelsPath}.bak-web-${stamp}-${writeId}`, fs.readFileSync(modelsPath));
         }
-        const temporary = `${modelsPath}.tmp-${process.pid}-${Date.now()}`;
+        const temporary = `${modelsPath}.tmp-${process.pid}-${writeId}`;
         privateFiles.writePrivateFileSync(temporary, `${JSON.stringify(data, null, 2)}\n`);
         fs.renameSync(temporary, modelsPath);
     }
@@ -343,16 +354,23 @@ class PiSettingsService {
                     ? 'command'
                     : config.apiKey !== undefined ? 'inline' : null,
             modelCount: Array.isArray(config.models) ? config.models.length : 0,
-            models: (Array.isArray(config.models) ? config.models : []).map(model => ({
-                id: model.id,
-                name: model.name || model.id,
-                api: model.api || config.api || '',
-                reasoning: Boolean(model.reasoning),
-                thinkingLevelMap: model.thinkingLevelMap || {},
-                input: Array.isArray(model.input) ? model.input : ['text'],
-                contextWindow: model.contextWindow || 128000,
-                maxTokens: model.maxTokens || 16384
-            }))
+            models: (Array.isArray(config.models) ? config.models : []).map(definition => {
+                const model = { ...definition };
+                const override = config.modelOverrides?.[definition.id];
+                for (const field of CUSTOM_MODEL_OVERRIDE_FIELDS) {
+                    if (override?.[field] !== undefined) model[field] = override[field];
+                }
+                return {
+                    id: model.id,
+                    name: model.name || model.id,
+                    api: model.api || config.api || '',
+                    reasoning: Boolean(model.reasoning),
+                    thinkingLevelMap: model.thinkingLevelMap || {},
+                    input: Array.isArray(model.input) ? model.input : ['text'],
+                    contextWindow: model.contextWindow || 128000,
+                    maxTokens: model.maxTokens || 16384
+                };
+            })
         })).sort((a, b) => a.id.localeCompare(b.id));
     }
 
@@ -429,6 +447,9 @@ class PiSettingsService {
         if (index >= 0) models[index] = model;
         else models.push(model);
         provider.models = models;
+        const override = { ...(provider.modelOverrides?.[id] || {}) };
+        for (const field of CUSTOM_MODEL_OVERRIDE_FIELDS) override[field] = model[field];
+        provider.modelOverrides = { ...(provider.modelOverrides || {}), [id]: override };
         await this.writeModelsFile(data);
         return { ok: true, providerId, modelId: id, requiresRuntimeRestart: true };
     }
@@ -443,8 +464,31 @@ class PiSettingsService {
         const filtered = provider.models.filter(model => model.id !== modelId);
         if (filtered.length === provider.models.length) throw new Error('Custom model not found');
         provider.models = filtered;
+        const override = provider.modelOverrides?.[modelId];
+        if (override) {
+            for (const field of CUSTOM_MODEL_OVERRIDE_FIELDS) delete override[field];
+            if (!Object.keys(override).length) delete provider.modelOverrides[modelId];
+            if (!Object.keys(provider.modelOverrides).length) delete provider.modelOverrides;
+        }
         await this.writeModelsFile(data);
         return { ok: true, providerId, modelId, requiresRuntimeRestart: true };
+    }
+
+    async saveModelSpeed(input) {
+        const provider = cleanId(input.provider, 'Provider ID'), modelId = cleanModelId(input.modelId);
+        if (input.expectedRevision !== await this.configRevision()) throw Object.assign(new Error('模型配置已变化，请刷新后再保存'), { statusCode: 409 });
+        modelSpeed.validateSpeed(input.speed);
+        const runtime = await this.createModelRuntime(), model = runtime.getModel(provider, modelId);
+        if (!model) throw new Error('模型不存在');
+        if (input.speed && Object.keys(input.speed.modes).length && !modelSpeed.APIS.has(model.api)) throw new Error('此 API 不支持速度档位');
+        const { modelsPath } = await this.paths();
+        if (input.expectedRevision !== await this.configRevision()) throw Object.assign(new Error('模型配置已变化，请刷新后再保存'), { statusCode: 409 });
+        const data = this.readModelsFile(modelsPath), config = data.providers[provider] ||= {};
+        const local = config.models?.find(m => m.id === modelId) || ((config.modelOverrides ||= {})[modelId] ||= {});
+        if (input.speed === null) delete local.pivaneSpeed;
+        else local.pivaneSpeed = structuredClone(input.speed);
+        await this.writeModelsFile(data);
+        return { ok: true, requiresRuntimeRestart: true };
     }
 
     async getModelAdvanced(input) {
@@ -696,7 +740,7 @@ class PiSettingsService {
 }
 
 // Serialize settings mutations in this service; do not let a pending login race logout or model edits.
-for (const method of ['saveApiKey', 'logout', 'upsertCustomProvider', 'deleteCustomProvider', 'upsertCustomModel', 'deleteCustomModel', 'setModelPreferences', 'saveModelThinking', 'saveModelAdvanced', 'packageAction', 'createSkill', 'deleteSkill', 'setSkillCommands']) {
+for (const method of ['saveApiKey', 'logout', 'upsertCustomProvider', 'deleteCustomProvider', 'upsertCustomModel', 'deleteCustomModel', 'setModelPreferences', 'saveModelThinking', 'saveModelSpeed', 'saveModelAdvanced', 'packageAction', 'createSkill', 'deleteSkill', 'setSkillCommands']) {
     const operation = PiSettingsService.prototype[method];
     PiSettingsService.prototype[method] = async function (...args) {
         this.loginService.assertIdle();

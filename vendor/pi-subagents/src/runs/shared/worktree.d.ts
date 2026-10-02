@@ -6,7 +6,7 @@ export declare const DEFAULT_WORKTREE_BASE_REF = "HEAD";
 export declare const DEFAULT_WORKTREE_BRANCH_PREFIX = "pi-subagents/";
 /** Internal marker used to defer Worktrunk-dependent instruction paths to launch time. */
 export declare const WORKTREE_AGENT_CWD_PLACEHOLDER: string;
-export declare const MACHINE_DIFF_OPTIONS: readonly ["--no-color", "--no-ext-diff", "--no-textconv", "--default-prefix", "--line-prefix=", "--no-relative"];
+export declare const MACHINE_DIFF_OPTIONS: readonly ["--no-color", "--no-ext-diff", "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/", "--line-prefix=", "--no-relative"];
 export interface WorktreeNamingInput {
     runId: string;
     index: number;

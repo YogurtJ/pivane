@@ -90,7 +90,6 @@
     .pi-mobile-composer-summary strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--text-main); }
     .pi-mobile-composer-summary span { flex: 0 0 auto; white-space: nowrap; }
     .pi-mobile-composer-summary span:last-child { margin-left: auto; font-variant-numeric: tabular-nums; }
-    .pi-composer[data-running="true"] .pi-mobile-composer-summary { padding-right: 96px; }
     .pi-mobile-composer-summary:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
     .pi-composer-actions.pi-composer-add { flex: 0 0 36px; }
     .pi-composer textarea { flex: 1 1 96px; width: 0; }
@@ -118,14 +117,6 @@
     .pi-mobile-context-trigger[data-level="warn"] { --pi-ring: var(--amber); }
     .pi-mobile-context-trigger[data-level="danger"] { --pi-ring: var(--danger); }
     .pi-mobile-context-trigger:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
-    .pi-composer[data-running="true"] #pi-delivery-mode.visible {
-        position: absolute;
-        top: 7px;
-        right: 8px;
-        width: 84px;
-        height: 28px;
-        padding: 0 4px;
-    }
 }
 
 .pi-mobile-session-dialog {

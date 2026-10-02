@@ -269,6 +269,7 @@ class PiSessionStore {
 
     async getSession(cwdInput, id) {
         const cwd = this.resolveProject(cwdInput);
+        await this.sessionMoves?.assertAvailable(cwd, id);
         const { SessionManager } = await getSdk();
         const candidate = (await this._nativeSessionMetadata(cwd, SessionManager)).find(item => item.id === id);
         if (!candidate) throw new Error('Session not found in this project');
@@ -280,6 +281,7 @@ class PiSessionStore {
         const session = this._serializeSession(candidate, agentProfile, assistantProject);
         const assistant = require('./pi-extension-assistant').assistantProfile(manager);
         const profileAuthoring = require('./pi-profile-authoring').readProfileAuthoring(manager);
+        await this.sessionMoves?.assertAvailable(cwd, id);
         return { ...session, path: canonical, assistant, profileAuthoring };
     }
 

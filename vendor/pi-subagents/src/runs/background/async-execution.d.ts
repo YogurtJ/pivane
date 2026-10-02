@@ -29,6 +29,7 @@ interface AsyncExecutionContext {
     permissions?: PermissionConfig;
     currentModelProvider?: string;
     currentModel?: ParentModel;
+    scopedModelIds?: string[];
     /** Optional model-scope enforcement resolved from subagent settings. */
     modelScope?: ModelScopeConfig;
     modelResponseAliases?: Record<string, string[]>;
@@ -36,6 +37,8 @@ interface AsyncExecutionContext {
     interactive?: boolean;
     /** The executor's own child runtime when the launch comes from an in-process child. */
     childRuntime?: ChildRuntimeConfig;
+    /** The launching session's project trust; undefined when the host has no trust concept. */
+    projectTrusted?: boolean;
 }
 export declare const DEFAULT_ASYNC_TIMEOUT_MS: number;
 interface AsyncChainParams {

@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "pi-subagents",
-  "version": "0.71.0",
+  "version": "0.74.0",
   "description": "Pi extension for single-agent delegation and scripted multi-agent workflows",
   "author": "Nico Bailon",
   "license": "MIT",
@@ -19,15 +19,15 @@
   "dependencies": {
     "acorn": "8.18.0",
     "jiti": "2.7.0",
-    "typebox": "1.1.38",
-    "undici": "8.10.0",
+    "undici": "8.10.2",
     "yaml": "2.8.3"
   },
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "*",
     "@earendil-works/pi-ai": ">=0.86.1",
     "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*"
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
   },
   "peerDependenciesMeta": {
     "@earendil-works/pi-agent-core": {
@@ -40,6 +40,9 @@
       "optional": true
     },
     "@earendil-works/pi-tui": {
+      "optional": true
+    },
+    "typebox": {
       "optional": true
     }
   },
@@ -73,6 +76,10 @@
     "./agents": {
       "types": "./src/api/agents.d.ts",
       "default": "./src/api/agents.js"
+    },
+    "./inspectors": {
+      "types": "./src/api/inspectors.d.ts",
+      "default": "./src/api/inspectors.js"
     },
     "./delegation": {
       "types": "./src/api/delegation.d.ts",

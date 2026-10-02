@@ -28,6 +28,7 @@ function mountSettingsRoutes(router, { settingsService, nativeService, auxiliary
     route('post', '/settings/login/:id/answer', req => settingsService.loginService.answer(req.params.id, req.body));
     route('delete', '/settings/login/:id', req => settingsService.loginService.cancel(req.params.id));
     route('put', '/settings/models/thinking', req => settingsService.saveModelThinking(req.body));
+    route('put', '/settings/models/speed', req => settingsService.saveModelSpeed(req.body));
     route('get', '/settings/models', () => settingsService.getModelSnapshot(), { errorStatus: 500, serviceStatus: false });
     route('post', '/settings/providers/:id/api-key', req => settingsService.saveApiKey(req.params.id, req.body.apiKey));
     route('delete', '/settings/providers/:id/credential', req => settingsService.logout(req.params.id));

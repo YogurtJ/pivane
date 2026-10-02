@@ -18,8 +18,7 @@ import { registerPromptWorkflowCommands } from "./prompt-workflows.js";
 import { collectSubagentCost, formatSubagentCostReport } from "./subagent-cost.js";
 import { openSubagentsAdmin } from "./subagents-admin.js";
 import { SUBAGENT_GUIDE_TOPICS } from "../extension/subagent-guide.js";
-import { openSubagentFleet } from "../tui/fleet.js";
-import { createBuiltinInspectorPlugins } from "../inspectors/plugins.js";
+import { getInspectorPlugins } from "../inspectors/plugins.js";
 import { applySlashUpdate, buildSlashInitialResult, failSlashResult, finalizeSlashResult, } from "./slash-live-state.js";
 import { SLASH_RESULT_TYPE, SLASH_TEXT_RESULT_TYPE, SLASH_SUBAGENT_CANCEL_EVENT, SLASH_SUBAGENT_REQUEST_EVENT, SLASH_SUBAGENT_RESPONSE_EVENT, SLASH_SUBAGENT_STARTED_EVENT, SLASH_SUBAGENT_UPDATE_EVENT, DIRS, } from "../shared/types.js";
 const parseInlineConfig = (raw) => {
@@ -583,7 +582,8 @@ export function registerSlashCommands(pi, state, options = {}) {
         }
         fleetOpen = true;
         try {
-            await openSubagentFleet(ctx, state, { asyncDirRoot: DIRS.async, inspectorPlugins: createBuiltinInspectorPlugins(), resultsDir: DIRS.results, fleetKeybindings: options.fleetKeybindings });
+            const { openSubagentFleet } = await import("../tui/fleet.js");
+            await openSubagentFleet(ctx, state, { asyncDirRoot: DIRS.async, inspectorPlugins: () => getInspectorPlugins(pi), resultsDir: DIRS.results, fleetKeybindings: options.fleetKeybindings });
         }
         finally {
             fleetOpen = false;
@@ -596,7 +596,7 @@ export function registerSlashCommands(pi, state, options = {}) {
         },
     });
     pi.registerCommand("run", {
-        description: "Run one subagent through workflowScript: /run agent[output=file] [task] [--bg] [--fork]",
+        description: "Run one subagent through a workflow script: /run agent[output=file] [task] [--bg] [--fork]",
         getArgumentCompletions: makeAgentCompletions(pi, state),
         handler: async (args, ctx) => {
             const { args: cleanedArgs, bg, fork } = extractExecutionFlags(args);
@@ -639,7 +639,7 @@ export function registerSlashCommands(pi, state, options = {}) {
                 child.model = inline.model;
             if (fork)
                 child.context = "fork";
-            launchCommand(ctx, { workflowScript: slashRunWorkflowScript("run", child), async: bg ? true : false });
+            launchCommand(ctx, options.workflowScriptsDisabled ? { ...child, async: bg } : { workflowScript: slashRunWorkflowScript("run", child), async: bg });
         },
     });
     pi.registerCommand("subagent-cost", {

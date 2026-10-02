@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import * as path from "node:path";
 import { Type } from "typebox";
 export const WATCHDOG_DIFF_TOOL_NAME = "watchdog_diff";
@@ -13,17 +13,26 @@ function runGit(root, args) {
     const result = spawnSync("git", ["-C", root, ...args], { encoding: "utf-8", maxBuffer: 16 * 1024 * 1024, windowsHide: true });
     return { ok: result.status === 0, stdout: result.stdout ?? "", stderr: (result.stderr ?? "").trim() };
 }
-/** HEAD at session start, so later child commits still show in the diff. */
-export function captureWatchdogDiffBaseline(cwd) {
-    const toplevel = runGit(cwd, ["rev-parse", "--show-toplevel"]);
-    if (!toplevel.ok)
-        return undefined;
-    const head = runGit(cwd, ["rev-parse", "HEAD"]);
-    if (!head.ok)
-        return undefined;
-    const root = toplevel.stdout.trim();
-    const ref = head.stdout.trim();
+const BASELINE_ARGS = ["rev-parse", "--show-toplevel", "HEAD"];
+function parseBaseline(stdout) {
+    // HEAD is the last line; the repository path itself may contain newlines.
+    const lines = stdout.trim().split(/\r?\n/);
+    const ref = lines.pop();
+    const root = lines.join("\n");
     return root && ref ? { root, ref } : undefined;
+}
+/** HEAD at reviewer launch, for tools that must be registered synchronously. */
+export function captureWatchdogDiffBaseline(cwd) {
+    const result = runGit(cwd, BASELINE_ARGS);
+    return result.ok ? parseBaseline(result.stdout) : undefined;
+}
+/** HEAD at session start, so later child commits still show in the diff. Does not block the event loop. */
+export function startWatchdogDiffBaselineCapture(cwd) {
+    return new Promise((resolve) => {
+        execFile("git", ["-C", cwd, ...BASELINE_ARGS], { encoding: "utf-8", windowsHide: true }, (error, stdout) => {
+            resolve(error ? undefined : parseBaseline(stdout));
+        });
+    });
 }
 function validatePath(value) {
     const trimmed = value?.trim();

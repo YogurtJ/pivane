@@ -96,6 +96,27 @@ class UsageLedger {
             return inserted;
         });
     }
+    relocateSession(from, to) {
+        const key = session => createHash('sha256').update(JSON.stringify([session.path, session.id])).digest('hex');
+        const side = session => createHash('sha256').update(JSON.stringify(['side-chat', session.cwd, session.id])).digest('hex');
+        return this.transaction(() => {
+            for (const [source, target, id] of [[key(from), key(to), from.id], [side(from), side(to), 'side-chat:' + from.id]]) {
+                const old = this.db.prepare('SELECT * FROM owners WHERE key=?').get(source);
+                if (!old) continue; // Already moved, or this thread has no recorded usage.
+                if (old.id !== id || old.cwd !== from.cwd) throw new Error('Usage source identity changed');
+                if (this.db.prepare('SELECT 1 FROM owners WHERE key=?').get(target)) throw new Error('Usage destination already exists');
+                this.db.prepare('INSERT INTO owners VALUES (?,?,?,?)').run(target, id, to.cwd, old.name);
+                this.db.prepare('UPDATE facts SET owner=? WHERE owner=?').run(target, source);
+                this.db.prepare('UPDATE daily SET owner=? WHERE owner=?').run(target, source);
+                this.db.prepare('DELETE FROM owners WHERE key=?').run(source);
+            }
+            for (const file of [from.path, to.path]) {
+                this.db.prepare('DELETE FROM sources WHERE path=?').run(file);
+                this.db.prepare('DELETE FROM checkpoints WHERE path=?').run(file);
+            }
+            return { relocated: true, ledger: true };
+        });
+    }
     sync(input, catalog) {
         let duplicates = 0;
         const source = this.db.prepare('SELECT sources.signature,cwd,checkpoints.signature AS checkpointSignature FROM sources LEFT JOIN checkpoints USING(path) WHERE sources.path=?');
@@ -177,6 +198,21 @@ async function runLedger(input) {
     const ledger = new UsageLedger(input.ledgerPath);
     try {
         ledger.ensureZone('UTC');
+        if (input.move) {
+            const { from, to } = input.move;
+            if (!from || !to || from.id !== to.id || typeof to.id !== 'string') throw new Error('Invalid usage relocation');
+            for (const session of [from, to]) {
+                if (typeof session.cwd !== 'string' || fs.realpathSync.native(session.cwd) !== session.cwd
+                    || !input.roots.some(root => within(root, session.cwd))
+                    || typeof session.path !== 'string' || !within(input.root, session.path)) throw new Error('Invalid usage relocation scope');
+            }
+            const { readSafe } = require('./pi-maintenance-files');
+            const bytes = readSafe(to.path, 64 * 1024 * 1024), newline = bytes.indexOf(10);
+            if (newline < 0 || newline > 1024 * 1024) throw new Error('Invalid usage relocation header');
+            const header = JSON.parse(bytes.subarray(0, newline).toString('utf8'));
+            if (header.type !== 'session' || header.id !== to.id || header.cwd !== to.cwd) throw new Error('Usage relocation target changed');
+            return ledger.relocateSession(from, to);
+        }
         if (input.sideBatch) {
             const { cwd, sessionId, records } = input.sideBatch;
             if (typeof cwd !== 'string' || typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId)

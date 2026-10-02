@@ -45,13 +45,20 @@ test('assembled HTTP and real RPC isolate profile memory across projects without
         const last = body.messages.at(-1);
         const wantsWrite = JSON.stringify(last?.content || '').includes('fixture remember');
         const wantsDraft = JSON.stringify(last?.content || '').includes('fixture profile draft');
-        const action = wantsDraft ? 'profile_draft' : wantsWrite ? 'memory_add' : 'memory_search';
+        let comparison;
+        if (last?.role === 'tool') {
+            try { const data = JSON.parse(typeof last.content === 'string' ? last.content : last.content.map(p => p.text || '').join(''));
+                if (data.status === 'comparison-required') comparison = data; } catch {}
+        }
+        if (comparison) assert.ok(!comparison.candidates.some(item => item.content === marker), 'the synthetic model reads old candidates before deciding this fact is new');
+        const action = wantsDraft ? 'profile_draft' : wantsWrite || comparison ? 'memory_add' : 'memory_search';
         const args = wantsDraft ? { name: 'Proposed study helper', soul: 'Use short verified steps.', user: 'Synthetic preference.' }
-            : wantsWrite ? { target: 'memory', content: marker } : { query: marker };
-        const delta = last?.role === 'tool' ? { role: 'assistant', content: 'Fixture completed.' }
-            : { role: 'assistant', tool_calls: [{ index: 0, id: 'call-fixture', type: 'function', function: { name: action, arguments: JSON.stringify(args) } }] };
+            : wantsWrite || comparison ? { target: 'memory', content: marker, ...(comparison ? { comparisonToken: comparison.comparisonToken } : {}) } : { query: marker };
+        const done = last?.role === 'tool' && !comparison;
+        const delta = done ? { role: 'assistant', content: 'Fixture completed.' }
+            : { role: 'assistant', tool_calls: [{ index: 0, id: comparison ? 'call-compared-fixture' : 'call-fixture', type: 'function', function: { name: action, arguments: JSON.stringify(args) } }] };
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-        res.write(`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', choices: [{ index: 0, delta, finish_reason: last?.role === 'tool' ? 'stop' : 'tool_calls' }] })}\n\n`);
+        res.write(`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', choices: [{ index: 0, delta, finish_reason: done ? 'stop' : 'tool_calls' }] })}\n\n`);
         res.end('data: [DONE]\n\n');
     });
     provider.listen(0, '127.0.0.1'); await once(provider, 'listening');

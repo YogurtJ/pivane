@@ -91,7 +91,7 @@ curl -fsS http://127.0.0.1:11408/api/pi/status
 
 ## 默认可选能力
 
-当前源码已改为随应用交付 pi-subagents 0.71.0 和 pi-hermes-memory 0.9.9。运行 `node scripts/install.cjs` 安装锁定依赖并准备内置组件，避免 npm 对 SQLite 随包二进制进行无谓编译；不再写入当前用户的 Pi Packages 配置。组件准备失败会返回安装错误；不会自动启动子任务或启用身份记忆。旧发布归档没有此脚本时，仍使用归档原有的 `npm ci` 安装说明。
+当前源码已改为随应用交付 pi-subagents 0.74.0 和 pi-hermes-memory 0.9.9。运行 `node scripts/install.cjs` 安装锁定依赖并准备内置组件，避免 npm 对 SQLite 随包二进制进行无谓编译；不再写入当前用户的 Pi Packages 配置。组件准备失败会返回安装错误；不会自动启动子任务或启用身份记忆。旧发布归档没有此脚本时，仍使用归档原有的 `npm ci` 安装说明。
 
 子 Agent 模型与角色设置沿用原生配置，资源可在扩展页停用；档案记忆按助手身份启用。旧 CLI 包声明、过滤、记忆数据和独立安装路径保留，Pivane 优先加载自己的版本。旧跳过变量与安装尝试记录不再控制内置组件。SQLite 平台依赖、跳过脚本后的补全步骤和旧安装兼容见[内置能力包](BUNDLED_CAPABILITIES.md)。
 

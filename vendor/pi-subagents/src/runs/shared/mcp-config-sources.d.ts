@@ -26,6 +26,7 @@ export interface McpServerDefinition {
     httpTransport?: string;
     pluginDataDir?: string;
     literalEnv?: boolean;
+    inheritEnv?: boolean;
 }
 export declare function isMcpServerDefinition(value: unknown): value is McpServerDefinition;
 export declare function loadPackageMcpServers(cwd: string): Record<string, McpServerDefinition>;

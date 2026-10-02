@@ -99,7 +99,7 @@ export interface FleetViewOptions {
     fleetKeybindings?: FleetKeybindingsConfig;
     actions?: FleetActionHandlers;
     copyText?: (text: string) => Promise<void> | void;
-    inspectorPlugins?: readonly InspectorPlugin[];
+    inspectorPlugins?: () => readonly InspectorPlugin[];
     inspectorEnv?: NodeJS.ProcessEnv;
 }
 export declare function collectFleetSnapshot(state: SubagentState, options?: {

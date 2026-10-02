@@ -1,9 +1,34 @@
 #pi-side-confirm[hidden] { display: none; }
-.pi-side-confirm { flex: 0 0 auto; max-height: 42dvh; overflow: auto; padding: 10px 12px; border-block: 1px solid var(--amber); font-size: 0.76rem; overflow-wrap: anywhere; }
-.pi-side-confirm p { margin: 6px 0; line-height: 1.5; }
-.pi-side-confirm pre, .pi-side-tool pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow: auto; font-size: 0.72rem; margin: 6px 0; }
-.pi-side-confirm-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.pi-side-confirm-actions button { min-height: 36px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-1); color: var(--text-main); cursor: pointer; }
+.pi-side-confirm { display: flex; flex-direction: column; flex: 0 0 auto; min-height: 0; max-height: min(460px, 52dvh); overflow: hidden; margin: 10px 12px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface-1); box-shadow: 0 3px 12px rgba(0, 0, 0, .04); font-size: .76rem; overflow-wrap: anywhere; }
+.pi-side-confirm-header { display: flex; align-items: center; gap: 10px; padding: 12px 14px 10px; flex-shrink: 0; }
+.pi-side-confirm-icon { display: grid; place-items: center; flex: 0 0 32px; height: 32px; border-radius: 9px; color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, var(--surface-1)); font-size: .9rem; }
+.pi-side-confirm-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 9px; min-width: 0; }
+.pi-side-confirm-heading strong { color: var(--text-main); font-size: .83rem; font-weight: 600; line-height: 1.4; }
+.pi-side-confirm-badge { color: var(--text-muted); font-size: .65rem; white-space: nowrap; }
+.pi-side-confirm-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 14px 10px; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.pi-side-confirm-scope { margin: 0 0 12px; color: var(--text-muted); line-height: 1.55; font-size: .73rem; }
+.pi-side-confirm-operation { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--text-main); margin-bottom: 8px; font-weight: 500; }
+.pi-side-confirm-tool { max-width: 60%; padding: 2px 7px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-2); color: var(--text-muted); font-size: .66rem; font-weight: 400; }
+.pi-side-confirm-location { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: baseline; margin: 5px 0; color: var(--text-muted); font-size: .68rem; }
+.pi-side-confirm-location > code { color: var(--text-main); overflow-wrap: anywhere; white-space: pre-wrap; }
+.pi-side-confirm-preview { margin-top: 10px; min-width: 0; }
+.pi-side-confirm-caption { display: block; margin-bottom: 6px; color: var(--text-muted); font-size: .66rem; }
+.pi-side-confirm pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; min-width: 0; max-height: 150px; overflow: auto; margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-0); color: var(--text-main); font-size: .71rem; line-height: 1.55; tab-size: 2; }
+.pi-side-confirm-details { margin-top: 10px; }
+.pi-side-confirm-details > summary { cursor: pointer; color: var(--text-muted); font-size: .69rem; padding: 5px 0; }
+.pi-side-confirm-details[open] > summary { margin-bottom: 5px; }
+.pi-side-confirm-footer { flex-shrink: 0; padding: 10px 14px 12px; border-top: 1px solid var(--line); background: var(--surface-1); }
+.pi-side-confirm-note { margin: 0 0 9px; color: var(--text-muted); font-size: .67rem; line-height: 1.5; }
+.pi-side-confirm-actions { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 8px; }
+.pi-side-confirm-actions button { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-1); color: var(--text-main); font: inherit; line-height: 1.4; cursor: pointer; }
+.pi-side-confirm-actions .pi-side-confirm-allow { background: var(--primary); border-color: var(--primary); color: var(--primary-contrast, #fff); font-weight: 500; }
+.pi-side-confirm-allow:hover:not(:disabled) { background: var(--primary-hover, var(--primary)); }
+.pi-side-confirm-deny:hover:not(:disabled) { background: var(--surface-2); }
+.pi-side-confirm-actions button:disabled { opacity: .6; cursor: default; }
+.pi-side-confirm-actions button:focus-visible, .pi-side-confirm-details > summary:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+@media (max-width: 900px) { .pi-side-confirm-actions button { min-height: 42px; } }
+@media (prefers-reduced-motion: reduce) { .pi-side-confirm .fa-spin { animation: none; } }
+.pi-side-tool pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow: auto; font-size: .72rem; margin: 6px 0; }
 .pi-side-tool { border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; margin-top: 6px; min-width: 0; font-size: 0.75rem; }
 .pi-side-tool summary { cursor: pointer; overflow-wrap: anywhere; }
 #pi-toggle-side-chat[hidden], #pi-side-chat[hidden], #pi-side-tab[hidden], #pi-inspector-details[hidden], #pi-side-stop[hidden], #pi-side-send[hidden] { display: none !important; }

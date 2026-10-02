@@ -163,8 +163,10 @@ async function check(browser, base, width, language, theme) {
             const box = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
             return { input: box('#pi-input'), ring: box('#pi-mobile-context-trigger'), send: box('#pi-send-button'), stop: box('#pi-stop-button'), delivery: box('#pi-delivery-mode'), summary: box('#pi-mobile-composer-summary') };
         });
-        assert.ok(layout.input.width >= 96 && layout.ring.right <= layout.send.left + 1 && layout.send.right <= layout.stop.left + 1, JSON.stringify(layout));
-        assert.ok(layout.delivery.top >= layout.summary.top && layout.delivery.bottom <= layout.summary.bottom + 1, JSON.stringify(layout));
+        assert.ok(layout.input.width >= 96 && layout.ring.right <= layout.send.left + 1, JSON.stringify(layout));
+        assert.equal(await page.locator('#pi-send-button').isVisible(), true);
+        assert.equal(await page.locator('#pi-stop-button').isVisible(), false);
+        assert.equal(await page.locator('#pi-delivery-mode').isVisible(), false);
         await page.screenshot({ path: `/tmp/pivane-composer-running-${width}.png` });
     }
     running = false; socket.send(JSON.stringify({ type: 'agent_settled' }));

@@ -11,6 +11,7 @@ import { buildAgentMemoryInjection } from "../agents/agent-memory.js";
 import { appendAgentRefinementOverlay } from "../agents/agent-refinements.js";
 import { rewriteSubagentPrompt } from "../runs/shared/subagent-prompt-runtime.js";
 import { resolveExistingReadPaths } from "../shared/settings.js";
+import { MODEL_ONLY_TOOL } from "../shared/extension-context.js";
 function gitEvidence(cwd) {
     const run = (args) => spawnSync("git", args, { cwd, encoding: "utf8", timeout: 5_000, maxBuffer: 128 * 1024 });
     const inside = run(["rev-parse", "--is-inside-work-tree"]);
@@ -93,6 +94,7 @@ export default function registerHerdrPiBridge(pi) {
     const activeTools = (ctx) => ctx.getActiveTools?.() ?? [];
     pi.registerTool({
         name: "contact_supervisor",
+        ...MODEL_ONLY_TOOL,
         label: "Contact supervisor",
         description: "Contact the parent/supervisor session for a blocking decision, structured interview, or progress update.",
         parameters: Type.Object({ reason: Type.Union([Type.Literal("need_decision"), Type.Literal("interview_request"), Type.Literal("progress_update")]), message: Type.Optional(Type.String({ maxLength: 65_536 })), interview: Type.Optional(Type.Unknown()) }, { additionalProperties: false }),

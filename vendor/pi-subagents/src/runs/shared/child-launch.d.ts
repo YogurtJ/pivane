@@ -1,7 +1,7 @@
 import type { ChildWatchdogConfig, ChildWatchdogStatusEvent } from "../../watchdog/child-status.ts";
 import type { ThinkingLevel } from "../../shared/model-info.ts";
 import { type LaunchResolvedChildExtensions, type ResolvedToolBudget, type RunFanoutBudgetDescriptor, type HerdrMachineReference } from "../../shared/types.ts";
-import type { McpRuntimeSnapshotHost } from "./mcp-direct-tool-allowlist.ts";
+import { type McpRuntimeSnapshotHost, type ResolvedMcpDirectToolSelection } from "./mcp-direct-tool-allowlist.ts";
 import type { PermissionRules } from "./permissions.ts";
 import type { StructuredOutputRuntime } from "./structured-output.ts";
 import type { ChildToolDiagnostic } from "./tool-availability.ts";
@@ -46,9 +46,13 @@ export interface BuildInProcessChildLaunchInput {
     requiredExtensions?: RequiredChildExtensionSnapshot;
     systemPrompt?: string | null;
     mcpDirectTools?: string[];
+    /** Selections the parent resolved against Pi's built-in MCP, carried to the runner. */
+    builtinMcpTools?: ResolvedMcpDirectToolSelection[];
     extensionBindings?: ExtensionBindings;
     cwd: string;
     intercomSessionName?: string;
+    /** The launching session's project trust; undefined when the host has no trust concept. */
+    projectTrusted?: boolean;
     sessionName?: string;
     orchestratorIntercomTarget?: string;
     runId?: string;

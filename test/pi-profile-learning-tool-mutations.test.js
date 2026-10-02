@@ -1,7 +1,9 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createKnowledgeMemoryTools } = require('../server/profile-memory/tool-mutations');
+const { createKnowledgeMemoryTools: rawKnowledgeTools } = require('../server/profile-memory/tool-mutations');
+const { withComparison } = require('./helpers/profile-knowledge-call');
+const createKnowledgeMemoryTools = (...args) => withComparison(rawKnowledgeTools(...args));
 const profileId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const revision = 'a'.repeat(64);
 

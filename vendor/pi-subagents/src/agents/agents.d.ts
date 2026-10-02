@@ -52,6 +52,7 @@ export interface BuiltinAgentOverrideBase {
 }
 interface BuiltinAgentOverrideConfig {
     description?: string;
+    advertise?: boolean;
     machine?: string | false;
     output?: string | false;
     outputMode?: OutputMode;
@@ -316,11 +317,15 @@ export interface AgentDiscoverySnapshot {
     effective: AgentDiscoveryResult;
     all: AgentDiscoveryAllResult;
 }
+/** Undefined uses synchronous npm lookup; null skips global npm discovery. */
+export interface AgentDiscoveryOptions {
+    globalNpmRoot?: string | null;
+}
 /** Clear process-local discovery snapshots, primarily for hosts that reload settings in place. */
 export declare function clearAgentDiscoveryCache(): void;
-export declare function discoverAgentSnapshot(cwd: string, scope: AgentScope, preferredModelProvider?: string, options?: {
+export declare function discoverAgentSnapshot(cwd: string, scope: AgentScope, preferredModelProvider?: string, options?: AgentDiscoveryOptions & {
     includeChains?: boolean;
 }): AgentDiscoverySnapshot;
-export declare function discoverAgents(cwd: string, scope: AgentScope, preferredModelProvider?: string): AgentDiscoveryResult;
-export declare function discoverAgentsAll(cwd: string, preferredModelProvider?: string): AgentDiscoveryAllResult;
+export declare function discoverAgents(cwd: string, scope: AgentScope, preferredModelProvider?: string, options?: AgentDiscoveryOptions): AgentDiscoveryResult;
+export declare function discoverAgentsAll(cwd: string, preferredModelProvider?: string, options?: AgentDiscoveryOptions): AgentDiscoveryAllResult;
 //# sourceMappingURL=agents.d.ts.map

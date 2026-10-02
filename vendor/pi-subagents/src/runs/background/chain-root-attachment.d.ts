@@ -44,6 +44,7 @@ export declare function waitForImportedAsyncRoot(root: ImportedAsyncRoot, option
     now?: () => number;
     shouldAbort?: () => boolean;
     timeoutMessage?: string;
+    abortedAsStopped?: boolean;
 }): Promise<ImportedAsyncRootResult>;
 export declare function resolveAsyncRootResultPath(resultsDir: string, runId: string): string;
 //# sourceMappingURL=chain-root-attachment.d.ts.map

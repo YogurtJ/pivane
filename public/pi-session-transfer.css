@@ -9,7 +9,7 @@
 .pi-transfer-dialog header, .pi-transfer-dialog footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .pi-transfer-dialog h2 { flex: 1; min-width: 0; font-size: 20px; margin: 0; }
 .pi-transfer-dialog header button { flex: 0 0 auto; width: auto; }
-.pi-transfer-dialog footer button { width: auto; }
+.pi-transfer-dialog footer button { width: auto; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .pi-transfer-body { display: grid; gap: 14px; margin: 18px 0; min-width: 0; }
 .pi-transfer-body p, .pi-transfer-status { margin: 0; line-height: 1.65; overflow-wrap: anywhere; font-size: 14px; }
 .pi-transfer-body label { display: grid; gap: 8px; min-width: 0; font-size: 14px; }

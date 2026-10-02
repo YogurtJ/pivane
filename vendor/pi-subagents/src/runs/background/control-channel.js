@@ -36,6 +36,8 @@ const STOP_REQUESTS_DIR = "stop-requests";
 const REVIVAL_BRIEFS_DIR = "revival-briefs";
 export const MAX_STEER_QUEUE_SIZE = 20;
 const STEER_INBOX_CLOSED_FILE = "steer-inbox-closed.json";
+const STOP_INBOX_CLOSED_FILE = "stop-inbox-closed.json";
+const STOP_INBOX_CLOSED_MESSAGE = "Runner stop inbox is closed. Retry stop after runner shutdown is observed.";
 const MAX_STEER_MESSAGE_BYTES = 128 * 1024;
 const MAX_STEER_REQUEST_ID_LENGTH = 256;
 /** Control inbox directory inside an async run dir. */
@@ -64,6 +66,12 @@ export function steerRequestsDir(asyncDir) {
 }
 export function steerInboxClosedPath(asyncDir) {
     return path.join(controlInboxDir(asyncDir), STEER_INBOX_CLOSED_FILE);
+}
+export function stopInboxClosedPath(asyncDir) {
+    return path.join(controlInboxDir(asyncDir), STOP_INBOX_CLOSED_FILE);
+}
+export function closeStopInbox(asyncDir) {
+    writeAtomicJson(stopInboxClosedPath(asyncDir), { version: 1, closedAt: Date.now() });
 }
 export function closeSteerInbox(asyncDir, state, write = writeAtomicJson) {
     write(steerInboxClosedPath(asyncDir), { version: 1, closedAt: Date.now(), state });
@@ -141,9 +149,16 @@ export function requestAsyncStop(asyncDir, payload = {}, deps = {}) {
     if (payload.childId !== undefined && !validStopChildId(payload.childId)) {
         throw new Error("stop childId must be a non-empty string without newlines and at most 256 characters.");
     }
+    const closedPath = stopInboxClosedPath(asyncDir);
+    if (fs.existsSync(closedPath))
+        throw new Error(STOP_INBOX_CLOSED_MESSAGE);
     const request = { ...payload, ts: payload.ts ?? deps.now?.() ?? Date.now(), type: "stop" };
     const requestPath = path.join(stopRequestsDir(asyncDir), stopRequestFileName(request));
-    writeAtomicJson(requestPath, request);
+    (deps.write ?? writeAtomicJson)(requestPath, request);
+    if (fs.existsSync(closedPath)) {
+        fs.rmSync(requestPath, { force: true });
+        throw new Error(STOP_INBOX_CLOSED_MESSAGE);
+    }
     return requestPath;
 }
 export function requestAsyncSteer(asyncDir, payload, deps = {}) {

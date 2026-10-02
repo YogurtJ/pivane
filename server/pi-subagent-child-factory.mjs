@@ -2,6 +2,8 @@
 // launch, storage, ownership, cancellation, notifications and disposal; this
 // adapter only supplies a Pi SDK ResourceLoader with Pivane's package selection.
 import './pi-subagent-native-loader.mjs';
+import path from 'node:path';
+import { registerModelSpeed } from './pi-model-speed-extension.mjs';
 import * as sdk from '@earendil-works/pi-coding-agent';
 import { createPlacementChildSessionFactory } from '../vendor/pi-subagents/src/runs/shared/child-session.js';
 import resources from './pi-bundled-resources.js';
@@ -18,7 +20,17 @@ class ChildResourceLoader {
         const loader = new sdk.DefaultResourceLoader({ ...input, ...arrays,
             settingsManager: resources.settingsView(input.settingsManager, input.cwd, input.agentDir),
             noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true,
-            extensionFactories: [...nativeFactories, ...(input.extensionFactories || [])] });
+            // The pinned Pi's context-file discovery does not consult project trust.
+            // Keep only the identity's global context when the parent distrusts cwd.
+            agentsFilesOverride: base => {
+                const resolved = input.agentsFilesOverride ? input.agentsFilesOverride(base) : base;
+                return input.settingsManager.isProjectTrusted() ? resolved : { ...resolved,
+                    agentsFiles: resolved.agentsFiles.filter(entry => path.dirname(entry.path) === input.agentDir) };
+            },
+            // The upstream native-MCP/Codemode factories use the same names. Keep
+            // Pivane's filtered factories, including the nested-call permission gate.
+            extensionFactories: [...nativeFactories, pi => registerModelSpeed(pi, { agentDir: input.agentDir, preserveExisting: false }),
+                ...(input.extensionFactories || []).filter(entry => !nativeFactories.some(native => native.name === entry.name))] });
         return new Proxy(loader, { get(target, prop) {
             if (prop === 'reload') return async () => {
                 await input.settingsManager.reload();

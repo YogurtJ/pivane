@@ -9,7 +9,7 @@ const { ProfileLearningService, correction, preference, temporary, lastMemoryRea
 const { WorkspacePreferencesService } = require('../server/workspace-preferences-service');
 const profileId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const model = { provider: 'fixture', id: 'cheap', input: ['text'], maxTokens: 1024 };
-const answer = (content, usage = { input: 30, output: 15 }) => ({ stopReason: 'stop', usage, content: [{ type: 'text', text: JSON.stringify({ content }) }] });
+const answer = (content, usage = { input: 30, output: 15 }) => ({ stopReason: 'stop', usage, content: [{ type: 'text', text: JSON.stringify({ action: 'create', kind: 'memory', target: 'memory', category: 'fact', content }) }] });
 const pause = () => new Promise(resolve => setTimeout(resolve, 20));
 async function waitFor(check) {
     for (let i = 0; i < 100; i++) { if (await check()) return; await pause(); }
@@ -299,7 +299,7 @@ test('explicit correction replaces a referenced old item through trusted native 
     f.items([row]);
     f.runtime.completeSimple = async (_model, request) => {
         assert.match(request.systemPrompt, /旧规则用于合成环境/);
-        return { stopReason: 'stop', content: [{ type: 'text', text: JSON.stringify({ content: '新规则用于合成环境。', replaceId: row.id }) }] };
+        return { stopReason: 'stop', content: [{ type: 'text', text: JSON.stringify({ action: 'update', itemId: 'm1', relation: 'correction', category: 'correction', content: '新规则用于合成环境。' }) }] };
     };
     f.append('纠正：不是旧规则，而是新规则，以后按新规则。');
     await f.service.register(f.session);
@@ -314,7 +314,7 @@ test('procedure proposal is stored as an inactive skill draft, never activated b
     const original = f.knowledge.snapshot;
     f.knowledge.snapshot = async (...args) => ({ ...await original(...args), capabilities: { memory: true, skill: true } });
     f.runtime.completeSimple = async () => ({ stopReason: 'stop', content: [{ type: 'text', text: JSON.stringify({
-        skill: { name: 'synthetic-check', description: 'Synthetic verification', when_to_use: 'When checking a synthetic procedure',
+        action: 'create', kind: 'skill', skill: { name: 'synthetic-check', description: 'Synthetic verification', when_to_use: 'When checking a synthetic procedure',
             procedure_steps: ['Run isolated check'], verification_steps: ['Confirm result'] }
     }) }] });
     f.append('流程步骤：先运行隔离检查，再检查输出。');
@@ -361,7 +361,7 @@ test('real ModelRuntime calls only a local synthetic text provider with no tools
         const body = JSON.parse(raw); received.push(body);
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
         res.write(`data: ${JSON.stringify({ id: 'synthetic', object: 'chat.completion.chunk', model: 'cheap',
-            choices: [{ index: 0, delta: { role: 'assistant', content: JSON.stringify({ content: '合成偏好使用新清单。' }) },
+            choices: [{ index: 0, delta: { role: 'assistant', content: JSON.stringify({ action: 'create', kind: 'memory', target: 'user', category: 'preference', content: '合成偏好使用新清单。' }) },
                 finish_reason: 'stop' }] })}\n\n`);
         res.end('data: [DONE]\n\n');
     });
@@ -1022,6 +1022,76 @@ test('a long-running thread above the 8 MiB index bound is still learned, up to 
     assert.match(JSON.stringify(snap.capabilities), new RegExp(`"maxSourceBytes":${64 * 1024 * 1024}\\b`));
 });
 
+
+test('ordinary learning compares existing USER facts and skips semantic duplicates without a write', async t => {
+    const f = await fixture(t); await f.enable({ correctionEnabled: false, reviewEnabled: true });
+    const row = { id: 'c'.repeat(64), revision: 'd'.repeat(64), kind: 'memory', scope: 'profile', target: 'user',
+        category: 'fact', state: 'active', content: 'Yummy 是母边境牧羊犬，生日为 2 月 18 日。' };
+    f.items([row]); let calls = 0;
+    f.runtime.completeSimple = async (_model, request) => {
+        calls++; assert.match(request.systemPrompt, /Yummy 是母边境牧羊犬/); assert.match(request.systemPrompt, /"target":"user"/);
+        assert.ok(Buffer.byteLength(request.systemPrompt) + Buffer.byteLength(request.messages[0].content) <= 5000);
+        return { stopReason: 'stop', content: [{ type: 'text', text: JSON.stringify({ action: 'skip', itemId: 'm1' }) }] };
+    };
+    f.append('我家的狗叫 Yummy。'); await f.service.register(f.session);
+    await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1);
+    assert.equal(calls, 1); assert.equal(f.mutations.length, 0);
+    assert.deepEqual({ status: (await f.service.snapshot(profileId)).recentRuns[0].status,
+        error: (await f.service.snapshot(profileId)).recentRuns[0].error }, { status: 'skipped', error: 'duplicate' });
+});
+
+test('a clear supplement updates the referenced entry and preserves its entire old content', async t => {
+    const f = await fixture(t); await f.enable({ correctionEnabled: false, reviewEnabled: true });
+    const row = { id: 'c'.repeat(64), revision: 'd'.repeat(64), kind: 'memory', scope: 'profile', target: 'user',
+        category: 'fact', state: 'active', content: 'Yummy 是母边境牧羊犬。' };
+    f.items([row]); let calls = 0;
+    f.runtime.completeSimple = async () => { calls++; return { stopReason: 'stop', content: [{ type: 'text', text: JSON.stringify({
+        action: 'update', itemId: 'm1', relation: 'supplement', category: 'fact', addition: '生日为 2 月 18 日。' }) }] }; };
+    f.append('补充一下，Yummy 的生日是 2 月 18 日。'); await f.service.register(f.session);
+    await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1);
+    assert.equal(calls, 1); assert.equal(f.mutations.length, 1);
+    assert.deepEqual([f.mutations[0].operation, f.mutations[0].itemId, f.mutations[0].itemRevision], ['update', row.id, row.revision]);
+    assert.equal(f.mutations[0].content, row.content + '\n生日为 2 月 18 日。');
+    assert.equal(Object.hasOwn(f.mutations[0], 'target'), false, 'an update keeps the existing target');
+});
+
+test('independent personal preferences can be routed to USER in the existing single model call', async t => {
+    const f = await fixture(t); await f.enable({ correctionEnabled: false, reviewEnabled: true });
+    let calls = 0;
+    f.runtime.completeSimple = async () => { calls++; return { stopReason: 'stop', content: [{ type: 'text', text: JSON.stringify({
+        action: 'create', kind: 'memory', target: 'user', category: 'preference', content: '用户喜欢先看直观解释。' }) }] }; };
+    f.append('我喜欢先看直观解释，再看推导。'); await f.service.register(f.session);
+    await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1);
+    assert.equal(calls, 1); assert.deepEqual([f.mutations[0].operation, f.mutations[0].target, f.mutations[0].category], ['create', 'user', 'preference']);
+});
+
+test('ordinary learning proposes same-target merges without mutating or retiring source records', async t => {
+    const f = await fixture(t); await f.enable({ correctionEnabled: false, reviewEnabled: true });
+    const rows = [{ id: 'c'.repeat(64), revision: 'd'.repeat(64), kind: 'memory', scope: 'profile', target: 'memory', category: 'fact', state: 'active', content: 'willk 使用张宇资料学习高等数学。' },
+        { id: 'e'.repeat(64), revision: 'f'.repeat(64), kind: 'memory', scope: 'profile', target: 'memory', category: 'fact', state: 'active', content: 'The user studies advanced mathematics with Zhang Yu materials.' }];
+    f.items(rows); let calls = 0;
+    f.runtime.completeSimple = async () => { calls++; return { stopReason: 'stop', content: [{ type: 'text', text: JSON.stringify({
+        action: 'propose_merge', itemIds: ['m1', 'm2'], category: 'fact', content: 'willk 学习高等数学，使用张宇资料。' }) }] }; };
+    f.append('我在学张宇的高数。'); await f.service.register(f.session);
+    await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1);
+    const state = await f.service.snapshot(profileId);
+    assert.equal(calls, 1); assert.equal(f.mutations.length, 0);
+    assert.equal(state.proposals.length, 1); assert.equal(state.proposals[0].target, 'memory');
+    assert.deepEqual(state.proposals[0].groups[0].items.map(i => i.itemId).sort(), rows.map(i => i.id).sort());
+    assert.ok(state.proposals[0].source.entryId); assert.equal(state.recentRuns[0].receiptIds.length, 0);
+});
+
+test('background decisions cannot invent a correction, use an unoffered ID or silently use the old implicit create protocol', async t => {
+    for (const proposed of [{ action: 'update', itemId: 'm1', relation: 'correction', category: 'correction', content: 'New value.' },
+        { action: 'update', itemId: 'm99', relation: 'supplement', category: 'fact', addition: 'New value.' }, { content: 'Implicit new memory.' }]) {
+        const f = await fixture(t); await f.enable({ correctionEnabled: false, reviewEnabled: true });
+        f.items([{ id: 'c'.repeat(64), revision: 'd'.repeat(64), kind: 'memory', scope: 'profile', target: 'user', category: 'fact', state: 'active', content: 'Yummy 是母边牧。' }]);
+        f.runtime.completeSimple = async () => ({ stopReason: 'stop', content: [{ type: 'text', text: JSON.stringify(proposed) }] });
+        f.append('Yummy 喜欢玩球。'); await f.service.register(f.session);
+        await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1);
+        assert.equal(f.mutations.length, 0); assert.equal((await f.service.snapshot(profileId)).recentRuns[0].error, 'invalid-proposal');
+    }
+});
 
 test('periodic scans share one in-flight cycle and register a source once for all cursors', async t => {
     const f = await fixture(t); let registrations = 0, release;

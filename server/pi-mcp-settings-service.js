@@ -9,18 +9,35 @@ const io = require('./pi-file-io');
 const { descriptorPathSync } = require('./pi-file-descriptor');
 const { getSdk } = require('./pi-session-store');
 const record = value => !!value && typeof value === 'object' && !Array.isArray(value);
+const httpConfig = config => typeof config.url === 'string' && [undefined, 'http', 'streamable-http'].includes(config.type);
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const fail = (code, status = 400) => Object.assign(new Error(code), { code, statusCode: status });
-const controlKeys = new Set(['type', 'enabled', 'exposure', 'timeout', 'toolExposure']);
+const controlKeys = new Set(['type', 'enabled', 'exposure', 'timeout', 'toolExposure', 'description']);
 const privateKeys = new Set(['command', 'args', 'cwd', 'url', 'env', 'headers', 'oauth']);
-const oauthKeys = new Set(['clientId', 'clientSecret', 'callbackUrl', 'scope']);
-let validator;
-async function nativeValidator() {
-    if (!validator) {
+const oauthKeys = new Set(['clientId', 'clientSecret', 'callbackUrl', 'scope', 'clientName', 'authServerMetadataUrl']);
+let native;
+async function nativeApi() {
+    if (!native) {
         const root = path.resolve(path.dirname(require('node:url').fileURLToPath((await import('./pi-native-mcp-control.mjs')).nativePiEntry())), '..');
-        validator = (await import(pathToFileURL(path.join(root, 'dist/core/mcp-servers.js')).href)).validateMcpServerConfig;
+        native = import(pathToFileURL(path.join(root, 'dist/core/mcp-servers.js')).href);
     }
-    return validator;
+    return native;
+}
+// Match native loading order without evaluating references or opening transports.
+function namespaceConflicts(data, validate, namespace, projectTrusted) {
+    const selected = new Map(), conflicts = new Set();
+    for (const index of projectTrusted ? [0, 1] : [0]) {
+        for (const [name, value] of Object.entries(data[index].mcpServers || {})) {
+            const config = validate(name, value);
+            if (typeof config === 'string') continue;
+            if ([...selected.keys()].some(other => other !== name && namespace(other) === namespace(name))) {
+                conflicts.add(`${index}:${name}`); continue;
+            }
+            if (index === 1 && 'url' in config && config.auth) continue;
+            selected.set(name, config);
+        }
+    }
+    return conflicts;
 }
 function read(file) {
     let fd;
@@ -46,10 +63,10 @@ function editable(config) {
     const safe = {}, secretFields = {};
     for (const [key, value] of Object.entries(config)) {
         if (controlKeys.has(key)) safe[key] = value;
-        else if (['env', 'headers', 'oauth'].includes(key) && record(value)) {
+        else if (['env', 'headers', 'oauth', 'auth'].includes(key) && record(value)) {
             safe[key] = {};
             for (const [field, item] of Object.entries(value)) {
-                if (key === 'oauth' && field === 'callbackPort') safe[key][field] = item;
+                if (key === 'oauth' && field === 'callbackPort' || key === 'auth' && field === 'provider') safe[key][field] = item;
                 else { safe[key][field] = null; secretFields[`${key}.${field}`] = { present: true }; }
             }
         } else { safe[key] = null; secretFields[key] = { present: true }; }
@@ -67,7 +84,16 @@ function applyConfig(previous, edits) {
     const result = structuredClone(previous);
     for (const [key, value] of Object.entries(edits)) {
         if (controlKeys.has(key)) { if (value === null) delete result[key]; else result[key] = value; }
-        else if (privateKeys.has(key)) {
+        else if (key === 'auth') {
+            if (value === null) delete result.auth;
+            else {
+                if (!record(value) || Object.keys(value).some(field => field !== 'provider')) throw fail('MCP_UNKNOWN_FIELD');
+                if (!record(result.auth)) result.auth = {};
+                if (value.provider === null) delete result.auth.provider;
+                else if (own(value, 'provider')) result.auth.provider = value.provider;
+                if (!Object.keys(result.auth).length) delete result.auth;
+            }
+        } else if (privateKeys.has(key)) {
             if (['env', 'headers', 'oauth'].includes(key) && record(value) && !own(value, 'op')) {
                 if (!record(result[key])) result[key] = {};
                 for (const [field, operation] of Object.entries(value)) {
@@ -95,11 +121,14 @@ class PiMcpSettingsService {
     }
     async snapshot(cwdInput, scope = 'global') {
         if (!['global', 'project'].includes(scope)) throw fail('MCP_INVALID_SCOPE');
-        const ctx = await this.context(cwdInput), validate = await nativeValidator();
-        const servers = Object.entries(ctx.data[scope === 'global' ? 0 : 1].mcpServers || {}).map(([name, config]) => {
+        const ctx = await this.context(cwdInput), { validateMcpServerConfig: validate, mcpNamespace } = await nativeApi();
+        const index = scope === 'global' ? 0 : 1;
+        const conflicts = namespaceConflicts(ctx.data, validate, mcpNamespace, ctx.trust.effective || scope === 'project');
+        const servers = Object.entries(ctx.data[index].mcpServers || {}).map(([name, config]) => {
             const valid = validate(name, config);
-            if (typeof valid === 'string') return { name, scope, valid: false, transport: 'unknown', config: {}, secretFields: {}, error: 'MCP_INVALID_SERVER' };
-            return { name, scope, valid: true, enabled: config.enabled !== false, exposure: config.exposure || 'codemode', timeout: config.timeout ?? 60, transport: typeof config.url === 'string' && config.type !== 'stdio' ? 'http' : 'stdio', ...editable(config) };
+            if (conflicts.has(`${index}:${name}`)) return { name, scope, valid: false, transport: 'unknown', config: {}, secretFields: {}, error: 'MCP_NAMESPACE_CONFLICT' };
+            if (typeof valid === 'string' || config.auth !== undefined && (scope !== 'global' || !httpConfig(valid))) return { name, scope, valid: false, transport: 'unknown', config: {}, secretFields: {}, error: 'MCP_INVALID_SERVER' };
+            return { name, scope, valid: true, enabled: config.enabled !== false, exposure: valid.exposure || 'codemode', timeout: config.timeout ?? 60, transport: typeof config.url === 'string' && config.type !== 'stdio' ? 'http' : 'stdio', ...editable({ ...config, ...(valid.exposure ? { exposure: valid.exposure } : {}), ...(valid.toolExposure ? { toolExposure: valid.toolExposure } : {}) }) };
         });
         const global = ctx.data[0].autoEnableCodemode ?? null, project = ctx.data[1].autoEnableCodemode ?? null;
         return { cwd: ctx.cwd, scope, revision: ctx.revision, trust: ctx.trust, autoEnableCodemode: { global, project, value: (ctx.trust.effective ? project : null) ?? global ?? true }, servers, capabilities: { native: true, runtimeManagement: true } };
@@ -110,7 +139,7 @@ class PiMcpSettingsService {
         if (this.native) this.native.busy = true;
         try {
             if (!record(input) || Object.keys(input).some(key => !['cwd', 'scope', 'expectedRevision', 'confirmed', 'action', 'name', 'config', 'patch', 'autoEnableCodemode'].includes(key)) || input.confirmed !== true || !['global', 'project'].includes(input.scope) || !['upsert', 'remove', 'patch', 'preferences'].includes(input.action)) throw fail('MCP_CONFIRMATION_REQUIRED');
-            const ctx = await this.context(input.cwd), validate = await nativeValidator();
+            const ctx = await this.context(input.cwd), { validateMcpServerConfig: validate, mcpNamespace } = await nativeApi();
             if (ctx.revision !== input.expectedRevision) throw fail('MCP_CHANGED', 409);
             if (input.scope === 'project' && !ctx.trust.effective) throw fail('MCP_PROJECT_UNTRUSTED', 403);
             const index = input.scope === 'global' ? 0 : 1, data = structuredClone(ctx.data[index]);
@@ -125,9 +154,18 @@ class PiMcpSettingsService {
                 else {
                     const previous = own(data.mcpServers, input.name) ? data.mcpServers[input.name] : {};
                     if (!record(previous) || input.action === 'patch' && !own(data.mcpServers, input.name)) throw fail('MCP_SERVER_NOT_FOUND');
-                    const next = applyConfig(previous, input.action === 'patch' ? input.patch : input.config);
-                    if (typeof validate(input.name, next) === 'string' || next.timeout !== undefined && !Number.isFinite(next.timeout)) throw fail('MCP_INVALID_SERVER');
+                    const edits = input.action === 'patch' ? input.patch : input.config;
+                    const next = applyConfig(previous, edits);
+                    const valid = validate(input.name, next);
+                    if (next.auth !== undefined && (input.scope !== 'global' || typeof valid === 'string' || !httpConfig(valid))) throw fail('MCP_INVALID_SERVER');
+                    if (own(edits, 'description') && next.description !== undefined && (typeof next.description !== 'string' || next.description.length > 4096)) throw fail('MCP_INVALID_SERVER');
+                    if (next.auth?.provider !== previous.auth?.provider && next.auth?.provider && Object.keys(next.headers || {}).some(key => key.toLowerCase() === 'authorization')) throw fail('MCP_AUTH_HEADER_CONFLICT');
+                    if (typeof valid === 'string' || next.timeout !== undefined && !Number.isFinite(next.timeout)) throw fail('MCP_INVALID_SERVER');
                     data.mcpServers[input.name] = next;
+                    const before = namespaceConflicts(ctx.data, validate, mcpNamespace, ctx.trust.effective);
+                    const afterData = [...ctx.data]; afterData[index] = data;
+                    const after = namespaceConflicts(afterData, validate, mcpNamespace, ctx.trust.effective);
+                    if ([...after].some(name => !before.has(name))) throw fail('MCP_NAMESPACE_CONFLICT');
                 }
             }
             const file = input.scope === 'global' ? safeFile(ctx.agentDir, ['mcp.json'], true) : safeFile(ctx.cwd, ['.pi', 'mcp.json'], true);

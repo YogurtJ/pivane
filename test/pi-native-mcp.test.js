@@ -37,8 +37,10 @@ async function fixtureSession(t, tools, factories) {
     const runtime = await sdk.ModelRuntime.create({ allowModelNetwork: false });
     const { session } = await sdk.createAgentSession({ cwd, agentDir, modelRuntime: runtime, model: runtime.getModel('fixture', 'fixture'),
         settingsManager: settings, sessionManager: sdk.SessionManager.inMemory(cwd), resourceLoader: loader, ...(tools ? { tools } : {}) });
-    await session.bindExtensions({ mode: 'print' });
-    t.after(async () => { await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' }); session.dispose(); });
+    const errors = [];
+    // A bound error handler also keeps SDK reload's lifecycle bindings active.
+    await session.bindExtensions({ mode: 'print', onError: error => errors.push(error) });
+    t.after(async () => { await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' }); session.dispose(); assert.deepEqual(errors, []); });
     return session;
 }
 async function waitTools(session) {
@@ -102,4 +104,118 @@ test('explicit child tools deny unauthorized nested MCP calls even with codemode
     assert.equal(fs.readFileSync(callsFile, 'utf8'), before);
     const accepted = await code.execute('accepted-parent', { code: 'text(await tools.mcp__fixture__echo({value:"child"}));' });
     assert.match(JSON.stringify(accepted), /NATIVE_MCP_OK:child/);
+});
+
+async function loopbackMcp(t, names) {
+    const http = require('node:http');
+    const methods = [], calls = [];
+    const server = http.createServer(async (req, res) => {
+        if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+        let text = ''; for await (const chunk of req) text += chunk;
+        const message = JSON.parse(text); methods.push(message.method);
+        if (message.id === undefined) { res.writeHead(202); res.end(); return; }
+        let result = {};
+        if (message.method === 'initialize') result = { protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'loopback', version: '1' } };
+        if (message.method === 'tools/list') result = { tools: names.map(name => ({ name, description: `Synthetic discovery ${name}`, inputSchema: { type: 'object', properties: { value: { type: 'string' } } } })) };
+        if (message.method === 'tools/call') { calls.push(message.params.name); result = { content: [{ type: 'text', text: `LOOPBACK_OK:${message.params.name}` }] }; }
+        res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ jsonrpc: '2.0', id: message.id, result }));
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); fs.writeFileSync(path.join(agentDir, 'mcp.json'), JSON.stringify(config)); });
+    return { methods, calls, config: { url: `http://127.0.0.1:${server.address().port}/mcp`, headers: { Authorization: 'synthetic-only' }, exposure: 'deferred' } };
+}
+async function waitNativeTools(session, names) {
+    for (let i = 0; i < 100; i++) {
+        if (names.every(name => session.getAllTools().some(tool => tool.name === name))) return;
+        await new Promise(resolve => setTimeout(resolve, 30));
+    }
+    throw new Error('Loopback native tools did not register');
+}
+function syntheticCall(session, id, name) {
+    session.agent.state.messages.push({ role: 'assistant', content: [{ type: 'toolCall', id, name, arguments: {} }],
+        provider: 'fixture', api: 'openai-completions', model: 'fixture', stopReason: 'toolUse', timestamp: Date.now() });
+}
+
+test('Pi 1.0 normalized namespaces preserve raw labels and collision hashes in parent and child grants', async t => {
+    const native = await import('../server/pi-native-mcp.mjs'), resolver = await import('../server/pi-subagent-mcp-resolution.mjs');
+    const raw = ['a-b', 'a_b', 'folder/tool', 'x'.repeat(100)];
+    const remote = await loopbackMcp(t, raw);
+    fs.writeFileSync(path.join(agentDir, 'mcp.json'), JSON.stringify({ mcpServers: { 'dev-radius': remote.config, dev_radius: remote.config } }));
+    const loaded = native.loadNativeMcpConfig({ cwd, agentDir, projectTrusted: false });
+    assert.deepEqual(loaded.servers.map(entry => entry.name), ['dev-radius']);
+    assert.ok(loaded.errors.some(error => error.includes('conflicts')));
+    const session = await fixtureSession(t);
+    const names = raw.map((tool, index) => native.nativeMcpToolName('dev-radius', tool, () => index < 2));
+    await waitNativeTools(session, names);
+    assert.equal(session.getAllTools().some(tool => tool.name === 'mcp__dev_radius__a_b'), false, 'both colliding raw tools receive hashes');
+    const snapshot = resolver.readNativeSnapshot();
+    assert.deepEqual(snapshot.map(item => [item.server, item.raw, item.name]), raw.map((tool, index) => ['dev-radius', tool, names[index]]));
+    assert.deepEqual(resolver.resolveMcpDirectToolResolution(['dev-radius/a-b', 'dev-radius/folder/tool'], cwd).selections,
+        [0, 2].map(index => ({ name: names[index], selector: `dev-radius/${raw[index]}` })));
+    assert.deepEqual(resolver.resolveMcpDirectToolResolution(['dev_radius/a-b'], cwd).unresolvedSelectors, ['dev_radius/a-b'], 'namespace aliases do not grant original-server authority');
+    assert.equal(remote.calls.length, 0, 'discovery makes no tool or model calls');
+    const tools = ['codemode', names[0]];
+    const child = await fixtureSession(t, tools, native.childNativeExtensions({ cwd, agentDir, allowedTools: tools }));
+    await waitNativeTools(child, [names[0]]);
+    assert.equal(child.getAllTools().find(tool => tool.name === names[0]).exposure, 'direct');
+    assert.equal(child.getAllTools().some(tool => tool.name === names[1] && tool.exposure !== 'hidden'), false);
+    const codemode = child.agent.state.tools.find(tool => tool.name === 'codemode');
+    syntheticCall(child, 'collision-denied', 'codemode');
+    const denied = await codemode.execute('collision-denied', { code: `text(await tools.${names[1]}({value:"no"}));` });
+    assert.doesNotMatch(JSON.stringify(denied), /LOOPBACK_OK/); assert.deepEqual(remote.calls, []);
+    syntheticCall(child, 'collision-allowed', 'codemode');
+    const accepted = await codemode.execute('collision-allowed', { code: `text(await tools.${names[0]}({value:"yes"}));` });
+    assert.match(JSON.stringify(accepted), /LOOPBACK_OK:a-b/); assert.deepEqual(remote.calls, ['a-b']);
+    assert.ok((await child.extensionRunner.emitToolCall({ type: 'tool_call', toolCallId: 'nested-write', toolName: 'write', input: { path: 'never.txt', content: 'never' }, parentToolCallId: 'collision-allowed' })).block);
+});
+
+test('Pi 1.0 deferred discovery restores tool_search loadout on reload and drops stale snapshot mappings', async t => {
+    const native = await import('../server/pi-native-mcp.mjs'), resolver = await import('../server/pi-subagent-mcp-resolution.mjs');
+    const raw = ['discover-me'], remote = await loopbackMcp(t, raw);
+    fs.writeFileSync(path.join(agentDir, 'mcp.json'), JSON.stringify({ mcpServers: { 'lazy-server': remote.config } }));
+    const session = await fixtureSession(t), name = native.nativeMcpToolName('lazy-server', raw[0]);
+    assert.deepEqual(resolver.resolveMcpDirectToolResolution(['lazy-server/discover-me'], cwd).selections, [], 'lazy configuration alone grants nothing');
+    assert.ok(session.getActiveToolNames().includes('tool_search'), 'discovery tool is activated before background connection completes');
+    const search = session.agent.state.tools.find(tool => tool.name === 'tool_search');
+    const blocked = await session.extensionRunner.emitToolCall({ type: 'tool_call', toolCallId: 'search', toolName: 'tool_search', input: { query: 'discover' } });
+    assert.equal(blocked?.block, undefined);
+    const found = await search.execute('search', { query: 'discover', limit: 1 });
+    assert.deepEqual(found.details.loaded, [name]); assert.ok(session.getActiveToolNames().includes(name));
+    // Pi records tool declarations when the next request starts. Reload must
+    // retain the searched loadout even before any model request is sent.
+    await session.reload(); await waitNativeTools(session, [name]);
+    assert.ok(session.getActiveToolNames().includes(name), 'deferred registration restores searched tools after reload');
+    assert.equal(remote.methods.filter(method => method === 'initialize').length, 2);
+    assert.equal(remote.calls.length, 0);
+    raw.splice(0, raw.length, 'replacement');
+    await session.reload(); await waitNativeTools(session, [native.nativeMcpToolName('lazy-server', 'replacement')]);
+    assert.deepEqual(resolver.resolveMcpDirectToolResolution(['lazy-server/discover-me'], cwd).unresolvedSelectors, ['lazy-server/discover-me']);
+    assert.deepEqual(resolver.readNativeSnapshot().map(item => item.raw), ['replacement']);
+    fs.writeFileSync(path.join(agentDir, 'mcp.json'), JSON.stringify({ mcpServers: { 'lazy-server': { ...remote.config, enabled: false } } }));
+    await session.reload(); assert.deepEqual(resolver.readNativeSnapshot(), []);
+});
+
+test('explicit empty child tools and denyExtensions never connect or acquire native MCP authority', async t => {
+    const native = await import('../server/pi-native-mcp.mjs');
+    const remote = await loopbackMcp(t, ['echo']);
+    fs.writeFileSync(path.join(agentDir, 'mcp.json'), JSON.stringify({ mcpServers: { fixture: remote.config } }));
+    for (const options of [{ allowedTools: [] }, { allowedTools: ['codemode', 'mcp__fixture__echo'], denyExtensions: true }]) {
+        const session = await fixtureSession(t, [], native.childNativeExtensions({ cwd, agentDir, ...options }));
+        assert.deepEqual(session.getActiveToolNames(), []);
+        assert.equal(session.getAllTools().some(tool => tool.name === 'codemode' || tool.name.startsWith('mcp__')), false);
+        assert.ok((await session.extensionRunner.emitToolCall({ type: 'tool_call', toolCallId: 'empty-write', toolName: 'write', input: {} })).block);
+    }
+    assert.deepEqual(remote.methods, []);
+});
+
+test('inherited native snapshots reject forged names and ambiguous tool identity', async () => {
+    const native = await import('../server/pi-native-mcp.mjs'), resolver = await import('../server/pi-subagent-mcp-resolution.mjs');
+    const prior = process.env.PIVANE_NATIVE_MCP_TOOL_SNAPSHOT;
+    const item = { server: 'dev-radius', raw: 'a-b', name: native.nativeMcpToolName('dev-radius', 'a-b'), cwd, hash: resolver.configHash(config.mcpServers.fixture) };
+    try {
+        process.env.PIVANE_NATIVE_MCP_TOOL_SNAPSHOT = JSON.stringify({ version: 1, tools: [{ ...item, name: 'mcp__other__a_b' }] });
+        assert.deepEqual(resolver.readNativeSnapshot(), []);
+        process.env.PIVANE_NATIVE_MCP_TOOL_SNAPSHOT = JSON.stringify({ version: 1, tools: [item, { ...item, raw: 'a_b' }] });
+        assert.deepEqual(resolver.readNativeSnapshot(), []);
+    } finally { if (prior === undefined) delete process.env.PIVANE_NATIVE_MCP_TOOL_SNAPSHOT; else process.env.PIVANE_NATIVE_MCP_TOOL_SNAPSHOT = prior; }
 });

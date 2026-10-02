@@ -75,11 +75,13 @@ class PiSessionTitleService {
             : '当前模型不支持独立标题生成，请手动命名或切换已配置的模型');
         const { getSupportedThinkingLevels } = await import('@earendil-works/pi-ai');
         const level = getSupportedThinkingLevels(model)[0];
-        const response = await runtime.completeSimple(model, {
+        const { completeWithSpeed } = await import('./pi-model-speed-runtime.mjs');
+        const { getAgentDir } = await require('./pi-session-store').getSdk();
+        const response = await completeWithSpeed(runtime, model, {
             systemPrompt: SYSTEM_PROMPT,
             messages: [{ role: 'user', content: JSON.stringify(snapshot.messages), timestamp: Date.now() }]
         }, { signal, maxTokens: Math.min(model.maxTokens || 1024, 1024), reasoning: level === 'off' ? undefined : level, maxRetries: 0,
-            sessionId: `pi-web-title-${randomUUID()}` });
+            sessionId: `pi-web-title-${randomUUID()}` }, getAgentDir());
         signal.throwIfAborted();
         if (response.stopReason !== 'stop') throw titleError('标题生成失败，请稍后手动重试');
         const text = (response.content || []).filter(block => block.type === 'text').map(block => block.text).join('').trim();

@@ -46,6 +46,8 @@ export declare class SubagentFleetStatus {
     private selectedKey;
     private inspectorOpen;
     private lastRenderKey;
+    private lastPaint;
+    private prepaint;
     private entries;
     private workflowSnapshots;
     private readonly onWorkflowCoverageChange;

@@ -1,6 +1,5 @@
 import { Agent } from "@earendil-works/pi-agent-core";
 import { createReadOnlyTools, convertToLlm } from "@earendil-works/pi-coding-agent";
-import { streamSimple } from "@earendil-works/pi-ai/compat";
 import { Type } from "typebox";
 import { resolveModelCandidate } from "../runs/shared/model-resolution.js";
 import { agentStreamOptions } from "../shared/agent-stream-options.js";
@@ -225,10 +224,7 @@ async function runWatchdogAttempt(ctx, request, options) {
     if (ctx.signal?.aborted || request.signal?.aborted)
         return { result: { stopReason: "aborted" } };
     const auth = selection.auth;
-    const registeredProvider = ctx.modelRegistry.getRegisteredProviderConfig?.(selection.model.provider);
-    const baseStreamFn = options.streamFn ?? (registeredProvider?.streamSimple && registeredProvider.api === selection.model.api
-        ? registeredProvider.streamSimple
-        : streamSimple);
+    const baseStreamFn = options.streamFn ?? ((model, context, streamOptions) => ctx.modelRegistry.streamSimple(model, context, streamOptions));
     const sessionId = ctx.sessionManager.getSessionId();
     const streamFn = (model, context, streamOptions) => {
         // Agent may enter one final loop iteration after an aborted mixed tool batch.
@@ -242,7 +238,7 @@ async function runWatchdogAttempt(ctx, request, options) {
             headers: { ...opencodeSessionHeaders(model, sessionId), ...(streamOptions?.headers ?? {}), ...(auth.headers ?? {}) },
         });
     };
-    const diffBaseline = options.diffBaseline?.();
+    const diffBaseline = await options.diffBaseline?.();
     let clarification;
     let warned = false;
     let toolCount = 0;

@@ -9,6 +9,7 @@ function workerLifecycle(worker) {
     if (worker.promptPending) operations.push('prompt');
     if (worker.compactPending) operations.push('compaction');
     if (worker.modelChangesPending || worker.modelCatalog.inflight) operations.push('model');
+    if (worker.modelSpeed?.pending.size) operations.push('model-speed');
     if (worker.titleResults.size) operations.push('title-read');
     if (worker.resourceResults.size) operations.push('resources');
     if (worker.mcpControl?.busy) operations.push('mcp-management');

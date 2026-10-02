@@ -11,7 +11,7 @@ English: [project overview](../README.en.md) · [installation](en/INSTALL.md) ·
 | 协助用户安装、配置或排障的 Agent | [用户 Agent 操作指南](AGENT_GUIDE.md) |
 | 修改 Pivane 源码的开发者或 Agent | [开发文档](development/README.md) 与根目录 [AGENTS.md](../AGENTS.md) |
 
-当前正式版为 **1.4.0**（Pi 0.99.1），见 [1.4.0 版本说明](releases/1.4.0.md)；下载包、校验文件和精确验收摘要以 [GitHub Releases](https://github.com/YogurtJ/pivane/releases) 为准。旧 MCP 适配器配置须显式审查与迁移；公开发布不表示运行实例已切换。完整变化见 [CHANGELOG](../CHANGELOG.md)。
+当前正式版为 **1.4.0**（Pi 0.99.1），见 [1.4.0 版本说明](releases/1.4.0.md)；下载包、校验文件和精确验收摘要以 [GitHub Releases](https://github.com/YogurtJ/pivane/releases) 为准。旧 MCP 适配器配置须显式审查与迁移；公开发布不表示运行实例已切换。当前源码为尚未公开发布的 1.5.0 候选（Pi 1.0.0），见[候选说明](releases/1.5.0.md)；完整变化见 [CHANGELOG](../CHANGELOG.md)。
 
 下面按主题列出功能文档。每篇前半部分讲使用，后半部分可能包含接口字段和限额，供高级用户、集成者和用户 Agent 查询。模型能力来自实际配置与运行实例；文档中的示例不代表服务已经配置好。
 

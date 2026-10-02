@@ -6,16 +6,22 @@ const path = require('node:path');
 const http = require('node:http');
 const { once } = require('node:events');
 
-test('managed parent and detached child use native MCP selectors without adapter caches', { timeout: 120000 }, async t => {
+test('managed parent, foreground and detached children use native MCP selectors without adapter caches', { timeout: 120000 }, async t => {
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-native-child-')));
     const agentDir = path.join(root, 'agent'), cwd = path.join(root, 'project');
     for (const dir of [agentDir, cwd, path.join(agentDir, 'agents'), path.join(agentDir, 'extensions')]) fs.mkdirSync(dir, { recursive: true });
+    // A test launched by a subagent must create an independent parent and use
+    // this checkout's SDK, rather than inherit the orchestrator's child flags.
+    const inherited = {};
+    for (const key of Object.keys(process.env).filter(key => /^PI_SUBAGENT(?:_|S_)/.test(key))) {
+        inherited[key] = process.env[key]; delete process.env[key];
+    }
     process.env.PI_CODING_AGENT_DIR = agentDir; process.env.PI_PROJECT_ROOTS = root; process.env.PI_OFFLINE = '1';
     process.env.PI_SUBAGENTS_TEMP_ROOT = path.join(root, 'temporary');
-    const called = path.join(root, 'mcp-called');
+    const called = path.join(root, 'mcp-called'), connections = path.join(root, 'mcp-connections');
     const mcp = path.join(root, 'mcp.cjs');
     fs.writeFileSync(mcp, `const fs=require('node:fs');require('node:readline').createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(m.id===undefined)return;let result={};
-if(m.method==='initialize')result={protocolVersion:'2025-11-25',capabilities:{tools:{}},serverInfo:{name:'fixture',version:'1'}};
+if(m.method==='initialize'){fs.appendFileSync(${JSON.stringify(connections)},'connected\\n');result={protocolVersion:'2025-11-25',capabilities:{tools:{}},serverInfo:{name:'fixture',version:'1'}};}
 if(m.method==='tools/list')result={tools:[{name:'echo',description:'Synthetic MCP',inputSchema:{type:'object',properties:{value:{type:'string'}}}}]};
 if(m.method==='tools/call'){fs.writeFileSync(${JSON.stringify(called)},m.params.arguments.value);result={content:[{type:'text',text:'NATIVE_CHILD_MCP_OK'}]};}
 process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`);
@@ -42,11 +48,14 @@ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`)
     fs.writeFileSync(path.join(agentDir, 'agents/fixture.md'), '---\nname: fixture\ndescription: Native MCP child\nmodel: fixture/fixture\ntools: read, mcp:fixture/echo\n---\nUse the echo tool.\n');
     fs.writeFileSync(path.join(agentDir, 'extensions/spawn.ts'), `export default function(pi) { pi.registerCommand('fixture-launch', { description:'fixture', handler:async (_args,ctx)=>{
 await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('launch timeout')),30000);const off=pi.events.on('subagents:rpc:v1:reply:native-child',r=>{clearTimeout(timer);off();ctx.ui.notify('NATIVE_LAUNCH:'+JSON.stringify(r));resolve();});
-pi.events.emit('subagents:rpc:v1:request',{version:1,requestId:'native-child',method:'spawn',source:{extension:'fixture'},params:{agent:'fixture',task:'Call the echo tool',async:true}});}); }}); }`);
+pi.events.emit('subagents:rpc:v1:request',{version:1,requestId:'native-child',method:'spawn',source:{extension:'fixture'},params:{agent:'fixture',task:'Call the echo tool',async:true}});}); }});
+pi.registerCommand('fixture-native-foreground',{description:'fixture',handler:async(_args,ctx)=>{
+await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('foreground timeout')),30000);const off=pi.events.on('prompt-template:subagent:response',reply=>{if(reply.requestId!=='native-foreground')return;clearTimeout(timer);off();ctx.ui.notify('NATIVE_FOREGROUND:'+JSON.stringify(reply));resolve();});
+pi.events.emit('prompt-template:subagent:request',{requestId:'native-foreground',ownerRunId:'fixture-owner',nodeId:'fixture-node',cwd:ctx.cwd,agent:'fixture',task:'Call the echo tool',context:'fresh',result:{kind:'text'}});});}}); }`);
     const { PiSessionStore } = require('../server/pi-session-store');
     const { PiAgentSupervisor } = require('../server/pi-agent-supervisor');
     const store = new PiSessionStore(), supervisor = new PiAgentSupervisor();
-    t.after(async () => { await supervisor.dispose(); provider.closeAllConnections(); await new Promise(resolve => provider.close(resolve)); fs.rmSync(root, { recursive: true, force: true }); });
+    t.after(async () => { await supervisor.dispose(); provider.closeAllConnections(); await new Promise(resolve => provider.close(resolve)); fs.rmSync(root, { recursive: true, force: true }); for (const [key, value] of Object.entries(inherited)) process.env[key] = value; });
     const saved = await store.createSession(cwd, 'Native MCP child fixture');
     const worker = await supervisor.getWorker({ cwd, sessionPath: saved.path, sessionId: saved.id });
     for (let i = 0; i < 100; i++) {
@@ -68,5 +77,14 @@ pi.events.emit('subagents:rpc:v1:request',{version:1,requestId:'native-child',me
     }
     assert.ok(status.snapshot?.runs.some(run => run.state === 'complete'), JSON.stringify(status));
     assert.equal(fs.readFileSync(called, 'utf8'), 'NATIVE_CHILD_OK'); assert.equal(childRequests, 2, 'child makes one tool request and one final response; parent completion delivery is separate');
+    for (let i = 0; i < 300 && (!worker.isIdle() || worker.retainsBackgroundWork()); i++) await new Promise(resolve => setTimeout(resolve, 100));
+    assert.ok(worker.isIdle() && !worker.retainsBackgroundWork());
+    let foreground;
+    const offForeground = worker.subscribe(event => { if (event.type === 'extension_ui_request' && event.message?.startsWith('NATIVE_FOREGROUND:')) foreground = JSON.parse(event.message.slice(18)); });
+    await worker.request('prompt', { message: '/fixture-native-foreground' });
+    for (let i = 0; i < 300 && !foreground; i++) await new Promise(resolve => setTimeout(resolve, 100));
+    offForeground(); assert.match(JSON.stringify(foreground), /CHILD_FINISHED/);
+    assert.equal(childRequests, 4, 'both foreground and detached children use the granted MCP tool');
+    assert.equal(fs.readFileSync(connections, 'utf8').trim().split('\n').length, 3, 'one MCP transport for the parent and each child');
     assert.equal(fs.existsSync(path.join(agentDir, 'mcp-cache.json')), false);
 });

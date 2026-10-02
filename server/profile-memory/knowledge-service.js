@@ -13,6 +13,15 @@ const privateFiles = require('../pi-private-files');
 const { replaceFileSync } = require('../pi-win32-native');
 const { normalizedMemory } = require('../pi-profile-registry');
 const { assertSafeKnowledgeContent } = require('./content-scan');
+const compare = require('./knowledge-compare');
+
+function duplicateFailure(item) {
+    return Object.assign(new Error('Knowledge already exists; read the existing entry before updating or consolidating'), {
+        status: 409, code: 'knowledge-duplicate', details: { itemId: item.id, itemRevision: item.revision,
+            kind: item.kind, scope: item.scope, ...(item.target ? { target: item.target } : {}),
+            ...(item.name ? { name: item.name } : {}), readOnly: Boolean(item.readOnly) },
+    });
+}
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
@@ -136,6 +145,10 @@ function skillContent(name, description, content) {
     if (!result.startsWith(header) || Buffer.byteLength(result) > MAX_CONTENT) throw fail('Skill frontmatter must match name and description');
     return result;
 }
+function sessionOperation(input) {
+    return input.kind === 'memory' ? SESSION_OPERATIONS.has(input.operation)
+        : input.kind === 'skill' && ['delete', 'undo'].includes(input.operation);
+}
 // `trusted` is the verified native path; `session` is a manual web write whose
 // projectKey the server derived from a verified session header.
 function checkedInput(input, trusted = false, session = false) {
@@ -151,7 +164,7 @@ function checkedInput(input, trusted = false, session = false) {
         : op === 'undo' ? !REQUEST.test(input.receiptId) || own(input, 'itemId') || own(input, 'itemRevision')
             : !HEX.test(input.itemId) || !HEX.test(input.itemRevision) || own(input, 'receiptId')) throw fail('Invalid mutation identity');
     if (own(input, 'source') && !trusted) throw fail('Unverified source is not accepted');
-    if (session && (input.scope !== 'project' || !HEX.test(input.projectKey) || input.kind !== 'memory' || !SESSION_OPERATIONS.has(op)
+    if (session && (input.scope !== 'project' || !HEX.test(input.projectKey) || !sessionOperation(input)
         || typeof input.sessionId !== 'string' || !SESSION.test(input.sessionId))) throw fail('Invalid session project mutation');
     if (!trusted && !session && (input.scope !== undefined && input.scope !== 'profile' || own(input, 'projectKey'))) throw fail('Project writes require verified cwd');
     if (trusted && (input.scope === 'project' ? !HEX.test(input.projectKey) : own(input, 'projectKey') || input.scope !== undefined && input.scope !== 'profile')) throw fail('Invalid project scope');
@@ -412,8 +425,19 @@ function addTombstone(data, value) {
 function removeTombstone(data, value) {
     data.tombstones = data.tombstones.filter(entry => entry !== value);
 }
+function addMemoryTombstone(data, content, equivalent = true) {
+    addTombstone(data, hash(content));
+    if (equivalent) addTombstone(data, hash(compare.normalizeMemory(content)));
+}
+function removeMemoryTombstone(data, content) {
+    removeTombstone(data, hash(content));
+    removeTombstone(data, hash(compare.normalizeMemory(content)));
+}
 function checkTombstone(data, content) {
-    if (data.tombstones.includes(hash(content.trim()))) throw fail('Deleted or replaced memory cannot be relearned without explicit restore', 409);
+    const normalized = compare.normalizeMemory(content);
+    if (data.tombstones.includes(hash(content.trim())) || data.tombstones.includes(hash(normalized)) || Object.values(data.records).some(row => row.kind === 'memory'
+        && row.state === 'deleted' && compare.normalizeMemory(row.content) === normalized))
+        throw fail('Deleted or replaced memory cannot be relearned without explicit restore', 409);
 }
 function availableSkill(root, item) {
     const ownFile = skillPath(root, item);
@@ -506,7 +530,8 @@ function consolidation(root, data, items, input, provenance) {
     checkTombstone(data, content);
     const remaining = items.filter(row => !row.readOnly && row.kind === 'memory' && row.state === 'active'
         && row.scope === 'profile' && row.target === target && !sources.includes(row));
-    if (remaining.some(row => row.content === content)) fail('Knowledge already exists', 409);
+    const existing = compare.duplicate(items, { kind: 'memory', scope: 'profile', target, content }, new Set(sources.map(item => item.id)));
+    if (existing) throw duplicateFailure(existing);
     const id = hash(`${path.join(root, target === 'user' ? 'USER.md' : 'MEMORY.md')}\0${remaining.length}\0${content}`);
     if (items.some(row => row.id === id)) fail('Knowledge already exists', 409);
     const at = new Date().toISOString();
@@ -517,7 +542,7 @@ function consolidation(root, data, items, input, provenance) {
     for (const item of sources) {
         putRecord(data, { ...retiredMemory(item, at),
             history: [...(data.records[item.id]?.history || []), { receiptId: record.id, before: copy(item) }] });
-        addTombstone(data, hash(item.content));
+        addMemoryTombstone(data, item.content);
     }
     return { target, remove: sources.map(item => item.content), add: [content], record,
         item: { ...merged, history: [{ receiptId: record.id, before: null }] } };
@@ -549,7 +574,7 @@ function undoConsolidation(data, items, input, original, provenance) {
             ...(before.category ? { category: before.category } : {}), ...(before.source ? { source: before.source } : {}),
             content: before.content, revision: hash(before.content), state: 'active', updatedAt: at,
             history: data.records[before.id].history });
-        removeTombstone(data, hash(before.content));
+        removeMemoryTombstone(data, before.content);
     }
     addTombstone(data, hash(merged.content));
     return { target: merged.target, remove: [merged.content], add: restored.map(before => before.content), record,
@@ -579,7 +604,7 @@ class ProfileKnowledgeService {
             || options.offset !== undefined && (!Number.isSafeInteger(options.offset) || options.offset < 0 || options.offset > 100000)) fail('Invalid knowledge query');
         const ctx = await this.context(profileId);
         const base = { version: 1, profileId, status: 'missing', revision: null, items: [], receipts: [], hasMore: false,
-            capabilities: { memory: false, skill: false, projectWrites: false, projectWritesBySession: false, nativeProjectWrites: false,
+            capabilities: { memory: false, skill: false, projectWrites: false, projectWritesBySession: false, projectSkillDeletesBySession: false, nativeProjectWrites: false,
                 installedSkillsWrite: false, operations: [], skillNameMaxLength: 64, maxContentLength: MAX_CONTENT } };
         if (!ctx.profile) return base;
         if (!ctx.profile.enabled) return { ...base, status: 'disabled' };
@@ -587,6 +612,7 @@ class ProfileKnowledgeService {
             skill: Boolean(ctx.profile.skills?.learnedEnabled), projectWrites: false,
             // projectWrites stays false: without a verified session the web cannot write project memory.
             projectWritesBySession: Boolean(ctx.installed && ctx.profile.memory?.enabled),
+            projectSkillDeletesBySession: Boolean(ctx.profile.skills?.learnedEnabled),
             nativeProjectWrites: Boolean(ctx.installed && ctx.profile.memory?.enabled || ctx.profile.skills?.learnedEnabled), installedSkillsWrite: false,
             operations: ctx.installed && ctx.profile.memory?.enabled || ctx.profile.skills?.learnedEnabled
                 ? [...OPERATIONS] : [], skillNameMaxLength: 64, maxContentLength: MAX_CONTENT };
@@ -680,11 +706,11 @@ class ProfileKnowledgeService {
     }
     async mutate(profileId, raw) {
         if (raw && typeof raw === 'object' && !Array.isArray(raw) && own(raw, 'sessionId')) {
-            // Web project memory: the session is found and proven server-side; its header cwd
+            // Web project knowledge: the session is found and proven server-side; its header cwd
             // is the only project identity, and a client projectKey is never accepted.
             if (own(raw, 'projectKey')) fail('Project writes require verified cwd');
-            if (typeof raw.sessionId !== 'string' || !SESSION.test(raw.sessionId) || raw.scope !== 'project' || raw.kind !== 'memory'
-                || !SESSION_OPERATIONS.has(raw.operation)) fail('Invalid session project mutation');
+            if (typeof raw.sessionId !== 'string' || !SESSION.test(raw.sessionId) || raw.scope !== 'project'
+                || !sessionOperation(raw)) fail('Invalid session project mutation');
             checkedInput({ ...raw, projectKey: hash(raw.sessionId) }, false, true);
             const session = await this.#sessionSource(profileId, raw.sessionId);
             const input = checkedInput({ ...raw, projectKey: hash(session.cwd) }, false, true);
@@ -825,7 +851,7 @@ class ProfileKnowledgeService {
                     ? data.receipts.find(row => row.id === input.receiptId && row.kind === input.kind)
                     : null;
                 if (input.operation === 'undo' && (!original || !original.undoable)) fail('Receipt is not undoable', 409);
-                if (provenance.sessionId && original && original.scope !== 'project') fail('Session edits are limited to its project memory', 409);
+                if (provenance.sessionId && original && original.scope !== 'project') fail('Session edits are limited to its project knowledge', 409);
                 if (input.operation === 'consolidate' || original?.operation === 'consolidate') {
                     if (provenance.origin !== 'manual' || provenance.sessionId) fail('Consolidation is only available to manual edits', 409);
                     const plan = input.operation === 'consolidate' ? consolidation(ctx.root, data, items, input, provenance)
@@ -841,7 +867,7 @@ class ProfileKnowledgeService {
                 if (before?.kind === 'skill' && before.state === 'active') before = { ...before, content: body(ctx.root, before) };
                 if (input.operation !== 'create' && (!before || before.kind !== input.kind || before.readOnly
                     || input.operation !== 'undo' && before.revision !== input.itemRevision)) fail('Item revision changed or is read-only', 409);
-                if (provenance.sessionId && before && before.scope !== 'project') fail('Session edits are limited to its project memory', 409);
+                if (provenance.sessionId && before && before.scope !== 'project') fail('Session edits are limited to its project knowledge', 409);
                 if (before?.scope === 'project' && (!verifySource || before.projectKey !== input.projectKey)) fail('Project writes require verified cwd', 409);
                 if (input.operation === 'undo' && before.revision !== original.afterRevision) fail('Undo target changed', 409);
                 if (input.operation === 'restore' && before.state !== 'deleted' || input.operation === 'enable' && !['disabled', 'draft'].includes(before.state)
@@ -877,6 +903,23 @@ class ProfileKnowledgeService {
                 const itemScope = before?.scope || input.scope || 'profile';
                 const projectKey = before?.projectKey || input.projectKey;
                 const folder = itemScope === 'project' ? projectDir(ctx.root, { scope: itemScope, projectKey }) : ctx.root;
+                if (input.kind === 'skill' && input.operation === 'create') {
+                    const named = { kind: 'skill', scope: itemScope, projectKey, name };
+                    availableSkill(ctx.root, { ...named, id: hash(fileFor(ctx.root, named)) });
+                }
+                if (['create', 'update'].includes(input.operation)) {
+                    const equivalent = input.kind === 'skill' ? compare.normalizeSkill : compare.normalizeMemory;
+                    if (!before || equivalent(before.content) !== equivalent(content)) {
+                        const existing = compare.duplicate(items, { kind: input.kind, scope: itemScope, projectKey, target, content },
+                            new Set(before ? [before.id] : []), row => {
+                                if (row.kind !== 'skill') return row.content;
+                                const file = safeFile(fileFor(ctx.root, row));
+                                if (!file || file.revision !== row.revision) fail('Knowledge changed during duplicate comparison', 409);
+                                return file.text;
+                            });
+                        if (existing) throw duplicateFailure(existing);
+                    }
+                }
                 if (itemScope === 'project') {
                     privateFiles.privateDirectory(path.dirname(folder));
                     privateFiles.privateDirectory(folder);
@@ -903,9 +946,10 @@ class ProfileKnowledgeService {
                     inputHash: hash(JSON.stringify(input)) };
                 history.push({ receiptId: record.id, before: copy(before) });
                 if (input.kind === 'memory' && before?.content && (before.content !== content || state === 'deleted'))
-                    addTombstone(data, hash(before.content));
+                    addMemoryTombstone(data, before.content, state === 'deleted'
+                        || compare.normalizeMemory(before.content) !== compare.normalizeMemory(content));
                 if (input.kind === 'memory' && state === 'active' && ['restore', 'undo'].includes(input.operation))
-                    removeTombstone(data, hash(content));
+                    removeMemoryTombstone(data, content);
                 // Client request IDs (HTTP, including session-verified web edits) keep the 7-day validity rule.
                 append(data, changed, record, provenance.origin !== 'manual');
                 if (input.kind === 'memory') {

@@ -1,7 +1,9 @@
 import type { AsyncJobStep, HostStepNode, WorkflowGraphSnapshot, WorkflowPreflightLane, WorkflowPreflight } from "../shared/types.ts";
+import { type ThinkingLevel } from "../shared/model-info.ts";
 export type WorkflowChecklistState = "complete" | "running" | "queued" | "blocked" | "failed" | "paused" | "stopped";
 export interface WorkflowChecklistStep {
     key?: string;
+    thinking?: string;
     workflowKey?: string;
     runId?: string;
     label?: string;
@@ -56,6 +58,8 @@ export interface WorkflowChecklistItem {
     phase: string;
     state: WorkflowChecklistState;
     agent?: string;
+    /** Thinking level of the child this item stands for. */
+    thinking?: ThinkingLevel;
     context?: "fresh" | "fork";
     startedAt?: number;
     durationMs?: number;

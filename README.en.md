@@ -12,6 +12,8 @@ Pivane is a self-hosted AI workspace powered by **Pi Coding Agent**. Work on cod
 
 Stable release **1.4.0** pins Pi **0.99.1**, integrates native MCP/Codemode and nested tools, and improves side chat, long-session loading and settings. Legacy pi-mcp-adapter configuration requires explicit review and migration; OAuth is not converted automatically. Deployment and public release are verified separately; old archives remain unchanged. See [native MCP](docs/MCP.md) and the [1.4.0 release notes](docs/releases/1.4.0.md).
 
+Current source is the **1.5.0 candidate / Pi 1.0.0**, with model speed controls, voice transcription, cross-project thread moves and compare-before-write knowledge handling. It is not publicly released; see [candidate notes](docs/releases/1.5.0.md) for upgrade boundaries and validation status.
+
 ## From a question to completed work
 
 Choose a project directory and work with Pi Agent in your browser. Review replies, tool execution and file changes in the same workspace. Attach images or text files, run manual Shell commands, steer an active task, queue a follow-up, or compact context when needed.
@@ -42,7 +44,7 @@ The bilingual interface is included starting with **1.0.0-rc.2**. Version **1.0.
 
 The current stable release, **1.4.0**, is pinned to **Pi 0.99.1**, with DOMPurify 3.4.16. See the [release notes](docs/releases/1.4.0.md). The exact archive passed 530 Node tests, 19 Chromium suites, independent installation, upgrade from 1.3.0 and byte-identical same-path restoration of 18 files on Linux ARM64 with Node 22. Production audit reports zero vulnerabilities. macOS and Windows keep their historical baselines. Running instances change only after an explicit update.
 
-Use **Node.js 22.x** and the locked dependencies. Validation results are attached to the exact archive SHA256. You do not need a global Pi installation or a frontend build. The current source bundles pi-subagents 0.71.0 and pi-hermes-memory 0.9.9; `node scripts/install.cjs` prepares both without rewriting your CLI package declarations and uses the SQLite binaries shipped in the dependency package. Older published archives without this installer retain their original `npm ci` instructions. SQLite may require Python and C/C++ build tools when no matching prebuilt binary exists. See [bundled capabilities](docs/BUNDLED_CAPABILITIES.md).
+Use **Node.js 22.x** and the locked dependencies. Validation results are attached to the exact archive SHA256. You do not need a global Pi installation or a frontend build. The current source bundles pi-subagents 0.74.0 and pi-hermes-memory 0.9.9; `node scripts/install.cjs` prepares both without rewriting your CLI package declarations and uses the SQLite binaries shipped in the dependency package. Older published archives without this installer retain their original `npm ci` instructions. SQLite may require Python and C/C++ build tools when no matching prebuilt binary exists. See [bundled capabilities](docs/BUNDLED_CAPABILITIES.md).
 
 | Server platform | Validated RC baseline |
 |---|---|

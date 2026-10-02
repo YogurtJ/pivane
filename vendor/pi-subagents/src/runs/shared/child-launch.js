@@ -8,6 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { intersectThinkingCeilings } from "../../shared/thinking-ceiling.js";
 import { resolveChildDepth, } from "../../shared/types.js";
+import { extensionOnlyMcpServers } from "./mcp-direct-tool-allowlist.js";
 import { encodeExtensionBindings, PI_SUBAGENT_EXTENSION_BINDINGS_ENV } from "./extension-bindings.js";
 import { intersectSubagentCapabilityCeilings } from "./capability-ceiling.js";
 import { isSubagentRuntimeExtensionPath, projectLaunchResolvedChildExtensions, resolvePiLaunchToolPlan, supervisorChannelDir, } from "./child-tool-plan.js";
@@ -48,7 +49,10 @@ function inheritedCapabilityCeiling(inherited) {
 function childProcessEnv(input, toolPlan) {
     const env = {};
     env[PI_SUBAGENT_EXTENSION_BINDINGS_ENV] = encodeExtensionBindings(input.extensionBindings);
-    if (!toolPlan.capabilityCeiling && input.mcpDirectTools?.length)
+    // Selectors resolved against Pi's built-in MCP never reach an adapter.
+    if (toolPlan.builtinMcpTools)
+        env[MCP_DIRECT_TOOLS_ENV] = "__none__";
+    else if (!toolPlan.capabilityCeiling && input.mcpDirectTools?.length)
         env[MCP_DIRECT_TOOLS_ENV] = input.mcpDirectTools.join(",");
     else if (toolPlan.capabilityCeiling && toolPlan.effectiveMcpSelections.length && !toolPlan.capabilityCeiling.denyExtensions) {
         env[MCP_DIRECT_TOOLS_ENV] = toolPlan.effectiveMcpSelections.map((selection) => selection.selector).join(",");
@@ -87,6 +91,7 @@ export function buildInProcessChildLaunch(input) {
         subagentOnlyExtensions: input.subagentOnlyExtensions,
         requiredExtensions,
         mcpDirectTools: input.mcpDirectTools,
+        builtinMcpTools: input.builtinMcpTools,
         cwd: input.cwd,
         requireReadTool: input.requireReadTool,
         structuredOutput: Boolean(input.structuredOutput),
@@ -98,6 +103,13 @@ export function buildInProcessChildLaunch(input) {
         permissionRules: input.permissionRules,
         runtimeSnapshotHost: input.runtimeSnapshotHost,
     });
+    // Foreground children load no ambient extensions, so an extension's registerMcpServer() never runs in them.
+    if (input.host === "parent" && input.runtimeSnapshotHost && toolPlan.builtinMcpTools?.length) {
+        // Pi treats a session without a trust decision as trusted.
+        const servers = extensionOnlyMcpServers(toolPlan.effectiveMcpSelections, input.runtimeSnapshotHost, input.cwd, input.projectTrusted !== false);
+        if (servers.length)
+            throw new Error(`Agent '${input.childAgentName}' selects MCP tools from servers that extensions registered (${servers.join(", ")}). Only background children (async: true) load those extensions; run the agent in the background or add the server to the global mcp.json or a trusted project's .pi/mcp.json.`);
+    }
     toolPlan.capabilityCeiling = intersectSubagentCapabilityCeilings(toolPlan.capabilityCeiling, agentCapabilityCeiling);
     if (toolPlan.capabilityAudit && toolPlan.capabilityCeiling) {
         toolPlan.capabilityAudit = { ...toolPlan.capabilityAudit, ceiling: toolPlan.capabilityCeiling };
@@ -198,10 +210,12 @@ export function buildInProcessChildLaunch(input) {
     const session = {
         cwd: input.cwd,
         ...(input.machine ? { machine: input.machine } : {}),
+        ...(input.projectTrusted !== undefined ? { projectTrusted: input.projectTrusted } : {}),
         ...(input.machine ? { remoteResources: { agent: input.childAgentName, ...(input.remoteSkillNames ? { skills: input.remoteSkillNames } : {}), ...(input.remoteReads !== undefined ? { reads: input.remoteReads } : {}), ...(toolPlan.explicitToolAllowlist ? { toolCeiling: [...toolPlan.effectiveToolAllowlist] } : toolPlan.capabilityCeiling?.allowedTools ? { toolCeiling: [...toolPlan.capabilityCeiling.allowedTools] } : {}) } } : {}),
         storage: childStorage(input),
         ...(input.model ? { model: input.model } : {}),
         ...(toolPlan.explicitToolAllowlist ? { tools: toolPlan.effectiveToolAllowlist } : {}),
+        ...(toolPlan.builtinMcpTools?.length ? { builtinMcpTools: toolPlan.builtinMcpTools } : {}),
         ...(!toolPlan.explicitToolAllowlist && toolPlan.excludeTools.length > 0 ? { excludeTools: toolPlan.excludeTools } : {}),
         extensionPaths,
         requiredExtensions: toolPlan.requiredExtensions,

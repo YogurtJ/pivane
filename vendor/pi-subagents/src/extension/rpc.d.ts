@@ -2,6 +2,7 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { SubagentParamsLike } from "../runs/foreground/subagent-executor.ts";
 import { type Details, type SubagentState, type TokenUsage } from "../shared/types.ts";
+import { type DisabledFeatureSurface } from "../shared/disabled-features.ts";
 export declare const SUBAGENT_RPC_PROTOCOL_VERSION = 1;
 export declare const SUBAGENT_RPC_REQUEST_EVENT = "subagents:rpc:v1:request";
 export declare const SUBAGENT_RPC_READY_EVENT = "subagents:rpc:v1:ready";
@@ -73,6 +74,7 @@ interface RegisterSubagentRpcBridgeOptions {
     now?: () => number;
     /** Native live state, projected into the optional public fleet-status capability. */
     state?: SubagentState;
+    disabledFeatures?: DisabledFeatureSurface;
 }
 export declare function subagentRpcReplyEvent(requestId: string): string;
 export declare function registerSubagentRpcBridge(options: RegisterSubagentRpcBridgeOptions): {

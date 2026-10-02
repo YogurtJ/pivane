@@ -264,7 +264,7 @@ function parseScheduleTarget(value, file) {
         return { workflowScript: target.workflowScript.trim(), args: deepFreezeWorkflowArgs(normalizedArgs.args), ...(baseRef === undefined ? {} : { baseRef }) };
     }
     if (target.agent !== undefined || target.task !== undefined)
-        throw new Error(`Schedule record '${file}' uses a removed legacy agent target; recreate it with target.workflowScript.`);
+        throw new Error(`Schedule record '${file}' uses a removed legacy agent target; recreate it with schedule.create and workflow: true or a workflow script path.`);
     throw new Error(`Schedule record '${file}' requires a workflowScript target.`);
 }
 function parseSchedule(value, file) {
@@ -403,15 +403,15 @@ function publicScheduleRecord(schedule) {
 }
 function targetLabel(target) {
     const preview = previewSimpleWorkflowRun(target.workflowScript);
-    return preview?.agent ? `workflowScript -> agent ${preview.agent}` : "workflowScript (dynamic)";
+    return preview?.agent ? `workflow -> agent ${preview.agent}` : "workflow (dynamic)";
 }
 function sanitizeTarget(params) {
     if (params.tasks || params.chain)
-        return { error: "Recurring schedules require workflowScript; legacy tasks and chain inputs are unsupported." };
+        return { error: "Recurring schedules require a workflow script; legacy tasks and chain inputs are unsupported." };
     if (params.agent !== undefined || params.task !== undefined)
-        return { error: "schedule.create requires workflowScript. Use workflowScript: \"return runs.run('main', { agent, task })\"." };
+        return { error: "schedule.create requires workflow: true or a workflow script path, e.g. a ```js workflow block containing return runs.run('main', { agent, task })." };
     if (typeof params.workflowScript !== "string" || !params.workflowScript.trim())
-        return { error: "schedule.create requires a non-empty workflowScript." };
+        return { error: "schedule.create requires workflow: true or a workflow script path." };
     if (params.context === "fork")
         return { error: "Scheduled runs require fresh context." };
     if (params.async === false)

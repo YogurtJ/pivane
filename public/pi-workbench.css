@@ -135,6 +135,13 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
 .pi-composer-models .pi-model-picker-row { min-width: 0; }
 .pi-composer-models #pi-model-select { min-width: 0; width: 100%; max-width: 100%; min-height: 34px; height: 34px; font-size: .74rem; background: transparent; border: 0; padding-inline: 6px; }
 .pi-composer-models .pi-thinking-field { flex: 0 1 90px; }
+.pi-composer-models .pi-speed-field { flex: 0 1 168px; min-width: 0; }
+.pi-composer-models .pi-speed-field > span { display: none; }
+.pi-speed-field[hidden], .pi-mobile-speed[hidden] { display: none !important; }
+.pi-composer-models #pi-speed-select { font-size: .72rem; max-width: 100%; }
+.pi-message-speed { white-space: nowrap; }
+.pi-mobile-speed { flex-wrap: wrap; }
+.pi-mobile-speed > .pi-mobile-speed-cost { flex: 0 0 calc(100% - 32px); max-width: none; margin-left: 32px; white-space: normal; overflow: visible; font-size: .75rem; }
 .pi-composer-models #pi-thinking-select { font-size: .72rem; max-width: 100%; }
 .pi-send-button, .pi-stop-button { border-radius: 9px; }
 .pi-composer-meta { min-height: 22px; height: auto; font-size: .64rem; line-height: 1.5; gap: 10px; }
@@ -264,9 +271,8 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
     .pi-recovery-notice { margin-inline: 12px; }
     .pi-composer-chips > .pi-status-chip > summary { gap: 5px; padding-inline: 9px; font-size: .72rem; }
 }
-/* Running on common phones keeps one row (Stop joins Send) while the text keeps at least 160px;
-   the narrowest phones keep the original second action row. */
-@media (min-width: 361px) and (max-width: 600px) {
+/* Both idle and running phones keep the same composer row. */
+@media (max-width: 600px) {
     .pi-composer[data-running="true"] #pi-input { flex: 1 1 96px; }
     .pi-composer[data-running="true"] .pi-composer-actions.right { flex: 0 0 auto; }
 }

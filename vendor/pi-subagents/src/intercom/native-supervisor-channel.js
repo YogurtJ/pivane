@@ -5,6 +5,7 @@ import { Type } from "typebox";
 import { INTERCOM_DETACH_REQUEST_EVENT, POLL_INTERVAL_MS, TEMP_ROOT_DIR } from "../shared/types.js";
 import { writeAtomicJson } from "../shared/atomic-json.js";
 import { shouldUseNativeFsWatch } from "../shared/watch-strategy.js";
+import { MODEL_ONLY_TOOL } from "../shared/extension-context.js";
 import { SUPERVISOR_REQUEST_MESSAGE_TYPE, SUPERVISOR_REPLY_ENTRY_TYPE, supervisorReplyHint, } from "./supervisor-ui.js";
 const SUPERVISOR_CHANNEL_ROOT = path.join(TEMP_ROOT_DIR, "supervisor-channels");
 const REQUESTS_DIR = "requests";
@@ -180,6 +181,7 @@ export function registerNativeSupervisorClient(pi, metadata) {
         return;
     const tool = {
         name: "contact_supervisor",
+        ...MODEL_ONLY_TOOL,
         label: "Contact Supervisor",
         description: "Contact the parent/supervisor session for a blocking decision, structured interview, or progress update.",
         parameters: ContactSupervisorParamsSchema,
@@ -419,7 +421,9 @@ function refreshPendingRequests(pending, state, onLifecycle, runState) {
 }
 function formatPendingLine(request) {
     const replyHint = request.expectsReply ? ` Reply: ${supervisorReplyHint(request.id)}` : "";
-    return `- ${request.id}: ${request.agent} [${request.runId}#${request.childIndex}] ${request.reason}.${replyHint}`;
+    const header = `- ${request.id}: ${request.agent} [${request.runId}#${request.childIndex}] ${request.reason}.${replyHint}`;
+    // The request notice can be missed; pending is the parent's only way to read the question again.
+    return request.message ? `${header}\n  ${request.message.replace(/\n/g, "\n  ")}` : header;
 }
 function requestVisibleText(request) {
     const lines = [
@@ -513,6 +517,7 @@ function publicPendingRequests(pending) {
 function buildParentSupervisorTool(pi, pending, state, onLifecycle, discover, runState) {
     return {
         name: NATIVE_SUPERVISOR_TOOL_NAME,
+        ...MODEL_ONLY_TOOL,
         label: "Subagent Supervisor",
         description: "Native pi-subagents supervisor channel. Use reply/pending/status to answer child subagent requests without overriding pi-intercom.",
         parameters: IntercomParamsSchema,
@@ -728,7 +733,7 @@ export function createNativeSupervisorChannel(pi, state, deps = {}) {
             return;
         poller = timers.setInterval(() => {
             poll();
-            if (!useNativeWatcher() && (platform === "darwin" || deps.getChannelDirs) && !hasTransportDemand()) {
+            if (!useNativeWatcher() && !hasTransportDemand()) {
                 if (poller)
                     timers.clearInterval(poller);
                 poller = undefined;

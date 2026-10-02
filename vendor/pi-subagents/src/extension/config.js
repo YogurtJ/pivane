@@ -10,6 +10,10 @@ import { validatePermissionConfig } from "../runs/shared/permissions.js";
 import { MAX_ABANDONED_SLOT_RELEASE_AFTER_MS, MIN_ABANDONED_SLOT_RELEASE_AFTER_MS } from "../runs/background/active-async-capacity.js";
 import { normalizeWorktreeBranchPrefix } from "../runs/shared/worktree.js";
 import { validateModelResponseAliases } from "../shared/model-response-aliases.js";
+import { validateDisabledFeatures } from "../shared/disabled-features.js";
+// Explicit route identity, worktree, checkpoint, and tool-surface policies must not be silently
+// discarded and replaced by the built-in defaults after validation fails.
+const FAIL_CLOSED_CONFIG_KEYS = ["worktreeProvider", "worktreeBranchPrefix", "modelResponseAliases", "modelExclusions", "checkpointBeforeDeadlineMs", "disabledFeatures", "scheduledRuns", "toolActivation"];
 const ARTIFACT_DIR_PREFERENCES = new Set(["project", "session", "temp"]);
 const FLEET_KEYBINDING_ACTION_SET = new Set(FLEET_KEYBINDING_ACTIONS);
 const KEY_MODIFIERS = new Set(["ctrl", "shift", "alt", "super"]);
@@ -57,6 +61,9 @@ function validateScheduledRunsConfig(value) {
         return;
     if (!value || typeof value !== "object" || Array.isArray(value))
         throw new Error("config.scheduledRuns must be a JSON object");
+    const enabled = value.enabled;
+    if (enabled !== undefined && typeof enabled !== "boolean")
+        throw new Error("config.scheduledRuns.enabled must be a boolean");
     const storeRoot = value.storeRoot;
     if (storeRoot === undefined)
         return;
@@ -178,10 +185,14 @@ function validateConfig(config) {
     if (config.resultScanLogging !== undefined && config.resultScanLogging !== "all" && config.resultScanLogging !== "activity" && config.resultScanLogging !== "off") {
         throw new Error('config.resultScanLogging must be "all", "activity", or "off"');
     }
+    if (config.toolActivation !== undefined && config.toolActivation !== "auto" && config.toolActivation !== "dynamic" && config.toolActivation !== "eager") {
+        throw new Error('config.toolActivation must be "auto", "dynamic", or "eager"');
+    }
     validateMissionStoreConfig(config.missions);
     validateAuthorityPolicy(config.authorityPolicy);
     validatePermissionConfig(config.permissions);
     validateScheduledRunsConfig(config.scheduledRuns);
+    validateDisabledFeatures(config.disabledFeatures);
     validateFleetKeybindingsConfig(config.fleetKeybindings);
     validateArtifactConfig(config.artifactConfig);
     validateCapacityConfig(config.capacity);
@@ -226,12 +237,9 @@ export function loadConfig() {
     catch (error) {
         if (error instanceof PrunedForkConfigError)
             throw error;
-        // Explicit route identity, worktree, and checkpoint policies must not be silently
-        // discarded and replaced by the built-in defaults after validation fails.
         try {
             const raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-            if (raw && typeof raw === "object" && !Array.isArray(raw)
-                && (Object.hasOwn(raw, "worktreeProvider") || Object.hasOwn(raw, "worktreeBranchPrefix") || Object.hasOwn(raw, "modelResponseAliases") || Object.hasOwn(raw, "modelExclusions") || Object.hasOwn(raw, "checkpointBeforeDeadlineMs")))
+            if (raw && typeof raw === "object" && !Array.isArray(raw) && FAIL_CLOSED_CONFIG_KEYS.some((key) => Object.hasOwn(raw, key)))
                 throw error;
         }
         catch (readError) {

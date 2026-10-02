@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { formatUnresolvedMcpDirectToolSelectors, resolveMcpDirectToolResolution, } from "./mcp-direct-tool-allowlist.js";
+import { formatUnresolvedBuiltinMcpSelectors, formatUnresolvedMcpDirectToolSelectors, resolveMcpDirectToolResolution, } from "./mcp-direct-tool-allowlist.js";
 import { TEMP_ROOT_DIR, } from "../../shared/types.js";
 import { THINKING_LEVELS } from "../../shared/model-info.js";
 import { getAgentDir } from "../../shared/utils.js";
@@ -26,10 +26,8 @@ const SUBAGENT_RUNTIME_EXTENSION_PATHS = new Set([
 export function isSubagentRuntimeExtensionPath(extensionPath) {
     return SUBAGENT_RUNTIME_EXTENSION_PATHS.has(path.normalize(extensionPath));
 }
-const FAST_MODE_ALLOWED_MODELS = new Set([
-    "openai-codex/gpt-5.6-luna",
-    "openai-codex/gpt-5.6-sol",
-]);
+// Priority tier is an OpenAI-Codex request field; other providers reject or ignore it.
+const FAST_MODE_PROVIDER_PREFIX = "openai-codex/";
 const OPENAI_PROMPT_CACHE_KEY_MAX_LENGTH = 64;
 export function deriveForkPromptCacheKey(parentSessionId) {
     const parent = parentSessionId?.trim();
@@ -73,9 +71,9 @@ function resolveFastModeExtension(input) {
     if (candidates.length === 0) {
         throw new Error(`fast mode requires an explicit supported native OpenAI-Codex model${input.agentName ? ` for agent '${input.agentName}'` : ""}.`);
     }
-    const unsupported = candidates.filter((model) => !FAST_MODE_ALLOWED_MODELS.has(model));
+    const unsupported = candidates.filter((model) => !model.startsWith(FAST_MODE_PROVIDER_PREFIX));
     if (unsupported.length > 0) {
-        throw new Error(`fast mode supports only ${[...FAST_MODE_ALLOWED_MODELS].join(", ")}; unsupported model${unsupported.length === 1 ? "" : "s"}: ${unsupported.join(", ")}.`);
+        throw new Error(`fast mode supports only native ${FAST_MODE_PROVIDER_PREFIX}* models; unsupported model${unsupported.length === 1 ? "" : "s"}: ${unsupported.join(", ")}.`);
     }
     return [FAST_MODE_EXTENSION_PATH];
 }
@@ -210,20 +208,26 @@ export function resolvePiLaunchToolPlan(input) {
             (tool.includes("/") || tool.endsWith(".ts") || tool.endsWith(".js")));
     const mcpResolution = capabilityCeiling?.denyExtensions
         ? { selections: [], unresolvedSelectors: [] }
-        : resolveMcpDirectToolResolution(input.mcpDirectTools, input.cwd, input.runtimeSnapshotHost);
+        : input.builtinMcpTools
+            // The runner applies the same ceilings again; filtering is idempotent.
+            ? { selections: input.builtinMcpTools, unresolvedSelectors: [], builtin: true }
+            : resolveMcpDirectToolResolution(input.mcpDirectTools, input.cwd, input.runtimeSnapshotHost);
     if (mcpResolution.runtimeServerNames?.length) {
         throw new Error(formatRuntimeSnapshotMcpServersError(input.agentName, mcpResolution.runtimeServerNames));
     }
     if (mcpResolution.unresolvedSelectors.length > 0) {
-        throw new Error(formatUnresolvedMcpDirectToolSelectors(mcpResolution.unresolvedSelectors));
+        throw new Error(mcpResolution.builtin
+            ? formatUnresolvedBuiltinMcpSelectors(input.agentName, mcpResolution.unresolvedSelectors)
+            : formatUnresolvedMcpDirectToolSelectors(mcpResolution.unresolvedSelectors));
     }
     const resolvedMcpSelections = mcpResolution.selections;
     const resolvedMcpNames = new Set(resolvedMcpSelections.map((selection) => selection.name));
-    const legacyMcpNameCounts = countLegacyUnderscoreMcpToolNames(resolvedMcpSelections);
+    const legacyMcpNameCounts = mcpResolution.builtin ? new Map() : countLegacyUnderscoreMcpToolNames(resolvedMcpSelections);
     const effectiveMcpSelections = resolvedMcpSelections.filter((selection) => !allowedToolSet ||
         allowedToolSet.has(selection.name) ||
         isLegacyUnderscoreMcpToolAllowed(selection, allowedToolSet, resolvedMcpNames, legacyMcpNameCounts)).filter((selection) => !excludedToolSet.has(selection.name));
     const effectiveMcpTools = effectiveMcpSelections.map((selection) => selection.name);
+    const builtinMcpTools = mcpResolution.builtin ? effectiveMcpSelections : undefined;
     const explicitToolAllowlist = input.tools !== undefined ||
         (input.mcpDirectTools?.length ?? 0) > 0 ||
         allowedToolSet !== undefined;
@@ -338,6 +342,7 @@ export function resolvePiLaunchToolPlan(input) {
         resolvedMcpSelections,
         effectiveMcpSelections,
         effectiveMcpTools,
+        builtinMcpTools,
         explicitToolAllowlist,
         internalTools,
         effectiveToolAllowlist,

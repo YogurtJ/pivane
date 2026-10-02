@@ -100,3 +100,40 @@ test('official native loopback server discovers tools without tools/call or mode
         assert.ok(methods.includes('initialize')); assert.ok(methods.includes('tools/list')); assert.ok(!methods.includes('tools/call'));
     } finally { await pi.events.get('session_shutdown')(); }
 });
+
+test('Pi 1.0 official OAuth store owns normalized server-and-URL keys and legacy takeover', async () => {
+    const root = path.resolve(path.dirname(fileURLToPath((await helper()).nativePiEntry())), '..');
+    const { McpOAuthCredentialStore } = await import(pathToFileURL(path.join(root, 'dist/extensions/mcp/oauth.js')).href);
+    const url = 'https://example.invalid/mcp';
+    const legacy = { tokens: { access_token: 'synthetic-only', token_type: 'Bearer' }, future: { keep: true } };
+    let content = JSON.stringify({ [url]: legacy, unrelated: { keep: true } });
+    const backend = { withLock(fn) { const { result, next } = fn(content); if (next !== undefined) content = next; return result; } };
+    const store = new McpOAuthCredentialStore(backend);
+    assert.deepEqual(store.forServer('dev-radius', url).load(), legacy);
+    assert.deepEqual(Object.keys(JSON.parse(content)).sort(), ['mcp__dev_radius|https://example.invalid/mcp', 'unrelated']);
+    assert.deepEqual(store.tokens('dev_radius', url), legacy.tokens, 'namespace aliases use the same official key');
+    assert.equal(store.tokens('other-account', url), undefined, 'same URL with another server name shares no grant');
+    const other = { tokens: { access_token: 'other-synthetic-only', token_type: 'Bearer' } };
+    store.forServer('other-account', url).save(other);
+    assert.equal(store.remove('dev-radius', url), true);
+    assert.deepEqual(store.tokens('other-account', url), other.tokens);
+    assert.deepEqual(JSON.parse(content).unrelated, { keep: true });
+});
+
+test('native OAuth cancellation and unknown notifications keep the fixed notice whitelist', async () => {
+    const { captureNativeMcpControl, requestNativeMcpControl, parseNativeMcpStatus } = await helper();
+    const pi = api(), ctx = context(); const shown = [];
+    ctx.ui.notify = message => shown.push(message);
+    captureNativeMcpControl(p => p.registerCommand('mcp', { handler: async (args, c) => {
+        if (args.startsWith('login')) {
+            c.ui.notify('Sign in to MCP server "dev-radius" in your browser:\nhttps://example.invalid/auth\nPRIVATE', 'info');
+            c.ui.notify('Sign-in cancelled.', 'info');
+            c.ui.notify('PRIVATE diagnostics', 'info');
+        } else c.ui.notify('dev-radius: needs sign-in, run /mcp login dev-radius (codemode)', 'info');
+    } }))(pi);
+    const result = await requestNativeMcpControl(pi, ctx, { action: 'login', server: 'dev-radius', confirmed: true });
+    assert.equal(result.outcome, 'cancelled'); assert.deepEqual(result.notices, [{ kind: 'cancelled', code: 'MCP_NATIVE_SIGN_IN_CANCELLED' }]);
+    assert.deepEqual(shown, []); assert.doesNotMatch(JSON.stringify(result), /PRIVATE|example\.invalid/);
+    assert.deepEqual(parseNativeMcpStatus('dev-radius: starting (codemode)\nother: connecting (deferred)').servers,
+        [{ name: 'dev-radius', state: 'starting', toolCount: null, exposure: 'codemode' }, { name: 'other', state: 'connecting', toolCount: null, exposure: 'deferred' }]);
+});

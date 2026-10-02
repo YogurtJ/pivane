@@ -16,6 +16,8 @@ import { resolveWorkflowForegroundSteeringTarget, steerWorkflowForegroundTarget 
 import { contextModeBadge, contextModeLabel } from "../runs/shared/context-mode.js";
 import { FLEET_STATUS_WIDGET_KEY } from "./fleet-status.js";
 import { readFleetTranscript, renderFleetTranscript } from "./fleet-transcript.js";
+import { runningTone } from "./running-tone.js";
+import { childThinkingLevel } from "../shared/model-info.js";
 import { handleInspectorAction } from "../inspectors/actions.js";
 import { getLivePromptAudit } from "../runs/foreground/prompt-audit.js";
 const REFRESH_MS = 750;
@@ -288,9 +290,18 @@ function visibleWorkflowParentKeyForForegroundKey(state, key, items) {
     }
     return undefined;
 }
+/** The recorded level of the one child a running Fleet row stands for; a whole run or an external run has none. */
+function fleetItemThinkingLevel(item) {
+    switch (item.kind) {
+        case "foreground-active": return childThinkingLevel(item.activeChild ?? item.control);
+        case "foreground-recent": return childThinkingLevel(item.child);
+        case "async": return childThinkingLevel(item.step);
+        case "external": return undefined;
+    }
+}
 function statusGlyph(item, theme) {
     if (item.state === "running")
-        return theme.fg("accent", "●");
+        return runningTone(theme, fleetItemThinkingLevel(item))("●");
     if (item.state === "queued" || item.state === "pending")
         return theme.fg("muted", "◦");
     if (item.state === "complete" || item.state === "completed")
@@ -1393,7 +1404,7 @@ export async function openSubagentFleet(ctx, state, options = {}) {
             cwd: state.baseCwd,
             ...(state.authorityPolicy ? { authorityPolicy: state.authorityPolicy } : {}),
             ...(state.missionStoreConfig ? { missions: state.missionStoreConfig } : {}),
-            ...(options.inspectorPlugins ? { plugins: options.inspectorPlugins } : {}),
+            plugins: options.inspectorPlugins?.(),
             ...(options.inspectorEnv ? { env: options.inspectorEnv } : {}),
         }), `Failed to open inspector for async run ${input.runId}.`),
         redoPrompt: async (input) => {

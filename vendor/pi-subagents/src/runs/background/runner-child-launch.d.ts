@@ -11,6 +11,7 @@ export interface RunnerChildLaunchContext {
     runFanoutBudget?: BuildInProcessChildLaunchInput["runFanoutBudget"];
     capabilityCeiling?: BuildInProcessChildLaunchInput["capabilityCeiling"];
     inheritedChildRuntime?: InheritedChildRuntime;
+    projectTrusted?: boolean;
 }
 export declare function buildRunnerChildLaunch(step: RunnerSubagentStep, ctx: RunnerChildLaunchContext, attempt: {
     model?: string;

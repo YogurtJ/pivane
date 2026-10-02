@@ -1,5 +1,6 @@
 import { SUBAGENT_ASYNC_COMPLETE_EVENT, SUBAGENT_ASYNC_STARTED_EVENT, SUBAGENT_CONTROL_EVENT, } from "../shared/types.js";
 import { previewDisplayText, sanitizeDisplayText } from "../shared/display-text.js";
+export const HERDR_FOREGROUND_CONTROL_CHANGED_EVENT = "pi-subagents:herdr:foreground-control-changed";
 const DEFAULT_SOURCE = "pi-subagents:herdr";
 const DEFAULT_TTL_MS = 120_000;
 const DEFAULT_REFRESH_MS = 45_000;
@@ -53,10 +54,17 @@ function startedRun(data) {
     if (!isRecord(data) || typeof data.id !== "string" || !data.id)
         return undefined;
     const taskLabel = workflowTaskLabel(data);
+    // The workflow coordinator itself is not a running leaf: it starts with its
+    // own `agent: "workflow"` identity, but its actual leaves each publish their
+    // own start event separately. Counting the coordinator here would double it.
+    const isWorkflowCoordinator = data.mode === "workflow";
     return {
         id: data.id,
-        ...(typeof data.agent === "string" ? { agent: data.agent } : {}),
-        ...(Array.isArray(data.agents) && data.agents.every((agent) => typeof agent === "string") ? { agents: data.agents } : {}),
+        ...(isWorkflowCoordinator ? { coordinator: true } : {}),
+        ...(!isWorkflowCoordinator && typeof data.agent === "string" ? { agent: data.agent } : {}),
+        ...(isWorkflowCoordinator
+            ? { agents: [] }
+            : Array.isArray(data.agents) && data.agents.every((agent) => typeof agent === "string") ? { agents: data.agents } : {}),
         ...(taskLabel ? { taskLabel } : {}),
     };
 }
@@ -102,7 +110,9 @@ export function registerHerdrStatusBridge(options) {
     let drainPromise = Promise.resolve();
     let refreshTimer;
     const activeAgentNames = () => [...new Set([...runs.values()].flatMap((run) => run.agents?.length ? run.agents : run.agent ? [run.agent] : []))];
-    const activeSubagentCount = () => [...runs.values()].reduce((total, run) => total + Math.max(1, run.agents?.length ?? (run.agent ? 1 : 0)), 0);
+    // Preserve the minimum count for ordinary runs with incomplete status;
+    // only an empty workflow coordinator contributes zero child agents.
+    const activeSubagentCount = () => [...runs.values()].reduce((total, run) => total + (run.coordinator && !run.agents?.length ? 0 : Math.max(1, run.agents?.length ?? (run.agent ? 1 : 0))), 0);
     const activeTaskLabel = () => [...runs.values()].reverse().find((run) => run.taskLabel)?.taskLabel;
     const label = (includeAttention = false) => {
         const agents = activeAgentNames();
@@ -298,6 +308,10 @@ export function registerHerdrStatusBridge(options) {
             subscriptions.push(unsubscribe);
     };
     if (enabled) {
+        subscribe(HERDR_FOREGROUND_CONTROL_CHANGED_EVENT, () => {
+            if (rootSession && options.getRuns)
+                refresh();
+        });
         subscribe(SUBAGENT_ASYNC_STARTED_EVENT, (data) => {
             if (!rootSession)
                 return;

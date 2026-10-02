@@ -96,7 +96,10 @@ test('active session beyond history page and 8 MiB retains tools while recall re
     t.after(() => events.get('session_shutdown')({}, ctx));
     assert.ok(tools.has('memory_add'));
     assert.ok(tools.has('skill_manage'));
-    assert.equal((await tools.get('memory_add').execute('call', { target: 'memory', content: 'large-active-fact' }, undefined, undefined, ctx)).details.success, true);
+    const addArgs = { target: 'memory', content: 'large-active-fact' };
+    const compared = await tools.get('memory_add').execute('call', addArgs, undefined, undefined, ctx);
+    assert.equal(compared.details.comparisonRequired, true);
+    assert.equal((await tools.get('memory_add').execute('call', { ...addArgs, comparisonToken: compared.details.comparisonToken }, undefined, undefined, ctx)).details.success, true);
     const pendingFile = path.join(f.root, '.pivane-memory-index-memory.pending');
     fs.writeFileSync(pendingFile, JSON.stringify({ version: 1, target: 'memory', before: null,
         after: 'a'.repeat(64), old: [], next: [] }), { mode: 0o600 });

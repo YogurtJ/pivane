@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import { Type } from 'typebox';
 import scope from './scope.js';
 import backgroundIndexer from './background-index.js';
 import mutation from './mutation-lock.js';
@@ -73,14 +74,26 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
         get(target, key) {
             if (key !== 'registerTool') return (target as any)[key];
             return (tool: any) => {
+                const creates = tool.name === 'memory_add' || tool.name === 'skill_manage';
                 const wrapped = { ...tool,
+                    parameters: creates ? { ...tool.parameters, properties: { ...tool.parameters.properties,
+                        comparisonToken: Type.String({ maxLength: 1024,
+                            description: 'Pivane token returned with existing candidates on the first create attempt. Pass it with unchanged create arguments only after comparing those entries and deciding this information is independently new.' }) } } : tool.parameters,
                     description: tool.name === 'session_search'
                         ? `${tool.description}\n\nProject filters use the full canonical cwd. Results cover only indexed, verified native sessions; backfill may be partial.`
                         : knowledge && ['memory_replace', 'memory_remove'].includes(tool.name)
                             ? `${tool.description}\n\nFor profile MEMORY/USER, old_text must exactly match one complete active memory entry. A knowledge receipt confirms the result; do not retry uncertain writes without checking the receipt.`
-                            : tool.description,
-                    promptGuidelines: tool.name === 'skill_manage' ? [ ...(tool.promptGuidelines || []),
-                        'After a useful repeated procedure or correction, consider creating or updating a profile-owned skill with verification steps. Never modify shared installed skills. Newly created skills are available after reload.' ] : tool.promptGuidelines,
+                            : creates ? `${tool.description}\n\nPivane create calls first return existing candidates without saving. Compare them, then use an existing-entry update or submit unchanged create arguments with the returned comparisonToken. This internal comparison needs no additional user approval.` : tool.description,
+                    promptGuidelines: tool.name === 'skill_manage' ? [
+                        ...(tool.promptGuidelines || []).filter((guideline: string) => guideline !==
+                            'Use the skill_manage tool after completing complex tasks that required trial and error or multiple tool calls.'),
+                        'Task complexity, trial and error, tool-call count, and useful content alone are not reasons to create a skill. Do not turn individual knowledge points, exercises, explanations, or favorites into skills; save requested study content in the designated notes.',
+                        'Before any skill write, inspect existing skills. Prefer a focused update to an existing skill for a verified general workflow improvement. Create a new skill only when the user explicitly requests one, or when a distinct, durable procedure transfers across tasks and cannot reasonably fit an existing skill. Topic-specific details belong in source notes or references, not separate skills.',
+                        'Keep skill writes within the profile-owned scope and include verification steps. Never modify shared installed skills. Newly created or updated skills require reload.',
+                        'A create without comparisonToken only reads related existing skills. Compare the returned candidates; use view and update for an existing workflow, skip duplicates, and pass the token only for an independently new workflow.' ]
+                        : ['memory_add', 'memory_replace', 'memory_remove'].includes(tool.name) ? [ ...(tool.promptGuidelines || []),
+                            'Before saving memory, compare existing USER and MEMORY entries in this profile and the verified current project. Same fact: skip. Clear additional detail or explicit correction: read the complete old entry and use memory_replace, preserving all other valid facts. Independent new fact: create. Stable personal facts and preferences belong in USER; resource locations and dated durable history belong in MEMORY. Generic knowledge points, exercises, explanations and completed-task logs belong in the designated notes, not identity memory.',
+                            'A memory_add without comparisonToken returns related old entries and saves nothing. Read them before choosing update or new; pass the returned token only with unchanged create arguments. Multiple overlapping records require a consolidation proposal, not separate new copies. Do not ask the user to approve this internal check.' ] : tool.promptGuidelines,
                     execute: async (...args: any[]) => {
                         if (!allowed(args[args.length - 1])) throw new Error('Profile memory session binding is unavailable');
                         if ((tool.name === 'memory_search' || ['memory_add', 'memory_replace', 'memory_remove'].includes(tool.name))

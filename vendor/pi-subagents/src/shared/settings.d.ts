@@ -27,7 +27,7 @@ export interface SequentialStep {
     acceptance?: AcceptanceInput;
     agentContract?: AgentContract;
     gateOn?: ChainGateLayer;
-    /** Internal workflow child isolation; public workflowScript supplies this on runs.run. */
+    /** Internal workflow child isolation; public workflow scripts supply this on runs.run. */
     worktree?: boolean;
 }
 /** Parallel task item within a parallel step */

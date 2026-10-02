@@ -62,9 +62,11 @@
 - `GET /profiles/:id/knowledge?kind=memory|skill&query=&offset=&sessionId=`：每页最多 50 条（记忆预览 512 字符）、30 条近期回执、不透明 revision，以及 `capabilities`（`operations`、`memory`/`skill` 可写性、`projectWrites:false`、`skillNameMaxLength`、`maxContentLength`、`journal` 计数与上限）。记忆可用时另有 `usage:{memory:{chars,limit},user:{chars,limit},failure?:{chars,readOnly:true}}`，字数与写入时的上限判断一致。回执带 `origin`（`manual|agent|learning`，由服务端决定）、`learningReason`（仅 learning）、`preview`（记忆正文或技能名与描述，最多约 160 字符）、记忆的 `category`；同一条目之后又有回执时标 `superseded:true`。归档摘要不含 preview。`status` 为 `ready|pending|missing|disabled|unsupported|error`；pending 时 revision 为 null，禁止写入。
 - `GET /profiles/:id/knowledge/injection?sessionId=`：只读的下一轮注入预览，用与注入相同的上游格式渲染：`{status,block,truncated?,chars,entries,profile:{chars,entries},project,lastRead}`；带 sessionId 时核实会话归属并加入该目录的项目块，`lastRead` 取会话最近一次 `pivane-profile-memory-read`（含 `chars`/`entries`）。block 最多 64 KiB。
 - `GET /profiles/:id/knowledge/items/:itemId`：受限正文（最多 65,536 字符）、条目 revision、`readOnly`/`truncated` 与服务端来源 `{sessionId,entryId}`。
-- `POST /profiles/:id/knowledge/mutations`：`{requestId,expectedRevision,operation,kind,...}`，operation 为 `create|update|delete|restore|enable|disable|undo|consolidate`；`consolidate` 只限手动：`{target:'memory'|'user',items:[{itemId,itemRevision}] (2–20),content,category}`，任一条目变化则整批 409，回执带 `consolidated` 原条目 ID，撤销一次恢复全部原条目（撤销回执本身不可再撤销）。项目记忆可带 `scope:'project',sessionId` 写入（create/update/delete/undo）：服务端按会话文件头的 ID 找到会话并核实归属与目录，客户端 `projectKey` 一律拒绝，`capabilities.projectWritesBySession` 表示可用；记忆需 category `fact|preference|correction|failure|procedure`，undo 只带 `receiptId`。拒绝客户端提交的 `source`、`projectKey` 与草稿状态。确定拒绝为 4xx（409 版本冲突/身份不唯一，413 超出来源证明预算；写满为 409 `{error,code:'memory-full',details:{target,chars,limit,needed}}`），发布结果不确定为 503 并保持 pending，只能用同一 requestId 与同一输入修复。客户端 requestId 7 天内重放返回原回执，过期后拒绝且不重跑。
+- `POST /profiles/:id/knowledge/mutations`：`{requestId,expectedRevision,operation,kind,...}`，operation 为 `create|update|delete|restore|enable|disable|undo|consolidate`；`consolidate` 只限手动：`{target:'memory'|'user',items:[{itemId,itemRevision}] (2–20),content,category}`，任一条目变化则整批 409，回执带 `consolidated` 原条目 ID，撤销一次恢复全部原条目（撤销回执本身不可再撤销）。项目记忆可带 `scope:'project',sessionId` 写入（create/update/delete/undo）：服务端按会话文件头的 ID 找到会话并核实归属与目录，客户端 `projectKey` 一律拒绝，`capabilities.projectWritesBySession` 表示可用；项目技能可按同样的 `scope:'project',sessionId` 核验执行 delete/undo（kind 为 skill），由 `capabilities.projectSkillDeletesBySession` 表示可用，不能借此创建或改写技能；记忆需 category `fact|preference|correction|failure|procedure`，undo 只带 `receiptId`。拒绝客户端提交的 `source`、`projectKey` 与草稿状态。确定拒绝为 4xx（409 版本冲突/身份不唯一，413 超出来源证明预算；写满为 409 `{error,code:'memory-full',details:{target,chars,limit,needed}}`），发布结果不确定为 503 并保持 pending，只能用同一 requestId 与同一输入修复。客户端 requestId 7 天内重放返回原回执，过期后拒绝且不重跑。
+- 知识服务对 `create/update/consolidate` 在原互斥内执行保守的精确查重，同一身份 USER/MEMORY 跨目标比较、项目目录保持隔离。重复返回 409 `{code:"knowledge-duplicate",details:{itemId,itemRevision,kind,scope,target?,name?,readOnly}}`；不隐式改写旧条目。原生工具将此确定拒绝表示为 `unchanged:true`，没有保存回执。记忆只归一 Unicode NFC、外部空白和原生尾部元数据，不折叠大小写、数值或标识符；技能实质流程比较详见[记忆适配](PROFILE_MEMORY.md#agent-write-time-comparison)。
+- 原生身份工具 `memory_add` 和 `skill_manage(create)` 新增可选 `comparisonToken`：第一次调用返回 `comparisonRequired:true,saved:false,candidates,comparisonToken`，只读不保存；模型比较后仅独立新内容以原参数提交 token。token 绑定 worker、身份、真实会话／目录、完整创建参数与知识修订，10 分钟失效；不能当用户授权、跨会话使用或让创建隐式变成更新。HTTP 知识 mutation 不接受这个工具内部字段。
 - 知识写入（`create`、`update`、`consolidate`，以及档案文档保存新增的条目）若含疑似密钥或提示词注入内容，返回 400 `{code:'content-blocked', details:{rule, kind}}`，`kind` 为 `secret` 或 `injection`，错误信息不回显原文。
-- `GET/PUT /profiles/:id/learning`：GET 返回 `{version:1,status,revision,settings,health,legacy,proposals,drafts,jobs,recentRuns,capabilities}`，revision 为整数；PUT `{expectedRevision,changes}` 只保存开关、额度和触发词，不启动作业；`settings.triggerPhrases` 为 `{correction,preference,temporary,ignore}`，每组最多 50 个、每个不超过 80 字符的普通短语，限制见 `capabilities.limits.triggerPhrases`。学习写入被内容检查拒绝时，作业记为 `skipped`，`error:'content-blocked'`。`health` 为 `{state:'off'|'unavailable'|'needs-model'|'quota-exhausted'|'failing'|'ok',missingModels,lastFailure,today:{runs,maxRuns,reservedTokens,maxTokens}}`，按此顺序取第一个成立的状态，`memory-full` 位于 needs-model 之后。`proposals` 为最多 3 个整理方案 `{id,target,createdAt,model,groups:[{items:[{itemId,itemRevision,preview,category}],content,category}]}`；`drafts` 为 `{pending,capped?}` 待审草稿技能数。`legacy` 在身份原始配置 `memory.autoLearn=true` 且尚未迁移或忽略时为 `{autoLearn:true,reviewModel,reviewModelAvailable,purposes}`，否则为 null。作业 `error:'memory-full'`（status skipped）表示写满未保存。
+- `GET/PUT /profiles/:id/learning`：GET 返回 `{version:1,status,revision,settings,health,legacy,proposals,drafts,jobs,recentRuns,capabilities}`，revision 为整数；PUT `{expectedRevision,changes}` 只保存开关、额度和触发词，不启动作业；`settings.triggerPhrases` 为 `{correction,preference,temporary,ignore}`，每组最多 50 个、每个不超过 80 字符的普通短语，限制见 `capabilities.limits.triggerPhrases`。学习写入被内容检查拒绝时，作业记为 `skipped`，`error:'content-blocked'`。`health` 为 `{state:'off'|'unavailable'|'needs-model'|'quota-exhausted'|'failing'|'ok',missingModels,lastFailure,today:{runs,maxRuns,reservedTokens,maxTokens}}`，按此顺序取第一个成立的状态，`memory-full` 位于 needs-model 之后。`proposals` 为最多 3 个整理方案 `{id,target,createdAt,model,source?:{sessionId,entryId},groups:[{items:[{itemId,itemRevision,preview,category}],content,category}]}`；普通后台学习也可在原单次模型调用中提出同目标合并方案，保留原条目，source 指向经核实的原生用户消息；`drafts` 为 `{pending,capped?}` 待审草稿技能数。`legacy` 在身份原始配置 `memory.autoLearn=true` 且尚未迁移或忽略时为 `{autoLearn:true,reviewModel,reviewModelAvailable,purposes}`，否则为 null。作业 `error:'memory-full'`（status skipped）表示写满未保存。
 - `POST /profiles/:id/learning/actions`：`{requestId,action,...}`，action 为 `review-now`、`cancel`（`jobId`）、`enable`（可选 `review`/`extraction` 布尔，只改开关不改模型）、`adopt-legacy`（可选 `model:{provider,modelId}`，只给未配置的学习用途补模型并开启纠错与复盘；模型不可用为 409 `legacy-model-unavailable`）、`dismiss-legacy`、`propose-consolidation`（`target`，只生成方案，不写知识，预留 `settings.consolidationInputChars`+6000 token）、`dismiss-proposal`（`proposalId`，可选 `groupIndex` 为当前数组位置）。按 `capabilities.actions` 调用，返回最新快照；同一 requestId 幂等，结果不确定时不自动重放。升级本身不开启任何学习。
 
 `GET /activity` 另含 `learningBusy`、`learningRuns`；维护空闲判断包含后台学习。辅助模型用途新增 `memory-correction`、`memory-review`、`memory-extraction`，未配置时等待配置，不回退主模型。字段语义、写入日志容量、限额与验证状态见[记忆适配](PROFILE_MEMORY.md)和[辅助模型](AUXILIARY_MODELS.md)。
@@ -125,8 +127,8 @@ Pi 0.99.1 候选的原生资源清单包含 `builtin:mcp`、`builtin:codemode`�
 
 `nativeMcpManagement=true` 标记 MCP 网页接口：
 
-- GET `/settings/mcp?cwd&scope=global|project` 返回 `{cwd,scope,revision,trust,autoEnableCodemode:{global,project,value},servers,capabilities}`，只读取配置。服务器含 name/scope/valid/enabled/exposure/timeout/transport 与脱敏 config、secretFields；私密值为 null，`secretFields[字段路径]={present:true}`。五种 exposure 为 codemode/codemode-deferred/deferred/direct/hidden，toolExposure 保持原始工具名／模式顺序。损坏 JSON 整体失败，无效服务器只返回安全状态。
-- PUT `/settings/mcp` 接受 `{cwd,scope,expectedRevision,confirmed:true,action:'upsert'|'patch'|'remove'|'preferences',name?,config?,patch?,autoEnableCodemode?}`。普通控制字段直接提交、null 移除；command/args/cwd/url 和 env/headers/OAuth 字符串用 `{op:'keep'|'replace'|'remove',value?}`，maps 按字段提交，oauth.callbackPort 为整数／null。省略保留现值与未知字段；不能直接把 GET 脱敏 config 回传。偏好 null 恢复默认／继承。项目写入须受信，成功 requiresRuntimeRestart=true，保存不连接或重载。
+- GET `/settings/mcp?cwd&scope=global|project` 返回 `{cwd,scope,revision,trust,autoEnableCodemode:{global,project,value},servers,capabilities}`，只读取配置。服务器含 name/scope/valid/enabled/exposure/timeout/transport 与脱敏 config、secretFields；私密值为 null，`secretFields[字段路径]={present:true}`。四种 exposure 为 codemode/deferred/direct/hidden；输入兼容别名 codemode-deferred 在 DTO 中规范为 codemode。toolExposure 保持原始工具名／模式顺序。损坏 JSON 整体失败，无效服务器只返回安全状态。Pi 规范化命名冲突的后续条目返回 valid=false/error=MCP_NAMESPACE_CONFLICT；PUT 对新增的同范围或当前受信跨范围冲突返回同一错误码，保留完全同名的项目覆盖。
+- PUT `/settings/mcp` 接受 `{cwd,scope,expectedRevision,confirmed:true,action:'upsert'|'patch'|'remove'|'preferences',name?,config?,patch?,autoEnableCodemode?}`。普通控制字段直接提交、null 移除；command/args/cwd/url 和 env/headers/OAuth 字符串用 `{op:'keep'|'replace'|'remove',value?}`，maps 按字段提交，oauth.callbackPort 为整数／null；新增 oauth.clientName 与 oauth.authServerMetadataUrl 沿用私密操作和 presence-only DTO。description 为普通文本（编辑上限 4096 JS 字符），null 移除。auth.provider 为非秘密字符串，按字段更新并保留未知 auth 成员，provider:null 移除该字段、auth:null 移除整个块；仅全局 HTTP、HTTPS／原生 loopback 地址可用。URL／OAuth 回调由原生 validator 校验。新增或改变 provider 时如仍有不区分大小写的 Authorization header，返回 MCP_AUTH_HEADER_CONFLICT；无关修改不删除既有凭据。省略保留现值与未知字段；不能直接把 GET 脱敏 config 回传。偏好 null 恢复默认／继承。项目写入须受信，成功 requiresRuntimeRestart=true，保存不连接或重载。
 - GET `/sessions/:id/mcp?cwd&runtimeId` 或 POST 同路径 `{cwd,runtimeId,action:'snapshot'|'reconnect'|'login'|'logout',server?,confirmed:true}` 操作已有唯一持久 worker，不自动打开关闭的会话。非 snapshot 须明确 server／确认；旧 runtime、忙碌、后台工作或跨线程拒绝。返回 `{runtimeId,servers,tools,notices,outcome}`，outcome 为 completed/failed/cancelled/unknown；native handler 缺失时未知，不按工具注册推断健康。运行 scope 不由当前磁盘追认。
 - 网页原生 OAuth 沿用待确认输入；`gateway_mcp_authorization` 只在当前管理槽投影 `{authorization:{server,url,runtimeId}|null}`，重连快照 `mcpAuthorization` 可恢复正在处理的链接，完成立即清除。不写新凭据存储；URL 是待授权输入，不用于日志。迟到／未知私有 `pivaneMcp` 响应全部截获。操作参与 worker 生命周期，浏览器超时／断线不取消，也不自动重放。
 - 配置及运行响应 no-store，错误只为 `MCP_*` 安全代码；修订覆盖两范围 MCP、设置、trust 与 cwd。已保存配置与实际加载独立核对，细节见[原生 MCP](MCP.md)。
@@ -293,6 +295,22 @@ Body: `{ "cwd": "/workspace/demo" }`。先经过 token/Origin/realpath 根检查
 ### 扩展助手会话
 
 `/status.extensionAssistant=true` 时，`POST /extension-assistant/sessions` 接受 `{cwd,scope,language,returnSessionId?}`，创建独立原生会话并返回 `assistant` 元数据，不提交模型消息。`POST /extension-assistant/inventory` 和 `/extension-assistant/package` 为已打开的助手提供固定安装范围的配置读取与包操作，分别接受 `{cwd,sessionId}` 和附加的 `{action,source,expectedRevision,confirmed:true}`。包操作复用原生配置互斥、trust 和修订检查；独立进程凭据只授权这两个管理端点，不能用于其他 API，媒体规划凭据不能用于扩展管理。请求/响应、确认、取消、身份恢复和限制见[扩展助手契约](NATIVE_SETTINGS.md#扩展助手接口与持久化)。
+
+### 会话移动
+
+`GET /status.sessionMoves=true` 启用跨物理项目目录的线程移动，`GET /activity.sessionMoves` 是运行中的移动数，计入维护空闲／停机等待。均沿用工作台访问身份、Origin、允许根与原生会话发现，不接受任意 sessionPath。
+
+| Method | Path | 请求／响应 |
+|---|---|---|
+| GET | `/sessions/:id/move?cwd=...&targetCwd=...` | 只读预览，返回 `{source:{cwd,id,name},targetCwd,revision,canMove,blockers}`。revision 是来源完整字节的 SHA256，不启动 worker。 |
+| POST | `/sessions/:id/move` | `{cwd,targetCwd,expectedRevision,requestId}`，拒绝未知字段；requestId 为 16–80 位字母／数字／连字符，expectedRevision 为预览的 64 位小写 SHA256。成功 200 `{session,requestId,moved:true}`。 |
+| GET | `/sessions/:id/resolve?cwd=...` | 返回 `{session,moved,sourceCwd?}`。先找该项目的当前原生 ID，缺失时才使用同 ID 的已提交移动链；校验目标原生历史前缀、路径与访问范围。 |
+
+会话最多 64 MiB，完整 v3、同身份和同文件系统，完整树／时间／ID 保留。来源与目标文件路径在首次 await 前进入 Supervisor 移动互斥；来源只在空闲独占区停止，后台子 Agent、相关业务引用及目录预算未核实均拒绝。移动期间来源和目标的会话写入／重连被阻止；任务线程创建、线程间消息派发与定时派发临时暂停。用量服务在整个发布／归属变更期间串行保留入账槽，旧事实与日报归属在 SQLite FULL 事务中转移，缓存游标失效。完整支持范围见[会话工作流](SESSION_WORKFLOWS.md#移动线程到其他项目)。
+
+成功请求持久去重，同一 requestId 换参数拒绝；进入发布阶段后的失败、回滚和未知结果不重跑。未完成日志使两边的会话访问返回 409 `SESSION_MOVE_RECOVERY`，不会在启动时自动迁移或恢复。普通冲突 409 `SESSION_MOVE_CONFLICT`，运行冲突使用 `SESSION_BUSY`，路径／原生读取等错误 400；响应均 no-store。旧地址解析不开放 ID 全局搜索，来源仍须在允许根内，目标必须存在且可访问。
+
+存活来源连接收到 `gateway_session_moving` 后禁用提交；成功收到 `{type:'gateway_session_moved',sourceCwd,session}`，随后关闭码 4005。页面按线程／连接代次迁移本页草稿与已读取附件，并连接目标；已切走的页面仅刷新列表。停止 worker 后的失败关闭码 1012，页面重新核对来源；若日志需要恢复，访问保持拒绝。
 
 ### `POST /sessions`
 
@@ -478,7 +496,7 @@ gateway 当前白名单：
 }
 ```
 
-运行中消息使用 `steer` 或 `follow_up`，payload 相同。网页同时显示发送和停止按钮，选择投递模式后可点击发送；压缩/停止处理中或断线时禁发。原生消息 stopReason=aborted 的 errorMessage（例如 Request aborted）表示回复取消的原因，网页展示为“回复已停止”并保留可展开的原始原因；不能据此把失败的停止 RPC response 转为成功。
+运行中消息使用 `steer` 或 `follow_up`，payload 相同。网页在可停止的工作期间按草稿切换主操作：空白文字且没有引用／附件／读取中附件时显示停止，有内容时显示发送。投递模式收在加号菜单；压缩/停止处理中或断线时禁发。原生消息 stopReason=aborted 的 errorMessage（例如 Request aborted）表示回复取消的原因，网页展示为“回复已停止”并保留可展开的原始原因；不能据此把失败的停止 RPC response 转为成功。
 
 限制：
 
@@ -491,6 +509,15 @@ gateway 当前白名单：
 浏览器附件入口：加号中的“添加附件”/粘贴真实文件/拖放共用客户端校验，主框最多 8 个附件，最多 6 张单张 6 MiB 的 PNG/JPEG/WebP/GIF，文本附件单个 1 MiB 且必须 UTF-8。添加与发送前检查上述 message/images 总量，不再等 gateway 拒绝后丢失草稿。文本文件名 XML 转义后包入 `<attached_file>` 并并入 message；图片仍是既有 base64 block。未新增服务器上传接口/存储、未改变上述 gateway 限额。PDF/Office/压缩包/HEIC 及文件夹不支持。
 
 发送成功确认才清除匹配主稿；错误保留，超时/断线结果不明时重发/预约前要求确认。该保护仅页面内存，不构成服务端幂等或刷新后草稿恢复。纯文件名剪贴板内容仍为普通文本，HTTP 下不调用主动 Clipboard API。
+
+### 输入区语音转录 REST
+
+`/api/pi/status.transcription=true` 启用主输入区麦克风。接口复用 `/api/pi` 的身份／Origin 检查，响应 `Cache-Control: no-store`，不启动 worker，不写媒体历史或会话正文。
+
+- `GET /api/pi/composer/transcription` 返回 `{revision,models:[{id,provider,modelId,name,protocol,baseUrl}],maximumBytes:7500000,maximumSeconds:120}`。模型只来自已配置且可用的供应商；协议为 `mimo` 或 `openai`。
+- `POST /api/pi/composer/transcription` 接受 `{cwd,requestId,modelId,revision,language:'auto'|'zh'|'en',audio:{format:'wav'|'mp3',data:<base64>},confirmed:true}`。`modelId` 是目录返回的选择 ID，`requestId` 为 16–80 个字母／数字／连字符；配置修订、项目范围、音频签名及最大 7.5MB 在上传前校验。返回 `{text,model:{provider,id}}`，文字最大 65536 字符。
+- 最多两项并发；同一进程保留最多 32 项请求，已结束记录 15 分钟后可回收。相同标识／音频／选择共享同一结果或失败，标识对应不同请求返回 409；没有自动重试。配置变化返回 409，繁忙返回 429，远端失败或超时返回 502，认证不可用返回 503。请求超时不证明远端取消，收起浏览器面板不取消已上传音频。
+- `/api/pi/activity.transcriptionActive` 计入正在读取模型目录或处理转录的数量；维护空闲判定和异步关闭等待正在处理的转录。页面按线程及连接代次核对结果，最新草稿保留；迟到或超限结果留在面板由用户检查。完整行为见[语音转录](COMPOSER_TOOLS.md#语音转录)。
 
 ### 3.6 模型和思考
 
@@ -672,10 +699,15 @@ Key 只作为 request body 进入服务端，现有值永不回显。此单字�
 | POST | `/login/:id/answer` | `{promptId,value}` 回应一个有效步骤；旧步骤/重复提交 409 |
 | DELETE | `/login/:id` | 取消未完成登录，返回真实状态；取消可能与原生凭据提交相遇 |
 | PUT | `/models/thinking` | `{provider,modelId,expectedRevision,defaultThinkingLevel?,thinkingLevelMap?}` |
+| PUT | `/models/speed` | `{provider,modelId,expectedRevision,speed:null或{defaultLevel,modes}}`；Fast/Ultrafast 参数与费用倍率声明 |
 
 一次最多一个登录、10 分钟过期；私有随机句柄仅保留在发起页面内存。支持 secret/text/select/manual_code、授权 URL、设备码、info 链接和进度；单回答最多 32768 字符，选择必须匹配官方选项。未知句柄 404，流程占用/修订冲突 409，非法字段 400。原生逐 prompt AbortSignal 撤销已被 callback 完成的手动输入，旧回答不转发。初始 200 不代表凭据已保存；终态包括 success/committed/cancelled/expired/error，committed 表示凭据已提交但模型同步失败，禁止自动重放。所有 settings 响应 no-store。
 
 `GET /models` 新增 providerLogin/modelThinking、revision、thinkingMapKeys；模型含官方实际 thinkingLevels/thinkingLevelMap，preferences 含全局 defaultThinkingLevel 与逐模型 modelThinkingLevels。Thinking 默认 null 删除逐模型覆盖；map null 删除本地 map 恢复 Pi 原始能力，object 使用字符串映射/null 禁用，省略键沿用 Pi 定义。能力通过官方 getSupportedThinkingLevels 校验；不能禁用全部等级或留下失效的逐模型默认。保存内置模型到 modelOverrides、自定义模型到 models，保留未知字段、费用、兼容配置及 0600 backup；默认写原生 SettingsManager。完整协议、失败及远程 OAuth 限制见 [PROVIDER_SETTINGS.md](PROVIDER_SETTINGS.md)。
+
+`/status.modelSpeed=true` 与 `GET /settings/models.modelSpeed=true` 标记速度配置能力；模型含 `speed:{levels,modes,defaultLevel}` 与 `speedSupported`（允许配置的 API）。`levels=[]` 时会话隐藏速度选择器。覆盖保存到 models.json 的模型/override `pivaneSpeed`，speed:null 删除本地覆盖。modes 仅允许 fast/ultrafast，Fast serviceTier 为 fast 或 priority，Ultrafast 为 ultrafast；costMultiplier 为 1–100 的有限数。defaultLevel 为 auto/standard/已声明加速档位。保存沿用配置互斥、修订与私密原子备份。
+
+主 WS `set_model_speed` 接受 `{runtimeId,revision,provider,modelId,level}`，仅限空闲、模型切换已确认的唯一 worker；`get_state.webSpeed` 和初始 snapshot.state.webSpeed 返回 `{runtimeId,revision,provider,modelId,level,levels,modes,defaultLevel}`，成功及模型切换广播 `gateway_model_speed:{speed}`。原生 custom entry 按分支恢复；超时不自动重放，关闭受互斥保护的预先空闲 worker 后重连核对。侧连接 `set_side_speed` 接收同样字段，返回 `{state}`；state.speed 是独立侧聊选择。实际 assistant 消息的 `pivaneSpeed:{requested,serviceTier,costMultiplier,costBasis}` 记录请求/实际档位与估算依据，costBasis 为 reported-tier 或 requested-tier-estimate。完整能力、默认值和费用边界见[模型速度](PROVIDER_SETTINGS.md#模型速度fast--ultrafast)。
 
 模块 Agent preference body：
 
@@ -725,7 +757,7 @@ Provider body：
 
 支持的 models.json API：`openai-completions`、`openai-responses`、`anthropic-messages`、`google-generative-ai`。
 
-模型 body 支持 `id`、`name`、`reasoning`、`imageInput`、`contextWindow`、`maxTokens`、可选 `api` 和 `thinkingLevelMap`。Model ID 最多 500 字符，允许 `/`、`:`、`@` 等供应商标识但拒绝空白/控制字符；作为模型标识，不是路径。Provider base URL 只允许 HTTP(S)，拒绝 userinfo/query/fragment。写入保留未知字段，建立 0600 backup 后原子替换。删除内置 Provider 的本地覆盖仅删配置，保留其原生凭据。
+模型 body 支持 `id`、`name`、`reasoning`、`imageInput`、`contextWindow`、`maxTokens`、可选 `api` 和 `thinkingLevelMap`。基本编辑字段 `name`、`reasoning`、转换后的 `input`、`contextWindow`、`maxTokens` 同时写入该模型的基础 `models` 定义与 `modelOverrides`，以 Pi 原生用户覆盖优先级在扩展定义之后生效；其余字段不复制到覆盖层。`customProviders.models` 读取这五项已有覆盖，避免编辑器显示基础旧值。删除模型同时清除这五项覆盖，保留该模型及其他模型的剩余覆盖。旧配置不自动迁移，重新保存建立覆盖。响应沿用 `requiresRuntimeRestart:true`；已选择模型通过空闲 reload 或重新打开运行实例加载。Model ID 最多 500 字符，允许 `/`、`:`、`@` 等供应商标识但拒绝空白/控制字符；作为模型标识，不是路径。Provider base URL 只允许 HTTP(S)，拒绝 userinfo/query/fragment。写入保留未知字段，建立 0600 backup 后原子替换。删除内置 Provider 的本地覆盖仅删配置，保留其原生凭据。
 
 ### Packages 和 Skills
 

@@ -49,6 +49,7 @@ import { usageBudgetState } from "../shared/usage-budget.js";
 import { finalizeProcessTerminal, initializeProcessTerminal, readProcessTerminal } from "./process-terminal.js";
 import { persistRunnerStartupFailure } from "./runner-startup-failure.js";
 import { statusStepDescription } from "./chain-append.js";
+import { currentPidNamespaceScope } from "./pid-namespace.js";
 import { SUBAGENT_PROCESS_TERMINAL_EVENT } from "../../shared/types.js";
 import { assertAgentAllowedByCapabilityCeiling, intersectSubagentCapabilityCeilings, resolveCurrentSubagentCapabilityCeiling } from "../shared/capability-ceiling.js";
 import { resolveLaunchBinding } from "../../shared/launch-contract.js";
@@ -565,6 +566,7 @@ function spawnRunner(cfg, suffix, cwd, initialStatus, initialStatusPath, launchP
             writePrivateAtomicJson(initialStatusPath, {
                 ...initialStatus,
                 pid: proc.pid,
+                pidNamespaceScope: currentPidNamespaceScope(),
                 processTerminal: { version: 1, state: "pending", runId: initialStatus.runId, runnerProcessInstanceId },
             });
             // Aggregate waits must see the launch before the runner's first status update.
@@ -804,7 +806,7 @@ export function buildAsyncRunnerSteps(id, params) {
         taskTemplate = taskTemplate.replace(/\{chain_dir\}/g, behaviorCwd ?? runnerCwd);
         const taskText = `${readInstructions.prefix}${taskTemplate}${progressInstructions.suffix}`;
         const task = namespaceOutputPath ? taskText : injectSingleOutputInstruction(taskText, outputPath, a);
-        const modelScopes = resolveModelScopesForAgent(ctx.modelScope, a.name, ctx.currentModel);
+        const modelScopes = resolveModelScopesForAgent(ctx.modelScope, a.name, ctx.currentModel, ctx.scopedModelIds);
         const modelOrigin = resolveModelOrigin({ explicitModel: s.model, agentModel: a.model, parentModel: ctx.currentModel });
         const primaryModelFromParent = modelOrigin === "inherited";
         const primaryModel = externalRunner ? undefined : resolveEffectiveSubagentModel(s.model, a.model, ctx.currentModel, availableModels, a.modelProvider ?? ctx.currentModelProvider, { scope: modelScopes, source: modelOrigin === "explicit" ? "explicit" : "inherited" });
@@ -904,6 +906,7 @@ export function buildAsyncRunnerSteps(id, params) {
             subagentOnlyExtensions: a.subagentOnlyExtensions,
             ...(!externalRunner ? { requiredExtensions } : {}),
             mcpDirectTools: a.mcpDirectTools,
+            ...(toolPlan.builtinMcpTools ? { builtinMcpTools: toolPlan.builtinMcpTools } : {}),
             mutationTools: a.mutationTools,
             systemPrompt,
             systemPromptMode: a.systemPromptMode,
@@ -1213,6 +1216,7 @@ export function executeAsyncChain(id, params) {
             piPackageRoot,
             childSessionFactoryModule: childSessionFactoryModule(),
             inheritedChildRuntime: inheritedChildRuntime(ctx.childRuntime),
+            projectTrusted: ctx.projectTrusted,
             worktreeSetupHook,
             worktreeSetupHookTimeoutMs,
             worktreeBaseDir,
@@ -1525,7 +1529,7 @@ export function executeAsyncSingle(id, params) {
         ? `[Read from: ${readPaths.join(", ")}]\n\n`
         : "";
     const taskText = readsInstruction + taskWithOutputInstruction;
-    const modelScopes = resolveModelScopesForAgent(ctx.modelScope, agentConfig.name, ctx.currentModel);
+    const modelScopes = resolveModelScopesForAgent(ctx.modelScope, agentConfig.name, ctx.currentModel, ctx.scopedModelIds);
     const modelOrigin = resolveModelOrigin({
         fromParent: params.modelOverrideFromParent,
         storedOrigin: params.modelOrigin,
@@ -1745,6 +1749,7 @@ export function executeAsyncSingle(id, params) {
                     subagentOnlyExtensions: agentConfig.subagentOnlyExtensions,
                     ...(!externalRunner ? { requiredExtensions } : {}),
                     mcpDirectTools: agentConfig.mcpDirectTools,
+                    ...(toolPlan.builtinMcpTools ? { builtinMcpTools: toolPlan.builtinMcpTools } : {}),
                     mutationTools: agentConfig.mutationTools,
                     systemPrompt,
                     systemPromptMode: agentConfig.systemPromptMode,
@@ -1790,6 +1795,7 @@ export function executeAsyncSingle(id, params) {
             ...(capabilityCeiling ? { capabilityCeiling } : {}),
             piPackageRoot,
             childSessionFactoryModule: childSessionFactoryModule(),
+            projectTrusted: ctx.projectTrusted,
             inheritedChildRuntime: inheritedChildRuntime(ctx.childRuntime),
             worktreeSetupHook,
             worktreeSetupHookTimeoutMs,

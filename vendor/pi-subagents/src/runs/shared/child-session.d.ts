@@ -33,6 +33,8 @@ export interface ChildSessionLaunch {
     cwd: string;
     /** Resolved pane-native placement. Local launches omit this field. */
     machine?: HerdrMachineReference;
+    /** The launching session's project trust; undefined keeps Pi's default for hosts without trust. */
+    projectTrusted?: boolean;
     /** Process-local provider source owned by the invoking foreground parent. */
     parentProviderRegistry?: ParentProviderRegistry;
     /** Logical names resolved only by the remote ambient package. */
@@ -47,6 +49,11 @@ export interface ChildSessionLaunch {
     model?: string;
     /** Explicit tool allowlist; undefined keeps pi's defaults. */
     tools?: string[];
+    /** Tools of Pi's built-in MCP extension the child must declare to its model directly, with the `mcp:` selector that granted each; `tools` names them too. */
+    builtinMcpTools?: Array<{
+        name: string;
+        selector: string;
+    }>;
     excludeTools?: string[];
     /** Extension files loaded for this child in addition to the inline hooks. */
     extensionPaths: string[];
@@ -88,6 +95,7 @@ export interface ChildSession {
     readonly sessionFile: string | undefined;
     readonly sessionId: string;
     readonly modelId: string | undefined;
+    readonly contextWindow?: number;
     readonly machineEvidence?: {
         machineId: string;
         initial?: HerdrRemoteGitStatus;
@@ -116,6 +124,8 @@ export interface DefaultChildSessionFactoryOptions {
     loadPiCodingAgent?: () => Promise<PiCodingAgentModule>;
     /** Upper bound on a disposed child's `session_shutdown` handlers before the session is dropped anyway. */
     shutdownTimeoutMs?: number;
+    /** Upper bound on the wait for selected built-in MCP tools to register after the session starts. */
+    builtinMcpToolWaitMs?: number;
 }
 type ModelRuntimeInstance = Awaited<ReturnType<PiCodingAgentModule["ModelRuntime"]["create"]>>;
 export type ParentProviderRegistry = Pick<ModelRuntimeInstance, "getRegisteredProviderIds" | "getRegisteredProviderConfig" | "getRegisteredNativeProvider">;

@@ -69,7 +69,8 @@ function buildContextSeed(snapshot, sdk, cwd, mode = 'context', toolMode = 'none
     for (const message of messages) manager.appendMessage(message);
     const boundaryId = manager.appendCustomMessageEntry(BOUNDARY_TYPE, SIDE_BOUNDARY, false);
     const seed = { version: 1, toolMode, sessionId: manager.getSessionId(), entries: manager.getEntries(), boundaryId, systemPrompt,
-        provider: model.provider, modelId: model.id, thinkingLevel: snapshot.thinkingLevel || 'off' };
+        provider: model.provider, modelId: model.id, thinkingLevel: snapshot.thinkingLevel || 'off',
+        speed: snapshot.speed && { provider: snapshot.speed.provider, modelId: snapshot.speed.modelId, level: snapshot.speed.level } };
     const bytes = Buffer.byteLength(JSON.stringify(seed), 'utf8');
     if (bytes > MAX_CONTEXT_BYTES) throw contextError('主会话背景超过 32 MiB 的内存传输限额，未截断；请选择文本引用或压缩主会话。');
     return { seed, bytes, reference: { mode, capturedAt: snapshot.capturedAt || new Date().toISOString(),

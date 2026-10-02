@@ -1,7 +1,9 @@
 const assert = require('node:assert/strict');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const { BUILTINS } = require('../../server/pi-composer-service');
-const base = process.env.PI_COMPOSER_TOOLS_TEST_URL || 'http://127.0.0.1:3108';
+const express = require('express');
+const path = require('node:path');
+let base;
 const cwd = '/srv/composer-fixture';
 const sessions = ['a', 'b'].map(id => ({ id, cwd, name: `Composer ${id}`, messageCount: 2 }));
 const model = { provider: 'fixture', id: 'fixture', name: 'Fixture', input: ['text', 'image'], contextWindow: 32000 };
@@ -113,7 +115,7 @@ async function run(browser, viewport) {
     await assertMenuRows();
     await page.screenshot({ path: `/tmp/pi-schedule-menu-${viewport.width}.png` });
     await page.keyboard.press('ArrowDown');
-    assert.equal(await page.locator('#pi-schedule-button').evaluate(n => n === document.activeElement), true);
+    assert.equal(await page.locator('#pi-delivery-mode').evaluate(n => n === document.activeElement), true);
     await page.keyboard.press('Escape');
     assert.equal(await addMenu.isVisible(), false); assert.equal(await plus.evaluate(n => n === document.activeElement), true);
     assert.equal(await input.inputValue(), 'Keep this draft');
@@ -256,7 +258,14 @@ async function run(browser, viewport) {
     await context.close();
 }
 (async () => {
-    const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
+    const app = express(), root = path.resolve(__dirname, '../..');
+    app.use('/vendor/marked', express.static(path.join(root, 'node_modules/marked/lib')));
+    app.use('/vendor/dompurify', express.static(path.join(root, 'node_modules/dompurify/dist')));
+    app.use('/vendor/highlight', express.static(path.join(root, 'node_modules/@highlightjs/cdn-assets')));
+    app.use(express.static(path.join(root, 'public')));
+    const server = await new Promise(resolve => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+    base = `http://127.0.0.1:${server.address().port}`;
+    const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
     try { for (const viewport of [{ width: 1440, height: 1000 }, { width: 393, height: 852 }, { width: 320, height: 740 }].filter(v => !process.env.PI_COMPOSER_VIEWPORT || v.width === Number(process.env.PI_COMPOSER_VIEWPORT))) await run(browser, viewport); }
     catch (error) {
         await debugPage.screenshot({ path: '/tmp/pi-composer-plus-failure.png', timeout: 5000 }).catch(() => {});
@@ -268,5 +277,5 @@ async function run(browser, viewport) {
         }).catch(() => []));
         throw error;
     }
-    finally { await browser.close(); }
+    finally { await browser.close(); server.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

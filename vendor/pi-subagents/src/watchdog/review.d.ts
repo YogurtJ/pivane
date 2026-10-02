@@ -21,7 +21,7 @@ export interface CreateMainWatchdogReviewOptions {
     streamFn?: StreamFn;
     createReadOnlyTools?: (cwd: string) => AgentTool[];
     getThinkingLevel?: () => ThinkingLevel | undefined;
-    diffBaseline?: () => WatchdogDiffBaseline | undefined;
+    diffBaseline?: () => Promise<WatchdogDiffBaseline | undefined> | undefined;
 }
 export declare function resolveWatchdogReviewModel(ctx: ExtensionContext, config: ResolvedWatchdogConfig, options?: {
     currentThinkingLevel?: ThinkingLevel;

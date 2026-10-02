@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
     const $ = id => document.getElementById(id);
     const attachments = window.PiAttachments;
+    let voice = null;
     const LOCAL_COMMANDS = [
         { name: 'tree', description: translateUi("查看会话分支，选择从哪里继续"), source: 'web' },
         { name: 'trust', description: translateUi("管理当前项目的信任"), source: 'web' },
@@ -237,6 +238,8 @@ document.addEventListener('DOMContentLoaded', () => {
         composerSessionKey: null
     };
 
+    const modelSpeed = new window.PiModelSpeed({ request: input => requestRpc('set_model_speed', input),
+        generation: () => state.socketGeneration, changed: () => { syncMobileHeader(); setStreaming(state.streaming); }, toast });
     const mobileSheet = (() => {
         const dialog = elements.mobileDialog;
         const composer = elements.input.closest('.pi-composer');
@@ -284,7 +287,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const thinkingChoice = document.createElement('span'); thinkingChoice.className = 'pi-mobile-thinking-choice';
         const thinkingChevron = document.createElement('i'); thinkingChevron.className = 'fa-solid fa-chevron-down'; thinkingChevron.setAttribute('aria-hidden', 'true');
         thinkingChoice.append(thinking, thinkingChevron);
-        thinkingRow.append(thinkingIcon, thinkingName, thinkingChoice); group.append(thinkingRow);
+        thinkingRow.append(thinkingIcon, thinkingName, thinkingChoice); group.append(thinkingRow, modelSpeed.mobileRow());
         const context = row('pi-mobile-context', '上下文占用', 'fa-layer-group', () => sideChat.showPane('details'));
         const open = () => {
             if (innerWidth > 680 || dialog.open) return;
@@ -320,7 +323,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.mobileComposerModel.textContent = modelName;
         elements.mobileComposerThinking.textContent = thinkingName ? ` · ${thinkingName}` : '';
         elements.mobileComposerUsage.textContent = percent;
-        elements.mobileComposerSummary.setAttribute('aria-label', `${modelName}${thinkingName ? ` · ${thinkingName}` : ''} · ${translateUi('上下文占用')} ${percent}`);
+        elements.mobileComposerSummary.setAttribute('aria-label', `${modelName}${thinkingName ? ` · ${thinkingName}` : ''}${modelSpeed.summary.textContent} · ${translateUi('上下文占用')} ${percent}`);
         elements.mobileContextPercent.textContent = percent.replace(/%$/, '');
         const contextLabel = elements.contextButton.title || translateUi('上下文用量暂无统计');
         elements.mobileContextTrigger.title = contextLabel;
@@ -362,6 +365,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const titleEditor = window.PiSessionTitles ? new window.PiSessionTitles({ apiFetch, saved: sessionNamed }) : null;
     const transfer = new window.PiSessionTransfer({
         apiFetch, toast, headers: () => apiHeaders(), projects: () => state.projects,
+        canMove: () => {
+            if (state.attachmentReads || state.submittingDrafts.has(state.composerSessionKey)) {
+                toast(translateUi('请等待附件读取或消息投递完成'), 'info'); return false;
+            }
+            return true;
+        },
+        moved: sessionMoved,
         refresh: async cwd => { state.projectPreferenceRevision++; await loadProjects(); await loadSessions(cwd); },
         open: async session => {
             if (session.cwd !== state.cwd) await selectProject(session.cwd);
@@ -525,6 +535,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? { ...c, available: false, description: translateUi("当前后端尚未启用会话导入与导出，请启用后刷新页面") } : c),
         commands: commands => { state.commands = commands; }
     });
+
+    voice = window.PiComposerVoice ? new window.PiComposerVoice({
+        api: apiFetch, toast, copy: copyTextToClipboard,
+        context: () => ({ cwd: state.cwd, key: state.composerSessionKey, generation: state.socketGeneration, connected: state.connected,
+            submitting: state.submittingDrafts.has(state.composerSessionKey) }),
+        append: text => {
+            if (!state.connected || state.submittingDrafts.has(state.composerSessionKey)) return false;
+            const draft = elements.input.value + (elements.input.value ? '\n\n' : '') + text;
+            attachments.validateDraft(draft, state.attachmentFiles);
+            elements.input.value = draft; autoResizeInput(); elements.input.focus(); return true;
+        }
+    }) : null;
 
     if (window.marked) {
         window.marked.setOptions({ gfm: true, breaks: true });
@@ -709,6 +731,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.queueModes = status.queueModes === true;
             if (titleEditor) { titleEditor.enabled = status.sessionTitles === true; titleEditor.modelSelection = status.sessionTitleModels === true; }
             transfer.setEnabled(status.sessionTransfer === true);
+            transfer.movesEnabled = status.sessionMoves === true;
             historyView.setEnabled(status.historySearch === true);
             historyView.setCapabilities(status);
             filesPanel.viewer.setEnabled(status.fileViewer === true);
@@ -716,6 +739,7 @@ document.addEventListener('DOMContentLoaded', () => {
             filesPanel.setCapabilities({ previews: status.filePreviews === true, deliverables: status.deliverables === true });
             composer.setEnabled(status.composerTools === true);
             state.composerTools = status.composerTools === true;
+            voice?.setEnabled(status.transcription === true);
             state.nativeSettings = status.nativeSettings === true;
             state.nativeResources = status.nativeResources === true;
             extensionAssistant.setEnabled(status.extensionAssistant === true);
@@ -752,7 +776,15 @@ document.addEventListener('DOMContentLoaded', () => {
             void discovery.catch(() => {}); // The fallback below still observes failures.
             let restored = false;
             const savedProject = localStorage.getItem('pi.web.cwd');
-            if (!state.assistantMode && state.projectIdentity && savedProject) {
+            if (!state.assistantMode && transfer.movesEnabled && initialParams?.get('cwd') && initialParams?.get('sessionId')) {
+                const result = await apiFetch('/api/pi/sessions/' + encodeURIComponent(initialParams.get('sessionId')) + '/resolve?cwd=' + encodeURIComponent(initialParams.get('cwd')));
+                if (selectionEpoch === state.projectSelectionEpoch && !state.assistantMode) {
+                    await selectProject(result.session.cwd);
+                    if (state.cwd === result.session.cwd) await openSession(result.session);
+                    restored = true;
+                }
+            }
+            if (!restored && !state.assistantMode && state.projectIdentity && savedProject) {
                 const preferenceRevision = state.projectPreferenceRevision;
                 try {
                     const [resolved, activity] = await Promise.all([
@@ -1782,6 +1814,39 @@ document.addEventListener('DOMContentLoaded', () => {
         try { await markReplyRead(notice); } catch {}
     }
 
+    const movingPages = new Map();
+    function sessionMoved(sourceCwd, session) {
+        const operationKey = JSON.stringify([sourceCwd, session.id, session.cwd]);
+        if (movingPages.has(operationKey)) return movingPages.get(operationKey);
+        const task = (async () => {
+            const sourceKey = JSON.stringify([sourceCwd, session.id]), targetKey = JSON.stringify([session.cwd, session.id]);
+            const active = state.cwd === sourceCwd && state.session?.id === session.id;
+            const generation = state.socketGeneration;
+            // Another page may still be reading an attachment when it receives the
+            // move event. Wait for that local draft before changing its owner.
+            while (active && state.attachmentReads && generation === state.socketGeneration) await new Promise(resolve => setTimeout(resolve, 50));
+            const follow = active && generation === state.socketGeneration && state.cwd === sourceCwd && state.session?.id === session.id;
+            const draft = follow ? { text: elements.input.value, files: state.attachmentFiles } : state.composerDrafts.get(sourceKey);
+            if (draft) state.composerDrafts.set(targetKey, draft);
+            state.composerDrafts.delete(sourceKey);
+            if (state.uncertainDrafts.has(sourceKey)) { state.uncertainDrafts.delete(sourceKey); state.uncertainDrafts.add(targetKey); }
+            if (localStorage.getItem('pi.web.session:' + sourceCwd) === session.id) localStorage.removeItem('pi.web.session:' + sourceCwd);
+            localStorage.setItem('pi.web.session:' + session.cwd, session.id);
+            for (const cwd of [sourceCwd, session.cwd]) invalidateSessionList(cwd);
+            state.projectSessions.set(sourceCwd, (state.projectSessions.get(sourceCwd) || []).filter(row => row.id !== session.id));
+            state.projectSessions.set(session.cwd, [session, ...(state.projectSessions.get(session.cwd) || []).filter(row => row.id !== session.id)]);
+            if (follow) {
+                disconnectSocket(true); state.composerSessionKey = null;
+                const expected = state.projectSelectionEpoch + 1;
+                await selectProject(session.cwd);
+                if (state.projectSelectionEpoch === expected && state.cwd === session.cwd) await openSession(session);
+            }
+            try { await Promise.all([loadProjects(), loadSessions(sourceCwd), loadSessions(session.cwd), refreshActivity()]); }
+            catch { toast(translateUi('线程已移动，列表暂未刷新，请稍后刷新。'), 'info'); }
+        })().finally(() => movingPages.delete(operationKey));
+        movingPages.set(operationKey, task); return task;
+    }
+
     async function toggleProject(cwd) {
         if (state.expandedProjects.has(cwd)) {
             state.expandedProjects.delete(cwd);
@@ -2115,6 +2180,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             socket.addEventListener('close', event => {
                 if (generation !== state.socketGeneration) return resolve(false);
+                if (event.code === 4005) { resolve(false); return; }
                 if (event.code === 4004) {
                     forgetDeletedSession(session, session.cwd || state.cwd);
                     resolve(false); return;
@@ -2160,6 +2226,7 @@ document.addEventListener('DOMContentLoaded', () => {
         titleEditor?.close();
         threadMenu.close(false);
         state.socketGeneration++;
+        modelSpeed.reset();
         state.bootstrapEvents = [];
         state.bootstrapBytes = 0;
         editorSuggestions.reset();
@@ -2247,7 +2314,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             return;
         }
-        if (record.type === 'gateway_session_deleted' || record.type === 'gateway_session_removing') {
+        if (['gateway_session_deleted', 'gateway_session_removing', 'gateway_session_moving', 'gateway_session_moved'].includes(record.type)) {
             handlePiEvent(record); return;
         }
         if (state.bootstrapEvents) {
@@ -2495,6 +2562,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const title = role === 'user' ? translateUi("你") : role === 'assistant' ? 'Pi' : translateUi("系统");
         const model = role === 'assistant' && message.model ? `<span>${escapeHtml(message.model)}</span>` : '';
         header.innerHTML = `<strong>${title}</strong>${model}`;
+        if (role === 'assistant' && message.pivaneSpeed) {
+            const speed = document.createElement('span'); speed.className = 'pi-message-speed';
+            const actual = message.pivaneSpeed.serviceTier;
+            speed.textContent = ['fast', 'priority'].includes(actual) ? 'Fast' : actual === 'ultrafast' ? 'Ultrafast' : actual === 'default' ? translateUi('标准 Standard') : translateUi('速度未确认');
+            speed.title = translateUi('请求速度：{0}；实际服务档位：{1}', message.pivaneSpeed.requested, actual || translateUi('未确认'));
+            if (message.pivaneSpeed.costBasis === 'requested-tier-estimate') speed.title += ` · ${translateUi('费用按请求档位估算')}`;
+            header.append(speed);
+        }
         const subagentNotice = role === 'custom' && Boolean(window.PiSubagentNotices?.decorate(article, header, message));
         const responseText = role === 'assistant' ? messageText(message.content).trim() : '';
         if (responseText) state.lastAssistantText = responseText;
@@ -2904,6 +2979,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chatKnowledge?.reset();
         renderEmptySession();
         state.model = null;
+        modelSpeed.reset();
         state.models = []; state.modelRefreshOp = null; state.modelRefreshPending = false; state.modelRefreshError = ''; state.modelAuthError = false;
         elements.modelGuidance.hidden = true; elements.modelRefresh.disabled = true;
         state.stats = null;
@@ -2940,6 +3016,14 @@ document.addEventListener('DOMContentLoaded', () => {
             void refreshActivity();
         }
         switch (event.type) {
+            case 'gateway_session_moving':
+                state.connected = false; nativeControls.disconnected(); workflows.update();
+                setConnection('connecting', translateUi('正在移动线程，请稍候…'));
+                elements.input.disabled = true; elements.sendButton.disabled = true;
+                break;
+            case 'gateway_session_moved':
+                void sessionMoved(event.sourceCwd, event.session).catch(error => toast(error.message, 'error'));
+                break;
             case 'gateway_session_removing':
                 state.connected = false;
                 nativeControls.disconnected(); workflows.update();
@@ -2951,6 +3035,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 toast(event.trashed === true ? translateUi('会话已移入回收站') : event.trashed === false ? translateUi('会话已永久删除') : translateUi('会话已删除'), 'success');
                 break;
             }
+            case 'gateway_model_speed':
+                modelSpeed.apply(event.speed);
+                break;
             case 'gateway_progress':
                 state.runtimeRevision++;
                 taskProgress.apply(event.progress);
@@ -3461,6 +3548,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateRuntimeState(runtime = {}) {
         state.model = runtime.model || state.model;
+        if (Object.hasOwn(runtime, 'webSpeed')) modelSpeed.apply(runtime.webSpeed);
         state.thinkingLevel = runtime.thinkingLevel || state.thinkingLevel;
         state.streaming = Boolean(runtime.isStreaming);
         if (!state.streaming) state.retrying = false;
@@ -3543,19 +3631,16 @@ document.addEventListener('DOMContentLoaded', () => {
         nativeContext.sync();
         const compacting = state.compacting || state.compactRequested;
         const stopping = nativeControls.value?.stopping || state.controlRequested;
-        const busy = state.treeBusy || state.shellBusy || streaming || compacting || stopping || state.resourceRequested || Boolean(state.modelRefreshOp);
+        const busy = state.treeBusy || state.shellBusy || streaming || compacting || stopping || state.resourceRequested || Boolean(state.modelRefreshOp) || modelSpeed.pending;
         if (state.connected && state.shellBusy) { setConnection('working', translateUi("Shell 正在执行")); setAgentState('working', translateUi("Shell 执行中"), state.model?.id || 'Pi Agent'); }
         const cancellable = !state.modelRefreshOp && !state.treeBusy && !state.shellBusy && state.connected && !state.resourceRequested && (nativeControls.enabled ? busy : streaming && !compacting);
-        elements.stopButton.classList.toggle('hidden', !cancellable);
+        elements.stopButton.dataset.cancellable = String(cancellable);
         elements.stopButton.disabled = !state.connected || stopping;
         const stopAction = nativeControls.enabled ? compacting ? translateUi("取消压缩并取回待发文字") : translateUi("停止并取回待发文字") : translateUi("停止当前任务");
         elements.stopButton.title = state.connected ? `${stopAction}（${getSessionTitle(state.session)}）` : translateUi("等待当前会话连接");
         elements.stopButton.dataset.sessionId = state.connected ? state.session?.id || '' : '';
         elements.stopButton.setAttribute('aria-label', elements.stopButton.title);
-        elements.sendButton.classList.remove('hidden');
-        elements.sendButton.title = streaming ? elements.deliveryMode.value === 'follow_up' ? translateUi("发送后续消息") : translateUi("发送引导消息") : translateUi("发送");
-        elements.sendButton.setAttribute('aria-label', elements.sendButton.title);
-        elements.deliveryMode.classList.toggle('visible', state.connected && streaming && !compacting);
+        elements.deliveryMode.classList.add('visible');
         elements.deliveryMode.disabled = !state.connected || compacting || stopping || state.resourceRequested;
         elements.input.closest('.pi-composer').dataset.running = String(state.connected && busy);
         elements.sendButton.disabled = !state.connected || compacting;
@@ -3565,6 +3650,7 @@ document.addEventListener('DOMContentLoaded', () => {
         modelPicker.setDisabled(busy || !state.connected || !state.models.length);
         syncModelGuidance();
         elements.thinkingSelect.disabled = busy || !state.connected || state.thinkingLevels.length <= 1;
+        modelSpeed.setBlocked(busy || !state.connected || state.pendingUi.size > 0);
         elements.composerStatus.textContent = !state.connected ? translateUi("未打开会话") : state.shellBusy ? translateUi("Shell 正在执行，可继续编辑草稿；停止请使用命令卡片") : state.treeBusy ? translateUi("正在切换对话位置，请在历史页查看进度或取消") : state.resourceRequested ? translateUi("正在重新加载原生资源") : stopping ? translateUi("正在停止 / 取回，请等待确认") : compacting ? translateUi("上下文压缩中") : streaming ? translateUi("Agent 运行中：引导在本轮工具后送达，后续在任务完成后送达") : translateUi("Pi Agent 已就绪");
         historyView.sync();
         workflows.update();
@@ -3909,6 +3995,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const pending = state.attachmentReads > 0;
         const shellInput = window.PiShell.parse(elements.input.value);
         shell.sync();
+        const hasDraft = Boolean(elements.input.value.trim() || state.attachmentFiles.length || pending);
+        const showStop = elements.stopButton.dataset.cancellable === 'true' && !hasDraft;
+        elements.stopButton.classList.toggle('hidden', !showStop);
+        elements.sendButton.classList.toggle('hidden', showStop);
+        voice?.sync();
         elements.sendButton.title = shellInput ? translateUi("执行 Shell 命令") : state.streaming ? elements.deliveryMode.value === 'follow_up' ? translateUi("发送后续消息") : translateUi("发送引导消息") : translateUi("发送");
         elements.sendButton.setAttribute('aria-label', elements.sendButton.title);
         elements.sendButton.querySelector('i').className = shellInput ? 'fa-solid fa-terminal' : 'fa-solid fa-arrow-up';
@@ -4232,6 +4323,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (state.session?.id !== session.id || !state.connected) await openSession(session);
                     await workflows.openClone();
                 }, { disabled: session.ephemeral })] : []),
+                ...(transfer.movesEnabled ? [command(translateUi("移动到项目…"), 'fa-folder-open', () => transfer.openMove(session, cwd), { disabled: session.ephemeral })] : []),
                 ...(state.manualUnread ? [command(translateUi("标记为未读"), 'fa-envelope', () => markThreadUnread(session, cwd),
                     { disabled: session.ephemeral || state.unreadRequests.has(activityKey(cwd, session.id)) })] : []),
                 { label: translateUi("复制"), icon: 'fa-copy', children: [
@@ -4465,8 +4557,17 @@ document.addEventListener('DOMContentLoaded', () => {
             state.assistantEpoch++; renderSessions();
             // The startup replay runs before bootstrap(), which restores the session itself;
             // opening here as well would race it and touch controllers not created yet.
-            if (accessBootstrapped && params.get('cwd') && params.get('sessionId') && state.session?.id !== params.get('sessionId')) {
-                void (async () => { if (params.get('cwd') !== state.cwd) await selectProject(params.get('cwd')); const rows = await loadSessions(); const session = rows.find(item => item.id === params.get('sessionId')); if (session) await openSession(session); })().catch(error => toast(error.message, 'error'));
+            if (accessBootstrapped && params.get('cwd') && params.get('sessionId') && (state.session?.id !== params.get('sessionId') || state.cwd !== params.get('cwd'))) {
+                const epoch = state.navigationEpoch;
+                void (async () => {
+                    const resolved = transfer.movesEnabled ? await apiFetch('/api/pi/sessions/' + encodeURIComponent(params.get('sessionId')) + '/resolve?cwd=' + encodeURIComponent(params.get('cwd'))) : null;
+                    if (epoch !== state.navigationEpoch) return;
+                    const cwd = resolved?.session.cwd || params.get('cwd');
+                    if (cwd !== state.cwd) await selectProject(cwd);
+                    if (epoch !== state.navigationEpoch || cwd !== state.cwd) return;
+                    const rows = await loadSessions(cwd), session = resolved?.session || rows.find(item => item.id === params.get('sessionId'));
+                    if (epoch === state.navigationEpoch && session) await openSession(session);
+                })().catch(error => toast(error.message, 'error'));
             }
         }
     });
@@ -4477,6 +4578,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!cwd || !sessionId) throw new Error(translateUi('会话地址无效'));
             window.PiWorkspaceRoute.navigate('chat');
             const epoch = state.navigationEpoch;
+            if (transfer.movesEnabled) {
+                const resolved = await apiFetch('/api/pi/sessions/' + encodeURIComponent(sessionId) + '/resolve?cwd=' + encodeURIComponent(cwd));
+                if (epoch !== state.navigationEpoch) throw new Error(translateUi('导航已改变；会话未打开'));
+                cwd = resolved.session.cwd;
+            }
             if (cwd !== state.cwd) await selectProject(cwd);
             const rows = await loadSessions(cwd);
             if (epoch !== state.navigationEpoch || window.PiWorkspaceRoute.current().tab !== 'chat' || cwd !== state.cwd) throw new Error(translateUi('导航已改变；会话未打开'));
@@ -4605,7 +4711,7 @@ document.addEventListener('DOMContentLoaded', () => {
         reloadResources().catch(error => toast(error.message, 'error'));
     });
     elements.thinkingSelect.addEventListener('change', changeThinking);
-    elements.deliveryMode.addEventListener('change', () => setStreaming(state.streaming));
+    elements.deliveryMode.addEventListener('change', () => { composer.closeActions(true); setStreaming(state.streaming); });
     elements.sendButton.addEventListener('click', sendMessage);
     elements.stopButton.addEventListener('click', () => takeRuntimeQueue(true).catch(error => toast(error.message, 'error')));
     elements.input.addEventListener('input', () => {

@@ -39,6 +39,7 @@ export interface ModelScopeViolation {
     allowedPatterns: string[];
     origin: string;
 }
+export declare const SCOPED_PATTERN = "scoped";
 /**
  * Test whether a resolved model matches a single allow pattern. Both sides are
  * compared case-insensitively against the full `provider/id` (thinking suffix
@@ -56,7 +57,7 @@ export declare function checkModelScope(model: string | undefined, scope: ModelS
 export declare function resolveModelScopesForAgent(config: ModelScopeConfig | undefined, agentName: string, parentModel: {
     provider: string;
     id: string;
-} | undefined): ResolvedModelScope[];
+} | undefined, scopedModelIds?: readonly string[]): ResolvedModelScope[];
 /**
  * Validate and normalize a raw `subagents.modelScope` value from settings.
  * Throws a descriptive error for malformed configs (matching the surrounding

@@ -1,3 +1,4 @@
+import { type ThinkingLevel } from "../../shared/model-info.ts";
 import type { AsyncJobState, AsyncJobStep, HostStepFreshness, HostStepMonitorKind, HostStepNode, HostStepState, HostStepVerdict, WorkflowGraphSnapshot, WorkflowPreflightLane, WorkflowPreflight } from "../../shared/types.ts";
 export declare const ASYNC_STATUS_SNAPSHOT_KIND = "pi-subagents.async-status-snapshot";
 export declare const ASYNC_STATUS_SNAPSHOT_VERSION = 1;
@@ -70,6 +71,8 @@ export interface AsyncStatusWorkflowRow {
     kind?: HostStepMonitorKind;
     context?: AsyncJobStep["context"];
     modelThinking?: string;
+    /** Thinking level of the child a child row stands for. */
+    thinking?: ThinkingLevel;
     activity?: string;
     startedAt?: number;
     endedAt?: number;

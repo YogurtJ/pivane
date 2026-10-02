@@ -1,5 +1,6 @@
 import { sanitizeDisplayText, truncateDisplayText } from "../../shared/display-text.js";
 import { formatModelThinking } from "../../shared/formatters.js";
+import { childThinkingLevel } from "../../shared/model-info.js";
 import { HOST_STEP_MAX_COUNT, HOST_STEP_MAX_DETAIL_CHARS, HOST_STEP_MAX_LABEL_CHARS, HOST_STEP_MAX_PROVIDER_CHARS, HOST_STEP_MAX_REASON_CHARS, HOST_STEP_MAX_REF_CHARS, HOST_STEP_MAX_ROLE_CHARS, HOST_STEP_MAX_TARGET_CHARS, hostStepReportName, parseHostStepNode, validHostStepNodes } from "./host-step-status.js";
 import { workflowPreflightLaneForRuntimeKey } from "../../workflows/workflow-preflight.js";
 import { workflowGraphStageNodes } from "./workflow-graph.js";
@@ -506,12 +507,14 @@ export function projectAsyncWorkflowRows(steps, hostStepsOrPreflight, preflightO
 }
 function projectLoadedWorkflowRow(step, index, preflight) {
     const modelThinking = formatModelThinking(step.model, step.thinking) || undefined;
+    const thinking = childThinkingLevel(step);
     const activity = workflowStepActivity(step);
     return {
         name: workflowStepName(step, index),
         state: step.status,
         ...(step.context ? { context: step.context } : {}),
         ...(modelThinking ? { modelThinking } : {}),
+        ...(thinking ? { thinking } : {}),
         ...(activity ? { activity } : {}),
         ...(step.startedAt !== undefined ? { startedAt: step.startedAt } : {}),
         ...(step.endedAt !== undefined ? { endedAt: step.endedAt } : {}),

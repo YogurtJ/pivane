@@ -1,6 +1,7 @@
 (() => {
     const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
-    const MAX_SOURCE = 10000, MAX_FORMULAS = 128, MAX_CACHE = 128;
+    const MAX_SOURCE = 10000, MAX_CACHE = 128;
+    const MAX_TOTAL_SOURCE = 100000, MAX_TOTAL_OUTPUT = 4000000;
     const cache = new Map();
     let cacheBytes = 0;
     const escape = text => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -54,12 +55,11 @@
     }
     window.PiMath = {
         create(renderer) {
-            const slots = [], prefix = `pi-math-${Math.random().toString(36).slice(2)}-`;
+            const slots = new Map(), prefix = `pi-math-${Math.random().toString(36).slice(2)}-`;
             const slot = token => {
                 if (token.pending) return `<span class="pi-math-fallback">${escape(token.raw)}</span>`;
-                if (slots.length >= MAX_FORMULAS) return escape(token.raw);
-                const id = prefix + slots.length;
-                slots.push({ id, token });
+                const id = prefix + slots.size;
+                slots.set(id, token);
                 return `<span data-pi-math-slot="${id}"></span>`;
             };
             const originalCode = renderer.code;
@@ -86,14 +86,27 @@
             return {
                 parse: text => parser.parse(text),
                 finish(html) {
-                    if (!slots.length) return html;
+                    if (!slots.size) return html;
                     const template = document.createElement('template'); template.innerHTML = html;
-                    for (const { id, token } of slots) {
-                        const target = template.content.querySelector(`span[data-pi-math-slot="${id}"]`);
-                        if (target) {
-                            if (target.closest('pre, code, kbd, samp, textarea')) { target.replaceWith(document.createTextNode(token.raw)); continue; }
-                            const content = document.createElement('template'); content.innerHTML = render(token); target.replaceWith(content.content);
+                    let sourceLength = 0, outputLength = 0, outputFull = false;
+                    // One DOM walk; budgets follow actual TeX/output size, not formula count.
+                    for (const target of template.content.querySelectorAll('span[data-pi-math-slot]')) {
+                        const token = slots.get(target.getAttribute('data-pi-math-slot'));
+                        if (!token) continue;
+                        if (target.closest('pre, code, kbd, samp, textarea')) { target.replaceWith(document.createTextNode(token.raw)); continue; }
+                        sourceLength += token.text.length;
+                        if (sourceLength > MAX_TOTAL_SOURCE || outputFull) {
+                            target.removeAttribute('data-pi-math-slot'); target.className = 'pi-math-fallback'; target.textContent = token.raw;
+                            continue;
                         }
+                        const rendered = render(token);
+                        outputLength += rendered.length;
+                        if (outputLength > MAX_TOTAL_OUTPUT) {
+                            outputFull = true;
+                            target.removeAttribute('data-pi-math-slot'); target.className = 'pi-math-fallback'; target.textContent = token.raw;
+                            continue;
+                        }
+                        const content = document.createElement('template'); content.innerHTML = rendered; target.replaceWith(content.content);
                     }
                     return template.innerHTML;
                 }

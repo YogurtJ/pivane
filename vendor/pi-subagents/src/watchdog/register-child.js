@@ -1,4 +1,4 @@
-import { captureWatchdogDiffBaseline } from "./diff-tool.js";
+import { startWatchdogDiffBaselineCapture } from "./diff-tool.js";
 import { MainWatchdogRuntime } from "./runtime.js";
 import { createMainWatchdogReview } from "./review.js";
 import { DEFAULT_WATCHDOG_CONFIG } from "./settings.js";
@@ -87,7 +87,7 @@ export function registerChildWatchdog(pi, childConfig, writeStatus, structuredTe
     const onRuntimeEvent = pi.on;
     onRuntimeEvent("session_start", (_event, ctx) => {
         rememberContext(ctx);
-        diffBaseline = captureWatchdogDiffBaseline(ctx.cwd);
+        diffBaseline = startWatchdogDiffBaselineCapture(ctx.cwd);
         runtime.bindSession(ctx);
         emitStatus("idle");
     });

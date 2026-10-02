@@ -9,6 +9,7 @@ import type { ModelScopeRule } from "../runs/shared/model-scope.ts";
 import type { ResolvedSubagentCapabilityCeiling, SubagentCapabilityAudit } from "../runs/shared/capability-ceiling.ts";
 import type { AuthorityPolicyConfig } from "../policy/authority.ts";
 import type { ThinkingLevel } from "./model-info.ts";
+import type { SubagentFeature } from "./disabled-features.ts";
 import type { GlobalMissionIndexRecord, MissionRecord, MissionStoreConfig } from "../missions/types.ts";
 import type { ExtensionBindings } from "../runs/shared/extension-bindings.ts";
 import type { WorkflowChildPermitContext } from "./workflow-child-permit.ts";
@@ -110,6 +111,7 @@ export interface WorkflowPreflight {
     lanes: WorkflowPreflightLane[];
 }
 export type WorkflowReceiptState = "complete" | "failed" | "paused" | "stopped";
+export type WorkflowScriptFailureKind = "validation" | "script" | "child" | "return-serialization" | "timeout" | "detached-child" | "runtime";
 export type WorkflowTerminalResolution = "settled-awaiting-resume" | "failed-child" | "interrupted-child";
 export interface WorkflowTerminalOutcome {
     state: "partial";
@@ -1407,8 +1409,15 @@ export interface Details {
     mission?: MissionRecord;
     workflow?: {
         value?: unknown;
+        failureKind?: WorkflowScriptFailureKind;
         args?: Record<string, unknown>;
         argsDigest?: string;
+        /** SHA-256 of the workflow script source (async workflows). */
+        scriptDigest?: string;
+        /** Structured stop cause; set only when the owning extension runtime was replaced. */
+        stopCause?: "runtime-replaced";
+        /** Runtime-replaced workflow run whose finished children this run reused. */
+        reusedFrom?: string;
         resource?: WorkflowResourceProvenance;
         preflightWarnings?: string[];
         trace: Array<{
@@ -1424,6 +1433,8 @@ export interface Details {
             generatedLaneKey?: string;
             warning?: string;
             error?: string;
+            /** Came from a previous runtime-replaced run of the same script and args; this run launched nothing. */
+            reused?: boolean;
         }>;
         emits: unknown[];
         console: Array<{
@@ -1826,6 +1837,8 @@ export interface AsyncStatus {
     toolBudgetBlocked?: boolean;
     usageBudget?: UsageBudgetState;
     pid?: number;
+    /** Linux PID namespace identity used to scope liveness probes. */
+    pidNamespaceScope?: string;
     cwd?: string;
     /** Parent-resolved child session root retained for trusted restored transcript lookup. */
     sessionRoot?: string;
@@ -1885,6 +1898,8 @@ export interface AsyncStatus {
         outputName?: string;
         structured?: boolean;
         status: "pending" | "running" | "complete" | "completed" | "failed" | "partial" | "paused" | "stopped" | "rejected";
+        /** Workflow child result reused from a previous runtime-replaced run; the child was not re-run. */
+        reused?: boolean;
         stopRequested?: boolean;
         stopRequestedAt?: number;
         children?: NestedRunSummary[];
@@ -2348,6 +2363,8 @@ export interface RunSyncOptions {
     childSessionFactory?: import("../runs/shared/child-session.ts").ChildSessionFactory;
     /** Invoking parent registry inherited only by its local foreground launch. */
     parentProviderRegistry?: import("../runs/shared/child-session.ts").ParentProviderRegistry;
+    /** The invoking session's project trust; undefined when the host has no trust concept. */
+    projectTrusted?: boolean;
     /** The launching executor's own child runtime when it is itself an in-process child. */
     childRuntime?: import("../runs/shared/child-runtime-config.ts").ChildRuntimeConfig;
     /** Fires once the child session exists and can be steered. */
@@ -2366,6 +2383,8 @@ export interface RunSyncOptions {
     /** Original cwd input retained for launch diagnostics. */
     requestedCwd?: string;
     signal?: AbortSignal;
+    /** Report a child ended by `signal` as stopped; set for workflow children, whose signal is the workflow's. */
+    abortedAsStopped?: boolean;
     interruptSignal?: AbortSignal;
     timeoutMs?: number;
     deadlineAt?: number;
@@ -2484,6 +2503,7 @@ export interface ProactiveSkillSubagentsConfig {
     preferredAgent?: string;
 }
 export type ToolDescriptionMode = "full" | "compact" | "custom";
+export type ToolActivationMode = "auto" | "dynamic" | "eager";
 export type InlineToolDisplay = "rich" | "summary";
 export interface ScheduledRunsConfig {
     enabled?: boolean;
@@ -2535,6 +2555,10 @@ export interface ExtensionConfig {
     modelResponseAliases?: Record<string, string[]>;
     /** Tool description variant registered for the parent-facing subagent tool. Defaults to split metadata. */
     toolDescriptionMode?: ToolDescriptionMode;
+    /** How a new parent session offers the subagent tool. Defaults to auto. */
+    toolActivation?: ToolActivationMode;
+    /** Opt-in feature groups removed from the subagent tool schema and rejected at every execution boundary. */
+    disabledFeatures?: SubagentFeature[];
     /** Inline chat rendering for the subagent tool. Defaults to rich. */
     inlineToolDisplay?: InlineToolDisplay;
     /** Density controls for the main chat subagent call/result renderer. */

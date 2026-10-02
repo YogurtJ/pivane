@@ -302,8 +302,11 @@ export function runChildSession(input) {
             const event = raw;
             appendChildEvent(projectChildSessionEventForJson(raw));
             input.transcriptWriter?.writeChildEvent(projectChildSessionEventForJson(raw));
-            if (event.type === "compaction_start")
+            if (event.type === "compaction_start") {
                 compactionStartedReceived = true;
+                if (agentSettledReceived)
+                    afterCompactionSettlement = true;
+            }
             if (event.type === "compaction_end" && event.willRetry === true) {
                 compactionStartedReceived = false;
                 afterCompactionSettlement = false;
@@ -547,6 +550,8 @@ export function runChildSession(input) {
                     return;
                 }
                 session = created;
+                if (created.contextWindow !== undefined)
+                    input.onContextWindow?.(created.contextWindow);
                 const steer = created.steer.bind(created);
                 const followUp = created.followUp.bind(created);
                 created.steer = async (text) => {
