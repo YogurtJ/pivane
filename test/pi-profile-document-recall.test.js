@@ -10,12 +10,14 @@ const { documentIndex, pendingDocumentIndex } = require('../server/profile-memor
 const { safeFile } = require('../server/profile-memory/management');
 
 const bundle = process.env.PIVANE_TEST_HERMES_BUNDLE;
+const cleanupRoots = [];
+test.after(() => { for (const root of cleanupRoots) fs.rmSync(root, { recursive: true, force: true }); });
 test('whole-document edits reconcile only their exact native Markdown facts', { skip: !bundle, timeout: 30000 }, async t => {
     const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-document-recall-')));
-    test.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    cleanupRoots.push(root);
     const agent = path.join(root, 'agent'); fs.mkdirSync(agent);
     process.env.PI_CODING_AGENT_DIR = agent;
-    const upstream = await import(bundle);
+    const upstream = await import(require('node:url').pathToFileURL(bundle).href);
     const profiles = new PiProfileRegistry({ resolveProject: value => value });
     t.after(() => profiles.dispose());
     const createProfile = async name => profiles.save({ expectedRevision: (await profiles.state()).revision,
@@ -27,21 +29,36 @@ test('whole-document edits reconcile only their exact native Markdown facts', { 
     for (const dir of [firstRoot, secondRoot, projectRoot]) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const config = dir => ({ memoryDir: dir, memoryMode: 'legacy-inject', memoryCharLimit: 16000, userCharLimit: 8000,
         memoryOverflowStrategy: 'reject', autoConsolidate: false });
-    const ownStore = new upstream.MemoryStore(config(firstRoot)), otherStore = new upstream.MemoryStore(config(secondRoot)),
-        projectStore = new upstream.MemoryStore(config(projectRoot));
     const ownDb = new upstream.DatabaseManager(firstRoot), otherDb = new upstream.DatabaseManager(secondRoot);
     t.after(() => { ownDb.close(); otherDb.close(); });
     const tools = db => { const registered = new Map(), pi = { registerTool: tool => registered.set(tool.name, tool), on() {} };
         upstream.registerMemorySearchTool(pi, db); return registered; };
     const ownTools = tools(ownDb), otherTools = tools(otherDb);
+    // Upstream Markdown tools retain their shared lock coordinator until process
+    // exit. Seed through those actual tools in a child so Windows can remove the
+    // fixture after all native SQLite handles have been released.
+    const seed = require('node:child_process').spawnSync(process.execPath, ['-e', `
+(async () => {
+    const [bundle, config, first, second, project] = JSON.parse(process.argv[1]);
+    const upstream = await import(require('node:url').pathToFileURL(bundle).href);
+    const ownStore = new upstream.MemoryStore({ ...config, memoryDir: first });
+    const otherStore = new upstream.MemoryStore({ ...config, memoryDir: second });
+    const projectStore = new upstream.MemoryStore({ ...config, memoryDir: project });
+    const ownDb = new upstream.DatabaseManager(first), otherDb = new upstream.DatabaseManager(second);
+    const ownTools = new Map(), otherTools = new Map();
     upstream.registerMemoryTool({ registerTool: tool => ownTools.set(tool.name, tool), on() {} }, ownStore, projectStore, ownDb, () => '/synthetic');
     upstream.registerMemoryTool({ registerTool: tool => otherTools.set(tool.name, tool), on() {} }, otherStore, null, otherDb);
-    await Promise.all([ownStore.loadFromDisk(), otherStore.loadFromDisk(), projectStore.loadFromDisk()]);
-    const add = (list, target, content) => list.get('memory_add').execute('fixture', { target, content }, undefined, undefined, {});
-    assert.equal((await add(ownTools, 'user', 'OldFactAlpha')).details.success, true);
-    assert.equal((await add(ownTools, 'memory', 'OtherGlobal')).details.success, true);
-    assert.equal((await add(ownTools, 'project', 'ProjectOnly')).details.success, true);
-    assert.equal((await add(otherTools, 'user', 'OtherProfile')).details.success, true);
+    try {
+        await Promise.all([ownStore.loadFromDisk(), otherStore.loadFromDisk(), projectStore.loadFromDisk()]);
+        const add = (list, target, content) => list.get('memory_add').execute('fixture', { target, content }, undefined, undefined, {});
+        const results = [await add(ownTools, 'user', 'OldFactAlpha'), await add(ownTools, 'memory', 'OtherGlobal'),
+            await add(ownTools, 'project', 'ProjectOnly'), await add(otherTools, 'user', 'OtherProfile')];
+        console.log(JSON.stringify(results.map(result => result.details.success)));
+    } finally { ownDb.close(); otherDb.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });
+`, JSON.stringify([bundle, config(firstRoot), firstRoot, secondRoot, projectRoot])], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(seed.status, 0, seed.stderr);
+    assert.deepEqual(JSON.parse(seed.stdout.trim()), [true, true, true, true]);
     ownDb.getDb().prepare('INSERT INTO memories (target, project, content, created, last_referenced) VALUES (?, ?, ?, ?, ?)')
         .run('user', null, 'IndependentSqliteOnly', '2026-01-01', '2026-01-01');
     const routes = new Map(), router = { get: (name, fn) => routes.set('GET', fn), put: (name, fn) => routes.set('PUT', fn) };
@@ -86,10 +103,10 @@ test('whole-document edits reconcile only their exact native Markdown facts', { 
 
 test('post-publication index failure reports partial save and permits deterministic repair', { skip: !bundle }, async t => {
     const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-document-repair-')));
-    test.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    cleanupRoots.push(root);
     const agent = path.join(root, 'agent'); fs.mkdirSync(agent);
     process.env.PI_CODING_AGENT_DIR = agent;
-    const upstream = await import(bundle);
+    const upstream = await import(require('node:url').pathToFileURL(bundle).href);
     const profiles = new PiProfileRegistry({ resolveProject: value => value });
     t.after(() => profiles.dispose());
     const saved = await profiles.save({ expectedRevision: (await profiles.state()).revision,
@@ -148,10 +165,10 @@ test('post-publication index failure reports partial save and permits determinis
 
 test('USER initialized without memory or a mirror is indexed after enable, including unchanged documents', { skip: !bundle }, async t => {
     const base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-document-enable-')));
-    test.after(() => fs.rmSync(base, { recursive: true, force: true }));
+    cleanupRoots.push(base);
     const agent = path.join(base, 'agent'); fs.mkdirSync(agent);
     process.env.PI_CODING_AGENT_DIR = agent;
-    const upstream = await import(bundle);
+    const upstream = await import(require('node:url').pathToFileURL(bundle).href);
     const profiles = new PiProfileRegistry({ resolveProject: value => value });
     t.after(() => profiles.dispose());
     const create = async (name, enabled) => (await profiles.save({ expectedRevision: (await profiles.state()).revision,
@@ -214,10 +231,10 @@ test('USER initialized without memory or a mirror is indexed after enable, inclu
 
 test('interrupted pending plan restores missing retained facts without changing unrelated rows', { skip: !bundle }, async t => {
     const base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-document-retained-')));
-    test.after(() => fs.rmSync(base, { recursive: true, force: true }));
+    cleanupRoots.push(base);
     const agent = path.join(base, 'agent'); fs.mkdirSync(agent);
     process.env.PI_CODING_AGENT_DIR = agent;
-    const upstream = await import(bundle);
+    const upstream = await import(require('node:url').pathToFileURL(bundle).href);
     const profiles = new PiProfileRegistry({ resolveProject: value => value });
     t.after(() => profiles.dispose());
     const profile = (await profiles.save({ expectedRevision: (await profiles.state()).revision,
@@ -263,10 +280,10 @@ test('interrupted pending plan restores missing retained facts without changing 
 
 test('unpublished pending plan clears only for a verified old document', { skip: !bundle }, async t => {
     const base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-document-before-publish-')));
-    test.after(() => fs.rmSync(base, { recursive: true, force: true }));
+    cleanupRoots.push(base);
     const agent = path.join(base, 'agent'); fs.mkdirSync(agent);
     process.env.PI_CODING_AGENT_DIR = agent;
-    const upstream = await import(bundle);
+    const upstream = await import(require('node:url').pathToFileURL(bundle).href);
     const profiles = new PiProfileRegistry({ resolveProject: value => value });
     t.after(() => profiles.dispose());
     const profile = (await profiles.save({ expectedRevision: (await profiles.state()).revision,

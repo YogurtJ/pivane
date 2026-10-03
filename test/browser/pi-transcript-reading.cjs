@@ -222,12 +222,14 @@ async function run(browser, size) {
     send({ type: 'message_start', message: { ...toolOnly, content: [] } });
     send({ type: 'message_update', assistantMessageEvent: { type: 'toolcall_start', contentIndex: 0, id: 'tool-only-live', toolName: 'read' } });
     send({ type: 'message_update', assistantMessageEvent: { type: 'toolcall_end', contentIndex: 0, toolCall: call('tool-only-live') } });
-    await pause();
-    const lastGroup = page.locator('.pi-process-group').last();
-    await lastGroup.locator('summary').focus();
-    await lastGroup.locator('summary').press('Enter');
-    await pause();
-    await page.locator('[data-tool-id="tool-only-live"] summary').click();
+    const liveTool = page.locator('[data-tool-id="tool-only-live"]');
+    await liveTool.waitFor({ state: 'attached' });
+    const lastGroup = page.locator('.pi-process-group').filter({ has: liveTool });
+    if (!await lastGroup.evaluate(el => el.open)) {
+        await lastGroup.locator(':scope > summary').focus();
+        await lastGroup.locator(':scope > summary').press('Enter');
+    }
+    await liveTool.locator('summary').click();
     send({ type: 'tool_execution_end', toolCallId: 'tool-only-live', toolName: 'read', result: { content: [plain('Early completion')] } });
     send({ type: 'message_end', message: toolOnly });
     messages.push(toolOnly);

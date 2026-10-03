@@ -141,7 +141,7 @@ test('completed sweep distinguishes ineligible files from capped historical sour
     const context = scope.parseContext(JSON.stringify(f.context(own)));
     const invalid = path.join(path.dirname(own.file), 'unbound.jsonl');
     fs.writeFileSync(invalid, '{}\n');
-    const upstream = await import(bundle);
+    const upstream = await import(require('node:url').pathToFileURL(bundle).href);
     const db = new upstream.DatabaseManager(f.root);
     const index = indexer.createIndex(db, upstream, context);
     const clean = index.advance();
@@ -166,7 +166,7 @@ test('two SQLite connections replace one source with atomic provenance and stale
     const f = fixture(); t.after(f.cleanup);
     const session = f.create('one', 'original indexed body');
     const context = scope.parseContext(JSON.stringify(f.context(session)));
-    const upstream = await import(bundle);
+    const upstream = await import(require('node:url').pathToFileURL(bundle).href);
     const firstDb = new upstream.DatabaseManager(f.root), secondDb = new upstream.DatabaseManager(f.root);
     const first = indexer.createIndex(firstDb, upstream, context);
     const second = indexer.createIndex(secondDb, upstream, context);

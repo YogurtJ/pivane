@@ -29,12 +29,13 @@ test('explicit MCP migration keeps originals private, merges reviewed transports
     const repeat = await migrate({ agentDir: root, apply: true }); assert.equal(repeat.applied, false);
 });
 test('bearer command and environment expressions remain unevaluated native header references', () => {
+    const command = { mcpServers: { command: { url: 'https://example.invalid', bearerToken: '!printf synthetic' } } };
+    if (process.platform === 'win32') assert.throws(() => convert(command), /explicitly reviewed Windows header command/);
+    else assert.match(convert(command).mcpServers.command.headers.Authorization, /^!token=\$\(printf synthetic\)/);
     const config = convert({ mcpServers: {
-        command: { url: 'https://example.invalid', bearerToken: '!printf synthetic' },
         env: { url: 'https://example.invalid', bearerToken: '${TOOLS_TOKEN}' },
         escaped: { url: 'https://example.invalid', bearerToken: '!!literal' },
     } });
-    assert.match(config.mcpServers.command.headers.Authorization, /^!token=\$\(printf synthetic\)/);
     assert.equal(config.mcpServers.env.headers.Authorization, 'Bearer ${TOOLS_TOKEN}');
     assert.equal(config.mcpServers.escaped.headers.Authorization, 'Bearer !literal');
 });

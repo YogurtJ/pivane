@@ -22,8 +22,9 @@ const { readProfileRuntime, registerAgentProfile } = require('../server/pi-profi
 const { profileRevision } = require('../server/pi-profile-registry');
 const { PiSessionTransfer } = require('../server/pi-session-transfer');
 
+test.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
 test('revisioned HTTP, native immutable bindings, fork/import, and verified runtime context', { timeout: 30000 }, async t => {
-    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
     const legacyStore = new (require('../server/pi-session-store').PiSessionStore)();
     const old = await legacyStore.createSession(first, 'Before profiles');
     const access = new WorkspaceAccessService({ envToken: () => 'synthetic-test-token' });

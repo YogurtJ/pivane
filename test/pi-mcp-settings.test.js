@@ -24,7 +24,7 @@ test('saved GET is redacted and never evaluates references; explicit secret edit
     await f.save({ action: 'upsert', name: 'local', config: { command: { op: 'keep' }, args: { op: 'replace', value: ['new'] }, env: { KEY: { op: 'remove' }, NEXT: { op: 'replace', value: '${NEXT}' } } } });
     const disk = JSON.parse(fs.readFileSync(path.join(f.agent, 'mcp.json')));
     assert.equal(disk.mcpServers.local.unknown, 'unknown-secret'); assert.deepEqual(disk.future, { preserved: true }); assert.deepEqual(disk.mcpServers.local.args, ['new']); assert.deepEqual(disk.mcpServers.local.env, { NEXT: '${NEXT}' });
-    assert.equal(fs.statSync(path.join(f.agent, 'mcp.json')).mode & 0o777, 0o600);
+    require('./private-file-helper.cjs').assertPrivateFile(path.join(f.agent, 'mcp.json'));
     for (const config of [{ command: null }, { command: { op: 'keep', value: 'bad' } }, { env: { NEW: { op: 'keep' } } }, { exposure: 'invalid' }, { type: 'sse' }]) await assert.rejects(f.save({ action: 'upsert', name: 'local', config }), /^Error: MCP_/);
     await f.save({ action: 'patch', name: 'remote', patch: { headers: { Authorization: { op: 'keep' } }, oauth: { clientSecret: { op: 'remove' } } } });
     assert.equal(JSON.parse(fs.readFileSync(path.join(f.agent, 'mcp.json'))).mcpServers.remote.headers.Authorization, 'secret');

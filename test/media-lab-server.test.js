@@ -74,14 +74,19 @@ process.stdin.on('end', () => {
     });
     comfy.listen(0, '127.0.0.1'); await once(comfy, 'listening');
     let output = '';
-    const child = spawn(process.execPath, ['server.js'], { cwd: appDir, env: {
+    fs.writeFileSync(path.join(appDir, 'fixture-server.cjs'), `
+process.on('message', message => { if (message?.type === 'fixture-stop') process.emit('SIGTERM'); });
+process.once('disconnect', () => process.emit('SIGTERM'));
+require('./server.js');
+`);
+    const child = spawn(process.execPath, ['fixture-server.cjs'], { cwd: appDir, env: {
         PATH: process.env.PATH, HOME: process.env.HOME, HOST: '127.0.0.1', PORT: '0', PI_CODING_AGENT_DIR: path.join(root, 'agent'), PI_PROJECT_ROOTS: root,
         PI_MEDIA_CONFIG_DIR: configDir, PI_MEDIA_DATA_DIR: dataDir, PI_WEB_DEFERRED_FILE: path.join(root, 'queue.json'), PI_OFFLINE: '1',
         MINIMAX_API_KEY: 'fixture-not-a-secret', FLUX2_COMFY_BASE_URL: `http://127.0.0.1:${comfy.address().port}`
-    }, stdio: ['ignore', 'pipe', 'pipe'] });
+    }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
     child.stdout.on('data', bytes => { output += bytes; }); child.stderr.on('data', bytes => { output += bytes; });
     t.after(async () => {
-        if (child.exitCode === null && child.signalCode === null) { child.kill('SIGTERM'); await once(child, 'exit'); }
+        if (child.exitCode === null && child.signalCode === null) { child.send({ type: 'fixture-stop' }); await once(child, 'exit'); }
         comfy.closeAllConnections(); await new Promise(resolve => comfy.close(resolve)); fs.rmSync(root, { recursive: true, force: true });
     });
     // Port 0 is deliberately reported using the actual bound port by server.js.
@@ -96,8 +101,16 @@ process.stdin.on('end', () => {
         const response = await fetch(base + endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         const data = await response.json(); assert.equal(response.status, 200, JSON.stringify(data)); return data;
     };
-    const lab = await (await fetch(base + '/api/pi/media/lab')).json();
-    assert.equal(lab.privateProfile, true);
+    let labResponse, lab;
+    const readyDeadline = Date.now() + 10000;
+    do {
+        labResponse = await fetch(base + '/api/pi/media/lab');
+        lab = await labResponse.json();
+        if (labResponse.status !== 503) break;
+        await new Promise(resolve => setTimeout(resolve, 50));
+    } while (Date.now() < readyDeadline);
+    assert.equal(labResponse.status, 200, JSON.stringify(lab));
+    assert.equal(lab.privateProfile, true, JSON.stringify(lab));
     assert.equal(lab.models.some(model => ['zimage','flux2','minimax-video'].includes(model.adapter)), false);
     assert.equal((await fetch(base + '/images/must-not-leak.png')).status, 404);
     assert.equal((await fetch(base + '/old.html.bak-test')).status, 404);
