@@ -45,7 +45,7 @@ test('header relocation preserves every body byte, native identity, branch, labe
     assert.equal(after.header.cwd, f.target);
     assert.equal(after.header.id, native.id);
     assert.equal(after.header.timestamp, before.header.timestamp);
-    assert.ok(after.tail.includes(Buffer.from(f.old)));
+    assert.ok(after.tail.includes(Buffer.from(JSON.stringify(f.old).slice(1, -1))));
     assert.equal(after.records.filter(entry => entry.type === 'label').length, 1);
     assert.equal(result.id, native.id);
     await assert.rejects(relocateSessionBytes(bytes, { sourceCwd: f.target, targetCwd: f.old }), /cwd/);

@@ -11,7 +11,7 @@ const obsolete = '@earendil-works/pi-agent-core/node';
 test('detached host aliases retain real dependency scope with Pi 1.0 native hook', () => {
     const code = `import {resolveHostPeerAliases} from './vendor/pi-subagents/src/runs/background/runner-aliases.js';
         const result=resolveHostPeerAliases(process.cwd()+'/node_modules/@earendil-works/pi-coding-agent');
-        for (const [name,file] of Object.entries(result.aliases)) await import(file);
+        for (const [name,file] of Object.entries(result.aliases)) await import((await import('node:url')).pathToFileURL(file).href);
         console.log(JSON.stringify(result));`;
     const child = spawnSync(process.execPath, ['--import', './server/pi-subagent-native-loader.mjs', '--input-type=module', '-e', code], { cwd: root, encoding: 'utf8' });
     assert.equal(child.status, 0, child.stderr);

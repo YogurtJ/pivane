@@ -224,7 +224,14 @@ async function run(browser, size) {
     send({ type: 'message_update', assistantMessageEvent: { type: 'toolcall_end', contentIndex: 0, toolCall: call('tool-only-live') } });
     const liveTool = page.locator('[data-tool-id="tool-only-live"]');
     await liveTool.waitFor({ state: 'attached' });
-    const lastGroup = page.locator('.pi-process-group').filter({ has: liveTool });
+    // Process disclosures precede their controlled rows; they do not contain
+    // those rows. Wait for grouping and select the disclosure by aria-controls.
+    await page.waitForFunction(() => {
+        const tool = document.querySelector('[data-tool-id="tool-only-live"]');
+        return tool?.id && tool.dataset.processKey;
+    });
+    const liveId = await liveTool.getAttribute('id');
+    const lastGroup = page.locator('.pi-process-group').filter({ has: page.locator(`summary[aria-controls~="${liveId}"]`) });
     if (!await lastGroup.evaluate(el => el.open)) {
         await lastGroup.locator(':scope > summary').focus();
         await lastGroup.locator(':scope > summary').press('Enter');
@@ -234,7 +241,7 @@ async function run(browser, size) {
     send({ type: 'message_end', message: toolOnly });
     messages.push(toolOnly);
     await pause();
-    assert.equal(await lastGroup.evaluate(el => el.open), true, 'tool-only group survives authoritative replacement');
+    assert.equal(await page.locator('.pi-process-group').last().evaluate(el => el.open), true, 'tool-only group survives authoritative replacement');
     assert.equal(await page.locator('[data-tool-id="tool-only-live"]').evaluate(el => el.open), true);
     assert.equal(await page.locator('[data-tool-id="tool-only-live"] .pi-tool-output').textContent(), 'Early completion');
 

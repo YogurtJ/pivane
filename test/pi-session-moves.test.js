@@ -125,7 +125,7 @@ test('native forks retain inherited deliveries after moving but cannot append a 
 test('preview rejects related threads, pending messages, unsafe targets and native ID/file collisions without moving data', async t => {
     const f = await fixture(t), before = fs.readFileSync(f.session.path);
     await assert.rejects(f.moves.preview(f.source, f.session.id, f.source), /不同/);
-    await assert.rejects(f.moves.preview(f.source, f.session.id, '/etc'), /outside/);
+    await assert.rejects(f.moves.preview(f.source, f.session.id, fs.realpathSync.native(os.tmpdir())), /outside/);
     f.deferred.jobs = [{ status: 'scheduled' }];
     assert.match((await f.moves.preview(f.source, f.session.id, f.target)).blockers.join(), /预约/); f.deferred.jobs = [];
     f.cron.db.homes = () => [{ cwd: f.source, sessionId: f.session.id }];

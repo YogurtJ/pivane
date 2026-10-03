@@ -335,8 +335,8 @@ class PiSettingsService {
             privateFiles.writePrivateFileSync(`${modelsPath}.bak-web-${stamp}-${writeId}`, fs.readFileSync(modelsPath));
         }
         const temporary = `${modelsPath}.tmp-${process.pid}-${writeId}`;
-        privateFiles.writePrivateFileSync(temporary, `${JSON.stringify(data, null, 2)}\n`);
-        fs.renameSync(temporary, modelsPath);
+        privateFiles.writePrivateFileSync(temporary, `${JSON.stringify(data, null, 2)}\n`, true);
+        require('./pi-win32-native').replaceFileSync(temporary, modelsPath);
     }
 
     async listCustomProviders() {
