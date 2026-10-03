@@ -12,7 +12,7 @@ const { safeFile } = require('../server/profile-memory/management');
 const bundle = process.env.PIVANE_TEST_HERMES_BUNDLE;
 test('whole-document edits reconcile only their exact native Markdown facts', { skip: !bundle, timeout: 30000 }, async t => {
     const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-document-recall-')));
-    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    test.after(() => fs.rmSync(root, { recursive: true, force: true }));
     const agent = path.join(root, 'agent'); fs.mkdirSync(agent);
     process.env.PI_CODING_AGENT_DIR = agent;
     const upstream = await import(bundle);
@@ -86,7 +86,7 @@ test('whole-document edits reconcile only their exact native Markdown facts', { 
 
 test('post-publication index failure reports partial save and permits deterministic repair', { skip: !bundle }, async t => {
     const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-document-repair-')));
-    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    test.after(() => fs.rmSync(root, { recursive: true, force: true }));
     const agent = path.join(root, 'agent'); fs.mkdirSync(agent);
     process.env.PI_CODING_AGENT_DIR = agent;
     const upstream = await import(bundle);
@@ -148,7 +148,7 @@ test('post-publication index failure reports partial save and permits determinis
 
 test('USER initialized without memory or a mirror is indexed after enable, including unchanged documents', { skip: !bundle }, async t => {
     const base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-document-enable-')));
-    t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+    test.after(() => fs.rmSync(base, { recursive: true, force: true }));
     const agent = path.join(base, 'agent'); fs.mkdirSync(agent);
     process.env.PI_CODING_AGENT_DIR = agent;
     const upstream = await import(bundle);
@@ -214,7 +214,7 @@ test('USER initialized without memory or a mirror is indexed after enable, inclu
 
 test('interrupted pending plan restores missing retained facts without changing unrelated rows', { skip: !bundle }, async t => {
     const base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-document-retained-')));
-    t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+    test.after(() => fs.rmSync(base, { recursive: true, force: true }));
     const agent = path.join(base, 'agent'); fs.mkdirSync(agent);
     process.env.PI_CODING_AGENT_DIR = agent;
     const upstream = await import(bundle);
@@ -263,7 +263,7 @@ test('interrupted pending plan restores missing retained facts without changing 
 
 test('unpublished pending plan clears only for a verified old document', { skip: !bundle }, async t => {
     const base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-document-before-publish-')));
-    t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+    test.after(() => fs.rmSync(base, { recursive: true, force: true }));
     const agent = path.join(base, 'agent'); fs.mkdirSync(agent);
     process.env.PI_CODING_AGENT_DIR = agent;
     const upstream = await import(bundle);

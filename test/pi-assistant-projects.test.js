@@ -25,13 +25,18 @@ const profile = name => ({ name, description: '', soul: '', enabled: true, memor
 const project = (name, profileIds, location = cwd) => ({ name, cwd: location, description: '', instructions: 'Synthetic group instruction', profileIds, archived: false });
 
 test('logical projects: CAS, native binding, filtered sessions, runtime and lifecycle', { timeout: 30000 }, async t => {
-    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    let gateway, server;
+    t.after(async () => {
+        await gateway?.dispose();
+        server?.closeAllConnections();
+        if (server?.listening) await new Promise(resolve => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
     const old = await new (require('../server/pi-session-store').PiSessionStore)().createSession(cwd, 'Old unclassified');
-    const gateway = createPiAgentGateway({ accessService: new WorkspaceAccessService({ envToken: () => 'synthetic-test-token' }),
+    gateway = createPiAgentGateway({ accessService: new WorkspaceAccessService({ envToken: () => 'synthetic-test-token' }),
         deferredFilePath: process.env.PI_WEB_DEFERRED_FILE });
     const app = require('express')(); app.use(require('express').json()); gateway.mount(app);
-    const server = http.createServer(app); server.listen(0, '127.0.0.1'); await once(server, 'listening');
-    t.after(async () => { await gateway.dispose(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+    server = http.createServer(app); server.listen(0, '127.0.0.1'); await once(server, 'listening');
     const base = `http://127.0.0.1:${server.address().port}/api/pi`;
     const call = async (method, url, body) => {
         const res = await fetch(base + url, { method, headers: { Authorization: 'Bearer synthetic-test-token', 'Content-Type': 'application/json' },
