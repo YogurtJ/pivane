@@ -1,4 +1,5 @@
 const { setTimeout: delay } = require('node:timers/promises');
+const { MEDIA_TYPES, parseMedia } = require('./media-attachments');
 const MAX_OUTPUT = 64 * 1024 * 1024;
 const MAX_JSON = 90 * 1024 * 1024;
 const MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'audio/wav', 'audio/mpeg'];
@@ -57,20 +58,28 @@ function validateTemplate(value, definitions, depth = 0) {
             if (entries.length !== 1) fail('Template references must stand alone');
             const [key, target] = entries[0];
             if (key === '$param' && typeof target === 'string' && Object.hasOwn(definitions, target)) return;
+            if (['$base64', '$mimeType'].includes(key) && MEDIA_TYPES.has(definitions[target]?.type)) return;
             if ((key === '$model' || key === '$params') && target === true) return;
             fail('Unknown request template reference');
         }
         entries.forEach(([, item]) => validateTemplate(item, definitions, depth + 1));
     } else if (!['string','number','boolean'].includes(typeof value) && value !== null) fail('Request template must contain JSON values');
 }
-function renderTemplate(value, parameters, remoteModel) {
-    let budget = 4 * 1024 * 1024;
-    const consume = value => { budget -= Buffer.byteLength(JSON.stringify(value)); if (budget < 0) fail('Rendered media request exceeds 4MiB'); return clone(value); };
+function renderTemplate(value, parameters, remoteModel, definitions = {}) {
+    const limit = Object.values(definitions).some(field => MEDIA_TYPES.has(field.type)) ? 32 : 4;
+    let budget = limit * 1024 * 1024;
+    const consume = value => { budget -= Buffer.byteLength(JSON.stringify(value)); if (budget < 0) fail(`Rendered media request exceeds ${limit}MiB`); return clone(value); };
     function render(value) {
-        budget -= 2; if (budget < 0) fail('Rendered media request exceeds 4MiB');
+        budget -= 2; if (budget < 0) fail(`Rendered media request exceeds ${limit}MiB`);
         if (Array.isArray(value)) return value.map(render).filter(item => item !== undefined);
         if (!object(value)) return consume(value);
         if (Object.hasOwn(value, '$param')) return parameters[value.$param] === undefined ? undefined : consume(parameters[value.$param]);
+        for (const [ref, property] of [['$base64', 'data'], ['$mimeType', 'mimeType']]) {
+            if (Object.hasOwn(value, ref)) {
+                const key = value[ref];
+                return parameters[key] === undefined ? undefined : consume(parseMedia(parameters[key], definitions[key]?.type)[property]);
+            }
+        }
         if (value.$model === true) return consume(remoteModel);
         if (value.$params === true) return consume(parameters);
         return Object.fromEntries(Object.entries(value).map(([key, item]) => { consume(key); return [key, render(item)]; }).filter(([, item]) => item !== undefined));
@@ -78,10 +87,17 @@ function renderTemplate(value, parameters, remoteModel) {
     return render(value);
 }
 function validateHttp(raw, definitions, kind) {
-    keys(raw, ['path', 'body', 'response', 'poll', 'timeoutMs'], 'HTTP contract');
+    keys(raw, ['path', 'body', 'encoding', 'response', 'poll', 'timeoutMs'], 'HTTP contract');
+    if (raw.encoding !== undefined && !['json', 'multipart'].includes(raw.encoding)) fail('Unsupported request encoding');
     endpoint('https://example.invalid', raw.path, {}, definitions);
     if (!object(raw.body)) fail('Request body template must be an object');
     if (JSON.stringify(raw.body).length > 32000) fail('Request template is too large');
+    if (raw.encoding === 'multipart') {
+        for (const [key, value] of Object.entries(raw.body)) {
+            if (/[\r\n"]/.test(key) || Array.isArray(value) || object(value) && !(Object.hasOwn(value, '$param') || value.$model === true)) fail('Multipart fields must be scalar values or parameter references');
+            if (value?.$param && definitions[value.$param]?.type === 'json') fail('Multipart does not accept JSON parameter fields');
+        }
+    }
     validateTemplate(raw.body, definitions);
     const response = raw.response;
     keys(response, ['type', 'path', 'mimeType'], 'response');
@@ -91,6 +107,7 @@ function validateHttp(raw, definitions, kind) {
     if (mimeType !== 'auto' && (!MIME_TYPES.includes(mimeType) || !mimeType.startsWith((kind === 'tts' ? 'audio' : kind) + '/'))) fail('Output MIME type does not match media kind');
     if (response.type !== 'binary') jsonPath(response.path);
     const http = { path: raw.path, body: clone(raw.body), response: { type: response.type, mimeType, ...(response.type !== 'binary' ? { path: clone(response.path) } : {}) }, timeoutMs: raw.timeoutMs ?? (raw.poll ? 1800000 : 180000) };
+    if (raw.encoding) http.encoding = raw.encoding;
     if (!Number.isInteger(http.timeoutMs) || http.timeoutMs < 1000 || http.timeoutMs > 1800000) fail('HTTP timeout must be 1000–1800000 ms');
     if (raw.poll) {
         const poll = raw.poll;
@@ -183,12 +200,28 @@ class MediaHttpExecutor {
     async execute({ provider, key, model, parameters, progress = () => {} }) {
         const http = model.http;
         const signal = AbortSignal.timeout(http.timeoutMs);
-        const headers = { 'Content-Type': 'application/json', ...authHeaders(provider, key) };
-        const requestBody = renderTemplate(http.body, parameters, model.remoteModel);
+        const headers = { ...authHeaders(provider, key) };
+        const requestBody = renderTemplate(http.body, parameters, model.remoteModel, model.parameters);
+        let body;
+        if (http.encoding === 'multipart') {
+            const boundary = `pivane-${require('node:crypto').randomUUID()}`;
+            const parts = [];
+            for (const [name, value] of Object.entries(requestBody)) {
+                const field = model.parameters[http.body[name]?.$param];
+                if (MEDIA_TYPES.has(field?.type)) {
+                    const media = parseMedia(value, field.type);
+                    const extension = media.mimeType.split('/')[1];
+                    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"; filename="reference.${extension}"\r\nContent-Type: ${media.mimeType}\r\n\r\n`), Buffer.from(media.data, 'base64'), Buffer.from('\r\n'));
+                } else parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
+            }
+            parts.push(Buffer.from(`--${boundary}--\r\n`));
+            body = Buffer.concat(parts);
+            headers['Content-Type'] = `multipart/form-data; boundary=${boundary}`;
+        } else { headers['Content-Type'] = 'application/json'; body = JSON.stringify(requestBody); }
         let taskId;
         try {
             progress({ stage: 'submitting' });
-            let response = await this.request(endpoint(provider.baseUrl, http.path, { model: model.remoteModel, parameters }), { method: 'POST', headers, body: JSON.stringify(requestBody), signal }, http.response.type === 'binary' ? MAX_OUTPUT : MAX_JSON);
+            let response = await this.request(endpoint(provider.baseUrl, http.path, { model: model.remoteModel, parameters }), { method: 'POST', headers, body, signal }, http.response.type === 'binary' ? MAX_OUTPUT : MAX_JSON);
             let data = http.response.type === 'binary' ? null : await readJson(response);
             if (http.poll) {
                 const poll = http.poll, rawId = atPath(data, poll.idPath);

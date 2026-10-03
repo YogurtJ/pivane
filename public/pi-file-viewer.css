@@ -53,7 +53,23 @@
 .pi-file-html { display: block; width: 100%; height: calc(100% - 72px); min-height: 320px; border: 0; background: white; }
 .pi-file-preview-warning { margin: 0; padding: 10px 12px; min-height: 52px; font-size: .75rem; line-height: 1.6; color: var(--text-muted); background: var(--surface-2); }
 .pi-file-actions { flex-wrap: wrap; }
+.pi-file-preview-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 12px; position: sticky; top: 0; z-index: 1; background: var(--surface-1); border-bottom: 1px solid var(--line); }
+.pi-file-preview-toolbar button, .pi-file-preview-toolbar input { min-height: 34px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-2); color: var(--text-main); font: inherit; padding: 4px 8px; }
+.pi-file-preview-toolbar button { cursor: pointer; font-size: .78rem; transform: none; }
+.pi-file-preview-toolbar button:disabled { opacity: .45; cursor: default; }
+.pi-file-preview-toolbar input { width: 68px; min-width: 0; font-size: 16px; }
+.pi-file-preview-toolbar span { font-size: .75rem; color: var(--text-muted); overflow-wrap: anywhere; }
+.pi-file-table-scroll { max-width: 100%; overflow: auto; padding: 10px; }
+.pi-file-data-table { border-collapse: collapse; color: var(--text-main); font-size: .8rem; }
+.pi-file-data-table td, .pi-file-data-table th { border: 1px solid var(--line); padding: 6px 10px; min-width: 48px; max-width: 320px; white-space: pre-wrap; overflow-wrap: anywhere; vertical-align: top; }
+.pi-file-data-table th { color: var(--text-muted); background: var(--surface-2); font-weight: normal; }
+.pi-file-pdf-paper { padding: 12px; width: max-content; min-width: 100%; }
+.pi-file-pdf-paper canvas { display: block; background: white; box-shadow: 0 1px 5px #0003; }
+.pi-file-pdf-text { margin: 12px; color: var(--text-main); font-size: .8rem; }
+.pi-file-pdf-text pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.pi-file-audio { display: block; width: calc(100% - 24px); max-width: 600px; margin: 20px 12px; }
 @media (max-width: 900px) {
+    .pi-file-preview-toolbar button { min-height: 36px; }
     #pi-file-source { font-size: 16px; height: 36px; }
     .pi-file-tabs button, .pi-file-actions button, #pi-changes-file-list > summary { min-height: 36px; }
     #pi-file-info > summary { width: 36px; height: 36px; }

@@ -16,7 +16,7 @@ export function registerDeliverables(pi: ExtensionAPI) {
             promptGuidelines: [
                 'When handing over generated documents, images or self-contained HTML, use deliver_files and include its returned links in the final reply. Server paths alone are not downloadable links.',
                 'Publish only files the user asked to receive or outputs produced for the authorized task. Do not publish secrets, unrelated private material, or whole directories. An external sourceRoot does not expand the task authorization.',
-                'HTML previews run in a restricted iframe, not the workbench DOM. Package-dependent pages and PDF previews are not supported; downloads preserve original bytes.'
+                'HTML previews run in a restricted iframe, not the workbench DOM. Self-contained HTML, PDF, CSV/TSV, SVG and supported audio can be previewed; package-dependent pages are not supported. Downloads preserve original bytes.'
             ],
             parameters: Type.Object({
                 requestId: Type.String({ minLength: 1, maxLength: 160 }),

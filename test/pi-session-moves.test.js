@@ -86,6 +86,25 @@ test('move preserves exact native history, identity, mtime, preferences, usage a
     assert.equal((await service.request({ cwd: f.source, sessionId: f.session.id, id: delivery.reference.id, index: '0' })).content, '# Original delivery');
 });
 
+test('large unrelated history does not block ordinary moves, while references after that history are still detected', async t => {
+    const f = await fixture(t), legacyCwd = path.join(f.folder, 'large-unrelated'); fs.mkdirSync(legacyCwd);
+    const other = await f.store.createSession(legacyCwd, 'Large unrelated history');
+    t.after(() => fs.unlinkSync(other.path));
+    const fd = fs.openSync(other.path, 'a'), chunk = Buffer.alloc(1024 * 1024, 120);
+    try {
+        fs.writeSync(fd, JSON.stringify({ type: 'message', id: randomUUID(), parentId: null, timestamp: new Date().toISOString() }).slice(0, -1) + ',"message":{"role":"user","content":"');
+        for (let index = 0; index < 260; index++) fs.writeSync(fd, chunk);
+        fs.writeSync(fd, '","timestamp":1}}\n');
+    } finally { fs.closeSync(fd); }
+    const unchangedSize = fs.statSync(other.path).size;
+    assert.equal((await f.moves.preview(f.source, f.session.id, f.target)).canMove, true);
+    fs.appendFileSync(other.path, JSON.stringify({ data: { source: { cwd: f.source, sessionId: f.session.id } }, customType: 'pivane-agent-task', type: 'custom' }) + '\n');
+    assert.match((await f.moves.preview(f.source, f.session.id, f.target)).blockers.join(), /其他线程/);
+    fs.truncateSync(other.path, unchangedSize);
+    const result = await f.move(); assert.equal(result.session.cwd, f.target);
+    assert.equal(fs.statSync(other.path).size, unchangedSize);
+});
+
 test('native forks retain inherited deliveries after moving but cannot append a new foreign delivery grant', async t => {
     const f = await fixture(t), objects = new DeliverableStore(f.store);
     fs.writeFileSync(path.join(f.source, 'shared.md'), 'Inherited snapshot');

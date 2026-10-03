@@ -43,6 +43,21 @@ function fixture() {
 }
 test.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
+test('uploaded reference bytes are frozen in review and history keeps bounded metadata', async () => {
+    const { service, profile, requests, dataRoot } = fixture();
+    profile.models.find(item => item.id === 'fixture-image').parameters.image = { type: 'image', required: true };
+    const image = 'data:image/png;base64,' + png.toString('base64');
+    const parameters = { prompt: 'Use reference', image };
+    const review = await service.review({ modelId: 'fixture-image', parameters });
+    parameters.image = 'changed after review';
+    assert.equal(requests.length, 0);
+    await service.execute(review.ticket);
+    assert.equal(JSON.parse(requests[0].options.body).input.image, image);
+    const history = mediaHistory(dataRoot, 'image');
+    assert.equal(history[0].parameters.image, undefined);
+    assert.deepEqual(history[0].references.image, { mimeType: 'image/png', bytes: png.length });
+});
+
 test('media definitions reject invalid types, unknown parameters, ranges, enums and conflicting request envelopes', () => {
     const model = definition();
     assert.doesNotThrow(() => validateDefinition(model));

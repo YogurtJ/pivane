@@ -8,16 +8,24 @@ const id = 'a'.repeat(64), model = { provider: 'fixture', id: 'fixture', name: '
 // Use the existing brand PNG as a known browser-decodable fixture.
 const image = fs.readFileSync(path.join(root, 'public/brand/logo-192.png'));
 const html = '<!doctype html><html><head><style>body{font:18px sans-serif}button{padding:15px}</style></head><body><h1>Preview</h1><img src="https://invalid.test/remote-image"><iframe src="https://invalid.test/frame"></iframe><meta http-equiv="refresh" content="0;url=https://invalid.test/refresh"><button id="counter" onclick="this.textContent=\'Clicked\'">Click</button><script>try{parent.document.body.dataset.escaped="yes"}catch{};try{localStorage.setItem("escaped","yes")}catch{};fetch("https://invalid.test/leak").catch(()=>{});</script></body></html>';
+const { pdf, wav } = require('../file-preview-fixtures.cjs');
+const { representation } = require('../../server/pi-file-types');
 const documents = [
     { name: '方案.md', kind: 'markdown', content: '\ufeff# 成果方案\r\n\n交付快照。\n', encoding: 'utf8', mime: 'text/plain; charset=utf-8' },
     { name: '截图.png', kind: 'image', base64: image.toString('base64'), encoding: 'base64', mime: 'image/png', width: 192, height: 192 },
-    { name: 'prototype.html', kind: 'html', content: html, encoding: 'utf8', mime: 'text/plain; charset=utf-8' }
+    { name: 'prototype.html', kind: 'html', content: html, encoding: 'utf8', mime: 'text/plain; charset=utf-8' },
+    { name: 'report.pdf', ...representation({ bytes: pdf() }, 'report.pdf') },
+    { name: 'table.csv', ...representation({ bytes: Buffer.from('name,value\r\n"a,b","line1\nline2"\r\n"<img src=x onerror=alert(1)>",=1+1\r\n' + 'x,y\n'.repeat(100)) }, 'table.csv') },
+    { name: 'drawing.svg', ...representation({ bytes: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="80"><script>parent.document.body.dataset.escaped="yes"</script><image href="https://invalid.test/svg-image"/><foreignObject><div xmlns="http://www.w3.org/1999/xhtml">bad</div></foreignObject><rect width="100" height="80" fill="red"/><text x="5" y="40">SVG</text></svg>') }, 'drawing.svg') },
+    { name: 'recording.wav', ...representation({ bytes: wav() }, 'recording.wav') },
+    { name: 'broken.pdf', ...representation({ bytes: Buffer.from('%PDF-1.7\ninvalid') }, 'broken.pdf') }
 ];
 async function run(browser, base, width) {
     const context = await browser.newContext({ viewport: { width, height: width < 900 ? 852 : 1000 }, locale: 'zh-CN', acceptDownloads: true });
     const page = await context.newPage(), errors = [], network = [], writes = [], reads = [];
     let delayed, hold = false, active = 'delivery';
     page.on('pageerror', e => errors.push(e.message));
+    page.on('console', message => { if (message.text().startsWith('PDF preview:')) console.log(message.text()); });
     // Playwright reports CSP-blocked image attempts as request events too. A
     // route is reached only if the browser actually tries network transport.
     await page.route('https://invalid.test/**', route => { network.push(route.request().url()); return route.abort(); });
@@ -48,7 +56,7 @@ async function run(browser, base, width) {
     await page.routeWebSocket('**/api/pi/ws', ws => ws.onMessage(raw => {
         const cmd = JSON.parse(raw); if (cmd.type === 'open_session') active = cmd.sessionId;
         const state = { model, thinkingLevel: 'off', isStreaming: false };
-        const messages = active === 'other' ? [] : [{ role: 'assistant', stopReason: 'stop', timestamp: 1, content: [{ type: 'text', text: `[方案](#pi-delivery=${id}/0) · [截图](#pi-delivery=${id}/1) · [网页](#pi-delivery=${id}/2) · [旧路径](/external/outputs/方案.md)` }] }];
+        const messages = active === 'other' ? [] : [{ role: 'assistant', stopReason: 'stop', timestamp: 1, content: [{ type: 'text', text: `[方案](#pi-delivery=${id}/0) · [截图](#pi-delivery=${id}/1) · [网页](#pi-delivery=${id}/2) · [旧路径](/external/outputs/方案.md) · [PDF](#pi-delivery=${id}/3) · [CSV](#pi-delivery=${id}/4) · [SVG](#pi-delivery=${id}/5) · [音频](#pi-delivery=${id}/6) · [损坏PDF](#pi-delivery=${id}/7)` }] }];
         const data = cmd.type === 'open_session' ? { session: { id: active, cwd, name: active, messageCount: 1 }, state, messages: { messages }, stats: {}, models: { models: [model] }, thinkingLevels: { levels: ['off'] }, commands: { commands: [] } } : cmd.type === 'get_messages' ? { messages } : cmd.type === 'get_state' ? state : {};
         ws.send(JSON.stringify({ type: 'response', id: cmd.id, command: cmd.type, success: true, data }));
     }));
@@ -86,8 +94,46 @@ async function run(browser, base, width) {
     await link('网页').click(); await page.locator('.pi-file-html').waitFor();
     await page.locator('#pi-file-preview').click(); assert.match(await page.locator('#pi-file-body').textContent(), /<!doctype html>/);
     assert.equal(await page.locator('.pi-file-html').count(), 0); await checkWidth(page);
+    await page.locator('#pi-close-inspector').click(); await link('PDF').click();
+    await page.waitForFunction(() => document.querySelector('.pi-file-pdf-text pre')?.textContent.includes('Preview page one')).catch(async error => {
+        console.error('PDF diagnostic', await page.locator('#pi-file-body').textContent(), errors); throw error;
+    });
+    assert.equal(await page.locator('.pi-file-pdf-paper canvas').evaluate(n => n.width * n.height <= 4 * 1024 * 1024 + 8192), true);
+    await page.getByRole('button', { name: '下一页', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('.pi-file-pdf-text pre')?.textContent.includes('Preview page two'));
+    await page.getByRole('button', { name: '放大', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('.pi-file-pdf-text pre')?.textContent.includes('Preview page two'));
+    await checkWidth(page);
+    await page.screenshot({ path: path.join(os.tmpdir(), `pivane-previews-${width}-pdf.png`) });
+    await page.locator('#pi-close-inspector').click();
+    await page.waitForFunction(() => document.querySelector('.pi-file-pdf-paper canvas')?.width === 0);
+    await openInspector(page, 'changes');
+    await page.waitForFunction(() => document.querySelector('.pi-file-pdf-text pre')?.textContent.includes('Preview page one'));
+    await page.locator('#pi-close-inspector').click(); await link('CSV').click();
+    await page.locator('.pi-file-data-table').waitFor();
+    assert.equal(await page.locator('.pi-file-data-table tr').count(), 50);
+    assert.match(await page.locator('.pi-file-data-table').textContent(), /a,b.*line1\nline2/);
+    assert.equal(await page.locator('.pi-file-data-table img').count(), 0);
+    await page.getByRole('button', { name: '下一页', exact: true }).click();
+    assert.equal(await page.locator('.pi-file-data-table th').first().textContent(), '51');
+    await page.locator('#pi-file-preview').click(); assert.match(await page.locator('#pi-file-body').textContent(), /"a,b"/);
+    await page.locator('#pi-file-preview').click(); await checkWidth(page);
+    await page.screenshot({ path: path.join(os.tmpdir(), `pivane-previews-${width}-csv.png`) });
+    await page.locator('#pi-close-inspector').click(); await link('SVG').click();
+    await page.waitForFunction(() => document.querySelector('#pi-file-body img')?.naturalWidth === 100);
+    const cleanedSvg = await page.locator('#pi-file-body img').evaluate(async n => (await fetch(n.src)).text());
+    assert.doesNotMatch(cleanedSvg, /script|foreignObject|invalid\.test|<image/i);
+    assert.equal(await page.evaluate(() => document.body.dataset.escaped), undefined); await checkWidth(page);
+    await page.locator('#pi-close-inspector').click(); await link('音频').click();
+    await page.waitForFunction(() => document.querySelector('.pi-file-audio')?.readyState >= 1);
+    assert.equal(await page.locator('.pi-file-audio').evaluate(n => n.paused), true);
+    await page.locator('.pi-file-audio').evaluate(n => n.play());
+    await page.locator('#pi-close-inspector').click();
+    await page.waitForFunction(() => { const a = document.querySelector('.pi-file-audio'); return a?.paused && !a.getAttribute('src'); });
+    await link('损坏PDF').click();
+    await page.getByText('PDF 无法预览，可下载原文件', { exact: true }).waitFor();
     await page.locator('#pi-files-deliveries').click(); await page.locator('.pi-delivery-card').first().waitFor();
-    assert.equal(await page.locator('.pi-delivery-card').count(), 3); await checkWidth(page);
+    assert.equal(await page.locator('.pi-delivery-card').count(), documents.length); await checkWidth(page);
     const listReads = reads.length;
     await page.locator('#pi-close-inspector').click(); await openInspector(page, 'changes');
     assert.equal(await page.locator('#pi-deliveries-list').isVisible(), true);
@@ -119,6 +165,7 @@ async function until(predicate) { for (let i = 0; i < 100; i++) { if (predicate(
 (async () => {
     const app = express();
     for (const [name, folder] of [['marked', 'marked/lib'], ['dompurify', 'dompurify/dist'], ['highlight', '@highlightjs/cdn-assets']]) app.use(`/vendor/${name}`, express.static(path.join(root, 'node_modules', folder)));
+    for (const directory of ['legacy/build', 'cmaps', 'standard_fonts', 'wasm']) app.use('/vendor/pdfjs/' + directory, express.static(path.join(root, 'node_modules/pdfjs-dist', directory)));
     app.use(express.static(path.join(root, 'public')));
     const server = http.createServer(app); server.listen(0, '127.0.0.1'); await once(server, 'listening');
     const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });

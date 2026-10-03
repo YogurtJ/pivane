@@ -9338,5 +9338,170 @@
         ['转录请求失败或超时，服务可能已收到录音；未自动重试', 'Transcription failed or timed out. The service may have received the audio. No automatic retry'],
         ['语音转录失败；未自动重试', 'Transcription failed. No automatic retry']
     );
+    rows.push(...[
+    [
+        "去配置",
+        "Configure"
+    ],
+    [
+        "没有可用的转录模型。",
+        "No transcription model is available."
+    ],
+    [
+        "关闭转录提示",
+        "Close transcription notice"
+    ],
+    [
+        "麦克风需要 HTTPS 或 localhost 和浏览器录音支持。",
+        "Recording requires HTTPS or localhost and browser microphone support."
+    ],
+    [
+        "无法使用麦克风，请检查浏览器权限。",
+        "Microphone unavailable. Check browser permissions."
+    ],
+    [
+        "后续 · 当前任务完成后送达",
+        "Follow-up · delivered after the current task"
+    ],
+    [
+        "引导 · 本轮工具后送达",
+        "Steer · delivered after this tool step"
+    ],
+    [
+        "本轮工具后送达",
+        "Delivered after this tool step"
+    ],
+    [
+        "当前任务完成后送达",
+        "Delivered after the current task"
+    ],
+    [
+        "朗读与语音转文字",
+        "Read aloud and speech to text"
+    ],
+    [
+        "管理语音服务",
+        "Manage speech services"
+    ],
+    [
+        "选择朗读模型、音色和参数。",
+        "Choose a reading model, voice and parameters."
+    ],
+    [
+        "语音转文字（ASR）",
+        "Speech to text (ASR)"
+    ],
+    [
+        "刷新转录模型",
+        "Refresh transcription models"
+    ],
+    [
+        "接入转录模型，或复用现有语音服务；录音转为可编辑草稿。",
+        "Connect a transcription model or reuse a speech service. Recordings become editable drafts."
+    ],
+    [
+        "正在读取转录模型…",
+        "Loading transcription models…"
+    ],
+    [
+        "录音转录模型",
+        "Recording transcription model"
+    ],
+    [
+        "添加转录模型后，点击输入框的麦克风即可录音。",
+        "Add a transcription model, then press the microphone beside the input to record."
+    ],
+    [
+        "选择后自动保存到当前浏览器；录音结束后，文字会加入草稿。",
+        "Your selection is saved in this browser. When recording ends, the transcript is added to your draft."
+    ],
+    [
+        "添加转录模型",
+        "Add transcription model"
+    ],
+    [
+        "语音服务",
+        "Speech service"
+    ],
+    [
+        "新建语音服务",
+        "New speech service"
+    ],
+    [
+        "转录模型 ID",
+        "Transcription model ID"
+    ],
+    [
+        "服务地址",
+        "Service URL"
+    ],
+    [
+        "协议与认证",
+        "Protocol and authentication"
+    ],
+    [
+        "转录协议",
+        "Transcription protocol"
+    ],
+    [
+        "音频转录接口",
+        "Audio transcription endpoint"
+    ],
+    [
+        "音频消息接口",
+        "Audio message endpoint"
+    ],
+    [
+        "服务地址、模型 ID 和协议由你的语音服务提供；保存不会发送录音。",
+        "Use the URL, model ID and protocol supplied by your speech service. Saving does not upload a recording."
+    ],
+    [
+        "复用此服务已保存的地址和凭据；管理语音服务可修改共享配置。",
+        "Reuse this service’s saved URL and credentials. Manage speech services to edit its shared settings."
+    ],
+    [
+        "保存转录模型",
+        "Save transcription model"
+    ],
+    [
+        "转录模型已保存，可以直接录音。",
+        "Transcription model saved. You can record directly."
+    ],
+    [
+        "；请刷新列表核对保存状态后再操作。",
+        "; refresh the list to check whether it was saved before trying again."
+    ],
+    [
+        "删除此转录模型？共享服务和凭据会保留。",
+        "Delete this transcription model? Shared services and credentials will be retained."
+    ],
+    [
+        "语音转文字",
+        "Speech to text"
+    ],
+    [
+        "配置转录模型",
+        "Configure transcription model"
+    ],
+    [
+        "转录模型配置暂不可用",
+        "Transcription configuration is unavailable"
+    ],
+    [
+        "语音配置已变化，请刷新后再编辑",
+        "Speech configuration changed. Refresh before editing"
+    ],
+    [
+        "配置正在变更或服务正在关闭，请稍后保存",
+        "Settings are changing or the service is shutting down. Save later"
+    ],
+    [
+        "配置正在变更或服务正在关闭，请稍后修改",
+        "Settings are changing or the service is shutting down. Edit later"
+    ]
+]);
+    rows.push(...[["语音能力","Speech capabilities"],["语音合成（TTS）","Text to speech (TTS)"],["语音转录（ASR）","Transcription (ASR)"],["图像模型","Image models"],["视频模型","Video models"],["接入生图服务，添加或编辑图像模型。","Connect image services and add or edit image models."],["接入生视频服务，添加或编辑视频模型。","Connect video services and add or edit video models."],["添加或编辑 TTS 模型，用于生成语音和回复朗读。","Add or edit TTS models for speech generation and reading replies aloud."],["朗读默认配置","Reading defaults"],["选择服务管理模型，或新增服务。已有服务的地址和 Key 可以复用。","Choose a service to manage its models, or add a new service. Reuse saved service URLs and keys."]]);
+    rows.push(...[["PNG / JPEG / WebP 或 MP4；附件合计最多 20 MiB。","PNG / JPEG / WebP or MP4; attachments up to 20 MiB combined."],["文件格式不支持或超过 20 MiB。","Unsupported file format or file exceeds 20 MiB."],["读取附件失败","Unable to read attachment"],["附件正在读取，请稍候。","Please wait while the attachment is being read."],["{0}：请选择附件。","{0}: choose an attachment."],["[附件 · {0} · {1} KiB]","[Attachment · {0} · {1} KiB]"],["[二进制编码 · {0} 字符]","[Binary encoding · {0} characters]"],["当前模型未声明参考附件输入。请在“接入模型”中选择参考图/首帧模板，或按服务文档配置图片、视频参数。","This model has no reference attachment inputs. Choose a reference-image/first-frame template in Connect model, or configure image and video parameters from the service documentation."],["图片会随规划请求交给辅助 Agent；参考视频仅提交生成模型，辅助 Agent 尚未读取视频内容。","Images are sent to the planning Agent. Reference videos are sent only to the generation model; the Agent does not inspect their contents."],["参考图片会随规划请求交给辅助 Agent，并在确认生成后提交所选模型。","Reference images are sent to the planning Agent, then to the selected generation model after confirmation."]]);
+    rows.push(["请求格式", "Request encoding"]);
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

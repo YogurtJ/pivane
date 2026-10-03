@@ -81,3 +81,70 @@ test('transcription routes validate the project and do not start a session worke
         assert.equal((await result.json()).text, '转录文字'); assert.equal(f.calls(), 1);
     } finally { server.close(); await f.service.dispose(); }
 });
+
+function managedFixture(t, fetch) {
+    const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-asr-settings-'));
+    const values = new Map();
+    const credentials = { list: async () => new Set(values.keys()), save: async (id, key) => { values.set(id, key); }, get: async id => values.get(id), remove: async id => { values.delete(id); } };
+    const { MediaProviderService } = require('../server/media-provider-service');
+    const providers = new MediaProviderService({ directory, credentials, clean: false });
+    fs.writeFileSync(providers.file, JSON.stringify({ version: 1, providers: [], unrelated: { preserved: true } }));
+    const runtime = { getModels: () => [], getAvailable: async () => [], getAuth: async () => { throw Error('Managed speech must not need a chat provider'); } };
+    const service = new PiTranscriptionService({ createModelRuntime: async () => runtime, providerService: providers, fetch });
+    t.after(async () => { await service.dispose(); fs.rmSync(directory, { recursive: true, force: true }); });
+    const stamp = async () => ({ confirmed: true, expectedRevision: (await providers.snapshot()).revision });
+    const model = { id: 'custom-asr', providerId: 'speech', name: 'Custom speech', remoteModel: 'arbitrary-audio-model', protocol: 'openai' };
+    const provider = { id: 'speech', name: 'Speech', baseUrl: 'https://speech.fixture.invalid/v1', auth: { mode: 'bearer' }, downloadOrigins: [] };
+    const input = async requestId => { const catalog = await service.catalog(); return { requestId, modelId: catalog.models[0].id, revision: catalog.revision, language: 'auto', audio, confirmed: true }; };
+    return { service, providers, values, stamp, model, provider, input };
+}
+
+test('independent ASR models share native media credentials without registering a chat model or exposing a Key', async t => {
+    let uploaded = 0;
+    const f = managedFixture(t, async (url, options) => {
+        uploaded++; assert.equal(String(url), 'https://speech.fixture.invalid/v1/audio/transcriptions');
+        assert.equal(options.headers.Authorization, 'Bearer synthetic-speech-key');
+        assert.match(options.body.toString(), /arbitrary-audio-model/);
+        return response({ text: 'independent transcription' });
+    });
+    const saved = await f.service.saveModel({ ...await f.stamp(), model: f.model, provider: f.provider, apiKey: 'synthetic-speech-key' });
+    assert.equal(saved.modelId, 'asr:speech:custom-asr');
+    assert.equal(JSON.stringify(await f.service.configuration()).includes('synthetic-speech-key'), false);
+    assert.equal(f.providers.read().document.unrelated.preserved, true);
+    assert.deepEqual(await f.providers.catalogModels(), [], 'ASR models remain outside the generation/chat catalogs');
+    f.service.createModelRuntime = async () => { throw Error('Unrelated chat model configuration is unavailable'); };
+    assert.equal((await f.service.configuration()).nativeCatalogUnavailable, true, 'independent ASR setup remains usable without the legacy chat catalog');
+    assert.equal((await f.service.transcribe(await f.input('managed-request-0001'))).text, 'independent transcription');
+    assert.equal(uploaded, 1);
+    await assert.rejects(f.providers.removeProvider('speech', { ...await f.stamp() }), /Remove the provider models/);
+    await f.service.removeModel('custom-asr', await f.stamp());
+    assert.equal((await f.service.catalog()).models.length, 0);
+    assert.equal(f.values.get('speech'), 'synthetic-speech-key', 'removing an ASR model preserves its shared service credential');
+});
+
+test('registered ASR binds the shared service revision and holds mutation exclusion through its upload', async t => {
+    let release, calls = 0;
+    const f = managedFixture(t, async () => { calls++; await new Promise(resolve => { release = resolve; }); return response({ text: 'done' }); });
+    await f.service.saveModel({ ...await f.stamp(), model: f.model, provider: f.provider, apiKey: 'synthetic-key' });
+    const input = await f.input('managed-request-0001'), pending = f.service.transcribe(input);
+    while (!release) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.providers.active, 1);
+    await assert.rejects(f.service.saveModel({ ...await f.stamp(), model: { ...f.model, remoteModel: 'changed' } }), /finish the current operation/);
+    release(); await pending; assert.equal(f.providers.active, 0);
+    await f.service.saveModel({ ...await f.stamp(), model: { ...f.model, remoteModel: 'changed' } });
+    await assert.rejects(f.service.transcribe({ ...input, requestId: 'managed-request-0002' }), /配置已变化/);
+    assert.equal(calls, 1, 'stale model configuration never sends the audio');
+});
+
+test('shared speech origin rebinding disables ASR until the credential is explicitly rebound', async t => {
+    let calls = 0;
+    const f = managedFixture(t, async () => { calls++; return response({ text: 'done' }); });
+    await f.service.saveModel({ ...await f.stamp(), model: f.model, provider: f.provider, apiKey: 'synthetic-key' });
+    const input = await f.input('managed-request-0001');
+    await f.providers.saveProvider({ ...await f.stamp(), provider: { ...f.provider, baseUrl: 'https://other.fixture.invalid/v1' } });
+    const config = await f.service.configuration(); assert.equal(config.availableModels.length, 0); assert.equal(config.providers[0].keyNeedsRebind, true);
+    await assert.rejects(f.service.transcribe(input), /配置已变化/); assert.equal(calls, 0);
+    await f.providers.setKey('speech', { ...await f.stamp(), apiKey: 'rebound-synthetic-key' });
+    assert.equal((await f.service.catalog()).models.length, 1);
+});

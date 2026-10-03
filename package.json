@@ -1,6 +1,6 @@
 {
   "name": "pivane",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Pivane: a personal AI workspace powered by Pi Coding Agent with a media laboratory",
   "main": "server.js",
   "private": true,
@@ -61,6 +61,7 @@
     "jiti": "2.7.0",
     "marked": "18.0.11",
     "node-fetch": "^2.7.0",
+    "pdfjs-dist": "6.3.289",
     "strip-ansi": "7.2.0",
     "typebox": "1.3.27",
     "undici": "8.11.2",

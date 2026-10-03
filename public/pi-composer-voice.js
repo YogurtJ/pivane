@@ -24,87 +24,78 @@
     });
     class PiComposerVoice {
         constructor(host) {
-            this.host = host; this.button = document.getElementById('pi-transcribe-button'); this.settings = document.getElementById('pi-transcribe-settings');
-            this.enabled = false; this.phase = 'idle'; this.epoch = 0;
+            this.host = host; this.button = document.getElementById('pi-transcribe-button');
+            this.enabled = false; this.phase = 'idle'; this.epoch = 0; this.catalogRequest = 0;
             this.bar = node('section'); this.bar.className = 'pi-voice-bar'; this.bar.id = 'pi-voice-bar'; this.bar.hidden = true;
             this.bar.setAttribute('aria-label', translateUi("语音转录"));
-            this.models = node('select'); this.models.id = 'pi-voice-model'; this.models.setAttribute('aria-label', translateUi("转录模型"));
             this.message = node('p'); this.message.setAttribute('role', 'status'); this.message.setAttribute('aria-live', 'polite');
             this.result = node('textarea'); this.result.id = 'pi-voice-result'; this.result.hidden = true; this.result.setAttribute('aria-label', translateUi("转录文字"));
-            this.file = node('input'); this.file.type = 'file'; this.file.accept = '.wav,.mp3,audio/wav,audio/mpeg'; this.file.hidden = true;
-            this.upload = this.action(translateUi("转录音频文件"), () => this.file.click());
-            this.record = this.action(translateUi("开始录音"), () => this.toggle());
+            this.configure = this.action(translateUi("去配置"), () => window.dispatchEvent(new CustomEvent('workspace:open-settings', { detail: { tab: 'media', section: 'speech' } })));
+            this.configure.className = 'pi-voice-configure'; this.configure.hidden = true;
+            this.close = this.action('', () => { this.cancel(); this.bar.hidden = true; this.button.focus(); });
+            this.close.className = 'pi-voice-close'; this.close.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+            const notice = node('div'); notice.className = 'pi-voice-notice'; notice.append(this.message, this.configure, this.close);
             this.use = this.action(translateUi("加入当前草稿"), () => this.insert()); this.use.hidden = true;
             this.copy = this.action(translateUi("复制文字"), () => this.host.copy(this.result.value)); this.copy.hidden = true;
-            this.close = this.action(translateUi("收起"), () => { this.cancel(); this.bar.hidden = true; this.button.focus(); });
-            this.bar.append(this.models, this.record, this.upload, this.close, this.message, this.result, this.use, this.copy, this.file);
+            this.bar.append(notice, this.result, this.use, this.copy);
             document.getElementById('pi-attachments').before(this.bar);
             this.button.addEventListener('click', () => this.toggle());
-            this.settings.querySelector('span').textContent = translateUi("语音转录设置");
-            this.settings.addEventListener('click', () => this.open());
-            this.models.addEventListener('change', () => { try { localStorage.setItem('pi.web.transcriptionModel', this.models.value); } catch {} });
-            this.file.addEventListener('change', () => {
-                const file = this.file.files[0]; this.file.value = ''; if (!file) return;
-                if (!/\.(wav|mp3)$/i.test(file.name) || file.size > 7_500_000) return this.status(translateUi("请选择 WAV / MP3 音频，最大 7.5MB"));
-                this.submit(file, /\.mp3$/i.test(file.name) ? 'mp3' : 'wav', this.host.context());
-            });
             window.addEventListener('pagehide', () => this.cancel());
             document.addEventListener('visibilitychange', () => { if (document.hidden && ['permission', 'recording'].includes(this.phase)) this.cancel(); });
+            for (const event of ['transcription:configured', 'media-lab:configured', 'workspace:settings-closed']) {
+                window.addEventListener(event, () => { if (this.enabled) void this.load(true); });
+            }
             this.sync();
         }
         action(text, fn) { const b = node('button', text); b.type = 'button'; b.addEventListener('click', fn); return b; }
-        status(text) { this.message.textContent = text; this.bar.hidden = false; }
-        async setEnabled(value) { this.enabled = value; this.sync(); if (value) await this.load(); }
-        async load() {
-            if (this.loading) return this.loading;
+        status(text, configure = false) { this.message.textContent = text; this.configure.hidden = !configure; this.bar.hidden = false; }
+        async setEnabled(value) { if (!value) this.cancel(); this.enabled = value; this.sync(); if (value) await this.load(); }
+        async load(force = false) {
+            if (this.loading && !force) return this.loading;
+            const request = ++this.catalogRequest;
             this.loading = (async () => {
                 try {
                     const data = await this.host.api('/api/pi/composer/transcription');
-                    if (!this.enabled) return;
+                    if (!this.enabled || request !== this.catalogRequest) return;
                     this.catalog = data; let preferred;
                     try { preferred = localStorage.getItem('pi.web.transcriptionModel'); } catch {}
-                    this.models.replaceChildren(...(data.models || []).map(model => { const option = node('option', model.name); option.value = model.id; return option; }));
-                    if ((data.models || []).some(model => model.id === preferred)) this.models.value = preferred;
-                } catch (error) { this.status(translateUi(error.message)); }
-                finally { this.loading = null; this.sync(); }
+                    this.model = data.models?.find(model => model.id === preferred) || data.models?.[0] || null;
+                } catch (error) {
+                    if (request !== this.catalogRequest) return;
+                    this.catalog = this.model = null; this.status(translateUi(error.message), true);
+                } finally {
+                    if (request === this.catalogRequest) { this.loading = null; this.sync(); }
+                }
             })();
-            return this.loading;
-        }
-        async open() {
-            this.bar.hidden = false;
-            if (this.phase !== 'idle') return;
-            await this.load();
-            this.status(this.models.options.length ? translateUi("录音或选择音频后，将上传至所选模型转录；文字可编辑后发送。") : translateUi("没有可用的转录模型，请先配置 MiMo 或 OpenAI 兼容语音供应商。"));
-            this.models.focus();
+            this.sync(); return this.loading;
         }
         sync() {
             const context = this.host.context();
             if (['permission', 'recording'].includes(this.phase) && (!context.connected || this.origin?.key !== context.key || this.origin?.generation !== context.generation)) this.cancel();
-            this.button.hidden = !this.enabled; this.settings.hidden = !this.enabled;
-            this.button.disabled = !this.enabled || !context.connected || context.submitting || this.phase === 'transcribing' || this.phase === 'permission';
+            this.button.hidden = !this.enabled;
+            this.button.disabled = !this.enabled || (this.phase === 'idle' && Boolean(this.loading)) || this.phase === 'transcribing' || this.phase === 'permission'
+                || (Boolean(this.model) && (!context.connected || context.submitting));
             this.button.dataset.recording = String(this.phase === 'recording');
-            this.button.title = this.phase === 'recording' ? translateUi("结束录音并转录") : this.phase === 'transcribing' ? translateUi("正在转录…") : translateUi("语音转录");
+            this.button.title = this.phase === 'recording' ? translateUi("结束录音并转录") : this.phase === 'transcribing' ? translateUi("正在转录…") : translateUi("开始录音");
             this.button.setAttribute('aria-label', this.button.title); this.button.setAttribute('aria-pressed', String(this.phase === 'recording'));
             this.button.querySelector('i').className = this.phase === 'recording' ? 'fa-solid fa-stop' : this.phase === 'transcribing' ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-microphone';
-            const busy = this.phase !== 'idle';
-            this.models.disabled = busy;
-            this.upload.disabled = busy || !this.models.options.length || !context.connected || context.submitting;
-            this.record.disabled = this.button.disabled;
-            this.record.textContent = this.phase === 'recording' ? translateUi("结束录音并转录") : translateUi("开始录音");
-            this.close.textContent = ['permission', 'recording'].includes(this.phase) ? translateUi("取消录音") : translateUi("收起");
+            const closeLabel = ['permission', 'recording'].includes(this.phase) ? translateUi("取消录音") : translateUi("关闭转录提示");
+            this.close.title = closeLabel; this.close.setAttribute('aria-label', closeLabel);
             this.use.disabled = !context.connected || context.submitting;
         }
         async toggle() {
             if (this.phase === 'recording') return this.finish();
             if (this.phase !== 'idle') return;
-            if (!this.catalog || !this.models.options.length) { await this.open(); return; }
+            if (!this.catalog) await this.load();
+            if (!this.model) { this.status(translateUi("没有可用的转录模型。"), true); return; }
             if (!this.host.context().connected || this.host.context().submitting) return;
             const Audio = window.AudioContext || window.webkitAudioContext;
-            if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia || !Audio) { this.status(translateUi("麦克风需要 HTTPS 或 localhost；也可以选择 WAV / MP3 音频转录。")); return; }
-            this.origin = { ...this.host.context() }; const epoch = ++this.epoch;
+            if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia || !Audio) { this.status(translateUi("麦克风需要 HTTPS 或 localhost 和浏览器录音支持。")); return; }
+            this.origin = { ...this.host.context() }; this.recordModel = { ...this.model }; this.recordRevision = this.catalog.revision;
+            const epoch = ++this.epoch;
             this.phase = 'permission'; this.status(translateUi("正在请求麦克风权限…")); this.sync();
             try {
-                // Construct/resume within the user gesture, before permission awaits (Safari).
+                // Resume inside the gesture, before awaiting microphone permission (Safari).
                 this.audio = new Audio(); await this.audio.resume();
                 if (epoch !== this.epoch) return;
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 }, video: false });
@@ -127,7 +118,7 @@
                 this.status(translateUi("录音中 {0} 秒，再点麦克风结束并转录", 0)); this.sync();
             } catch {
                 if (epoch !== this.epoch) return;
-                this.release(); this.phase = 'idle'; this.status(translateUi("无法使用麦克风，请检查浏览器权限，或选择音频文件。")); this.sync();
+                this.release(); this.phase = 'idle'; this.status(translateUi("无法使用麦克风，请检查浏览器权限。")); this.sync();
             }
         }
         release() {
@@ -145,17 +136,15 @@
             const chunks = this.chunks, rate = this.rate, origin = this.origin;
             this.release(); this.chunks = [];
             if (this.samples < rate / 4) { this.phase = 'idle'; this.status(translateUi("录音太短，请重新录音")); this.sync(); return; }
-            await this.submit(wav(chunks, rate), 'wav', origin);
+            await this.submit(wav(chunks, rate), origin, this.recordModel.id, this.recordRevision);
         }
-        async submit(blob, format, origin) {
-            if (!this.models.value || this.phase === 'transcribing' || !origin.connected || origin.submitting) return;
+        async submit(blob, origin, modelId, revision) {
+            if (this.phase === 'transcribing' || !origin.connected || origin.submitting) return;
             this.phase = 'transcribing'; this.status(translateUi("正在转录…")); this.result.hidden = true; this.use.hidden = this.copy.hidden = true; this.sync();
-            // Freeze the model before asynchronous file reading; no automatic retry.
-            const modelId = this.models.value, revision = this.catalog.revision;
             try {
                 const data = await base64(blob);
                 const response = await this.host.api('/api/pi/composer/transcription', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-                    cwd: origin.cwd, requestId: Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join(''), modelId, revision, language: 'auto', audio: { format, data }, confirmed: true
+                    cwd: origin.cwd, requestId: Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join(''), modelId, revision, language: 'auto', audio: { format: 'wav', data }, confirmed: true
                 }) });
                 this.result.value = response.text; this.phase = 'idle';
                 const current = this.host.context();

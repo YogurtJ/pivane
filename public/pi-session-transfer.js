@@ -90,7 +90,7 @@
             this.body.append(node('p', translateUi('保留会话 ID、完整历史、分支和书签。后续使用目标项目的工作目录与指令；项目文件需要另行准备。')));
             const projectLabel = node('label', translateUi('目标项目'));
             const project = node('select'); project.id = 'pi-transfer-project';
-            for (const value of [...new Set(this.options.projects().map(p => p.cwd).filter(value => value && value !== cwd))]) {
+            for (const value of [...new Set(this.options.projects().filter(p => Number(p.sessionCount) > 0).map(p => p.cwd).filter(value => value && value !== cwd))]) {
                 const option = node('option', value); option.value = value; project.append(option);
             }
             const other = node('option', translateUi('其他项目路径…')); other.value = ''; project.append(other); projectLabel.append(project);
@@ -122,7 +122,7 @@
                         this.status.textContent = result.canMove ? translateUi('检查通过。确认后移动原线程，归档、提醒、用量和历史交付随线程保留。') : translateUi('请先处理以上关联，再重新检查。');
                         if (result.canMove) { reviewed = result; submit.textContent = translateUi('确认移动'); }
                     } else {
-                        const requestId = 'move-' + crypto.randomUUID();
+                        const requestId = 'move-' + Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
                         const result = await this.options.apiFetch('/api/pi/sessions/' + encodeURIComponent(session.id) + '/move', {
                             method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(120000),
                             body: JSON.stringify({ cwd, targetCwd: reviewed.targetCwd, expectedRevision: reviewed.revision, requestId }) });

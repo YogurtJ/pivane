@@ -606,6 +606,16 @@ document.addEventListener('DOMContentLoaded', () => {
     function setConnection(kind, text) {
         elements.connectionBanner.dataset.state = kind;
         elements.connectionText.textContent = text;
+        // Only the loading placeholder follows connection phases. Reconnecting
+        // an already visible transcript must not replace the reader's content.
+        const loading = elements.transcript.querySelector('.pi-transcript-loading');
+        if (loading) {
+            loading.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+            loading.setAttribute('aria-busy', String(kind === 'connecting'));
+            loading.querySelector('.pi-spinner')?.toggleAttribute('hidden', kind !== 'connecting');
+            const label = loading.querySelector('[data-loading-label]');
+            if (label) label.textContent = text;
+        }
     }
 
     // One projection for the footer: related work does not lock the main composer.
@@ -2111,9 +2121,9 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.compactButton.disabled = true;
         elements.currentThreadMenu.disabled = false;
         transcriptScroll.reset();
-        elements.transcript.innerHTML = `<div class="pi-transcript-loading"><span class="pi-spinner"></span><span>${session.ephemeral ? translateUi("正在启动临时 Pi runtime") : translateUi("正在加载 Pi session")}</span></div>`;
+        elements.transcript.innerHTML = `<div class="pi-transcript-loading" role="status" aria-live="polite" aria-busy="true"><span class="pi-spinner" aria-hidden="true"></span><span data-loading-label>${session.ephemeral ? translateUi("正在启动临时 Pi runtime") : translateUi("正在加载 Pi session")}</span></div>`;
         document.getElementById('pi-chat-knowledge').hidden = true;
-        setConnection('connecting', translateUi("正在启动 Pi runtime"));
+        setConnection('connecting', translateUi("正在连接 Pi Agent"));
         setAgentState('connecting', translateUi("正在启动"), getSessionTitle(session));
         const openedCwd = state.cwd;
         const connected = await connectSocket(session);
@@ -2143,6 +2153,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const openCommand = session.ephemeral ? 'open_ephemeral' : 'open_session';
                     const payload = { token: state.token, cwd: state.cwd };
                     if (!session.ephemeral) payload.sessionId = session.id;
+                    setConnection('connecting', translateUi("正在加载 Pi session"));
                     const snapshot = await requestRpc(openCommand, payload, 180000);
                     if (generation !== state.socketGeneration) return resolve(false);
                     state.connected = true;
@@ -2879,10 +2890,14 @@ document.addEventListener('DOMContentLoaded', () => {
             state.lastAssistantText = messageText(messages[i].content).trim(); break;
         }
         shell.setMessages(messages);
+        const tailChanged = transcriptView.tailActive !== state.streaming;
         transcriptView.tailActive = state.streaming;
         if (!elements.transcript.children.length) renderEmptySession();
         else if (!keep) transcriptView.refresh();
-        else transcriptView.refreshFrom(changed[0] || retained);
+        // Exact retained records already own their layout. Still run shell, edit,
+        // knowledge and workflow reconciliation above/below; their state is not
+        // determined by message equality alone.
+        else if (changed.length || removed.length || tailChanged) transcriptView.refreshFrom(changed[0] || retained);
         chatKnowledge?.decorate();
         transcriptScroll.restore(readingPosition);
         workflows.decorate();
@@ -3642,6 +3657,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.stopButton.setAttribute('aria-label', elements.stopButton.title);
         elements.deliveryMode.classList.add('visible');
         elements.deliveryMode.disabled = !state.connected || compacting || stopping || state.resourceRequested;
+        composer.syncDelivery();
         elements.input.closest('.pi-composer').dataset.running = String(state.connected && busy);
         elements.sendButton.disabled = !state.connected || compacting;
         elements.compactButton.disabled = !state.connected || busy || state.pendingUi.size > 0;

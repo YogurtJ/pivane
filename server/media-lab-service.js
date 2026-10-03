@@ -4,7 +4,8 @@ const { applyPromptPrefix } = require('./media-profile');
 const { MediaHttpExecutor } = require('./media-http-protocol');
 
 const KINDS = new Set(['image', 'video', 'tts']);
-const TYPES = new Set(['text', 'textarea', 'number', 'select', 'boolean', 'json']);
+const { MEDIA_TYPES, parseMedia, mediaParameters } = require('./media-attachments');
+const TYPES = new Set(['text', 'textarea', 'number', 'select', 'boolean', 'json', 'image', 'video']);
 const RESERVED = new Set(['__proto__', 'constructor', 'prototype']);
 const clone = value => JSON.parse(JSON.stringify(value));
 function fail(message, statusCode = 400) { throw Object.assign(new Error(message), { statusCode }); }
@@ -20,6 +21,7 @@ function validateDefinition(model) {
     if (!object(model.parameters) || Object.keys(model.parameters).length > 60) fail('A model requires at most 60 parameter definitions');
     for (const [key, field] of Object.entries(model.parameters)) {
         if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,80}$/.test(key) || RESERVED.has(key) || !object(field) || !TYPES.has(field.type)) fail('Invalid media parameter definition');
+        if (MEDIA_TYPES.has(field.type) && (field.default !== undefined || field.const !== undefined)) fail('Attachments cannot have saved defaults or fixed values');
         if (field.maxLength !== undefined && (!Number.isInteger(field.maxLength) || field.maxLength < 1 || field.maxLength > 64000)) fail(`Invalid text limit: ${key}`);
         if (field.type === 'select' && (!Array.isArray(field.choices) || !field.choices.length || field.choices.length > 500
             || field.choices.some(choice => typeof (object(choice) ? choice.value : choice) !== 'string'))) fail(`Invalid choices: ${key}`);
@@ -57,7 +59,9 @@ function validateParameters(definitions, raw = {}) {
             else if (field.required) fail(`${field.label || key}: required`);
             else continue;
         }
-        if (field.type === 'number') {
+        if (MEDIA_TYPES.has(field.type)) {
+            parseMedia(value, field.type);
+        } else if (field.type === 'number') {
             if (typeof value !== 'number' || !Number.isFinite(value) || field.integer && !Number.isInteger(value)
                 || field.min !== undefined && value < field.min || field.max !== undefined && value > field.max) fail(`${field.label || key}: invalid number or range`);
             const stepBase = field.min ?? 0;
@@ -75,6 +79,7 @@ function validateParameters(definitions, raw = {}) {
         if (field.const !== undefined && JSON.stringify(value) !== JSON.stringify(field.const)) fail(`${field.label || key}: fixed value`);
         result[key] = clone(value);
     }
+    mediaParameters(definitions, result);
     return result;
 }
 
@@ -82,6 +87,7 @@ class MediaLabService {
     constructor(options) {
         Object.assign(this, options);
         this.tickets = new Map();
+        this.planningAttachments = new Map();
         this.inFlight = 0;
         this.now = options.now || Date.now;
         this.httpExecutor = options.httpExecutor || new MediaHttpExecutor({ fetch: options.fetch });
@@ -206,7 +212,17 @@ class MediaLabService {
     }
 
     async plan(input) {
-        const resolved = await this.validate(input);
+        const parameters = { ...input.parameters };
+        const references = {};
+        for (const [key, value] of Object.entries(parameters)) {
+            if (typeof value !== 'string' || !value.startsWith('attachment:')) continue;
+            const ref = this.planningAttachments.get(value);
+            if (!ref || ref.modelId !== input.modelId || ref.key !== key) fail('Attachment reference is unavailable');
+            references[key] = value;
+            parameters[key] = ref.value;
+        }
+        const resolved = await this.validate({ ...input, parameters });
+        Object.assign(resolved.parameters, references);
         return { version: 1, id: `plan-${randomUUID()}`, kind: resolved.model.kind,
             modelId: resolved.model.id, summary: String(input.summary || resolved.model.name).slice(0, 500),
             parameters: resolved.parameters, jobs: [resolved.parameters], warnings: resolved.warnings,

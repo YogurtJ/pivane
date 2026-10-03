@@ -45,6 +45,19 @@ function connectionTemplates() {
         http: { path: '/contents/generations/tasks', body: { model: { $model: true }, content: [{ type: 'text', text: { $param: 'prompt' } }], duration: { $param: 'duration' }, ratio: { $param: 'ratio' }, resolution: { $param: 'resolution' } },
             poll: { idPath: ['id'], path: '/contents/generations/tasks/{id}', statusPath: ['status'], pending: ['queued','running'], succeeded: ['succeeded'], failed: ['failed','cancelled','expired'], intervalMs: 5000 },
             response: { type: 'url', path: ['content','video_url'], mimeType: 'video/mp4' }, timeoutMs: 1800000 } };
+    const reference = { type: 'image', label: '参考图片', required: true };
+    const imageEdit = clone(gptImage);
+    imageEdit.name = 'GPT Image Edit'; imageEdit.parameters.image = reference;
+    imageEdit.http.path = '/images/edits'; imageEdit.http.encoding = 'multipart'; imageEdit.http.body.image = { $param: 'image' };
+    imageEdit.instructions = 'OpenAI-compatible multipart Images edits endpoint. Requires a model supporting image editing. Check provider-specific format and size limits.';
+    const geminiEdit = clone(geminiImage);
+    geminiEdit.name = 'Gemini Image Edit'; geminiEdit.parameters.image = reference;
+    geminiEdit.http.body.contents[0].parts.push({ inlineData: { mimeType: { $mimeType: 'image' }, data: { $base64: 'image' } } });
+    geminiEdit.instructions = 'Gemini image generation with one reference image. Use an image-capable model.';
+    const arkEdit = clone(arkImage); arkEdit.name = 'Seedream Image Edit'; arkEdit.parameters.image = reference; arkEdit.http.body.image = { $param: 'image' };
+    const arkFirstFrame = clone(arkVideo); arkFirstFrame.name = 'Seedance Image to Video'; arkFirstFrame.parameters.image = { ...reference, label: '首帧图片' };
+    arkFirstFrame.http.body.content.push({ type: 'image_url', image_url: { url: { $param: 'image' } }, role: 'first_frame' });
+    arkFirstFrame.instructions = 'Seedance image-to-video with one first-frame image. Check model support and image limits in the provider documentation.';
     return [
         { id: 'openai-image', name: 'OpenAI 兼容图像 · base64', model: image },
         { id: 'image-url', name: '图像 JSON · 下载 URL', model: imageUrl },
@@ -55,18 +68,22 @@ function connectionTemplates() {
         { id: 'gpt-image', name: 'OpenAI / 兼容图像 · 自动识别', model: gptImage, recommended: true, help: '使用 Images API，自动识别 base64 或下载链接。只需填写模型 ID；尺寸和质量可在生成时选填，下载链接的额外来源按服务配置。' },
         { id: 'gemini-image', name: 'Google · Gemini 生图', model: geminiImage, recommended: true, help: '使用原生 generateContent 协议，服务地址通常以 /v1beta 结尾，认证使用 x-goog-api-key。只填支持生图的模型 ID，不带 models/。' },
         { id: 'ark-image', name: '火山方舟 · Seedream 生图', model: arkImage, recommended: true, help: '使用方舟 /api/v3 地址，填写自己的模型或推理接入点 ID；URL 下载来源需按账号区域配置。' },
+        { id: 'openai-image-edit', name: 'OpenAI 兼容 · 参考图编辑', model: imageEdit, recommended: true },
+        { id: 'gemini-image-edit', name: 'Google · 参考图生图', model: geminiEdit, recommended: true },
+        { id: 'ark-image-edit', name: '火山方舟 · 参考图生图', model: arkEdit, recommended: true },
+        { id: 'ark-video-first-frame', name: '火山方舟 · 首帧生视频', model: arkFirstFrame, recommended: true },
         { id: 'ark-video', name: '火山方舟 · Seedance 视频', model: arkVideo, recommended: true, help: '使用方舟 /api/v3 地址；已预填创建和查询协议，模型 ID 由你填写。下载来源需按账号区域配置。' }
     ];
 }
 function connectionSchema() {
     return { version: 1, modelFields: ['id?','name','kind=image|video|tts','remoteModel','instructions','parameters','http'],
-        parameters: 'Object keyed by parameter name; existing types: text, textarea, number, select, boolean, json. Supported required/default/const/min/max/step/integer/maxLength/choices/label/description.',
-        http: { path: 'POST path relative to provider Base URL (leading slash does not remove its prefix); optional {model} or {param:fieldName} (scalar parameter values are URL-encoded)',
-            body: 'JSON object template: {$param:"field"} inserts a typed parameter, {$model:true} inserts the remote model ID, {$params:true} inserts the entire parameter object. No code or expressions.',
+        parameters: 'Object keyed by parameter name; existing types: text, textarea, number, select, boolean, json, image, video. image/video are uploaded data URLs (PNG/JPEG/WebP or MP4), combined maximum 20MiB, no default/const. Supported required/default/const/min/max/step/integer/maxLength/choices/label/description.',
+        http: { encoding: 'json (default) or multipart. Multipart is a flat map of scalar values/$model/$param; image/video parameters become file parts.', path: 'POST path relative to provider Base URL (leading slash does not remove its prefix); optional {model} or {param:fieldName} (scalar parameter values are URL-encoded)',
+            body: 'JSON object template: {$param:"field"} inserts a typed parameter, {$model:true} inserts the remote model ID, {$params:true} inserts the entire parameter object. {$base64:"attachment"} and {$mimeType:"attachment"} extract image/video payload and MIME. No code or expressions.',
             response: { type: 'base64 | url | binary | image-json (image only: path points to an object with b64_json or url)', path: 'JSON key/index array for base64/url; * selects the first matching array element (e.g. Gemini image parts)', mimeType: 'auto | image/png | image/jpeg | image/webp | video/mp4 | audio/wav | audio/mpeg' },
             poll: 'Optional: idPath, path containing {id} OR urlPath, statusPath, distinct pending/succeeded/failed scalar arrays (string/number/boolean/null; null matches an absent status), intervalMs 1000–60000. Poll uses GET on the provider origin only. Polling response must be JSON with base64/url result.',
             timeoutMs: '1000–1800000; default 180000 synchronous or 1800000 asynchronous' },
-        boundaries: ['Draft only: no credentials, network test, save, or execution', 'Never put keys in instructions, parameters, request body or URLs', 'No arbitrary headers, multipart upload, request signing, raw PCM, arbitrary workflow code or automatic retries', 'Downloads require provider-approved exact origins; cross-origin downloads receive no provider credentials', 'One API request/task and one output up to 64MiB per confirmation; do not add batch parameters'],
+        boundaries: ['Draft only: no credentials, network test, save, or execution', 'Never put keys in instructions, parameters, request body or URLs', 'No arbitrary headers, request signing, raw PCM, arbitrary workflow code or automatic retries', 'Downloads require provider-approved exact origins; cross-origin downloads receive no provider credentials', 'One API request/task and one output up to 64MiB per confirmation; do not add batch parameters'],
         providerTemplates: [
             { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', auth: { mode: 'bearer' }, modelsPath: '/models', probePath: '/models', downloadOrigins: [] },
             { id: 'google', name: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', auth: { mode: 'header', header: 'x-goog-api-key', prefix: '' }, modelsPath: '/models', probePath: '/models', downloadOrigins: [] },

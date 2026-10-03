@@ -151,7 +151,7 @@ Pi 0.99.1 候选的原生资源清单包含 `builtin:mcp`、`builtin:codemode`�
 
 `fileBrowser=true` 标记项目浏览接口 `GET /files/list?cwd&path&hidden` 和 `GET /files/search?cwd&q&hidden`，可在没有会话 worker 时使用。只返回经项目／私密路径及描述符验证的文件和目录元数据，`entries` 含 `name/path/kind/link`，`partial` 明确扫描是否不完整；目录按需读取，文件名搜索覆盖未展开目录但跳过目录链接及常见依赖／构建目录。2 并发、3 秒扫描预算，目录最多返回 500 项、搜索最多返回 100 项；参数、范围与错误见 [FILE_VIEWER.md](FILE_VIEWER.md#目录与文件名搜索-api)。
 
-`filePreviews=true` 提供 `GET /files/preview?cwd&path` 的类型化 JSON 快照（16 MiB、UTF-8 文本或 base64），供图片、HTML 隔离预览及浏览器原字节下载；`/files/content` 保持原语义。`deliverables=true` 提供 `GET /deliverables?cwd&sessionId` 列表，加 `path` 查已登记来源别名，加 `id/index` 读取原生当前分支可见的交付快照。新 `deliver_files` 工具在受管 worker 中登记授权成果并追加原生引用，不提供任意 Web 注册接口。类型、来源、边界和错误见 [文件交付契约](FILE_VIEWER.md#类型化预览与交付-api)。
+`filePreviews=true` 提供 `GET /files/preview?cwd&path` 的类型化 JSON 快照（16 MiB、UTF-8 文本或 base64），供图片、PDF、CSV/TSV、SVG、音频、HTML 隔离预览及浏览器原字节下载；`/files/content` 保持原语义。`deliverables=true` 提供 `GET /deliverables?cwd&sessionId` 列表，加 `path` 查已登记来源别名，加 `id/index` 读取原生当前分支可见的交付快照。新 `deliver_files` 工具在受管 worker 中登记授权成果并追加原生引用，不提供任意 Web 注册接口。类型、来源、边界和错误见 [文件交付契约](FILE_VIEWER.md#类型化预览与交付-api)。
 
 `fileViewer=true` 标记已挂载 `GET /files/content?cwd&path`：按当前项目范围读取普通 UTF-8 文件，最大 2MiB、4 并发，返回 cwd/path/absolutePath/content/size/modifiedAt/readAt/revision，响应 no-store/nosniff。复用 token/Origin/realpath/项目根校验，拒绝凭据、越界软链接、非普通文件、二进制与读取中变化；不启动 worker、不写文件或历史。write 记录全文来自原生消息，当前磁盘全文仅用户选择/刷新时请求。字段、错误码及展示契约见 [FILE_VIEWER.md](FILE_VIEWER.md)。
 
@@ -306,7 +306,7 @@ Body: `{ "cwd": "/workspace/demo" }`。先经过 token/Origin/realpath 根检查
 | POST | `/sessions/:id/move` | `{cwd,targetCwd,expectedRevision,requestId}`，拒绝未知字段；requestId 为 16–80 位字母／数字／连字符，expectedRevision 为预览的 64 位小写 SHA256。成功 200 `{session,requestId,moved:true}`。 |
 | GET | `/sessions/:id/resolve?cwd=...` | 返回 `{session,moved,sourceCwd?}`。先找该项目的当前原生 ID，缺失时才使用同 ID 的已提交移动链；校验目标原生历史前缀、路径与访问范围。 |
 
-会话最多 64 MiB，完整 v3、同身份和同文件系统，完整树／时间／ID 保留。来源与目标文件路径在首次 await 前进入 Supervisor 移动互斥；来源只在空闲独占区停止，后台子 Agent、相关业务引用及目录预算未核实均拒绝。移动期间来源和目标的会话写入／重连被阻止；任务线程创建、线程间消息派发与定时派发临时暂停。用量服务在整个发布／归属变更期间串行保留入账槽，旧事实与日报归属在 SQLite FULL 事务中转移，缓存游标失效。完整支持范围见[会话工作流](SESSION_WORKFLOWS.md#移动线程到其他项目)。
+待移动会话最多 64 MiB，完整 v3、同身份和同文件系统，完整树／时间／ID 保留。其他历史会话的关联检查分块投影元数据，最多 10000 文件／1 GiB 原始扫描／256 MiB 投影元数据，单条所需元数据 1 MiB、嵌套 256 层；不把待移动文件上限套到其他历史，超限／变化分别返回 `SESSION_MOVE_SCAN_BUDGET`／`SESSION_MOVE_SCAN_CHANGED`，无效 JSON 返回 `SESSION_MOVE_SCAN_INVALID`。来源与目标文件路径在首次 await 前进入 Supervisor 移动互斥；来源只在空闲独占区停止，后台子 Agent、相关业务引用及目录预算未核实均拒绝。移动期间来源和目标的会话写入／重连被阻止；任务线程创建、线程间消息派发与定时派发临时暂停。用量服务在整个发布／归属变更期间串行保留入账槽，旧事实与日报归属在 SQLite FULL 事务中转移，缓存游标失效。完整支持范围见[会话工作流](SESSION_WORKFLOWS.md#移动线程到其他项目)。
 
 成功请求持久去重，同一 requestId 换参数拒绝；进入发布阶段后的失败、回滚和未知结果不重跑。未完成日志使两边的会话访问返回 409 `SESSION_MOVE_RECOVERY`，不会在启动时自动迁移或恢复。普通冲突 409 `SESSION_MOVE_CONFLICT`，运行冲突使用 `SESSION_BUSY`，路径／原生读取等错误 400；响应均 no-store。旧地址解析不开放 ID 全局搜索，来源仍须在允许根内，目标必须存在且可访问。
 
@@ -514,10 +514,13 @@ gateway 当前白名单：
 
 `/api/pi/status.transcription=true` 启用主输入区麦克风。接口复用 `/api/pi` 的身份／Origin 检查，响应 `Cache-Control: no-store`，不启动 worker，不写媒体历史或会话正文。
 
-- `GET /api/pi/composer/transcription` 返回 `{revision,models:[{id,provider,modelId,name,protocol,baseUrl}],maximumBytes:7500000,maximumSeconds:120}`。模型只来自已配置且可用的供应商；协议为 `mimo` 或 `openai`。
+- `GET /api/pi/composer/transcription` 返回 `{revision,models:[{id,provider,modelId,name,protocol,baseUrl,managedModelId?,configurationRevision?}],maximumBytes:7500000,maximumSeconds:120}`。合并已有原生目录与独立接入的可用转录模型；协议为 `mimo`（音频消息 JSON）或 `openai`（multipart 音频转录）。托管模型选择 ID 为 `asr:<providerId>:<modelId>`。
+- `GET /api/pi/composer/transcription/settings` 返回 `{revision,providers,transcriptionModels,transcriptionProtocols,availableModels}`。服务和凭据状态复用媒体连接快照；不回显 Key。`transcriptionModels` 为 `{id,providerId,name,remoteModel,protocol}`，协议选项从服务端返回。
+- `POST /api/pi/composer/transcription/models` 接受 `{confirmed:true,expectedRevision,model,provider?,apiKey?}`。现有服务只引用 `model.providerId`；新服务在同一互斥中创建已验证的 `provider` 与模型，并通过公开 ModelRuntime 保存凭据。新服务认证为 `none` 时省略 Key，其余认证必须提供 Key；复用服务的地址与 Key 在共享服务管理中修改。返回新的连接快照及 `modelId`。模型 ID 可填写该协议下服务端实际 ID，无须添加聊天模型。
+- `DELETE /api/pi/composer/transcription/models/:id` 接受 `{confirmed:true,expectedRevision}`，只删除转录定义，保留共享服务与凭据。最多 60 个转录定义；接入和删除受媒体服务修订与占用互斥保护。
 - `POST /api/pi/composer/transcription` 接受 `{cwd,requestId,modelId,revision,language:'auto'|'zh'|'en',audio:{format:'wav'|'mp3',data:<base64>},confirmed:true}`。`modelId` 是目录返回的选择 ID，`requestId` 为 16–80 个字母／数字／连字符；配置修订、项目范围、音频签名及最大 7.5MB 在上传前校验。返回 `{text,model:{provider,id}}`，文字最大 65536 字符。
 - 最多两项并发；同一进程保留最多 32 项请求，已结束记录 15 分钟后可回收。相同标识／音频／选择共享同一结果或失败，标识对应不同请求返回 409；没有自动重试。配置变化返回 409，繁忙返回 429，远端失败或超时返回 502，认证不可用返回 503。请求超时不证明远端取消，收起浏览器面板不取消已上传音频。
-- `/api/pi/activity.transcriptionActive` 计入正在读取模型目录或处理转录的数量；维护空闲判定和异步关闭等待正在处理的转录。页面按线程及连接代次核对结果，最新草稿保留；迟到或超限结果留在面板由用户检查。完整行为见[语音转录](COMPOSER_TOOLS.md#语音转录)。
+- `/api/pi/activity.transcriptionActive` 计入正在读取目录／配置或处理转录的数量；维护空闲判定和异步关闭等待正在处理的转录。托管转录在读取 Key 前占用共享服务，配置变更或来源重新绑定会在上传前拒绝。页面按线程及连接代次核对结果，最新草稿保留；迟到或超限结果留在面板由用户检查。完整行为见[语音转录](COMPOSER_TOOLS.md#语音转录)。
 
 ### 3.6 模型和思考
 
@@ -805,7 +808,7 @@ Skill 创建 body：
 | POST | `/api/pi/media/lab/models` | `{model, confirmed:true}` 添加本地 manual/HTTP JSON 模型，不覆盖已有 ID |
 | GET | `/api/pi/media/lab/docs` | 接入协议 Markdown，仍需 token |
 | POST | `/api/pi/media/lab/plan` | `{kind, selectedModelId, instruction, parameters, cwd?}`，受限 Pi 单项规划 |
-| POST | `/api/pi/media/lab/review` | `{modelId, parameters, source?:{imageData?,imageUrl?}}`，返回规范参数、warnings、source 和 10 分钟 ticket |
+| POST | `/api/pi/media/lab/review` | `{modelId, parameters, source?:{imageData?,imageUrl?}}`，返回规范参数、warnings、source 和 10 分钟 ticket；`image`/`video` 参数接受 PNG/JPEG/WebP/MP4 data URL，附件合计最多 20MiB，source 仍仅为旧 MiniMax 首帧兼容 |
 | POST | `/api/pi/media/lab/execute` | 只接受 `{ticket, confirmed:true}`，执行该服务器票据 |
 | GET | `/api/pi/media/lab/history?kind=image\|video\|tts` | 只读旧、新媒体记录，不自动导入或改写 |
 | DELETE | `/api/pi/media/lab/history/:kind/:id` | 明确删除选中的本地文件和记录 |

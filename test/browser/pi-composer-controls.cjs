@@ -15,8 +15,10 @@ async function run(browser, viewport, legacy = false) {
     const views = new Map(sessions.map(s => [s.id, controls(s.id)]));
     const history = new Map(sessions.map(s => [s.id, [{ role: 'user', content: `历史问题 ${s.id}`, timestamp: 1 }]]));
     let pendingOpen, pendingStop, pendingTranscription, failStop = false;
-    const uploads = [];
+    const uploads = [], configurations = [];
+    let voiceConfigured = false, savedSpeech, savedProvider;
     const voiceModel = { id: JSON.stringify(['fixture', 'mimo-v2.5-asr']), name: 'Fixture ASR' };
+    const voiceSettings = () => ({ revision: 'voice-fixture', transcriptionProtocols: [{ id: 'openai', name: '音频转录接口' }, { id: 'mimo', name: '音频消息接口' }], providers: savedProvider ? [{ ...savedProvider, models: [], keyConfigured: true }] : [], transcriptionModels: savedSpeech ? [savedSpeech] : [], availableModels: voiceConfigured ? [voiceModel] : [] });
     const reply = (ws, cmd, data, error) => ws.send(JSON.stringify({ type: 'response', id: cmd.id, command: cmd.type, success: !error, data, error }));
     const emit = (socket, event) => socket.ws.send(JSON.stringify(event));
     const snapshot = id => ({ session: sessions.find(s => s.id === id), state: states.get(id), controls: legacy ? undefined : views.get(id),
@@ -25,8 +27,14 @@ async function run(browser, viewport, legacy = false) {
     await page.addInitScript(({ cwd }) => { localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem(`pi.web.session:${cwd}`, 'a'); }, { cwd });
     await page.route('**/api/**', route => {
         const req = route.request(), endpoint = new URL(req.url()).pathname;
+        if (endpoint === '/api/pi/composer/transcription/settings') return route.fulfill({ json: voiceSettings() });
+        if (endpoint === '/api/pi/composer/transcription/models') {
+            const input = req.postDataJSON(); configurations.push(input); savedSpeech = input.model; savedProvider = input.provider;
+            voiceModel.id = `asr:${savedProvider.id}:${savedSpeech.id}`; voiceConfigured = true;
+            return route.fulfill({ json: { ...voiceSettings(), modelId: voiceModel.id } });
+        }
         if (endpoint === '/api/pi/composer/transcription') {
-            if (req.method() === 'GET') return route.fulfill({ json: { revision: 'voice-fixture', models: [voiceModel] } });
+            if (req.method() === 'GET') return route.fulfill({ json: { revision: 'voice-fixture', models: voiceConfigured ? [voiceModel] : [] } });
             uploads.push(req.postDataJSON()); pendingTranscription = route; return;
         }
         if (req.method() !== 'GET') { writes.push(endpoint); return route.fulfill({ json: {} }); }
@@ -66,7 +74,11 @@ async function run(browser, viewport, legacy = false) {
             throw Error('unexpected ' + cmd.type);
         });
     });
-    const delivery = async mode => { await page.locator('#pi-composer-add-button').click(); await page.locator('#pi-delivery-mode').selectOption(mode); };
+    const delivery = async mode => {
+        await page.locator('#pi-composer-add-button').click(); await page.locator('#pi-delivery-toggle').click();
+        if (mode === 'follow_up' && !legacy) await page.screenshot({ path: `/tmp/pi-composer-mode-menu-${viewport.width}.png` });
+        await page.locator(`[data-delivery-mode="${mode}"]`).click();
+    };
     const choose = async id => {
         if (viewport.width < 900) await page.locator('#pi-toggle-sessions').click();
         await page.locator(`[data-session-id="${id}"] .pi-session-main`).click();
@@ -159,7 +171,31 @@ async function run(browser, viewport, legacy = false) {
     assert.equal(await page.locator('#pi-stop-button').isVisible(), false);
     assert.equal(await page.locator('#pi-input').inputValue(), '');
     // Record through a synthetic browser microphone, then preserve concurrent typing.
-    await page.waitForFunction(() => document.querySelector('#pi-voice-model').options.length === 1);
+    await page.waitForFunction(() => !document.querySelector('#pi-transcribe-button').disabled);
+    await page.locator('#pi-transcribe-button').click();
+    assert.match(await page.locator('#pi-voice-bar').textContent(), /没有可用的转录模型。/);
+    assert.doesNotMatch(await page.locator('#pi-voice-bar').textContent(), /MiMo|OpenAI|转录音频文件|收起/);
+    assert.equal(await page.locator('#pi-voice-bar input[type="file"]').count(), 0);
+    assert.equal(await page.locator('#pi-voice-bar select').count(), 0);
+    assert.ok(await page.locator('.pi-voice-configure').evaluate(n => getComputedStyle(n).color !== getComputedStyle(n.previousElementSibling).color));
+    await page.screenshot({ path: `/tmp/pi-voice-empty-${viewport.width}.png` });
+    await page.locator('.pi-voice-configure').click();
+    await page.locator('#settings-speech').waitFor({ state: 'visible' });
+    await page.getByRole('button', { name: '添加转录模型', exact: true }).click();
+    await page.getByLabel('转录模型 ID', { exact: true }).fill('custom-recognition-model');
+    await page.getByLabel('服务地址', { exact: true }).fill('https://speech.fixture.invalid/v1');
+    await page.locator('#settings-transcription-body input[type="password"]').fill('synthetic-config-key');
+    await page.screenshot({ path: `/tmp/pi-voice-config-${viewport.width}.png` });
+    await page.getByRole('button', { name: '保存转录模型', exact: true }).click();
+    await page.locator('#settings-transcription-model').waitFor({ state: 'visible' });
+    assert.equal(configurations.length, 1); assert.equal(configurations[0].model.remoteModel, 'custom-recognition-model');
+    assert.equal(configurations[0].confirmed, true);
+    assert.doesNotMatch(await page.locator('#settings-speech').textContent(), /synthetic-config-key/);
+    await page.locator('#mc-close').click();
+    await page.locator('#workspace-settings-close').click();
+    await page.waitForFunction(() => !document.querySelector('#pi-transcribe-button').disabled);
+    // One press immediately records using the configured model, without a separate record control.
+    assert.equal(await page.locator('#pi-voice-bar').getByRole('button', { name: '开始录音', exact: true }).count(), 0);
     await page.locator('#pi-transcribe-button').click();
     await page.waitForFunction(() => document.querySelector('#pi-transcribe-button').dataset.recording === 'true' && document.querySelector('#pi-voice-bar').textContent.includes('1 秒'));
     await page.locator('#pi-transcribe-button').click();
@@ -185,7 +221,7 @@ async function run(browser, viewport, legacy = false) {
     await page.locator('#pi-voice-result').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#pi-input').inputValue(), '');
     assert.equal(await page.locator('#pi-voice-result').inputValue(), '旧线程的录音');
-    await page.locator('#pi-voice-bar').getByRole('button', { name: '收起', exact: true }).click();
+    await page.locator('#pi-voice-bar').getByRole('button', { name: '关闭转录提示', exact: true }).click();
     // Attachments count as sendable content while the agent is running.
     await page.locator('#pi-file-input').setInputFiles({ name: 'fixture.txt', mimeType: 'text/plain', buffer: Buffer.from('attachment fixture') });
     await page.waitForFunction(() => !document.querySelector('#pi-send-button').disabled);
@@ -198,6 +234,20 @@ async function run(browser, viewport, legacy = false) {
     assert.equal(uploads.length, 2);
     assert.deepEqual(await page.evaluate(() => ['body', '.pi-composer', '#pi-transcript-content'].filter(s => { const n = document.querySelector(s); return n.scrollWidth > n.clientWidth + 1; })), []);
     assert.deepEqual(errors, []); assert.deepEqual(writes, []);
+    // Reopen in English to verify the shared speech navigation and configuration bindings.
+    voiceConfigured = false;
+    await page.evaluate(() => localStorage.setItem('pi.workspace.language', 'en'));
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => !document.querySelector('#pi-transcribe-button').disabled);
+    await page.locator('#pi-transcribe-button').click();
+    assert.match(await page.locator('#pi-voice-bar').textContent(), /No transcription model is available/);
+    await page.getByRole('button', { name: 'Configure', exact: true }).click();
+    await page.locator('#settings-speech').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#settings-transcription-title').textContent(), 'Speech to text (ASR)');
+    await page.getByRole('button', { name: 'Add transcription model', exact: true }).click();
+    assert.equal(await page.getByLabel('Transcription model ID', { exact: true }).count(), 1);
+    assert.deepEqual(await page.evaluate(() => ['body', '#settings-speech', '#settings-transcription-body'].filter(s => { const n = document.querySelector(s); return n.scrollWidth > n.clientWidth + 1; })), []);
+    assert.deepEqual(errors, []);
     console.log(`PASS ${viewport.width} ${legacy ? 'legacy' : 'native'}: draft-dependent send/stop, menu steer/follow-up, recorded WAV and transcript isolation, attachments, delayed switch/old stop isolation, native cancellation versus real failure, draft and width`);
     await context.close();
 }

@@ -162,7 +162,7 @@ async function run(browser, base, viewport, preferences = {}) {
     streaming = true; emit({ type: 'agent_start' });
     await page.waitForFunction(() => document.querySelector('.pi-composer').dataset.running === 'true');
     await page.locator('#pi-composer-add-button').click();
-    assert.equal(await page.locator('#pi-delivery-mode').isVisible(), true);
+    assert.equal(await page.locator('#pi-delivery-toggle').isVisible(), true);
     await page.keyboard.press('Escape');
     const running = await measure();
     // Running and idle keep the same main action width.

@@ -1,4 +1,20 @@
 .mc-dialog { width: min(780px, calc(100% - 40px)); }
+.mc-dialog [hidden] { display: none !important; }
+.mc-speech-tabs { display: flex; flex: 0 0 auto; gap: 6px; padding: 12px 24px; border-bottom: 1px solid var(--line); background: var(--surface-1); }
+.mc-speech-tabs button { display: flex; flex: 1; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--text-muted); font: inherit; font-size: 14px; cursor: pointer; }
+.mc-speech-tabs button[aria-selected="true"] { color: var(--primary); background: var(--surface-2); border-color: var(--line); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+.mc-speech-tabs button:hover { color: var(--primary); }
+.mc-speech-tabs button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.mc-overview-intro { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 0 0 16px; border-bottom: 1px solid var(--line); }
+.mc-overview-intro h3 { margin: 0; font-size: 16px; }
+.mc-overview-intro .lab-muted { margin: 6px 0 0; }
+.mc-overview-intro > div { flex: 1 1 260px; min-width: 0; }
+.mc-overview-intro > button { flex-shrink: 0; }
+@media (max-width: 480px) {
+    .mc-speech-tabs { padding: 10px 12px; }
+    .mc-speech-tabs button { padding: 10px 6px; gap: 5px; font-size: 13px; }
+}
+
 .mc-dialog :is(.lab-fields, .lab-field, .lab-dialog-scroll, .mc-presets) { min-width: 0; max-width: 100%; }
 .mc-dialog select { min-width: 0; width: 100%; text-overflow: ellipsis; }
 .mc-dialog .lab-field { overflow-wrap: anywhere; }

@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const baseUrl = process.env.PI_LAB_TEST_URL || 'http://127.0.0.1:3101';
-const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=', 'base64');
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEUlEQVR4nGP4z8AARGDiPwMAHfAD/aAzCYkAAAAASUVORK5CYII=', 'base64');
 const imageModel = { id: 'fixture-image', name: 'Illustration Fixture ' + 'Long model name / '.repeat(8), kind: 'image', adapter: 'http-json', configured: true, executable: true,
     presets: [{ id: 'fixture-preset', name: '预设 / ' + 'long-preset-name-'.repeat(12), parameters: { quality: 'draft' } }],
     instructions: 'Use a model-specific structured palette. <img src=x onerror="window.labXss=true">', parameters: {
@@ -29,6 +29,7 @@ async function run(browser, size, theme) {
     let models = [imageModel, { ...imageModel, id: 'manual-only', name: 'Manual Fixture', adapter: 'manual', configured: false, executable: false }, videoModel, ttsModel,
         ...['zimage','flux2','minimax-video'].flatMap(adapter => [true, false].map(configured => ({ ...imageModel, id: `legacy-${adapter}-${configured}`, kind: adapter === 'minimax-video' ? 'video' : 'image', adapter, configured })))];
     models.push({ ...imageModel, id: 'needs-required', name: 'Required specialist fixture', parameters: { ...imageModel.parameters, sampler: { type: 'text', label: '采样器', required: true } } });
+    models.push({ ...imageModel, id: 'reference-model', name: 'Reference fixture', parameters: { prompt: imageModel.parameters.prompt, image: { type: 'image', label: '参考图片', required: true }, video: { type: 'video', label: '参考视频' } } });
     let images = [asset('old', '山谷晨光 · 历史作品')];
     page.on('pageerror', error => errors.push(error.message));
     page.on('dialog', dialog => dialog.accept());
@@ -74,7 +75,8 @@ async function run(browser, size, theme) {
     await page.route('**/images/*.png', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="4096" height="2048"><rect width="4096" height="2048" fill="#8bb5ab"/></svg>' }));
     await page.routeWebSocket('**/api/pi/ws', () => { throw new Error('Lab UI must not open an Agent session'); });
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
-    await page.locator('[data-tab="media"]').click();
+    if (await page.locator('[data-tab="media"]').isVisible()) await page.locator('[data-tab="media"]').click();
+    else { await page.locator('#workspace-more-toggle').click(); await page.locator('[data-more-tab="media"]').click(); }
     await page.locator('#lab-model option[value="fixture-image"]').waitFor({ state: 'attached' });
     assert.equal(await page.locator('#lab-model option[value^="legacy-"]').count(), 0);
     const main = key => page.locator(`#lab-parameters [data-param="${key}"]`);
@@ -97,7 +99,7 @@ async function run(browser, size, theme) {
         assert.equal(await page.evaluate(() => Math.max(document.documentElement.scrollWidth - innerWidth, document.body.scrollWidth - document.body.clientWidth)), 0);
     };
     await overflow();
-    assert.equal(await page.locator('.nav-btn[data-tab]').count(), 2);
+    assert.equal(await page.locator('#media-tab').isVisible(), true);
     const shown = key => page.locator(`#lab-parameters [data-parameter="${key}"] dd`);
     assert.equal(await main('steps').count(), 0);
     assert.equal(await main('options').count(), 0);
@@ -204,6 +206,40 @@ async function run(browser, size, theme) {
     await page.locator('#lab-review').click(); await page.locator('#lab-review-dialog[open]').waitFor();
     assert.equal(requests.filter(r => r.path.endsWith('/review')).at(-1).body.parameters.sampler, 'euler');
     await page.locator('#lab-review-close').click();
+    await page.locator('#lab-model').selectOption('reference-model');
+    await main('prompt').fill('Use reference');
+    const picker = page.locator('#lab-parameters input[type="file"]').first();
+    await picker.setInputFiles({ name: 'reference.png', mimeType: 'image/png', buffer: png });
+    await page.waitForFunction(() => document.querySelector('#lab-parameters [data-param="image"]').value.startsWith('data:'));
+    assert.match(await shown('image').textContent(), /附件/);
+    await page.locator('[data-lab-kind="video"]').click(); await page.locator('[data-lab-kind="image"]').click();
+    await page.locator('#lab-model').selectOption('reference-model');
+    assert.ok((await main('image').inputValue()).startsWith('data:image/png;base64,'));
+    const video = Buffer.from([0,0,0,16,102,116,121,112,109,112,52,50,0,0,0,0]);
+    await page.locator('#lab-parameters input[type="file"]').nth(1).setInputFiles({ name: 'reference.mp4', mimeType: 'video/mp4', buffer: video });
+    await page.waitForFunction(() => document.querySelector('#lab-parameters [data-param="video"]').value.startsWith('data:video/mp4;'));
+    await page.locator('#lab-instruction').fill('Use this image'); await page.locator('#lab-plan').click();
+    await page.waitForFunction(() => document.querySelector('#lab-parameters [data-param="prompt"]').value === 'Agent planned a landscape');
+    assert.equal(requests.filter(r => r.path.endsWith('/plan')).at(-1).body.parameters.image, 'data:image/png;base64,' + png.toString('base64'));
+    await page.locator('#lab-review').click(); await page.locator('#lab-review-dialog[open]').waitFor();
+    assert.equal(await page.locator('#lab-review-fields .lab-attachment-preview:visible').count(), 2);
+    assert.equal(requests.filter(r => r.path.endsWith('/review')).at(-1).body.parameters.video, 'data:video/mp4;base64,' + video.toString('base64'));
+    assert.equal((await page.locator('#lab-review-json').textContent()).includes(png.toString('base64')), false);
+    await page.locator('#lab-review-fields').getByRole('button', { name: '移除附件' }).first().click();
+    assert.equal(await page.locator('#lab-confirm').isDisabled(), true);
+    await page.locator('#lab-review-recheck').click();
+    assert.match(await page.locator('#lab-review-error').textContent(), /请选择附件/);
+    await overflow();
+    await page.locator('#lab-review-close').click();
+    await page.evaluate(() => { window.readers = []; const Original = window.FileReader; window.FileReader = class { readAsDataURL() { window.readers.push(this); } }; window.restoreReader = () => { window.FileReader = Original; }; });
+    await picker.setInputFiles({ name: 'slow.png', mimeType: 'image/png', buffer: png });
+    const reviewsBeforeRead = requests.filter(r => r.path.endsWith('/review')).length;
+    await page.locator('#lab-review').click();
+    assert.equal(requests.filter(r => r.path.endsWith('/review')).length, reviewsBeforeRead);
+    await page.locator('[data-lab-kind="video"]').click(); await page.locator('[data-lab-kind="image"]').click();
+    await page.locator('#lab-model').selectOption('reference-model');
+    await page.evaluate(() => { window.readers[0].result = 'data:image/png;base64,c3RhbGU='; window.readers[0].onload(); window.restoreReader(); });
+    assert.equal(await main('image').inputValue(), 'data:image/png;base64,' + png.toString('base64'));
     await page.locator('#lab-model').selectOption('manual-only');
     await main('prompt').fill('Manual draft'); await page.locator('#lab-review').click(); await page.locator('#lab-review-dialog[open]').waitFor();
     assert.equal(await page.locator('#lab-confirm').isDisabled(), true);

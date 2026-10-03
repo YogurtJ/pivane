@@ -39,6 +39,7 @@
             return drafts.get(modelId);
         }
         const fields = (container, selectedModel, values = {}, invalidJson = {}) => window.PiMediaFields.render(container, selectedModel, values, invalidJson, { compact: true, reviewed: container.id === 'lab-review-fields' });
+        const readableJson = value => JSON.stringify(value, (_key, item) => window.PiMediaFields.displayValue(item), 2);
         const collect = window.PiMediaFields.collect;
         function remember() {
             if (!modelId) return;
@@ -212,6 +213,7 @@
             container.scrollIntoView({ block: 'nearest' });
         }
         async function requestPlan() {
+            if (window.PiMediaFields.isLoading($('lab-parameters'))) { errorAt('lab-error', translateUi('附件正在读取，请稍候。')); return; }
             if (planning || !model() || !$('lab-instruction').value.trim()) { $('lab-instruction').focus(); return; }
             const requestRevision = revision;
             planning = true; $('lab-plan').disabled = true; errorAt('lab-error'); $('lab-plan-state').textContent = translateUi("Agent 正在规划");
@@ -230,7 +232,7 @@
             $('lab-review-model').textContent = data.model.name;
             fields($('lab-review-fields'), data.model, data.parameters);
             $('lab-review-warnings').replaceChildren(...data.warnings.map(warning => element('div', '', translateUi(warning))));
-            $('lab-review-json').textContent = JSON.stringify({ modelId: data.model.id, parameters: data.parameters, source: data.source, request: data.request, execution: data.execution }, null, 2);
+            $('lab-review-json').textContent = readableJson({ modelId: data.model.id, parameters: data.parameters, source: data.source, request: data.request, execution: data.execution });
             $('lab-review-cost').textContent = translateUi(data.cost);
             $('lab-review-state').textContent = data.model.executable ? translateUi("已校验 · 1 项") : translateUi("仅规划 · 无可用执行后端");
             $('lab-confirm').disabled = !data.model.executable;
@@ -312,7 +314,7 @@
         });
         $('lab-review-fields').addEventListener('input', () => {
             review = null; revision++; $('lab-confirm').disabled = true; $('lab-review-recheck').disabled = false; $('lab-review-state').textContent = translateUi("参数已修改 · 等待重新校验");
-            $('lab-review-json').textContent = JSON.stringify({ modelId, parameters: collect($('lab-review-fields'), false) }, null, 2);
+            $('lab-review-json').textContent = readableJson({ modelId, parameters: collect($('lab-review-fields'), false) });
         });
         $('lab-instruction').addEventListener('input', () => { revision++; review = null; $('lab-confirm').disabled = true; remember(); $('lab-plan-state').textContent = translateUi("要求已修改，点击生成方案后才会应用到参数。"); });
         $('lab-model').addEventListener('change', () => { remember(); modelId = $('lab-model').value; renderModel(); });

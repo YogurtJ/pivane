@@ -6,6 +6,7 @@ const { MediaProviderCredentials } = require('./media-provider-credentials');
 const { validateDefinition } = require('./media-lab-service');
 const { validateHttp, renderTemplate, endpoint, authHeaders, readJson, keys, fail } = require('./media-http-protocol');
 const clone = value => JSON.parse(JSON.stringify(value));
+const TRANSCRIPTION_PROTOCOLS = [{ id: 'openai', name: '音频转录接口' }, { id: 'mimo', name: '音频消息接口' }];
 const id = value => { if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(value)) fail('ID must use letters, numbers, dot, underscore or hyphen'); return value; };
 function text(value, label, maximum = 200) { if (typeof value !== 'string' || !value.trim() || value.length > maximum) fail(`Invalid ${label}`); return value.trim(); }
 function baseUrl(value) {
@@ -48,6 +49,12 @@ function normalizeModel(raw) {
     model.http = validateHttp(raw.http, model.parameters, model.kind);
     return model;
 }
+function normalizeTranscriptionModel(raw) {
+    keys(raw, ['id', 'providerId', 'name', 'remoteModel', 'protocol'], 'transcription model');
+    const remoteModel = text(raw.remoteModel, 'transcription model ID', 500);
+    if (/[\r\n\0]/.test(remoteModel) || !TRANSCRIPTION_PROTOCOLS.some(protocol => protocol.id === raw.protocol)) fail('Invalid transcription model or protocol');
+    return { id: id(raw.id), providerId: id(raw.providerId), name: text(raw.name || remoteModel, 'transcription model name'), remoteModel, protocol: raw.protocol };
+}
 class MediaProviderService {
     constructor(options = {}) {
         this.directory = options.directory;
@@ -76,6 +83,15 @@ class MediaProviderService {
             if (credentialOrigin !== undefined && typeof credentialOrigin !== 'string') fail('Invalid credential binding', 500);
         }
         if (count > 60) fail('At most 60 managed media models are supported', 500);
+        if (document.transcriptionModels !== undefined) {
+            if (!Array.isArray(document.transcriptionModels) || document.transcriptionModels.length > 60) fail('Invalid transcription model collection', 500);
+            const ids = new Set();
+            for (const model of document.transcriptionModels) {
+                normalizeTranscriptionModel(model);
+                if (ids.has(model.id) || !providerIds.has(model.providerId)) fail('Invalid transcription model reference', 500);
+                ids.add(model.id);
+            }
+        }
         return { document, revision: createHash('sha256').update(content).update(String(this.epoch)).digest('hex') };
     }
     write(document) {
@@ -107,7 +123,7 @@ class MediaProviderService {
     find(document, providerId) { const provider = document.providers.find(item => item.id === providerId); if (!provider) fail('Media provider not found', 404); return provider; }
     async snapshot() {
         const state = this.read(), stored = await this.credentials.list();
-        return { revision: state.revision, providers: state.document.providers.map(({ credentialOrigin, ...provider }) => ({ ...clone(provider),
+        return { revision: state.revision, transcriptionProtocols: clone(TRANSCRIPTION_PROTOCOLS), transcriptionModels: clone(state.document.transcriptionModels || []), providers: state.document.providers.map(({ credentialOrigin, ...provider }) => ({ ...clone(provider),
             keyConfigured: stored.has(provider.id) && credentialOrigin === new URL(provider.baseUrl).origin,
             keyNeedsRebind: stored.has(provider.id) && credentialOrigin !== new URL(provider.baseUrl).origin
         })) };
@@ -137,10 +153,54 @@ class MediaProviderService {
     removeProvider(providerId, input) {
         return this.mutate(input, async document => {
             const provider = this.find(document, providerId);
-            if (provider.models.length && input.removeModels !== true) fail('Remove the provider models first or explicitly include them', 409);
+            if ((provider.models.length || document.transcriptionModels?.some(model => model.providerId === providerId)) && input.removeModels !== true) fail('Remove the provider models first or explicitly include them', 409);
             await this.credentials.remove(providerId);
             document.providers = document.providers.filter(item => item !== provider);
+            if (document.transcriptionModels) document.transcriptionModels = document.transcriptionModels.filter(model => model.providerId !== providerId);
         });
+    }
+    saveTranscriptionModel(input) {
+        keys(input, ['confirmed', 'expectedRevision', 'model', 'provider', 'apiKey'], 'transcription settings');
+        const model = normalizeTranscriptionModel(input.model);
+        const provider = input.provider ? normalizeProvider(input.provider) : null;
+        if (provider && provider.id !== model.providerId) fail('Transcription provider does not match the model');
+        const key = input.apiKey === undefined ? undefined : text(input.apiKey, 'API Key', 32768);
+        if (key && /[\r\n\0]/.test(key)) fail('API Key must be a single line');
+        return this.mutate(input, async document => {
+            const collection = document.transcriptionModels ||= [];
+            const existing = collection.findIndex(item => item.id === model.id);
+            if (existing < 0 && collection.length >= 60) fail('Too many transcription models');
+            if (provider) {
+                if (document.providers.some(item => item.id === provider.id)) fail('Provider already exists; reload and select it', 409);
+                if (document.providers.length >= 40) fail('Too many media providers');
+                if (provider.auth.mode !== 'none' && !key) fail('Configure an API Key for the new transcription service');
+                if (provider.auth.mode === 'none' && key) fail('This service does not use an API Key');
+                if (key) await this.credentials.save(provider.id, key);
+                document.providers.push({ ...provider, models: [], ...(key ? { credentialOrigin: new URL(provider.baseUrl).origin } : {}) });
+            } else {
+                this.find(document, model.providerId);
+                if (key !== undefined) fail('Manage an existing service Key in its shared service settings');
+            }
+            if (existing < 0) collection.push(model); else collection[existing] = model;
+        }).then(snapshot => ({ ...snapshot, modelId: `asr:${model.providerId}:${model.id}` }));
+    }
+    removeTranscriptionModel(modelId, input) {
+        keys(input, ['confirmed', 'expectedRevision'], 'transcription removal');
+        return this.mutate(input, document => {
+            if (!document.transcriptionModels?.some(model => model.id === modelId)) fail('Transcription model not found', 404);
+            document.transcriptionModels = document.transcriptionModels.filter(model => model.id !== modelId);
+        });
+    }
+    async withTranscription(model, operation) {
+        if (this.busy) fail('Speech service configuration is changing; refresh before recording', 409);
+        const state = this.read();
+        if (model.configurationRevision !== state.revision) fail('Speech service configuration changed; refresh before recording', 409);
+        const provider = this.find(state.document, model.provider);
+        const definition = state.document.transcriptionModels?.find(item => item.id === model.managedModelId && item.providerId === model.provider);
+        if (!definition) fail('Transcription model no longer exists', 409);
+        this.active++;
+        try { return await operation({ provider, key: await this.key(provider) }); }
+        finally { this.active--; }
     }
     async saveModel(providerId, input) {
         const model = normalizeModel(input.model);
@@ -207,7 +267,8 @@ class MediaProviderService {
     requestPreview(model, parameters) {
         return model.adapter === 'http-provider' ? { ...model.connectionSummary,
             url: endpoint(model.connectionSummary.baseUrl, model.http.path, { model: model.remoteModel, parameters }).href,
-            body: renderTemplate(model.http.body, parameters, model.remoteModel) } : undefined;
+            encoding: model.http.encoding || 'json',
+            body: renderTemplate(model.http.body, parameters, model.remoteModel, model.parameters) } : undefined;
     }
 }
 module.exports = { MediaProviderService, normalizeProvider, normalizeModel };

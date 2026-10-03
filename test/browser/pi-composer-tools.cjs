@@ -84,7 +84,7 @@ async function run(browser, viewport) {
     const assertMenuRows = async () => {
         const geometry = await addMenu.evaluate(menu => ({
             width: menu.clientWidth, clipped: menu.scrollHeight > menu.clientHeight + 1,
-            rows: [...menu.querySelectorAll('button:not([hidden])')].map(button => {
+            rows: [...menu.querySelectorAll('button')].filter(button => !button.closest('[hidden]')).map(button => {
                 const label = button.querySelector('span'), subtitle = label.querySelector('small');
                 const titleRange = document.createRange(); titleRange.selectNodeContents(label.firstChild);
                 const subtitleRange = document.createRange(); subtitleRange.selectNodeContents(subtitle);
@@ -92,7 +92,7 @@ async function run(browser, viewport) {
             })
         }));
         assert.equal(geometry.clipped, false, 'both menu items must fit without vertical clipping');
-        assert.equal(geometry.rows.length, 2);
+        assert.equal(geometry.rows.length, 3);
         for (const row of geometry.rows) {
             assert.ok(row.width >= geometry.width - 12, 'each item fills the menu instead of retaining icon-button width');
             assert.equal(row.titleLines, 1, 'menu title stays on one line');
@@ -115,7 +115,7 @@ async function run(browser, viewport) {
     await assertMenuRows();
     await page.screenshot({ path: `/tmp/pi-schedule-menu-${viewport.width}.png` });
     await page.keyboard.press('ArrowDown');
-    assert.equal(await page.locator('#pi-delivery-mode').evaluate(n => n === document.activeElement), true);
+    assert.equal(await page.locator('#pi-delivery-toggle').evaluate(n => n === document.activeElement), true);
     await page.keyboard.press('Escape');
     assert.equal(await addMenu.isVisible(), false); assert.equal(await plus.evaluate(n => n === document.activeElement), true);
     assert.equal(await input.inputValue(), 'Keep this draft');

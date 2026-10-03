@@ -16,6 +16,7 @@ async function run(browser, size) {
     const context = await browser.newContext({ locale: 'zh-CN', viewport: size, hasTouch: size.width < 900, isMobile: size.width < 900 });
     const page = await context.newPage();
     const errors = [];
+    let messageReads = 0;
     const writes = [];
     const loadingRequests = new Set();
     page.on('request', request => loadingRequests.add(request.url()));
@@ -32,11 +33,16 @@ async function run(browser, size) {
         localStorage.setItem('pi.web.cwd', cwd);
         localStorage.setItem('pi.web.transcriptMode', 'full');
         localStorage.setItem(`pi.web.session:${cwd}`, id);
+        Object.defineProperty(window, 'PiTranscriptView', { configurable: true, set(Controller) {
+            Object.defineProperty(window, 'PiTranscriptView', { value: class extends Controller {
+                refreshFrom(...args) { window.fixtureLayoutRefreshes = (window.fixtureLayoutRefreshes || 0) + 1; return super.refreshFrom(...args); }
+            } });
+        } });
         Object.defineProperty(window, 'PiTranscriptScroll', {
             configurable: true,
             set(Controller) {
                 Object.defineProperty(window, 'PiTranscriptScroll', { value: class extends Controller {
-                    constructor(options) { super(options); window.scrollFixtureController = this; }
+                    constructor(options) { super(options); if (options.viewport.id === 'pi-transcript') window.scrollFixtureController = this; }
                 } });
             }
         });
@@ -67,7 +73,7 @@ async function run(browser, size) {
                 data = { session: activeId === session.id ? session : shortSession,
                     state: runtime, messages: { messages: currentMessages() }, stats: {}, models: { models: [model] },
                     thinkingLevels: { levels: ['off'] }, commands: { commands: [] } };
-            } else if (command.type === 'get_messages') data = { messages: currentMessages() };
+            } else if (command.type === 'get_messages') { messageReads++; data = { messages: currentMessages() }; }
             else if (command.type === 'get_state') data = runtime;
             else if (!['get_session_stats', 'get_available_models', 'get_available_thinking_levels'].includes(command.type)) {
                 throw new Error(`Unexpected RPC command: ${command.type}`);
@@ -165,10 +171,32 @@ async function run(browser, size) {
     });
     await page.waitForTimeout(100);
     before = await metrics();
+    await page.evaluate(() => { window.fixtureLayoutRefreshes = 0; });
+    const readsBefore = messageReads;
     await settle();
+    assert.ok(messageReads > readsBefore, 'unchanged authoritative messages were actually fetched');
+    assert.equal(await page.evaluate(() => window.fixtureLayoutRefreshes), 0, 'unchanged retained snapshot does not rebuild tail layout');
     assert.ok(Math.abs((await metrics()).top - before.top) <= 2);
+    // Disable browser anchoring to test explicit compensation for late reflow.
+    const delayed = await page.evaluate(async () => {
+        const c = window.scrollFixtureController, viewport = c.viewport;
+        viewport.style.overflowAnchor = 'none';
+        c.scrollToNode(c.content.children[22]); c.paint();
+        const anchor = c.readingAnchor.anchorNode, offset = anchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+        const filler = document.createElement('div'); filler.style.height = '160px';
+        c.content.firstElementChild.append(filler);
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const after = anchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+        filler.remove();
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        viewport.style.overflowAnchor = '';
+        return { offset, after, restored: anchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top };
+    });
+    assert.ok(Math.abs(delayed.after - delayed.offset) <= 2, 'delayed growth above preserves reading anchor');
+    assert.ok(Math.abs(delayed.restored - delayed.offset) <= 2, 'removal above preserves reading anchor');
     assert.equal(await page.locator('#pi-transcript-content > :nth-child(21) .pi-thinking-block').evaluate(el => el.open), true);
     assert.equal(await page.locator('#pi-transcript-content > :nth-child(22) .pi-tool-row').evaluate(el => el.open), true);
+    before = await metrics();
     socket.close({ code: 1012, reason: 'Reconnect fixture' });
     await page.waitForTimeout(2400);
     assert.ok(Math.abs((await metrics()).top - before.top) <= 2, 'reconnect must preserve reading position');

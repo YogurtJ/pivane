@@ -16,6 +16,8 @@ async function run(browser, base, width) {
     const page = await context.newPage(), errors = [];
     page.on('pageerror', error => errors.push(error.message));
     let revision = 'queue-1', jobs = [], deferredReads = 0, hold = null, notifyHeld = null, fail = false;
+    let releaseOpen;
+    const openGate = new Promise(resolve => { releaseOpen = resolve; });
     await page.addInitScript(({ cwd }) => {
         localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem(`pi.web.session:${cwd}`, 'first');
         localStorage.setItem('pi.web.transcriptMode', 'full');
@@ -51,13 +53,14 @@ async function run(browser, base, width) {
     });
     await page.routeWebSocket('**/api/pi/ws', ws => {
         let id = 'first';
-        ws.onMessage(raw => {
+        ws.onMessage(async raw => {
             const command = JSON.parse(raw);
             const runtime = { model, isStreaming: false, thinkingLevel: 'off' };
             let data = {};
             const messages = () => [message('user', `Question ${id}`, 1), message('assistant', `Answer ${id}`, 2)];
             if (command.type === 'open_session') {
                 id = command.sessionId;
+                if (id === 'first') await openGate;
                 data = { session: sessions.find(row => row.id === id), state: runtime, messages: { messages: messages() }, models: { models: [model] }, stats: {}, thinkingLevels: { levels: ['off'] }, commands: { commands: [] } };
             } else if (command.type === 'get_state') data = runtime;
             else if (command.type === 'get_messages') data = { messages: messages() };
@@ -66,6 +69,13 @@ async function run(browser, base, width) {
     });
     try {
         await page.goto(base, { waitUntil: 'networkidle' });
+        const loading = page.locator('.pi-transcript-loading');
+        await loading.waitFor();
+        assert.equal(await loading.getAttribute('role'), 'status');
+        assert.equal(await loading.getAttribute('aria-busy'), 'true');
+        assert.equal(await page.locator('#pi-input').isDisabled(), true);
+        assert.match(await loading.textContent(), /正在加载 Pi session|Loading Pi session/);
+        releaseOpen();
         await page.waitForFunction(() => window.fixtureWorkflows?.deferredRevision === 'queue-1');
         const poll = token => page.evaluate(token => window.fixtureWorkflows.refresh(false, { deferredRevision: token }), token);
         const before = deferredReads;

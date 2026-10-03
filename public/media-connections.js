@@ -6,6 +6,13 @@
         const content = document.getElementById('mc-content'), footer = document.getElementById('mc-footer');
         const title = document.getElementById('mc-title'), back = document.getElementById('mc-back');
         let snapshot = null, epoch = 0, kind = 'image', busy = false;
+        const tabs = document.getElementById('mc-speech-tabs');
+        const headings = { image: translateUi("图像模型"), video: translateUi("视频模型"), tts: translateUi("语音模型") };
+        const descriptions = {
+            image: translateUi("接入生图服务，添加或编辑图像模型。"),
+            video: translateUi("接入生视频服务，添加或编辑视频模型。"),
+            tts: translateUi("添加或编辑 TTS 模型，用于生成语音和回复朗读。")
+        };
         const labels = { image: translateUi("图像"), video: translateUi("视频"), tts: translateUi("语音") };
         const node = (tag, className = '', text = '') => { const el = document.createElement(tag); el.className = className; el.textContent = text; return el; };
         const clone = value => JSON.parse(JSON.stringify(value));
@@ -69,7 +76,7 @@
         }
         async function reload() { snapshot = await api('/connections'); return snapshot; }
         async function showOverview() {
-            const view = shell(translateUi("媒体服务与模型")); message(translateUi("正在读取服务"));
+            const view = shell(headings[kind]); message(translateUi("正在读取服务"));
             try { await reload(); if (!dialog.open || view !== epoch) return; renderOverview(); }
             catch (error) { if (dialog.open && view === epoch) { content.replaceChildren(); message(error.message, true); footer.append(button(translateUi("重试"), showOverview)); } }
         }
@@ -77,14 +84,20 @@
             return provider.auth.mode === 'none' ? translateUi("无需 Key") : provider.keyNeedsRebind ? translateUi("地址已更换 · 需要重新保存 Key") : provider.keyConfigured ? translateUi("Key 已保存") : translateUi("尚未配置 Key");
         }
         function renderOverview() {
-            shell(translateUi("媒体服务与模型"));
-            message(translateUi("选择服务，添加自己的图像、视频或语音模型。"));
+            shell(headings[kind]);
+            const intro = node('div', 'mc-overview-intro');
+            const copy = node('div'); copy.append(node('h3', '', kind === 'tts' ? translateUi("语音合成（TTS）") : headings[kind]), node('p', 'lab-muted', descriptions[kind]));
+            intro.append(copy);
+            if (kind === 'tts') intro.append(button(translateUi("朗读默认配置"), () => { dialog.close(); window.PiReplyTts?.open(); }));
+            content.append(intro);
+            message(translateUi("选择服务管理模型，或新增服务。已有服务的地址和 Key 可以复用。"));
             if (!snapshot.providers.length) message(translateUi("还没有媒体服务。从常用服务开始，或接入自己的兼容 API。"));
             const list = node('div', 'mc-provider-list');
             for (const provider of snapshot.providers) {
                 const card = node('article', 'mc-card'); card.append(node('h3', '', provider.name), node('p', 'mc-url', provider.baseUrl), node('p', 'lab-muted', keyLabel(provider)));
                 const actions = node('div', 'mc-actions');
-                actions.append(button(translateUi("管理模型（{0}）", provider.models.length), () => showProvider(provider.id), true), button(translateUi("编辑服务"), () => editProvider(provider.id)));
+                const modelCount = provider.models.length + (snapshot.transcriptionModels || []).filter(model => model.providerId === provider.id).length;
+                actions.append(button(translateUi("管理模型（{0}）", modelCount), () => showProvider(provider.id)), button(translateUi("添加模型"), () => editModel(provider.id), true), button(translateUi("编辑服务"), () => editProvider(provider.id)));
                 card.append(actions); list.append(card);
             }
             content.append(list); footer.append(button(translateUi("刷新列表"), showOverview), button(translateUi("新增服务"), () => editProvider(), true));
@@ -119,7 +132,14 @@
                 actions.append(button(translateUi("使用"), () => { changed(`media:${id}:${model.id}`); dialog.close(); }, true), button(translateUi("编辑模型"), () => editModel(id, model.id)), remove);
                 row.append(actions); list.append(row);
             }
-            if (!provider.models.length) message(translateUi("还没有配置可生成的媒体模型。可以手动填写模型 ID，或读取服务提供的模型列表。"), false, list);
+            const transcriptionModels = (snapshot.transcriptionModels || []).filter(model => model.providerId === id);
+            for (const model of transcriptionModels) {
+                const row = node('article', 'mc-card'); row.append(node('h3', '', model.name), node('p', 'lab-muted', translateUi("语音转文字") + ' · ' + model.remoteModel));
+                row.append(button(translateUi("配置转录模型"), () => {
+                    kind = 'tts'; selectSection('asr');
+                })); list.append(row);
+            }
+            if (!provider.models.length && !transcriptionModels.length) message(translateUi("还没有配置可生成的媒体模型。可以手动填写模型 ID，或读取服务提供的模型列表。"), false, list);
             content.append(list); footer.append(button(translateUi("添加模型"), () => editModel(id), true));
         }
         function editProvider(id) {
@@ -263,6 +283,7 @@
             const protocol = node('details', 'mc-details wide'); protocol.append(node('summary', '', translateUi("高级：接口、输出与轮询")));
             const protocolFields = node('div', 'lab-fields'); protocol.append(protocolFields);
             fields.path = field(protocolFields, translateUi("生成接口路径（POST）"), 'text', current.http.path, { required: true, wide: true, help: translateUi("追加到 {0} 后，不重复其 /v1 前缀。可用 {model} 或 {param:voice} 插入模型/参数。", provider.baseUrl), maxLength: 2000 }).input;
+            fields.encoding = field(protocolFields, translateUi("请求格式"), 'select', current.http.encoding || 'json', { choices: [{ value: 'json', label: 'JSON' }, { value: 'multipart', label: 'multipart/form-data' }] }).input;
             fields.response = field(protocolFields, translateUi("结果形式"), 'select', current.http.response.type, { choices: [{ value: 'image-json', label: translateUi("标准图像响应（自动识别）") }, { value: 'base64', label: translateUi("JSON 中的 base64") }, { value: 'url', label: translateUi("JSON 中的下载 URL") }, { value: 'binary', label: translateUi("直接返回媒体文件") }] }).input;
             fields.mime = field(protocolFields, translateUi("文件格式"), 'select', current.http.response.mimeType, { choices: ['auto','image/png','image/jpeg','image/webp','video/mp4','audio/wav','audio/mpeg'] }).input;
             const output = field(protocolFields, translateUi("结果字段路径"), 'text', pathText(current.http.response.path), { wide: true, placeholder: 'data.0.b64_json', help: translateUi("用点分隔字段和数组序号，也可填写 JSON 路径数组。"), maxLength: 2000 });
@@ -294,6 +315,7 @@
                 const response = { type: fields.response.value, mimeType: fields.mime.value };
                 if (response.type !== 'binary') response.path = parsePath(output.input.value);
                 const http = { path: fields.path.value, body: JSON.parse(fields.body.value), response, timeoutMs: Number(fields.timeout.value) * 1000 };
+                if (fields.encoding.value === 'multipart') http.encoding = 'multipart';
                 if (asynchronous.input.checked) {
                     http.poll = { idPath: parsePath(fields.idPath.value), statusPath: parsePath(fields.statusPath.value), intervalMs: Number(fields.interval.value) * 1000 };
                     if (fields.pollMode.value === 'path') http.poll.path = pollPath.input.value; else http.poll.urlPath = parsePath(pollUrl.input.value);
@@ -306,9 +328,39 @@
             }), true);
             footer.append(save);
         }
+        function selectSection(section) {
+            const asr = kind === 'tts' && section === 'asr';
+            epoch++; tabs.hidden = kind !== 'tts';
+            content.hidden = footer.hidden = asr;
+            if (kind === 'tts') { content.setAttribute('role', 'tabpanel'); content.setAttribute('aria-labelledby', 'mc-tts-tab'); }
+            else { content.removeAttribute('role'); content.removeAttribute('aria-labelledby'); }
+            for (const tab of tabs.querySelectorAll('[data-speech-tab]')) {
+                const selected = tab.dataset.speechTab === (asr ? 'asr' : 'tts');
+                tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1;
+            }
+            // Changing sections invalidates pending views and clears unsaved credentials.
+            content.querySelectorAll('input[type="password"]').forEach(input => { input.value = ''; });
+            window.dispatchEvent(new CustomEvent('media-connections:section', { detail: { section: asr ? 'asr' : kind } }));
+            if (asr) { shell(headings.tts); }
+            else void showOverview();
+        }
+        for (const tab of tabs.querySelectorAll('[data-speech-tab]')) {
+            tab.addEventListener('click', () => selectSection(tab.dataset.speechTab));
+            tab.addEventListener('keydown', event => {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                event.preventDefault();
+                const next = event.key === 'Home' ? tabs.firstElementChild : event.key === 'End' ? tabs.lastElementChild
+                    : tab === tabs.firstElementChild ? tabs.lastElementChild : tabs.firstElementChild;
+                next.focus(); selectSection(next.dataset.speechTab);
+            });
+        }
         document.getElementById('mc-close').addEventListener('click', () => dialog.close());
         dialog.addEventListener('close', () => { epoch++; content.querySelectorAll('input[type="password"]').forEach(input => { input.value = ''; }); content.replaceChildren(); footer.replaceChildren(); });
         document.querySelectorAll('[data-media-settings-kind]').forEach(button => button.addEventListener('click', () => window.PiMediaConnections.open({ kind: button.dataset.mediaSettingsKind })));
-        window.PiMediaConnections = { open: options => { kind = labels[options?.kind] ? options.kind : 'image'; if (!dialog.open) dialog.showModal(); showOverview(); } };
+        window.PiMediaConnections = { open: options => {
+            kind = labels[options?.kind] ? options.kind : 'image';
+            if (!dialog.open) dialog.showModal();
+            selectSection(options?.section);
+        } };
     });
 })();

@@ -7,7 +7,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const cwd = '/synthetic/source', target = '/synthetic/目标-' + 'long-project-path-'.repeat(15);
 const model = { provider: 'fixture', id: 'fixture', name: 'Fixture', input: ['text', 'image'], contextWindow: 32000 };
 const original = { id: 'original-thread', cwd, name: '保留完整历史的线程', messageCount: 2, modified: '2026-10-01T00:00:00Z' };
-async function run(browser, base, width, language) {
+async function run(browser, base, width, language, emptyTargets = false) {
     const context = await browser.newContext({ locale: language, viewport: { width, height: width < 900 ? 852 : 1000 }, isMobile: width < 900, hasTouch: width < 900 });
     const page = await context.newPage(), errors = [], posts = [], opens = [];
     let moved = false, oldBackend = false, blocked = false, failMove = false, release, hold = false, activeSocket;
@@ -27,6 +27,8 @@ async function run(browser, base, width, language) {
             assert.ok(url.pathname.endsWith('/move'), 'The fixture must not send prompts or unrelated writes');
             const body = request.postDataJSON(); posts.push(body);
             assert.equal(request.headers().authorization, 'Bearer fixture-token');
+            assert.match(body.requestId, /^move-[a-f0-9]{32}$/);
+            assert.equal(new Set(posts.map(post => post.requestId)).size, posts.length);
             assert.equal(body.cwd, cwd); assert.equal(body.targetCwd, target); assert.equal(body.expectedRevision, 'a'.repeat(64));
             if (hold) { hold = false; await new Promise(resolve => { release = resolve; }); }
             if (failMove) return route.fulfill({ status: 409, json: { error: 'fixture move uncertain' } });
@@ -37,9 +39,13 @@ async function run(browser, base, width, language) {
         }
         let json = {};
         if (url.pathname === '/api/pi/status') json = { ok: true, projectRoots: ['/synthetic'], sessionTransfer: true, sessionMoves: !oldBackend, projectIdentity: true, archives: true };
-        else if (url.pathname === '/api/pi/projects') json = { projects: [{ cwd, name: '来源', sessionCount: moved ? 0 : 1 }, { cwd: target, name: '目标', sessionCount: moved ? 1 : 0 }], roots: ['/synthetic'], pinnedProjects: [], hiddenProjects: [] };
+        else if (url.pathname === '/api/pi/projects') json = { projects: [{ cwd, name: '来源', sessionCount: moved ? 0 : 1 },
+            { cwd: '/synthetic/empty', name: '零会话旧项目', sessionCount: 0 }, { cwd: '/synthetic/unknown', name: '未确认项目' },
+            { cwd: target, name: '目标', sessionCount: emptyTargets ? 0 : moved ? 2 : 1 }], roots: ['/synthetic'], pinnedProjects: [], hiddenProjects: [] };
         else if (url.pathname === '/api/pi/projects/resolve') json = { cwd: url.searchParams.get('cwd') };
-        else if (url.pathname === '/api/pi/sessions') json = { sessions: url.searchParams.get('cwd') === current.cwd ? [current] : [] };
+        else if (url.pathname === '/api/pi/sessions') json = { sessions: url.searchParams.get('cwd') === target && !emptyTargets
+            ? [ ...(moved ? [current] : []), { id: 'target-existing', cwd: target, name: '已有目标线程', messageCount: 2 } ]
+            : url.searchParams.get('cwd') === current.cwd ? [current] : [] };
         else if (url.pathname.endsWith('/resolve')) json = { session: current, moved };
         else if (url.pathname.endsWith('/move')) json = { source: original, targetCwd: url.searchParams.get('targetCwd'), revision: 'a'.repeat(64), canMove: !blocked,
             blockers: blocked ? ['线程有预约消息，请先处理或取消预约'] : [] };
@@ -61,6 +67,8 @@ async function run(browser, base, width, language) {
     }));
     await page.route(/https:\/\/(fonts\.googleapis\.com|fonts\.gstatic\.com)\//, route => route.abort());
     await page.goto(base, { waitUntil: 'domcontentloaded' });
+    assert.equal(await page.evaluate(() => isSecureContext), !base.includes('pivane-http.test'));
+    if (base.includes('pivane-http.test')) assert.equal(await page.evaluate(() => typeof crypto.randomUUID), 'undefined');
     await page.locator('#pi-input:not([disabled])').waitFor();
     await page.locator('#pi-input').fill('移动后保留的草稿');
     await page.locator('#pi-file-input').setInputFiles({ name: '保留附件.txt', mimeType: 'text/plain', buffer: Buffer.from('附件正文') });
@@ -69,12 +77,25 @@ async function run(browser, base, width, language) {
         await page.locator('#pi-current-thread-menu').click();
         await page.locator('.pi-thread-menu:not(.hidden)').getByRole('menuitem', { name: english ? 'Move to project…' : '移动到项目…', exact: true }).click();
         await page.locator('#pi-transfer-dialog[open]').waitFor();
-        await page.locator('#pi-transfer-project').selectOption(target);
+        assert.deepEqual(await page.locator('#pi-transfer-project option').evaluateAll(options => options.map(option => option.value)), emptyTargets ? [''] : [target, '']);
+        if (!emptyTargets) await page.locator('#pi-transfer-project').selectOption(target);
     };
     const dialog = page.locator('#pi-transfer-dialog');
     const check = () => dialog.getByRole('button', { name: english ? 'Check and preview' : '检查并预览', exact: true });
     const confirm = () => dialog.getByRole('button', { name: english ? 'Confirm move' : '确认移动', exact: true });
-    await open(); assert.equal(posts.length, 0); await page.keyboard.press('Escape'); assert.equal(posts.length, 0);
+    await open(); assert.equal(posts.length, 0);
+    if (emptyTargets) {
+        assert.equal(await page.locator('#pi-transfer-path').isVisible(), true);
+        await page.locator('#pi-transfer-path').fill('/synthetic/empty');
+        await check().click(); await confirm().waitFor();
+        assert.equal(posts.length, 0); await page.keyboard.press('Escape');
+        assert.deepEqual(errors, []); await context.close();
+        console.log(JSON.stringify({ width, language, variant: 'empty-targets-manual-path', status: 'passed', pageerrors: errors.length })); return;
+    }
+    await page.locator('#pi-transfer-project').selectOption('');
+    await page.locator('#pi-transfer-path').fill('/synthetic/empty');
+    await check().click(); await confirm().waitFor();
+    await page.keyboard.press('Escape'); assert.equal(posts.length, 0);
     await open(); blocked = true; await check().click();
     await dialog.getByText(english ? 'Handle or cancel scheduled messages before moving.' : '线程有预约消息，请先处理或取消预约', { exact: true }).waitFor();
     assert.equal(await confirm().count(), 0); assert.equal(posts.length, 0); blocked = false;
@@ -118,7 +139,11 @@ async function run(browser, base, width, language) {
     for (const [name, directory] of [['marked', 'marked/lib'], ['dompurify', 'dompurify/dist'], ['highlight', '@highlightjs/cdn-assets']]) app.use('/vendor/' + name, express.static(path.join(root, 'node_modules', directory)));
     app.use(express.static(path.join(root, 'public')));
     const server = http.createServer(app); server.listen(0, '127.0.0.1'); await once(server, 'listening');
-    const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
-    try { for (const width of [1440, 393, 320]) for (const language of ['zh-CN', 'en']) await run(browser, 'http://127.0.0.1:' + server.address().port, width, language); }
+    const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox', '--no-proxy-server', '--host-resolver-rules=MAP pivane-http.test 127.0.0.1'] });
+    try {
+        const base = 'http://pivane-http.test:' + server.address().port;
+        for (const width of [1440, 393, 320]) for (const language of ['zh-CN', 'en']) await run(browser, base, width, language);
+        await run(browser, base, 1440, 'en', true); await run(browser, base, 393, 'zh-CN', true);
+    }
     finally { await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

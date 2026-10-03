@@ -112,6 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const titleSettings = window.PiTitleSettings?.create({ apiFetch, saved: settings => {
         if (state.modelSnapshot) state.modelSnapshot.preferences.sessionTitles = settings;
     } });
+    window.PiTranscriptionSettings?.create({ apiFetch });
     const usagePanel = window.PiUsage.create({ apiFetch });
     window.PiExtensions?.connect?.({ apiFetch, currentCwd, currentSession: () => window.PiNativeRuntime?.currentSession?.() || null });
     const nativeSettings = window.PiNativeSettings.create({ apiFetch, currentCwd, toast });
@@ -157,6 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.activeTab = tab;
         if (tab === 'media') void subagentSettings.open();
         else subagentSettings.close();
+        if (tab === 'media' && metadata.section === 'speech') window.PiMediaConnections?.open({ kind: 'tts', section: 'asr' });
         if (tab === 'access') window.WorkspaceAccess?.openSettings();
         else window.WorkspaceAccess?.closeSettings();
         void nativeSettings.open(tab, extensionTab ? { type: metadata.resourceType } : {});
@@ -850,7 +852,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tab = detail.tab || state.activeTab;
         const route = tab === 'profiles' ? 'profiles' : extensionTabs.has(tab) ? 'extensions' : 'settings';
         const params = route === 'profiles' ? { profileId: detail.profileId, section: detail.section, authoringSession: detail.authoringSession?.id, authoringCwd: detail.authoringSession?.cwd }
-            : { tab };
+            : { tab, ...(detail.section ? { section: detail.section } : {}) };
         window.PiWorkspaceRoute?.navigate(route, params);
     });
     window.addEventListener('workspace:settings-route', event => {

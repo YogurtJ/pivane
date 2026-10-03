@@ -140,7 +140,11 @@ async function run(browser, base, width, scenario) {
     finally { releaseActivity(); releaseResolve(); releaseSaved(); releaseGlobal(); releaseOther(); await context.close(); }
 }
 (async () => {
-    const app = express(); app.use(express.static(path.join(__dirname, '../../public')));
+    const app = express();
+    for (const [name, directory] of [['marked', 'marked/lib'], ['dompurify', 'dompurify/dist'], ['highlight', '@highlightjs/cdn-assets'], ['katex', 'katex/dist']]) {
+        app.use('/vendor/' + name, express.static(path.join(__dirname, '../../node_modules', directory)));
+    }
+    app.use(express.static(path.join(__dirname, '../../public')));
     const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
     let browser;
     try {

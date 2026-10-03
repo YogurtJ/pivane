@@ -8,6 +8,7 @@ const { decodeSession, relocateSessionBytes } = require('./pi-session-relocation
 const { customTypeIs } = require('./pivane-compat');
 const io = require('./pi-file-io');
 const { descriptorPathSync } = require('./pi-file-descriptor');
+const { scanSessionReferences } = require('./pi-session-move-references');
 
 const MAX_BYTES = 64 * 1024 * 1024;
 const fail = (message, code = 'SESSION_MOVE_CONFLICT') => Object.assign(new Error(message), { code, status: 409 });
@@ -174,9 +175,9 @@ class PiSessionMoves {
         if (fs.existsSync(target.path)) add('目标会话文件已存在，不能覆盖');
         // Inspect only bounded native files, yielding between files. Cross-thread
         // references are structured metadata; never replace historical body text.
-        const root = path.join(getAgentDir(), 'sessions');
-        const membership = [];
-        let count = 0, total = 0;
+        const root = fs.realpathSync.native(path.join(getAgentDir(), 'sessions'));
+        const membership = [], budget = { bytes: 0, metadata: 0, maxBytes: 1024 ** 3, maxMetadata: 256 * 1024 ** 2 };
+        let count = 0;
         const refers = ref => ref?.sessionId === session.id && typeof ref.cwd === 'string'
             && (() => { try { return this.store.resolveProject(ref.cwd) === session.cwd; } catch { return ref.cwd === session.cwd; } })();
         for (const bucket of fs.readdirSync(root, { withFileTypes: true })) {
@@ -188,21 +189,19 @@ class PiSessionMoves {
                 const file = path.join(folder, name);
                 if (++count > 10000) throw fail('会话引用检查超过文件预算');
                 if (file === session.path) continue;
-                const data = readSafe(file, MAX_BYTES); total += data.length;
-                if (total > 256 * 1024 * 1024) throw fail('会话引用检查超过读取预算');
-                const lines = new TextDecoder('utf-8', { fatal: true }).decode(data).split('\n').filter(line => line.trim());
-                const header = JSON.parse(lines.shift());
-                if (header?.type !== 'session') throw fail('无法核对其他会话的原生引用');
-                let parent = header.parentSession;
-                if (typeof parent === 'string' && path.isAbsolute(parent)) { try { parent = fs.realpathSync.native(parent); } catch { /* A missing historic parent remains metadata. */ } }
-                if (parent === session.path) add('此线程是其他分叉的父会话，首版暂不支持单独移动');
-                for (const line of lines) {
-                    const entry = JSON.parse(line), value = entry.data || entry.details;
+                await scanSessionReferences(file, (entry, index) => {
+                    if (!index) {
+                        if (entry.type !== 'session') throw fail('无法核对其他会话的原生引用');
+                        let parent = entry.parentSession;
+                        if (typeof parent === 'string' && path.isAbsolute(parent)) { try { parent = fs.realpathSync.native(parent); } catch { /* A missing historic parent remains metadata. */ } }
+                        if (parent === session.path) add('此线程是其他分叉的父会话，首版暂不支持单独移动');
+                        return;
+                    }
+                    const value = entry.data || entry.details;
                     if (entry.type === 'custom' && customTypeIs(entry, 'pivane-agent-task') && refers(value?.source)
                         || entry.type === 'custom' && customTypeIs(entry, 'pivane-agent-message-out') && (refers(value?.to) || refers(value?.from)))
                         add('其他线程保存了此线程的任务或消息关系，首版暂不支持移动');
-                }
-                await new Promise(resolve => setImmediate(resolve));
+                }, budget);
             }
         }
         for (const [folder, names] of membership) if (JSON.stringify(names) !== JSON.stringify(fs.readdirSync(folder).filter(name => name.endsWith('.jsonl')).sort()))

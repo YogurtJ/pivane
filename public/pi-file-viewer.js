@@ -74,14 +74,25 @@
                 next.click(); next.focus();
             });
             this.clear();
-            new MutationObserver(() => {
-                const pane = $('pi-inspector');
-                if (this.runHtml && (!pane.classList.contains('open') || !pane.classList.contains('show-changes'))) this.stopInteractive();
-            }).observe($('pi-inspector'), { attributes: true, attributeFilter: ['class'] });
+            const visibility = new MutationObserver(() => {
+                const visible = this.isVisible();
+                if (!visible && this.runHtml) this.stopInteractive();
+                if (!visible && this.previewCleanup) { this.releaseUrls(); this.previewSuspended = true; }
+                else if (visible && this.previewSuspended) { this.previewSuspended = false; this.renderContent(); }
+            });
+            visibility.observe($('pi-inspector'), { attributes: true, attributeFilter: ['class'] });
+            visibility.observe($('pi-file-reader'), { attributes: true, attributeFilter: ['hidden'] });
+        }
+        isVisible() {
+            const pane = $('pi-inspector');
+            return pane.classList.contains('open') && pane.classList.contains('show-changes') && !$('pi-file-reader').hidden;
         }
         stopInteractive() { if (this.runHtml) { this.runHtml = false; this.renderContent(); } }
         cancel() { this.sequence++; this.controller?.abort(); this.controller = null; this.loading = false; }
-        releaseUrls() { this.objectUrls.forEach(url => URL.revokeObjectURL(url)); this.objectUrls = []; }
+        releaseUrls() {
+            this.previewCleanup?.(); this.previewCleanup = null;
+            this.objectUrls.forEach(url => URL.revokeObjectURL(url)); this.objectUrls = [];
+        }
         blob(bytes, mime) { const url = URL.createObjectURL(new Blob([bytes], { type: mime })); this.objectUrls.push(url); return url; }
         bytes() { return this.data?.encoding === 'base64' ? Uint8Array.from(atob(this.data.base64), c => c.charCodeAt(0)) : new TextEncoder().encode(this.data?.content || ''); }
         download() {
@@ -91,6 +102,7 @@
             document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
         }
         clear() {
+            this.previewSuspended = false;
             this.cancel(); this.releaseUrls(); this.file = null; this.data = null; this.current = null; this.positions = new Map(); this.restoreTop = null;
             this.runHtml = false; this.actualSize = false;
             $('pi-file-tabs').hidden = true; $('pi-file-viewer').hidden = true; $('pi-file-body').replaceChildren();
@@ -110,6 +122,7 @@
             if (this.file?.identity === file.identity && (this.file.path === file.path || this.file.deliveryId && this.file.deliveryId === file.deliveryId) && this.file.hasDiff === file.hasDiff && this.file.writes.length === file.writes.length
                 && this.file.writes.every((w, i) => w.id === file.writes[i].id && w.content === file.writes[i].content)) return;
             this.rememberPosition();
+            this.previewSuspended = false;
             this.cancel(); this.releaseUrls(); this.file = file; this.data = null; this.current = null; this.jumped = false;
             this.runHtml = false; this.actualSize = false;
             const position = this.positions.get(file.identity);
@@ -150,7 +163,7 @@
             const kind = this.data?.kind || (/\.(?:md|markdown)$/i.test(this.file?.path || '') ? 'markdown' : 'text');
             $('pi-file-refresh').hidden = this.source !== 'current'; $('pi-file-refresh').disabled = this.loading || !this.enabled;
             $('pi-file-copy').disabled = !this.data?.content?.length;
-            $('pi-file-preview').hidden = !['markdown', 'html'].includes(kind);
+            $('pi-file-preview').hidden = !['markdown', 'html', 'table', 'svg'].includes(kind);
             this.downloadButton.hidden = !this.previewsEnabled && !this.file?.deliveryId;
             this.downloadButton.disabled = !this.data;
             this.imageSizeButton.hidden = kind !== 'image'; this.imageSizeButton.textContent = this.actualSize ? translateUi('适应窗口') : translateUi('原尺寸');
@@ -162,7 +175,7 @@
             $('pi-file-preview').title = this.preview ? translateUi("查看源码") : translateUi("预览");
             $('pi-file-preview').setAttribute('aria-label', $('pi-file-preview').title);
             $('pi-file-preview').setAttribute('aria-pressed', String(Boolean(this.preview)));
-            $('pi-file-wrap').hidden = Boolean(this.preview) || ['image', 'binary'].includes(kind); $('pi-file-wrap').disabled = !this.data;
+            $('pi-file-wrap').hidden = Boolean(this.preview) || ['image', 'binary', 'pdf', 'audio'].includes(kind); $('pi-file-wrap').disabled = !this.data;
             $('pi-file-wrap').setAttribute('aria-pressed', String(Boolean(this.wrap)));
         }
         async load() {
@@ -172,8 +185,10 @@
             if (this.source !== 'current') {
                 const write = this.file.writes.find(w => `write:${w.id}` === this.source);
                 if (!write || new TextEncoder().encode(write.content).length > window.PiFilePolicy.maxBytes) { this.status(translateUi("写入内容超过 2 MiB，暂不支持全文展示"), true); this.controls(); return; }
-                this.data = { content: write.content, kind: /\.(?:html?|md|markdown)$/i.test(this.file.path) ? /\.html?$/i.test(this.file.path) && this.previewsEnabled ? 'html' : /\.(md|markdown)$/i.test(this.file.path) ? 'markdown' : 'text' : 'text' };
-                if (this.defaultPreview) { this.preview = ['markdown', 'html'].includes(this.data.kind); this.defaultPreview = false; }
+                const ext = this.file.path.split('.').at(-1).toLowerCase();
+                const kind = ['md', 'markdown'].includes(ext) ? 'markdown' : this.previewsEnabled ? ({ html: 'html', htm: 'html', csv: 'table', tsv: 'table', svg: 'svg' }[ext] || 'text') : 'text';
+                this.data = { content: write.content, kind, delimiter: ext === 'tsv' ? '\t' : ',' };
+                if (this.defaultPreview) { this.preview = ['markdown', 'html', 'table', 'svg'].includes(this.data.kind); this.defaultPreview = false; }
                 this.status(translateUi("本次成功写入的内容 · 不随磁盘后续修改而更新")); this.renderContent(); return;
             }
             if (!this.enabled) { this.status(translateUi("当前后端尚未启用文件读取；写入记录仍可查看。"), true); this.controls(); return; }
@@ -209,13 +224,20 @@
             this.status(this.file.deliveryId ? translateUi('交付快照 · {0} · SHA256 {1}', new Date(this.data.createdAt).toLocaleString(globalThis.PiI18n?.locale), this.data.revision)
                 : translateUi("当前文件快照{0}，点击刷新更新{1}", Number.isNaN(readAt.getTime()) ? '' : translateUi(" · 读取于 {0}", readAt.toLocaleTimeString(globalThis.PiI18n?.locale)), Number.isNaN(modifiedAt.getTime()) ? '' : translateUi(" · 文件修改于 {0}", modifiedAt.toLocaleString(globalThis.PiI18n?.locale))));
             if (this.file.deliveryId && this.data.name) { this.file.path = this.data.name; $('pi-changes-title').textContent = this.data.name; $('pi-file-path').textContent = this.data.absolutePath; this.host.selected?.(this.file); }
-            if (this.defaultPreview && this.data.kind) { this.preview = ['markdown', 'html', 'image'].includes(this.data.kind); this.defaultPreview = false; }
+            if (this.defaultPreview && this.data.kind) { this.preview = ['markdown', 'html', 'image', 'table', 'svg', 'pdf', 'audio'].includes(this.data.kind); this.defaultPreview = false; }
             this.renderContent();
         }
         renderContent() {
             const body = $('pi-file-body'), oldTop = body.scrollTop;
             this.releaseUrls(); body.replaceChildren(); this.controls();
             if (!this.data) return;
+            if (['pdf', 'audio'].includes(this.data.kind) || this.preview && ['table', 'svg'].includes(this.data.kind)) {
+                if (!this.isVisible()) { this.previewSuspended = true; return; }
+                this.previewCleanup = window.PiFilePreviews.render(body, this.data, {
+                    name: this.data.name || this.file.path, bytes: () => this.bytes(), blob: (bytes, mime) => this.blob(bytes, mime)
+                });
+                return;
+            }
             if (this.data.kind === 'image') {
                 const wrap = document.createElement('div'); wrap.className = 'pi-file-image'; wrap.classList.toggle('actual-size', Boolean(this.actualSize));
                 const image = document.createElement('img'); image.alt = this.data.name || this.file.path; image.src = this.blob(this.bytes(), this.data.mime);

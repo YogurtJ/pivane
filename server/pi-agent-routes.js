@@ -97,6 +97,7 @@ function createPiAgentGateway(options = {}) {
     const settingsService = new PiSettingsService({ workspacePreferencesService: preferences });
     const transcription = new (require('./pi-transcription-service').PiTranscriptionService)({
         createModelRuntime: () => settingsService.createModelRuntime(),
+        providerService: options.mediaLabService?.providerService,
         blocked: () => settingsService.mutating || maintenance?.locked
     });
     const titles = new (require('./pi-session-title-service').PiSessionTitleService)({ preferences,

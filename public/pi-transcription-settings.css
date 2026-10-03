@@ -1,0 +1,25 @@
+.settings-speech[hidden] { display: none !important; }
+.transcription-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.transcription-heading h3 { margin: 0; font-size: 16px; }
+.settings-speech .settings-help { color: var(--text-muted); font-size: 13px; line-height: 1.7; }
+.settings-speech :is(.settings-primary-button, .settings-secondary-button) { min-height: 38px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-1); color: var(--text-main); font: inherit; font-size: 13px; cursor: pointer; }
+.settings-speech .settings-primary-button { background: var(--primary); color: var(--on-primary, #fff); border-color: var(--primary); }
+.settings-speech button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.settings-speech button:disabled { opacity: .55; cursor: default; }
+#settings-transcription-body { min-width: 0; margin-top: 14px; }
+.transcription-default label, .transcription-form > label { display: flex; flex-direction: column; gap: 7px; font-size: .82rem; min-width: 0; }
+.transcription-default select, .transcription-form input, .transcription-form select { box-sizing: border-box; width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--text-main); background: var(--surface-1); font: inherit; font-size: 16px; }
+.transcription-model-row { display: flex; align-items: center; gap: 10px; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--line); }
+.transcription-model-row > div { min-width: 0; }
+.transcription-model-row strong, .transcription-model-row small { display: block; overflow-wrap: anywhere; }
+.transcription-model-row small { margin-top: 5px; color: var(--text-muted); }
+.transcription-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.transcription-model-row .transcription-actions { flex-shrink: 0; }
+.transcription-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 12px 0; }
+.transcription-form > details, .transcription-form > p { grid-column: 1 / -1; }
+.transcription-form [hidden] { display: none !important; }
+.transcription-form summary { cursor: pointer; font-size: .82rem; color: var(--text-muted); }
+@media (max-width: 680px) {
+    .transcription-form { grid-template-columns: minmax(0, 1fr); }
+    .transcription-model-row { align-items: flex-start; flex-wrap: wrap; }
+}

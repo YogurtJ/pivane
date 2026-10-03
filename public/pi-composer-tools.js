@@ -13,6 +13,7 @@
             this.host = host; this.input = $('pi-input'); this.menu = $('pi-command-menu');
             this.dialog = $('pi-template-dialog'); this.search = $('pi-template-search'); this.body = $('pi-template-body');
             this.addButton = $('pi-composer-add-button'); this.addMenu = $('pi-composer-add-menu');
+            this.delivery = $('pi-delivery-mode'); this.deliveryToggle = $('pi-delivery-toggle'); this.deliveryChoices = $('pi-delivery-choices');
             this.enabled = false; this.epoch = 0; this.request = 0; this.remote = []; this.builtins = []; this.templates = [];
             this.items = []; this.active = -1; this.catalog = null;
             this.catalogRequest = 0;
@@ -25,7 +26,18 @@
             this.input.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== this.input && !this.dialog.open) this.hide(); }, 150));
             this.addButton.addEventListener('click', () => this.addMenu.hidden ? this.openActions() : this.closeActions(true));
             this.addButton.addEventListener('keydown', e => { if (!e.isComposing && ['ArrowDown', 'ArrowUp'].includes(e.key)) { e.preventDefault(); this.openActions(e.key === 'ArrowUp'); } });
-            this.addMenu.addEventListener('click', e => { const button = e.target.closest('button'); if (button && !button.disabled) this.closeActions(true); }, true);
+            this.addMenu.addEventListener('click', e => { const button = e.target.closest('button'); if (button && !button.disabled && !button.hasAttribute('data-menu-keep-open')) this.closeActions(true); }, true);
+            this.deliveryToggle.addEventListener('click', () => {
+                this.deliveryChoices.hidden = !this.deliveryChoices.hidden;
+                this.deliveryToggle.setAttribute('aria-expanded', String(!this.deliveryChoices.hidden));
+                if (!this.deliveryChoices.hidden) this.deliveryChoices.querySelector('[aria-checked="true"]')?.focus();
+            });
+            this.deliveryChoices.addEventListener('click', e => {
+                const button = e.target.closest('[data-delivery-mode]'); if (!button || button.disabled) return;
+                this.delivery.value = button.dataset.deliveryMode; this.delivery.dispatchEvent(new Event('change'));
+            });
+            this.delivery.addEventListener('change', () => this.syncDelivery());
+            this.syncDelivery();
             this.addMenu.addEventListener('keydown', e => this.actionsKey(e));
             document.addEventListener('pointerdown', e => { if (!this.addButton.parentElement.contains(e.target)) this.closeActions(); });
             document.addEventListener('focusin', e => { if (!this.addButton.parentElement.contains(e.target)) this.closeActions(); });
@@ -49,9 +61,18 @@
         }
         closeActions(focus = false) {
             this.addMenu.hidden = true; this.addButton.setAttribute('aria-expanded', 'false');
+            this.deliveryChoices.hidden = true; this.deliveryToggle.setAttribute('aria-expanded', 'false');
             if (focus) this.addButton.focus();
         }
-        actionItems() { return [...this.addMenu.querySelectorAll('button, select')].filter(b => !b.hidden && !b.disabled); }
+        syncDelivery() {
+            const mode = this.delivery.value;
+            $('pi-delivery-current').textContent = mode === 'follow_up' ? translateUi("后续 · 当前任务完成后送达") : translateUi("引导 · 本轮工具后送达");
+            this.deliveryToggle.disabled = this.delivery.disabled;
+            this.deliveryChoices.querySelectorAll('[data-delivery-mode]').forEach(button => {
+                button.disabled = this.delivery.disabled; button.setAttribute('aria-checked', String(button.dataset.deliveryMode === mode));
+            });
+        }
+        actionItems() { return [...this.addMenu.querySelectorAll('button')].filter(b => !b.closest('[hidden]') && !b.disabled); }
         openActions(last = false) {
             this.hide(); this.addMenu.hidden = false; this.addButton.setAttribute('aria-expanded', 'true');
             const items = this.actionItems(); (last ? items.at(-1) : items[0])?.focus();

@@ -81,7 +81,7 @@ mediaAgentService.mediaLabService = mediaLabService;
 const workspaceAccess = new WorkspaceAccessService({
     publicFiles: ['/', '/index.html', '/pi-mermaid-frame.html', '/site.webmanifest', ...fs.readdirSync(path.join(__dirname, 'public'))
         .filter(name => /\.(?:css|js)$/.test(name)).map(name => '/' + name)],
-    publicPrefixes: ['/brand/', '/vendor/marked/', '/vendor/dompurify/', '/vendor/highlight/', '/vendor/katex-0.18.7/'],
+    publicPrefixes: ['/brand/', '/vendor/marked/', '/vendor/dompurify/', '/vendor/highlight/', '/vendor/pdfjs/', '/vendor/katex-0.18.7/'],
 });
 workspaceAccess.publicFiles.add('/vendor/mermaid-11.17.2.min.js');
 workspaceAccess.publicFiles.add('/vendor/mermaid-LICENSE.txt');
@@ -98,6 +98,10 @@ app.use(createStaticAssets([
 app.use('/vendor/marked', express.static(path.join(__dirname, 'node_modules', 'marked', 'lib')));
 app.use('/vendor/dompurify', express.static(path.join(__dirname, 'node_modules', 'dompurify', 'dist')));
 app.use('/vendor/highlight', express.static(path.join(__dirname, 'node_modules', '@highlightjs', 'cdn-assets')));
+// PDF.js public library assets load only when opening a PDF; file bytes use the authenticated API.
+for (const directory of ['legacy/build', 'cmaps', 'standard_fonts', 'wasm']) {
+    app.use('/vendor/pdfjs/' + directory, express.static(path.join(__dirname, 'node_modules', 'pdfjs-dist', directory), { index: false, dotfiles: 'deny' }));
+}
 for (const directory of ['images', 'videos', 'audio']) {
     app.use('/' + directory, express.static(path.join(mediaDataRoot, 'public', directory), { fallthrough: false }));
 }

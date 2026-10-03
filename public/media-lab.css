@@ -92,6 +92,10 @@
 .lab-preview-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
 .lab-preview-actions a { text-decoration: none; }
 .lab-preview p { font-size: 12px; color: var(--text-muted); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; margin: 14px 0; max-height: 180px; overflow: auto; }
+.lab-fields > .lab-parameter-note { grid-column: 1 / -1; }
+.lab-attachment-preview { display: block; width: 100%; max-height: 200px; object-fit: contain; }
+.lab-attachment-preview[hidden] { display: none; }
+.lab-field input[type="file"] { min-width: 0; width: 100%; font-size: 16px; }
 .lab-source { padding-bottom: 18px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
 .lab-source img { width: 100%; max-height: 180px; object-fit: contain; margin-top: 12px; }
 .lab-file { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; padding: 10px 8px 10px 0; }

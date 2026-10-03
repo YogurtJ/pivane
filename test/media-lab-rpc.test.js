@@ -12,7 +12,9 @@ process.env.PI_CODING_AGENT_DIR = path.join(root, 'agent');
 process.env.PI_OFFLINE = '1';
 
 test('native restricted Pi RPC reads live requirements and returns a structured lab plan without execution or session files', { timeout: 45000 }, async t => {
+    const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEUlEQVR4nGP4z8AARGDiPwMAHfAD/aAzCYkAAAAASUVORK5CYII=';
     const model = { id: 'rpc-image', name: 'RPC model fixture', kind: 'image', adapter: 'manual', instructions: 'A fixture-specific palette object is required.', parameters: {
+        image: { type: 'image', required: true },
         prompt: { type: 'textarea', required: true }, palette: { type: 'json', required: true }, quality: { type: 'select', choices: ['draft', 'final'], default: 'draft' }
     } };
     const lab = new MediaLabService({ profile: { directory: root, models: [model], image: {} },
@@ -37,12 +39,15 @@ test('native restricted Pi RPC reads live requirements and returns a structured 
             }
             assert.equal(req.url, '/v1/chat/completions');
             requests.push(body);
+            const parts = body.messages.flatMap(message => Array.isArray(message.content) ? message.content : []);
+            assert.ok(parts.some(part => part.type === 'image_url' && part.image_url.url === image), 'actual image reaches the planner provider: ' + JSON.stringify(parts.map(part => ({ type: part.type, text: part.text?.slice(-160), image: part.image_url?.url?.slice(0, 160) }))));
+            assert.ok(parts.filter(part => part.type === 'text').every(part => !part.text.includes(image)), 'image bytes never become planner text');
             assert.ok(!JSON.stringify(body).includes(workspaceToken), 'internal access credential never enters model payload');
             assert.deepEqual(body.tools.map(tool => tool.function.name).sort(), ['media_get_capabilities', 'media_plan_request']);
             const first = requests.length === 1;
             assert.ok(requests.length <= 2, 'terminating plan tool must end the RPC turn');
             const name = first ? 'media_get_capabilities' : 'media_plan_request';
-            const args = first ? { kind: 'image' } : { modelId: model.id, summary: 'Fixture plan', parameters: { prompt: 'An abstract poster', palette: { colors: ['navy','mint'] }, quality: 'final' } };
+            const args = first ? { kind: 'image' } : { modelId: model.id, summary: 'Fixture plan', parameters: { image: [...lab.planningAttachments.keys()][0], prompt: 'An abstract poster', palette: { colors: ['navy','mint'] }, quality: 'final' } };
             if (!first) assert.ok(JSON.stringify(body.messages).includes('fixture-specific palette'));
             res.writeHead(200, { 'Content-Type': 'text/event-stream' });
             const chunks = [
@@ -61,7 +66,7 @@ test('native restricted Pi RPC reads live requirements and returns a structured 
     fs.mkdirSync(process.env.PI_CODING_AGENT_DIR, { recursive: true });
     fs.writeFileSync(path.join(process.env.PI_CODING_AGENT_DIR, 'models.json'), JSON.stringify({ providers: {
         fixture: { api: 'openai-completions', apiKey: 'fixture-not-a-secret', baseUrl: `${process.env.PI_WORKSPACE_BASE_URL}/v1`, models: [
-            { id: 'fixture', name: 'Fixture', reasoning: false, input: ['text'], contextWindow: 32768, maxTokens: 1024, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }
+            { id: 'fixture', name: 'Fixture', reasoning: false, input: ['text', 'image'], contextWindow: 32768, maxTokens: 1024, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }
         ] }
     } }));
     fs.writeFileSync(path.join(process.env.PI_CODING_AGENT_DIR, 'settings.json'), JSON.stringify({ defaultProvider: 'fixture', defaultModel: 'fixture', defaultThinkingLevel: 'off', retry: { enabled: false }, compaction: { enabled: false } }));
@@ -69,8 +74,10 @@ test('native restricted Pi RPC reads live requirements and returns a structured 
     process.env.PI_WORKSPACE_BASE_URL = 'http://127.0.0.1:1';
     const planner = new MediaAgentService({ rootDir: path.join(__dirname, '..') });
     planner.mediaLabService = lab;
-    const result = await planner.createLabPlan({ kind: 'image', selectedModelId: model.id, instruction: 'Plan a fixture poster', cwd: root });
+    const result = await planner.createLabPlan({ kind: 'image', selectedModelId: model.id, instruction: 'Plan a fixture poster', parameters: { image }, cwd: root });
     assert.equal(result.plan.modelId, model.id);
+    assert.equal(result.plan.parameters.image, image);
+    assert.equal(lab.planningAttachments.size, 0);
     assert.deepEqual(result.plan.parameters.palette, { colors: ['navy','mint'] });
     assert.equal(result.plan.parameters.quality, 'final');
     assert.equal(result.plannerModel.provider, 'fixture');

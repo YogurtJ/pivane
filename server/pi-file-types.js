@@ -40,6 +40,12 @@ function dimensions(bytes) {
     return null;
 }
 function classify(bytes, filename) {
+    if (/^%PDF-\d\.\d(?:\s|$)/.test(bytes.toString('ascii', 0, 9))) return { kind: 'pdf', mime: 'application/pdf' };
+    if (bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WAVE') return { kind: 'audio', mime: 'audio/wav' };
+    if (bytes.length >= 10 && (bytes.toString('ascii', 0, 3) === 'ID3' && bytes[3] >= 2 && bytes[3] <= 4 && bytes.subarray(6, 10).every(b => b < 128)
+        || bytes[0] === 255 && (bytes[1] & 0xe6) === 0xe2 && (bytes[2] & 0xf0) !== 0xf0 && (bytes[2] & 0xf0) !== 0 && (bytes[2] & 12) !== 12)) return { kind: 'audio', mime: 'audio/mpeg' };
+    if (bytes.length >= 4 && bytes.toString('ascii', 0, 4) === 'fLaC') return { kind: 'audio', mime: 'audio/flac' };
+    if (bytes.toString('ascii', 0, 4) === 'OggS' && /OpusHead|\x01vorbis/.test(bytes.toString('latin1', 0, 256))) return { kind: 'audio', mime: 'audio/ogg' };
     const image = dimensions(bytes);
     if (image) {
         if (!image.width || !image.height || image.width > 16384 || image.height > 16384 || image.width * image.height > MAX_PIXELS)
@@ -51,14 +57,16 @@ function classify(bytes, filename) {
         try {
             utf8(bytes);
             const ext = path.extname(filename).toLowerCase();
-            return { kind: ['.html', '.htm'].includes(ext) ? 'html' : ['.md', '.markdown'].includes(ext) ? 'markdown' : 'text', mime: 'text/plain; charset=utf-8' };
+            return { kind: ['.html', '.htm'].includes(ext) ? 'html' : ['.md', '.markdown'].includes(ext) ? 'markdown' : ['.csv', '.tsv'].includes(ext) ? 'table' : ext === '.svg' ? 'svg' : 'text', mime: 'text/plain; charset=utf-8',
+                ...(['.csv', '.tsv'].includes(ext) ? { delimiter: ext === '.tsv' ? '\t' : ',' } : {}) };
         } catch {}
     }
     return { kind: 'binary', mime: 'application/octet-stream', previewReason: '此类型暂不支持预览，可下载原文件' };
 }
 function representation(file, name) {
     const { bytes, ...metadata } = file, type = classify(bytes, name);
-    return { ...metadata, ...type, encoding: ['text', 'markdown', 'html'].includes(type.kind) ? 'utf8' : 'base64',
-        ...( ['text', 'markdown', 'html'].includes(type.kind) ? { content: utf8(bytes) } : { base64: bytes.toString('base64') }) };
+    const isText = ['text', 'markdown', 'html', 'table', 'svg'].includes(type.kind);
+    return { ...metadata, ...type, encoding: isText ? 'utf8' : 'base64',
+        ...(isText ? { content: utf8(bytes) } : { base64: bytes.toString('base64') }) };
 }
 module.exports = { MAX_FILE_BYTES, MAX_TEXT_BYTES, MAX_PIXELS, utf8, classify, representation };

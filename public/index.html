@@ -43,6 +43,7 @@
     <link rel="stylesheet" href="pi-side-chat.css">
     <link rel="stylesheet" href="media-lab.css">
     <link rel="stylesheet" href="media-connections.css">
+    <link rel="stylesheet" href="pi-transcription-settings.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/brand/fontawesome-6.4.0/css/all.min.css">
 </head>
@@ -284,13 +285,12 @@
                                 <button id="pi-composer-add-button" class="icon-btn subtle" type="button" title="添加附件或延迟发送" aria-label="添加操作" aria-haspopup="menu" aria-expanded="false" aria-controls="pi-composer-add-menu" data-i18n-title="s1365" data-i18n-aria-label="s1366"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
                                 <div id="pi-composer-add-menu" class="pi-composer-add-menu" role="menu" aria-label="添加操作" hidden data-i18n-aria-label="s1366">
                                     <button id="pi-attach-button" type="button" role="menuitem" tabindex="-1" title="从手机或电脑上传附件" data-i18n-title="s1367"><i class="fa-solid fa-paperclip" aria-hidden="true"></i><span><!--i18n:s1003-->添加附件<small><!--i18n:s1368-->上传图片、文本或代码文件</small></span></button>
-                                    <label class="pi-delivery-setting" role="none"><span><!--i18n:s1371-->运行中消息投递方式</span>
-                                        <select id="pi-delivery-mode" aria-label="运行中消息投递方式" data-i18n-aria-label="s1371" tabindex="-1">
-                                            <option value="steer"><!--i18n:s860-->引导</option>
-                                            <option value="follow_up"><!--i18n:s859-->后续</option>
-                                        </select>
-                                    </label>
-                                    <button id="pi-transcribe-settings" type="button" role="menuitem" tabindex="-1" hidden><i class="fa-solid fa-microphone" aria-hidden="true"></i><span class="pi-transcribe-settings-label"></span></button>
+                                    <button id="pi-delivery-toggle" type="button" role="menuitem" tabindex="-1" aria-expanded="false" aria-controls="pi-delivery-choices" data-menu-keep-open><i class="fa-solid fa-code-branch" aria-hidden="true"></i><span><!--i18n:s1371-->运行中消息投递方式<small id="pi-delivery-current"></small></span><i class="fa-solid fa-chevron-down pi-delivery-chevron" aria-hidden="true"></i></button>
+                                    <div id="pi-delivery-choices" class="pi-delivery-choices" role="group" aria-label="运行中消息投递方式" hidden>
+                                        <button type="button" role="menuitemradio" data-delivery-mode="steer" aria-checked="true" tabindex="-1"><i class="fa-solid fa-turn-up" aria-hidden="true"></i><span><!--i18n:s860-->引导<small><!--i18n:s3527-->本轮工具后送达</small></span><i class="fa-solid fa-check pi-delivery-check" aria-hidden="true"></i></button>
+                                        <button type="button" role="menuitemradio" data-delivery-mode="follow_up" aria-checked="false" tabindex="-1"><i class="fa-regular fa-clock" aria-hidden="true"></i><span><!--i18n:s859-->后续<small><!--i18n:s3528-->当前任务完成后送达</small></span><i class="fa-solid fa-check pi-delivery-check" aria-hidden="true"></i></button>
+                                    </div>
+                                    <select id="pi-delivery-mode" aria-label="运行中消息投递方式" hidden tabindex="-1"><option value="steer"><!--i18n:s860-->引导</option><option value="follow_up"><!--i18n:s859-->后续</option></select>
                                     <button id="pi-schedule-button" type="button" role="menuitem" tabindex="-1" title="延迟发送" hidden data-i18n-title="s992"><i class="fa-regular fa-clock" aria-hidden="true"></i><span><!--i18n:s992-->延迟发送<small><!--i18n:s1369-->指定时间发送消息</small></span></button>
                                 </div>
                             </div>
@@ -577,7 +577,17 @@
     </dialog>
     <dialog id="lab-connections-dialog" class="lab-dialog mc-dialog" aria-labelledby="mc-title">
         <header><button id="mc-back" type="button" class="icon-btn" aria-label="返回服务列表" hidden data-i18n-aria-label="s1496">←</button><h2 id="mc-title"><!--i18n:s99-->媒体服务与模型</h2><button id="mc-close" type="button" class="icon-btn" aria-label="关闭媒体服务" data-i18n-aria-label="s1497">×</button></header>
-        <div id="mc-content" class="lab-dialog-scroll"></div><footer id="mc-footer"></footer>
+        <div id="mc-speech-tabs" class="mc-speech-tabs" role="tablist" aria-label="语音能力" data-i18n-aria-label="s3560" hidden>
+            <button id="mc-tts-tab" type="button" role="tab" aria-selected="true" aria-controls="mc-content" tabindex="0" data-speech-tab="tts"><i class="fa-solid fa-volume-high" aria-hidden="true"></i><span><!--i18n:s3561-->语音合成（TTS）</span></button>
+            <button id="mc-asr-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-speech" tabindex="-1" data-speech-tab="asr"><i class="fa-solid fa-microphone" aria-hidden="true"></i><span><!--i18n:s3562-->语音转录（ASR）</span></button>
+        </div>
+        <div id="mc-content" class="lab-dialog-scroll"></div>
+        <section id="settings-speech" class="lab-dialog-scroll settings-speech" role="tabpanel" aria-labelledby="mc-asr-tab" hidden>
+            <div class="transcription-heading"><h3 id="settings-transcription-title"><!--i18n:s3532-->语音转文字（ASR）</h3><button id="settings-transcription-refresh" class="icon-btn subtle" type="button" title="刷新转录模型" aria-label="刷新转录模型" data-i18n-title="s3533" data-i18n-aria-label="s3533"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button></div>
+            <p class="lab-muted"><!--i18n:s3534-->接入转录模型，或复用现有语音服务；录音转为可编辑草稿。</p>
+            <div id="settings-transcription-body"></div>
+        </section>
+        <footer id="mc-footer"></footer>
     </dialog>
     <dialog id="lab-info-dialog" class="lab-dialog" aria-labelledby="lab-info-title">
         <header><h2 id="lab-info-title"><!--i18n:s1498-->模型要求</h2><button id="lab-info-close" class="icon-btn" type="button" title="关闭" aria-label="关闭" data-i18n-title="s358" data-i18n-aria-label="s358"><i class="fa-solid fa-xmark"></i></button></header><div id="lab-info-content" class="lab-dialog-scroll"></div>
@@ -663,7 +673,7 @@
                         <div class="mc-settings-kinds">
                             <button type="button" data-media-settings-kind="image"><i class="fa-regular fa-image"></i><strong><!--i18n:s109-->图像</strong><span>OpenAI、Gemini、Seedream</span></button>
                             <button type="button" data-media-settings-kind="video"><i class="fa-solid fa-film"></i><strong><!--i18n:s108-->视频</strong><span><!--i18n:s1518-->Seedance、自定义异步服务</span></button>
-                            <button type="button" data-media-settings-kind="tts"><i class="fa-solid fa-volume-high"></i><strong><!--i18n:s107-->语音</strong><span><!--i18n:s1519-->OpenAI 兼容、Qwen 原生</span></button>
+                            <button type="button" id="settings-speech-open" data-media-settings-kind="tts"><i class="fa-solid fa-volume-high"></i><strong><!--i18n:s107-->语音</strong><span><!--i18n:s3529-->朗读与语音转文字</span></button>
                         </div>
                         <p class="settings-help"><!--i18n:s1520-->选择常用服务，填写地址、Key 和模型 ID。高级参数可按需展开，也可让 Agent 根据 API 文档填写接入草稿。</p>
                         <p class="settings-help"><!--i18n:s1521-->同一服务的模型共用 Key。保存接入后，在实验室检查清单并确认生成；回复朗读默认模型在“使用偏好”中选择。</p>
@@ -929,6 +939,7 @@
     <script src="pi-auxiliary-models.js"></script>
     <link rel="stylesheet" href="pi-auxiliary-models.css">
     <script src="pi-title-settings.js"></script>
+    <script src="pi-transcription-settings.js"></script>
     <script src="pi-mcp-settings.js"></script>
     <link rel="stylesheet" href="pi-mcp-settings.css">
     <script src="pi-extensions.js"></script>
@@ -971,6 +982,7 @@
     <link rel="stylesheet" href="pi-math.css">
     <script src="/vendor/katex-0.18.7/katex.min.js"></script>
     <script src="pi-math.js"></script>
+    <script src="pi-file-previews.js"></script>
     <script src="pi-file-viewer.js"></script>
     <script src="pi-file-browser.js"></script>
     <script src="pi-files-panel.js"></script>

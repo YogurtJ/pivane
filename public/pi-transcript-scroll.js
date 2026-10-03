@@ -15,8 +15,10 @@
                     this.following = this.atBottom() && !this.drag;
                 }
                 this.lastTop = viewport.scrollTop;
+                // Preserve the pre-layout anchor until the observer frame can
+                // compensate for an image/font reflow above a stationary reader.
                 if (resized) this.update();
-                this.paint();
+                else this.paint();
             }, { passive: true });
             viewport.addEventListener('wheel', event => {
                 if (event.deltaY < 0 && viewport.scrollTop > 0) this.following = false;
@@ -85,6 +87,13 @@
                     return;
                 }
                 if (this.following && !this.drag) this.setTop(this.maximum());
+                else if (!this.drag && this.readingAnchor?.top === this.viewport.scrollTop) {
+                    const saved = this.readingAnchor;
+                    if (this.visibleAnchor(saved.anchorNode)) {
+                        const delta = saved.anchorNode.getBoundingClientRect().top - this.viewport.getBoundingClientRect().top - saved.offset;
+                        if (Math.abs(delta) >= 1) this.setTop(this.viewport.scrollTop + delta);
+                    }
+                }
                 this.paint();
             });
         }

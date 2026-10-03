@@ -19,7 +19,7 @@
 - 回复中的常规相对/绝对项目文件链接可直接在同一右栏打开，支持 `path:行号`、`path:行号:列号` 和 `path#L行号`，仅定位到行。空格、中文和 URL 编码路径支持；外部 HTTP(S)、mailto、页面锚点及媒体下载等应用链接保留原行为。主回复与侧聊回复共用点击入口。
 - Markdown 默认排版预览，可切换源码；带行号链接默认显示源码并定位。预览中的相对文件链接以所查看文件的目录为基准。代码/文本提供行号、常见语言高亮、换行开关和复制全文；复制使用完整原文字串，不复制行号或高亮 HTML。空文件明确显示 0 字符，禁用无内容的复制。
 - 右侧页签名为“文件”，项目浏览与本轮记录共用查看器。从回复卡片打开时定位到原记录；从目录树打开时查看当前文件。原轮次／文件选择器保留为浮层，选择后收起。
-- 桌面支持“展开阅读”，文件面板至少 760px 宽且已打开文件时，目录树可在预览右侧并排显示；较窄面板和手机切换浏览／阅读。“浏览项目文件”、面包屑目录和“在项目中定位”均可返回树。后端提供 `filePreviews` 时支持图片、隔离 HTML 和下载；PDF 等未支持预览的类型显示下载提示，不提供编辑接口。
+- 桌面支持“展开阅读”，文件面板至少 760px 宽且已打开文件时，目录树可在预览右侧并排显示；较窄面板和手机切换浏览／阅读。“浏览项目文件”、面包屑目录和“在项目中定位”均可返回树。后端提供 `filePreviews` 时支持图片、PDF、CSV/TSV 表格、SVG、音频、隔离 HTML 和下载；Office 等未支持预览的类型显示下载提示，不提供编辑接口。
 
 ## 交付物、图片与 HTML
 
@@ -31,10 +31,19 @@
 - 交付记录通过当前唯一受管 worker 写入原生 `pivane-deliverable` custom entry，只保存资源 ID 和清单修订。读取以当前完整分支为准，压缩不丢引用；分叉只继承分叉点之前的引用，其他分支和其他项目的引用不能读取。不启动关闭的线程 worker，不维护第二套聊天历史。
 - 同一 session/requestId 重复调用返回原快照，不追随原件更新；不同参数复用 ID 拒绝。快照部分写入或结果不确定时不覆盖、不自动重放。需要新版本时使用新的 requestId。实例中的既有 worker 需在安全空闲时重新加载受管扩展，才能获得新工具。
 - 从回复点击交付链接可直接打开；已登记的同分支来源路径也能映射到交付快照，兼容旧路径链接。尚未登记的项目外文件仍拒绝并给出处理提示，不静默切项目。目录树始终读取磁盘，不用交付快照替代项目文件。
-- PNG/JPEG/WebP/GIF 依据文件签名和尺寸识别，支持适应窗口、原尺寸及下载。单边最多 16384 像素、总计最多 32M 像素；超限或签名不匹配降为下载，不按后缀直接执行。SVG 不作为普通图片放行。
+- PNG/JPEG/WebP/GIF 依据文件签名和尺寸识别，支持适应窗口、原尺寸及下载。单边最多 16384 像素、总计最多 32M 像素；超限或签名不匹配降为下载，不按后缀直接执行。SVG 使用单独的受限预览，不作为普通图片直接放行。
 - HTML 默认静态隔离预览，点“运行交互”才启用页面脚本；也可切源码或下载原件。iframe 不获得 same-origin、弹窗、表单、顶层导航或工作台存储权限，CSP 禁止 fetch/XHR、外部脚本、远程图片/字体和子 frame。切文件、切线程、关闭面板或“停止交互”会移除运行中的 frame。
 - **HTML 不是恶意脚本的离线执行沙箱。** 浏览器对 iframe 自身导航的限制不等于禁止所有网络：用户启用脚本后，脚本仍可能导航自己的 frame 并向网络发送数据。仅对可信任务页面启用交互；界面明确提示此限制。自包含页面可交互，多文件相对资源、浏览器剪贴板和外部联网能力尚未支持。
 - 下载由受认证 JSON 快照在浏览器生成 `application/octet-stream` Blob，保留原 UTF-8/BOM/换行或原二进制字节，不导航同源 HTML。没有公开静态文件目录、Bearer 查询参数或任意路径 `sendFile`。旧后端不显示下载入口。
+
+## PDF、表格、SVG 与音频
+
+- PDF 由按需加载的本地 PDF.js 在浏览器解析，支持上一页／下一页、页码跳转、缩放、适应宽度与“本页文字”。一次只绘制一页，画布约 4M 像素、单边最多 4096 像素；单张嵌入图片最多 16M 像素。本页文字最多显示 100000 字符，不预先提取整份文档。扫描页不自动 OCR；需要密码或损坏的文件提示下载。加载超过 30 秒停止；不执行 PDF 脚本，不启用 XFA 表单，也不加载文档中的链接和附件。
+- CSV/TSV 默认表格视图，可切换原始源码。支持 UTF-8 BOM、CRLF、引号内换行／分隔符和双引号转义；CSV 使用逗号、TSV 使用制表符，不猜测编码或分隔符。每页显示 50 行，最多保留前 5000 行、100 列及约 50000 个单元格，部分展示有明确提示；单元格超过 32768 字符或引号格式无效时提示切换源码。首行作为数据保留，不计算公式。
+- SVG 默认显示清理后的静态图片，可切换源码；清理只用于显示，不修改原件。拒绝 DTD／实体声明，移除脚本、事件、外部资源、内联样式、动画和 foreignObject；不会将 SVG 节点插入工作台。最多 512 Ki 字符、10000 个 XML 元素，尺寸沿用图片像素预算；依赖样式、外部图片或动画的 SVG 可能与原图不同。
+- 音频识别 WAV、MP3、FLAC 和 Ogg Vorbis/Opus 签名，提供浏览器原生播放器，不自动播放、不转码、不转录；具体编码能否播放由浏览器决定，失败可下载。
+- PDF 任务、音频和 Blob URL 在切文件、切线程、切到差异或关闭文件面板时释放；再次打开面板重新建立预览，PDF 从第一页开始，音频不自动续播。
+- 以上均复用项目范围、交付分支、描述符和读取并发检查，不调用模型。仍完整读取最多 16 MiB，文本型 CSV/TSV/SVG 最多 2 MiB；未增加流式接口，超大文件和 Office 预览不在本批范围。PDF 解析、图片解码及音频播放使用客户端资源，服务器不启动转换服务。
 
 ## 文件面板布局
 
@@ -89,7 +98,7 @@
 - `GET /api/pi/deliverables?cwd&sessionId`：返回当前完整分支的 `items`，每项 `id/index/name/title/size/createdAt/sourcePath/revision`；缺失或损坏成果显示 `unavailable`。最多 200 个文件并返回 `partial`，最多核对 500 条引用。关闭线程原生文件超过 128 MiB 时拒绝索引。列表不启动 worker。
 - 同接口加 `path=<旧来源路径>`：查找当前分支已登记、来源路径匹配的最新成果；没有匹配返回空列表，不登记、不扩大访问范围。
 - 同接口加 `id=<64位小写hex>&index=<0–19>`：读取指定交付快照。读取前后重新核对原生分支引用和清单修订；不可见引用返回 `DELIVERY_SCOPE`，切分支返回 `DELIVERY_CONTEXT`，内容/hash 改变返回 `DELIVERY_CHANGED`。交付读取最多 4 并发。
-- 类型化响应保留 `path/absolutePath/size/modifiedAt/readAt/revision`，增加 `kind: text|markdown|html|image|binary`、`mime`、`encoding: utf8|base64`。UTF-8 文本（含 Markdown/HTML）最多 2 MiB 并使用 `content`；其他使用 `base64`。图片有 `width/height`；不能预览有 `previewReason`。交付另含 `source: delivery`、`deliveryId/index/name/title/createdAt`。未知二进制不嗅探为可执行 HTML。
+- 类型化响应保留 `path/absolutePath/size/modifiedAt/readAt/revision`，增加 `kind: text|markdown|html|image|pdf|table|svg|audio|binary`、`mime`、`encoding: utf8|base64`。UTF-8 文本（含 Markdown/HTML/CSV/TSV/SVG）最多 2 MiB 并使用 `content`；其他使用 `base64`。表格另有 `delimiter: ","|"\t"`；PDF、音频按签名分类，浏览器负责解析／解码失败提示。图片有 `width/height`；不能预览有 `previewReason`。交付另含 `source: delivery`、`deliveryId/index/name/title/createdAt`。未知二进制不嗅探为可执行 HTML。
 - 两接口只返回 JSON，复用工作台 Cookie/Bearer 和 Origin 校验，设置 no-store、nosniff、`default-src 'none'; sandbox` 及同源资源策略。浏览器不把响应当 HTML 导航。范围、文件和并发错误沿用 `FILE_*`。
 - 新工具不是通用 Web 上传或注册接口；登记只在受管工具中发生。存储为权限保护的独立目录，文件与清单刷盘，清单原子发布并绑定原生引用；并行同 requestId 预占，单 worker 最多 2 组登记。未发布清单不能被网页访问。
 
@@ -105,7 +114,7 @@
 
 ## 渲染边界
 
-新增精确依赖 `@highlightjs/cdn-assets@11.11.1`，脚本从本实例 `/vendor/highlight/highlight.min.js` 提供，不访问远端 CDN 获取代码或语言包。高亮结果只允许 span/class，经 DOMPurify 后再构造安全逐行 DOM；SVG/脚本文件显示源码，不在主页面执行。HTML 的显式运行只发生在上述隔离 frame，下载也不生成可执行的同源页面。
+新增精确依赖 `@highlightjs/cdn-assets@11.11.1`，脚本从本实例 `/vendor/highlight/highlight.min.js` 提供，不访问远端 CDN 获取代码或语言包。高亮结果只允许 span/class，经 DOMPurify 后再构造安全逐行 DOM；SVG 源码和清理后的图片预览共存；脚本文件显示源码，不在主页面执行。HTML 的显式运行只发生在上述隔离 frame，下载也不生成可执行的同源页面。
 
 Markdown 继续经过 marked + DOMPurify；文件预览额外移除图片、音视频、iframe/object/embed 和表单，不自动加载文件正文中的远端资源。源码切换可查看完整原文。文件链接由受控查看器解析后交给同一只读接口校验，不能把模型提供的链接或 `#pi-file` 标记当成权限凭证。
 

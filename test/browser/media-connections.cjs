@@ -7,8 +7,8 @@ const schema = connectionSchema(), copy = value => JSON.parse(JSON.stringify(val
 async function run(browser, viewport, theme) {
     const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
     const page = await context.newPage(); page.setDefaultTimeout(12000);
-    const errors = [], writes = [], stored = new Map(); let providers = [], revision = 0, counter = 0, holdPlan, resolveStarted, rejectWrite = false, unsupported = false;
-    const snapshot = () => ({ ...copy(schema), revision: String(revision), providers: providers.map(provider => ({ ...copy(provider), keyConfigured: stored.has(provider.id) && stored.get(provider.id).origin === new URL(provider.baseUrl).origin, keyNeedsRebind: stored.has(provider.id) && stored.get(provider.id).origin !== new URL(provider.baseUrl).origin })) });
+    const errors = [], writes = [], stored = new Map(); let providers = [], transcriptionModels = [], revision = 0, counter = 0, holdPlan, resolveStarted, rejectWrite = false, unsupported = false;
+    const snapshot = () => ({ ...copy(schema), revision: String(revision), transcriptionModels: copy(transcriptionModels), providers: providers.map(provider => ({ ...copy(provider), keyConfigured: stored.has(provider.id) && stored.get(provider.id).origin === new URL(provider.baseUrl).origin, keyNeedsRebind: stored.has(provider.id) && stored.get(provider.id).origin !== new URL(provider.baseUrl).origin })) });
     const builtin = { id: 'builtin-fixture', name: 'Built-in Fixture', kind: 'image', adapter: 'manual', configured: false, executable: false, parameters: { prompt: { type: 'textarea', label: '提示词', required: true } } };
     const catalog = () => [builtin, ...snapshot().providers.flatMap(provider => provider.models.map(model => ({ ...copy(model), id: `media:${provider.id}:${model.id}`, name: `${provider.name} / ${model.name}`, adapter: 'http-provider', managed: true, configured: provider.keyConfigured, executable: provider.keyConfigured })))];
     page.on('pageerror', error => errors.push(error.message)); page.on('dialog', dialog => dialog.accept());
@@ -53,6 +53,8 @@ async function run(browser, viewport, theme) {
             } else { providers = providers.filter(item => item.id !== provider.id); stored.delete(provider.id); }
             return send(snapshot());
         }
+        if (pathname === '/api/pi/composer/transcription/settings') return send({ ...snapshot(), availableModels: transcriptionModels.map(m => ({ id: 'asr:' + m.providerId + ':' + m.id, name: m.name })), transcriptionProtocols: [{ id: 'openai', name: '音频转录接口' }] });
+        if (pathname === '/api/pi/settings/reply-tts') return send({ models: catalog().filter(m => m.kind === 'tts').map(m => ({ ...m, textFields: ['input'] })), revision: 'tts-defaults', hasSavedDefaults: false });
         if (request.method() !== 'GET') throw new Error('Unexpected Pi write');
         if (pathname === '/api/pi/status') return send({ ok: true, version: '0.85.0', mediaLab: true, mediaConnections: true, projectRoots: ['/tmp'] });
         if (pathname === '/api/pi/projects') return send({ projects: [{ cwd: '/tmp/connection-ui', name: 'UI fixture', sessionCount: 0 }], roots: ['/tmp'] });
@@ -62,8 +64,13 @@ async function run(browser, viewport, theme) {
     });
     await page.routeWebSocket('**/api/pi/ws', () => { throw new Error('Connections must not open a Pi session'); });
     const click = name => page.getByRole('button', { name, exact: true }).click();
-    const field = name => page.getByLabel(name, { exact: true });
+    const field = name => page.locator('#lab-connections-dialog').getByLabel(name, { exact: true });
     const manager = page.locator('#lab-connections-dialog');
+    async function media() {
+        const desktop = page.locator('[data-tab="media"]');
+        if (await desktop.isVisible()) await desktop.click();
+        else { await page.locator('#workspace-more-toggle').click(); await page.locator('[data-more-tab="media"]').click(); }
+    }
     async function open() { await page.locator('#lab-connect').click(); await manager.locator('.mc-provider-list').waitFor({ state: 'attached' }); }
     async function manage() { await click(`管理模型（${providers[0].models.length}）`); }
     async function overflow() {
@@ -72,7 +79,7 @@ async function run(browser, viewport, theme) {
         if (viewport.width < 900) assert.deepEqual(await manager.locator('input:not([type="checkbox"]),select,textarea').evaluateAll(items => items.filter(el => el.getClientRects().length && parseFloat(getComputedStyle(el).fontSize) < 16).map(el => el.getAttribute('aria-label'))), []);
     }
     try {
-        await page.goto(baseUrl, { waitUntil: 'domcontentloaded' }); await page.locator('[data-tab="media"]').click();
+        await page.goto(baseUrl, { waitUntil: 'domcontentloaded' }); await media();
         await page.locator('#lab-parameters textarea').fill('Unrelated old draft');
         await open(); await click('新增服务');
         await field('服务名称').fill('My Media Service'); await manager.getByText('高级连接设置', { exact: true }).click(); await field('服务 ID').fill('my-api'); await field('Base URL').fill('https://media.example.invalid/v1');
@@ -158,6 +165,7 @@ async function run(browser, viewport, theme) {
         await manager.waitFor({ state: 'hidden' });
         assert.equal(providers[0].models.length, 1); assert.equal(providers[0].models[0].name, 'my-image-model');
         await page.locator('#workspace-settings-close').click();
+        await media();
         await open(); await manage(); await click('编辑模型');
         await field('协议模板').selectOption('gpt-image');
         assert.equal(await field('模型 ID（服务端）').inputValue(), 'my-image-model');
@@ -167,6 +175,71 @@ async function run(browser, viewport, theme) {
         await page.locator('#lab-review').click(); await page.locator('#lab-review-dialog[open]').waitFor();
         assert.deepEqual(writes.filter(item => item.suffix === '/review').at(-1).body.parameters, { prompt: 'Optional field check' });
         await page.locator('#lab-review-close').click(); await open();
+        await manage(); await click('编辑模型'); await field('协议模板').selectOption('openai-image-edit');
+        assert.equal(await field('请求格式').inputValue(), 'multipart');
+        await click('保存并使用模型'); await manager.waitFor({ state: 'hidden' });
+        assert.equal(providers[0].models[0].http.encoding, 'multipart', 'template upload encoding survives saving');
+        assert.equal(providers[0].models[0].parameters.image.type, 'image');
+        assert.equal(await page.locator('#lab-parameters input[type="file"]').count(), 1);
+        await open(); await manage(); await click('编辑模型');
+        assert.equal(await field('请求格式').inputValue(), 'multipart', 'saved encoding survives reopening');
+        await field('协议模板').selectOption('gpt-image');
+        assert.equal(await field('请求格式').inputValue(), 'json');
+        await click('保存并使用模型'); await manager.waitFor({ state: 'hidden' });
+        assert.equal(providers[0].models[0].http.encoding, undefined);
+        await open();
+        transcriptionModels = [{ id: 'asr-fixture', providerId: providers[0].id, name: 'Fixture speech recognition', remoteModel: 'recognize-1', protocol: 'openai' }];
+        await page.locator('#mc-close').click(); await open(); await click('管理模型（2）');
+        assert.equal(await manager.getByText('Fixture speech recognition', { exact: true }).count(), 1);
+        assert.equal(await manager.getByRole('button', { name: '配置转录模型', exact: true }).count(), 1);
+        await click('配置转录模型');
+        await page.locator('#settings-transcription-model').waitFor({ state: 'visible' });
+        assert.equal(await page.locator('#lab-connections-dialog').evaluate(n => n.matches(':modal')), true);
+        assert.equal(await page.locator('#mc-asr-tab').getAttribute('aria-selected'), 'true');
+        await page.locator('#mc-asr-tab').focus(); await page.keyboard.press('ArrowLeft');
+        await page.locator('.mc-provider-list').waitFor();
+        assert.equal(await page.locator('#mc-tts-tab').evaluate(n => n === document.activeElement), true);
+        await page.locator('#mc-close').click();
+        await page.locator('#workspace-settings-toggle').click();
+        await page.locator('[data-settings-tab="media"]').click();
+        for (const kind of ['image', 'video', 'tts']) {
+            await page.locator(`[data-media-settings-kind="${kind}"]`).click();
+            await manager.locator('.mc-provider-list').waitFor();
+            assert.equal(await manager.evaluate(n => n.matches(':modal')), true, 'all three kinds open the same modal');
+            assert.equal(await page.locator('#mc-speech-tabs').isVisible(), kind === 'tts');
+            await overflow();
+            await page.screenshot({ path: `/tmp/media-settings-${kind}-${viewport.width}-${theme}.png` });
+            await click('添加模型');
+            assert.equal(await field('媒体类型').inputValue(), kind);
+            if (kind === 'tts') {
+                assert.equal(await field('协议模板').inputValue(), 'openai-speech');
+                await field('模型 ID（服务端）').fill('speech-fixture-model');
+                await click('保存并使用模型'); await manager.waitFor({ state: 'hidden' });
+                assert.ok(providers[0].models.some(m => m.kind === 'tts' && m.remoteModel === 'speech-fixture-model'));
+            } else await page.locator('#mc-close').click();
+        }
+        await page.locator('#settings-speech-open').click(); await manager.locator('.mc-provider-list').waitFor();
+        await click('管理模型（3）');
+        const speechCard = manager.locator('.mc-card').filter({ has: page.getByText('speech-fixture-model', { exact: true }) });
+        await speechCard.getByRole('button', { name: '编辑模型', exact: true }).click();
+        assert.equal(await field('媒体类型').inputValue(), 'tts');
+        assert.equal(await field('模型 ID（服务端）').inputValue(), 'speech-fixture-model');
+        await page.locator('#mc-tts-tab').click(); await manager.locator('.mc-provider-list').waitFor();
+        await click('朗读默认配置');
+        await page.locator('#pi-reply-tts-model option', { hasText: 'speech-fixture-model' }).waitFor({ state: 'attached' });
+        assert.equal(await manager.isVisible(), false, 'reading defaults replaces rather than stacks dialogs');
+        await page.locator('#pi-reply-tts-connect').click(); await manager.locator('.mc-provider-list').waitFor();
+        await page.locator('#mc-asr-tab').click();
+        await page.locator('#settings-transcription-model').waitFor({ state: 'visible' });
+        await overflow(); await page.screenshot({ path: `/tmp/media-settings-asr-${viewport.width}-${theme}.png` });
+        await click('添加转录模型');
+        await field('转录模型 ID').fill('new-speech-recognition');
+        await page.locator('#settings-transcription-body input[type="password"]').fill('temporary-draft-key');
+        await overflow(); await page.screenshot({ path: `/tmp/media-settings-asr-form-${viewport.width}-${theme}.png` });
+        await page.keyboard.press('Escape'); await manager.waitFor({ state: 'hidden' });
+        assert.equal(await page.locator('#settings-transcription-body input[type="password"]').count(), 0, 'closing clears credential drafts');
+        await page.locator('#settings-speech-open').click(); await manager.locator('.mc-provider-list').waitFor();
+        assert.equal(await page.locator('#mc-tts-tab').getAttribute('aria-selected'), 'true', 'speech always opens with TTS model management');
         assert.equal(writes.filter(item => item.suffix === '/execute').length, 0);
         assert.equal(await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }).includes('ui-private-key-fixture')), false);
         await overflow(); assert.deepEqual(errors, []);
