@@ -46,7 +46,9 @@ async function run(browser, base, viewport, preferences = {}) {
         });
     });
     const emit = event => socket.send(JSON.stringify({ ...event, webRuntimeId: 'fixture', webSequence: ++sequence }));
-    await page.goto(base, { waitUntil: 'domcontentloaded' });
+    // Geometry baselines require the complete stylesheet cascade. A ready
+    // input can precede the final workbench CSS on native Windows Chromium.
+    await page.goto(base, { waitUntil: 'load' });
     await page.locator('#pi-input:not([disabled])').waitFor();
     await page.locator('.pi-start-card').first().waitFor();
     const measure = () => page.evaluate(() => {
