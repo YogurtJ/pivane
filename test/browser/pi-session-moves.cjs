@@ -74,6 +74,10 @@ async function run(browser, base, width, language, emptyTargets = false) {
     await page.locator('#pi-file-input').setInputFiles({ name: '保留附件.txt', mimeType: 'text/plain', buffer: Buffer.from('附件正文') });
     await page.locator('#pi-attachments').getByText('保留附件.txt', { exact: true }).waitFor();
     const open = async () => {
+        // Let mobile viewport changes caused by leaving the draft input settle
+        // before opening a transient menu that intentionally closes on resize.
+        await page.locator('#pi-input').evaluate(input => input.blur());
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         await page.locator('#pi-current-thread-menu').click();
         await page.locator('.pi-thread-menu:not(.hidden)').getByRole('menuitem', { name: english ? 'Move to project…' : '移动到项目…', exact: true }).click();
         await page.locator('#pi-transfer-dialog[open]').waitFor();

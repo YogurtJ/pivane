@@ -237,6 +237,7 @@ async function run(browser, viewport, theme) {
         await page.locator('#settings-transcription-body input[type="password"]').fill('temporary-draft-key');
         await overflow(); await page.screenshot({ path: `/tmp/media-settings-asr-form-${viewport.width}-${theme}.png` });
         await page.keyboard.press('Escape'); await manager.waitFor({ state: 'hidden' });
+        await page.locator('#settings-transcription-body input[type="password"]').waitFor({ state: 'detached' });
         assert.equal(await page.locator('#settings-transcription-body input[type="password"]').count(), 0, 'closing clears credential drafts');
         await page.locator('#settings-speech-open').click(); await manager.locator('.mc-provider-list').waitFor();
         assert.equal(await page.locator('#mc-tts-tab').getAttribute('aria-selected'), 'true', 'speech always opens with TTS model management');

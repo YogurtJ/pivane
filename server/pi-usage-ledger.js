@@ -36,25 +36,30 @@ class UsageLedger {
         }
         privateFiles.privateFileMode(filename);
         this.db = new DatabaseSync(filename);
-        this.db.exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL;
-            CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS sources (path TEXT PRIMARY KEY, signature TEXT NOT NULL, cwd TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS checkpoints (path TEXT PRIMARY KEY, signature TEXT NOT NULL, data TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS owners (key TEXT PRIMARY KEY, id TEXT NOT NULL, cwd TEXT NOT NULL, name TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS facts (key TEXT PRIMARY KEY, timestamp INTEGER NOT NULL, owner TEXT NOT NULL,
-                provider TEXT NOT NULL, model TEXT NOT NULL, data TEXT NOT NULL);
-            CREATE INDEX IF NOT EXISTS facts_time ON facts(timestamp);
-            CREATE TABLE IF NOT EXISTS zones (zone TEXT PRIMARY KEY);
-            CREATE TABLE IF NOT EXISTS daily (zone TEXT NOT NULL, day TEXT NOT NULL, owner TEXT NOT NULL,
-                provider TEXT NOT NULL, model TEXT NOT NULL, ${metrics.map(key => `${key} REAL NOT NULL`).join(',')},
-                PRIMARY KEY(zone,day,owner,provider,model));`);
-        const version = this.db.prepare("SELECT value FROM meta WHERE key='schema'").get();
-        if (version && version.value !== '1') { this.db.close(); throw new Error('Unsupported usage ledger version'); }
-        this.db.prepare("INSERT OR IGNORE INTO meta VALUES ('schema','1')").run();
-        this.insertFact = this.db.prepare('INSERT OR IGNORE INTO facts VALUES (?,?,?,?,?,?)');
-        this.upsertDay = this.db.prepare(`INSERT INTO daily VALUES (${Array(5 + metrics.length).fill('?').join(',')})
-            ON CONFLICT(zone,day,owner,provider,model) DO UPDATE SET ${metrics.map(key => `${key}=${key}+excluded.${key}`).join(',')}`);
-        this.zones = new Map(this.db.prepare('SELECT zone FROM zones').all().map(row => [row.zone, dayFormatter(row.zone)]));
+        try {
+            this.db.exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL;
+                CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS sources (path TEXT PRIMARY KEY, signature TEXT NOT NULL, cwd TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS checkpoints (path TEXT PRIMARY KEY, signature TEXT NOT NULL, data TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS owners (key TEXT PRIMARY KEY, id TEXT NOT NULL, cwd TEXT NOT NULL, name TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS facts (key TEXT PRIMARY KEY, timestamp INTEGER NOT NULL, owner TEXT NOT NULL,
+                    provider TEXT NOT NULL, model TEXT NOT NULL, data TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS facts_time ON facts(timestamp);
+                CREATE TABLE IF NOT EXISTS zones (zone TEXT PRIMARY KEY);
+                CREATE TABLE IF NOT EXISTS daily (zone TEXT NOT NULL, day TEXT NOT NULL, owner TEXT NOT NULL,
+                    provider TEXT NOT NULL, model TEXT NOT NULL, ${metrics.map(key => `${key} REAL NOT NULL`).join(',')},
+                    PRIMARY KEY(zone,day,owner,provider,model));`);
+            const version = this.db.prepare("SELECT value FROM meta WHERE key='schema'").get();
+            if (version && version.value !== '1') throw new Error('Unsupported usage ledger version');
+            this.db.prepare("INSERT OR IGNORE INTO meta VALUES ('schema','1')").run();
+            this.insertFact = this.db.prepare('INSERT OR IGNORE INTO facts VALUES (?,?,?,?,?,?)');
+            this.upsertDay = this.db.prepare(`INSERT INTO daily VALUES (${Array(5 + metrics.length).fill('?').join(',')})
+                ON CONFLICT(zone,day,owner,provider,model) DO UPDATE SET ${metrics.map(key => `${key}=${key}+excluded.${key}`).join(',')}`);
+            this.zones = new Map(this.db.prepare('SELECT zone FROM zones').all().map(row => [row.zone, dayFormatter(row.zone)]));
+        } catch (error) {
+            this.db.close();
+            throw error;
+        }
     }
     transaction(callback) {
         this.db.exec('BEGIN IMMEDIATE');

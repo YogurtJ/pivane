@@ -114,8 +114,13 @@ async function run(browser, viewport) {
     assert.equal(await plus.getAttribute('aria-expanded'), 'true');
     await assertMenuRows();
     await page.screenshot({ path: `/tmp/pi-schedule-menu-${viewport.width}.png` });
+    // Capturing a mobile screenshot can resize the emulated viewport and close
+    // a transient menu. Start keyboard navigation from the plus control again.
+    await plus.press('ArrowDown');
     await page.keyboard.press('ArrowDown');
-    assert.equal(await page.locator('#pi-delivery-toggle').evaluate(n => n === document.activeElement), true);
+    assert.equal(await page.locator('#pi-delivery-toggle').evaluate(n => n === document.activeElement), true,
+        JSON.stringify(await page.evaluate(() => ({ focus: document.activeElement?.id, menuHidden: document.getElementById('pi-composer-add-menu').hidden,
+            deliveryDisabled: document.getElementById('pi-delivery-toggle').disabled, items: [...document.querySelectorAll('#pi-composer-add-menu button')].map(b => ({ id: b.id, disabled: b.disabled, hidden: Boolean(b.closest('[hidden]')) })) }))));
     await page.keyboard.press('Escape');
     assert.equal(await addMenu.isVisible(), false); assert.equal(await plus.evaluate(n => n === document.activeElement), true);
     assert.equal(await input.inputValue(), 'Keep this draft');

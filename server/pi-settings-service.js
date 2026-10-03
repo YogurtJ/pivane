@@ -95,6 +95,26 @@ function assistantText(message) {
         .trim();
 }
 
+// Keep a failed Windows replacement bound to the same file and contents while
+// asynchronous SDK readers release their handles. Never overwrite a later edit.
+const MAX_MODELS_FILE_BYTES = 32 * 1024 * 1024;
+function modelsFileState(file) {
+    const io = require('./pi-file-io');
+    let fd;
+    try { fd = io.openReadSync(file); }
+    catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+    try {
+        const before = fs.fstatSync(fd, { bigint: true }), identity = io.identity(fd);
+        if (before.size > BigInt(MAX_MODELS_FILE_BYTES)) throw new Error('模型配置文件超过 32 MiB 保存预算');
+        const digest = require('./pi-maintenance-files').hashFileSafe(fs.realpathSync.native(file), MAX_MODELS_FILE_BYTES).sha256;
+        const after = fs.lstatSync(file, { bigint: true });
+        if (!before.isFile() || !after.isFile() || before.dev !== after.dev || before.ino !== after.ino
+            || before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs
+            || !io.sameIdentityAtPath(file, identity)) throw Object.assign(new Error('模型配置已变化，请刷新后再保存'), { statusCode: 409 });
+        return [identity ?? `${before.dev}:${before.ino}`, before.size, before.mtimeNs, before.ctimeNs, digest].join(':');
+    } finally { fs.closeSync(fd); }
+}
+
 class PiSettingsService {
     constructor(options = {}) {
         this.cwdFallback = options.cwd || process.cwd();
@@ -328,15 +348,34 @@ class PiSettingsService {
 
     async writeModelsFile(data) {
         const { modelsPath, agentDir } = await this.paths();
+        const text = `${JSON.stringify(data, null, 2)}\n`;
+        if (Buffer.byteLength(text) > MAX_MODELS_FILE_BYTES) throw new Error('模型配置文件超过 32 MiB 保存预算');
         fs.mkdirSync(agentDir, { recursive: true, mode: 0o700 });
+        const previous = modelsFileState(modelsPath);
         const writeId = randomUUID();
         if (fs.existsSync(modelsPath)) {
             const stamp = new Date().toISOString().replace(/[:.]/g, '-');
             privateFiles.writePrivateFileSync(`${modelsPath}.bak-web-${stamp}-${writeId}`, fs.readFileSync(modelsPath));
         }
         const temporary = `${modelsPath}.tmp-${process.pid}-${writeId}`;
-        privateFiles.writePrivateFileSync(temporary, `${JSON.stringify(data, null, 2)}\n`, true);
-        require('./pi-win32-native').replaceFileSync(temporary, modelsPath);
+        privateFiles.writePrivateFileSync(temporary, text, true);
+        const staged = modelsFileState(temporary);
+        try {
+            for (let attempt = 0; ; attempt++) {
+                if (modelsFileState(modelsPath) !== previous || modelsFileState(temporary) !== staged) {
+                    throw Object.assign(new Error('模型配置已变化，请刷新后再保存'), { statusCode: 409 });
+                }
+                try { require('./pi-win32-native').replaceFileSync(temporary, modelsPath); break; }
+                catch (error) {
+                    // MoveFileEx reported a definite failure, rather than an unknown result.
+                    if (error.code !== 'FILE_REPLACE' || ![5, 32, 33].includes(error.win32Code) || attempt >= 9) throw error;
+                    await new Promise(resolve => setTimeout(resolve, 25));
+                }
+            }
+        } finally {
+            // Do not remove a foreign replacement of the staged path.
+            if (modelsFileState(temporary) === staged) fs.unlinkSync(temporary);
+        }
     }
 
     async listCustomProviders() {

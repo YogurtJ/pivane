@@ -20,7 +20,7 @@ test('detached host aliases retain real dependency scope with Pi 1.0 native hook
     assert.equal(Object.hasOwn(result.aliases, obsolete), false);
     for (const file of Object.values(result.aliases)) {
         assert.equal(fs.realpathSync(file), file);
-        assert.equal(file.startsWith(path.join(root, 'node_modules') + path.sep), true);
+        assert.equal(file.startsWith(fs.realpathSync.native(path.join(root, 'node_modules')) + path.sep), true);
     }
 });
 

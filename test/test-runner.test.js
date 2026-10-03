@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { pathToFileURL } = require('node:url');
 const { selectTests, testEnvironment } = require('../scripts/run-tests.cjs');
 const { sourceFiles } = require('../scripts/source-files.cjs');
 const root = path.resolve(__dirname, '..');
@@ -60,7 +61,7 @@ test('timing reporter keeps TAP failures and Node exit status, including multili
     const env = testEnvironment(process.env);
     // This is a separate synthetic runner, not a child test registered with this test runner.
     delete env.NODE_TEST_CONTEXT;
-    const result = spawnSync(process.execPath, ['--test', '--test-concurrency=1', '--test-reporter=' + path.join(root, 'scripts/test-timing-reporter.cjs'), file], { env, encoding: 'utf8' });
+    const result = spawnSync(process.execPath, ['--test', '--test-concurrency=1', '--test-reporter=' + pathToFileURL(path.join(root, 'scripts/test-timing-reporter.cjs')).href, file], { env, encoding: 'utf8' });
     assert.equal(result.status, 1, result.stderr);
     assert.match(result.stdout, /not ok/);
     assert.match(result.stdout, /synthetic failure/);

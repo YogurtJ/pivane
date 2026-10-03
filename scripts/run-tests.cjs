@@ -1,6 +1,7 @@
 // Enumerate tests in Node so cmd.exe and POSIX shells run the same suite.
 const { sourceFiles } = require('./source-files.cjs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const { spawnSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const usage = 'Usage: npm test -- [--list] [--timing] [test/file.test.js | test/directory ...]';
@@ -50,7 +51,7 @@ function main(args) {
     env.PIVANE_TEST_PI_JITI ||= require('node:module').createRequire(path.join(root, 'node_modules/@earendil-works/pi-coding-agent/package.json')).resolve('jiti');
     if (!require('../server/profile-memory/management').profileMemoryCapability({ bundlePath: env.PIVANE_TEST_HERMES_BUNDLE }).installed) throw new Error('Bundled memory must be installed before testing (npm ci)');
     const options = ['--test', '--test-concurrency=1'];
-    if (timing) options.push('--test-reporter=' + path.join(__dirname, 'test-timing-reporter.cjs'));
+    if (timing) options.push('--test-reporter=' + pathToFileURL(path.join(__dirname, 'test-timing-reporter.cjs')).href);
     const result = spawnSync(process.execPath, [...options, ...files.map(name => path.join(root, name))], { cwd: root, env, stdio: 'inherit' });
     if (result.error) console.error(result.error.message);
     return result.status === null ? 1 : result.status;

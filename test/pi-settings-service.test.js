@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { assertPrivateFile } = require('./private-file-helper.cjs');
 
 const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-settings-agent-'));
 const packageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-settings-package-'));
@@ -148,4 +149,40 @@ test('creates, discovers, and deletes standard user skills', async () => {
     await service.deleteSkill('web-test-skill');
     resources = await service.getResourceSnapshot(projectDir);
     assert.equal(resources.skills.some(item => item.name === 'web-test-skill'), false);
+});
+
+test('model replacement yields to Windows readers and preserves one private backup', async () => {
+    const backend = require('../server/pi-win32-native'), original = backend.replaceFileSync;
+    const { modelsPath } = await service.paths();
+    const backups = () => fs.readdirSync(agentDir).filter(name => name.startsWith('models.json.bak-web-'));
+    const before = backups().length, next = { providers: {}, futureField: 'replacement-fixture' };
+    let calls = 0;
+    backend.replaceFileSync = (source, target) => {
+        if (++calls < 3) throw Object.assign(new Error('synthetic sharing failure'), { code: 'FILE_REPLACE', win32Code: 5 });
+        return original(source, target);
+    };
+    try { await service.writeModelsFile(next); } finally { backend.replaceFileSync = original; }
+    assert.equal(calls, 3);
+    assert.deepEqual(JSON.parse(fs.readFileSync(modelsPath, 'utf8')), next);
+    assert.equal(backups().length, before + 1);
+    assertPrivateFile(modelsPath);
+    assert.equal(fs.readdirSync(agentDir).some(name => name.startsWith('models.json.tmp-')), false);
+});
+
+test('model replacement rejects a foreign file identity even when every byte is unchanged', async () => {
+    const backend = require('../server/pi-win32-native'), original = backend.replaceFileSync;
+    const { modelsPath } = await service.paths(), previous = fs.readFileSync(modelsPath);
+    let calls = 0;
+    backend.replaceFileSync = (_source, target) => {
+        calls++;
+        const foreign = target + '.external-fixture';
+        fs.writeFileSync(foreign, previous);
+        original(foreign, target);
+        throw Object.assign(new Error('synthetic sharing failure'), { code: 'FILE_REPLACE', win32Code: 5 });
+    };
+    try { await assert.rejects(service.writeModelsFile({ providers: {}, futureField: 'must-not-commit' }), error => error.statusCode === 409); }
+    finally { backend.replaceFileSync = original; }
+    assert.equal(calls, 1);
+    assert.deepEqual(fs.readFileSync(modelsPath), previous);
+    assert.equal(fs.readdirSync(agentDir).some(name => name.startsWith('models.json.tmp-')), false);
 });
