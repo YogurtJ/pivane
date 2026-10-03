@@ -8,9 +8,9 @@
 
 Pivane is a self-hosted AI workspace powered by **Pi Coding Agent**. Work on code, manage projects and files, follow Agent tasks, and use your own image, video and speech models from a desktop, tablet or phone.
 
-[Download 1.5.0](https://github.com/YogurtJ/pivane/releases/tag/v1.5.0) · [Install](docs/en/INSTALL.md) · [User guide](docs/en/USER_GUIDE.md) · [Report an issue](https://github.com/YogurtJ/pivane/issues)
+[Download 1.6.0](https://github.com/YogurtJ/pivane/releases/tag/v1.6.0) · [Install](docs/en/INSTALL.md) · [User guide](docs/en/USER_GUIDE.md) · [Report an issue](https://github.com/YogurtJ/pivane/issues)
 
-Stable release **1.5.0** pins Pi **1.0.0** and bundles pi-subagents 0.74.0, with model speed controls, voice transcription, cross-project thread moves and compare-before-write knowledge handling. Legacy pi-mcp-adapter configuration requires explicit review and migration; OAuth is not converted automatically. Deployment and public release are verified separately; old archives remain unchanged. See [native MCP](docs/MCP.md) and the [1.5.0 release notes](docs/releases/1.5.0.md).
+Stable release **1.6.0** pins Pi **1.0.0** and bundles pi-subagents 0.74.0, with media reference attachments, file previews, unified speech settings and reading improvements. Legacy pi-mcp-adapter configuration requires explicit review and migration; OAuth is not converted automatically. Deployment and public release are verified separately; old archives remain unchanged. See [native MCP](docs/MCP.md) and the [1.6.0 release notes](docs/releases/1.6.0.md).
 
 ## From a question to completed work
 
@@ -40,7 +40,7 @@ The bilingual interface is included starting with **1.0.0-rc.2**. Version **1.0.
 
 ## Install
 
-The current stable release, **1.5.0**, is pinned to **Pi 1.0.0**, with DOMPurify 3.4.16. See the [release notes](docs/releases/1.5.0.md). The exact archive passed 589 Node tests, 480 syntax checks, 71 document checks, 28 Chromium suites, independent installation, upgrade from 1.4.0 and byte-identical same-path restoration of 18 files on Linux ARM64 with Node 22.23.2. Production audit reports zero vulnerabilities. macOS and Windows keep their historical baselines. Running instances change only after an explicit update.
+The current stable release, **1.6.0**, pins **Pi 1.0.0**. See the [release notes](docs/releases/1.6.0.md). The exact archive passed 606 Node tests and 13 Chromium suites on each of Linux ARM64 and native Windows 11 x64 with Node 22.23.2, plus installation, runtime and same-path restoration checks. Windows ordinary-user acceptance passed separately; upgrade from 1.5.0 was verified on Linux only. Production audit reports zero vulnerabilities. Mobile viewport emulation is not physical-phone or Safari acceptance; macOS retains its historical baseline. Running instances change only after an explicit update.
 
 Use **Node.js 22.x** and the locked dependencies. Validation results are attached to the exact archive SHA256. You do not need a global Pi installation or a frontend build. The current source bundles pi-subagents 0.74.0 and pi-hermes-memory 0.9.9; `node scripts/install.cjs` prepares both without rewriting your CLI package declarations and uses the SQLite binaries shipped in the dependency package. Older published archives without this installer retain their original `npm ci` instructions. SQLite may require Python and C/C++ build tools when no matching prebuilt binary exists. See [bundled capabilities](docs/BUNDLED_CAPABILITIES.md).
 
