@@ -1,8 +1,8 @@
 # Pivane 变更记录
 
-## 1.6.1 · 发布候选（Pi 1.0.2）
+## 1.6.1（Pi 1.0.2）
 
-主要变化与安装／升级边界见 [1.6.1 版本说明](docs/releases/1.6.1.md)。正式状态与准确归档验收以 GitHub Release 和 validation 附件为准。
+已在 [GitHub 发布 v1.6.1](https://github.com/YogurtJ/pivane/releases/tag/v1.6.1)。主要变化与安装／升级边界见 [1.6.1 版本说明](docs/releases/1.6.1.md)，准确归档验收范围见 Release 的 validation 附件。
 
 ### 项目介绍
 

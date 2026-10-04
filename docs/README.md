@@ -11,7 +11,7 @@
 | 协助用户安装、配置或排障的 Agent | [用户 Agent 操作指南](AGENT_GUIDE.md) |
 | 修改 Pivane 源码的开发者或 Agent | [开发文档](development/README.md) 与根目录 [AGENTS.md](../AGENTS.md) |
 
-当前正式版为 **1.6.0**（Pi 1.0.0），见 [1.6.0 版本说明](releases/1.6.0.md)；下载包、校验文件和精确验收摘要以 [GitHub Releases](https://github.com/YogurtJ/pivane/releases) 为准。新增媒体参考附件、文件预览和统一语音配置，优化长会话阅读与线程移动。旧 MCP 适配器配置须显式审查与迁移；公开发布不表示运行实例已切换。完整变化见 [CHANGELOG](../CHANGELOG.md)。1.6.1 发布候选升级至 Pi 1.0.2，新增网络与访问设置并修复侧聊布局、分叉学习及英文界面，见 [1.6.1 版本说明](releases/1.6.1.md)。
+当前正式版为 **1.6.1**（Pi 1.0.2），见 [1.6.1 版本说明](releases/1.6.1.md)；下载包、校验文件和精确验收摘要以 [GitHub Releases](https://github.com/YogurtJ/pivane/releases) 为准。新增网络与访问设置，优化桌面侧聊、助手知识、搜索与输入，并修复分叉学习和英文界面。旧 MCP 适配器配置须显式审查与迁移；公开发布不表示运行实例已切换。完整变化见 [CHANGELOG](../CHANGELOG.md)。
 
 下面按主题列出功能文档。每篇前半部分讲使用，后半部分可能包含接口字段和限额，供高级用户、集成者和用户 Agent 查询。模型能力来自实际配置与运行实例；文档中的示例不代表服务已经配置好。
 
@@ -23,7 +23,7 @@
 | 后台常驻、登录启动与桌面入口 | [后台服务](BACKGROUND_SERVICE.md) |
 | 给已有 Pi CLI 接入网页，共用模型与身份 | [已有 Pi 接入](PI_CLI.md) |
 | 检查版本、交给独立 Agent 辅助更新 | [版本与更新](UPDATES.md) |
-| 访问验证、通知、日常排障 | [访问控制](ACCESS_CONTROL.md) · [通知](NOTIFICATIONS.md) · [运维](OPERATIONS.md) |
+| 网络与访问、通知、日常排障 | [网络与访问](ACCESS_CONTROL.md) · [通知](NOTIFICATIONS.md) · [运维](OPERATIONS.md) |
 | 界面语言、浏览器默认与生效方式 | [中英文界面](I18N.md) |
 
 ## 会话与日常工作
