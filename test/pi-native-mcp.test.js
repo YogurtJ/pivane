@@ -208,6 +208,32 @@ test('explicit empty child tools and denyExtensions never connect or acquire nat
     assert.deepEqual(remote.methods, []);
 });
 
+test('project partial overrides invalidate child authority on exposure, enabled and trust changes', async () => {
+    const sdk = await import('@earendil-works/pi-coding-agent');
+    const native = await import('../server/pi-native-mcp.mjs'), resolver = await import('../server/pi-subagent-mcp-resolution.mjs');
+    const trust = new sdk.ProjectTrustStore(agentDir), projectFile = path.join(cwd, '.pi/mcp.json');
+    const prior = process.env.PIVANE_NATIVE_MCP_TOOL_SNAPSHOT;
+    fs.mkdirSync(path.dirname(projectFile), { recursive: true });
+    const write = patch => fs.writeFileSync(projectFile, JSON.stringify({ mcpServers: { fixture: patch } }));
+    try {
+        trust.set(cwd, true); write({ exposure: 'direct', toolExposure: { echo: 'direct' } });
+        const effective = native.loadNativeMcpConfig({ cwd, agentDir, projectTrusted: true }).servers[0].config;
+        assert.deepEqual(effective, { ...config.mcpServers.fixture, exposure: 'direct', toolExposure: { echo: 'direct' } });
+        process.env.PIVANE_NATIVE_MCP_TOOL_SNAPSHOT = JSON.stringify({ version: 1, tools: [{ server: 'fixture', raw: 'echo', name: 'mcp__fixture__echo', cwd, hash: resolver.configHash(effective) }] });
+        assert.deepEqual(resolver.resolveMcpDirectToolResolution(['fixture/echo'], cwd).selections, [{ name: 'mcp__fixture__echo', selector: 'fixture/echo' }]);
+        for (const patch of [{ enabled: false }, { exposure: 'hidden' }, { exposure: 'direct', toolExposure: { echo: 'hidden' } }]) {
+            write(patch);
+            assert.deepEqual(resolver.resolveMcpDirectToolResolution(['fixture/echo'], cwd).unresolvedSelectors, ['fixture/echo']);
+        }
+        write({ exposure: 'direct', toolExposure: { echo: 'direct' } });
+        trust.set(cwd, false);
+        assert.deepEqual(resolver.resolveMcpDirectToolResolution(['fixture/echo'], cwd).unresolvedSelectors, ['fixture/echo']);
+    } finally {
+        trust.set(cwd, null); fs.rmSync(projectFile, { force: true });
+        if (prior === undefined) delete process.env.PIVANE_NATIVE_MCP_TOOL_SNAPSHOT; else process.env.PIVANE_NATIVE_MCP_TOOL_SNAPSHOT = prior;
+    }
+});
+
 test('inherited native snapshots reject forged names and ambiguous tool identity', async () => {
     const native = await import('../server/pi-native-mcp.mjs'), resolver = await import('../server/pi-subagent-mcp-resolution.mjs');
     const prior = process.env.PIVANE_NATIVE_MCP_TOOL_SNAPSHOT;

@@ -3,6 +3,7 @@
 // adapter only supplies a Pi SDK ResourceLoader with Pivane's package selection.
 import './pi-subagent-native-loader.mjs';
 import path from 'node:path';
+import networkTransport from './workspace-network-transport.js';
 import { registerModelSpeed } from './pi-model-speed-extension.mjs';
 import * as sdk from '@earendil-works/pi-coding-agent';
 import { createPlacementChildSessionFactory } from '../vendor/pi-subagents/src/runs/shared/child-session.js';
@@ -56,6 +57,7 @@ export default function childFactory() {
         // The vendor factory serializes env/loading internally. Also serialize
         // policy capture so concurrently created children cannot borrow tools.
         const task = creating.catch(() => {}).then(async () => {
+            await networkTransport.initializeSdkNetwork();
             const policy = { ...launch };
             childPolicy = policy;
             try {

@@ -3,15 +3,16 @@
 .pi-command-menu strong, .pi-command-menu span { min-width: 0; max-width: 100%; width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .pi-command-menu button[aria-selected="true"] { background: var(--green-soft); outline: 1px solid var(--green); outline-offset: -1px; }
 .pi-command-menu button[aria-disabled="true"] { opacity: .65; }
-.pi-composer-add { position: relative; flex: 0 0 auto; }
+.pi-composer { position: relative; }
+.pi-composer-add { position: static; flex: 0 0 auto; }
 /* Keep these pointer targets fixed when a popup closes over their edge. */
 #pi-composer-add-button:hover, #workspace-settings-close:hover { transform: none; }
-.pi-composer-add-menu { position: absolute; bottom: calc(100% + 10px); left: 0; z-index: 35; width: min(240px, calc(100vw - 40px)); max-height: min(260px, 45dvh); overflow-y: auto; overscroll-behavior: contain; padding: 5px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface-2); box-shadow: var(--shadow-float); }
+.pi-composer-add-menu { position: absolute; bottom: calc(100% + 10px); left: -1px; right: -1px; z-index: 35; max-height: min(480px, var(--pi-composer-menu-height, 60dvh)); overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; padding: 10px; border: 1px solid var(--line-strong); border-radius: 18px; background: var(--surface-2); box-shadow: var(--shadow-float); }
 .pi-composer-add-menu[hidden], .pi-composer-add-menu [hidden] { display: none !important; }
-.pi-composer-add-menu button { display: flex; width: 100%; min-height: 48px; align-items: center; gap: 12px; padding: 9px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--text-main); text-align: left; font: inherit; font-size: .85rem; cursor: pointer; }
-.pi-composer-add-menu button > i { flex: 0 0 18px; text-align: center; }
-.pi-composer-add-menu button > span { flex: 1; min-width: 0; }
-.pi-composer-add-menu small { display: block; margin-top: 3px; color: var(--text-muted); font-size: .72rem; }
+.pi-composer-add-menu button { display: flex; width: 100%; min-height: 68px; align-items: center; gap: 14px; padding: 12px 14px; border: 0; border-radius: 10px; background: transparent; color: var(--text-main); text-align: left; font: inherit; font-size: .9rem; line-height: 1.45; cursor: pointer; }
+.pi-composer-add-menu button > i { flex: 0 0 20px; text-align: center; }
+.pi-composer-add-menu button > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pi-composer-add-menu small { display: block; margin-top: 4px; color: var(--text-muted); font-size: .76rem; }
 .pi-composer-add-menu button:hover, .pi-composer-add-menu button:focus-visible { background: var(--green-soft); outline: 1px solid var(--green); outline-offset: -1px; }
 .pi-composer-add-menu button:disabled { opacity: .5; cursor: default; }
 .pi-delivery-choices { border-left: 2px solid var(--line); margin: 2px 6px 5px 18px; padding-left: 4px; }
@@ -59,7 +60,11 @@
 .pi-template-dialog details { margin: 12px 0; }
 .pi-template-dialog details button { margin: 5px 5px 0 0; }
 .pi-composer-help, .pi-composer-empty { font-size: .8rem; color: var(--text-muted); line-height: 1.6; }
-#pi-extension-assistant-add { border-top: 1px solid var(--line); margin-top: 4px; border-radius: 0 0 5px 5px; }
+#pi-extension-assistant-add { border-top: 1px solid var(--line); margin-top: 6px; border-radius: 0 0 10px 10px; }
+@media (max-width: 680px) {
+    .pi-composer-add-menu { padding: 8px; border-radius: 16px; }
+    .pi-composer-add-menu button { gap: 10px; padding-inline: 10px; }
+}
 #pi-extension-assistant-dialog { width: min(600px, calc(100vw - 24px)); padding: 0; border-radius: 18px; overflow: hidden; background: var(--surface-1); box-shadow: 0 24px 80px #0003; }
 #pi-extension-assistant-dialog > header { flex-wrap: nowrap; align-items: flex-start; padding: 24px 24px 18px; margin: 0; gap: 16px; }
 #pi-extension-assistant-dialog h2 { margin: 0; font-size: 1.2rem; line-height: 1.4; }

@@ -10,7 +10,9 @@
 
 `pi-assistant-project-registry.js` 保存独立于 cwd 的逻辑分类。多个分类可以关联同一真实目录，保存各自的名称、附加指令和关联档案；cwd 创建后不可修改。分类不复制文件或会话，也不将原有按档案／真实 cwd 保存的记忆及技能重新分组。
 
-`pi-assistant-project-state.js` 的原生标记包含 `{version,sessionId,projectId,cwd}`；会话投影同时核对实际档案绑定与分类绑定。旧档案会话没有分类标记时保持未分类。分类归档阻止新建归属线程，不改变已有会话或 worker。
+`pi-assistant-project-state.js` 的初始原生标记包含 `{version,sessionId,projectId,cwd}`；当前 ID 的重复初始标记仍使归属失效。`pivane-assistant-project-change` 记录 `{version,sessionId,cwd,previousRevision,previousProjectId,projectId}`，以原生 entry ID 串联显式 CAS 变更，projectId=null 表示未分类；链断裂、非法字段或 cwd 冲突不接受最后一个标记。归属独立于会话树活动位置，分叉只读取来源当前有效归属并为新 ID 重新绑定。旧档案会话没有分类标记时保持未分类。分类归档阻止新建或移入，不改变已有会话或 worker。
+
+`pi-session-classification.js` 提供同档案／cwd 的分类读取与变更，和项目保存共用 profiles.reserve，并在 Supervisor 的 editing 预占内核对空闲及后台保留任务、确认关联侧聊已关闭后停止旧 worker，通过官方 SessionManager 追加变更。editing 阻止启动／重连、删除、迁移与重复修改，纳入维护、会话空闲及停机等待；成功后 gateway_session_classified 更新已打开页面并重连加载目标指令。列表投影统一同步助手分类列表，分叉结果及时插入当前分类；窗口只在助手页面有可选分类时提供。
 
 `pi-agent-routes.js` 在核对规范会话文件和 ID 后传入档案及分类上下文；`pi-web-session-extension.ts` 注册对应运行扩展。运行扩展重新核对原生标记、已保存配置及修订，并在原生系统提示词后追加 SOUL／分类指令。Supervisor 接收绑定当前会话的加载确认；`get_runtime_configuration` 分别投影保存值、加载 ID／修订及匹配状态。保存成功不意味着已有 worker 已重新加载；普通、临时和侧聊 worker 不继承不适用的私有上下文变量。
 

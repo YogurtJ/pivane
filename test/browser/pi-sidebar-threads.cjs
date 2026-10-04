@@ -26,6 +26,7 @@ async function run(browser, viewport) {
     const errors = [];
     const writes = [];
     const rpc = [];
+    let listedSessions = sessions;
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(data => {
         localStorage.setItem('pi.web.cwd', data.cwd);
@@ -43,7 +44,7 @@ async function run(browser, viewport) {
             return route.fulfill({ json: { ok: true, version: '0.85.0', projectRoots: ['/srv'], sessionWorkflows: true, replyFork: true } });
         }
         if (path === '/api/pi/projects') return route.fulfill({ json: { projects: [{ cwd, name: 'Sidebar fixture', sessionCount: sessions.length }], roots: ['/srv'] } });
-        if (path === '/api/pi/sessions') return route.fulfill({ json: { sessions } });
+        if (path === '/api/pi/sessions') return route.fulfill({ json: { sessions: listedSessions } });
         if (path === '/api/pi/activity') return route.fulfill({ json: { runtimes: [], pinnedProjects: [], hiddenProjects: [], replyNotices: [] } });
         if (path.startsWith('/api/pi/')) return route.fulfill({ json: {} });
         if (path.includes('history') || path === '/api/prompts') return route.fulfill({ json: [] });
@@ -180,6 +181,29 @@ async function run(browser, viewport) {
     await page.locator('.pi-project-disclosure').click();
     await page.waitForFunction(() => document.querySelectorAll('#pi-session-list [data-session-id]').length <= 7);
     assert.equal(await overflowLabel(), '显示其余 2 个线程', 're-expanding must restart capped');
+
+    // Locate is local presentation only, including when the current row is filtered out.
+    await searchToggle.click(); await searchInput.fill('no-match-anywhere');
+    const opensBeforeLocate = rpc.filter(type => type === 'open_session').length;
+    await page.locator('#pi-locate-session').click();
+    assert.equal(await searchInput.inputValue(), '');
+    assert.equal(await page.locator('.pi-session-item.active .pi-session-main').evaluate(el => el === document.activeElement), true);
+    assert.equal(rpc.filter(type => type === 'open_session').length, opensBeforeLocate, 'locate never opens a worker');
+
+    // Keep the visible row at the same offset when an upstream refresh reorders rows.
+    await page.locator('#pi-session-list .pi-thread-more').click();
+    const anchorBefore = await page.locator('#pi-session-list').evaluate(list => {
+        list.style.height = '200px'; list.style.flex = '0 0 200px';
+        const row = list.querySelector('[data-session-id="thread-5"]');
+        list.scrollTop += row.getBoundingClientRect().top - list.getBoundingClientRect().top + 8;
+        return { id: row.dataset.sessionId, offset: row.getBoundingClientRect().top - list.getBoundingClientRect().top };
+    });
+    listedSessions = [session(10), sessions[1], sessions[0], ...sessions.slice(2)];
+    await page.locator('#pi-refresh-sessions').click();
+    await page.waitForFunction(() => document.querySelector('#pi-session-list [data-session-id]')?.dataset.sessionId === 'thread-10');
+    const anchorAfter = await page.locator('#pi-session-list').evaluate((list, id) => list.querySelector(`[data-session-id="${id}"]`).getBoundingClientRect().top - list.getBoundingClientRect().top, anchorBefore.id);
+    assert.ok(Math.abs(anchorAfter - anchorBefore.offset) <= 2, 'refresh preserves visible thread anchor');
+    await page.locator('#pi-session-list').evaluate(list => { list.style.height = ''; list.style.flex = ''; });
 
     // 5. Project menu no longer duplicates open/collapse; row and chevron still toggle.
     await page.locator('[data-project-action="menu"]').click();

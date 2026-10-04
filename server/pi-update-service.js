@@ -1,5 +1,5 @@
 const fetch = require('node-fetch');
-const { HttpsProxyAgent } = require('https-proxy-agent');
+const { proxyAgent: proxyFor } = require('./workspace-network-transport');
 const application = require('../package.json');
 const { version: installedPi } = require('../node_modules/@earendil-works/pi-coding-agent/package.json');
 
@@ -36,22 +36,6 @@ function compareVersions(a, b) {
 function relation(current, latest) {
     const comparison = compareVersions(current, latest);
     return comparison === null ? 'unknown' : comparison < 0 ? 'available' : comparison > 0 ? 'ahead' : 'current';
-}
-function proxyFor(url, env) {
-    const target = new URL(url);
-    const bypass = (env.no_proxy || env.NO_PROXY || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-    if (bypass.some(item => {
-        if (item === '*') return true;
-        const [host, port] = item.split(':');
-        if (port && port !== (target.port || '443')) return false;
-        const suffix = host.replace(/^\*?\./, '');
-        return target.hostname === suffix || (host.startsWith('.') || host.startsWith('*.')) && target.hostname.endsWith('.' + suffix);
-    })) return undefined;
-    const proxy = env.https_proxy || env.HTTPS_PROXY || env.http_proxy || env.HTTP_PROXY;
-    if (!proxy) return undefined;
-    const parsed = new URL(proxy);
-    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Unsupported proxy');
-    return new HttpsProxyAgent(parsed);
 }
 
 class UpdateService {

@@ -36,6 +36,18 @@
 #pi-title-dialog footer button { min-width: 80px; }
 #pi-title-dialog footer button:disabled { opacity: 0.45; cursor: not-allowed; }
 
+#pi-classification-dialog[open] { display: flex; flex-direction: column; overflow: hidden; width: min(480px, calc(100vw - 24px)); }
+#pi-classification-dialog > :is(header, footer, .pi-transfer-status) { flex-shrink: 0; }
+#pi-classification-dialog .pi-transfer-body { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.pi-classification-source { display: grid; gap: 6px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-1); overflow-wrap: anywhere; }
+.pi-classification-source strong { font-size: 15px; line-height: 1.5; }
+.pi-classification-source span, .pi-classification-help { color: var(--text-muted); font-size: 13px; line-height: 1.65; }
+#pi-classification-dialog .pi-transfer-status { padding: 10px 12px; margin: 0 0 14px; border-radius: 8px; background: var(--surface-1); }
+#pi-classification-dialog .pi-transfer-status[data-state="error"] { background: var(--danger-soft); color: var(--danger); }
+#pi-classification-dialog footer { padding-top: 14px; border-top: 1px solid var(--line); }
+#pi-classification-dialog :is(header, footer) button { min-height: 40px; margin: 0; padding: 9px 14px; box-sizing: border-box; }
+#pi-classification-dialog footer button:disabled { opacity: .45; cursor: not-allowed; }
+
 #pi-import-session { margin: 0 22px 14px; width: calc(100% - 44px); }
 @media (max-width: 600px) {
     .pi-transfer-dialog { padding: 16px; }

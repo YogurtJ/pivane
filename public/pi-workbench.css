@@ -206,6 +206,11 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
     .pi-workbench > .pi-session-pane { display: flex !important; }
     .pi-workbench > [data-split-key="agent-sessions"] { display: block !important; }
 }
+@media (min-width: 901px) and (max-width: 1199px) {
+    /* Give the two conversations room; the project list returns when side chat closes. */
+    .pi-workbench:has(.pi-inspector.open.show-side) > .pi-session-pane { display: none !important; }
+    .pi-workbench:has(.pi-inspector.open.show-side) > [data-split-key="agent-sessions"] { display: none !important; }
+}
 @media (max-width: 900px) {
     body { padding: env(safe-area-inset-top) 0 0; overflow: hidden; }
     .app-container { height: calc(100dvh - env(safe-area-inset-top)); min-height: 0; }

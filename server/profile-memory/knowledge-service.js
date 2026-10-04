@@ -598,7 +598,8 @@ class ProfileKnowledgeService {
         return { profile, root, bundle, installed: profileMemoryCapability({ bundlePath: bundle }).installed };
     }
     async snapshot(profileId, options = {}) {
-        if (!options || !keys(options, ['kind', 'query', 'offset', 'sessionId']) || options.kind !== undefined && !['memory', 'skill'].includes(options.kind)
+        if (!options || !keys(options, ['kind', 'query', 'offset', 'sessionId', 'state']) || options.kind !== undefined && !['memory', 'skill'].includes(options.kind)
+            || options.state !== undefined && !['present', 'deleted', 'draft', 'all'].includes(options.state)
             || options.query !== undefined && (typeof options.query !== 'string' || options.query.length > 200)
             || options.sessionId !== undefined && (typeof options.sessionId !== 'string' || options.sessionId.length > 200)
             || options.offset !== undefined && (!Number.isSafeInteger(options.offset) || options.offset < 0 || options.offset > 100000)) fail('Invalid knowledge query');
@@ -628,6 +629,7 @@ class ProfileKnowledgeService {
             // A search-index row that mirrors a listed Markdown entry is not a second memory; it
             // stays in the revision and remains readable by ID, but is not listed twice.
             const matches = items.filter(item => !item.mirrored && (!options.kind || item.kind === options.kind)
+                && (!options.state || options.state === 'all' || (options.state === 'present' ? item.state !== 'deleted' : item.state === options.state))
                 && (!query || `${item.name || ''} ${item.content || ''} ${item.description || ''}`.toLocaleLowerCase().includes(query)));
             const offset = options.offset || 0;
             return { ...base, status: 'ready',

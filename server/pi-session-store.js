@@ -19,7 +19,7 @@ function getSdk() {
             privateAgentDirectories.add(directory);
         }
     }
-    if (!sdkPromise) sdkPromise = import('@earendil-works/pi-coding-agent');
+    if (!sdkPromise) sdkPromise = require('./workspace-network-transport').initializeSdkNetwork().then(() => import('@earendil-works/pi-coding-agent'));
     return sdkPromise;
 }
 
@@ -355,6 +355,7 @@ class PiSessionStore {
         let result;
         if (branch.some(entry => entry.type === 'message' && entry.message.role === 'assistant')) {
             source.createBranchedSession(targetId);
+            require('./profile-memory/learning-history').markFork(source);
             if (this.profiles) source.appendCustomEntry(require('./pi-profile-state').PROFILE_ENTRY,
                 { version: 1, sessionId: source.getSessionId(), profileId: inheritedProfileId });
             if (groupBinding) source.appendCustomEntry(require('./pi-assistant-project-state').PROJECT_ENTRY,
@@ -367,6 +368,7 @@ class PiSessionStore {
             // the branch has user input; retain the older deferred-file fallback
             // only when the manager has not materialized its native file.
             source.createBranchedSession(targetId);
+            require('./profile-memory/learning-history').markFork(source);
             if (this.profiles) source.appendCustomEntry(require('./pi-profile-state').PROFILE_ENTRY,
                 { version: 1, sessionId: source.getSessionId(), profileId: inheritedProfileId });
             if (groupBinding) source.appendCustomEntry(require('./pi-assistant-project-state').PROJECT_ENTRY,

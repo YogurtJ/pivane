@@ -46,7 +46,7 @@ Pi 0.87 的 `context_edit` 只改变模型上下文。主聊天快照从唯一 w
 
 ## 辅助工作与扩展
 
-Pi 1.0.0 原生 MCP/Codemode 经 `pi-native-mcp.mjs` 和受管 ResourceLoader 显式装配，官方扩展拥有连接、OAuth、调用、工具发现与清理。旧适配器在资源解析前过滤。`pi-subagent-native-loader.mjs` 对 vendor MCP resolver 和 detached host alias resolver 做精确 import 映射，不改上游字节；宿主适配只为经过核对的 Pi 1.0.0 省略已移除且未被 vendor 调用的 pi-agent-core/node 检查，其他缺失导出仍失败。`pi-codemode-policy.mjs` 为官方 Codemode execute 提供每次新建的冻结模型注册表外观，保留目录与分类，只拒绝未经过媒体确认的图像生成入口；主／子工厂均装配此边界。父会话注册的原生工具名称通过有界、无凭据的进程环境快照交给 detached runner，并绑定 cwd 与当前服务器配置 hash，子会话工具 gate 防止 Codemode 绕过授权。快照是可丢弃的授权输入，不是会话事实或工具结果副本；缺失／变化均失败关闭。侧聊与媒体规划不加载该能力，迁移只在显式停机入口执行。见[原生 MCP](../MCP.md)。
+Pi 1.0.2 原生 MCP/Codemode 经 `pi-native-mcp.mjs` 和受管 ResourceLoader 显式装配，官方扩展拥有连接、OAuth、调用、工具发现与清理。旧适配器在资源解析前过滤。`pi-subagent-native-loader.mjs` 对 vendor MCP resolver 和 detached host alias resolver 做精确 import 映射，不改上游字节；宿主适配只为经过核对且 host/core 版本一致的 Pi 1.0.0／1.0.2 省略已移除且未被 vendor 调用的 pi-agent-core/node 检查，其他缺失导出仍失败。`pi-codemode-policy.mjs` 为官方 Codemode execute 提供每次新建的冻结模型注册表外观，保留目录与分类，只拒绝未经过媒体确认的图像生成入口；主／子工厂均装配此边界。父会话注册的原生工具名称通过有界、无凭据的进程环境快照交给 detached runner，并绑定 cwd 与当前服务器配置 hash，子会话工具 gate 防止 Codemode 绕过授权。快照是可丢弃的授权输入，不是会话事实或工具结果副本；缺失／变化均失败关闭。侧聊与媒体规划不加载该能力，迁移只在显式停机入口执行。见[原生 MCP](../MCP.md)。
 
 - 原生 MCP 网页配置由 `PiMcpSettingsService` 做不求值的脱敏文件投影，保存保留未知字段及显式秘密编辑操作，与原生设置共享保存互斥。运行管理不另建客户端：版本审查过的官方 `/mcp` handler 通过按 sessionId/cwd 登记的跨 ESM/Jiti 进程 Symbol seam 调用，配置／工具名／状态只做有界安全投影。`PiMcpRuntimeControl` 预占唯一 worker 的管理槽并等待原生完成，OAuth 沿用原生 UI；超时／断线不是取消，迟到私有响应仍截获。管理槽参加生命周期与维护投影，不建立持久 MCP 状态库。
 - 嵌套工具展示与文件归属只消费原生 `parentToolCallId` 事件及父结果 `nestedCalls`；原生保存不含子调用输出，网页不补写 JSONL、不建立差异副本。实时恢复预览保留父关联，父权威结果到达后清除后代临时状态；历史摘要按上游参数／调用预算限制，未保留输出不得推断完整编辑差异。
@@ -65,6 +65,12 @@ Pi 1.0.0 原生 MCP/Codemode 经 `pi-native-mcp.mjs` 和受管 ResourceLoader �
 - 工具来源是调用时捕获的有界展示元数据，绑定调用 ID/工具名；旧记录不按当前清单追认来源，也不把来源标记当成权限验证。
 
 相关契约：[辅助模型](../AUXILIARY_MODELS.md)、[记忆适配](../PROFILE_MEMORY.md)、[任务线程](../AGENT_THREADS.md)、[侧聊](../SIDE_CHAT.md)、[原生设置](../NATIVE_SETTINGS.md)。
+
+## 实例网络
+
+`WorkspaceNetworkService` 拥有私有 pivane-network.json 的监听与代理草稿修订、启动快照和固定目标诊断；访问认证仍由 WorkspaceAccessService 负责。配置保存不热切换网络；HOST 部署覆盖优先，新实例回环默认在首次启动持久化，已识别旧受管安装保留原默认。网络 API 经过现有认证、CSRF 和维护 HTTP 占用。
+
+`workspace-network-transport` 在启动时解析代理环境，供 node-fetch 代理 agent、Pi 1.0.2 HTTP dispatcher、侧聊/子运行及主服务 SDK 使用。发布下载复用同一路由解析；启动器下载环境与业务子进程的部署环境分开，避免直连模式残留小写代理或把启动快照误当部署覆盖。原生 httpProxy 不写回。未知代理协议拒绝，不新增自动换线路重发或任意 URL 诊断。
 
 ## 文件、配置与身份
 

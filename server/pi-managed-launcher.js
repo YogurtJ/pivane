@@ -10,12 +10,13 @@ const { stageApplication, validRelease } = require('./pi-application-installer')
 const { outputRedactor, appendOutput } = require('./pi-update-output');
 
 class ManagedLauncher {
-    constructor({ root, env = process.env, stage = stagePi, stageApp = stageApplication, backup = backupRoots, forkServer = fork } = {}) {
+    constructor({ root, env = process.env, networkEnvironment = env, stage = stagePi, stageApp = stageApplication, backup = backupRoots, forkServer = fork } = {}) {
         this.root = fs.realpathSync.native(root);
         this.directory = privateDir(path.join(this.root, '.pivane-runtime'));
         this.stateFile = path.join(this.directory, 'state.json');
         this.env = { ...env };
-        this.redact = outputRedactor(this.env);
+        this.networkEnvironment = { ...networkEnvironment };
+        this.redact = outputRedactor(this.networkEnvironment);
         this.stage = stage; this.stageApp = stageApp; this.backup = backup; this.forkServer = forkServer;
         this.child = null; this.operation = null; this.closed = false;
         this.nonce = randomUUID();
@@ -126,7 +127,7 @@ class ManagedLauncher {
                 const releases = privateDir(path.join(this.directory, 'releases'));
                 const destination = path.join(releases, message.id);
                 if (fs.existsSync(destination)) throw new Error('Release directory already exists');
-                await (message.action === 'application' ? this.stageApp : this.stage)({ root: this.releasePath(previous), directory: destination, version: message.version, release: message.release, env: this.env, signal: controller.signal,
+                await (message.action === 'application' ? this.stageApp : this.stage)({ root: this.releasePath(previous), directory: destination, version: message.version, release: message.release, env: this.networkEnvironment, signal: controller.signal,
                     progress: phase => { job.phase = phase; this.save(); },
                     onOutput: (stream, text) => this.log(job, stream, text) });
                 next = message.id;

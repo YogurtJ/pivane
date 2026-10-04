@@ -1,11 +1,11 @@
 {
   "name": "pivane",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "Pivane: a personal AI workspace powered by Pi Coding Agent with a media laboratory",
   "main": "server.js",
   "private": true,
   "pivaneCompatibility": {
-    "piVersion": "1.0.0",
+    "piVersion": "1.0.2",
     "mcp": "native"
   },
   "scripts": {
@@ -22,33 +22,33 @@
   "overrides": {
     "undici": "8.11.2",
     "brace-expansion": "5.0.12",
-    "@earendil-works/pi-tui": "1.0.0",
+    "@earendil-works/pi-tui": "1.0.2",
     "@earendil-works/pi-ai": "$@earendil-works/pi-ai",
     "@earendil-works/pi-coding-agent": "$@earendil-works/pi-coding-agent",
-    "@earendil-works/pi-agent-core": "1.0.0",
-    "@earendil-works/chord": "1.0.0",
-    "@earendil-works/pi-protocol": "1.0.0",
-    "@earendil-works/pi-telemetry": "1.0.0",
+    "@earendil-works/pi-agent-core": "1.0.2",
+    "@earendil-works/chord": "1.0.2",
+    "@earendil-works/pi-protocol": "1.0.2",
+    "@earendil-works/pi-telemetry": "1.0.2",
     "@earendil-works/pi-server": {
-      "@earendil-works/chord": "1.0.0",
-      "@earendil-works/pi-agent-core": "1.0.0",
-      "@earendil-works/pi-protocol": "1.0.0",
-      "@earendil-works/pi-ai": "1.0.0",
-      "@earendil-works/pi-telemetry": "1.0.0"
+      "@earendil-works/chord": "1.0.2",
+      "@earendil-works/pi-agent-core": "1.0.2",
+      "@earendil-works/pi-protocol": "1.0.2",
+      "@earendil-works/pi-ai": "1.0.2",
+      "@earendil-works/pi-telemetry": "1.0.2"
     },
-    "@earendil-works/pi-codemode": "1.0.0",
-    "@earendil-works/pi-mcp": "1.0.0"
+    "@earendil-works/pi-codemode": "1.0.2",
+    "@earendil-works/pi-mcp": "1.0.2"
   },
   "keywords": [],
   "author": "Pivane contributors",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@earendil-works/pi-agent-core": "1.0.0",
-    "@earendil-works/pi-ai": "1.0.0",
-    "@earendil-works/pi-coding-agent": "1.0.0",
-    "@earendil-works/pi-server": "1.0.0",
-    "@earendil-works/pi-tui": "1.0.0",
+    "@earendil-works/pi-agent-core": "1.0.2",
+    "@earendil-works/pi-ai": "1.0.2",
+    "@earendil-works/pi-coding-agent": "1.0.2",
+    "@earendil-works/pi-server": "1.0.2",
+    "@earendil-works/pi-tui": "1.0.2",
     "@highlightjs/cdn-assets": "11.11.1",
     "acorn": "8.18.0",
     "better-sqlite3": "13.0.3",

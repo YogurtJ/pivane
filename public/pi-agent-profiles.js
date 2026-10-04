@@ -187,9 +187,14 @@
             if (request !== openEpoch || !active()) return;
             if (target && draft?.id === requested) { listView = false; renderList(); }
             if (options.authoringSession && !requested && (!draft || draft.id) && !await editProfile(null)) return;
-            if (options.section && draft && (!requested || draft.id === requested)) void openSection(options.section);
+            if (options.section && draft && (!requested || draft.id === requested) && options.section !== section) void openSection(options.section);
+            else if (['user', 'memory'].includes(section) && !documents.get(section)?.dirty && !mutation) void refreshDocument();
             if (options.authoringSession && draft && (!requested || draft.id === requested)) void loadProposal(options.authoringSession);
         }
+        globalThis.addEventListener('beforeunload', event => {
+            if (mutation?.kind !== 'document' && mutation?.kind !== 'index' && !dirty()) return;
+            event.preventDefault(); event.returnValue = '';
+        });
         function close() { visible = false; openEpoch++; epoch++; documentEpoch++; proposalEpoch++; knowledgeSession = ''; knowledgePanel.close(); globalThis.PiProfileDialog.cancel(); }
         const profileDirty = () => Boolean(draft && JSON.stringify(readDraft()) !== draftOriginal);
         const dirty = () => profileDirty() || [...documents.values()].some(doc => doc.dirty) || proposedDocuments.size;
@@ -329,7 +334,7 @@
                 const unavailable = state && state.status !== 'ready' && state.status !== 'conflict';
                 const statusText = state?.message || (state?.status === 'ready' ? t('已读取保存内容') : t('正在读取…'));
                 const labels = { disabled: t(profiles().find(p => p.id === selected)?.enabled === false ? '请先在概览中启用此身份并保存。' : '请先在概览中启用长期记忆并保存身份。'), unsupported: t('此服务尚未安装记忆组件。'), missing: t('文档尚不可用，请刷新核对。') };
-                documentRoot.innerHTML = `<div class="pi-profile-document"><div class="pi-profile-section-heading"><h4>${html(title)}</h4><span class="pi-profile-file-tag">${section.toUpperCase()}.md</span></div><p class="pi-profile-note">${html(t(section === 'user' ? '记录你的背景、偏好和习惯，让助手更了解你。支持 Markdown。' : '保存跨对话使用的长期事实与经验。支持 Markdown。'))}</p><p id="pi-profile-document-status" role="status" aria-live="polite">${html(labels[state?.status] || statusText)}</p>${state?.status === 'disabled' ? `<button type="button" data-profile-overview class="settings-secondary-button">${html(t('前往概览设置'))}</button>` : ''}<textarea id="pi-profile-document-text" aria-label="${html(title)}" spellcheck="false" ${unavailable ? 'hidden' : ''} ${state?.status !== 'ready' || mutation ? 'disabled' : ''}>${html(state?.content ?? '')}</textarea>${state?.serverContent !== undefined ? `<details class="pi-profile-server-version"><summary>${html(t('服务器最新内容'))}</summary><pre>${html(state.serverContent)}</pre></details><label class="pi-profile-check"><input id="pi-profile-document-reviewed" type="checkbox" ${state.reviewed ? 'checked' : ''}>${html(t('已核对服务器最新内容'))}</label>` : ''}<div class="pi-profile-document-footer"><div class="pi-profile-document-meta"><span id="pi-profile-document-usage">${state ? `${state.content.length} / ${limit} ${html(t('字符'))}` : ''}</span><small id="pi-profile-document-dirty">${state?.dirty ? html(t('有未保存的修改')) : ''}</small></div><div class="pi-profile-document-actions"><button id="pi-profile-document-refresh" type="button" class="settings-secondary-button" ${mutation ? 'disabled' : ''}><i class="fa-solid fa-rotate" aria-hidden="true"></i> ${html(t('刷新核对'))}</button><button id="pi-profile-document-sync" type="button" class="settings-secondary-button" ${state?.status !== 'ready' || state.indexStatus !== 'pending' ? 'hidden' : ''} ${!enabled || mutation ? 'disabled' : ''}>${html(t('同步检索索引'))}</button><button id="pi-profile-document-save" type="button" class="settings-primary-button" ${!enabled || state?.status !== 'ready' || !state.dirty || mutation || state.content.length > limit || state.serverContent !== undefined && !state.reviewed ? 'disabled' : ''}><i class="fa-solid ${mutation?.kind === 'document' ? 'fa-spinner fa-spin' : 'fa-floppy-disk'}" aria-hidden="true"></i> ${html(t(mutation?.kind === 'document' ? '正在保存…' : '保存文档'))}</button></div></div></div>`;
+                documentRoot.innerHTML = `<div class="pi-profile-document"><div class="pi-profile-section-heading"><h4>${html(title)}</h4><span class="pi-profile-file-tag">${section.toUpperCase()}.md</span></div><p class="pi-profile-note">${html(t(section === 'user' ? '记录你的背景、偏好和习惯，让助手更了解你。支持 Markdown。' : '保存跨对话使用的长期事实与经验。支持 Markdown。'))}</p><p id="pi-profile-document-status" data-feedback="${state?.feedback || ''}" role="status" aria-live="polite">${html(labels[state?.status] || statusText)}</p>${state?.status === 'disabled' ? `<button type="button" data-profile-overview class="settings-secondary-button">${html(t('前往概览设置'))}</button>` : ''}<textarea id="pi-profile-document-text" aria-label="${html(title)}" spellcheck="false" ${unavailable ? 'hidden' : ''} ${state?.status !== 'ready' || mutation ? 'disabled' : ''}>${html(state?.content ?? '')}</textarea>${state?.serverContent !== undefined ? `<details class="pi-profile-server-version"><summary>${html(t('服务器最新内容'))}</summary><pre>${html(state.serverContent)}</pre></details><label class="pi-profile-check"><input id="pi-profile-document-reviewed" type="checkbox" ${state.reviewed ? 'checked' : ''}>${html(t('已核对服务器最新内容'))}</label>` : ''}<div class="pi-profile-document-footer">${state?.feedback ? `<p class="pi-profile-document-feedback" data-feedback="${state.feedback}" role="status" aria-live="polite"><i class="fa-solid ${state.feedback === 'saving' ? 'fa-spinner fa-spin' : state.feedback === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'}" aria-hidden="true"></i><span>${html(state.message)}</span></p>` : ''}<div class="pi-profile-document-meta"><span id="pi-profile-document-usage">${state ? `${state.content.length} / ${limit} ${html(t('字符'))}` : ''}</span><small id="pi-profile-document-dirty">${state?.dirty ? html(t('有未保存的修改')) : ''}</small></div><div class="pi-profile-document-actions"><button id="pi-profile-document-refresh" type="button" class="settings-secondary-button" ${mutation ? 'disabled' : ''}><i class="fa-solid fa-rotate" aria-hidden="true"></i> ${html(t('刷新核对'))}</button><button id="pi-profile-document-sync" type="button" class="settings-secondary-button" ${state?.status !== 'ready' || state.indexStatus !== 'pending' ? 'hidden' : ''} ${!enabled || mutation ? 'disabled' : ''}>${html(t('同步检索索引'))}</button><button id="pi-profile-document-save" type="button" class="settings-primary-button" ${!enabled || state?.status !== 'ready' || !state.dirty || mutation || state.content.length > limit || state.serverContent !== undefined && !state.reviewed ? 'disabled' : ''}><i class="fa-solid ${mutation?.kind === 'document' ? 'fa-spinner fa-spin' : 'fa-floppy-disk'}" aria-hidden="true"></i> ${html(t(mutation?.kind === 'document' ? '正在保存…' : '保存文档'))}</button></div></div></div>`;
             } else if (section === 'projects') {
                 documentRoot.innerHTML = `<div class="pi-profile-projects"><div class="pi-profile-section-heading"><h4>${html(t('关联项目'))}</h4>${projects ? `<span class="pi-profile-count">${projects.length}</span>` : ''}</div><p class="pi-profile-note">${html(t('这些项目可使用此身份，共享它的个性、偏好与经验。'))}</p>${projects?.map(p => `<article><span class="pi-profile-project-icon"><i class="fa-regular fa-folder" aria-hidden="true"></i></span><div><strong>${html(p.name)}</strong><small>${html(p.cwd)}</small>${p.description ? `<p>${html(p.description)}</p>` : ''}</div></article>`).join('') || `<div class="pi-profile-placeholder"><i class="fa-regular fa-folder-open" aria-hidden="true"></i><h5>${html(projects === null ? t('正在读取…') : t('没有关联项目'))}</h5><p>${html(t('在“助手对话”中创建项目，并选择此身份。'))}</p></div>`}</div>`;
             } else if (section === 'skills') { openKnowledge(); }
@@ -351,14 +356,23 @@
             if (next === 'skills') knowledgePanel.close();
             if (draft) { draft = readDraft(); renderSection(); }
             if (!active() || !id) return;
-            if ((next === 'user' || next === 'memory') && !documents.has(next)) {
+            if ((next === 'user' || next === 'memory') && !documents.get(next)?.dirty) {
                 try {
-                    const data = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/documents?target=${next}`);
+                    const data = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/documents?target=${next}`, { cache: 'no-store' });
                     if (request !== documentEpoch || id !== selected || next !== section || !active()) return;
+                    if (documents.get(next)?.dirty || mutation) return;
                     const proposed = proposedDocuments.get(next);
                     documents.set(next, { ...data, savedContent: data.content ?? '', content: proposed ?? data.content ?? '', dirty: proposed !== undefined, message: data.status === 'ready' ? documentMessage(data) : data.status });
                     proposedDocuments.delete(next); renderSection();
-                } catch (error) { if (request === documentEpoch && id === selected) { documents.set(next, { status: 'error', content: '', message: error.message }); renderSection(); } }
+                } catch (error) {
+                    if (request === documentEpoch && id === selected && next === section && active()) {
+                        const previous = documents.get(next);
+                        // Re-entry can refresh an editable cached document: never erase edits made during that read.
+                        if (previous) { previous.message = error.message; previous.feedback = 'warning'; }
+                        else documents.set(next, { status: 'error', content: '', message: error.message });
+                        renderSection();
+                    }
+                }
             } else if (next === 'projects') {
                 try {
                     const data = await apiFetch(`/api/pi/assistant-projects?profileId=${encodeURIComponent(id)}`);
@@ -371,16 +385,19 @@
             const target = section, state = documents.get(target), id = selected;
             if (!active() || !state?.dirty || state.status !== 'ready' || mutation || state.serverContent !== undefined && !state.reviewed) return;
             if (state.content.length > state.usage?.limit) { state.message = t('文档超出字符上限。'); renderSection(); return; }
-            mutation = { kind: 'document' }; renderSection();
+            ++documentEpoch; // Invalidate any read begun before this write.
+            mutation = { kind: 'document' }; state.feedback = 'saving'; state.message = t('正在保存，请等待服务器确认后再刷新或离开。'); renderSection();
             try {
                 const result = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/documents`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target, content: state.content, expectedRevision: state.revision, expectedProfileRevision: state.profileRevision }) });
                 if (id !== selected) return;
-                documents.set(target, { ...result, savedContent: result.content, dirty: false, message: documentMessage(result, t('已保存')) });
+                documents.set(target, { ...result, savedContent: result.content, dirty: false, feedback: result.indexSynced === false ? 'warning' : 'success', message: documentMessage(result, t('文档已保存到服务器。')) });
             } catch (error) {
+                if (id !== selected) return;
                 if (error.data?.documentSaved === true && error.data.document) {
-                    documents.set(target, { ...error.data.document, savedContent: error.data.document.content, indexStatus: 'pending', dirty: false,
+                    documents.set(target, { ...error.data.document, savedContent: error.data.document.content, indexStatus: 'pending', dirty: false, feedback: 'warning',
                         message: t('文档已保存；检索索引需要同步。') });
                 } else {
+                    state.feedback = 'warning';
                     state.status = error.status === 400 ? 'ready' : 'conflict';
                     state.message = error.status === 409 ? t('文档已变化。草稿已保留；刷新档案后核对。') : error.status === 400 ? `${t('文档未保存')}：${error.message}` : t('结果未确认；草稿已保留。请刷新核对。');
                 }
@@ -390,9 +407,10 @@
         async function syncDocumentIndex() {
             const target = section, id = selected, previous = documents.get(target);
             if (!active() || mutation || previous?.status !== 'ready' || previous.indexStatus !== 'pending') return;
+            ++documentEpoch;
             mutation = { kind: 'index' }; renderSection();
             try {
-                const current = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/documents?target=${target}`);
+                const current = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/documents?target=${target}`, { cache: 'no-store' });
                 const result = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/documents`, { method: 'PUT',
                     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target, content: current.content,
                         expectedRevision: current.revision, expectedProfileRevision: current.profileRevision }) });
@@ -412,7 +430,7 @@
             const button = $('pi-profile-document-refresh');
             if (button) button.disabled = true;
             try {
-                const data = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/documents?target=${target}`);
+                const data = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/documents?target=${target}`, { cache: 'no-store' });
                 if (request !== documentEpoch || id !== selected || target !== section || !active()) return;
                 const pending = previous?.dirty && previous.content !== data.content && data.status === 'ready';
                 if (previous?.content !== initialContent || documents.get(target) !== previous) return;
@@ -592,6 +610,10 @@
             if (event.target.id !== 'pi-profile-document-text') return;
             const state = documents.get(section); if (!state) return;
             state.content = event.target.value; state.dirty = state.content !== state.savedContent;
+            state.feedback = ''; state.message = state.dirty ? t('有未保存的修改') : t('已读取保存内容');
+            documentRoot.querySelector('.pi-profile-document-feedback')?.remove();
+            $('pi-profile-document-status').textContent = state.message;
+            $('pi-profile-document-status').dataset.feedback = '';
             state.reviewed = false;
             const review = $('pi-profile-document-reviewed'); if (review) review.checked = false;
             const limit = state.usage?.limit ?? Infinity;

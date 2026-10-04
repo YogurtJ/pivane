@@ -163,7 +163,9 @@
             this.controls();
         }
         showLevels(levels) {
-            $('pi-side-thinking-select').replaceChildren(...levels.map(level => { const option = document.createElement('option'); option.value = level; option.textContent = `Thinking · ${level}`; return option; }));
+            const labels = { off: translateUi("不启用"), minimal: translateUi("极简"), low: translateUi("低"), medium: translateUi("中"), high: translateUi("高"), xhigh: translateUi("极高"), max: translateUi("最大") };
+            $('pi-side-thinking-select').setAttribute('aria-label', translateUi('思考等级'));
+            $('pi-side-thinking-select').replaceChildren(...levels.map(level => new Option(translateUi('思考 {0}', labels[level] || level), level)));
         }
         async changeSpeed() {
             if (!this.connected || this.configuring || this.busy || this.confirmation || this.starting || this.destroyed) return;

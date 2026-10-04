@@ -314,10 +314,14 @@
                     const occupied = [...container.children].filter(node => node !== target && !node.classList.contains('pi-transcript-shell')
                         && !(target.id === 'pi-session-pane' && ['pi-inspector', 'pi-inspector-split'].includes(node.id))
                         && getComputedStyle(node).position !== 'absolute').reduce((total, node) => total + node.getBoundingClientRect().width, 0);
-                    // The workbench owns docking. A wide inspector becomes an overlay
-                    // rather than squeezing the conversation to a narrow column.
-                    if (target.id === 'pi-inspector') return Math.max(minSize, Math.min(configuredMax, containerWidth - 80));
-                    return Math.max(minSize, Math.min(configuredMax, containerWidth - occupied - 600));
+                    // Desktop side chat stays docked. Fit both splitters without changing
+                    // the saved preference; other tool panels retain their overlay policy.
+                    if (target.id === 'pi-inspector') {
+                        const max = target.classList.contains('show-side') ? containerWidth - occupied - 480 : containerWidth - 80;
+                        return Math.max(minSize, Math.min(configuredMax, max));
+                    }
+                    const reserve = target.id === 'pi-session-pane' && container.querySelector('#pi-inspector.open.show-side') ? 480 + 280 + 6 : 600;
+                    return Math.max(minSize, Math.min(configuredMax, containerWidth - occupied - reserve));
                 }
                 if (containerWidth < minSize + 320) return configuredMax;
                 return Math.max(minSize, Math.min(configuredMax, containerWidth - 320));

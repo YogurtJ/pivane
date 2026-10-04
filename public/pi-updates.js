@@ -58,6 +58,8 @@
             panel.append(cards);
             const feedback = node('p', data.checkedAt ? t('上次检查：{0}', new Date(data.checkedAt).toLocaleString(globalThis.PiI18n?.locale || undefined)) : t('尚未手动检查。Pi 可能显示自动检查的结果。'), { id: 'updates-feedback', role: 'status', 'aria-live': 'polite' });
             panel.append(feedback);
+            const networkLink = node('a', t('网络代理设置'), { href: '#/settings?tab=access&section=proxy', class: 'network-settings-link' });
+            panel.append(networkLink);
             const guide = node('details', undefined, { class: 'updates-agent-guide', id: 'updates-agent-guide' }); guide.open = promptOpen;
             guide.append(node('summary', t('交给独立 Agent 协助更新')));
             const content = node('div', undefined, { class: 'updates-agent-content' });

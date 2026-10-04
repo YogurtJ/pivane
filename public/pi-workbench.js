@@ -117,7 +117,10 @@
             const sessionWidth = mobile ? 0 : sessions.getBoundingClientRect().width;
             const preferred = parseFloat(inspector.style.getPropertyValue('--split-size')) || 336;
             const expanded = inspector.classList.contains('files-expanded') && inspector.classList.contains('show-changes');
-            const overlay = mobile || expanded || width - sessionWidth - preferred - 62 < 600;
+            const sideChat = inspector.classList.contains('show-side');
+            // Side chat is a second conversation: desktop splitters fit its width so
+            // both composers remain usable. File/history/details overlays keep their policy.
+            const overlay = mobile || !sideChat && (expanded || width - sessionWidth - preferred - 62 < 600);
             workbench.classList.toggle('pi-inspector-overlay', overlay);
             const open = inspector.classList.contains('open');
             if (open && !inspectorWasOpen) inspectorReturnFocus = inspector.contains(document.activeElement) ? lastOutsideFocus : document.activeElement;

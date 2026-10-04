@@ -73,6 +73,10 @@ test('profile limits isolate contexts; revisions, document CAS and avatar owners
     const initial = await write(first.profile.id, 'user', 'Synthetic user fact', empty);
     assert.equal(initial.statusCode, process.env.PIVANE_TEST_HERMES_BUNDLE ? 200 : 202, JSON.stringify(initial.data));
     assert.equal(initial.data.usage.used, 'Synthetic user fact'.length);
+    const immediate = await read(first.profile.id, 'user');
+    assert.equal(immediate.headers['Cache-Control'], 'no-store');
+    assert.equal(immediate.data.content, initial.data.content, 'a fresh GET immediately sees the acknowledged save');
+    assert.equal(immediate.data.revision, initial.data.revision);
     assert.equal((await write(first.profile.id, 'user', 'Stale', empty)).statusCode, 409);
     assert.equal((await read(second.profile.id, 'user')).data.content, '');
     const memory = (await read(first.profile.id, 'memory')).data;
@@ -81,6 +85,9 @@ test('profile limits isolate contexts; revisions, document CAS and avatar owners
         const before = await createMutationLock(path.join(agent, 'pivane-profiles', 'data', first.profile.id)).inspect(g => g);
         const result = await write(first.profile.id, 'memory', 'Fact 1\n§\nFact 2', memory);
         assert.equal(result.statusCode, 200, JSON.stringify(result.data));
+        const immediateMemory = (await read(first.profile.id, 'memory')).data;
+        assert.equal(immediateMemory.content, result.data.content);
+        assert.equal(immediateMemory.revision, result.data.revision);
         assert.equal((await createMutationLock(path.join(agent, 'pivane-profiles', 'data', first.profile.id)).run(undefined, () => 'should-not-write', before)).conflict, true,
             'stale autoLearn must lose after an editor write');
         assert.equal((await read(first.profile.id, 'memory')).data.usage.used, 'Fact 1\n§\nFact 2'.length);

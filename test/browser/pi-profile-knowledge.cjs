@@ -35,7 +35,10 @@ async function run(browser, base, width, locale, dark) {
         }
         const fulfill = (body, status = 200) => route.fulfill({ json: body, status });
         const snapshot = () => ({ version: 1, status: state.status, revision: state.status === 'ready' ? state.revision : null,
-            items: state.status === 'ready' && url.searchParams.get('kind') !== 'memory' ? [state.item] : [],
+            items: state.status === 'ready' && url.searchParams.get('kind') !== 'memory' ? [state.item].filter(item => {
+                const filter = url.searchParams.get('state');
+                return !filter || filter === 'all' || (filter === 'present' ? item.state !== 'deleted' : item.state === filter);
+            }) : [],
             receipts: state.receipts, hasMore: false, capabilities: { memory: true, skill: true, projectWrites: false, operations: ['create','update','delete','restore','enable','disable','undo'], skillNameMaxLength: 64, maxContentLength: 65536 } });
         if (p.endsWith('/knowledge') && req.method() === 'GET') return fulfill(snapshot());
         if (p.endsWith('/knowledge/items/' + skill.id)) return fulfill({ version: 1, status: 'ready', item: { ...state.item,
@@ -65,6 +68,8 @@ async function run(browser, base, width, locale, dark) {
             if (input.operation === 'undo') { assert.deepEqual(Object.keys(input).sort(), ['expectedRevision', 'kind', 'operation', 'receiptId', 'requestId']); }
             const receipt = { id: 'receipt-1', requestId: input.requestId, kind: input.kind, operation: input.operation,
                 status: 'saved', itemId: input.itemId || skill.id, indexStatus: 'ready', activation: input.kind === 'skill' ? 'reload-required' : 'next-turn', undoable: input.operation !== 'undo' };
+            if (input.operation === 'delete') state.item = { ...state.item, state: 'deleted', revision: hash('e') };
+            if (input.operation === 'restore') state.item = { ...state.item, state: 'active', revision: hash('f') };
             state.receipts.unshift(receipt); state.revision = hash('d');
             return fulfill({ version: 1, status: 'saved', revision: state.revision, receipt });
         }
@@ -80,6 +85,7 @@ async function run(browser, base, width, locale, dark) {
     await page.locator('.pi-profile-confirm[open]').waitFor();
     await page.keyboard.press('Escape');
     assert.equal(calls.length, 0, 'cancelling deletion must not send a mutation');
+    assert.equal(await page.locator('.pi-knowledge-row').evaluate(el => el.nextElementSibling?.classList.contains('pi-knowledge-detail')), true, 'details open beside the selected row, not after the list');
     await page.locator('.pi-knowledge-detail button').filter({ hasText: locale.startsWith('zh') ? '编辑' : 'Edit' }).click();
     assert.equal(await page.locator('.pi-knowledge-editor input').first().getAttribute('maxlength'), '64');
     await page.locator('.pi-knowledge-editor textarea').fill('New skill content');
@@ -159,9 +165,10 @@ async function run(browser, base, width, locale, dark) {
     await page.evaluate(() => { window.current = { ...window.current, sessionId:'thread-one',generation:3 }; window.chat.update(); });
     await page.evaluate(() => { window.current = { ...window.current, sessionId:'thread-two',generation:4 }; window.chat.update(); });
     assert.equal(await page.locator('.pi-chat-knowledge textarea').inputValue(), 'Thread two draft');
+    await page.waitForFunction(() => !document.querySelector('.pi-chat-knowledge-form button[type=submit]')?.disabled);
     state.abort = true;
     await page.locator('.pi-chat-knowledge-form button[type=submit]').click();
-    await page.waitForFunction(() => document.querySelector('.pi-chat-knowledge-form button')?.disabled === true);
+    await page.waitForFunction(() => document.querySelector('.pi-chat-knowledge-form button[type=submit]')?.disabled === true);
     assert.equal(await page.locator('.pi-chat-knowledge textarea').inputValue(), 'Thread two draft');
     assert.equal(calls.at(-1).category, 'correction');
     assert.equal(calls.at(-1).source, undefined);
@@ -179,14 +186,25 @@ async function run(browser, base, width, locale, dark) {
     assert.equal(await page.locator('.pi-chat-knowledge textarea').inputValue(), 'Keep correction draft'); state.conflict = false;
     state.item = { ...state.item, state: 'deleted', revision: hash('e') };
     await page.evaluate(() => window.manager.open('profile-three'));
+    await page.waitForFunction(() => /ready|就绪/i.test(document.querySelector('.pi-knowledge-status')?.textContent || ''));
+    assert.equal(await page.locator('.pi-knowledge-row').count(), 0, 'deleted entries are hidden by default');
+    await page.locator('.pi-knowledge-deleted-filter').click();
     await page.locator('.pi-knowledge-row').click();
     await page.locator('.pi-knowledge-detail pre').waitFor();
     await page.locator('.pi-knowledge-detail button').filter({ hasText: locale.startsWith('zh') ? '恢复条目' : 'Restore item' }).click();
     assert.equal(calls.at(-1).operation, 'restore');
     assert.equal(calls.at(-1).itemId, skill.id);
     assert.equal(calls.at(-1).itemRevision, hash('e'));
+    await page.waitForFunction(() => !document.querySelector('.pi-knowledge-row'));
+    await page.locator('.pi-knowledge-deleted-filter').click();
+    await page.locator('.pi-knowledge-row').click();
+    await page.locator('.pi-knowledge-detail button').filter({ hasText: locale.startsWith('zh') ? '删除' : 'Delete' }).click();
+    await page.locator('.pi-profile-confirm .settings-primary-button').click();
+    await page.waitForFunction(() => !document.querySelector('.pi-knowledge-row'));
+    assert.equal(calls.at(-1).operation, 'delete');
     const dimensions = await page.evaluate(() => ({ document: document.documentElement.scrollWidth, viewport: innerWidth,
-        overflows: [...document.querySelectorAll('main,section,#pi-chat-knowledge,.pi-chat-knowledge-body')].filter(el => el.scrollWidth > el.clientWidth + 1).map(el => el.className || el.id) }));
+        overflows: [...document.querySelectorAll('main,section,#pi-chat-knowledge,.pi-chat-knowledge-body')].filter(el => el.scrollWidth > el.clientWidth + 1).map(el => el.className || el.id),
+        offenders: [...document.querySelectorAll('#pi-chat-knowledge *')].filter(el => el.getBoundingClientRect().right > innerWidth + 1).slice(0, 12).map(el => [el.className, el.textContent.slice(0, 80), el.getBoundingClientRect().width]) }));
     assert.ok(dimensions.document <= dimensions.viewport + 1, JSON.stringify(dimensions));
     assert.deepEqual(dimensions.overflows, []);
     if (width < 900) {
@@ -201,6 +219,9 @@ async function run(browser, base, width, locale, dark) {
             .map(el => [el.tagName.toLowerCase(), el.id || el.className || el.name, parseFloat(getComputedStyle(el).fontSize)]));
         assert.ok(sizes.every(entry => entry[2] >= 16), `mobile form font sizes: ${JSON.stringify(sizes)}`);
     }
+    await page.reload();
+    await page.waitForFunction(() => /ready|就绪/i.test(document.querySelector('.pi-knowledge-status')?.textContent || ''));
+    assert.equal(await page.locator('.pi-knowledge-row').count(), 0, 'fresh page still excludes deleted items');
     assert.deepEqual(errors, []);
     console.log(`PASS knowledge ${width} ${locale} ${dark ? 'dark' : 'light'} ${JSON.stringify(dimensions)}`);
     await context.close();

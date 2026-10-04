@@ -1,10 +1,10 @@
 # Windows 原生安装与验证
 
-2026-09-11 已在 Windows 11 x64（build 26200、NTFS）完成原生适配及安装/更新/同路径恢复验证。使用官方 Node 22.23.2、包内 Pi 0.85.0、Git for Windows、ripgrep 和原生 Chrome，未使用 WSL。
+Pivane 在 Windows x64 上原生运行，无需 WSL，使用 Node 22.x、Git for Windows 与 ripgrep。各版本实际验收过的系统与文件系统见[验证范围](RELEASE_INSTALL_VALIDATION.md)；在其他环境遇到问题，欢迎通过 [Issues](https://github.com/YogurtJ/pivane/issues) 反馈。
 
 ## 安装前提
 
-当前源码的 `node scripts/install.cjs` 统一准备内置 pi-subagents 与 pi-hermes-memory，不再向共享 Pi 身份另行安装包；准备失败会返回安装错误。这个入口使用 SQLite 随包的原生二进制，避免 npm 无谓调用 Visual Studio C++ 编译。下文以 1.3.0 为例，使用统一安装入口；旧归档没有此脚本时仍使用 `npm.cmd ci`。默认启用、旧配置兼容和平台依赖见[内置能力包](BUNDLED_CAPABILITIES.md)。
+当前源码的 `node scripts/install.cjs` 统一准备内置 pi-subagents 与 pi-hermes-memory，不再向共享 Pi 身份另行安装包；准备失败会返回安装错误。这个入口使用 SQLite 随包的原生二进制，避免 npm 无谓调用 Visual Studio C++ 编译。下文以 1.6.0 为例（安装其他版本时替换版本号），使用统一安装入口；旧归档没有此脚本时仍使用 `npm.cmd ci`。默认启用、旧配置兼容和平台依赖见[内置能力包](BUNDLED_CAPABILITIES.md)。
 
 - Node 22.x x64、npm、Git for Windows（含 Git Bash）、ripgrep 在运行进程 PATH 中可用。Pi 使用项目锁定依赖，不需要全局安装。
 - Pivane 自身使用随包的 Node-API 8 组件，无需现场编译该组件。当前源码内置记忆的 `better-sqlite3` 另外安装适配当前 Node 的二进制；缺少预构建文件时需要 Python 与 Visual Studio C++ 构建工具，见[内置能力包](BUNDLED_CAPABILITIES.md)。维护者重建 Pivane 自身组件的要求见 native/README.md。
@@ -14,12 +14,12 @@
 下面使用普通用户目录中的新实例。先将发布包和同名.sha256下载到Downloads；PowerShell执行：
 
 ```powershell
-$archive = Join-Path $env:USERPROFILE 'Downloads\pivane-1.3.0.tar.gz'
+$archive = Join-Path $env:USERPROFILE 'Downloads\pivane-1.6.0.tar.gz'
 $expected = (Get-Content -LiteralPath ($archive + '.sha256') -Raw).Trim().Split()[0]
 if ($expected -notmatch '^[a-fA-F0-9]{64}$' -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ine $expected) { throw '发布包校验失败' }
 $base = Join-Path $env:USERPROFILE 'Pivane'
 if (Test-Path -LiteralPath $base) { throw '此目录已存在，请按更新流程操作或选择新的base' }
-$app = Join-Path $base 'releases\1.3.0'
+$app = Join-Path $base 'releases\1.6.0'
 @($app, "$base\data\media", "$base\projects\demo", "$base\backups") | ForEach-Object { New-Item -ItemType Directory -Path $_ -Force | Out-Null }
 tar.exe -xzf $archive -C $app --strip-components=1
 if ($LASTEXITCODE -ne 0) { throw '解包失败' }

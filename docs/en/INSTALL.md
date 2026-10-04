@@ -1,10 +1,10 @@
 # Install, update and recover Pivane
 
-[English home](../../README.en.md) · [User guide](USER_GUIDE.md) · [中文完整指南](../INSTALL_RECOVERY.md)
+[English home](../../README.md) · [User guide](USER_GUIDE.md) · [中文完整指南](../INSTALL_RECOVERY.md)
 
-Use **Node.js 22.x** with npm. The published RC1 baseline was tested with Node 22.23.2 and Pi 0.85.0 on Debian ARM64, Ubuntu 24.04 x86_64, Apple Silicon M2 macOS and Windows 11 x64/NTFS. See [platform validation](../RELEASE_INSTALL_VALIDATION.md) for exact limits. A browser at phone width does not constitute native iPhone/Safari validation.
+Pivane runs natively on Linux, macOS and Windows with **Node.js 22.x** and npm. The environments validated for each release are listed in [platform validation](../RELEASE_INSTALL_VALIDATION.md); if you run into a problem elsewhere, please [open an issue](https://github.com/YogurtJ/pivane/issues).
 
-The examples below target **1.3.0**, pinned to Pi 0.87.1. Available downloads are listed in [Releases](https://github.com/YogurtJ/pivane/releases). Use matching archives, checksums and version directories together. The platform table above describes historical baselines; consult the [1.3.0 release notes](../releases/1.3.0.md) and its validation attachment for checks performed on this artifact.
+The examples below use **1.6.0**; replace it with the version you downloaded from [Releases](https://github.com/YogurtJ/pivane/releases). Use matching archives, checksums and version directories together. Each release's notes and validation attachment describe the checks performed on that archive.
 
 ## Prerequisites
 
@@ -46,7 +46,7 @@ Environment-only keys, proxy settings and external credential commands must also
 Download the archive and its `.sha256` file from [Releases](https://github.com/YogurtJ/pivane/releases) to Downloads and verify the source. In Bash or your macOS terminal:
 
 ```bash
-ARCHIVE="$HOME/Downloads/pivane-1.3.0.tar.gz"
+ARCHIVE="$HOME/Downloads/pivane-1.6.0.tar.gz"
 # Linux:
 (cd "$(dirname "$ARCHIVE")" && sha256sum -c "$(basename "$ARCHIVE").sha256")
 # macOS: use this checksum command instead:
@@ -59,9 +59,9 @@ Continue only if verification succeeds. For a new instance, the base directory m
 BASE="$HOME/pivane"
 test ! -e "$BASE" || { echo "Directory exists; use the update procedure or another BASE"; exit 1; }
 umask 077
-mkdir -p "$BASE/releases/1.3.0" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
-tar -xzf "$ARCHIVE" -C "$BASE/releases/1.3.0" --strip-components=1
-cd "$BASE/releases/1.3.0"
+mkdir -p "$BASE/releases/1.6.0" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
+tar -xzf "$ARCHIVE" -C "$BASE/releases/1.6.0" --strip-components=1
+cd "$BASE/releases/1.6.0"
 node --version
 rg --version
 node scripts/install.cjs
@@ -98,17 +98,17 @@ Open **http://127.0.0.1:11408**. The installation terminal can close. A user ser
 
 macOS's privacy controls and filesystem permissions still apply. `/tmp` resolving to `/private/tmp` is normal. Finder Trash is not integrated: session deletion tries `gio trash`, then permanently deletes if unavailable. The confirmation and result explain which behavior applies.
 
-## Windows 11 x64
+## Windows
 
 Install Node 22.x x64, Git for Windows and ripgrep, making them available in PATH. Normal installation does not require Visual Studio or WSL. Use a new directory under your own user profile. In PowerShell:
 
 ```powershell
-$archive = Join-Path $env:USERPROFILE 'Downloads\pivane-1.3.0.tar.gz'
+$archive = Join-Path $env:USERPROFILE 'Downloads\pivane-1.6.0.tar.gz'
 $expected = (Get-Content -LiteralPath ($archive + '.sha256') -Raw).Trim().Split()[0]
 if ($expected -notmatch '^[a-fA-F0-9]{64}$' -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ine $expected) { throw 'Archive checksum failed' }
 $base = Join-Path $env:USERPROFILE 'Pivane'
 if (Test-Path -LiteralPath $base) { throw 'Directory exists; use the update procedure or another base' }
-$app = Join-Path $base 'releases\1.3.0'
+$app = Join-Path $base 'releases\1.6.0'
 @($app, "$base\data\media", "$base\projects\demo", "$base\backups") | ForEach-Object { New-Item -ItemType Directory -Path $_ -Force | Out-Null }
 tar.exe -xzf $archive -C $app --strip-components=1
 if ($LASTEXITCODE -ne 0) { throw 'Extraction failed' }

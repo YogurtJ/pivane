@@ -8,7 +8,8 @@
             this.dialog = node('dialog'); this.dialog.id = 'pi-session-search-dialog'; this.dialog.className = 'pi-native-dialog'; this.dialog.setAttribute('aria-label', translateUi("跨线程搜索对话"));
             const heading = node('div'); heading.className = 'pi-native-heading'; heading.append(node('strong', translateUi("查找对话")));
             const close = node('button', translateUi("关闭")); close.type = 'button'; close.onclick = () => this.dialog.close(); heading.append(close);
-            const body = node('div'); body.className = 'pi-native-body';
+            const body = node('div'); body.className = 'pi-native-body'; this.body = body;
+            body.addEventListener('scroll', () => { if (this.dialog.open) this.savedTop = body.scrollTop; });
             this.form = node('form'); this.form.className = 'pi-session-search-form';
             this.input = node('input'); this.input.type = 'search'; this.input.placeholder = translateUi("搜索曾经讨论过的内容"); this.input.setAttribute('aria-label', translateUi("对话正文关键词")); this.input.maxLength = 200;
             this.scope = node('select'); this.scope.setAttribute('aria-label', translateUi("搜索项目范围"));
@@ -22,19 +23,47 @@
             this.archiveLabel.append(this.archiveInput, document.createTextNode(translateUi('包含已归档')));
             body.append(this.form, this.archiveLabel, help, this.status, this.results, nav);
             this.dialog.append(heading, body); document.body.append(this.dialog);
-            this.button.onclick = () => { this.returnFocus = document.activeElement; this.cwd = host.cwd(); this.input.value = document.getElementById('pi-session-search').value; this.nav.hidden = true; this.dialog.showModal(); this.input.focus(); };
-            this.dialog.addEventListener('close', () => { this.epoch++; this.abort?.abort(); this.results.replaceChildren(); this.status.textContent = ''; this.returnFocus?.focus({preventScroll:true}); });
+            this.button.onclick = () => {
+                this.returnFocus = document.activeElement;
+                const context = host.contextKey?.() || '';
+                if (this.contextKey !== context) this.reset();
+                this.contextKey = context;
+                if (!this.started) { this.cwd = host.cwd(); this.input.value = document.getElementById('pi-session-search').value; this.started = true; }
+                this.scope.title = this.scope.value === 'project' ? this.cwd || '' : '';
+                this.scope.querySelector('[value="project"]').textContent = this.cwd ? translateUi('项目：{0}', this.cwd) : translateUi('当前项目');
+                this.dialog.showModal(); this.input.focus({ preventScroll: true }); body.scrollTop = this.savedTop || 0;
+            };
+            this.dialog.addEventListener('close', () => {
+                this.epoch++; this.abort?.abort();
+                if (this.pending) this.clearResults();
+                this.returnFocus?.focus({preventScroll:true});
+            });
+            window.addEventListener('workspace:access-locked', () => { this.reset(); this.dialog.close(); });
             this.form.onsubmit = e => { e.preventDefault(); void this.search(0); };
-            this.input.oninput = this.scope.onchange = this.archiveInput.onchange = () => { this.epoch++; this.abort?.abort(); this.results.replaceChildren(); this.status.textContent = ''; this.nav.hidden = true; this.prev.disabled = this.next.disabled = true; };
+            this.input.oninput = this.archiveInput.onchange = () => this.clearResults();
+            this.scope.onchange = () => {
+                this.cwd = host.cwd(); this.scope.title = this.scope.value === 'project' ? this.cwd || '' : '';
+                this.scope.querySelector('[value="project"]').textContent = this.cwd ? translateUi('项目：{0}', this.cwd) : translateUi('当前项目');
+                this.clearResults();
+            };
             this.prev.onclick = () => this.search(this.offset - 20); this.next.onclick = () => this.search(this.offset + 20);
             this.prev.disabled = this.next.disabled = true;
         }
         setArchivesEnabled(value) { this.archivesEnabled = value; this.archiveLabel.hidden = !value; }
-        setEnabled(value) { this.enabled = value; this.button.hidden = !value; }
+        clearResults() {
+            this.epoch++; this.resultVersion = (this.resultVersion || 0) + 1; this.abort?.abort(); this.pending = false;
+            this.results.replaceChildren(); this.status.textContent = ''; this.nav.hidden = true;
+            this.prev.disabled = this.next.disabled = true; this.savedTop = 0; this.offset = 0; this.searchId = null;
+        }
+        reset() { this.clearResults(); this.started = false; this.input.value = ''; this.scope.value = 'all'; this.archiveInput.checked = false; }
+        setEnabled(value) { this.enabled = value; this.button.hidden = !value; if (!value) { this.reset(); this.dialog.close(); } }
         async search(offset) {
             if (!this.enabled || !this.dialog.open) return;
             const q = this.input.value.trim(); if (q.length < 2) { this.status.textContent = translateUi("请输入至少 2 个字符"); return; }
             this.abort?.abort(); this.abort = new AbortController(); const n = ++this.epoch;
+            const version = this.resultVersion = (this.resultVersion || 0) + 1;
+            this.pending = true;
+            this.results.querySelectorAll('button').forEach(button => { button.disabled = true; });
             this.status.textContent = translateUi("正在搜索原生会话…"); this.prev.disabled = this.next.disabled = true;
             const query = new URLSearchParams({q, offset: String(Math.max(0, offset))});
             if (this.scope.value === 'project') query.set('cwd', this.cwd);
@@ -43,6 +72,8 @@
             try {
                 const data = await this.host.api('/api/pi/sessions/search?' + query, {signal:this.abort.signal});
                 if (n !== this.epoch || !this.dialog.open) return;
+                if (this.contextKey !== (this.host.contextKey?.() || '')) { this.reset(); return; }
+                this.pending = false;
                 this.offset = data.offset; this.searchId = data.searchId;
                 this.status.textContent = `${data.total ? translateUi("找到 ") + data.total + translateUi(" 个线程") : translateUi("没有匹配的对话")}${data.partial ? translateUi(" · 部分文件变化或达到扫描限额，可缩小项目范围重试") : ''}`;
                 this.results.replaceChildren();
@@ -50,15 +81,17 @@
                     const button = node('button'); button.type = 'button'; button.append(node('strong', row.name), node('small', translateUi("{0} · {1} 条匹配", row.cwd, row.matches)), node('span', row.snippet));
                     if (row.archived) button.append(node('small', translateUi('已归档')));
                     button.onclick = async () => {
-                        if (n !== this.epoch || !this.dialog.open) return;
-                        button.disabled = true;
+                        if (version !== this.resultVersion || !this.dialog.open || this.opening) return;
+                        if (this.contextKey !== (this.host.contextKey?.() || '')) { this.reset(); return; }
+                        this.opening = true; button.disabled = true; this.savedTop = this.body.scrollTop;
                         try { this.dialog.close(); await this.host.open(row, q); }
                         catch (e) { this.host.toast(e.message, 'error'); }
+                        finally { this.opening = false; if (button.isConnected) button.disabled = false; }
                     }; this.results.append(button);
                 }
                 this.nav.hidden = !data.offset && !data.hasMore;
                 this.prev.disabled = !data.offset; this.next.disabled = !data.hasMore;
-            } catch (e) { if (n === this.epoch && this.dialog.open && e.name !== 'AbortError') this.status.textContent = e.message; }
+            } catch (e) { if (n === this.epoch && this.dialog.open && e.name !== 'AbortError') { this.clearResults(); this.status.textContent = e.message; } }
         }
     }
     window.PiSessionSearch = PiSessionSearch;

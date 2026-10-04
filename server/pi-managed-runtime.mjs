@@ -28,8 +28,9 @@ try {
         const global = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
         const trusted = parsed.projectTrustOverride ?? new ProjectTrustStore(agentDir).get(cwd) ?? (global.getDefaultProjectTrust() === 'always');
         const settings = SettingsManager.create(cwd, agentDir, { projectTrusted: trusted });
-        http.applyHttpProxySettings(settings.getGlobalSettings().httpProxy);
+        if (!['direct', 'custom'].includes(process.env.PIVANE_NETWORK_MODE)) http.applyHttpProxySettings(settings.getGlobalSettings().httpProxy);
         http.configureHttpDispatcher(settings.getHttpIdleTimeoutMs());
+        (await import('./workspace-network-transport.js')).default.markSdkNetworkReady();
         const input = { cwd, agentDir, settings, parsed };
         const { settingsView, options } = await managedLoaderOptions(input);
         const services = await createAgentSessionServices({ cwd, agentDir, settingsManager: settingsView,

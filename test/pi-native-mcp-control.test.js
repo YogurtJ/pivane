@@ -6,8 +6,8 @@ const os = require('node:os');
 const { pathToFileURL, fileURLToPath } = require('node:url');
 const helper = () => import('../server/pi-native-mcp-control.mjs');
 function api() {
-    const commands = new Map(), events = new Map(), tools = new Map();
-    return { commands, events, registerCommand: (name, command) => commands.set(name, command), on: (name, handler) => { const previous = events.get(name); events.set(name, async (...args) => { await previous?.(...args); return handler(...args); }); }, getMcpServers: () => [], getAllTools: () => [...tools.values()], getActiveTools: () => [], setActiveTools() {}, registerTool: tool => tools.set(tool.name, tool) };
+    const commands = new Map(), events = new Map(), tools = new Map(), renderers = [];
+    return { commands, events, renderers, registerToolRenderer: renderer => renderers.push(renderer), registerCommand: (name, command) => commands.set(name, command), on: (name, handler) => { const previous = events.get(name); events.set(name, async (...args) => { await previous?.(...args); return handler(...args); }); }, getMcpServers: () => [], getAllTools: () => [...tools.values()], getActiveTools: () => [], setActiveTools() {}, registerTool: tool => tools.set(tool.name, tool) };
 }
 function context(id = 'synthetic-session') { return { mode: 'rpc', cwd: '/synthetic', hasUI: true, sessionManager: { getSessionId: () => id }, isIdle: () => true, isProjectTrusted: () => true, ui: { notify() {}, input: async () => undefined } }; }
 async function official() {
@@ -28,6 +28,11 @@ test('capture preserves official command ownership across distinct APIs and isol
     const factory = createMcpExtension({ loadConfig: () => ({ servers: [{ name: 'disabled', scope: 'global', source: '/synthetic/mcp.json', config: { command: 'SECRET_EXECUTABLE', enabled: false } }], errors: [] }), createTransport: () => { transportCalls++; throw Error('never'); } });
     captureNativeMcpControl(factory)(pi); captureNativeMcpControl(factory)(otherPi);
     const original = pi.commands.get('mcp').handler;
+    assert.equal(pi.renderers.length, 1); assert.equal(otherPi.renderers.length, 1);
+    assert.equal(pi.renderers[0]('unregistered-tool', () => undefined), undefined);
+    const existing = { renderCall() {} };
+    assert.equal(pi.renderers[0]('mcp__disabled__echo', () => existing), existing);
+    assert.equal(typeof pi.renderers[0]('mcp__disabled__echo', () => undefined).renderCall, 'function');
     await pi.events.get('session_start')({}, ctx); await otherPi.events.get('session_start')({}, otherCtx);
     const webApi = api(); assert.notEqual(webApi, pi);
     const snapshot = await requestRegisteredNativeMcpControl(ctx, { action: 'snapshot' });

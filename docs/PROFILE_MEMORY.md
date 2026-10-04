@@ -1,7 +1,7 @@
 # Profile memory adapter (source candidate)
 
 The adapter uses selected components from **pi-hermes-memory 0.9.9** (MIT) with
-the application-pinned Pi 1.0.0. It never loads upstream's default factory: that factory scans the
+the application-pinned Pi 1.0.2. It never loads upstream's default factory: that factory scans the
 shared Pi sessions root, migrates global state, and may spawn an unscoped Pi
 child. Native JSONL is the conversation authority. Profile-local `sessions.db`
 is a disposable derived search index, not a parallel chat transcript tree.
@@ -127,6 +127,7 @@ own a second store. GET pages contain at most 50 entries (memory previews up to
 512 characters), 30 recent receipts, and a hash revision; detail content is
 bounded to 65,536 characters and marks truncated legacy entries read-only.
 `offset` is a canonical decimal integer from 0 to 100000 (no leading zeros).
+Optional `state=present|deleted|draft|all` filters before pagination; `present` excludes only deleted entries. Omission retains all states for existing callers. Filters do not change the authoritative write revision or remove tombstones. The identity page explicitly requests `present` by default and offers a separate deleted-items view.
 `capabilities.operations` lists supported commands, and `memory`/`skill` flags
 specify which kind is writable. The additive `capabilities.journal` object
 reports live receipt/request/tombstone counts, their windows and real limits.
@@ -409,6 +410,12 @@ tool adapter.
   Pairs before the last `pivane-learning-baseline` custom entry on the branch
   (written when older conversations are imported) are never learned from, in
   any kind or at a boundary; forks keep the baseline.
+  Native forks also carry a current-session `pivane-learning-fork-boundary`:
+  fully inherited pairs are never fresh work, even if not learned in the parent.
+  A new reply completing an inherited user message is still new work. Legacy
+  forks prove their common native parent prefix once and persist only its boundary
+  entry ID; unsafe/missing parents fail closed. Nested forks, navigation and
+  restarts retain this fence without copying transcripts.
 - **Comparison and decisions**: every ordinary review, correction and extraction
   offers related active USER/MEMORY entries and existing skill references to
   the already-configured auxiliary model in the same single call. The answer
@@ -432,12 +439,19 @@ tool adapter.
   characters reduced to a UTF-8-safe 1,800-byte model excerpt,
   prompt plus excerpt ≤ 5000 UTF-8 bytes, ≤ 320 output tokens, no tools, no
   CLI/subagent fallback, 20 s abort followed by waiting for real settlement.
-  Queue 64 jobs, 128 cursors; deep branch rewrites block a cursor and are
-  reported in `capabilities.capacity.blockedBranches`. Manual action IDs
+  Queue 64 jobs, 128 cursors; each cursor retains at most 2048 native pair
+  references to avoid replay after historical edits or branch switches. Capacity
+  exhaustion and unprovable legacy branch rewrites block rather than forget old
+  keys, and are reported in `capabilities.capacity.blockedBranches`. Manual action IDs
   (`review-now`, `cancel`) are valid for 7 days; at most 256 active and 1024
   retired IDs are kept, after which actions fail explicitly.
 - **Outcomes**: jobs report status, reason, model, receipt IDs and only the
-  usage/cost the provider reported (`unknown` is not zero). Jobs running at a
+  usage/cost the provider reported (`unknown` is not zero). An explicit server-only
+  reconciliation can refund proven inherited-fork runs by appending `quotaRefund`
+  and an idempotent audit receipt; only daily run/token reservations change,
+  never real usage, cost, original outcomes or knowledge receipts. Sources are
+  revalidated before quota reservation, and refunded history is never requeued.
+  Jobs running at a
   restart become `uncertain` and are never replayed. Deterministic trusted-write
   refusals (including the 413 source-proof limit) are `skipped/knowledge-rejected`;
   a learned entry refused by the content scan is `skipped/content-blocked`.
@@ -519,8 +533,8 @@ Use the pinned upstream tarball; its SHA256 is
 (npm integrity
 `sha512-6EfhmlgBuMfN7bQwN+xHMDVwX/Tm0fKKi6X8lAIBZtcjqxS9Of0rboJzmxfO3r+rGMWb71ss4p+dY34aEsJ1dg==`).
 The reviewed isolated lock at `server/profile-memory/upstream-lock.json` has
-SHA256 `3fc436fd2cbd63e932ef896a58ea5ebe51ba3ff42b5b3f79e12d8f4199949acc`.
-This source recipe pins Pi and the host TUI to 1.0.0 and verifies brace-expansion 5.0.12 / undici 8.11.2 through the shared installation boundary; earlier published archives keep their own historical locks.
+SHA256 `55729bb2926d489de04f4717b258a15ec8cb456af6fb8248687d39e70eac260f`.
+This source recipe pins Pi and the host TUI to 1.0.2 and verifies brace-expansion 5.0.12 / undici 8.11.2 through the shared installation boundary; earlier published archives keep their own historical locks.
 The isolated installer retains the reviewed JSON lock and rejects a different lock, creates a
 fresh prefix, runs `npm ci
 --ignore-scripts` for that locked graph, then runs only pinned `better-sqlite3`

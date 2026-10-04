@@ -217,6 +217,12 @@ test('Skills can be disabled and restored through native filters without deletin
 test('advanced models save compatibility, sampling and prices without dropping unknown fields or accepting request overrides', async () => {
     const { PiSettingsService } = require('../server/pi-settings-service');
     const service = new PiSettingsService({ cwd });
+    const modelFile = path.join(root, 'agent/models.json');
+    const before = JSON.parse(fs.readFileSync(modelFile));
+    const thinkingSampling = { off: { temperature: 0.2 }, high: { temperature: 0.8, top_p: 0.9 } };
+    before.providers.fixture.models[0].samplingParamsByThinkingLevel = thinkingSampling;
+    before.providers.fixture.modelOverrides = { fixture: { samplingParamsByThinkingLevel: { medium: { top_k: 12 } } } };
+    fs.writeFileSync(modelFile, JSON.stringify(before));
     let info = await service.getModelAdvanced({ provider: 'fixture', modelId: 'fixture' });
     await service.saveModelAdvanced({ provider: 'fixture', modelId: 'fixture', expectedRevision: info.revision,
         compat: { supportsDeveloperRole: false, maxTokensField: 'max_tokens' }, samplingParams: { temperature: 0.7 },
@@ -227,6 +233,8 @@ test('advanced models save compatibility, sampling and prices without dropping u
     assert.equal(data.providers.fixture.models[0].cost.input, 2);
     assert.equal(data.providers.fixture.models[0].compat.supportsDeveloperRole, false);
     assert.equal(data.providers.fixture.models[0].samplingParams.temperature, 0.7);
+    assert.deepEqual(data.providers.fixture.models[0].samplingParamsByThinkingLevel, thinkingSampling);
+    assert.deepEqual(data.providers.fixture.modelOverrides.fixture.samplingParamsByThinkingLevel, { medium: { top_k: 12 } });
     await assert.rejects(service.saveModelAdvanced({ provider: 'fixture', modelId: 'fixture', expectedRevision: info.revision, compat: {} }), /变化/);
     info = await service.getModelAdvanced({ provider: 'fixture', modelId: 'fixture' });
     assert.doesNotMatch(JSON.stringify(info), /synthetic-fixture/);

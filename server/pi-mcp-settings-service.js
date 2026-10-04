@@ -23,22 +23,34 @@ async function nativeApi() {
     }
     return native;
 }
-// Match native loading order without evaluating references or opening transports.
-function namespaceConflicts(data, validate, namespace, projectTrusted) {
-    const selected = new Map(), conflicts = new Set();
+const overrideKeys = new Set(['enabled', 'exposure', 'toolExposure']);
+const projectOverride = value => record(value) && value.command === undefined && value.url === undefined && value.type === undefined;
+// Match native loading and partial-override order using the safely read snapshot;
+// never evaluate references, copy inherited credentials to a project, or connect.
+function configState(data, validate, namespace, projectTrusted) {
+    const selected = new Map(), conflicts = new Set(), configs = new Map();
     for (const index of projectTrusted ? [0, 1] : [0]) {
         for (const [name, value] of Object.entries(data[index].mcpServers || {})) {
+            if (index === 1 && projectOverride(value)) {
+                const base = selected.get(name);
+                if (!base || Object.keys(value).some(key => !overrideKeys.has(key))) continue;
+                const config = validate(name, { ...base, ...value });
+                if (typeof config === 'string') continue;
+                selected.set(name, config); configs.set(`${index}:${name}`, config);
+                continue; // Inherited global provider auth is allowed by native Pi.
+            }
             const config = validate(name, value);
             if (typeof config === 'string') continue;
             if ([...selected.keys()].some(other => other !== name && namespace(other) === namespace(name))) {
                 conflicts.add(`${index}:${name}`); continue;
             }
             if (index === 1 && 'url' in config && config.auth) continue;
-            selected.set(name, config);
+            selected.set(name, config); configs.set(`${index}:${name}`, config);
         }
     }
-    return conflicts;
+    return { conflicts, configs };
 }
+function namespaceConflicts(...args) { return configState(...args).conflicts; }
 function read(file) {
     let fd;
     try {
@@ -123,12 +135,14 @@ class PiMcpSettingsService {
         if (!['global', 'project'].includes(scope)) throw fail('MCP_INVALID_SCOPE');
         const ctx = await this.context(cwdInput), { validateMcpServerConfig: validate, mcpNamespace } = await nativeApi();
         const index = scope === 'global' ? 0 : 1;
-        const conflicts = namespaceConflicts(ctx.data, validate, mcpNamespace, ctx.trust.effective || scope === 'project');
+        const state = configState(ctx.data, validate, mcpNamespace, ctx.trust.effective || scope === 'project');
+        const conflicts = state.conflicts;
         const servers = Object.entries(ctx.data[index].mcpServers || {}).map(([name, config]) => {
-            const valid = validate(name, config);
+            const override = index === 1 && projectOverride(config);
+            const valid = override ? state.configs.get(`${index}:${name}`) || 'invalid override' : validate(name, config);
             if (conflicts.has(`${index}:${name}`)) return { name, scope, valid: false, transport: 'unknown', config: {}, secretFields: {}, error: 'MCP_NAMESPACE_CONFLICT' };
             if (typeof valid === 'string' || config.auth !== undefined && (scope !== 'global' || !httpConfig(valid))) return { name, scope, valid: false, transport: 'unknown', config: {}, secretFields: {}, error: 'MCP_INVALID_SERVER' };
-            return { name, scope, valid: true, enabled: config.enabled !== false, exposure: valid.exposure || 'codemode', timeout: config.timeout ?? 60, transport: typeof config.url === 'string' && config.type !== 'stdio' ? 'http' : 'stdio', ...editable({ ...config, ...(valid.exposure ? { exposure: valid.exposure } : {}), ...(valid.toolExposure ? { toolExposure: valid.toolExposure } : {}) }) };
+            return { name, scope, valid: true, ...(override ? { override: true } : {}), enabled: valid.enabled !== false, exposure: valid.exposure || 'codemode', timeout: valid.timeout ?? 60, transport: typeof valid.url === 'string' && valid.type !== 'stdio' ? 'http' : 'stdio', ...editable({ ...config, ...(valid.exposure && (!override || own(config, 'exposure')) ? { exposure: valid.exposure } : {}), ...(valid.toolExposure && (!override || own(config, 'toolExposure')) ? { toolExposure: valid.toolExposure } : {}) }) };
         });
         const global = ctx.data[0].autoEnableCodemode ?? null, project = ctx.data[1].autoEnableCodemode ?? null;
         return { cwd: ctx.cwd, scope, revision: ctx.revision, trust: ctx.trust, autoEnableCodemode: { global, project, value: (ctx.trust.effective ? project : null) ?? global ?? true }, servers, capabilities: { native: true, runtimeManagement: true } };
@@ -156,14 +170,17 @@ class PiMcpSettingsService {
                     if (!record(previous) || input.action === 'patch' && !own(data.mcpServers, input.name)) throw fail('MCP_SERVER_NOT_FOUND');
                     const edits = input.action === 'patch' ? input.patch : input.config;
                     const next = applyConfig(previous, edits);
-                    const valid = validate(input.name, next);
+                    const afterData = [...ctx.data];
+                    afterData[index] = { ...data, mcpServers: { ...data.mcpServers, [input.name]: next } };
+                    const valid = index === 1 && projectOverride(next)
+                        ? configState(afterData, validate, mcpNamespace, true).configs.get(`${index}:${input.name}`) || 'invalid override'
+                        : validate(input.name, next);
                     if (next.auth !== undefined && (input.scope !== 'global' || typeof valid === 'string' || !httpConfig(valid))) throw fail('MCP_INVALID_SERVER');
                     if (own(edits, 'description') && next.description !== undefined && (typeof next.description !== 'string' || next.description.length > 4096)) throw fail('MCP_INVALID_SERVER');
                     if (next.auth?.provider !== previous.auth?.provider && next.auth?.provider && Object.keys(next.headers || {}).some(key => key.toLowerCase() === 'authorization')) throw fail('MCP_AUTH_HEADER_CONFLICT');
                     if (typeof valid === 'string' || next.timeout !== undefined && !Number.isFinite(next.timeout)) throw fail('MCP_INVALID_SERVER');
                     data.mcpServers[input.name] = next;
                     const before = namespaceConflicts(ctx.data, validate, mcpNamespace, ctx.trust.effective);
-                    const afterData = [...ctx.data]; afterData[index] = data;
                     const after = namespaceConflicts(afterData, validate, mcpNamespace, ctx.trust.effective);
                     if ([...after].some(name => !before.has(name))) throw fail('MCP_NAMESPACE_CONFLICT');
                 }

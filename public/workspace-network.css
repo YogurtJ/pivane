@@ -1,0 +1,44 @@
+#workspace-access-panel { --network-radius: 16px; }
+#network-summary { margin: -4px 0 22px; color: var(--text-muted); font-size: .88rem; line-height: 1.7; }
+.network-card { max-width: 840px; margin-bottom: 18px; padding: 22px 24px; border: 1px solid var(--line); border-radius: var(--network-radius); background: var(--surface-1); display: grid; gap: 16px; min-width: 0; }
+.network-card-head { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 2px; }
+.network-card-head > i { width: 38px; height: 38px; display: grid; place-items: center; flex: 0 0 38px; border-radius: 11px; background: var(--surface-2); color: var(--text-muted); }
+.network-card-head h4 { margin: 0 0 5px; font-size: 1rem; color: var(--text-main); font-weight: 650; }
+.network-card-head > div { min-width: 0; }
+.network-note { margin: 0; color: var(--text-muted); line-height: 1.65; font-size: .87rem; overflow-wrap: anywhere; }
+.network-card .workspace-access-card { max-width: none; }
+.network-field { display: grid; gap: 8px; color: var(--text-main); font-size: .9rem; min-width: 0; }
+.network-card input, .network-card select { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; min-height: 44px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text-main); border-radius: 9px; padding: 10px 12px; font: inherit; font-size: 16px; }
+.network-card select { max-width: 360px; }
+.network-card button { min-height: 40px; justify-self: start; }
+.network-card input:focus-visible, .network-card select:focus-visible, .network-card summary:focus-visible { outline: 2px solid var(--accent, #4585e6); outline-offset: 3px; }
+.network-details { border-top: 1px solid var(--line); padding-top: 12px; min-width: 0; }
+.network-details summary { color: var(--text-muted); cursor: pointer; font-size: .88rem; line-height: 1.6; padding: 3px 0; }
+.network-details > div, .network-details > p { margin-top: 12px; }
+.network-details > div { display: grid; gap: 12px; }
+.network-details a { color: var(--text-main); font-size: .9rem; width: fit-content; text-underline-offset: 3px; }
+#network-custom-proxy { display: grid; gap: 8px; }
+.network-addresses { display: grid; gap: 10px; }
+.network-address { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; min-width: 0; padding: 12px; border-radius: 10px; background: var(--surface-2); }
+.network-address span { color: var(--text-muted); font-size: .8rem; }
+.network-address code { grid-column: 1; overflow-wrap: anywhere; white-space: normal; font-size: .85rem; }
+.network-address button { grid-column: 2; grid-row: 1 / span 2; }
+.network-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.network-pending { max-width: 840px; box-sizing: content-box; padding: 16px 24px; margin-bottom: 18px; display: grid; gap: 10px; border: 1px solid color-mix(in srgb, var(--text-muted) 35%, var(--line)); border-radius: 12px; background: var(--surface-2); }
+.network-pending strong { font-size: .9rem; }
+.network-pending button { justify-self: start; }
+.network-footer { max-width: 840px; display: grid; gap: 12px; padding-bottom: 18px; }
+.network-footer button { justify-self: start; }
+#network-feedback { margin: 0; line-height: 1.7; font-size: .9rem; overflow-wrap: anywhere; }
+#network-feedback[data-error=true] { color: var(--danger, #c43a3a); }
+.network-card [hidden], #network-pending[hidden], #network-feedback[hidden], #network-auth-hint[hidden] { display: none !important; }
+.network-settings-link { display: inline-flex; align-items: center; gap: 7px; font-size: .85rem; color: var(--text-muted); text-underline-offset: 3px; }
+@media (max-width: 680px) {
+    .network-card { padding: 18px 16px; gap: 14px; border-radius: 13px; }
+    .network-pending { padding: 16px; }
+    .network-card select { max-width: none; }
+    .network-card-head { gap: 11px; }
+    .network-address { grid-template-columns: minmax(0, 1fr); }
+    .network-address button { grid-column: 1; grid-row: auto; }
+    .network-card .workspace-access-actions { gap: 8px; }
+}

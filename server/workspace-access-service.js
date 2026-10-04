@@ -248,6 +248,7 @@ class WorkspaceAccessService extends EventEmitter {
             if (c.env) throw failure('访问验证由 PI_WEB_TOKEN 管理，请在服务器修改', 403);
             if (!body || typeof body.enabled !== 'boolean' || body.confirmed !== true || Object.keys(body).some(k => !['enabled', 'token', 'generate', 'confirmed', 'expectedRevision'].includes(k))) throw failure('访问设置参数无效');
             if (body.expectedRevision !== c.tag) throw failure('访问设置已变化，请刷新后再修改', 409);
+            this.assertNetworkChange?.(body.enabled);
             let newToken;
             if (body.enabled) {
                 if (body.generate === true && body.token) throw failure('请选择自行设置或生成 Token');

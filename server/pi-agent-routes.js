@@ -219,6 +219,7 @@ function createPiAgentGateway(options = {}) {
             scheduledTasks: true,
             agentProfiles: true,
             assistantProjects: true,
+            sessionClassification: true,
             profileDocuments: true,
             profileAuthoring: true,
             profileMemory: memoryConfiguration.capability,
@@ -536,6 +537,8 @@ function createPiAgentGateway(options = {}) {
         }
     });
 
+    const sessionClassificationListeners = new Set();
+    supervisor.on('sessionClassification', session => { for (const listener of sessionClassificationListeners) listener(session); });
     const sessionMoveListeners = new Set();
     supervisor.on('sessionMove', event => { for (const listener of sessionMoveListeners) listener(event); });
     const sessionRemovalListeners = new Set();
@@ -568,6 +571,7 @@ function createPiAgentGateway(options = {}) {
         }
     });
 
+    require('./pi-session-classification').mountSessionClassification(router, { store, supervisor, profiles, projects: assistantProjects, sideChat });
     mountSessionWorkflows(router, { store, supervisor, deferred, preferences });
     const sessionTransfer = require('./pi-session-transfer').mountSessionTransfer(router, { store, supervisor, preferences });
     const sessionMoves = require('./pi-session-moves').mountSessionMoves(router, { store, supervisor, preferences, usage, deferred, cron, sideChat,
@@ -621,6 +625,12 @@ function createPiAgentGateway(options = {}) {
             let unsubscribe = null;
             let authenticated = false;
             let socketClosed = false;
+            const sessionClassification = session => {
+                if (session.path !== workerSessionPath) return;
+                safeSend(socket, { type: 'gateway_session_classified', session });
+                socket.close(1012, 'Session classification changed');
+            };
+            sessionClassificationListeners.add(sessionClassification);
             const sessionRemoval = event => {
                 if (event.path !== workerSessionPath) return;
                 if (event.deleted) safeSend(socket, { type: 'gateway_session_deleted', cwd: event.cwd, sessionId: event.id, trashed: event.result.trashed });
@@ -999,6 +1009,7 @@ function createPiAgentGateway(options = {}) {
 
             socket.on('close', () => {
                 sessionRemovalListeners.delete(sessionRemoval);
+                sessionClassificationListeners.delete(sessionClassification);
                 sessionMoveListeners.delete(sessionMove);
                 socketClosed = true;
                 clearTimeout(authTimer);

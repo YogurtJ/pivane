@@ -38,16 +38,18 @@ test('host compatibility exception cannot hide other missing aliases or unknown 
         fs.writeFileSync(path.join(core, 'package.json'), JSON.stringify({ name: '@earendil-works/pi-agent-core', version: coreVersion, exports }));
         fs.writeFileSync(path.join(host, 'index.js'), ''); fs.writeFileSync(path.join(core, 'index.js'), '');
     }
-    manifests('1.0.0', '1.0.0');
+    manifests('1.0.2', '1.0.2');
     const known = resolveHostPeerAliases(host);
     assert.equal(known.missing.includes(obsolete), false);
     assert.equal(known.missing.includes('@earendil-works/pi-tui'), true);
-    for (const versions of [['1.0.1', '1.0.0'], ['1.0.0', '1.0.1'], ['0.99.1', '0.99.1']]) {
+    for (const versions of [['1.0.1', '1.0.1'], ['1.0.2', '1.0.0'], ['1.0.0', '1.0.2'], ['1.0.3', '1.0.3'], ['0.99.1', '0.99.1']]) {
         manifests(...versions);
         assert.equal(resolveHostPeerAliases(host).missing.includes(obsolete), true);
     }
-    manifests('1.0.0', '1.0.0', null);
+    manifests('1.0.0', '1.0.0');
+    assert.equal(resolveHostPeerAliases(host).missing.includes(obsolete), false);
+    manifests('1.0.2', '1.0.2', null);
     assert.equal(resolveHostPeerAliases(host).missing.includes(obsolete), true);
-    manifests('1.0.0', '1.0.0', './missing.js');
+    manifests('1.0.2', '1.0.2', './missing.js');
     assert.equal(resolveHostPeerAliases(host).missing.includes(obsolete), true);
 });

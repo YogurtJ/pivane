@@ -1,6 +1,7 @@
 // Project-owned SDK entrypoint. Inherits context through a private pipe, never argv or a session file.
 import { Socket } from 'node:net';
 import sideTools from './pi-side-tools.js';
+import networkTransport from './workspace-network-transport.js';
 import { registerModelSpeed } from './pi-model-speed-extension.mjs';
 import {
     createAgentSessionRuntime, createAgentSessionServices, createAgentSessionFromServices,
@@ -22,7 +23,9 @@ try {
     if (seed.toolMode !== undefined && !['none', 'assist'].includes(seed.toolMode)) throw new Error('Invalid tool profile');
     const tools = seed.toolMode === 'assist' ? [...sideTools.READ_TOOLS, 'edit', 'write', process.platform === 'win32' ? 'powershell' : 'bash'] : [];
     const cwd = process.cwd(), agentDir = getAgentDir();
-    const disk = SettingsManager.create(cwd, agentDir, { projectTrusted: false }).getGlobalSettings();
+    const nativeSettings = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
+    const disk = nativeSettings.getGlobalSettings();
+    await networkTransport.initializeSdkNetwork(nativeSettings.getHttpIdleTimeoutMs());
     const settingsManager = SettingsManager.inMemory({
         compaction: disk.compaction, retry: disk.retry, transport: disk.transport, thinkingBudgets: disk.thinkingBudgets,
         packages: [], extensions: [], skills: [], prompts: [], themes: [], enableInstallTelemetry: false,

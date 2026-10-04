@@ -74,8 +74,11 @@
         }
         actionItems() { return [...this.addMenu.querySelectorAll('button')].filter(b => !b.closest('[hidden]') && !b.disabled); }
         openActions(last = false) {
-            this.hide(); this.addMenu.hidden = false; this.addButton.setAttribute('aria-expanded', 'true');
-            const items = this.actionItems(); (last ? items.at(-1) : items[0])?.focus();
+            const top = this.addButton.closest('.pi-composer').getBoundingClientRect().top;
+            this.addMenu.style.setProperty('--pi-composer-menu-height', `${Math.max(68, top - 22)}px`);
+            this.hide(); this.addMenu.hidden = false; this.addMenu.scrollTop = 0; this.addButton.setAttribute('aria-expanded', 'true');
+            const items = this.actionItems(); (last ? items.at(-1) : items[0])?.focus({ preventScroll: true });
+            document.activeElement?.scrollIntoView({ block: 'nearest' });
         }
         actionsKey(e) {
             if (e.isComposing || e.keyCode === 229) return;

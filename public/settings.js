@@ -136,6 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
         settingsOpen = false;
         settingsViewEpoch++;
         window.WorkspaceAccess?.closeSettings();
+        window.WorkspaceNetwork?.close();
         nativeSettings.close();
         usagePanel.close();
         updatesPanel.close();
@@ -159,8 +160,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (tab === 'media') void subagentSettings.open();
         else subagentSettings.close();
         if (tab === 'media' && metadata.section === 'speech') window.PiMediaConnections?.open({ kind: 'tts', section: 'asr' });
-        if (tab === 'access') window.WorkspaceAccess?.openSettings();
-        else window.WorkspaceAccess?.closeSettings();
+        if (tab === 'access') { window.WorkspaceAccess?.openSettings(); window.WorkspaceNetwork?.open(metadata.section); }
+        else { window.WorkspaceAccess?.closeSettings(); window.WorkspaceNetwork?.close(); }
         void nativeSettings.open(tab, extensionTab ? { type: metadata.resourceType } : {});
         if (tab === 'system-prompts') void systemPrompts.open();
         else systemPrompts.close();

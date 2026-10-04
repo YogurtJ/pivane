@@ -777,6 +777,7 @@ class PiAgentSupervisor extends EventEmitter {
         this.disposing = false;
         this.starting = new Map();
         this.removing = new Map();
+        this.editing = new Map();
         this.moving = new Map();
         this.ephemeralWorkers = new Set();
         this.sweepTimer = setInterval(() => this._sweep(), Math.min(this.idleMs, 60000));
@@ -786,6 +787,7 @@ class PiAgentSupervisor extends EventEmitter {
     async getWorker({ cwd, sessionPath, sessionId }) {
         if (this.disposing) throw new Error('Pi supervisor is shutting down');
         if (this.removing.has(sessionPath)) throw new Error('Session is being deleted');
+        if (this.editing.has(sessionPath)) throw new Error('Session metadata is being changed');
         if (this.moving.has(sessionPath)) throw new Error('Session is being moved');
         // A caller may have resolved the session before a completed deletion.
         if (!fs.existsSync(sessionPath)) throw new Error('Session file no longer exists');
@@ -834,6 +836,7 @@ class PiAgentSupervisor extends EventEmitter {
         if (await worker.responsive(this.healthTimeoutMs)) return worker;
         if (this.disposing) throw new Error('Pi supervisor is shutting down');
         if (this.removing.has(target.sessionPath)) throw new Error('Session is being deleted');
+        if (this.editing.has(target.sessionPath)) throw new Error('Session metadata is being changed');
         if (this.moving.has(target.sessionPath)) throw new Error('Session is being moved');
         if (this.workers.get(target.sessionPath) !== worker || worker.disposed || worker.restarting) return this.getWorker(target);
         // Work that started during the probe is never terminated for a missed reply.
@@ -879,7 +882,7 @@ class PiAgentSupervisor extends EventEmitter {
     }
 
     isIdle() {
-        return !this.disposing && !this.starting.size && !this.removing.size && !this.moving.size && !this.ephemeralWorkers.size
+        return !this.disposing && !this.starting.size && !this.removing.size && !this.editing.size && !this.moving.size && !this.ephemeralWorkers.size
             && [...this.workers.values()].every(worker => worker.isIdle() && !worker.retainsBackgroundWork());
     }
 
@@ -891,7 +894,7 @@ class PiAgentSupervisor extends EventEmitter {
         const real = file => { try { return fs.realpathSync.native(file); } catch { return null; } };
         const target = real(sessionPath) ?? sessionPath;
         const matches = file => file === sessionPath || file === target || real(file) === target;
-        if ([...this.removing.keys(), ...this.moving.keys()].some(matches) || [...this.starting.keys()].some(matches)) return false;
+        if ([...this.removing.keys(), ...this.editing.keys(), ...this.moving.keys()].some(matches) || [...this.starting.keys()].some(matches)) return false;
         const worker = [...this.workers].find(([file, item]) => !item.disposed && matches(file))?.[1];
         return !worker || worker.isIdle() && !worker.retainsBackgroundWork();
     }
@@ -910,7 +913,7 @@ class PiAgentSupervisor extends EventEmitter {
     async withSessionMove(sourcePath, targetPath, operation) {
         if (this.disposing) throw new Error('Pi supervisor is shutting down');
         const paths = [...new Set([sourcePath, targetPath])];
-        if (paths.some(file => this.removing.has(file) || this.moving.has(file))) throw new Error('Session file operation is already in progress');
+        if (paths.some(file => this.removing.has(file) || this.editing.has(file) || this.moving.has(file))) throw new Error('Session file operation is already in progress');
         const move = Promise.resolve().then(async () => {
             await Promise.all(paths.map(file => this.starting.get(file)));
             if (this.disposing) throw new Error('Pi supervisor is shutting down');
@@ -924,8 +927,25 @@ class PiAgentSupervisor extends EventEmitter {
         finally { for (const file of paths) if (this.moving.get(file) === move) this.moving.delete(file); }
     }
 
+    async withSessionEdit(sessionPath, operation) {
+        if (this.disposing) throw new Error('Pi supervisor is shutting down');
+        if (this.removing.has(sessionPath) || this.editing.has(sessionPath) || this.moving.has(sessionPath))
+            throw Object.assign(new Error('会话正在处理其他操作，请等待空闲'), { status: 409 });
+        const edit = Promise.resolve().then(async () => {
+            await this.starting.get(sessionPath);
+            if (this.disposing) throw new Error('Pi supervisor is shutting down');
+            const worker = this.workers.get(sessionPath);
+            if (worker && (!worker.isIdle() || worker.retainsBackgroundWork())) throw Object.assign(new Error('请等待会话与后台任务空闲后再更改分类'), { status: 409, code: 'SESSION_BUSY' });
+            return worker ? worker.exclusive(() => operation(worker)) : operation(null);
+        });
+        this.editing.set(sessionPath, edit);
+        try { return await edit; }
+        finally { if (this.editing.get(sessionPath) === edit) this.editing.delete(sessionPath); }
+    }
+
     async withSessionRemoval(sessionPath, operation) {
         if (this.disposing) throw new Error('Pi supervisor is shutting down');
+        if (this.editing.has(sessionPath)) throw new Error('Session metadata is being changed');
         if (this.moving.has(sessionPath)) throw new Error('Session is being moved');
         if (this.removing.has(sessionPath)) throw new Error('Session is being deleted');
         // Reserve before awaiting startup or shutdown; reconnects must not recreate the worker.
@@ -959,7 +979,7 @@ class PiAgentSupervisor extends EventEmitter {
     async dispose() {
         this.disposing = true;
         clearInterval(this.sweepTimer);
-        await Promise.allSettled([...this.starting.values(), ...this.removing.values(), ...this.moving.values()]);
+        await Promise.allSettled([...this.starting.values(), ...this.removing.values(), ...this.editing.values(), ...this.moving.values()]);
         const workers = [...this.workers.values(), ...this.ephemeralWorkers];
         this.workers.clear();
         this.ephemeralWorkers.clear();

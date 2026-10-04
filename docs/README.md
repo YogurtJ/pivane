@@ -1,6 +1,6 @@
 # Pivane 文档
 
-English: [project overview](../README.en.md) · [installation](en/INSTALL.md) · [user guide](en/USER_GUIDE.md)。详细功能和开发文档目前主要为中文。
+[项目首页](../README.zh-CN.md) · English: [project overview](../README.md) · [installation](en/INSTALL.md) · [user guide](en/USER_GUIDE.md)。详细功能和开发文档目前主要为中文。
 
 ## 从哪里开始
 
@@ -62,7 +62,7 @@ English: [project overview](../README.en.md) · [installation](en/INSTALL.md) ·
 | 内容 | 文档 |
 |---|---|
 | REST/WebSocket 字段、错误与并发语义 | [API](API.md) |
-| 版本变化 | [CHANGELOG](../CHANGELOG.md) · [1.3.0](releases/1.3.0.md) · [1.2.0](releases/1.2.0.md) · [1.1.0](releases/1.1.0.md) · [1.0.0](releases/1.0.0.md)；RC 版本说明保留在对应 Git 标签 |
+| 版本变化 | [CHANGELOG](../CHANGELOG.md) · [1.6.0](releases/1.6.0.md) · [1.5.0](releases/1.5.0.md) · [1.4.0](releases/1.4.0.md) · [1.3.0](releases/1.3.0.md) · [1.2.0](releases/1.2.0.md) · [1.1.0](releases/1.1.0.md) · [1.0.0](releases/1.0.0.md)；RC 版本说明保留在对应 Git 标签 |
 | 各版本平台验收范围 | [平台验证范围](RELEASE_INSTALL_VALIDATION.md) |
 | 产品方向 | [路线图](ROADMAP.md) |
 

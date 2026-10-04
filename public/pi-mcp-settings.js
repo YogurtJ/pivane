@@ -190,17 +190,19 @@
             if (!server) name.dataset.mcpWrite = '';
             fields.append(fieldLabel(t('服务器名称', 'Server name'), null, name));
             function control(key, caption, input, read, wide) { input.dataset.mcpWrite = ''; fields.append(fieldLabel(caption, key, input, wide)); readers.push(config => { config[key] = read(input); }); }
-            control('type', t('传输方式', 'Transport'), select([['stdio', 'stdio'], ['http', 'http']], server?.transport || 'stdio'), n => n.value);
-            control('enabled', t('状态', 'State'), select([['true', t('启用', 'Enabled')], ['false', t('停用', 'Disabled')]], String(server?.enabled ?? true)), n => n.value === 'true');
-            control('exposure', t('工具暴露', 'Tool exposure'), select(exposures, server?.exposure || 'codemode'), n => n.value);
+            if (server?.override) editor.append(el('p', t('项目部分覆盖：仅编辑状态与工具暴露；连接和凭据继续继承全局配置。', 'Project partial override: edit only state and tool exposure; connection and credentials remain inherited from global configuration.'), { class: 'mcp-warning' }));
+            else control('type', t('传输方式', 'Transport'), select([['stdio', 'stdio'], ['http', 'http']], server?.transport || 'stdio'), n => n.value);
+            const inherit = ['inherit', t('继承全局', 'Inherit global')];
+            control('enabled', t('状态', 'State'), select([...(server?.override ? [inherit] : []), ['true', t('启用', 'Enabled')], ['false', t('停用', 'Disabled')]], server?.override && server.config.enabled === undefined ? 'inherit' : String(server?.enabled ?? true)), n => n.value === 'inherit' ? null : n.value === 'true');
+            control('exposure', t('工具暴露', 'Tool exposure'), select(server?.override ? [inherit, ...exposures] : exposures, server?.override ? server.config.exposure || 'inherit' : server?.exposure || 'codemode'), n => n.value === 'inherit' ? null : n.value);
             const timeout = el('input', null, { type: 'number', min: '0', step: 'any' }); timeout.value = server?.timeout ?? 60;
-            control('timeout', t('超时（秒）', 'Timeout (seconds)'), timeout, n => { const v = Number(n.value); if (!n.value || !Number.isFinite(v) || v <= 0) throw new Error('timeout'); return v; });
+            if (!server?.override) control('timeout', t('超时（秒）', 'Timeout (seconds)'), timeout, n => { const v = Number(n.value); if (!n.value || !Number.isFinite(v) || v <= 0) throw new Error('timeout'); return v; });
             const description = el('textarea', null, { maxlength: '4096', 'aria-label': t('服务器说明', 'Server description') }); description.value = server?.config?.description || '';
-            description.dataset.mcpWrite = ''; fields.append(fieldLabel(t('服务器说明', 'Server description'), 'description', description, true));
+            if (!server?.override) { description.dataset.mcpWrite = ''; fields.append(fieldLabel(t('服务器说明', 'Server description'), 'description', description, true)); }
             const previousDescription = description.value;
             readers.push(config => { if (description.value === previousDescription) return; if (description.value.length > 4096) throw new Error('description'); config.description = description.value || null; });
-            const tools = el('textarea', null, { spellcheck: 'false' }); tools.value = JSON.stringify(server?.config?.toolExposure || {}, null, 2);
-            control('toolExposure', t('逐个工具暴露（有序 JSON）', 'Per-tool exposure (ordered JSON)'), tools, n => { const v = JSON.parse(n.value); if (!v || Array.isArray(v) || typeof v !== 'object' || Object.values(v).some(x => x !== 'codemode-deferred' && !exposures.some(([e]) => e === x))) throw new Error('toolExposure'); return v; }, true);
+            const tools = el('textarea', null, { spellcheck: 'false' }); tools.value = JSON.stringify(server?.config?.toolExposure ?? null, null, 2);
+            control('toolExposure', t('逐个工具暴露（有序 JSON；null 继承）', 'Per-tool exposure (ordered JSON; null inherits)'), tools, n => { const v = JSON.parse(n.value); if (v === null) return null; if (!v || Array.isArray(v) || typeof v !== 'object' || Object.values(v).some(x => x !== 'codemode-deferred' && !exposures.some(([e]) => e === x))) throw new Error('toolExposure'); return v; }, true);
             editor.append(fields);
             function group(title, description) {
                 const box = el('fieldset', null, { class: 'mcp-group' });
@@ -227,6 +229,7 @@
                     else { config[parts[0]] ||= Object.create(null); config[parts[0]][parts.slice(1).join('.')] = op; }
                 });
             }
+            if (!server?.override) {
             const connection = group(t('连接', 'Connection'), t('stdio 使用 command／args／cwd，HTTP 使用 url。', 'stdio uses command/args/cwd; HTTP uses url.'));
             for (const key of ['command', 'args', 'cwd', 'url']) privateField(connection, key, server?.secretFields?.[key]?.present === true);
             for (const [kind, title] of [['env', t('环境变量', 'Environment variables')], ['headers', t('请求头', 'Headers')]]) {
@@ -250,6 +253,7 @@
             const port = el('input', null, { type: 'number', min: '1', max: '65535', 'aria-label': 'oauth.callbackPort' }); port.value = server?.config?.oauth?.callbackPort ?? ''; port.dataset.mcpWrite = '';
             oauth.append(fieldLabel('', 'oauth.callbackPort', port)); const previousPort = port.value;
             readers.push(config => { if (port.value === previousPort) return; const value = port.value === '' ? null : Number(port.value); if (value !== null && (!Number.isInteger(value) || value < 1 || value > 65535)) throw new Error('callbackPort'); config.oauth ||= Object.create(null); config.oauth.callbackPort = value; });
+            }
             const footer = el('div', null, { class: 'mcp-footer mcp-editor-footer' });
             footer.append(button(t('取消编辑', 'Cancel editing'), () => { editor.replaceChildren(); editor.hidden = true; }, { variant: 'quiet' }), writeButton(t('确认保存服务器', 'Save server'), () => {
                 if (!writable()) return;

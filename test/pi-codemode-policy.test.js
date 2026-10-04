@@ -176,6 +176,23 @@ test('official catalog, classifiers, usage and branch store keep working after a
     assertNoImages(f.runtime);
 });
 
+test('Pi 1.0.2 output limits fail scripts without replaying completed calls or committing failed store writes', { timeout: 60000 }, async () => {
+    const f = await fixture();
+    const { MAX_OUTPUT_CHARS, MAX_OUTPUT_ITEMS } = await import('@earendil-works/pi-codemode');
+    assert.equal(MAX_OUTPUT_CHARS, 16 * 1024 * 1024); assert.equal(MAX_OUTPUT_ITEMS, 100000);
+    const result = await f.run(`
+        await models.classify(${JSON.stringify(classifierRef)}, ${JSON.stringify(classifierContext)});
+        store('failed-output', true);
+        try { text('x'.repeat(${MAX_OUTPUT_CHARS + 1})); } catch { text('must-not-resume'); }
+    `);
+    assert.equal(result.isError, true); assert.match(text(result), /script output exceeded the limit/);
+    assert.doesNotMatch(text(result), /must-not-resume/);
+    assert.equal(f.runtime.calls.filter(call => call.method === 'classify').length, 1);
+    assert.deepEqual(result.usage, usage); assert.deepEqual(f.entries, []); assertNoImages(f.runtime);
+    const items = await f.run(`for (let i = 0; i <= ${MAX_OUTPUT_ITEMS}; i++) text('');`);
+    assert.equal(items.isError, true); assert.match(text(items), /script output exceeded the limit/);
+});
+
 test('registry facade hides the runtime and prototype and follows current registry on every execution', async () => {
     const { sdk, wrapCodemodeExtension } = await dependencies();
     const seen = [], registered = [];

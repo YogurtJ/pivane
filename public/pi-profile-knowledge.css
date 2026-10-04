@@ -75,6 +75,8 @@
 .pi-knowledge-list { gap: 6px; border: 0; }
 .pi-knowledge-row { padding: 13px 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-1); }
 .pi-knowledge-row[aria-current=true] { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: color-mix(in srgb, var(--accent) 7%, var(--surface-1)); }
+.pi-knowledge-list > .pi-knowledge-detail, .pi-knowledge-list > .pi-knowledge-editor { margin: 0 0 10px; border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.pi-knowledge-deleted-filter { margin-top: 8px; }
 .pi-knowledge-row-title { line-height: 1.6; }
 .pi-knowledge-row-meta { line-height: 1.5; }
 .pi-knowledge-detail, .pi-knowledge-editor, .pi-learning { border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin: 20px 0 0; background: var(--surface-1); }

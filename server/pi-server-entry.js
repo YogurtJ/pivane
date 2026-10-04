@@ -5,7 +5,9 @@ function startManaged(root) {
     let launcher;
     require('./pi-process-shutdown').registerProcessShutdown(async () => { await launcher?.close(); });
     try {
-        launcher = new ManagedLauncher({ root });
+        const network = new (require('./workspace-network-service').WorkspaceNetworkService)({ root });
+        const networkEnvironment = { ...process.env }; network.applyEnvironment(networkEnvironment);
+        launcher = new ManagedLauncher({ root, networkEnvironment });
         launcher.start().catch(() => {
             console.error('Pivane managed startup failed. Check installation permissions and whether another process uses this installation.');
             void launcher.close().finally(() => process.exit(1));

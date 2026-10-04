@@ -23,7 +23,7 @@ const server = http.createServer((req, res) => {
                 const host = { currentCwd: () => '/mock/project', currentSession: () => window.selected, apiFetch: async (url, options) => {
                     if (options) { const body = JSON.parse(options.body); window.writes.push({ url, body }); if (window.conflict) throw Error('secret-error-must-not-render'); if (url.includes('/sessions/')) return { runtimeId: body.runtimeId, servers: [{ name: 'fixture', state: 'unknown', toolCount: 1, exposure: 'codemode' }], tools: [{ name: '<script>' + 'x'.repeat(350), active: true }] }; return { ok: true, requiresRuntimeRestart: true }; }
                     window.reads.push(url); const scope = new URL(url, location.origin).searchParams.get('scope');
-                    return { cwd: '/mock/project', scope, revision: 'r1', trust: { effective: window.trusted }, autoEnableCodemode: { global: null, project: null, value: true }, servers: [{ name: 'fixture', scope, valid: true, enabled: true, exposure: 'codemode', timeout: 60, transport: 'http', config: { description: '<script>Safe description</script>', auth: scope === 'global' ? { provider: 'fixture-provider' } : undefined, oauth: { clientName: null, authServerMetadataUrl: null }, url: null, headers: { Authorization: null }, toolExposure: { ['long_' + 'x'.repeat(400)]: 'hidden' } }, secretFields: { 'oauth.clientName': { present: true }, 'oauth.authServerMetadataUrl': { present: true }, url: { present: true }, 'headers.Authorization': { present: true } } }] };
+                    return { cwd: '/mock/project', scope, revision: 'r1', trust: { effective: window.trusted }, autoEnableCodemode: { global: null, project: null, value: true }, servers: window.partial ? [{ name: 'fixture', scope, override: true, valid: true, enabled: true, exposure: 'codemode', timeout: 60, transport: 'http', config: {}, secretFields: {} }] : [{ name: 'fixture', scope, valid: true, enabled: true, exposure: 'codemode', timeout: 60, transport: 'http', config: { description: '<script>Safe description</script>', auth: scope === 'global' ? { provider: 'fixture-provider' } : undefined, oauth: { clientName: null, authServerMetadataUrl: null }, url: null, headers: { Authorization: null }, toolExposure: { ['long_' + 'x'.repeat(400)]: 'hidden' } }, secretFields: { 'oauth.clientName': { present: true }, 'oauth.authServerMetadataUrl': { present: true }, url: { present: true }, 'headers.Authorization': { present: true } } }] };
                 } };
                 window.panel = PiMcpSettings.create(host); document.querySelector('.workspace-settings-content').append(panel.root); panel.open();
             });
@@ -108,6 +108,26 @@ const server = http.createServer((req, res) => {
                 assert.deepEqual(await page.evaluate(() => writes.at(-1).body.config.auth), from === 'global' ? { provider: null } : undefined);
                 await page.getByRole('button', { name: 'Refresh saved configuration' }).click();
             }
+            await page.evaluate(() => { window.partial = true; });
+            await page.getByRole('combobox', { name: 'Configuration scope', exact: true }).selectOption('project');
+            await page.getByRole('button', { name: 'Edit', exact: true }).click();
+            await page.getByText('Project partial override:', { exact: false }).waitFor();
+            assert.equal(await page.locator('.mcp-editor input[type=password]').count(), 0);
+            assert.equal(await page.getByRole('textbox', { name: 'auth.provider', exact: true }).count(), 0);
+            assert.equal(await page.locator('.mcp-editor select').count(), 2);
+            assert.deepEqual(await page.locator('.mcp-editor select').evaluateAll(nodes => nodes.map(n => n.value)), ['inherit', 'inherit']);
+            assert.equal(await page.locator('.mcp-editor textarea').inputValue(), 'null');
+            await page.getByRole('button', { name: 'Save server', exact: true }).click();
+            await page.getByRole('status').filter({ hasText: 'Configuration saved' }).waitFor();
+            assert.deepEqual(await page.evaluate(() => writes.at(-1).body.config), { enabled: null, exposure: null, toolExposure: null });
+            assert.equal(await page.evaluate(() => writes.at(-1).body.scope), 'project');
+            await page.getByRole('button', { name: 'Refresh saved configuration' }).click();
+            await page.getByRole('button', { name: 'Edit', exact: true }).click();
+            await page.locator('.mcp-editor select').nth(0).selectOption('false');
+            await page.locator('.mcp-editor select').nth(1).selectOption('hidden');
+            await page.getByRole('button', { name: 'Save server', exact: true }).click();
+            await page.getByRole('status').filter({ hasText: 'Configuration saved' }).waitFor();
+            assert.deepEqual(await page.evaluate(() => writes.at(-1).body.config), { enabled: false, exposure: 'hidden', toolExposure: null });
             assert.ok(await page.evaluate(() => [...document.querySelectorAll('.mcp-settings input,.mcp-settings select,.mcp-settings textarea')].every(n => parseFloat(getComputedStyle(n).fontSize) >= 16)));
             const sizes = await page.evaluate(() => [...document.querySelectorAll('body,.mcp-settings,.mcp-settings section,.mcp-settings article,input,textarea,select')].filter(n => n.getClientRects().length).map(n => ({ w: n.clientWidth, s: n.scrollWidth })));
             assert.ok(sizes.every(n => n.s <= n.w + 1), JSON.stringify(sizes));

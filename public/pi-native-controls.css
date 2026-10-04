@@ -12,7 +12,7 @@
 .pi-editor-suggestions > div { max-height: 30dvh; overflow: auto; }
 .pi-editor-suggestions pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow: auto; font: inherit; }
 .pi-editor-suggestions button { margin: 4px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); color: var(--text-main); }
-.pi-session-search-form { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; }
+.pi-session-search-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 40%) auto; gap: 8px; }
 .pi-session-search-form input, .pi-session-search-form select { min-width: 0; width: 100%; font: inherit; padding: 8px; color: var(--text-main); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; }
 .pi-session-search-results { display: grid; gap: 8px; margin: 12px 0; }
 .pi-session-search-results > button { text-align: left; display: grid; gap: 5px; width: 100%; min-width: 0; overflow-wrap: anywhere; }

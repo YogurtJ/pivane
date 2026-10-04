@@ -1,6 +1,6 @@
 /* Logical project UI only. Session/worker state belongs to pi-chat.js. */
 (() => {
-    const t = (zh, en) => globalThis.PiI18n?.locale === 'en' ? en : zh;
+    const t = (zh, en, ...values) => (globalThis.PiI18n?.locale === 'en' ? en : zh).replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`);
     const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const uuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
@@ -139,5 +139,85 @@
         } };
     }
 
-    globalThis.PiAssistantProjects = Object.freeze({ avatar, renderGroups, createEditor });
+    function createClassificationEditor({ apiFetch, saved, toast, identity }) {
+        const make = (tag, text, className) => {
+            const element = document.createElement(tag);
+            if (text !== undefined) element.textContent = text;
+            if (className) element.className = className;
+            return element;
+        };
+        const dialog = make('dialog', undefined, 'pi-transfer-dialog'); dialog.id = 'pi-classification-dialog';
+        dialog.setAttribute('aria-labelledby', 'pi-classification-title');
+        const header = make('header'), title = make('h2', t('更改分类…', 'Change category…'));
+        title.id = 'pi-classification-title';
+        const close = make('button', t('关闭', 'Close'), 'pi-secondary-button'); close.type = 'button';
+        header.append(title, close);
+        const body = make('div', undefined, 'pi-transfer-body');
+        const status = make('p', '', 'pi-transfer-status'); status.setAttribute('role', 'status'); status.hidden = true;
+        const footer = make('footer'), cancel = make('button', t('取消', 'Cancel'), 'pi-secondary-button'); cancel.type = 'button';
+        const submit = make('button', t('保存分类', 'Save category'), 'pi-primary-button'); submit.type = 'button';
+        footer.append(cancel, submit); dialog.append(header, body, status, footer); document.body.append(dialog);
+        let epoch = 0, saving = false, snapshot = null, select = null, origin = null, uncertain = false;
+        const hide = () => { if (!saving) dialog.close(); };
+        close.addEventListener('click', hide); cancel.addEventListener('click', hide);
+        dialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
+        dialog.addEventListener('close', () => { epoch++; snapshot = null; body.replaceChildren(); });
+        const update = () => { submit.disabled = saving || uncertain || !snapshot || select.value === (snapshot.projectId || ''); };
+        const feedback = (message, error = false) => { status.textContent = message; status.hidden = !message; status.dataset.state = error ? 'error' : 'info'; };
+        submit.addEventListener('click', async () => {
+            if (submit.disabled || saving || identity() !== origin) return;
+            const ticket = epoch, source = snapshot;
+            saving = true; close.disabled = cancel.disabled = select.disabled = true; update();
+            submit.replaceChildren(make('i', undefined, 'fa-solid fa-spinner fa-spin'), document.createTextNode(t('正在保存分类…', 'Saving category…')));
+            submit.setAttribute('aria-busy', 'true'); feedback('');
+            try {
+                const result = await apiFetch(`/api/pi/sessions/${encodeURIComponent(source.session.id)}/classification`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: source.session.cwd, projectId: select.value || null,
+                        expectedRevision: source.revision, expectedProjectsRevision: source.projectsRevision }), signal: AbortSignal.timeout(45000)
+                });
+                if (!result?.session || result.session.id !== source.session.id || result.session.cwd !== source.session.cwd) throw new Error('Invalid classification response');
+                saving = false;
+                if (ticket !== epoch || !dialog.open) return;
+                dialog.close(); toast(t('分类已更新', 'Category updated'), 'success');
+                try { await saved(result.session); }
+                catch { toast(t('分类已保存，列表刷新失败，请刷新查看。', 'Category saved. Refresh the list to see the change.'), 'info'); }
+            } catch (error) {
+                if (ticket !== epoch || !dialog.open) return;
+                uncertain = !error.status || error.status >= 500 || error.status === 409 && error.data?.code !== 'SESSION_BUSY';
+                feedback(!error.status || error.status >= 500
+                    ? t('保存结果待核对，请重新打开此窗口查看当前分类。', 'The save result needs checking. Reopen this window to see the current category.') : error.message, true);
+            } finally {
+                saving = false; close.disabled = cancel.disabled = false;
+                if (select) select.disabled = false;
+                submit.textContent = t('保存分类', 'Save category'); submit.removeAttribute('aria-busy'); update();
+            }
+        });
+        return { async open(session, cwd) {
+            if (saving) return;
+            const ticket = ++epoch; origin = identity(); snapshot = null; uncertain = false; select = null;
+            body.replaceChildren(); feedback(t('正在读取分类…', 'Loading categories…')); update(); dialog.showModal();
+            try {
+                const data = await apiFetch(`/api/pi/sessions/${encodeURIComponent(session.id)}/classification?cwd=${encodeURIComponent(cwd)}`);
+                if (ticket !== epoch || !dialog.open || identity() !== origin) return;
+                if (!data.projects?.length) { feedback(t('此目录暂无可选分类。', 'There are no available categories in this folder.')); return; }
+                const summary = make('div', undefined, 'pi-classification-source');
+                summary.append(make('strong', data.session.name || data.session.firstMessage || t('未命名会话', 'Untitled conversation')),
+                    make('span', t('当前分类：{0}', 'Current category: {0}', data.session.assistantProject?.name || t('未分类', 'Uncategorized'))));
+                const label = make('label', t('目标分类', 'Target category')); label.htmlFor = 'pi-classification-target';
+                select = make('select'); select.id = 'pi-classification-target';
+                const none = make('option', t('未分类', 'Uncategorized')); none.value = ''; select.append(none);
+                for (const project of data.projects) { const option = make('option', project.name); option.value = project.id; select.append(option); }
+                if (data.projectId && !data.projects.some(project => project.id === data.projectId)) {
+                    const option = make('option', data.session.assistantProject?.name || t('当前分类不可用', 'Current category unavailable'));
+                    option.value = data.projectId; option.disabled = true; select.append(option);
+                }
+                select.value = data.projectId || ''; label.append(select);
+                const help = make('p', t('后续对话将使用目标分类的附加指令。历史和助手身份保持不变。', 'Future replies will use the target category’s instructions. History and assistant identity stay the same.'), 'pi-classification-help');
+                help.id = 'pi-classification-help'; select.setAttribute('aria-describedby', help.id);
+                body.append(summary, label, help); snapshot = data; select.addEventListener('change', update); feedback(''); update(); select.focus();
+            } catch (error) { if (ticket === epoch && dialog.open) feedback(error.message, true); }
+        } };
+    }
+
+    globalThis.PiAssistantProjects = Object.freeze({ avatar, renderGroups, createEditor, createClassificationEditor });
 })();

@@ -9,7 +9,7 @@ const { once } = require('node:events');
 test('managed parent, foreground and detached children use native MCP selectors without adapter caches', { timeout: 120000 }, async t => {
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-native-child-')));
     const agentDir = path.join(root, 'agent'), cwd = path.join(root, 'project');
-    for (const dir of [agentDir, cwd, path.join(agentDir, 'agents'), path.join(agentDir, 'extensions')]) fs.mkdirSync(dir, { recursive: true });
+    for (const dir of [agentDir, cwd, path.join(cwd, '.pi'), path.join(agentDir, 'agents'), path.join(agentDir, 'extensions')]) fs.mkdirSync(dir, { recursive: true });
     // A test launched by a subagent must create an independent parent and use
     // this checkout's SDK, rather than inherit the orchestrator's child flags.
     const inherited = {};
@@ -41,8 +41,9 @@ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`)
             delta: { role: 'assistant', ...delta }, finish_reason: done ? 'stop' : 'tool_calls' }] })}\n\ndata: [DONE]\n\n`);
     });
     provider.listen(0, '127.0.0.1'); await once(provider, 'listening');
-    fs.writeFileSync(path.join(agentDir, 'settings.json'), JSON.stringify({ defaultProvider: 'fixture', defaultModel: 'fixture', enableInstallTelemetry: false, defaultProjectTrust: 'never' }));
+    fs.writeFileSync(path.join(agentDir, 'settings.json'), JSON.stringify({ defaultProvider: 'fixture', defaultModel: 'fixture', enableInstallTelemetry: false, defaultProjectTrust: 'always' }));
     fs.writeFileSync(path.join(agentDir, 'mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: [mcp], exposure: 'codemode' } } }));
+    fs.writeFileSync(path.join(cwd, '.pi/mcp.json'), JSON.stringify({ mcpServers: { fixture: { exposure: 'codemode', toolExposure: { echo: 'codemode' } } } }));
     fs.writeFileSync(path.join(agentDir, 'models.json'), JSON.stringify({ providers: { fixture: { baseUrl: `http://127.0.0.1:${provider.address().port}/v1`,
         api: 'openai-completions', apiKey: 'synthetic', models: [{ id: 'fixture', input: ['text'], contextWindow: 32000, maxTokens: 1000 }] } } }));
     fs.writeFileSync(path.join(agentDir, 'agents/fixture.md'), '---\nname: fixture\ndescription: Native MCP child\nmodel: fixture/fixture\ntools: read, mcp:fixture/echo\n---\nUse the echo tool.\n');
@@ -85,6 +86,6 @@ pi.events.emit('prompt-template:subagent:request',{requestId:'native-foreground'
     for (let i = 0; i < 300 && !foreground; i++) await new Promise(resolve => setTimeout(resolve, 100));
     offForeground(); assert.match(JSON.stringify(foreground), /CHILD_FINISHED/);
     assert.equal(childRequests, 4, 'both foreground and detached children use the granted MCP tool');
-    assert.equal(fs.readFileSync(connections, 'utf8').trim().split('\n').length, 3, 'one MCP transport for the parent and each child');
+    assert.equal(fs.readFileSync(connections, 'utf8').trim().split('\n').length, 3, 'one MCP transport for the parent and each child using the merged project partial override');
     assert.equal(fs.existsSync(path.join(agentDir, 'mcp-cache.json')), false);
 });

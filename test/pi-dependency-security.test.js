@@ -46,4 +46,18 @@ for (const fix of SHRINKWRAP_FIXES) {
         fs.symlinkSync(path.join(link, 'node_modules', fix.name), path.join(link, 'node_modules', fix.owner, 'node_modules', fix.name));
         assert.throws(() => enforceShrinkwrapFixes(link, [fix]), /Unexpected dependency layout/);
     });
+    test(`${fix.name} validates a hoisted consumer without shrinkwrap and fails closed when it disappears`, t => {
+        const base = fixture(t, fix);
+        const consumer = path.join(base, 'node_modules', fix.owner, 'node_modules', fix.consumer);
+        const hoisted = path.join(base, 'node_modules', fix.consumer);
+        fs.mkdirSync(path.dirname(hoisted), { recursive: true });
+        fs.renameSync(consumer, hoisted);
+        assert.deepEqual(enforceShrinkwrapFixes(base, [fix]), []);
+        const shadow = path.join(hoisted, 'node_modules', fix.name);
+        pkg(shadow, fix.name, '99.0.0');
+        assert.throws(() => enforceShrinkwrapFixes(base, [fix]), /does not resolve/);
+        fs.rmSync(shadow, { recursive: true });
+        fs.rmSync(hoisted, { recursive: true });
+        assert.throws(() => enforceShrinkwrapFixes(base, [fix]), /does not resolve/);
+    });
 }

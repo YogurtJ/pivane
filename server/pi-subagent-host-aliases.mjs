@@ -1,6 +1,6 @@
 // pi-subagents 0.74.0 requires a removed host export during detached preflight.
 // Keep the upstream resolver and package scope; omit only the obsolete, unused
-// alias for the exact Pi 1.0.0 host reviewed here. No replacement API is invented.
+// alias for the exact Pi 1.0.0 and 1.0.2 hosts reviewed here. No replacement API is invented.
 import fs from 'node:fs';
 import path from 'node:path';
 import { resolveHostPeerAliases as upstreamResolve, findHostPeerPackageDir } from '../vendor/pi-subagents/src/runs/background/runner-aliases.js?pivane-original=1';
@@ -16,8 +16,8 @@ export function resolveHostPeerAliases(piPackageRoot) {
     const host = manifest(piPackageRoot);
     const coreRoot = findHostPeerPackageDir(piPackageRoot, '@earendil-works/pi-agent-core');
     const core = coreRoot && manifest(coreRoot);
-    if (host?.name !== '@earendil-works/pi-coding-agent' || host.version !== '1.0.0'
-        || core?.name !== '@earendil-works/pi-agent-core' || core.version !== '1.0.0'
+    if (host?.name !== '@earendil-works/pi-coding-agent' || !['1.0.0', '1.0.2'].includes(host.version)
+        || core?.name !== '@earendil-works/pi-agent-core' || core.version !== host.version
         || !core.exports || Object.hasOwn(core.exports, './node')) return result;
     return { aliases: result.aliases, missing: result.missing.filter(name => name !== removed) };
 }

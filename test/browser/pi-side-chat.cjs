@@ -193,7 +193,9 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
             return { mainWidth: main.width, mainRight: main.right, sideLeft: side.left, overflow };
         });
         assert.ok(bounds.mainWidth >= 359, 'resizing reserves a readable main conversation');
-        assert.ok(await page.locator('.pi-workbench').evaluate(node => node.classList.contains('pi-inspector-overlay')), 'wide panel overlays instead of squeezing the conversation');
+        assert.equal(await page.locator('.pi-workbench').evaluate(node => node.classList.contains('pi-inspector-overlay')), false, 'desktop side chat fits beside the conversation');
+        assert.ok(bounds.mainRight <= bounds.sideLeft + 1, 'side chat does not cover the main conversation');
+        assert.equal(await page.locator('.pi-transcript-shell').evaluate(node => node.inert), false, 'both desktop conversations stay interactive');
         assert.deepEqual(bounds.overflow, [], 'narrow main transcript and composer must not overflow');
         await page.locator('#pi-close-inspector').click();
         await page.setViewportSize({ width: 2200, height: viewport.height });
@@ -204,7 +206,7 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
         await page.locator('#pi-close-inspector').click();
         assert.equal(await divider.isVisible(), false, 'closed inspector leaves no splitter or tab stop');
         await openInspector(page, 'side');
-    } else assert.equal(await divider.isVisible(), false);
+    } else assert.equal(await divider.isVisible(), viewport.width > 900, 'only phone/tablet side chat uses a drawer');
     assert.equal(sideCount, 1); assert.equal(preparations.length, 1);
     assert.equal(await reference.evaluate(node => node.open), false);
     await page.screenshot({ path: `/tmp/pi-side-panel-${viewport.width}-collapsed.png` });

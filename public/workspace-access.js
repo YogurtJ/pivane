@@ -174,6 +174,7 @@
                 statusEpoch++; sessionStorage.removeItem('pi.web.token'); access.enabled = data.enabled; unlock();
                 if (active && epoch === settingsEpoch) {
                     const { generatedToken, ...settings } = data;
+                    window.dispatchEvent(new Event('workspace:network-access-changed'));
                     snapshot = settings; $('workspace-access-token').value = ''; $('workspace-access-generate').checked = false;
                     message('workspace-access-result', data.enabled ? translateUi("已保存，访问验证已开启。当前设备已登录。") : translateUi("已保存，访问验证已关闭。"));
                     $('workspace-access-generated').hidden = !data.generatedToken;

@@ -102,6 +102,8 @@ async function run(browser, base, width, locale) {
     await page.locator('#pi-side-model-select').click();
     assert.ok(await picker.locator('.pi-model-group').first().locator('.pi-model-option').textContent().then(text => text.includes('Alternative')), 'favorite returns in compact initial view');
     await picker.locator('.pi-model-close').click();
+    assert.equal(await page.locator('#pi-side-thinking-select option[value="high"]').textContent(), english ? 'Thinking High' : '思考 高');
+    assert.equal(await page.locator('#pi-side-thinking-select').getAttribute('aria-label'), english ? 'Thinking level' : '思考等级');
     await page.locator('#pi-side-thinking-select').selectOption('high');
     assert.equal(sides.length, 0); await page.locator('#pi-side-send').click();
     try {

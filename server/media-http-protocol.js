@@ -167,7 +167,7 @@ function authHeaders(provider, key) {
     return provider.auth.mode === 'bearer' ? { Authorization: `Bearer ${key}` } : { [provider.auth.header]: (provider.auth.prefix || '') + key };
 }
 class MediaHttpExecutor {
-    constructor(options = {}) { this.fetch = options.fetch || require('node-fetch'); this.delay = options.delay || delay; }
+    constructor(options = {}) { this.fetch = options.fetch || require('./workspace-network-transport').networkFetch; this.delay = options.delay || delay; }
     async request(url, options, maximum) {
         let response;
         try { response = await this.fetch(String(url), { ...options, redirect: 'manual', size: maximum }); }

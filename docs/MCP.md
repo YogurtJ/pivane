@@ -1,10 +1,10 @@
 # Pi 原生 MCP 与 Codemode
 
-当前 **Pivane 1.5.0 开发源码绑定 Pi 1.0.0**。已公开的 1.4.0 仍使用 Pi 0.99.1，见[历史版本说明](releases/1.4.0.md)。源码、实际运行实例和公开发行分别核对；旧归档不被修改。
+当前 **Pivane 1.6.1 开发源码绑定 Pi 1.0.2**，尚未公开发布。已公开的 1.6.0 使用 Pi 1.0.0，见[历史版本说明](releases/1.6.0.md)。源码、实际运行实例和公开发行分别核对；旧归档不被修改。
 
 ## 配置与使用
 
-主线程加载 Pi 官方内置 `mcp`、`codemode`、`tool-search` 和 `llama.cpp` 扩展。全局服务器配置为 `<agentDir>/mcp.json`；受信项目可以使用 `.pi/mcp.json`，同名项目条目替换全局。项目不受信时不连接项目服务器。stdio 执行部署机器上的程序，HTTP 使用 Streamable HTTP；旧 SSE 不支持。
+主线程加载 Pi 官方内置 `mcp`、`codemode`、`tool-search` 和 `llama.cpp` 扩展。全局服务器配置为 `<agentDir>/mcp.json`；受信项目可以使用 `.pi/mcp.json`，完整同名项目条目替换全局。项目条目没有 `command`、`url`、`type` 时，只能包含 `enabled`、`exposure`、`toolExposure`，覆盖同名有效全局配置的这三项；其他连接、环境和凭据仍来自全局，逐工具映射整体替换而非逐键合并。没有有效全局基础或含其他键的部分覆盖无效，不改变全局条目。项目不受信时不连接项目服务器。stdio 执行部署机器上的程序，HTTP 使用 Streamable HTTP；旧 SSE 不支持。
 
 ```json
 {
@@ -35,7 +35,7 @@
 
 “扩展 → MCP”分别管理**已保存配置**与**所选会话运行状态**。打开页面和刷新配置只读取原生文件，不连接服务器、不执行环境或 header 命令、不启动 worker。
 
-- 全局与项目配置分开列出；项目覆盖同名全局条目，仅受信项目参与运行。未受信项目可查看经过脱敏的配置，但不能保存。信任管理沿用原有项目入口。
+- 全局与项目配置分开列出；完整项目条目覆盖同名全局条目，已有部分覆盖只编辑状态和工具暴露。选择“继承全局”或逐工具 JSON 的 null 移除本层覆盖；不会把全局连接／凭据复制进项目。仅受信项目参与运行。未受信项目可查看经过脱敏的配置，但不能保存。信任管理沿用原有项目入口。
 - 可添加、编辑和移除 stdio／HTTP 条目，设置启用、四种暴露策略、秒单位超时、`toolExposure` 和 `autoEnableCodemode`。`toolExposure` 使用服务器原始工具名或 `*` 模式；精确名称优先，多个模式按原对象顺序匹配，不按网页排序。
 - 现有 command、args、cwd、URL、env、headers 及 OAuth 字符串均不回显；只显示字段存在与否。默认保留，替换和移除必须明确选择；环境变量／命令引用原样保存，不在编辑器求值。未知字段保留且不开放随意编辑。不要把“已存在”提示或空占位作为新凭据提交。
 - `description` 是普通文本，编辑上限 4096 个 JavaScript 字符，null 移除。OAuth 的 `clientName` 与 `authServerMetadataUrl` 同样只显示存在状态，使用明确的保留／替换／移除；URL、回调端口与回调 URL 一致性由原生校验。
@@ -45,6 +45,8 @@
 - OAuth 登录期间，回到聊天打开原生授权链接；浏览器无法访问部署机回调时，在原生待确认输入框粘贴重定向 URL。凭据保存在 Pi 的原生存储，不新增网页凭据副本。断开网页不等于取消，也不允许重放未确认的操作；需要取消时使用原生对话的取消入口。
 
 “设置 → Pi 配置 → 工具”支持 `codemode`、`tool_search`、替换工具列表或按顺序输入 `+名称`／`-名称`。只有修饰符时改变继承选择；普通名称先替换，再应用修饰符；自定义工具名保留但不代表工具已加载或已获授权。Pivane 显式 `[]` 保持不默认启用任何工具的既有语义，项目修饰符叠加全局 `[]` 不会恢复默认工具。`codemode.mode=on|only` 控制模型看到的工具呈现；`codemode.inlineBudget`（0–1000000，默认 3000）是估算声明 Token 预算，**不是执行超时或权限边界**。执行超时仍是单个脚本的 `@options.timeout_ms`。
+
+Pi 1.0.2 将单个 Codemode 脚本输出限制为 16 Mi 个字符或 100000 次 text/image/console 调用。超过任一上限会令脚本失败；此前已完成的工具操作不回滚，不自动重试脚本。成功脚本的 store 写入仍沿用原生分支语义。
 
 `autoEnableCodemode` 写在 `mcp.json`，不是 `settings.json`；是否实际启用仍以该 worker 的工具目录为准。关闭扩展、侧聊隔离和子任务授权边界保持不变。
 
@@ -88,4 +90,6 @@ node scripts/migrate-native-mcp.cjs --agent-dir /absolute/agent-dir \
 
 支持官方虚拟模型与分类模型 SDK，是否提供 Auto 路由由用户加载的扩展决定；Pivane 不自动改用其他模型。OpenAI 新 ChatGPT 登录沿用原生安装 deviceId 和认证接口，旧 Codex 身份不自动转换。Pi 1.0 Codemode 增加 `models.generateImages()`；Pivane 主线程与子任务的官方 Codemode 工厂在模型注册表边界拒绝该直接生成入口，并提示使用已有媒体规划、确认与一次性执行票据。模型目录与分类接口保留原生行为。聊天供应商凭据不会因此成为媒体执行授权。
 
-上游参考：[MCP](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/mcp.md)、[Codemode](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/codemode.md)、[虚拟模型](https://github.com/earendil-works/pi/blob/v1.0.0/packages/coding-agent/docs/virtual-models.md)。
+新配置能力仅使用原生文件与验证器：`oauth.clientRegistration:"cimd"` 与自定义模型 `samplingParamsByThinkingLevel` 可按官方文档手工配置，无关网页编辑保留这些字段；本批不新增专门配置界面。CIMD 不适用于所有服务器，其 clientId/clientName 与回调限制由原生校验。
+
+上游参考：[MCP](https://github.com/earendil-works/pi/blob/v1.0.2/packages/coding-agent/docs/mcp.md)、[Codemode](https://github.com/earendil-works/pi/blob/v1.0.2/packages/coding-agent/docs/codemode.md)、[虚拟模型](https://github.com/earendil-works/pi/blob/v1.0.2/packages/coding-agent/docs/virtual-models.md)。

@@ -1,10 +1,10 @@
 # macOS 原生安装与运行
 
-当前已在 **Apple Silicon M2、macOS 26.5.1、Node 22.23.2、Google Chrome** 完成原生基线验收。其他平台见[验证范围](RELEASE_INSTALL_VALIDATION.md)。Intel切片虽已编译，尚不等同于Intel硬件验收。Safari/Finder系统剪贴板及真实媒体服务分别保留实际设备/账户验证。
+Pivane 在 macOS 上原生运行，原生组件同时包含 Apple Silicon 与 Intel 架构，使用 Node 22.x 并通过浏览器访问。各版本实际验收过的系统、硬件与浏览器见[验证范围](RELEASE_INSTALL_VALIDATION.md)；在其他环境遇到问题，欢迎通过 [Issues](https://github.com/YogurtJ/pivane/issues) 反馈。
 
 ## 安装前提
 
-当前源码的 `node scripts/install.cjs` 统一准备内置 pi-subagents 与 pi-hermes-memory，不再向共享 Pi 身份另行安装包；准备失败会返回安装错误。这个入口也避免 npm 对 SQLite 的无谓编译。下文以 1.3.0 为例，使用统一安装入口；旧归档没有此脚本时仍使用 `npm ci`。默认启用、旧配置兼容和平台依赖见[内置能力包](BUNDLED_CAPABILITIES.md)。
+当前源码的 `node scripts/install.cjs` 统一准备内置 pi-subagents 与 pi-hermes-memory，不再向共享 Pi 身份另行安装包；准备失败会返回安装错误。这个入口也避免 npm 对 SQLite 的无谓编译。下文以 1.6.0 为例（安装其他版本时替换版本号），使用统一安装入口；旧归档没有此脚本时仍使用 `npm ci`。默认启用、旧配置兼容和平台依赖见[内置能力包](BUNDLED_CAPABILITIES.md)。
 
 - Node 22.x、npm、系统ripgrep。可以保留已有其他版本Node，为本实例指定独立Node22。
 - 安装包必须包含`native/pi-darwin-fd.node`、对应C源码与manifest；它们为同一批构建，不需现场编译该组件。缺失或不匹配时不启用全文/搜索/统计，不回退为较弱的路径检查。当前源码内置记忆的 SQLite 依赖另行安装适配当前 Node 的二进制，缺少预构建文件时需要 Python 与 Xcode Command Line Tools，见[内置能力包](BUNDLED_CAPABILITIES.md)。
@@ -29,14 +29,14 @@ rg --version
 先将发布包和同名.sha256下载到Downloads，并核对下载来源。以下为新实例示例，BASE必须尚不存在：
 
 ```sh
-ARCHIVE="$HOME/Downloads/pivane-1.3.0.tar.gz"
+ARCHIVE="$HOME/Downloads/pivane-1.6.0.tar.gz"
 (cd "$(dirname "$ARCHIVE")" && shasum -a 256 -c "$(basename "$ARCHIVE").sha256")
 BASE="$HOME/pivane"
 test ! -e "$BASE" || { echo "此目录已存在，请按更新流程操作或选择新的BASE"; exit 1; }
 umask 077
-mkdir -p "$BASE/releases/1.3.0" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
-tar -xzf "$ARCHIVE" -C "$BASE/releases/1.3.0" --strip-components=1 &&
-cd "$BASE/releases/1.3.0" &&
+mkdir -p "$BASE/releases/1.6.0" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
+tar -xzf "$ARCHIVE" -C "$BASE/releases/1.6.0" --strip-components=1 &&
+cd "$BASE/releases/1.6.0" &&
 node -e 'if (process.versions.node.split(".")[0] !== "22") { console.error("请先切换到 Node 22.x；当前 " + process.version); process.exit(1); } console.log(process.version, process.execPath)' &&
 npm --version &&
 rg --version &&

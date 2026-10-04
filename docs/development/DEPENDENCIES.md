@@ -21,9 +21,9 @@
 
 第三方 Pi Packages 有独立的适配范围。可选包不变成应用必需依赖，安装/更新也不自动启动子任务；扩大版本范围应有实际验证。插件配置投影不冒充插件运行时的完整能力发现。
 
-## 原生 shrinkwrap 安全依赖
+## 原生安装安全依赖
 
-Pi npm 包含独立 shrinkwrap，根 override 或外层 audit 通过不能证明运行副本已修复。根直接依赖与 lock 保留审查过的 brace-expansion／undici 固定版本，`install-bundled-capabilities.cjs` 在所有受管安装入口先核实这些声明和真实目录，只移除明确识别的旧嵌套副本，再按 consumer 的查找顺序核对实际解析并扫描已知漏洞残留。未知版本、符号链接或布局失败关闭，不修改上游实现字节。隔离记忆 recipe 调用同一入口并更新 lock hash。
+较早 Pi npm 包含独立 shrinkwrap；1.0.2 已移除它。两种布局均不能只靠根 override 或外层 audit 证明真实运行解析已修复。根直接依赖与 lock 保留审查过的 brace-expansion／undici 固定版本，`install-bundled-capabilities.cjs` 在所有受管安装入口先核实这些声明和真实目录，只移除明确识别的旧嵌套副本，再定位实际 nested／hoisted consumer，按 Node 查找顺序核对解析并扫描已知漏洞残留；consumer 缺失或解析不符失败关闭。未知版本、符号链接或布局失败关闭，不修改上游实现字节。隔离记忆 recipe 调用同一入口并更新 lock hash。
 
 Pivane 使用未打包的 Pi SDK／RPC 入口；Pi 自带 `dist/bundle` 中的内联代码不受依赖目录修正覆盖，不把本机运行修复宣称为所有上游分发产物已修复。
 

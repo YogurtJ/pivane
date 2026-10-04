@@ -95,6 +95,9 @@
 .pi-profile-soul textarea, .pi-profile-document textarea { box-sizing: border-box; width: 100%; min-height: clamp(280px, 45dvh, 660px); padding: 16px 18px; resize: vertical; font: inherit; font-size: .91rem; line-height: 1.85; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-0, var(--surface-1)); color: var(--text-main); }
 #pi-profile-document-status { margin: 10px 0; color: var(--text-soft); font-size: .8rem; line-height: 1.5; }
 .pi-profile-document-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; position: sticky; bottom: -22px; padding: 14px 0; background: var(--surface-1); border-top: 1px solid var(--line); color: var(--text-soft); font-size: .79rem; }
+.pi-profile-document-feedback { flex: 1 1 100%; display: flex; align-items: center; gap: 10px; margin: 0; padding: 12px; border: 1px solid var(--accent); border-radius: 8px; background: color-mix(in srgb, var(--accent) 9%, var(--surface-1)); color: var(--text-main); font-size: .9rem; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.pi-profile-document-feedback[data-feedback=warning] { border-color: var(--text-muted); background: var(--surface-2); }
+.pi-profile-document-feedback i { flex: none; }
 .pi-profile-document-meta { display: grid; gap: 5px; }
 .pi-profile-document-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .is-over-limit { color: var(--danger, #c0392b); }

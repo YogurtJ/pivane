@@ -141,6 +141,7 @@ class PiSettingsService {
     }
 
     async createModelRuntime() {
+        await require('./workspace-network-transport').initializeSdkNetwork();
         const { ModelRuntime } = await getSdk();
         return ModelRuntime.create({
             allowModelNetwork: false,

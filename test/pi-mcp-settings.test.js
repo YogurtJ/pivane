@@ -131,3 +131,51 @@ test('provider auth is global HTTP only; newly selected providers cannot overrid
     await f.save({ scope: 'project', action: 'patch', name: 'blocked', patch: { auth: null } });
     assert.equal((await f.service.snapshot(f.cwd, 'project')).servers[0].valid, true);
 });
+
+test('Pi 1.0.2 project partial overrides follow native merge without disclosing or copying global credentials', async t => {
+    const f = fixture(t); f.trust();
+    const global = { url: 'https://private.invalid/mcp', headers: { Authorization: 'synthetic-secret' }, auth: { provider: 'global-provider' }, toolExposure: { echo: 'direct' }, timeout: 42 };
+    f.write('mcp.json', { mcpServers: { remote: global } });
+    const projectFile = path.join(f.cwd, '.pi/mcp.json');
+    fs.writeFileSync(projectFile, JSON.stringify({ mcpServers: { remote: { enabled: false } } }));
+    const { loadNativeMcpConfig } = await import('../server/pi-native-mcp.mjs');
+    let dto = await f.service.snapshot(f.cwd, 'project'), remote = dto.servers[0];
+    assert.equal(remote.valid, true); assert.equal(remote.override, true); assert.equal(remote.enabled, false); assert.equal(remote.transport, 'http');
+    assert.equal(remote.timeout, 42); assert.deepEqual(remote.config, { enabled: false }); assert.deepEqual(remote.secretFields, {});
+    assert.doesNotMatch(JSON.stringify(dto), /private.invalid|synthetic-secret|global-provider/);
+    const native = () => loadNativeMcpConfig({ cwd: f.cwd, agentDir: f.agent, projectTrusted: true });
+    assert.deepEqual(native().servers[0].config, { ...global, enabled: false });
+    await f.save({ scope: 'project', action: 'patch', name: 'remote', patch: { enabled: true, exposure: 'direct', toolExposure: { echo: 'hidden' } } });
+    assert.deepEqual(native().servers[0].config, { ...global, enabled: true, exposure: 'direct', toolExposure: { echo: 'hidden' } });
+    assert.deepEqual(JSON.parse(fs.readFileSync(projectFile)).mcpServers.remote, { enabled: true, exposure: 'direct', toolExposure: { echo: 'hidden' } });
+    await f.save({ scope: 'project', action: 'patch', name: 'remote', patch: { enabled: null, exposure: null, toolExposure: null } });
+    assert.deepEqual(native().servers[0].config, global);
+    assert.deepEqual(JSON.parse(fs.readFileSync(projectFile)).mcpServers.remote, {});
+    for (const patch of [{ timeout: 10 }, { description: 'ignored' }, { env: { KEY: { op: 'replace', value: 'no' } } }, { auth: { provider: 'no' } }, { exposure: 'invalid' }]) {
+        await assert.rejects(f.save({ scope: 'project', action: 'patch', name: 'remote', patch }), { code: 'MCP_INVALID_SERVER' });
+        assert.deepEqual(JSON.parse(fs.readFileSync(projectFile)).mcpServers.remote, {});
+    }
+    for (const entry of [{ enabled: false, extra: 'private' }, { enabled: 'false' }]) {
+        fs.writeFileSync(projectFile, JSON.stringify({ mcpServers: { remote: entry } }));
+        assert.equal((await f.service.snapshot(f.cwd, 'project')).servers[0].valid, false);
+        assert.deepEqual(native().servers[0].config, global);
+    }
+    fs.writeFileSync(projectFile, JSON.stringify({ mcpServers: { missing: { enabled: false } } }));
+    assert.equal((await f.service.snapshot(f.cwd, 'project')).servers[0].valid, false);
+    assert.deepEqual(loadNativeMcpConfig({ cwd: f.cwd, agentDir: f.agent, projectTrusted: false }).servers[0].config, global);
+    // A colliding global loser is not a valid base for a project override.
+    f.write('mcp.json', { mcpServers: { 'dev-radius': global, dev_radius: global } });
+    fs.writeFileSync(projectFile, JSON.stringify({ mcpServers: { dev_radius: { enabled: false } } }));
+    assert.equal((await f.service.snapshot(f.cwd, 'project')).servers[0].valid, false);
+});
+
+test('manually configured CIMD survives unrelated web edits and native validation remains authoritative', async t => {
+    const f = fixture(t);
+    f.write('mcp.json', { mcpServers: { remote: { url: 'https://example.invalid/mcp', oauth: { clientRegistration: 'cimd', callbackUrl: 'http://localhost:1234/callback', future: 'retained-private' } } } });
+    const dto = await f.service.snapshot(f.cwd);
+    assert.equal(dto.servers[0].valid, true); assert.equal(dto.servers[0].config.oauth.clientRegistration, null);
+    await f.save({ action: 'patch', name: 'remote', patch: { enabled: false } });
+    assert.equal(JSON.parse(fs.readFileSync(path.join(f.agent, 'mcp.json'))).mcpServers.remote.oauth.clientRegistration, 'cimd');
+    for (const patch of [{ oauth: { clientId: { op: 'replace', value: 'not-cimd' } } }, { oauth: { clientName: { op: 'replace', value: 'not-cimd' } } }, { oauth: { callbackUrl: { op: 'replace', value: 'http://[::1]:1234/callback' } } }])
+        await assert.rejects(f.save({ action: 'patch', name: 'remote', patch }), { code: 'MCP_INVALID_SERVER' });
+});

@@ -1,128 +1,192 @@
+<div align="center">
+
+<img src="public/brand/logo-192.png" alt="Pivane logo" width="96" height="96">
+
 # Pivane
 
-简体中文 · [English](README.en.md)
+**A self-hosted web workspace for AI coding agents, usable from any screen.**
 
-![Pivane](public/brand/logo-192.png)
+Run the [Pi coding agent](https://pi.dev) on your own machine and use it from any browser on your desktop, tablet or phone.<br>
+Subagents, scheduled tasks, MCP, long-term memory, rich file previews and a built-in image, video and speech lab work with your own models and keys.
 
-**把自己的 AI 工作台带到每一块屏幕上。**
+[![Latest release](https://img.shields.io/github/v/release/YogurtJ/pivane?style=flat-square&label=release)](https://github.com/YogurtJ/pivane/releases/latest)
+[![License: ISC](https://img.shields.io/badge/license-ISC-blue?style=flat-square)](LICENSE)
+[![Node.js 22](https://img.shields.io/badge/node-22.x-339933?style=flat-square&logo=node.js&logoColor=white)](docs/en/INSTALL.md)
+[![Platforms](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-555?style=flat-square)](#platforms)
+[![Powered by Pi](https://img.shields.io/badge/powered%20by-Pi%20coding%20agent-7c3aed?style=flat-square)](https://pi.dev)
 
-Pivane 是基于 **Pi Coding Agent** 的自托管 AI 工作台：在浏览器里写代码、管理项目和文件、跟进 Agent 任务，也能使用自己的图像、视频与语音模型。服务部署在 Linux、macOS 或 Windows 上，电脑、平板、手机通过浏览器访问同一个工作台。
+**English** · [简体中文](README.zh-CN.md)
 
-**A self-hosted AI workspace powered by Pi Coding Agent. Code, manage files, and create images, video & audio from your desktop, tablet or phone. Bring your own models.**
+[Download](https://github.com/YogurtJ/pivane/releases/latest) · [Install](docs/en/INSTALL.md) · [User guide](docs/en/USER_GUIDE.md) · [Changelog](CHANGELOG.md) · [Report an issue](https://github.com/YogurtJ/pivane/issues)
 
-[下载 1.6.0 正式版](https://github.com/YogurtJ/pivane/releases/tag/v1.6.0) · [开始使用](docs/USER_GUIDE.md) · [安装与恢复](docs/INSTALL_RECOVERY.md) · [Agent 操作指南](docs/AGENT_GUIDE.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues)
+<img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/hero-en.webp" alt="Pivane on the desktop: projects and threads, a finished coding task and its diff" width="100%">
 
-**1.6.0 正式版锁定 Pi 1.0.0**，内置 pi-subagents 0.74.0，新增媒体参考附件、文件预览和统一语音配置，优化长会话阅读与线程移动。[查看本版变化与升级说明](docs/releases/1.6.0.md)。
+</div>
 
-本版最终包在 Linux ARM64 与 Windows 11 x64 / Node 22.23.2 各通过 606 项 Node 测试和 13 个 Chromium 专项，以及独立安装、运行和原路径恢复；Windows 普通权限单独通过，Linux 完成从正式 1.5.0 升级。生产 audit 为 0 漏洞。精确范围见版本说明；手机宽度模拟不等于真实手机或 Safari 验收，运行实例需经正常更新流程切换后生效。
+## Why Pivane
 
-旧 pi-mcp-adapter 配置须先审查、备份再显式迁移，不自动转换 OAuth；其他扩展和原生数据保留。配置与迁移见[原生 MCP](docs/MCP.md)。公开发布与运行切换分别核对，旧归档不修改。
+- **Uses Pi's own runtime.** Pivane runs Pi's native runtime and reads and writes Pi's own session files. You get streaming replies, tool calls, file diffs, shell commands, steering and context compaction in a UI that is easy to read on any screen.
+- **Start on your desktop and check in from your phone.** Sessions are stored on your server. When you open a thread on another device, the same agent process serves it. You can add Pivane to your home screen and get notified when a reply finishes.
+- **Run many agents from one workspace.** You can use subagents, task threads that agents create for themselves, messages between threads, side chats and cron-scheduled tasks. A live view shows what each one is doing.
+- **Your models, your keys, your machine.** You can use any provider Pi supports, including Anthropic, OpenAI, Google Gemini, GitHub Copilot, OpenRouter, DeepSeek, Qwen, Kimi, MiniMax, xAI and Mistral. Sign in with an API key or OAuth, or add your own OpenAI-compatible endpoint. Credentials and history stay on your machine.
+- **Extends the same way Pi does.** Pi packages, skills, prompt templates and MCP servers can be installed from the browser. You can also ask the built-in extension assistant to find and set them up for you.
+- **Media generation and voice are built in.** Connect your own image, video and speech services. An agent turns your idea into parameters you can edit, and nothing runs until you confirm. You can also dictate messages and have replies read aloud.
 
-## 为什么用 Pivane
+### See it in action
 
-### 从提问到完成工作
+The agent plans the task, reads and edits files, runs the tests and reports back. When it finishes, the whole process folds into a one-line summary that you can expand at any time.
 
-把项目目录交给 Pi Agent，在同一个界面里讨论方案、查看工具执行、检查文件差异，再继续下一步。支持附件、手动 Shell、停止、引导/后续消息和上下文压缩，适合需要多轮推进的编码与项目任务。
+<p align="center"><img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/demo-en.gif" alt="A coding task running in Pivane: plan, tool calls, tests and the final summary" width="100%"></p>
 
-### 任务过程清楚，阅读保持轻松
+<sub>Screenshots and recordings use a synthetic demo project.</sub>
 
-默认简洁视图在任务结束后每轮只留最终回复，过程收进一行“用时 · 工具调用”摘要，点开即可回看；也可在设置中改为正文或完整记录。编辑差异、当次写入和当前文件全文可在侧栏查看。Markdown、代码高亮、数学公式和 Mermaid 图表可直接阅读。
+## Features
 
-### 长期工作有原生记录可循
+### Agent workspace
 
-沿用 Pi 原生 SessionManager 与 JSONL 会话，提供搜索、书签、会话树、分叉、编辑重试和 HTML/JSONL 导入导出。可以围绕当前任务开一段临时侧聊，读取文件、检索代码，或在明确交办并确认本次执行权限后完成小范围修改；主侧共享目录，需避免并发修改同一文件。首次发送才开启侧聊，闲置12小时回收运行资源；此前记录仅留在本页供阅读，新Agent不继承旧讨论，有用内容可自行复制到主草稿。
+- Threads are organized by project and run directly in folders on the server.
+- Replies stream in with thinking, tool calls and the files changed in each turn. The default compact view folds each finished turn into a one-line "time · tool calls" summary.
+- You can attach images and files by paste or drag-and-drop, reference project files with `@`, or quote a text selection into your next message.
+- While a task runs, you can steer it or queue a follow-up. You can also stop, retry or compact the context.
+- `!command` runs a shell command on the server, and `!!command` keeps its output out of the model context.
+- The model picker has search, favorites that sync across devices, per-model thinking levels and a context usage meter.
+- A progress card shows the plan the agent is following.
 
-### 模型和部署由你选择
+### Sessions and history
 
-在网页管理 API Key/OAuth、聊天模型、Thinking、Packages、Skills 与模板。每位使用者部署独立实例，配置自己的模型和数据目录；凭据保存在自己的部署环境，请求按所选供应商的协议发送。
+- Sessions use Pi's native JSONL files, so they stay compatible with Pi CLI and are never copied into a separate chat database.
+- You can search the full text of all threads, bookmark messages, browse the session tree, fork a conversation, or edit and retry a message.
+- You can import Pi sessions and export them as HTML or JSONL.
+- Projects and threads can be archived, and a thread can be moved to another project. New threads get generated titles automatically.
 
-### 把媒体创作接进工作流
+### Multi-agent and automation
 
-多媒体实验室支持添加自己的图像、视频和语音服务。让 Agent 把自然语言需求整理为可编辑参数，检查清单并确认后执行单项生成；历史支持预览、复用和下载。回复朗读可单独配置语音默认值。
+<img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/agents-en.webp" alt="Three subagents running in parallel while a side chat answers a quick question" width="100%">
 
-### 为人和 Agent 都准备好入口
+- Subagents are built in through [pi-subagents](https://pi.dev/packages/pi-subagents). A live panel shows each run's status and models, lets you steer, stop or continue it, and reports token usage and cost.
+- An agent can start a new task thread or message another thread in the same project.
+- A side chat lets you ask a quick question without derailing the main task. It can read files and, with your approval for that reply, make small edits.
+- Scheduled tasks can be cron-based or one-time. They support time zones, previews of upcoming runs, budgets and run history.
 
-用户指南、安装恢复、API 契约和源码开发文档分别组织。用户自己的 Agent 可以按明确步骤帮助部署、配置、升级和排障，开发者也能找到架构、数据边界与验证方法。
+### Assistants with memory
 
-## 电脑、平板、手机，都能接着工作
+- Assistant profiles each have their own persona, notes about you and long-term memory, powered by [pi-hermes-memory](https://pi.dev/packages/pi-hermes-memory?name=memory).
+- Optional background learning picks up your corrections and preferences. It runs within daily budgets, and every memory and learned skill can be reviewed, edited or undone.
+- Several logical projects with their own instructions can point to the same directory.
 
-在电脑上启动任务，用手机查看进度，在平板上阅读文件和继续讨论。持久会话保存在部署端；多个浏览器打开同一线程时，共用服务管理的同一个 Pi worker。
+### Files and rendering
 
-| 设备 | 使用体验 |
+- You can browse and search project files, review each turn's diff and compare it with the current file.
+- Previews cover Markdown, code, images, PDF, CSV/TSV, SVG, audio and sandboxed HTML.
+- Agents can publish finished files as unchangeable snapshots that you can open and download from the chat.
+- Markdown is rendered with syntax highlighting, LaTeX math (KaTeX) and Mermaid diagrams.
+
+### Extensions and MCP
+
+- You can manage Pi packages, skills, extensions, prompt templates and themes globally or for a single project.
+- MCP uses Pi's native support, including Codemode and tool search. Servers and OAuth sign-ins are managed in the browser.
+- A discovery page lists recommended packages. An extension assistant checks their sources and installs them only after you ask.
+- You can edit the system prompt and inspect the full prompt that any thread receives.
+
+### Media lab and voice
+
+<img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/media-en.webp" alt="The media lab with an agent-planned image request and generation history" width="100%">
+
+- You can add image, video, text-to-speech and speech-to-text services. Presets cover OpenAI, Google Gemini, Volcengine Ark (Seedream and Seedance) and Alibaba Cloud Model Studio, and any compatible HTTP API can be added manually.
+- An agent drafts editable parameters from a plain-language request. Each generation runs only after you confirm it, and reference images or videos can be attached when the model supports them.
+- Generation history lets you preview, reuse and download earlier results.
+- You can dictate messages into the composer and have replies or selected text read aloud.
+
+### Everyday use
+
+<img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/mobile-en.webp" alt="Pivane on phones: task results, dark mode with math, and the model picker" width="100%">
+
+- Layouts adapt to desktop, tablet and phone screens, and Pivane can be installed to your home screen.
+- In-page notifications and sounds are available, with optional Web Push for background alerts.
+- A usage dashboard breaks down tokens and estimated cost by day, provider, model, project and session.
+- Light and dark color themes, adjustable font sizes, and an English or Simplified Chinese interface are available.
+- An access token protects the workspace. Pivane runs as a background service with a desktop shortcut. It checks for new releases and gives you an upgrade prompt to hand to an agent on the host.
+
+## Quick start
+
+You need **Node.js 22** with npm, plus `bash` and [ripgrep](https://github.com/BurntSushi/ripgrep) (on Windows, Git for Windows provides Bash). You also need an account with a model provider. You do not need a global Pi installation, a frontend build step or a GPU.
+
+```bash
+# 1. Download pivane-<version>.tar.gz and its .sha256 file from Releases, then verify the archive
+sha256sum -c pivane-<version>.tar.gz.sha256    # macOS: shasum -a 256 -c …
+tar -xzf pivane-<version>.tar.gz && cd pivane-<version>
+
+# 2. Install the locked dependencies, including the pinned Pi runtime
+node scripts/install.cjs
+
+# 3. Run it in the foreground to try it out
+npm start
+```
+
+Open <http://127.0.0.1:11408>, check **Settings → Providers and models**, pick a project folder and start a new chat.
+
+For everyday use, follow the [installation guide](docs/en/INSTALL.md) to keep your data outside the app directory, then run `node scripts/install-service.cjs`. This keeps Pivane running in the background and starts it when you log in. On macOS and Windows, it also adds a desktop shortcut.
+
+> **Already using Pi CLI?** Pivane uses the same Pi identity by default, so your models, logins, settings and sessions are available right away. Avoid writing to the same session from the CLI and the browser at the same time. See [existing Pi users](docs/en/INSTALL.md#existing-pi-cli-users).
+>
+> **Want an agent to set it up?** Give your coding agent this repository and the [agent operations guide](docs/AGENT_GUIDE.md). It covers installation, configuration, upgrades and troubleshooting.
+
+## Platforms
+
+Pivane runs **natively on Linux, macOS and Windows** (no WSL or Docker required). It is light enough to host on a Raspberry Pi, and you can use it from any modern browser.
+
+Pivane listens on localhost by default. To reach it from your phone or another computer, turn on the access token, then connect over your LAN, a VPN such as Tailscale, or an HTTPS reverse proxy. See [Network & access](docs/en/USER_GUIDE.md#network--access).
+
+## How it works
+
+```mermaid
+flowchart LR
+    B["Browsers<br/>desktop · tablet · phone"] <-->|HTTP + WebSocket| S["Pivane server<br/>Node.js"]
+    S <-->|RPC| W["Pi agent workers<br/>one per open thread"]
+    W --> D[("Pi sessions and settings<br/>native JSONL")]
+    W --> P["Your project folders"]
+    W --> L["Model providers"]
+    S --> M["Your media services"]
+```
+
+- A Node.js server (Express and WebSocket) serves a plain JavaScript frontend, so there is no build step.
+- Each persistent thread is served by exactly one Pi worker process, and every browser that opens the thread connects to that worker.
+- Pi's SessionManager and JSONL files are the only record of each conversation. Usage statistics are kept in a separate ledger that stores no message content.
+- Each Pivane release bundles a tested version of Pi, which is upgraded together with Pivane.
+
+## Security model
+
+- Pivane is meant for **personal, single-user** instances. Everyone who has the access token shares the same instance, and there are no separate user accounts.
+- Project roots limit which folders you can browse, but they are **not a sandbox**. The agent, shell, packages and extensions all run with the permissions of the server's user account, so install only extensions you trust.
+- Media generation and other paid actions run only after you explicitly confirm them. Pivane never retries failed or uncertain requests automatically.
+
+## FAQ
+
+**Is it a replacement for Pi CLI?** No, it is a companion. Both share the same Pi identity, so you can use whichever fits the moment.
+
+**Does it need a GPU?** No. Models run at your providers or on endpoints you configure.
+
+**How do I upgrade?** **Settings → Versions and updates** shows when a new release is available. It gives you a prompt you can hand to an agent on the host. Back up before switching versions, as described in [installation and recovery](docs/en/INSTALL.md#backups-upgrades-and-recovery).
+
+**Which languages are supported?** The interface is available in English and Simplified Chinese. Your conversations can be in any language your model supports.
+
+## Documentation
+
+| Topic | Where to start |
 |---|---|
-| 电脑 | 项目/线程侧栏、聊天正文、可调节的文件与详情分栏，适合复杂任务与代码阅读 |
-| 平板 | 响应式布局、可切换面板与触摸操作，适合查看文件、阅读长回复和继续对话 |
-| 手机 | 抽屉导航、紧凑的模型与任务控件、附件入口和消息跟随，便于查看进度与补充需求 |
+| Install, upgrade and recover | [Installation guide](docs/en/INSTALL.md) · [Background service](docs/BACKGROUND_SERVICE.md) |
+| Daily use | [User guide](docs/en/USER_GUIDE.md) |
+| All features, in detail (mostly in Chinese) | [Documentation index](docs/README.md) |
+| REST and WebSocket API | [API reference](docs/API.md) |
+| Help from your own agent | [Agent operations guide](docs/AGENT_GUIDE.md) |
+| What's new and what's next | [Changelog](CHANGELOG.md) · [Releases](https://github.com/YogurtJ/pivane/releases) · [Roadmap](docs/ROADMAP.md) |
 
-服务端只需部署一份，其他设备通过可访问的实例地址连接。远程访问需要配置监听地址、网络和访问验证；`localhost` 只代表当前设备。切换设备前请保存未发送的草稿和附件，临时会话/侧聊有独立的生命周期。
+## Contributing
 
-网页适配包含 320、393、1024、1440 等宽度的浏览器回归。手机后台通知等系统能力受 HTTPS、操作系统与浏览器条件限制，具体验收范围见[平台说明](docs/RELEASE_INSTALL_VALIDATION.md)与[通知文档](docs/NOTIFICATIONS.md)。
+Bug reports, ideas and pull requests are welcome in [Issues](https://github.com/YogurtJ/pivane/issues). When reporting a problem, include your Pivane version and the shortest steps that reproduce it. Remove credentials and private content from logs and screenshots first.
 
-## 界面语言
+To set up a development environment, run `node scripts/install.cjs`, then check your changes with `npm test` and `npm run check`. Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [development docs](docs/development/README.md) first. Coding agents should also read [AGENTS.md](AGENTS.md).
 
-当前源码提供简体中文与英文，首次按浏览器的首个受支持语言显示，没有匹配时回退英文。在“设置 → 使用偏好 → 界面语言”选择跟随浏览器、简体中文或 English；选择保存在当前浏览器，下次打开或刷新页面时生效。保存不会自动刷新，也不改变模型回复、聊天正文或朗读语言。详细范围见[界面语言说明](docs/I18N.md)。
+## License
 
-双语功能从 **1.0.0-rc.2** 提供；旧版1.0.0-rc.1的固定发布资产保持不变。
-
-## 部署在你自己的机器上
-
-当前正式版 **1.6.0** 锁定 **Pi 1.0.0**，推荐 Node.js 22.x；历史版本资产保留。1.6.0 的精确包 SHA256、验收范围和限制见[版本说明](docs/releases/1.6.0.md)及 Release 附件。下表是历史平台基线，不表示本包已在每个平台重跑验收。
-
-| 服务端平台 | 已验收范围 | 安装入口 |
-|---|---|---|
-| Linux | Debian ARM64、Ubuntu 24.04 x86_64 | [Linux 安装与恢复](docs/INSTALL_RECOVERY.md) |
-| macOS | Apple Silicon M2 / macOS 26.5.1 | [macOS 原生安装](docs/MACOS.md) |
-| Windows | Windows 11 x64 / NTFS，原生运行，无需 WSL | [Windows 原生安装](docs/WINDOWS.md) |
-
-需要 Node、npm 和对应平台的 Bash/ripgrep 等基础工具。**无需全局安装 Pi，没有前端构建步骤。** Pivane 自身原生组件随包提供；当前源码的记忆 SQLite 依赖在缺少适配的预构建二进制时需要编译环境。 其他系统版本、Intel Mac 硬件及特殊文件系统的状态详见[验证范围](docs/RELEASE_INSTALL_VALIDATION.md)。
-
-1. 从 [Releases](https://github.com/YogurtJ/pivane/releases) 下载发布包与校验文件，按平台指南准备独立数据目录和启动配置。
-2. 在解压后的代码目录运行 `node scripts/install.cjs`（1.1.0 及更早归档没有该脚本时运行 `npm ci`），配置实例后运行 `node scripts/install-service.cjs` 安装[后台常驻与桌面入口](docs/BACKGROUND_SERVICE.md)。前台 `npm start` 仅用于试用或排障。
-3. 打开工作台，在“设置 → 供应商与模型”核对已有 Pi 配置；没有可用认证时再完成 API Key 或 OAuth 登录，选择项目并新建线程。
-
-**已经在用 Pi CLI？** 普通安装会通过 Pi 原生接口取得当前用户的身份目录，直接复用模型、认证和设置。macOS/Linux 与 Windows 使用各自的系统主目录，`PI_CODING_AGENT_DIR` 覆盖优先；无需复制认证文件。具体步骤、Windows/WSL 差异和已装成空身份的切换方法见[已有 Pi 接入](docs/PI_CLI.md)。
-
-普通安装以后台常驻、网页可打开和只读健康检查通过为基础交付，不需要运行开发测试或打包；模型认证和真实请求单独验证。数据目录独立不代表项目必须放进指定子目录：普通安装默认开放系统用户可访问的目录，Linux/macOS 使用 `/`，Windows 使用各盘符根目录；用户明确需要时才缩小范围。当前网页不能扩大项目范围，配置方法见[目录范围排障](docs/INSTALL_RECOVERY.md#项目选择器找不到目录)。
-
-首次安装需要下载锁定依赖。当前源码随包提供 pi-subagents 0.74.0 和 pi-hermes-memory 0.9.9，`node scripts/install.cjs` 统一准备子 Agent 与档案记忆组件；版本随 Pivane 更新，已有 CLI 配置和记忆数据保留。安装不启动子任务，记忆仍按助手身份启用。SQLite 平台依赖及旧安装兼容见[内置能力包](docs/BUNDLED_CAPABILITIES.md)。图标、代码高亮、公式与图表所需资源随包或随依赖提供。聊天模型与媒体服务需要使用者自行配置，其服务费用由使用者承担。没有默认可执行的媒体服务。
-
-[.env.example](.env.example) 与未配置 `PORT` 时的服务默认端口统一为 `11408`，本机访问地址为 `http://127.0.0.1:11408`。已有 3001 安装升级时，将实际 `.env` 或服务配置中的 `PORT` 改为 `11408`，工作台地址同步改为 `http://127.0.0.1:11408`；如使用默认预约队列，先把 `PI_WEB_DEFERRED_FILE` 固定为原队列的实际绝对路径，再在空闲时重启。自定义端口仍可显式指定。不同设备访问时，请使用部署机器的可达地址。
-
-## 历史平台验收基线
-
-- Linux ARM64、M2 Mac、Windows 11：同一发布包各通过 **167 项 Node 测试**，完成干净安装、核心 RPC、浏览器、旧包升级和 **17 个文件逐项哈希一致的原路径恢复**。
-- Windows 普通用户权限下另通过 **30 项检查**；Ubuntu x86_64 另完成同包安装、167 项测试和静态检查补验。
-- 各验收环境的生产依赖 audit 为 **0 漏洞**。测试使用独立身份与合成服务，不把这些结果称为所有真实媒体供应商或手机系统的验收。
-
-准确的历史平台、包 SHA256 和检查结果随 [RC1 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.0.0-rc.1) 的 `validation.json` 提供。**1.3.0** 的变更和本包验证范围见[版本说明](docs/releases/1.3.0.md)及[1.3.0 Release](https://github.com/YogurtJ/pivane/releases/tag/v1.3.0)附件；历史 RC 跨平台结果不冒充 1.3.0 实机验收。
-
-## 文档与 Agent 入口
-
-| 你想做什么 | 从这里开始 |
-|---|---|
-| 日常使用与首次设置 | [用户指南](docs/USER_GUIDE.md) |
-| 让自己的 Agent 帮助安装、配置或排障 | [用户 Agent 操作指南](docs/AGENT_GUIDE.md) |
-| 升级、停机备份与恢复 | [安装与恢复](docs/INSTALL_RECOVERY.md) · [运维](docs/OPERATIONS.md) |
-| 查询功能和接口 | [文档目录](docs/README.md) · [REST/WebSocket API](docs/API.md) |
-| 修改 Pivane 源码 | [贡献指南](CONTRIBUTING.md) · [源码 Agent 约定](AGENTS.md) · [模块导航](docs/development/MODULES.md) · [架构](docs/development/ARCHITECTURE.md) |
-| 查看版本变化与后续方向 | [变更记录](CHANGELOG.md) · [路线图](docs/ROADMAP.md) |
-
-**给协助用户的 Agent：** 安装与排障从 `docs/AGENT_GUIDE.md` 开始；修改源码才转读 `AGENTS.md`。按实际实例的 `/api/pi/status` 和模型目录核对能力，不推断用户的凭据、项目路径或服务配置。
-
-## 数据与执行边界
-
-Pivane 面向个人独立部署，不提供多人共用同一实例的账户隔离。项目目录范围用于路径检查，**不是 Agent 工具沙箱**；工具、Packages、Skills 和扩展可能执行当前系统用户权限内的操作。
-
-Pi 原生会话是对话的唯一事实来源。不要让网页与外部 CLI 同时写同一会话；历史导航不会撤销文件或外部请求的副作用。媒体规划不会直接执行生成，失败或结果不确定的请求不会自动重放。
-
-升级前请结束任务、暂停预约、停机并整批备份。兼容既有 `PI_*` 配置、旧数据文件、API/RPC 和浏览器偏好。新源码采用 Pivane 标识并提供配置别名，目录改名使用单独的停机迁移流程，详见[命名与兼容](docs/development/NAMING.md)。当前源码在设置提供[只读版本检查与可复制的独立 Agent 更新提示词](docs/UPDATES.md)，不从网页直接安装、备份或重启。已存在的受管维护后端接口和恢复工具暂保留兼容；需要升级时请在部署机器上由独立 Agent 或管理员先核对运行实例与方案，再在安全空闲时操作。当前不包含离线模式。
-
-## 开发与许可
-
-在独立开发环境运行 `node scripts/install.cjs` 准备锁定依赖。开发中使用 [定向测试入口](docs/development/WORKFLOW.md#node-测试入口与计时)，源码交付与发行按 [验证矩阵](docs/development/WORKFLOW.md#验证矩阵) 执行；普通安装不需要开发测试。
-
-`pack:trial` 构建带时间戳的开发快照；`pack:release` 根据应用版本构建发行包并拒绝覆盖同名包。发布使用允许清单，私有配置、维护记录、依赖目录、会话、用户媒体和备份不进入包内，流程见[发布文档](docs/development/RELEASING.md)。
-
-欢迎通过 [Issues](https://github.com/YogurtJ/pivane/issues) 反馈问题或建议，通过 PR 参与改进。反馈请附版本与最短复现步骤，日志和截图先去除凭据、私人正文及备份内容。
-
-Pivane 自身代码使用 [ISC 许可证](LICENSE)。Pi、Font Awesome、KaTeX、Mermaid 等组件保留各自许可，详见[第三方声明](THIRD_PARTY_NOTICES.md)。
+Pivane is released under the [ISC License](LICENSE). Pi, Font Awesome, KaTeX, Mermaid and other bundled components keep their own licenses; see [Third-party notices](THIRD_PARTY_NOTICES.md).

@@ -1,6 +1,6 @@
 # 干净安装、更新与数据恢复
 
-本指南的命令以 **Linux Bash** 为主，面向个人安装；[macOS](MACOS.md)与[Windows](WINDOWS.md)另有原生步骤。支持范围为Linux、已验收的Apple Silicon Mac及Windows11 x64，统一使用Node22.x；完整OS/磁盘/浏览器与未验收范围见[平台验证](RELEASE_INSTALL_VALIDATION.md)。不要把POSIX命令直接粘贴到Windows cmd，Windows项目路径列表使用分号。
+本指南的命令以 **Linux Bash** 为主，面向个人安装；[macOS](MACOS.md)与[Windows](WINDOWS.md)另有原生步骤。Pivane 支持 Linux、macOS 与 Windows，统一使用 Node 22.x；各版本实际验收过的系统、磁盘与浏览器见[平台验证](RELEASE_INSTALL_VALIDATION.md)。不要把POSIX命令直接粘贴到Windows cmd，Windows项目路径列表使用分号。
 
 ## 1. 安装前提
 
@@ -26,10 +26,10 @@ Pivane 媒体和预约数据按实例保存，Pi 身份默认与 CLI 共用；`P
 
 ## 2. 从源码发布包安装
 
-以下以 1.3.0 归档为例，正式可下载版本以 [Releases](https://github.com/YogurtJ/pivane/releases) 为准。先下载 `pivane-1.3.0.tar.gz` 及同名 .sha256 到 Downloads，核对发布来源，然后检查哈希：
+以下以 1.6.0 归档为例，安装其他版本时替换版本号，可下载版本以 [Releases](https://github.com/YogurtJ/pivane/releases) 为准。先下载 `pivane-1.6.0.tar.gz` 及同名 .sha256 到 Downloads，核对发布来源，然后检查哈希：
 
 ```bash
-ARCHIVE="$HOME/Downloads/pivane-1.3.0.tar.gz"
+ARCHIVE="$HOME/Downloads/pivane-1.6.0.tar.gz"
 (cd "$(dirname "$ARCHIVE")" && sha256sum -c "$(basename "$ARCHIVE").sha256")
 ```
 
@@ -39,9 +39,9 @@ ARCHIVE="$HOME/Downloads/pivane-1.3.0.tar.gz"
 BASE="$HOME/pivane"
 test ! -e "$BASE" || { echo "此目录已存在，请按更新流程操作或选择新的BASE"; exit 1; }
 umask 077
-mkdir -p "$BASE/releases/1.3.0" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
-tar -xzf "$ARCHIVE" -C "$BASE/releases/1.3.0" --strip-components=1
-cd "$BASE/releases/1.3.0"
+mkdir -p "$BASE/releases/1.6.0" "$BASE/data/media" "$BASE/projects/demo" "$BASE/backups"
+tar -xzf "$ARCHIVE" -C "$BASE/releases/1.6.0" --strip-components=1
+cd "$BASE/releases/1.6.0"
 node scripts/install.cjs
 ```
 

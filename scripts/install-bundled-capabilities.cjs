@@ -15,9 +15,9 @@ const imports = [
     ['registerMemorySearchTool', 'tools/memory-search-tool'], ['registerSessionSearchTool', 'tools/session-search-tool'],
     ['registerSkillTool', 'tools/skill-tool'],
 ];
-// Pi ships an npm-shrinkwrap that npm applies ahead of root overrides. Keep the
-// reviewed fixed release from the root lockfile and remove only a known-vulnerable
-// nested copy so Node resolves the hoisted package. Fail closed on anything else.
+// Older reviewed Pi packages shipped a shrinkwrap ahead of root overrides;
+// Pi 1.0.2 does not. Validate the real consumer in either nested or hoisted
+// layouts, retaining the fixed root lock and removing only known old copies.
 const SHRINKWRAP_FIXES = [{
     name: 'brace-expansion', owner: '@earendil-works/pi-coding-agent', consumer: 'minimatch', fixed: '5.0.12',
     vulnerable: version => /^4\.\d+\.\d+$/.test(version) || /^5\.0\.(\d|1[01])$/.test(version),
@@ -44,6 +44,15 @@ function dependencyCopies(modules, name, depth = 0, found = []) {
     }
     return found;
 }
+function dependencyDirectory(start, name, base) {
+    let dir = start;
+    while (true) {
+        const candidate = path.join(dir, 'node_modules', name);
+        if (fs.existsSync(candidate)) { packageVersion(candidate); return candidate; }
+        if (dir === base || path.dirname(dir) === dir) return null;
+        dir = path.dirname(dir);
+    }
+}
 function enforceShrinkwrapFixes(base = root, fixes = SHRINKWRAP_FIXES) {
     const manifest = JSON.parse(fs.readFileSync(path.join(base, 'package.json'), 'utf8'));
     const lock = JSON.parse(fs.readFileSync(path.join(base, 'package-lock.json'), 'utf8'));
@@ -62,24 +71,18 @@ function enforceShrinkwrapFixes(base = root, fixes = SHRINKWRAP_FIXES) {
         }
         for (const copy of dependencyCopies(modules, fix.name))
             if (fix.vulnerable(packageVersion(copy))) throw new Error(`Vulnerable ${fix.name} remains at ${path.relative(base, copy)}`);
-        const consumer = path.join(modules, fix.owner, 'node_modules', fix.consumer);
-        if (fs.existsSync(consumer)) {
-            // Node's module lookup order, without require.resolve's process cache.
-            let dir = consumer, version = null;
-            while (!version) {
-                const candidate = path.join(dir, 'node_modules', fix.name);
-                if (fs.existsSync(candidate)) version = packageVersion(candidate);
-                else if (dir === base || path.dirname(dir) === dir) break;
-                else dir = path.dirname(dir);
-            }
-            if (version !== fix.fixed) throw new Error(`${fix.consumer} does not resolve ${fix.name} ${fix.fixed}`);
-        }
+        // Node's module lookup order without require.resolve's process cache.
+        // The consumer may itself be hoisted now that Pi no longer shrinkwraps.
+        const consumer = dependencyDirectory(path.join(modules, fix.owner), fix.consumer, base);
+        const dependency = consumer && dependencyDirectory(consumer, fix.name, base);
+        if (!dependency || packageVersion(dependency) !== fix.fixed)
+            throw new Error(`${fix.consumer} does not resolve ${fix.name} ${fix.fixed}`);
     }
     return removed;
 }
 function install() {
     const removed = enforceShrinkwrapFixes();
-    if (removed.length) console.log('[Pivane] Replaced shrinkwrapped ' + removed.join(', ') + ' with reviewed fixed release.');
+    if (removed.length) console.log('[Pivane] Replaced legacy nested ' + removed.join(', ') + ' with reviewed fixed release.');
     vendorFiles(root);
     for (const entry of catalog) {
         const metadata = JSON.parse(fs.readFileSync(path.join(packagePath(entry), 'package.json'), 'utf8'));

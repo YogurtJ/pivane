@@ -45,7 +45,7 @@ function multipart(model, audio, bytes, language) {
     return { body: Buffer.concat(parts), type: `multipart/form-data; boundary=${boundary}` };
 }
 class PiTranscriptionService {
-    constructor({ createModelRuntime, providerService, fetch = require('node-fetch'), timeoutMs = 180000, blocked = () => false }) {
+    constructor({ createModelRuntime, providerService, fetch = require('./workspace-network-transport').networkFetch, timeoutMs = 180000, blocked = () => false }) {
         this.createModelRuntime = createModelRuntime; this.providerService = providerService; this.fetch = fetch; this.timeoutMs = timeoutMs; this.blocked = blocked;
         this.jobs = new Map(); this.closed = false; this.inspecting = 0;
     }

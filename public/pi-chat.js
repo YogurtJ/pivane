@@ -142,6 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
         assistantGroups: [],
         assistantSessions: new Map(),
         assistantProjectId: null,
+        sessionClassificationSupported: false,
         assistantArchivedOpen: false,
         assistantExpandedLists: new Map(),
         assistantRevision: null,
@@ -400,7 +401,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
         openFork: async result => {
+            invalidateSessionList(result.session.cwd);
             await loadSessions(result.session.cwd);
+            sessionClassified(result.session);
             await openSession(result.session);
             if (result.draft) {
                 elements.input.value = result.draft.message;
@@ -508,6 +511,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const conversationSearch = new window.PiSessionSearch({
         api: apiFetch, cwd: () => state.cwd, toast,
+        contextKey: () => JSON.stringify([state.assistantMode, state.assistantProfileId || null]),
         open: async (row, q) => {
             const generation = state.socketGeneration;
             const data = await apiFetch('/api/pi/sessions?cwd=' + encodeURIComponent(row.cwd));
@@ -691,6 +695,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const cronPage = window.PiCron?.create({ api: apiFetch, currentCwd: () => state.cwd });
+    const cronAddButton = document.createElement('button');
+    cronAddButton.id = 'pi-cron-add-button'; cronAddButton.type = 'button'; cronAddButton.hidden = true;
+    cronAddButton.disabled = true; cronAddButton.tabIndex = -1; cronAddButton.setAttribute('role', 'menuitem');
+    const cronAddIcon = document.createElement('i'); cronAddIcon.className = 'fa-regular fa-calendar-check'; cronAddIcon.setAttribute('aria-hidden', 'true');
+    const cronAddLabel = document.createElement('span'); cronAddLabel.textContent = translateUi('创建定时任务');
+    const cronAddHelp = document.createElement('small'); cronAddHelp.textContent = translateUi('在当前会话中安排任务');
+    cronAddLabel.append(cronAddHelp); cronAddButton.append(cronAddIcon, cronAddLabel);
+    $('pi-schedule-button').after(cronAddButton);
+    cronAddButton.addEventListener('click', () => {
+        if (cronAddButton.disabled || !state.scheduledTasks || !state.session || state.session.ephemeral) return;
+        cronPage?.open({ cwd: state.cwd, sessionId: state.session.id });
+    });
     const taskProgress = new window.PiTaskProgress(document.getElementById('pi-task-progress'));
     const taskResults = window.PiTaskResults?.create({ root: document.getElementById('pi-task-results'), fetch: apiFetch,
         scope: () => state.session && !state.session.ephemeral ? { cwd: state.cwd, id: state.session.id, generation: state.socketGeneration,
@@ -731,6 +747,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const status = await apiFetch('/api/pi/status');
             state.scheduledTasks = status.scheduledTasks === true;
+            cronAddButton.hidden = !cronPage || !state.scheduledTasks;
             accessBootstrapped = true;
             state.modelCatalogSupported = status.modelCatalog === true;
             taskResults?.setEnabled(status.agentTaskResults === true);
@@ -755,6 +772,7 @@ document.addEventListener('DOMContentLoaded', () => {
             extensionAssistant.setEnabled(status.extensionAssistant === true);
             state.systemPrompts = status.systemPrompts === true;
             state.assistantSupported = status.assistantProjects === true && status.agentProfiles === true;
+            state.sessionClassificationSupported = status.sessionClassification === true;
             state.profileLearningSupported = status.profileLearning === true;
             if (status.agentProfiles === true && !state.assistantMode) {
                 void apiFetch('/api/pi/profiles').then(data => {
@@ -1131,9 +1149,23 @@ document.addEventListener('DOMContentLoaded', () => {
         return count;
     }
 
+    function captureSessionListAnchor() {
+        const list = elements.sessionList, top = list.getBoundingClientRect().top;
+        const row = [...list.querySelectorAll('[data-session-id]')].find(node => node.getClientRects().length
+            && node.getBoundingClientRect().bottom > top);
+        return row ? { cwd: row.dataset.cwd, id: row.dataset.sessionId, offset: row.getBoundingClientRect().top - top, top: list.scrollTop } : { top: list.scrollTop };
+    }
+
+    function restoreSessionListAnchor(saved) {
+        const list = elements.sessionList;
+        const row = saved.id && list.querySelector(`[data-cwd="${CSS.escape(saved.cwd)}"][data-session-id="${CSS.escape(saved.id)}"]`);
+        list.scrollTop = row?.getClientRects().length
+            ? list.scrollTop + row.getBoundingClientRect().top - list.getBoundingClientRect().top - saved.offset : saved.top;
+    }
+
     function renderActivityBadges() {
+        const anchor = captureSessionListAnchor();
         const focused = elements.sessionList.contains(document.activeElement) ? document.activeElement : null;
-        const scrollTop = elements.sessionList.scrollTop;
         restoreWorkSessionRows();
         elements.sessionList.querySelectorAll('[data-session-id]').forEach(row => {
             const key = activityKey(row.dataset.cwd, row.dataset.sessionId);
@@ -1192,7 +1224,7 @@ document.addEventListener('DOMContentLoaded', () => {
             : state.loadingProjects.size ? translateUi("正在读取会话") : elements.sessionSearch.value.trim() ? translateUi("没有匹配的工作会话") : translateUi("暂无需处理、处理中或最近会话");
         empty.hidden = !work || state.activityFresh && count > 0;
         empty.classList.toggle('pi-work-notice', work);
-        elements.sessionList.scrollTop = scrollTop;
+        restoreSessionListAnchor(anchor);
         if (focused?.isConnected && focused !== document.activeElement) focused.focus({ preventScroll: true });
     }
 
@@ -1364,6 +1396,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             state.projectSessions.set(cwd, sessions);
+            syncAssistantSessionLists(cwd, sessions);
             if (cwd === state.cwd) state.sessions = sessions;
             const project = state.projects.find(item => item.cwd === cwd);
             if (project) project.sessionCount = sessions.length;
@@ -1375,6 +1408,44 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         state.sessionListRequests.set(cwd, request);
         return request;
+    }
+
+    function syncAssistantSessionLists(cwd, rows) {
+        if (!state.assistantMode || !state.assistantProfileId) return;
+        const sessions = rows.filter(session => session.agentProfile?.id === state.assistantProfileId && !session.ephemeral);
+        for (const group of state.assistantGroups.filter(group => group.cwd === cwd && !group.unclassified)) {
+            state.assistantSessions.set(group.id, sessions.filter(session => session.assistantProject?.id === group.id));
+        }
+        const id = `unclassified:${cwd}`, orphaned = sessions.filter(session => !session.assistantProject);
+        if (orphaned.length) {
+            if (!state.assistantGroups.some(group => group.id === id)) state.assistantGroups.push({ id, name: translateUi('未分类'), cwd, unclassified: true });
+            state.assistantSessions.set(id, orphaned);
+        } else {
+            state.assistantGroups = state.assistantGroups.filter(group => group.id !== id);
+            state.assistantSessions.delete(id);
+        }
+    }
+
+    function sessionClassified(session) {
+        if (!session?.id || !session.cwd) return;
+        const rows = state.projectSessions.get(session.cwd) || [];
+        const current = state.cwd === session.cwd && state.session?.id === session.id;
+        const updated = rows.some(item => item.id === session.id)
+            ? rows.map(item => item.id === session.id ? { ...item, ...session } : item) : [session, ...rows];
+        state.projectSessions.set(session.cwd, updated);
+        syncAssistantSessionLists(session.cwd, updated);
+        if (session.cwd === state.cwd) state.sessions = updated;
+        if (current) {
+            state.session = { ...state.session, ...session };
+            if (state.assistantMode && session.agentProfile?.id === state.assistantProfileId) {
+                state.assistantProjectId = session.assistantProject?.id || `unclassified:${session.cwd}`;
+                if (window.PiWorkspaceRoute?.current().tab === 'assistant') window.PiWorkspaceRoute.navigate('assistant', {
+                    profileId: state.assistantProfileId, projectId: state.assistantProjectId, sessionId: session.id
+                }, true);
+            }
+            syncActualIdentity(); updateSessionMeta(); syncMobileHeader();
+        }
+        renderSessions();
     }
 
     function showAssistantError(error) {
@@ -1515,6 +1586,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderAssistantSessions() {
+        const anchor = captureSessionListAnchor();
         const query = elements.sessionSearch.value.trim().toLowerCase();
         const groups = state.assistantGroups.filter(group => !query || `${group.name} ${group.cwd}`.toLowerCase().includes(query)
             || state.assistantSessions.get(group.id)?.some(session => `${session.name || ''} ${session.firstMessage || ''}`.toLowerCase().includes(query)));
@@ -1530,6 +1602,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.sessionCount.textContent = translateUi('{0} 个项目', state.assistantGroups.length);
         elements.newSession.disabled = !state.assistantGroups.some(group => group.id === state.assistantProjectId && !group.unclassified && !group.archived);
         renderActivityBadges();
+        restoreSessionListAnchor(anchor);
     }
 
     function getSessionTitle(session) {
@@ -1671,7 +1744,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderSessions() {
         if (state.assistantMode) return renderAssistantSessions();
-        const scrollTop = elements.sessionList.scrollTop;
+        const anchor = captureSessionListAnchor();
         const focused = elements.sessionList.contains(document.activeElement) ? document.activeElement : null;
         const focusedWorkAction = focused?.dataset.workAction;
         const focusedCwd = focused?.closest('[data-session-id]')?.dataset.cwd || focused?.closest('[data-project-cwd]')?.dataset.projectCwd;
@@ -1747,7 +1820,7 @@ document.addEventListener('DOMContentLoaded', () => {
             action.addEventListener('click', () => query ? $('pi-search-conversations').click() : elements.projectButton.click());
             elements.sessionList.querySelector('.pi-list-state')?.append(action);
         }
-        elements.sessionList.scrollTop = scrollTop;
+        restoreSessionListAnchor(anchor);
         if (focusedWorkAction) elements.sessionList.querySelector(`[data-work-action="${CSS.escape(focusedWorkAction)}"]`)?.focus({ preventScroll: true });
         if (focusedCwd) {
             const scope = focusedSessionId
@@ -1876,7 +1949,32 @@ document.addEventListener('DOMContentLoaded', () => {
         renderSessions();
     }
 
+    const locateSessionButton = document.createElement('button');
+    locateSessionButton.id = 'pi-locate-session'; locateSessionButton.type = 'button';
+    locateSessionButton.className = 'icon-btn subtle';
+    locateSessionButton.title = translateUi('定位当前线程'); locateSessionButton.setAttribute('aria-label', locateSessionButton.title);
+    locateSessionButton.innerHTML = '<i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i>';
+    elements.refreshSessions.before(locateSessionButton);
+    locateSessionButton.addEventListener('click', () => {
+        if (!state.session) return;
+        // Presentation only: never unhide/unarchive a project or open a worker.
+        if (!elements.sessionSearchField.hidden) setSessionSearchOpen(false);
+        if (!state.assistantMode) {
+            state.expandedProjects.add(state.cwd);
+            state.archiveThreadsOpen.add(state.cwd); state.archiveProjectsOpen = true;
+            elements.sessionFilters.querySelector('[data-filter="all"]').click();
+        } else state.assistantArchivedOpen = true;
+        renderSessions();
+        const row = elements.sessionList.querySelector(`[data-cwd="${CSS.escape(state.cwd)}"][data-session-id="${CSS.escape(state.session.id)}"]`);
+        if (!row?.getClientRects().length) { toast(translateUi('当前线程不在此列表中'), 'info'); return; }
+        const list = elements.sessionList;
+        list.scrollTop += row.getBoundingClientRect().top - list.getBoundingClientRect().top - Math.max(0, (list.clientHeight - row.offsetHeight) / 2);
+        row.querySelector('.pi-session-main')?.focus({ preventScroll: true });
+    });
+
+    let beforeSidebarSearch = null;
     function setSessionSearchOpen(open) {
+        if (open && elements.sessionSearchField.hidden) beforeSidebarSearch = captureSessionListAnchor();
         elements.sessionSearchField.hidden = !open;
         archiveSearchLabel.hidden = !open || !state.archiveEnabled;
         elements.sessionHeadingTitle.hidden = open;
@@ -1890,6 +1988,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             elements.sessionSearch.value = '';
             void handleSessionSearch().catch(error => toast(error.message, 'error'));
+            if (beforeSidebarSearch) restoreSessionListAnchor(beforeSidebarSearch);
+            beforeSidebarSearch = null;
             elements.sessionSearchToggle.focus({ preventScroll: true });
         }
     }
@@ -3031,6 +3131,9 @@ document.addEventListener('DOMContentLoaded', () => {
             void refreshActivity();
         }
         switch (event.type) {
+            case 'gateway_session_classified':
+                sessionClassified(event.session);
+                break;
             case 'gateway_session_moving':
                 state.connected = false; nativeControls.disconnected(); workflows.update();
                 setConnection('connecting', translateUi('正在移动线程，请稍候…'));
@@ -3845,7 +3948,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (innerWidth <= 900) elements.inspector.classList.remove('open');
             elements.sessionPane.classList.add('open'); setSessionSearchOpen(true); return true;
         }
-        if (name === 'hotkeys') { toast(translateUi("输入 / 搜索命令、Skill 或模板，@ 搜索项目文件；↑↓ 选择，Tab/Enter 填入，Esc 关闭；加号内可添加附件或延迟发送，Shift+Enter 换行。"), 'info', 12000); return true; }
+        if (name === 'hotkeys') { toast(translateUi("输入 / 搜索命令、Skill 或模板，@ 搜索项目文件；↑↓ 选择，Tab/Enter 填入，Esc 关闭；加号内可添加附件、延迟发送或创建定时任务，Shift+Enter 换行。"), 'info', 12000); return true; }
         if (!state.connected) throw new Error(translateUi("请先打开会话"));
         if (name === 'fork' || name === 'clone') {
             if (!workflows.enabled) throw new Error(translateUi("当前后端尚未支持会话分叉"));
@@ -4021,6 +4124,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.sendButton.querySelector('i').className = shellInput ? 'fa-solid fa-terminal' : 'fa-solid fa-arrow-up';
         elements.sendButton.disabled = Boolean(state.modelRefreshOp) || state.treeBusy || !state.connected || (state.shellBusy && elements.input.value.trim() !== '/quit') || (shellInput && (state.streaming || state.pendingUi.size > 0)) || state.resourceRequested || nativeControls.value?.stopping || state.controlRequested || state.compacting || state.compactRequested || pending || submitting || (!elements.input.value.trim() && !state.attachmentFiles.length);
         elements.attachButton.disabled = !state.connected || submitting;
+        cronAddButton.disabled = !state.connected || !state.session || Boolean(state.session.ephemeral);
         const status = $('pi-attachment-status');
         status.textContent = pending ? translateUi("正在读取附件…") : submitting ? translateUi("正在提交消息…") : state.uncertainDrafts.has(state.composerSessionKey) ? translateUi("上次发送结果不确定，草稿已保留，请先核对会话") : '';
         status.hidden = !status.textContent;
@@ -4331,7 +4435,6 @@ document.addEventListener('DOMContentLoaded', () => {
             items = [
                 ...(historyItems.length ? [{ label: translateUi('历史与记录'), icon: 'fa-clock-rotate-left', children: historyItems }] : []),
                 ...(current ? [command(translateUi("消息显示…"), 'fa-eye', openMessageViewSetting)] : []),
-                ...(cronPage && state.scheduledTasks ? [command(translateUi('创建定时任务'), 'fa-calendar-check', () => cronPage.open({ cwd, sessionId: session.id }), { disabled: session.ephemeral })] : []),
                 command(translateUi("重命名"), 'fa-pen', () => renameCurrent(session, cwd), { disabled: session.ephemeral }),
                 ...(titleEditor?.enabled ? [command(translateUi('重新生成标题'), 'fa-wand-magic-sparkles', () => titleEditor.open(session, cwd), { disabled: session.ephemeral })] : []),
                 ...(workflows.enabled ? [command(translateUi("复制为新线程"), 'fa-code-branch', async () => {
@@ -4339,7 +4442,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (state.session?.id !== session.id || !state.connected) await openSession(session);
                     await workflows.openClone();
                 }, { disabled: session.ephemeral })] : []),
-                ...(transfer.movesEnabled ? [command(translateUi("移动到项目…"), 'fa-folder-open', () => transfer.openMove(session, cwd), { disabled: session.ephemeral })] : []),
+                ...(state.assistantMode && state.sessionClassificationSupported && session.agentProfile?.id === state.assistantProfileId
+                    && state.assistantGroups.some(group => group.cwd === cwd && !group.unclassified && !group.archived)
+                    ? [command(translateUi('更改分类…'), 'fa-folder-open', () => classificationEditor.open(session, cwd), { disabled: session.ephemeral })]
+                    : !session.agentProfile && !session.assistantProject && transfer.movesEnabled
+                        ? [command(translateUi("移动到项目…"), 'fa-folder-open', () => transfer.openMove(session, cwd), { disabled: session.ephemeral })] : []),
                 ...(state.manualUnread ? [command(translateUi("标记为未读"), 'fa-envelope', () => markThreadUnread(session, cwd),
                     { disabled: session.ephemeral || state.unreadRequests.has(activityKey(cwd, session.id)) })] : []),
                 { label: translateUi("复制"), icon: 'fa-copy', children: [
@@ -4376,6 +4483,14 @@ document.addEventListener('DOMContentLoaded', () => {
         threadMenu.open(anchor, items, point);
     }
 
+    const classificationEditor = window.PiAssistantProjects.createClassificationEditor({ apiFetch, toast,
+        identity: () => JSON.stringify([state.assistantMode, state.assistantProfileId, state.assistantEpoch]),
+        saved: async session => {
+            sessionClassified(session);
+            invalidateSessionList(session.cwd);
+            await loadSessions(session.cwd);
+        }
+    });
     const projectEditor = window.PiAssistantProjects.createEditor({ apiFetch, profileId: () => state.assistantProfileId,
         onSaved: project => { state.assistantProjectId = project.id; refreshAssistant(); } });
     function showAssistantMenu(target, group) {

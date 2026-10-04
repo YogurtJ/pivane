@@ -16,6 +16,7 @@ tts_history.json
 prompts.json
 pi5-access.json*
 pivane-access.json*
+pivane-network.json*
 pivane-notifications.json*
 pivane-workspace.json*
 pivane-deferred-messages*.json*

@@ -60,7 +60,7 @@ class MediaProviderService {
         this.directory = options.directory;
         this.file = path.join(this.directory, 'connections.json');
         this.credentials = options.credentials || new MediaProviderCredentials();
-        this.fetch = options.fetch || require('node-fetch');
+        this.fetch = options.fetch || require('./workspace-network-transport').networkFetch;
         this.clean = options.clean ?? process.env.PI_MEDIA_PROFILE === 'clean';
         this.busy = false; this.active = 0; this.epoch = 0;
     }

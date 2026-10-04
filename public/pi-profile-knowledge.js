@@ -21,7 +21,7 @@
     const readyRevision = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
     const rejected = error => [400, 403, 404, 413, 422, 429].includes(error?.status);
     function create({ apiFetch, root }) {
-        let profile = '', kind = 'skill', query = '', offset = 0, serial = 0, active = false, draftOnly = false;
+        let profile = '', kind = 'skill', query = '', offset = 0, serial = 0, active = false, draftOnly = false, deletedOnly = false;
         // A verified session id (U2.3) unlocks editing the project memory of that session's
         // directory only; without it project entries stay read-only.
         let sessionScope = '';
@@ -62,6 +62,7 @@
             ? item.content.slice(`---\nname: ${item.name}\ndescription: ${item.description || ''}\n---\n`.length) : item?.content || '';
         const dirty = () => draft && ['name', 'description', 'content', 'category', 'scope'].some(key => draft[key] !== (key === 'content' ? bodyFor(original()) : original()?.[key] ?? (key === 'category' ? 'fact' : key === 'scope' ? 'profile' : '')));
         const discard = async () => {
+            if (busy) return false;
             if (!dirty()) return true;
             const profileId = profile, generation = serial;
             const accepted = await globalThis.PiProfileDialog.confirm({ title: t('放弃未保存的知识草稿？'), message: t('切换后，当前条目的未保存修改将丢失。'), accept: t('放弃修改') });
@@ -78,7 +79,7 @@
                 render(); if (!snapshot || uncertain) void load(); if (!learning) void loadLearning(); return;
             }
             if (profile) draftsByProfile.set(profile, { kind, query, offset, selected, detail, draft, editing, reviewed, uncertain, learningUncertain, receipt, conflict, learningDraft });
-            profile = id || ''; serial++; learningEpoch++; memoryFull = false; legacyModel = null; draftOnly = false;
+            profile = id || ''; serial++; learningEpoch++; memoryFull = false; legacyModel = null; draftOnly = false; deletedOnly = false;
             proposalDrafts = new Map(); appliedGroups = new Set(); itemRevisions = new Map(); itemChecks = new Set(); injection = undefined;
             ({ kind = 'skill', query = '', offset = 0, selected = null, detail = null, draft = null, editing = false,
                 reviewed = true, uncertain = null, learningUncertain = null, receipt = null, conflict = false, learningDraft = null } = draftsByProfile.get(profile) || {});
@@ -95,7 +96,7 @@
             }
             // U2.4: jump to the learned skills filtered to the draft entries awaiting review.
             if (options.drafts === true && (kind !== 'skill' || !draftOnly) && await discard()) {
-                kind = 'skill'; draftOnly = true; offset = 0; selected = detail = draft = null; editing = false;
+                kind = 'skill'; draftOnly = true; deletedOnly = false; offset = 0; selected = detail = draft = null; editing = false;
             }
         }
         // Open one entry (from a chat hint): switch to its kind, then select it even when it is
@@ -126,13 +127,16 @@
         }
         function close() { active = false; serial++; learningEpoch++; sessionScope = ''; snapshot = learning = null; root.replaceChildren(); }
         async function load() {
-            if (!profile || !active) return;
+            if (!profile || !active || busy) return;
             const generation = ++serial, profileId = profile; notice = t('正在读取已保存数据…'); render();
             try {
-                const data = await apiFetch(`${base()}/knowledge?${new URLSearchParams({ kind, query, offset: String(offset) })}`);
+                const data = await apiFetch(`${base()}/knowledge?${new URLSearchParams({ kind, query, offset: String(offset), state: deletedOnly ? 'deleted' : draftOnly ? 'draft' : 'present' })}`);
                 if (!current(profileId, generation)) return;
                 if (data?.version !== 1 || !Array.isArray(data.items) || !['ready', 'pending', 'missing', 'disabled', 'unsupported', 'error'].includes(data.status)
                     || data.revision !== null && typeof data.revision !== 'string') throw new Error(t('知识接口不兼容'));
+                if (data.status === 'ready' && !data.items.length && !data.hasMore && offset > 0) {
+                    offset = Math.max(0, offset - 50); return load();
+                }
                 snapshot = data;
                 if (data.status === 'ready') for (const row of data.items) if (row?.id) itemRevisions.set(row.id, row.revision ?? null);
                 if (selected && data.status === 'ready') {
@@ -183,6 +187,7 @@
         async function choose(item) {
             if (!await discard()) return;
             selected = item; detail = draft = null; editing = false; reviewed = true; render();
+            root.querySelector('.pi-knowledge-detail')?.scrollIntoView({ block: 'nearest' });
             const profileId = profile, generation = serial;
             apiFetch(`${base()}/knowledge/items/${encodeURIComponent(item.id)}`).then(data => {
                 if (!current(profileId, generation) || selected?.id !== item.id) return;
@@ -195,6 +200,7 @@
             selected = item || null; detail = item ? detail : null; editing = true; uncertain = null; conflict = false; reviewed = true;
             draft = { name: item?.name || '', description: item?.description || '', content: bodyFor(item),
                 category: item?.category || 'fact', scope: item?.scope || 'profile' }; render();
+            root.querySelector('.pi-knowledge-editor')?.scrollIntoView({ block: 'nearest' });
         }
         function receiptText(r) {
             return [t(label[r.operation] || r.operation), t(label[r.status] || r.status), r.indexStatus === 'pending' ? t('索引待同步') : '',
@@ -256,15 +262,21 @@
             if (sessionScope) root.append(node('p', t('项目记忆按当前会话目录核实。'), 'pi-profile-note'));
             renderUsage();
             const tabs = node('div', undefined, 'pi-profile-kinds'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', t('知识类别'));
-            for (const key of ['memory', 'skill']) { const tab = button(t(label[key]), async () => { if (key === kind || !await discard()) return; kind = key; draftOnly = false; offset = 0; selected = detail = draft = null; editing = false; void load(); }); tab.setAttribute('aria-pressed', String(key === kind)); tabs.append(tab); }
+            for (const key of ['memory', 'skill']) { const tab = button(t(label[key]), async () => { if (key === kind || !await discard()) return; kind = key; draftOnly = false; deletedOnly = false; offset = 0; selected = detail = draft = null; editing = false; void load(); }); tab.setAttribute('aria-pressed', String(key === kind)); tabs.append(tab); }
             root.append(tabs);
             const tools = node('div', undefined, 'pi-knowledge-tools'), search = node('input'); search.type = 'search'; search.maxLength = 200; search.value = query;
             search.placeholder = t('搜索已保存数据'); search.setAttribute('aria-label', t('搜索已保存数据'));
             search.onchange = async () => { if (!await discard()) { search.value = query; return; } query = search.value; offset = 0; void load(); };
             const add = button(t('新建{0}', t(label[kind])), () => edit(null), 'settings-primary-button'); add.disabled = busy || !!uncertain || !readyRevision(snapshot?.revision) || !allowed(snapshot, 'create', kind); tools.append(search, add); root.append(tools);
-            if (kind === 'skill') {
+            const deletedFilter = button(deletedOnly ? t('返回未删除条目') : t('查看已删除条目'), async () => {
+                if (!await discard()) return;
+                deletedOnly = !deletedOnly; draftOnly = false; offset = 0; selected = detail = draft = null; editing = false; void load();
+            });
+            deletedFilter.classList.add('pi-knowledge-deleted-filter');
+            deletedFilter.setAttribute('aria-pressed', String(deletedOnly)); root.append(deletedFilter);
+            if (kind === 'skill' && !deletedOnly) {
                 const filterBar = node('div', undefined, 'pi-knowledge-filter');
-                const filter = button(draftOnly ? t('显示全部技能') : t('只看草稿技能'), async () => { if (!await discard()) return; draftOnly = !draftOnly; offset = 0; void load(); });
+                const filter = button(draftOnly ? t('显示全部技能') : t('只看草稿技能'), async () => { if (!await discard()) return; draftOnly = !draftOnly; offset = 0; selected = detail = draft = null; editing = false; void load(); });
                 filter.setAttribute('aria-pressed', String(draftOnly)); filterBar.append(filter); root.append(filterBar);
             }
             const message = node('p', notice ? `${notice} · ${t('存储状态：{0}', t(statusLabel[snapshot?.status] || snapshot?.status || '状态未知'))}`
@@ -276,27 +288,40 @@
                 root.append(r);
             }
             if (uncertain && !busy) root.append(button(t('刷新回执核对'), () => void load()));
+            let inlineDetail = false;
             if (snapshot?.status === 'ready') {
+                const visibleItems = snapshot.items.filter(row => (deletedOnly ? row.state === 'deleted' : row.state !== 'deleted') && (!draftOnly || row.state === 'draft'));
                 const list = node('div', undefined, 'pi-knowledge-list');
-                for (const item of snapshot.items.filter(row => !draftOnly || row.state === 'draft')) {
+                for (const item of visibleItems) {
                     // Memory rows lead with a bounded content preview so entries are recognizable without opening each one.
                     const meta = [item.kind === 'memory' ? t(label[item.category] || item.category || label[kind]) : item.description,
                         t(label[item.state] || item.state || ''), item.scope === 'project' && t('项目'), item.readOnly && t('只读')].filter(Boolean).join(' · ');
                     const title = item.kind === 'memory' ? String(item.content || '').replace(/\s+/g, ' ').trim().slice(0, 160) : item.name;
                     const row = button('', () => choose(item), 'pi-knowledge-row');
                     row.append(node('span', title || t(label[item.category] || item.category || label[kind]), 'pi-knowledge-row-title'), node('small', meta, 'pi-knowledge-row-meta'));
-                    row.setAttribute('aria-current', String(selected?.id === item.id)); list.append(row);
+                    row.setAttribute('aria-current', String(selected?.id === item.id));
+                    row.setAttribute('aria-expanded', String(selected?.id === item.id)); row.dataset.itemId = item.id; list.append(row);
+                    if (selected?.id === item.id) {
+                        renderDetail(list); if (editing) renderEditor(list); inlineDetail = true;
+                    }
                 }
-                if (!snapshot.items.filter(row => !draftOnly || row.state === 'draft').length) list.append(node('p', t('此页没有已保存数据'), 'pi-profile-note')); root.append(list);
-                const pages = node('div', undefined, 'pi-profile-pages'), prev = button(t('上一页'), () => { offset = Math.max(0, offset - Math.max(1, snapshot.items.length)); void load(); }), next = button(t('下一页'), () => { offset += snapshot.items.length; void load(); });
+                if (!visibleItems.length) list.append(node('p', t('此页没有已保存数据'), 'pi-profile-note')); root.append(list);
+                const pages = node('div', undefined, 'pi-profile-pages'), prev = button(t('上一页'), () => { offset = Math.max(0, offset - 50); void load(); }), next = button(t('下一页'), () => { offset += snapshot.items.length; void load(); });
                 prev.disabled = !offset; next.disabled = !snapshot.hasMore || !snapshot.items.length; pages.append(prev, next); root.append(pages);
             }
-            if (selected) renderDetail(); if (editing) renderEditor(); renderLearning();
-            if (busy || learningBusy) root.querySelectorAll('button[type=submit]').forEach(control => { control.disabled = true; });
+            if (!inlineDetail) { if (selected) renderDetail(); if (editing) renderEditor(); } renderLearning();
+            if (busy) root.querySelectorAll('button,input,textarea,select').forEach(control => { control.disabled = true; });
+            else if (learningBusy) root.querySelectorAll('button[type=submit]').forEach(control => { control.disabled = true; });
         }
-        function renderDetail() {
+        function renderDetail(parent = root) {
             const item = original(), box = node('section', undefined, 'pi-knowledge-detail');
-            box.append(node('h5', item.name || t(label[item.category] || label[kind])), node('small', meta(item)));
+            const heading = node('div', undefined, 'pi-knowledge-head');
+            heading.append(node('h5', item.name || t(label[item.category] || label[kind])), button(t('收起详情'), async () => {
+                if (!await discard()) return;
+                const id = selected?.id; selected = detail = draft = null; editing = false; render();
+                [...root.querySelectorAll('.pi-knowledge-row')].find(row => row.dataset.itemId === id)?.focus({ preventScroll: true });
+            }));
+            box.append(heading, node('small', meta(item)));
             if (item.description) box.append(node('p', item.description)); box.append(node('pre', detail ? item.content || '' : t('正在读取正文…')));
             if (detail) {
                 const actions = node('div', undefined, 'pi-knowledge-actions');
@@ -319,9 +344,9 @@
                     box.append(history);
                 }
             }
-            root.append(box);
+            parent.append(box);
         }
-        function renderEditor() {
+        function renderEditor(parent = root) {
             const form = node('form', undefined, 'pi-knowledge-editor'); form.append(node('h5', t(selected ? '编辑{0}' : '新建{0}', t(label[kind]))));
             if (kind === 'skill') {
                 const name = node('input'); name.required = true; name.maxLength = snapshot?.capabilities?.skillNameMaxLength || 64; name.pattern = '[a-z][a-z0-9-]{0,63}'; name.title = t('名称以小写字母开头，最多64位小写字母、数字或连字符'); name.value = draft.name; name.oninput = () => { draft.name = name.value; }; form.append(field(t('名称'), name));
@@ -353,7 +378,7 @@
             save.disabled = busy || !!uncertain || !readyRevision(snapshot?.revision) || !allowed(snapshot, selected ? 'update' : 'create', kind, detail?.item || selected)
                 || !reviewed || !(draft.scope === 'profile' || draft.scope === 'project' && projectWritable) || !!selected && detail?.item?.revision !== selected.revision;
             actions.append(save, button(t('取消'), async () => { if (!await discard()) return; editing = false; draft = null; render(); })); form.append(actions);
-            form.onsubmit = event => { event.preventDefault(); if (form.reportValidity()) void mutate(selected ? 'update' : 'create'); }; root.append(form);
+            form.onsubmit = event => { event.preventDefault(); if (form.reportValidity()) void mutate(selected ? 'update' : 'create'); }; parent.append(form);
         }
         async function mutate(operation, extra = {}) {
             const targetKind = extra.kind || original()?.kind || kind;
@@ -399,15 +424,19 @@
             } catch (error) {
                 if (current(profileId, generation)) {
                     if (error.status === 409 && (error.data?.code === 'memory-full' || error.code === 'memory-full')) {
-                        uncertain = null; memoryFull = true; notice = t('记忆已满，新记忆会被拒绝。请整理合并后再试。'); void load();
-                    } else if (error.status === 409) { uncertain = null; conflict = true; notice = t('版本冲突；草稿已保留。刷新并核对服务器版本。'); void load(); }
+                        uncertain = null; memoryFull = true; notice = t('记忆已满，新记忆会被拒绝。请整理合并后再试。');
+                    } else if (error.status === 409) { uncertain = null; conflict = true; notice = t('版本冲突；草稿已保留。刷新并核对服务器版本。'); }
                     else if (error.status === 400 && (error.data?.code || error.code) === 'content-blocked') {
                         uncertain = null; notice = (error.data?.details?.kind || error.details?.kind) === 'secret'
                             ? t('内容疑似密钥或凭据，不能保存到记忆或技能。') : t('内容疑似提示词注入指令，不能保存到记忆或技能。');
                     } else if (rejected(error)) { uncertain = null; notice = t('提交被服务端拒绝：{0}，草稿已保留。', error.message); }
                     else { uncertain = { requestId: input.requestId, operation: input.operation, draft: JSON.stringify(draft) }; notice = t('提交结果未确认：{0}。草稿与请求 ID {1} 已保留，勿重复提交。', error.message, input.requestId); }
                 }
-            } finally { busy = false; if (current(profileId, generation)) { render(); if (!uncertain && receipt?.requestId === input.requestId) void load(); } }
+            } finally {
+                busy = false;
+                if (current(profileId, generation)) { render(); if (!uncertain && (receipt?.requestId === input.requestId || conflict || memoryFull)) void load(); }
+                else if (active && root.isConnected) { render(); void load(); }
+            }
         }
         // U2.1: apply one proposal group through the batched consolidate mutation. The
         // recorded item revisions and the current snapshot revision are both confirmed.

@@ -75,9 +75,11 @@ const text = entry => {
 const effectiveText = (branch, entry) => {
     let content = entry?.message?.content;
     for (const edit of branch) if (edit.type === 'context_edit' && edit.targetId === entry?.id)
-        content = edit.replacement;
+        content = edit.replacement === null ? null : edit.replacement?.content;
     return content === null ? '' : text({ message: { content } });
 };
+const history = require('./learning-history');
+const MAX_COVERED_PAIRS = 2048;
 const triggers = require('./learning-triggers');
 const { intent, normalizePhrases } = triggers;
 const temporary = (value, phrases) => triggers.temporary(value, phrases);
@@ -125,7 +127,7 @@ const empty = () => ({ version: 1, revision: 0, settings: { ...DEFAULTS }, curso
 // Today's UTC usage shared by drain admission and the health summary.
 function budget(state, settings, reserve = RESERVED_TOKENS) {
     const today = new Date().toISOString().slice(0, 10);
-    const runs = [...state.jobs, ...state.recentRuns].filter(item => item.startedAt?.startsWith(today));
+    const runs = [...state.jobs, ...state.recentRuns].filter(item => item.startedAt?.startsWith(today) && !item.quotaRefund);
     const reservedTokens = runs.reduce((sum, item) => sum + (item.reservedTokens || RESERVED_TOKENS), 0);
     return { runs: runs.length, reservedTokens,
         exhausted: runs.length >= settings.maxRunsPerDay || reservedTokens + reserve > settings.maxTokensPerDay };
@@ -245,10 +247,10 @@ function validAction(input) {
         return Boolean(patch.provider) && patch.provider === model.provider && patch.modelId === model.modelId;
     } catch { return false; }
 }
-const publicJob = ({ id, reason, target, status, createdAt, startedAt, endedAt, model, usage, costStatus, receiptIds, error }) =>
+const publicJob = ({ id, reason, target, status, createdAt, startedAt, endedAt, model, usage, costStatus, receiptIds, error, quotaRefund }) =>
     ({ id, reason, ...(target ? { target } : {}), status, createdAt, ...(startedAt ? { startedAt } : {}), ...(endedAt ? { endedAt } : {}),
         ...(model ? { model } : {}), ...(usage ? { usage } : {}), ...(costStatus ? { costStatus } : {}),
-        ...(receiptIds ? { receiptIds } : {}), ...(error ? { error } : {}) });
+        ...(receiptIds ? { receiptIds } : {}), ...(error ? { error } : {}), ...(quotaRefund ? { quotaRefund } : {}) });
 
 class ProfileLearningService {
     // idle(job): with a job, its source session and the maintenance lock must be
@@ -323,6 +325,17 @@ class ProfileLearningService {
         }
         if (state.spent.some(value => typeof value !== 'string') || state.spent.length > MAX_ACTION_SPENT
             || Object.keys(state.actions).length > MAX_ACTIONS) fail('Invalid learning state', 503);
+        if (state.forks !== undefined && (!state.forks || typeof state.forks !== 'object'
+            || Array.isArray(state.forks) || Object.keys(state.forks).length > MAX_CURSORS)) fail('Invalid learning fork state', 503);
+        for (const cursor of Object.values(state.cursors)) if (cursor && typeof cursor === 'object'
+            && (cursor.covered !== undefined && (!Array.isArray(cursor.covered) || cursor.covered.length > MAX_COVERED_PAIRS)
+                || cursor.attempted !== undefined && (!Array.isArray(cursor.attempted) || cursor.attempted.length > MAX_COVERED_PAIRS)))
+            fail('Invalid learning coverage', 503);
+        for (const run of [...state.jobs, ...state.recentRuns]) if (run.quotaRefund !== undefined
+            && (run.quotaRefund?.reason !== 'inherited-fork-history' || run.quotaRefund.runs !== 1
+                || run.quotaRefund.reservedTokens !== (run.reservedTokens || RESERVED_TOKENS)
+                || !HEX.test(run.quotaRefund.originalRunHash || '') || typeof run.quotaRefund.requestId !== 'string'))
+            fail('Invalid learning quota refund', 503);
         // Legacy auto-learning decision: recorded here, never in profiles.json.
         if (state.legacy !== undefined && (!state.legacy || typeof state.legacy !== 'object'
             || !['adopted', 'dismissed'].includes(state.legacy.status) || typeof state.legacy.at !== 'string')) fail('Invalid learning state', 503);
@@ -409,11 +422,12 @@ class ProfileLearningService {
                 capacity: { queued: state.jobs.length, queueLimit: MAX_JOBS,
                     cursorSlotsRemaining: Math.max(0, MAX_CURSORS - Object.keys(state.cursors).length),
                     actionSlotsRemaining: Math.max(0, MAX_ACTIONS - activeActionCount(state)),
-                    blockedBranches: Object.values(state.cursors).filter(cursor => cursor?.blocked === 'branch-diverged').length },
+                    blockedBranches: Object.values(state.cursors).filter(cursor => cursor?.blocked).length },
                 limits: { maxRunsPerDay: { min: 1, max: 20 }, maxTokensPerDay: { min: 6000, max: 200000 }, consolidationInputChars: { min: 4000, max: 40000 },
                     triggerPhrases: { lists: [...triggers.LISTS], maxPhrases: triggers.MAX_PHRASES, maxLength: triggers.MAX_PHRASE },
                     periodicReviewMinutes: { min: 0, max: 10080 }, maxJobs: MAX_JOBS, maxCursors: MAX_CURSORS,
-                    maxActions: MAX_ACTIONS, actionValidityDays: 7, dedupeWindowPairs: MAX_SEEN_PER_CURSOR },
+                    maxActions: MAX_ACTIONS, actionValidityDays: 7, dedupeWindowPairs: MAX_SEEN_PER_CURSOR,
+                    durableDedupePairsPerCursor: MAX_COVERED_PAIRS },
                 cost: 'provider-reported-or-unknown', budgetDay: 'UTC', providerValidatedOnSave: true,
                 activation: 'next-turn-or-reload-required' } };
     }
@@ -581,7 +595,11 @@ class ProfileLearningService {
             const context = await this.profiles.context(manager, session.cwd);
             if (!context?.memory.enabled || !scope.verifyNativeSession(context, manager)) return;
             const branch = manager.getBranch(), completed = pairs(branch);
-            if (!completed.length) return;
+            const stateBefore = this.read(await this.location(context.profileId));
+            const nativeKey = history.sessionKey(manager);
+            const fork = history.forkBoundary(manager, context, stateBefore.forks?.[nativeKey]);
+            const inherited = history.inheritedIds(manager, fork);
+            if (!completed.length && !fork) return;
             const source = { cwd: session.cwd, sessionId, sessionPath };
             const boundary = reason === 'compaction' || reason === 'exit';
             const kinds = ['correction', 'review', 'extraction'];
@@ -589,6 +607,11 @@ class ProfileLearningService {
                 const settings = { ...DEFAULTS, ...state.settings };
                 if (this.closed) return false;
                 let changed = false;
+                if (fork && !state.forks?.[nativeKey]) {
+                    state.forks ||= {};
+                    if (Object.keys(state.forks).length >= MAX_CURSORS) return false;
+                    state.forks[nativeKey] = fork; changed = true;
+                }
                 for (const kind of kinds) {
                     const legacyKey = `${sessionId}:${kind}`;
                     const key = `${hash(`${session.path}\0${sessionId}`)}:${kind}`;
@@ -618,32 +641,44 @@ class ProfileLearningService {
                     let index = cursor.index;
                     const diverged = !Number.isSafeInteger(index) || index < 0 || index > range.length
                         || cursor.prefix !== prefix(range.slice(0, index));
-                    if (diverged && index > MAX_SEEN_PER_CURSOR) {
+                    if (!Array.isArray(cursor.covered) && diverged && index > MAX_SEEN_PER_CURSOR) {
                         if (cursor.blocked !== 'branch-diverged') { cursor.blocked = 'branch-diverged'; changed = true; }
                         continue;
+                    }
+                    if (!Array.isArray(cursor.covered)) {
+                        const migrated = diverged ? [] : range.slice(0, index).filter(row => !history.inheritedPair(row, inherited)).map(history.pairKey);
+                        if (migrated.length > MAX_COVERED_PAIRS) { cursor.blocked = 'dedupe-capacity'; changed = true; continue; }
+                        cursor.covered = migrated; changed = true;
                     }
                     if (diverged) index = 0;
                     if (cursor.blocked) { delete cursor.blocked; changed = true; }
                     if (!Array.isArray(cursor.seen)) cursor.seen = [];
+                    cursor.attempted ||= [...state.jobs, ...state.recentRuns].filter(job => job.sessionId === sessionId
+                        && job.reason === kind && job.userId && job.assistantId).map(job => `${job.userId}:${job.assistantId}`);
+                    const covered = new Set(cursor.covered);
                     for (; index < range.length; index++) {
-                        const row = range[index];
-                        const alreadyCovered = kind === 'extraction' && [...state.jobs, ...state.recentRuns].some(job =>
-                            job.sessionId === sessionId && job.userId === row.user.id && job.assistantId === row.assistant.id
-                            && !['failed', 'skipped', 'cancelled'].includes(job.status));
+                        const row = range[index], pair = history.pairKey(row);
+                        if (history.inheritedPair(row, inherited) || covered.has(pair)) continue;
+                        const alreadyCovered = [...state.jobs, ...state.recentRuns].some(job =>
+                            job.sessionId === sessionId && job.userId === row.user.id && job.assistantId === row.assistant.id)
+                            || kinds.some(value => state.cursors[`${nativeKey}:${value}`]?.attempted?.includes(pair));
                         const phrases = normalizePhrases(settings.triggerPhrases);
                         const eligible = row.userText && !temporary(row.userText, phrases) && intent(row.userText) && !alreadyCovered
                             && (kind === 'correction' ? correction(row.userText, phrases) || preference(row.userText, phrases)
                                 : kind === 'review' ? !correction(row.userText, phrases) && !preference(row.userText, phrases) : true);
                         if (eligible) {
+                            if (covered.size >= MAX_COVERED_PAIRS) { cursor.blocked = 'dedupe-capacity'; changed = true; break; }
                             const jobId = hash(`${context.profileId}:${key}:${row.user.id}:${row.assistant.id}`);
                             if (!cursor.seen.includes(jobId)) {
                                 if (state.jobs.length >= MAX_JOBS) break;
                                 if (cursor.seen.length >= MAX_SEEN_PER_CURSOR) cursor.seen.shift();
                                 cursor.seen.push(jobId);
+                                cursor.attempted.push(pair);
                                 state.jobs.push({ id: jobId, reason: kind, status: 'queued', createdAt: new Date().toISOString(),
                                     ...source, userId: row.user.id, assistantId: row.assistant.id,
                                     sourceIdentity: hash(JSON.stringify([session.path, row.user.id, row.assistant.id, row.userText, row.assistantText])) });
                             }
+                            cursor.covered.push(pair); covered.add(pair); changed = true;
                         }
                     }
                     const nextPrefix = prefix(range.slice(0, index));
@@ -697,7 +732,7 @@ class ProfileLearningService {
             const profile = await this.profile(id), models = this.preferences.getMemoryModels();
             if (!profile.enabled || !profile.memory?.enabled || !this.knowledge) return;
             let busy = false;
-            const { result: job } = await this.change(id, state => {
+            const { result: job } = await this.change(id, async state => {
                 const settings = { ...DEFAULTS, ...state.settings };
                 if (!settings.enabled) return false;
                 const eligible = state.jobs.filter(item => ['queued', 'waiting-config'].includes(item.status)
@@ -717,6 +752,15 @@ class ProfileLearningService {
                 // Consolidation has no source session, so only the maintenance lock gates it.
                 const candidate = affordable.find(item => this.idle(item));
                 if (!candidate) { busy = true; return false; }
+                // Revalidate before reserving quota: old queued fork history and
+                // abandoned/edited sources must not become charged model requests.
+                if (!['manual', 'consolidate'].includes(candidate.reason) && !await this.source(id, candidate)) {
+                    state.jobs.splice(state.jobs.indexOf(candidate), 1);
+                    state.recentRuns.push({ ...candidate, status: 'skipped', error: 'source-changed', endedAt: new Date().toISOString() });
+                    state.recentRuns = state.recentRuns.slice(-64);
+                    return { discarded: true };
+                }
+                if (this.closed || !this.idle(candidate)) { busy = !this.closed; return false; }
                 const model = models[purposeOf(candidate.reason)];
                 candidate.status = 'running'; candidate.startedAt = new Date().toISOString(); candidate.reservedTokens = reservationOf(candidate);
                 candidate.model = model; candidate.costStatus = 'unknown';
@@ -724,6 +768,7 @@ class ProfileLearningService {
             });
             if (busy) return BUSY;
             if (!job) return;
+            if (job.discarded) return true;
             const controller = new AbortController();
             const active = { profileId: id, abort: () => controller.abort(), promise: null };
             this.active.set(job.id, active);
@@ -742,7 +787,10 @@ class ProfileLearningService {
         const context = await this.profiles.context(manager, session.cwd);
         if (context?.profileId !== id || !scope.verifyNativeSession(context, manager)) return null;
         const branch = manager.getBranch(), completed = pairs(branch);
+        const state = this.read(await this.location(id));
+        const fork = history.forkBoundary(manager, context, state.forks?.[history.sessionKey(manager)]);
         const row = completed.find(pair => pair.user.id === job.userId && pair.assistant.id === job.assistantId);
+        if (job.reason !== 'manual' && row && history.inheritedPair(row, history.inheritedIds(manager, fork))) return null;
         const phrases = normalizePhrases(this.read(await this.location(id)).settings?.triggerPhrases);
         if (!row || temporary(row.userText, phrases) || !intent(row.userText)) return null;
         const identity = hash(JSON.stringify([session.path, row.user.id, row.assistant.id, row.userText, row.assistantText]));
@@ -950,6 +998,60 @@ class ProfileLearningService {
                 });
             } catch { /* Running journal is recovered as uncertain; never replay a charged request. */ }
         }
+    }
+    // Server-only, explicit reconciliation of an audited batch; not a client
+    // action and never an automatic refund for a model's duplicate/skip answer.
+    refundInherited(id, input) {
+        if (this.closed) return Promise.reject(new Error('Learning service is stopping'));
+        return this.track(this._refundInherited(id, input));
+    }
+    async _refundInherited(id, { requestId, day, runIds, expectedRevision }) {
+        if (!/^[A-Za-z0-9._-]{8,160}$/.test(requestId || '') || !/^\d{4}-\d{2}-\d{2}$/.test(day || '')
+            || !Number.isSafeInteger(expectedRevision) || !Array.isArray(runIds) || !runIds.length || runIds.length > 64
+            || new Set(runIds).size !== runIds.length || runIds.some(value => !HEX.test(value))) fail('Invalid quota reconciliation');
+        await this.profile(id);
+        const inputHash = hash(JSON.stringify([day, [...runIds].sort()]));
+        const { state } = await this.change(id, async state => {
+            const previous = state.quotaReconciliations?.[requestId];
+            if (previous) { if (previous.inputHash !== inputHash) fail('Quota reconciliation changed', 409); return false; }
+            if (state.revision !== expectedRevision) fail('Learning state changed', 409);
+            if (state.jobs.some(job => ['running', 'cancelling'].includes(job.status))) fail('Learning is running', 409);
+            if (Object.keys(state.quotaReconciliations || {}).length >= 16) fail('Quota reconciliation journal full', 409);
+            const proven = [], managers = new Map();
+            const { SessionManager } = await require('../pi-session-store').getSdk();
+            for (const runId of runIds) {
+                const run = state.recentRuns.find(item => item.id === runId);
+                if (!run || !run.startedAt?.startsWith(day) || run.quotaRefund || ['manual', 'consolidate'].includes(run.reason))
+                    fail('Run cannot be refunded', 409);
+                let proof = managers.get(run.sessionPath);
+                if (!proof) {
+                    const session = await this.store.getSession(run.cwd, run.sessionId);
+                    if (session.path !== run.sessionPath) fail('Refund source changed', 409);
+                    const manager = SessionManager.open(session.path), context = await this.profiles.context(manager, session.cwd);
+                    if (context?.profileId !== id || !scope.verifyNativeSession(context, manager)) fail('Refund source unverified', 409);
+                    const fork = history.forkBoundary(manager, context, state.forks?.[history.sessionKey(manager)]);
+                    proof = { manager, fork, ids: history.inheritedIds(manager, fork) }; managers.set(run.sessionPath, proof);
+                }
+                const row = pairs(proof.manager.getBranch()).find(row => row.user.id === run.userId && row.assistant.id === run.assistantId);
+                if (!row || !history.inheritedPair(row, proof.ids)
+                    || run.sourceIdentity !== hash(JSON.stringify([run.sessionPath, row.user.id, row.assistant.id, row.userText, row.assistantText])))
+                    fail('Run is not proven inherited history', 409);
+                proven.push({ run, boundaryId: proof.fork.boundaryId });
+            }
+            const at = new Date().toISOString();
+            const originalRuns = proven.map(({ run }) => JSON.parse(JSON.stringify(run)));
+            for (const { run, boundaryId } of proven) run.quotaRefund = { requestId, day, at, reason: 'inherited-fork-history',
+                runs: 1, reservedTokens: run.reservedTokens || RESERVED_TOKENS, boundaryId, originalRunHash: hash(JSON.stringify(run)) };
+            state.forks ||= {};
+            for (const { manager, fork } of managers.values()) if (!state.forks[history.sessionKey(manager)]) {
+                if (Object.keys(state.forks).length >= MAX_CURSORS) fail('Learning fork journal full', 409);
+                state.forks[history.sessionKey(manager)] = fork;
+            }
+            state.quotaReconciliations ||= {};
+            state.quotaReconciliations[requestId] = { inputHash, at, day, runIds: [...runIds], originalRuns, runs: proven.length,
+                reservedTokens: proven.reduce((sum, { run }) => sum + run.quotaRefund.reservedTokens, 0) };
+        });
+        return { receipt: state.quotaReconciliations[requestId], today: budget(state, { ...DEFAULTS, ...state.settings }) };
     }
     async flushRegistrations() { await Promise.allSettled([...this.enrolling]); }
     async dispose() {

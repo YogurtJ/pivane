@@ -4,7 +4,7 @@ const express = require('express');
 const { WorkspaceAccessService } = require('./server/workspace-access-service');
 const { createStaticAssets } = require('./server/static-assets');
 const { exec, execFile } = require('child_process');
-const fetch = require('node-fetch');
+const fetch = require('./server/workspace-network-transport').networkFetch;
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -25,6 +25,8 @@ const app = express();
 require('./server/pi-local-env').loadLocalEnv(path.join(__dirname, '.env'));
 const maintenance = new (require('./server/pi-maintenance-client').MaintenanceClient)();
 app.use((req, res, next) => maintenance.http(req, res, next));
+const network = new (require('./server/workspace-network-service').WorkspaceNetworkService)({ root: __dirname });
+network.applyEnvironment(process.env);
 const PORT = process.env.PORT || 11408;
 const workspaceBaseUrlProvided = Boolean(process.env.PI_WORKSPACE_BASE_URL);
 process.env.PI_WORKSPACE_BASE_URL ||= `http://127.0.0.1:${PORT}`;
@@ -88,6 +90,10 @@ workspaceAccess.publicFiles.add('/vendor/mermaid-LICENSE.txt');
 process.env.PI_WORKSPACE_INTERNAL_TOKEN = workspaceAccess.internalToken;
 workspaceAccess.mount(app);
 app.use(express.json({ limit: '32mb' }));
+network.assertStartup(workspaceAccess);
+network.initialize();
+workspaceAccess.assertNetworkChange = enabled => network.assertAccessChange(enabled);
+network.mount(app, workspaceAccess);
 app.use(createStaticAssets([
     ['/vendor/marked/', path.join(__dirname, 'node_modules', 'marked', 'lib')],
     ['/vendor/dompurify/', path.join(__dirname, 'node_modules', 'dompurify', 'dist')],
@@ -958,8 +964,9 @@ app.delete('/api/prompts/:id', (req, res) => {
     res.json({ success: true });
 });
 
-const httpServer = app.listen(PORT, process.env.HOST, () => {
+const httpServer = app.listen(PORT, network.host, () => {
     const address = httpServer.address();
+    network.attach(address, workspaceAccess);
     const localHost = ['::', '0.0.0.0'].includes(address.address) ? '127.0.0.1' : address.address;
     process.env.PI_WORKSPACE_INTERNAL_ORIGIN = `http://${localHost.includes(':') ? `[${localHost}]` : localHost}:${address.port}`;
     if (!workspaceBaseUrlProvided) process.env.PI_WORKSPACE_BASE_URL = process.env.PI_WORKSPACE_INTERNAL_ORIGIN;

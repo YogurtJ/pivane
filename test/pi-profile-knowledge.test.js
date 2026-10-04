@@ -47,6 +47,11 @@ test('revision, idempotency, tombstone and explicit restoration', { skip: !bundl
     const removed = await mutate('delete', 'memory', { itemId: item.id, itemRevision: item.revision });
     assert.equal((await service.getItem(id, item.id)).item.state, 'deleted');
     assert.equal(safeFile(path.join(root, 'MEMORY.md')).text, '');
+    const present = await service.snapshot(id, { kind: 'memory', state: 'present' });
+    const trash = await service.snapshot(id, { kind: 'memory', state: 'deleted' });
+    assert.equal(present.items.length, 0);
+    assert.equal(trash.items[0].id, item.id);
+    assert.equal(present.revision, trash.revision, 'view filters never change the write revision');
     await assert.rejects(mutate('create', 'memory', { category: 'fact', content: base.content }), /cannot be relearned/);
     const deleted = (await service.getItem(id, item.id)).item;
     const restored = await mutate('restore', 'memory', { itemId: item.id, itemRevision: deleted.revision });
@@ -74,6 +79,10 @@ test('profile skills enable, disable, history and installed boundary', async t =
     assert.equal(enabled.item.state, 'active');
     const deleted = await mutate('delete', 'skill', { itemId: first.item.id, itemRevision: enabled.item.revision });
     assert.equal(deleted.item.state, 'deleted');
+    assert.equal((await service.snapshot(id, { kind: 'skill', state: 'present' })).items.length, 0);
+    assert.equal((await service.snapshot(id, { kind: 'skill', state: 'deleted' })).items[0].id, first.item.id);
+    assert.equal((await service.snapshot(id)).items.length, 1, 'legacy callers keep all states');
+    await assert.rejects(service.snapshot(id, { state: 'invalid' }), /Invalid knowledge query/);
     await mutate('restore', 'skill', { itemId: first.item.id, itemRevision: deleted.item.revision });
     fs.mkdirSync(path.join(agent, 'skills', 'installed'), { recursive: true });
     await assert.rejects(mutate('create', 'skill', { name: 'installed', description: '', content: 'No.' }), /Installed skill/);
@@ -82,6 +91,25 @@ test('profile skills enable, disable, history and installed boundary', async t =
         fs.symlinkSync(path.join(agent, 'skills'), path.join(root, 'skills', 'linked'));
         await assert.rejects(mutate('create', 'skill', { name: 'linked', description: '', content: 'No.' }), /Unsafe (skill|profile directory)/);
     }
+});
+
+test('knowledge state filtering happens before pagination and retains a full revision', async t => {
+    const { service, root, mutate } = setup(t);
+    const removed = await mutate('create', 'skill', { name: 'removed-skill', content: 'Old steps.', description: '' });
+    await mutate('delete', 'skill', { itemId: removed.item.id, itemRevision: removed.item.revision });
+    for (let i = 0; i < 55; i++) {
+        const name = `fixture-${i}`, dir = path.join(root, 'skills', name);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: Paging fixture\n---\nSynthetic steps.`);
+    }
+    const first = await service.snapshot(id, { kind: 'skill', state: 'present' });
+    const last = await service.snapshot(id, { kind: 'skill', state: 'present', offset: 50 });
+    const trash = await service.snapshot(id, { kind: 'skill', state: 'deleted' });
+    assert.equal(first.items.length, 50); assert.equal(first.hasMore, true);
+    assert.equal(last.items.length, 5); assert.equal(last.hasMore, false);
+    assert.equal(new Set([...first.items, ...last.items].map(item => item.id)).size, 55);
+    assert.equal(trash.items.length, 1); assert.equal(trash.items[0].id, removed.item.id);
+    assert.equal(first.revision, trash.revision); assert.equal(last.revision, trash.revision);
 });
 
 test('route injection and profile isolation reject untrusted source and project key', async t => {

@@ -25,7 +25,10 @@ async function run(browser, viewport) {
     await page.addInitScript(({ cwd }) => { localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem(`pi.web.session:${cwd}`, 'a'); }, { cwd });
     await page.route('**/api/**', async route => {
         const req = route.request(), url = new URL(req.url()), endpoint = url.pathname;
-        if (endpoint === '/api/pi/status') return route.fulfill({ json: { ok: true, composerTools: true, sessionWorkflows: true, runtimeControls: true, projectRoots: ['/srv'] } });
+        if (endpoint === '/api/pi/status') return route.fulfill({ json: { ok: true, composerTools: true, sessionWorkflows: true, runtimeControls: true, scheduledTasks: true, projectRoots: ['/srv'] } });
+        if (endpoint === '/api/pi/cron') return route.fulfill({ json: { jobs: [], homes: [], limits: { maxRunsPerDay: 40 }, today: { runs: 0 } } });
+        if (endpoint === '/api/pi/profiles') return route.fulfill({ json: { profiles: [] } });
+        if (endpoint === '/api/pi/cron/preview') return route.fulfill({ json: { times: [] } });
         if (endpoint === '/api/pi/projects') return route.fulfill({ json: { projects: [{ cwd, name: 'Fixture', sessionCount: 2 }], roots: ['/srv'] } });
         if (endpoint === '/api/pi/sessions') return route.fulfill({ json: { sessions } });
         if (endpoint === '/api/pi/activity') return route.fulfill({ json: { runtimes: [], pinnedProjects: [], hiddenProjects: [], replyNotices: [] } });
@@ -84,6 +87,7 @@ async function run(browser, viewport) {
     const assertMenuRows = async () => {
         const geometry = await addMenu.evaluate(menu => ({
             width: menu.clientWidth, clipped: menu.scrollHeight > menu.clientHeight + 1,
+            composerWidth: menu.closest('.pi-composer').getBoundingClientRect().width, menuWidth: menu.getBoundingClientRect().width, height: menu.clientHeight,
             rows: [...menu.querySelectorAll('button')].filter(button => !button.closest('[hidden]')).map(button => {
                 const label = button.querySelector('span'), subtitle = label.querySelector('small');
                 const titleRange = document.createRange(); titleRange.selectNodeContents(label.firstChild);
@@ -91,10 +95,12 @@ async function run(browser, viewport) {
                 return { width: button.getBoundingClientRect().width, titleLines: titleRange.getClientRects().length, subtitleLines: subtitleRange.getClientRects().length };
             })
         }));
-        assert.equal(geometry.clipped, false, 'both menu items must fit without vertical clipping');
-        assert.equal(geometry.rows.length, 3);
+        assert.equal(geometry.clipped, false, 'the four actions fit without vertical clipping');
+        assert.ok(Math.abs(geometry.menuWidth - geometry.composerWidth) <= 2, 'the panel follows the composer width');
+        assert.ok(geometry.height >= 4 * 68, 'the panel gives each action a generous pointer target');
+        assert.equal(geometry.rows.length, 4);
         for (const row of geometry.rows) {
-            assert.ok(row.width >= geometry.width - 12, 'each item fills the menu instead of retaining icon-button width');
+            assert.ok(row.width >= geometry.width - 22, 'each item fills the menu instead of retaining icon-button width');
             assert.equal(row.titleLines, 1, 'menu title stays on one line');
             assert.equal(row.subtitleLines, 1, 'menu description stays on one line');
         }
@@ -140,6 +146,26 @@ async function run(browser, viewport) {
     assert.equal(await page.locator('#pi-workflow-dialog').evaluate(n => n.contains(document.activeElement)), true, 'plus closes before the workflow takes focus');
     await page.locator('#pi-workflow-close').click();
     assert.equal(await input.inputValue(), 'Keep this draft');
+    await page.locator('#pi-current-thread-menu').click();
+    assert.doesNotMatch(await page.locator('.pi-thread-menu').textContent(), /创建定时任务/, 'task creation moved out of the current thread menu');
+    await page.keyboard.press('Escape');
+    await plus.click(); await page.keyboard.press('End');
+    assert.equal(await page.locator('#pi-cron-add-button').evaluate(n => n === document.activeElement), true);
+    await page.keyboard.press('Enter');
+    await page.getByLabel('目标线程', { exact: true }).waitFor();
+    await page.waitForFunction(() => document.querySelector('[aria-label="目标线程"]').value === 'a');
+    assert.equal(await page.getByLabel('工作目录', { exact: false }).inputValue(), cwd);
+    assert.equal(await addMenu.isVisible(), false, 'plus closes before entering the task form');
+    assert.equal(mutations.length, 0, 'opening the task form creates no task');
+    await page.evaluate(() => window.PiWorkspaceRoute.navigate('chat'));
+    assert.equal(await input.inputValue(), 'Keep this draft', 'the task form preserves the message draft');
+    await input.fill(''); await plus.click();
+    assert.equal(await page.locator('#pi-cron-add-button').isEnabled(), true, 'task creation does not require a message draft');
+    await page.locator('#pi-delivery-toggle').click();
+    await page.locator('[data-delivery-mode="follow_up"]').waitFor();
+    const expanded = await addMenu.boundingBox();
+    assert.ok(expanded.y >= 10 && expanded.x >= 0 && expanded.x + expanded.width <= viewport.width && expanded.y + expanded.height <= viewport.height, 'expanded delivery options stay in the viewport');
+    await page.keyboard.press('Escape');
     await input.fill('/');
     await page.waitForFunction(() => document.querySelectorAll('#pi-command-menu button').length > 50);
     assert.equal(await menu.locator('img').count(), 0);
@@ -258,6 +284,9 @@ async function run(browser, viewport) {
     }
     await input.fill('/quit'); await input.press('Enter'); await page.waitForFunction(() => document.querySelector('#pi-input').disabled);
     assert.equal(await input.inputValue(), '', 'quit removes the accepted slash draft');
+    await plus.click();
+    assert.equal(await page.locator('#pi-cron-add-button').isEnabled(), false, 'task creation is disabled without a connected conversation');
+    await page.keyboard.press('Escape');
     assert.deepEqual(errors, []);
     console.log(`PASS ${viewport.width}: plus menu/upload/scheduling/focus, inline scroll/keyboard/IME commands, built-ins, queue dispatch, slash clearing/new drafts, settings template CRUD/reload, @file and thread races, three themes`);
     await context.close();
