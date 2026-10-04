@@ -11,7 +11,7 @@
 | 协助用户安装、配置或排障的 Agent | [用户 Agent 操作指南](AGENT_GUIDE.md) |
 | 修改 Pivane 源码的开发者或 Agent | [开发文档](development/README.md) 与根目录 [AGENTS.md](../AGENTS.md) |
 
-当前正式版为 **1.6.0**（Pi 1.0.0），见 [1.6.0 版本说明](releases/1.6.0.md)；下载包、校验文件和精确验收摘要以 [GitHub Releases](https://github.com/YogurtJ/pivane/releases) 为准。新增媒体参考附件、文件预览和统一语音配置，优化长会话阅读与线程移动。旧 MCP 适配器配置须显式审查与迁移；公开发布不表示运行实例已切换。完整变化见 [CHANGELOG](../CHANGELOG.md)。
+当前正式版为 **1.6.0**（Pi 1.0.0），见 [1.6.0 版本说明](releases/1.6.0.md)；下载包、校验文件和精确验收摘要以 [GitHub Releases](https://github.com/YogurtJ/pivane/releases) 为准。新增媒体参考附件、文件预览和统一语音配置，优化长会话阅读与线程移动。旧 MCP 适配器配置须显式审查与迁移；公开发布不表示运行实例已切换。完整变化见 [CHANGELOG](../CHANGELOG.md)。1.6.1 发布候选升级至 Pi 1.0.2，新增网络与访问设置并修复侧聊布局、分叉学习及英文界面，见 [1.6.1 版本说明](releases/1.6.1.md)。
 
 下面按主题列出功能文档。每篇前半部分讲使用，后半部分可能包含接口字段和限额，供高级用户、集成者和用户 Agent 查询。模型能力来自实际配置与运行实例；文档中的示例不代表服务已经配置好。
 
@@ -62,7 +62,7 @@
 | 内容 | 文档 |
 |---|---|
 | REST/WebSocket 字段、错误与并发语义 | [API](API.md) |
-| 版本变化 | [CHANGELOG](../CHANGELOG.md) · [1.6.0](releases/1.6.0.md) · [1.5.0](releases/1.5.0.md) · [1.4.0](releases/1.4.0.md) · [1.3.0](releases/1.3.0.md) · [1.2.0](releases/1.2.0.md) · [1.1.0](releases/1.1.0.md) · [1.0.0](releases/1.0.0.md)；RC 版本说明保留在对应 Git 标签 |
+| 版本变化 | [CHANGELOG](../CHANGELOG.md) · [1.6.1](releases/1.6.1.md) · [1.6.0](releases/1.6.0.md) · [1.5.0](releases/1.5.0.md) · [1.4.0](releases/1.4.0.md) · [1.3.0](releases/1.3.0.md) · [1.2.0](releases/1.2.0.md) · [1.1.0](releases/1.1.0.md) · [1.0.0](releases/1.0.0.md)；RC 版本说明保留在对应 Git 标签 |
 | 各版本平台验收范围 | [平台验证范围](RELEASE_INSTALL_VALIDATION.md) |
 | 产品方向 | [路线图](ROADMAP.md) |
 
