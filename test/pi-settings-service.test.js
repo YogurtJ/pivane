@@ -79,6 +79,9 @@ test('custom model edits take precedence over extension registrations and preser
             cost: { input: 3, output: 4, cacheRead: 0.3, cacheWrite: 0.4 } }
     ] };
     runtime.registerProvider(providerId, extension);
+    // Registration starts an asynchronous reload; settle it before changing the
+    // file so a previous read cannot replace the next refresh's snapshot.
+    await runtime.refresh({ allowNetwork: false });
     assert.equal(runtime.getModel(providerId, modelId).contextWindow, 500000);
     const custom = (await service.listCustomProviders()).find(p => p.id === providerId);
     assert.equal(custom.models[0].contextWindow, 500000, 'editor reads the existing effective user override');
@@ -86,6 +89,7 @@ test('custom model edits take precedence over extension registrations and preser
         contextWindow: 272000, maxTokens: 32000 });
     await runtime.refresh({ allowNetwork: false });
     runtime.registerProvider(providerId, extension); // Resource reload re-registers the same extension.
+    await runtime.refresh({ allowNetwork: false });
     const effective = runtime.getModel(providerId, modelId);
     assert.equal(effective.name, 'User choice');
     assert.equal(effective.reasoning, false);
