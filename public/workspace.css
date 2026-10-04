@@ -1165,6 +1165,8 @@ button.pi-action-pending:not(.icon-btn):not(.pi-message-action) .pi-spinner { ma
     font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 .pi-markdown :not(pre) > code {
+    white-space: break-spaces;
+    overflow-wrap: anywhere;
     padding: 2px 5px;
     border: 1px solid #343a3b;
     border-radius: 3px;

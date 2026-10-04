@@ -4,7 +4,8 @@
     const KEY = 'pi.workspace.language';
     const choices = new Set(['system', 'zh-CN', 'en']);
     const rows = globalThis.PiI18nCatalog || [];
-    const messages = new Map(rows.map(([source, english]) => [source, english]));
+    // Optional third column is the English singular when the first value is exactly 1.
+    const messages = new Map(rows.map(([source, english, singular]) => [source, { english, singular }]));
     function resolve(preference, languages = []) {
         if (preference === 'zh-CN' || preference === 'en') return preference;
         for (const language of languages) {
@@ -23,7 +24,8 @@
     const locale = resolve(preference(), browserLanguages());
     function t(source, ...values) {
         if (source === null || source === undefined) return '';
-        const template = locale === 'en' ? messages.get(source) ?? source : source;
+        const message = locale === 'en' ? messages.get(source) : null;
+        const template = message ? (values[0] === 1 ? message.singular ?? message.english : message.english) : source;
         return String(template).replace(/\{(\d+)\}/g, (match, index) => index < values.length ? String(values[index]) : match);
     }
     function save(value) {

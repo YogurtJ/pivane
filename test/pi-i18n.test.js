@@ -45,14 +45,33 @@ test('translation preserves interpolated values and unknown text without recursi
     assert.equal(api.t('未知的用户正文'), '未知的用户正文');
     assert.equal(runtime({ saved: 'zh-CN' }).api.t('预览 {0}', '$&'), '预览 $&');
 });
+test('counted UI labels use English singular only for one and preserve Chinese and values', () => {
+    const { api } = runtime();
+    const chinese = runtime({ saved: 'zh-CN' }).api;
+    for (const [source, noun] of [['{0} 段思考', 'thinking block'], ['{0} 次工具调用', 'tool call'], ['{0} 次工具', 'tool call'], ['{0} 轮', 'turn']]) {
+        for (const count of [0, 1, 2]) {
+            assert.equal(api.t(source, count), `${count} ${noun}${count === 1 ? '' : 's'}`);
+            assert.equal(chinese.t(source, count), source.replace('{0}', count));
+        }
+    }
+    assert.equal(api.t('{0} 工具失败', 1), '1 tool failed');
+    assert.equal(api.t('{0} 工具失败', 2), '2 tools failed');
+    assert.equal(api.t('预览 {0}', 1), 'Preview 1', 'ordinary translations keep their template');
+    assert.equal(api.t('{0} 段思考', '{1}'), '{1} thinking blocks', 'values are not reinterpreted');
+});
 test('all catalogs, numeric placeholders and static/source bindings are complete', () => {
     const { rows } = runtime();
     const sources = new Set();
     const placeholders = text => [...text.matchAll(/\{\d+\}/g)].map(m => m[0]).sort();
-    for (const [source, english] of rows) {
+    for (const [source, english, singular] of rows) {
         assert.ok(source && english, 'empty translation');
         assert.ok(!sources.has(source), `duplicate: ${source}`); sources.add(source);
         assert.deepEqual(placeholders(english), placeholders(source), source);
+        if (singular !== undefined) {
+            assert.ok(singular && source.includes('{0}'), `invalid singular: ${source}`);
+            assert.deepEqual(placeholders(singular), placeholders(source), source);
+            assert.ok(!/<\/?(?:script|iframe|img|span|div)\b/i.test(singular), `markup in singular: ${source}`);
+        }
         assert.ok(!/<\/?(?:script|iframe|img|span|div)\b/i.test(english), `markup in translation: ${source}`);
     }
     const html = fs.readFileSync(path.join(root, 'public/index.html'), 'utf8');

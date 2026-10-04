@@ -9,11 +9,14 @@ const root = path.resolve(__dirname, '../..');
 const cwd = '/fixture/中文项目';
 const session = { id: 'language-fixture', cwd, name: '保存', messageCount: 2, modified: '2026-09-11T00:00:00Z' };
 const model = { provider: 'fixture', id: 'fixture-model', name: '模型', input: ['text', 'image'], contextWindow: 32000, available: true, thinkingLevels: ['off'] };
+const longCode = 'very_long_identifier_'.repeat(24);
+const longPath = '/workspace/' + 'directory-without-breaks/'.repeat(15) + 'file.js';
+const codeSample = `\n\nInline: \`${longCode}\`\n\nPath: \`${longPath}\`\n\n| File | Status |\n| --- | --- |\n| \`${longPath}\` | Ready |\n\n\`\`\`text\n${longCode}\n\`\`\``;
 const messages = [
     { role: 'user', timestamp: 1000, content: [{ type: 'text', text: '保存' }] },
     { role: 'assistant', timestamp: 1100, content: [{ type: 'thinking', thinking: '保存：原始思考' }, { type: 'toolCall', id: 'raw-tool', name: 'read', arguments: { path: '/fixture/中文文件.txt' } }] },
     { role: 'toolResult', timestamp: 1200, toolCallId: 'raw-tool', toolName: 'read', isError: true, content: [{ type: 'text', text: '保存：原始工具输出' }] },
-    { role: 'assistant', timestamp: 2000, content: [{ type: 'text', text: '设置\n\n`原始代码：保存`\n\n<img src=x onerror="window.i18nXss=true">' }], stopReason: 'stop', provider: 'fixture', model: 'fixture-model' }
+    { role: 'assistant', timestamp: 2000, content: [{ type: 'text', text: '设置\n\n`原始代码：保存`\n\n<img src=x onerror="window.i18nXss=true">' + codeSample }], stopReason: 'stop', provider: 'fixture', model: 'fixture-model' }
 ];
 const mediaModel = { id: 'image-fixture', name: '模型', kind: 'image', adapter: 'http-provider', configured: true, executable: true,
     parameters: { prompt: { type: 'textarea', label: '提示词', required: true, maxLength: 3000 }, width: { type: 'number', label: '宽度', default: 1024 }, settings: { type: 'json', label: '模型专属参数', default: { userText: '保存' } } } };
@@ -44,7 +47,7 @@ async function run(browser, base, width, language) {
         else if (url.pathname.endsWith('/history')) data = [];
         else if (url.pathname === '/api/pi/media/lab/review') {
             const body = req.postDataJSON(); data = { ticket: 'fixture-ticket', expiresAt: Date.now() + 600000, model: mediaModel, parameters: body.parameters,
-                warnings: ['外部服务仍可能有额外约束；费用以服务方账单为准。'], execution: { mode: 'manual', count: 1 }, cost: '外部服务仍可能有额外约束；费用以服务方账单为准。' };
+                warnings: ['外部服务仍可能有额外约束；费用以服务方账单为准。'], execution: { mode: 'manual', count: 1 }, cost: '费用由所选后端决定；当前无法提供可靠报价。' };
         } else if (url.pathname.startsWith('/api/pi/media/lab')) data = { version: 1, models: [mediaModel] };
         return route.fulfill({ json: data });
     });
@@ -69,12 +72,36 @@ async function run(browser, base, width, language) {
     assert.equal(await page.evaluate(() => Boolean(window.i18nXss)), false);
     assert.equal(await page.locator('#pi-model-select .pi-model-trigger-label').textContent(), '模型');
     assert.equal(await page.locator('#pi-thinking-select option:checked').textContent(), english ? 'Off' : '不启用');
+    assert.match(await page.locator('.pi-turn-group:visible .pi-turn-label').innerText(), english ? /1 tool call\b(?!s)/ : /1 次工具调用/);
+    const checkCode = async () => {
+        const result = await page.locator('.pi-message.assistant:visible .pi-markdown').last().evaluate(el => {
+            const bounds = el.getBoundingClientRect();
+            const inline = [...el.querySelectorAll(':not(pre) > code')];
+            const pre = el.querySelector('pre');
+            return {
+                width: el.clientWidth, scroll: el.scrollWidth,
+                inline: inline.map(code => ({ text: code.textContent, fits: [...code.getClientRects()].every(r => r.left >= bounds.left - 1 && r.right <= bounds.right + 1) })),
+                block: { text: pre.querySelector('code').textContent, width: pre.clientWidth, scroll: pre.scrollWidth, whiteSpace: getComputedStyle(pre).whiteSpace }
+            };
+        });
+        assert.ok(result.scroll <= result.width + 1, `${language}/${width}: markdown overflow ${JSON.stringify(result)}`);
+        assert.ok(result.inline.every(code => code.fits), 'inline code stays within the message');
+        assert.ok(result.inline.some(code => code.text === longCode), 'long identifier is preserved');
+        assert.equal(result.inline.filter(code => code.text === longPath).length, 2, 'paths in prose and tables are preserved');
+        assert.equal(result.block.text.trimEnd(), longCode);
+        assert.equal(result.block.whiteSpace, 'pre');
+        assert.ok(result.block.scroll > result.block.width, 'fenced code retains its own horizontal scroll');
+    };
+    await checkCode();
     await selectMessageView(page, 'full');
     assert.equal(await page.locator('.pi-tool-status').textContent(), english ? 'Failed' : '失败');
     await page.locator('[data-tool-id="raw-tool"] > summary').click();
     assert.equal(await page.locator('.pi-tool-output').textContent(), '保存：原始工具输出');
     assert.ok((await page.locator('.pi-tool-args').textContent()).includes('/fixture/中文文件.txt'));
     await selectMessageView(page, 'reading');
+    assert.equal(await page.locator('.pi-process-label:visible').innerText(), english ? 'Execution records · 1 tool call · 1 thinking block' : '执行记录 · 1 次工具调用 · 1 段思考');
+    assert.equal(await page.locator('.pi-process-status:visible').innerText(), english ? '1 tool failed' : '1 工具失败');
+    await checkCode();
     await page.locator('#pi-input').fill('保存 {0} <原始草稿>');
     await page.locator('#pi-file-input').setInputFiles({ name: '中文附件.txt', mimeType: 'text/plain', buffer: Buffer.from('保存\n用户数据') });
     await page.locator('#pi-attachments .pi-attachment-chip').first().waitFor();
@@ -134,6 +161,7 @@ async function run(browser, base, width, language) {
     await page.locator('#lab-review-dialog[open]').waitFor();
     assert.equal(await page.locator('#lab-review-fields [data-param="prompt"]').inputValue(), '保存 <原始媒体提示词>');
     assert.ok((await page.locator('#lab-review-warnings').textContent()).includes(english ? 'External services' : '外部服务'));
+    assert.equal(await page.locator('#lab-review-cost').textContent(), english ? 'Pricing depends on the selected backend; a reliable estimate is not currently available.' : '费用由所选后端决定；当前无法提供可靠报价。');
     await overflow(['.lab-header', '.lab-workspace', '.lab-editor', '.lab-results', '.lab-dialog[open]', '.lab-dialog[open] .lab-dialog-scroll', '#lab-review-fields']);
     await page.screenshot({ path: `/tmp/pivane-i18n-${language}-${width}-review.png` });
     assert.deepEqual(writes, ['/api/pi/media/lab/review']);
