@@ -29,7 +29,7 @@ async function run(browser, size, theme) {
     let models = [imageModel, { ...imageModel, id: 'manual-only', name: 'Manual Fixture', adapter: 'manual', configured: false, executable: false }, videoModel, ttsModel,
         ...['zimage','flux2','minimax-video'].flatMap(adapter => [true, false].map(configured => ({ ...imageModel, id: `legacy-${adapter}-${configured}`, kind: adapter === 'minimax-video' ? 'video' : 'image', adapter, configured })))];
     models.push({ ...imageModel, id: 'needs-required', name: 'Required specialist fixture', parameters: { ...imageModel.parameters, sampler: { type: 'text', label: '采样器', required: true } } });
-    models.push({ ...imageModel, id: 'reference-model', name: 'Reference fixture', parameters: { prompt: imageModel.parameters.prompt, image: { type: 'image', label: '参考图片', required: true }, video: { type: 'video', label: '参考视频' } } });
+    models.push({ ...imageModel, id: 'reference-model', name: 'Reference fixture', parameters: { prompt: imageModel.parameters.prompt, image: { type: 'image', label: '参考图片', required: true }, video: { type: 'video', label: '参考视频' }, images: { type: 'image', label: '多图参考', multiple: true, maxItems: 3 }, first_frame: { type: 'image', label: '首帧图片', role: 'first_frame' }, last_frame: { type: 'image', label: '尾帧图片', role: 'last_frame' } } });
     let images = [asset('old', '山谷晨光 · 历史作品')];
     page.on('pageerror', error => errors.push(error.message));
     page.on('dialog', dialog => dialog.accept());
@@ -101,13 +101,21 @@ async function run(browser, size, theme) {
     await overflow();
     assert.equal(await page.locator('#media-tab').isVisible(), true);
     const shown = key => page.locator(`#lab-parameters [data-parameter="${key}"] dd`);
-    assert.equal(await main('steps').count(), 0);
-    assert.equal(await main('options').count(), 0);
+    assert.equal(await main('steps').count(), 1);
+    assert.equal(await main('options').count(), 1);
+    assert.equal(await page.locator('.lab-planner').getAttribute('open'), null, 'Agent planning is optional and collapsed');
     assert.equal(await shown('steps').textContent(), '12');
     assert.match(await shown('optional_detail').textContent(), /未指定/);
     assert.equal(await page.locator('#lab-parameters .lab-parameter-summary :is(input,select,textarea)').count(), 0);
     await main('prompt').fill('A mountain landscape');
     assert.equal(await shown('prompt').textContent(), 'A mountain landscape');
+    await page.locator('#lab-parameters .lab-advanced-fields > summary').click();
+    await main('steps').fill('9');
+    await page.locator('#lab-review').click(); await page.locator('#lab-review-dialog[open]').waitFor();
+    assert.equal(requests.filter(r => r.path.endsWith('/plan')).length, 0, 'direct review requires no Agent');
+    assert.equal(requests.filter(r => r.path.endsWith('/review')).at(-1).body.parameters.steps, 9);
+    await page.locator('#lab-review-close').click(); await main('steps').fill('12');
+    await page.locator('.lab-planner > summary').click();
     await page.locator('[data-lab-kind="video"]').click();
     await page.locator('[data-lab-kind="image"]').click();
     assert.equal(await shown('steps').textContent(), '12', 'specialist defaults survive tab switches');
@@ -191,7 +199,7 @@ async function run(browser, size, theme) {
     await page.locator('#lab-review').click(); await page.locator('#lab-review-dialog[open]').waitFor();
     assert.equal(await page.locator('#lab-review-fields [data-parameter="text"] dd').textContent(), '你好，这是语音测试。');
     assert.equal(await page.locator('#lab-review-fields [data-parameter="option_seed"] dd').textContent(), '42');
-    assert.equal(await page.locator('#lab-review-fields [data-param="option_seed"]').count(), 0);
+    assert.equal(await page.locator('#lab-review-fields [data-param="option_seed"]').count(), 1);
     await page.locator('#lab-review-close').click();
     await page.locator('[data-lab-kind="image"]').click();
     await page.locator('#lab-model').selectOption('needs-required');
@@ -199,9 +207,10 @@ async function run(browser, size, theme) {
     const previousReviews = requests.filter(r => r.path.endsWith('/review')).length;
     await page.locator('#lab-review').click();
     await page.locator('#lab-error:visible').waitFor();
-    assert.match(await page.locator('#lab-error').textContent(), /采样器.*创作要求/);
+    assert.match(await page.locator('#lab-error').textContent(), /核对标记/);
     assert.equal(requests.filter(r => r.path.endsWith('/review')).length, previousReviews);
-    await page.locator('#lab-instruction').fill('采样器用euler'); await page.locator('#lab-plan').click();
+    assert.equal(await main('sampler').isVisible(), true, 'invalid advanced field is revealed');
+    await main('sampler').fill('euler');
     await page.waitForFunction(() => document.querySelector('#lab-parameters [data-parameter="sampler"] dd')?.textContent === 'euler');
     await page.locator('#lab-review').click(); await page.locator('#lab-review-dialog[open]').waitFor();
     assert.equal(requests.filter(r => r.path.endsWith('/review')).at(-1).body.parameters.sampler, 'euler');
@@ -212,6 +221,22 @@ async function run(browser, size, theme) {
     await picker.setInputFiles({ name: 'reference.png', mimeType: 'image/png', buffer: png });
     await page.waitForFunction(() => document.querySelector('#lab-parameters [data-param="image"]').value.startsWith('data:'));
     assert.match(await shown('image').textContent(), /附件/);
+    const multi = page.locator('#lab-parameters input[type="file"][multiple]');
+    await multi.setInputFiles([{ name: 'one.png', mimeType: 'image/png', buffer: png }, { name: 'two.png', mimeType: 'image/png', buffer: Buffer.concat([png, Buffer.from([1])]) }]);
+    await page.waitForFunction(() => JSON.parse(document.querySelector('#lab-parameters [data-param="images"]').value).length === 2);
+    const beforeOrder = JSON.parse(await main('images').inputValue());
+    const slot = multi.locator('..');
+    await slot.getByRole('button', { name: '前移', exact: true }).nth(1).click();
+    assert.deepEqual(JSON.parse(await main('images').inputValue()), [...beforeOrder].reverse());
+    assert.ok(!(await shown('images').textContent()).includes(png.toString('base64')), 'review summary redacts image lists');
+    await page.locator('#lab-parameters input[type="file"][aria-label="首帧图片"]').setInputFiles({ name: 'first.png', mimeType: 'image/png', buffer: png });
+    await page.locator('#lab-parameters input[type="file"][aria-label="尾帧图片"]').setInputFiles({ name: 'last.png', mimeType: 'image/png', buffer: png });
+    await page.waitForFunction(() => document.querySelector('#lab-parameters [data-param="last_frame"]').value.startsWith('data:'));
+    await page.locator('#lab-review').click(); await page.locator('#lab-review-dialog[open]').waitFor();
+    const attached = requests.filter(r => r.path.endsWith('/review')).at(-1).body.parameters;
+    assert.deepEqual(attached.images, [...beforeOrder].reverse()); assert.equal(attached.first_frame, attached.last_frame);
+    await overflow(); await page.screenshot({ path: `/tmp/media-references-${size.width}-${theme}.png` });
+    await page.locator('#lab-review-close').click();
     await page.locator('[data-lab-kind="video"]').click(); await page.locator('[data-lab-kind="image"]').click();
     await page.locator('#lab-model').selectOption('reference-model');
     assert.ok((await main('image').inputValue()).startsWith('data:image/png;base64,'));
@@ -222,7 +247,7 @@ async function run(browser, size, theme) {
     await page.waitForFunction(() => document.querySelector('#lab-parameters [data-param="prompt"]').value === 'Agent planned a landscape');
     assert.equal(requests.filter(r => r.path.endsWith('/plan')).at(-1).body.parameters.image, 'data:image/png;base64,' + png.toString('base64'));
     await page.locator('#lab-review').click(); await page.locator('#lab-review-dialog[open]').waitFor();
-    assert.equal(await page.locator('#lab-review-fields .lab-attachment-preview:visible').count(), 2);
+    assert.equal(await page.locator('#lab-review-fields .lab-attachment-preview:visible').count(), 6);
     assert.equal(requests.filter(r => r.path.endsWith('/review')).at(-1).body.parameters.video, 'data:video/mp4;base64,' + video.toString('base64'));
     assert.equal((await page.locator('#lab-review-json').textContent()).includes(png.toString('base64')), false);
     await page.locator('#lab-review-fields').getByRole('button', { name: '移除附件' }).first().click();
@@ -257,7 +282,7 @@ async function run(browser, size, theme) {
     await overflow(); assert.deepEqual(errors, []);
     assert.equal(executeCount, 1);
     await context.close();
-    console.log(`PASS media ${size.width}x${size.height} ${theme}: readonly specialist parameters, common edits, plan/review synchronization, explicit execution, history, structured values, source races, voice options, auth docs, empty catalog; no pageerrors/overflow`);
+    console.log(`PASS media ${size.width}x${size.height} ${theme}: editable specialist parameters, ordered references and frames, direct review without Agent, plan/review synchronization, explicit execution, history, structured values, source races, voice options, auth docs, empty catalog; no pageerrors/overflow`);
 }
 (async () => {
     const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true });

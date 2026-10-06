@@ -4,7 +4,7 @@ const { applyPromptPrefix } = require('./media-profile');
 const { MediaHttpExecutor } = require('./media-http-protocol');
 
 const KINDS = new Set(['image', 'video', 'tts']);
-const { MEDIA_TYPES, parseMedia, mediaParameters } = require('./media-attachments');
+const { MEDIA_TYPES, parseMediaField, mediaParameters } = require('./media-attachments');
 const TYPES = new Set(['text', 'textarea', 'number', 'select', 'boolean', 'json', 'image', 'video']);
 const RESERVED = new Set(['__proto__', 'constructor', 'prototype']);
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -22,6 +22,9 @@ function validateDefinition(model) {
     for (const [key, field] of Object.entries(model.parameters)) {
         if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,80}$/.test(key) || RESERVED.has(key) || !object(field) || !TYPES.has(field.type)) fail('Invalid media parameter definition');
         if (MEDIA_TYPES.has(field.type) && (field.default !== undefined || field.const !== undefined)) fail('Attachments cannot have saved defaults or fixed values');
+        if (field.multiple !== undefined && (!MEDIA_TYPES.has(field.type) || typeof field.multiple !== 'boolean')) fail('Multiple inputs require image/video parameters');
+        if (field.maxItems !== undefined && (!field.multiple || !Number.isInteger(field.maxItems) || field.maxItems < 1 || field.maxItems > 16)) fail('Attachment count must be 1–16');
+        if (field.role !== undefined && (!MEDIA_TYPES.has(field.type) || !['reference','first_frame','last_frame','mask'].includes(field.role))) fail('Invalid attachment role');
         if (field.maxLength !== undefined && (!Number.isInteger(field.maxLength) || field.maxLength < 1 || field.maxLength > 64000)) fail(`Invalid text limit: ${key}`);
         if (field.type === 'select' && (!Array.isArray(field.choices) || !field.choices.length || field.choices.length > 500
             || field.choices.some(choice => typeof (object(choice) ? choice.value : choice) !== 'string'))) fail(`Invalid choices: ${key}`);
@@ -60,7 +63,7 @@ function validateParameters(definitions, raw = {}) {
             else continue;
         }
         if (MEDIA_TYPES.has(field.type)) {
-            parseMedia(value, field.type);
+            parseMediaField(value, field);
         } else if (field.type === 'number') {
             if (typeof value !== 'number' || !Number.isFinite(value) || field.integer && !Number.isInteger(value)
                 || field.min !== undefined && value < field.min || field.max !== undefined && value > field.max) fail(`${field.label || key}: invalid number or range`);

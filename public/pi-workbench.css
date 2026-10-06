@@ -188,9 +188,8 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
 .pi-inspector-overlay > #pi-inspector-split { display: none; }
 .pi-drawer-scrim { position: absolute; inset: 0; z-index: 35; border: 0; background: rgb(20 35 26 / 20%); display: block; }
 .pi-drawer-scrim.hidden { display: none; }
-.pi-workbench:has(.pi-inspector.show-changes.files-expanded.open) > .pi-session-pane { display: flex; }
-.pi-workbench:has(.pi-inspector.show-changes.files-expanded.open) > [data-split-key="agent-sessions"] { display: block; }
-.pi-inspector-overlay > .pi-inspector.show-changes.files-expanded { width: min(1120px, calc(100% - var(--workspace-tool-width) - 32px)); flex-basis: auto; }
+/* Keep the reader's own saved offset when an expanded split crosses viewports. */
+.pi-inspector.files-expanded #pi-file-body { overflow-anchor: none; }
 .pi-tools-dialog { position: fixed; inset: 0; margin: auto; width: min(400px, calc(100vw - 28px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); color: var(--text-main); box-shadow: var(--shadow-float); }
 .pi-tools-dialog::backdrop { background: rgb(20 35 26 / 30%); }
 .pi-tools-dialog header { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 12px; }
@@ -205,11 +204,15 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
 @media (min-width: 901px) {
     .pi-workbench > .pi-session-pane { display: flex !important; }
     .pi-workbench > [data-split-key="agent-sessions"] { display: block !important; }
+    /* Expanded reading stays in the shared split, with room for the main chat. */
+    .pi-workbench > .pi-inspector.show-changes.files-expanded { width: var(--split-size, 336px); flex-basis: var(--split-size, 336px); }
+    .pi-workbench:has(.pi-inspector.show-changes.files-expanded.open) > .pi-session-pane,
+    .pi-workbench:has(.pi-inspector.show-changes.files-expanded.open) > [data-split-key="agent-sessions"] { display: none !important; }
 }
 @media (min-width: 901px) and (max-width: 1199px) {
-    /* Give the two conversations room; the project list returns when side chat closes. */
-    .pi-workbench:has(.pi-inspector.open.show-side) > .pi-session-pane { display: none !important; }
-    .pi-workbench:has(.pi-inspector.open.show-side) > [data-split-key="agent-sessions"] { display: none !important; }
+    /* Give chat and the active tool room; closing the tool restores the list. */
+    .pi-workbench:has(.pi-inspector.open) > .pi-session-pane { display: none !important; }
+    .pi-workbench:has(.pi-inspector.open) > [data-split-key="agent-sessions"] { display: none !important; }
 }
 @media (max-width: 900px) {
     body { padding: env(safe-area-inset-top) 0 0; overflow: hidden; }
@@ -245,13 +248,14 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
     .pi-connection-banner #pi-mobile-thread-title { max-width: none; }
     .pi-composer-wrap { padding: 8px 12px 10px; }
     .pi-transcript-content { padding: 20px 14px 32px; }
-    /* Phone composer: one quiet row (add, text, context ring, send). The model summary
+    /* Phone composer: full-width text above the action row. The model summary
        appears above the text only while composing, running, or opened from the ring. */
-    .pi-composer { display: flex; flex-wrap: wrap; align-items: flex-end; column-gap: 4px; row-gap: 0; padding: 6px 7px; border-radius: 16px; }
+    .pi-composer { grid-template-columns: 40px minmax(0,1fr) auto; gap: 0 4px; padding: 6px 7px; border-radius: 16px; }
+    .pi-mobile-composer-summary { grid-column: 1 / -1; grid-row: 1; width: 100%; }
     #pi-inspector-title { font-size: 16px; }
-    .pi-composer #pi-input { flex: 1 1 96px; width: 0; min-height: 40px; font-size: 16px; padding: 9px 4px; }
+    .pi-composer #pi-input { grid-column: 1 / -1; grid-row: 2; width: 100%; min-height: 40px; font-size: 16px; padding: 9px 4px; }
     .pi-composer-models { display: none; }
-    .pi-composer .pi-composer-actions { align-self: flex-end; }
+    .pi-composer-add, .pi-composer .pi-composer-actions.right { grid-row: 3; align-self: end; }
     .pi-composer .pi-send-button, .pi-composer .pi-stop-button, #pi-composer-add-button { width: 40px; height: 40px; flex-basis: 40px; border-radius: 12px; }
     #pi-composer-add-button { border: 0; background: transparent; }
     /* The ring and Send share one 40px touch column size. */
@@ -275,11 +279,6 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
     .pi-session-main { min-height: 54px; }
     .pi-recovery-notice { margin-inline: 12px; }
     .pi-composer-chips > .pi-status-chip > summary { gap: 5px; padding-inline: 9px; font-size: .72rem; }
-}
-/* Both idle and running phones keep the same composer row. */
-@media (max-width: 600px) {
-    .pi-composer[data-running="true"] #pi-input { flex: 1 1 96px; }
-    .pi-composer[data-running="true"] .pi-composer-actions.right { flex: 0 0 auto; }
 }
 @media (prefers-reduced-motion: reduce) { .sidebar, .pi-composer { transition: none; } }
 

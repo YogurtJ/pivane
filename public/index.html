@@ -543,11 +543,11 @@
                         <div class="lab-section-head"><h2><!--i18n:s1145-->模型</h2><button id="lab-refresh" class="icon-btn" type="button" title="刷新模型与历史" aria-label="刷新模型与历史" data-i18n-title="s1471" data-i18n-aria-label="s1471"><i class="fa-solid fa-rotate"></i></button></div>
                         <select id="lab-model" aria-label="媒体模型" data-i18n-aria-label="s1472"><option value=""><!--i18n:s126-->正在读取</option></select>
                         <div class="lab-model-meta"><span id="lab-model-state" role="status"><!--i18n:s1282-->尚未连接</span><button id="lab-model-docs" class="icon-btn" type="button" title="模型参数要求" aria-label="模型参数要求" data-i18n-title="s1473" data-i18n-aria-label="s1473"><i class="fa-solid fa-book-open"></i></button></div>
-                        <div class="lab-planner">
+                        <details class="lab-planner"><summary><!--i18n:s3695-->Agent 辅助规划（可选）</summary>
                             <label for="lab-instruction"><!--i18n:s1474-->创作要求</label>
                             <textarea id="lab-instruction" rows="3" maxlength="6000" placeholder="描述想生成的内容，也可补充这次的参数要求" data-i18n-placeholder="s1475"></textarea>
                             <div class="lab-planner-actions"><span id="lab-plan-state" role="status"></span><button id="lab-plan" class="lab-secondary" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i><!--i18n:s1476--> 生成方案</button></div>
-                        </div>
+                        </details>
                         <div id="lab-source" class="lab-source" hidden>
                             <div class="lab-section-head"><h2><!--i18n:s1477-->首帧</h2><button id="lab-source-clear" class="icon-btn" type="button" title="移除首帧" aria-label="移除首帧" data-i18n-title="s1478" data-i18n-aria-label="s1478"><i class="fa-solid fa-xmark"></i></button></div>
                             <label class="lab-file"><i class="fa-solid fa-paperclip"></i><!--i18n:s1479--> 选择图片<input id="lab-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label>

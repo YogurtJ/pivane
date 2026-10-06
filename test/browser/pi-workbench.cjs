@@ -97,10 +97,11 @@ async function run(browser, base, viewport, preferences = {}) {
         assert.ok(header.search && header.search.height <= 34 && header.search.scroll <= header.search.client + 1, JSON.stringify(header));
     } else assert.match(header.project, /pi-command-left/);
     if (viewport.width <= 680) {
-        // Idle phone composer: add, text, context ring and send in one row; model details only while composing.
+        // Phone composer: full-width text above actions; model details only while composing.
         const idle = await page.evaluate(() => ({ summary: getComputedStyle(document.querySelector('#pi-mobile-composer-summary')).display,
             ring: document.querySelector('#pi-mobile-context-trigger').getBoundingClientRect().width, composer: document.querySelector('.pi-composer').getBoundingClientRect().height }));
-        assert.equal(idle.summary, 'none'); assert.ok(idle.ring > 0 && idle.composer <= 60, JSON.stringify(idle));
+        assert.equal(idle.summary, 'none'); assert.ok(idle.ring > 0 && idle.composer <= 110, JSON.stringify(idle));
+        assert.ok(before.input.width >= before.composer.width - 18, JSON.stringify(before));
         await page.locator('#pi-input').focus();
         const composing = await page.evaluate(() => ({ summary: document.querySelector('#pi-mobile-composer-summary').getBoundingClientRect(), input: document.querySelector('#pi-input').getBoundingClientRect() }));
         assert.ok(composing.summary.height > 0 && composing.summary.bottom <= composing.input.top + 1, JSON.stringify(composing));
@@ -122,6 +123,7 @@ async function run(browser, base, viewport, preferences = {}) {
     await openInspector(page, 'details');
     await page.waitForFunction(() => document.querySelector('#pi-inspector').getBoundingClientRect().width > 200);
     const opened = await measure();
+    assert.equal(opened.overlay, viewport.width <= 900, 'desktop tools dock, mobile tools overlay');
     if (opened.overlay) {
         assert.ok(Math.abs(opened.chat.width - before.chat.width) < 2, 'overlay preserves conversation layout width');
         await page.waitForFunction(() => document.querySelector('.pi-transcript-shell').inert);
@@ -129,7 +131,13 @@ async function run(browser, base, viewport, preferences = {}) {
         assert.equal(await page.locator('#pi-close-inspector').evaluate(node => node === document.activeElement), true);
         await page.keyboard.press('Tab');
         assert.equal(await page.locator('#pi-inspector').evaluate(node => node.contains(document.activeElement)), true, 'focus stays in overlay');
-    } else assert.ok(opened.chat.width >= 600, JSON.stringify(opened));
+    } else {
+        assert.ok(opened.chat.width >= 359 && opened.panel.width >= 279 && opened.chat.right <= opened.panel.x + 1, JSON.stringify(opened));
+        assert.equal(await page.locator('#pi-inspector').getAttribute('aria-modal'), null);
+        assert.equal(await page.locator('.pi-drawer-scrim').isVisible(), false);
+        await page.locator('#pi-input').click();
+        assert.equal(await page.locator('#pi-input').evaluate(node => node === document.activeElement), true);
+    }
     await page.screenshot({ path: path.join(evidence, `details-${viewport.width}.png`) });
     await page.locator('#pi-close-inspector').click();
     await page.waitForFunction(() => !document.querySelector('.pi-transcript-shell').inert);
@@ -142,7 +150,8 @@ async function run(browser, base, viewport, preferences = {}) {
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('#pi-session-search-field').isVisible(), false);
     if (viewport.width <= 900) {
-        assert.equal(await page.locator('#pi-session-pane').getAttribute('aria-modal'), 'true');
+        assert.equal(await page.locator('#pi-session-pane').getAttribute('aria-modal'), null);
+        assert.equal(await page.locator('#workspace-sidebar').evaluate(node => node.inert), false, 'project drawer keeps workspace navigation available');
         await page.locator('#pi-close-sessions').click();
         await page.waitForFunction(() => !document.querySelector('.pi-transcript-shell').inert);
     }
@@ -187,9 +196,47 @@ async function run(browser, base, viewport, preferences = {}) {
         assert.deepEqual(overflow, []);
     }
     if (viewport.width <= 680) {
+        const longDraft = '目前手机版的项目与线程抽屉打开时，需要直接切换底部导航，输入框也应充分利用上下文圆环、麦克风和发送按钮上方的空间。';
+        await page.locator('#pi-input').fill(longDraft);
+        const geometry = await page.evaluate(() => {
+            const box = selector => { const r = document.querySelector(selector).getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width }; };
+            return { input: box('#pi-input'), composer: box('.pi-composer'), add: box('#pi-composer-add-button'), actions: box('.pi-composer-actions.right') };
+        });
+        assert.ok(geometry.input.width >= geometry.composer.width - 18 && geometry.input.bottom <= geometry.actions.y + 1, JSON.stringify(geometry));
+        assert.ok(Math.abs(geometry.add.y - geometry.actions.y) < 2 && geometry.input.right >= geometry.actions.right - 1, JSON.stringify(geometry));
+        await page.screenshot({ path: path.join(evidence, `long-draft-${viewport.width}.png`) });
+        await page.locator('#pi-input').fill(longDraft.repeat(8));
+        assert.ok(await page.locator('#pi-input').evaluate(node => node.scrollHeight > node.clientHeight && node.getBoundingClientRect().height <= 180), 'long drafts scroll inside the full-width input');
+        await page.locator('#pi-input').fill('Keep the draft');
+        // All bottom navigation entries activate directly from an open project drawer.
+        for (const selector of ['#workspace-theme-toggle', '#workspace-more-toggle', '#workspace-settings-toggle', '#workspace-assistant-toggle', '.nav-btn[data-tab="chat"]']) {
+            await page.locator('#pi-toggle-sessions').click();
+            await page.waitForFunction(() => document.querySelector('#pi-session-pane').classList.contains('open') && !document.querySelector('#workspace-sidebar').inert);
+            if (selector === '.nav-btn[data-tab="chat"]') { await page.locator(selector).focus(); await page.keyboard.press('Enter'); }
+            else await page.locator(selector).click();
+            await page.waitForFunction(() => !document.querySelector('#pi-session-pane').classList.contains('open') && !document.querySelector('.pi-transcript-shell').inert);
+            if (selector === '#workspace-theme-toggle' || selector === '#workspace-more-toggle') {
+                const menu = selector === '#workspace-theme-toggle' ? '#workspace-theme-menu' : '#workspace-more-menu';
+                assert.equal(await page.locator(menu).isVisible(), true);
+                await page.keyboard.press('Escape');
+                assert.equal(await page.locator(menu).isVisible(), false);
+            } else if (selector === '#workspace-settings-toggle') {
+                assert.match(page.url(), /#\/settings/);
+                await page.locator('#workspace-settings-close').click();
+            } else if (selector === '#workspace-assistant-toggle') {
+                assert.match(page.url(), /#\/assistant/);
+                await page.locator('.nav-btn[data-tab="chat"]').click();
+                await page.locator('#pi-toggle-sessions').click();
+                await page.locator('[data-session-id="empty"] .pi-session-main').click();
+                await page.waitForFunction(() => !document.querySelector('#pi-input').disabled);
+            }
+            assert.equal(await page.locator('#pi-input').inputValue(), 'Keep the draft');
+            assert.equal(await page.locator('#pi-attachments .pi-attachment-chip').count(), 1);
+        }
         await page.setViewportSize({ width: viewport.width, height: 500 });
         await page.waitForFunction(() => document.querySelector('.pi-composer').getBoundingClientRect().bottom <= innerHeight);
-        const compact = await measure(); assert.ok(compact.composer.bottom <= 500 && compact.input.width >= 96, JSON.stringify(compact));
+        await page.locator('#pi-input').fill(longDraft.repeat(8));
+        const compact = await measure(); assert.ok(compact.composer.bottom <= 500 && compact.input.width >= compact.composer.width - 18, JSON.stringify(compact));
     }
     assert.ok(!commands.some(command => ['prompt', 'steer', 'follow_up', 'abort', 'stop_and_recover'].includes(command)));
     assert.deepEqual(writes, []); assert.deepEqual(errors, []);

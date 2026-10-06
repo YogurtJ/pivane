@@ -817,7 +817,7 @@ Skill 创建 body：
 | POST | `/api/pi/media/lab/models` | `{model, confirmed:true}` 添加本地 manual/HTTP JSON 模型，不覆盖已有 ID |
 | GET | `/api/pi/media/lab/docs` | 接入协议 Markdown，仍需 token |
 | POST | `/api/pi/media/lab/plan` | `{kind, selectedModelId, instruction, parameters, cwd?}`，受限 Pi 单项规划 |
-| POST | `/api/pi/media/lab/review` | `{modelId, parameters, source?:{imageData?,imageUrl?}}`，返回规范参数、warnings、source 和 10 分钟 ticket；`image`/`video` 参数接受 PNG/JPEG/WebP/MP4 data URL，附件合计最多 20MiB，source 仍仅为旧 MiniMax 首帧兼容 |
+| POST | `/api/pi/media/lab/review` | `{modelId, parameters, source?:{imageData?,imageUrl?}}`，返回规范参数、warnings、source 和 10 分钟 ticket；`image`/`video` 参数接受 PNG/JPEG/WebP/MP4 data URL；`multiple:true` 接受有序非空数组，`maxItems` 默认8、最多16；全部附件最多20个、合计20MiB，source 仍仅为旧 MiniMax 首帧兼容 |
 | POST | `/api/pi/media/lab/execute` | 只接受 `{ticket, confirmed:true}`，执行该服务器票据 |
 | GET | `/api/pi/media/lab/history?kind=image\|video\|tts` | 只读旧、新媒体记录，不自动导入或改写 |
 | DELETE | `/api/pi/media/lab/history/:kind/:id` | 明确删除选中的本地文件和记录 |

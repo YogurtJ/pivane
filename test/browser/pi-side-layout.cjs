@@ -1,5 +1,6 @@
 // Synthetic service and WebSockets only. CSS pixels + Retina density, saved split widths,
-// interactive parallel composers, mobile modal transition, and native thinking values.
+// interactive parallel tool panels, expanded file reading, mobile modal transitions,
+// retained side/history/file state, and native thinking values.
 const assert = require('node:assert/strict');
 const express = require('express');
 const path = require('node:path');
@@ -28,11 +29,13 @@ async function run(browser, base, viewport, locale, preferred = 336, navExpanded
     await page.route('**/api/**', route => {
         assert.equal(route.request().method(), 'GET');
         const p = new URL(route.request().url()).pathname;
-        const json = p.endsWith('/status') ? { ok: true, projectRoots: ['/synthetic'], sideChat: true, sideChatContext: true, sideChatTools: true, sideChatModels: true, sideChatLifecycle: true, sideChatRetention: true }
+        const json = p.endsWith('/status') ? { ok: true, projectRoots: ['/synthetic'], sideChat: true, sideChatContext: true, sideChatTools: true, sideChatModels: true, sideChatLifecycle: true, sideChatRetention: true, fileViewer: true, fileBrowser: true, historySearch: true }
             : p.endsWith('/projects') ? { projects: [{ cwd, name: 'Fixture', sessionCount: 1 }], roots: ['/synthetic'] }
             : p.endsWith('/sessions') ? { sessions: [session] }
             : p.endsWith('/activity') ? { runtimes: [], pinnedProjects: [], hiddenProjects: [], replyNotices: [] }
-            : p.endsWith('/model-favorites') ? { version: 1, revision: 0, favorites: [] } : {};
+            : p.endsWith('/model-favorites') ? { version: 1, revision: 0, favorites: [] }
+            : p.endsWith('/files/list') ? { cwd, path: '', entries: [{ name: 'README.md', path: 'README.md', kind: 'file' }], partial: false }
+            : p.endsWith('/files/content') ? { cwd, path: 'README.md', absolutePath: cwd + '/README.md', content: '# Synthetic file\n\n' + 'A readable paragraph.\n\n'.repeat(60), revision: 'fixture', readAt: new Date().toISOString() } : {};
         return route.fulfill({ json });
     });
     const emit = event => side.send(JSON.stringify(event));
@@ -49,6 +52,7 @@ async function run(browser, base, viewport, locale, preferred = 336, navExpanded
             else if (cmd.type === 'get_side_models') data = { models: [model], levels };
             else if (cmd.type === 'get_state') data = state();
             else if (cmd.type === 'get_messages') data = { messages };
+            else if (cmd.type === 'search_history') data = { results: [], offset: 0, pageSize: 30, revision: 'fixture', hasMore: false, total: 0 };
             else if (cmd.type === 'prompt') {
                 assert.equal(isSide, true, 'layout/level controls never send the main draft'); prompts.push(cmd);
                 messages = [{ role: 'user', content: cmd.message, timestamp: Date.now() }, { role: 'assistant', content: 'Synthetic side answer', stopReason: 'stop', timestamp: Date.now() + 1 }];
@@ -62,7 +66,7 @@ async function run(browser, base, viewport, locale, preferred = 336, navExpanded
     await page.locator('#pi-input').fill('Main draft stays here');
     await openInspector(page, 'side');
     await page.locator('#pi-side-input:not([disabled])').waitFor();
-    const docked = async () => {
+    const docked = async (tool = 'side') => {
         await page.waitForFunction(() => {
             const main = document.querySelector('.pi-transcript-shell'), side = document.querySelector('#pi-inspector');
             const a = main.getBoundingClientRect(), b = side.getBoundingClientRect();
@@ -71,11 +75,11 @@ async function run(browser, base, viewport, locale, preferred = 336, navExpanded
         assert.equal(await page.locator('#pi-inspector').getAttribute('aria-modal'), null);
         assert.equal(await page.locator('.pi-drawer-scrim').isVisible(), false);
         assert.equal(await page.locator('#pi-inspector-split').isVisible(), true);
-        for (const selector of ['#pi-input', '#pi-side-input']) {
+        for (const selector of tool === 'side' ? ['#pi-input', '#pi-side-input'] : ['#pi-input']) {
             await page.locator(selector).click();
             assert.equal(await page.locator(selector).evaluate(node => node === document.activeElement), true, selector);
         }
-        for (const selector of ['body', '.pi-transcript-shell', '#pi-transcript', '.pi-composer-wrap', '#pi-side-chat']) assert.ok(await page.locator(selector).evaluate(node => node.scrollWidth <= node.clientWidth + 1), selector);
+        for (const selector of ['body', '.pi-transcript-shell', '#pi-transcript', '.pi-composer-wrap', '#pi-inspector', ...(tool === 'side' ? ['#pi-side-chat'] : tool === 'changes' ? ['#pi-file-reader'] : [])]) assert.ok(await page.locator(selector).evaluate(node => node.scrollWidth <= node.clientWidth + 1), selector);
     };
     if (viewport.width > 900) await docked();
     else { await page.waitForFunction(() => document.querySelector('.pi-transcript-shell').inert); assert.equal(await page.locator('#pi-inspector').getAttribute('aria-modal'), 'true'); }
@@ -106,10 +110,59 @@ async function run(browser, base, viewport, locale, preferred = 336, navExpanded
         await page.setViewportSize({ width: 2200, height: 950 });
         await page.waitForFunction(size => Math.abs(document.querySelector('#pi-inspector').getBoundingClientRect().width - size) < 1, preferred);
         await page.setViewportSize(viewport); await docked();
-        if (preferred >= 700 && viewport.width <= 1468) {
-            await openInspector(page, 'details'); await page.waitForFunction(() => document.querySelector('.pi-transcript-shell').inert);
-            assert.equal(await page.locator('#pi-inspector').getAttribute('aria-modal'), 'true', 'details retain their existing desktop overlay');
-            await openInspector(page, 'side'); await docked();
+        for (const tool of ['details', 'changes', 'history']) {
+            await openInspector(page, tool); await docked(tool);
+            assert.equal(await page.locator('#pi-session-pane').isVisible(), viewport.width >= 1200);
+            if (tool === 'changes') {
+                await page.locator('[data-path="README.md"]').click(); await page.locator('#pi-file-body h1').waitFor();
+                await page.locator('#pi-file-body').evaluate(node => node.scrollTop = 120);
+                const normal = await page.locator('#pi-inspector').evaluate(node => node.getBoundingClientRect().width);
+                await page.locator('#pi-files-expand').click(); await docked(tool);
+                await page.waitForFunction(size => document.querySelector('#pi-inspector').getBoundingClientRect().width >= size, normal);
+                assert.equal(await page.locator('#pi-session-pane').isVisible(), false);
+                assert.equal(await page.locator('#pi-files-expand').getAttribute('aria-pressed'), 'true');
+                await page.locator('#pi-inspector-split').focus(); await page.keyboard.press('Home');
+                await page.waitForFunction(() => document.querySelector('#pi-inspector').getBoundingClientRect().width <= 281);
+                await page.keyboard.press('End'); await docked(tool);
+                const expanded = await page.locator('#pi-inspector').evaluate(node => node.getBoundingClientRect().width);
+                assert.ok(expanded <= 1120 && expanded >= normal);
+                assert.equal(await page.evaluate(() => localStorage.getItem('pi.workspace.split:agent-inspector')), String(preferred), 'expanded resizing preserves ordinary tool preference');
+                // Let the reader's own ResizeObserver finish its column layout
+                // before comparing positions at the same expanded width.
+                const readerSettled = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve)))));
+                await readerSettled();
+                const readerShape = () => page.locator('#pi-file-body').evaluate(node => ({ top: node.scrollTop, width: node.clientWidth, height: node.clientHeight, scrollHeight: node.scrollHeight, paragraphs: node.querySelectorAll('p').length, font: getComputedStyle(node.querySelector('p')).font, paragraphTop: node.querySelector('p').getBoundingClientRect().top - node.getBoundingClientRect().top + node.scrollTop }));
+                const reading = await readerShape();
+                await page.setViewportSize({ width: 393, height: 852 });
+                await page.waitForFunction(() => document.querySelector('.pi-transcript-shell').inert);
+                assert.equal(await page.locator('#pi-inspector').getAttribute('aria-modal'), 'true');
+                assert.equal(await page.locator('#pi-file-body h1').textContent(), 'Synthetic file');
+                await page.setViewportSize(viewport); await docked(tool); await readerSettled();
+                const restored = await readerShape();
+                assert.deepEqual(restored, reading, JSON.stringify({ reading, restored }));
+                await page.locator('#pi-files-expand').click(); await docked(tool);
+                await page.waitForFunction(size => Math.abs(document.querySelector('#pi-inspector').getBoundingClientRect().width - size) < 1, normal);
+            } else if (tool === 'history') {
+                await page.locator('#pi-history-query').fill('Retained history search');
+                await page.locator('#pi-input').click();
+            }
+            await page.screenshot({ path: path.join(evidence, `${viewport.width}-${preferred}-${locale}-${navExpanded}-${tool}.png`) });
+            await page.locator('#pi-close-inspector').click();
+            await page.waitForFunction(() => getComputedStyle(document.querySelector('#pi-session-pane')).display !== 'none');
+            assert.equal(await page.locator('.pi-drawer-scrim').isVisible(), false);
+        }
+        await openInspector(page, 'history'); await docked('history');
+        assert.equal(await page.locator('#pi-history-query').inputValue(), 'Retained history search');
+        await openInspector(page, 'changes'); await docked('changes');
+        assert.equal(await page.locator('#pi-file-body h1').textContent(), 'Synthetic file');
+        await openInspector(page, 'side'); await docked();
+    } else {
+        for (const tool of ['details', 'changes', 'history', 'side']) {
+            await page.locator('#pi-inspector-title').selectOption(tool);
+            await page.waitForFunction(() => document.querySelector('.pi-transcript-shell').inert);
+            assert.equal(await page.locator('#pi-inspector').getAttribute('aria-modal'), 'true');
+            assert.equal(await page.locator('.pi-drawer-scrim').isVisible(), true);
+            assert.equal(await page.locator('#pi-inspector-split').isVisible(), false);
         }
     }
     assert.equal(await page.locator('#pi-input').inputValue(), 'Main draft stays here');
@@ -127,7 +180,7 @@ async function run(browser, base, viewport, locale, preferred = 336, navExpanded
     const server = app.listen(0,'127.0.0.1'); await once(server,'listening');
     const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
     try {
-        for (const locale of ['zh-CN','en-US']) for (const [width,height,preferred,navExpanded] of [[1468,834,700],[1280,800,800],[1440,900,800,true],[1920,1080,800],[1024,768,336],[901,768,800],[1199,800,700],[1200,800,700],[960,720,336],[900,720,700],[393,852,336],[320,740,336]]) {
+        for (const locale of ['zh-CN','en-US']) for (const [width,height,preferred,navExpanded] of [[1468,834,700],[1280,800,800],[1440,900,800,true],[1920,1080,800],[1024,768,336],[901,768,800],[901,768,800,true],[1199,800,700],[1200,800,700],[1200,800,800,true],[960,720,336],[900,720,700],[393,852,336],[320,740,336]]) {
             if (process.env.PI_SIDE_LAYOUT_WIDTH && process.env.PI_SIDE_LAYOUT_WIDTH !== String(width)) continue;
             await run(browser, 'http://127.0.0.1:'+server.address().port, {width,height},locale,preferred,navExpanded);
         }

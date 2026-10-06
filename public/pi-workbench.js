@@ -12,7 +12,10 @@
     document.addEventListener('DOMContentLoaded', () => {
         const workbench = document.querySelector('.pi-workbench');
         const inspector = $('pi-inspector'), sessions = $('pi-session-pane'), transcript = document.querySelector('.pi-transcript-shell');
+        const sidebar = $('workspace-sidebar');
         const headerControls = document.querySelector('.pi-runtime-controls');
+        // The text row precedes the actions visually on desktop and phone.
+        document.querySelector('.pi-composer-add').before($('pi-input'));
         const modelBar = document.createElement('div'); modelBar.className = 'pi-composer-models';
         modelBar.append(document.querySelector('.pi-model-field'), document.querySelector('.pi-thinking-field'));
         modelBar.querySelector('#pi-thinking-select').setAttribute('aria-label', t('思考'));
@@ -113,14 +116,9 @@
         function syncLayout() {
             frame = 0; syncTools();
             const mobile = innerWidth <= 900;
-            const width = workbench.getBoundingClientRect().width;
-            const sessionWidth = mobile ? 0 : sessions.getBoundingClientRect().width;
-            const preferred = parseFloat(inspector.style.getPropertyValue('--split-size')) || 336;
-            const expanded = inspector.classList.contains('files-expanded') && inspector.classList.contains('show-changes');
-            const sideChat = inspector.classList.contains('show-side');
-            // Side chat is a second conversation: desktop splitters fit its width so
-            // both composers remain usable. File/history/details overlays keep their policy.
-            const overlay = mobile || !sideChat && (expanded || width - sessionWidth - preferred - 62 < 600);
+            // All desktop tools share a fitted split, keeping the main conversation
+            // interactive even with a wide saved preference or expanded file reader.
+            const overlay = mobile;
             workbench.classList.toggle('pi-inspector-overlay', overlay);
             const open = inspector.classList.contains('open');
             if (open && !inspectorWasOpen) inspectorReturnFocus = inspector.contains(document.activeElement) ? lastOutsideFocus : document.activeElement;
@@ -135,7 +133,9 @@
                 if (nextModal) {
                     nextModal.inert = false;
                     if (!modal) returnFocus = nextModal.contains(document.activeElement) ? lastOutsideFocus : document.activeElement;
-                    nextModal.setAttribute('role', 'dialog'); nextModal.setAttribute('aria-modal', 'true');
+                    nextModal.setAttribute('role', 'dialog');
+                    // Project navigation leaves workspace navigation available; tool overlays remain modal.
+                    if (nextModal === inspector) nextModal.setAttribute('aria-modal', 'true');
                     nextModal.setAttribute('aria-label', nextModal === sessions ? t('项目与线程') : t('当前线程工具'));
                     // Do not steal focus from the file/side-chat owner if it already moved inside.
                     if (!nextModal.contains(document.activeElement)) (nextModal === sessions ? closeSessions : $('pi-close-inspector')).focus({ preventScroll: true });
@@ -157,7 +157,7 @@
                 }
             }
             document.querySelector('.pi-command-bar').inert = Boolean(modal);
-            $('workspace-sidebar').inert = Boolean(modal);
+            sidebar.inert = Boolean(modal && modal !== sessions);
             transcript.inert = Boolean(modal);
             sessions.inert = Boolean(modal && modal !== sessions) || mobile && !sessions.classList.contains('open');
             rail.inert = Boolean(modal);
@@ -179,6 +179,11 @@
         new MutationObserver(schedule).observe($('pi-inspector-tabs'), { subtree: true, attributes: true, attributeFilter: ['hidden', 'disabled', 'aria-selected'] });
         new MutationObserver(schedule).observe($('pi-project-button'), { attributes: true, attributeFilter: ['hidden'] });
         window.addEventListener('resize', schedule);
+        sidebar.addEventListener('click', event => {
+            if (innerWidth > 900 || !sessions.classList.contains('open') || !event.target.closest('button')) return;
+            // Close before navigation/menu owners act, so focus and their new UI stay available.
+            sessions.classList.remove('open'); inspector.classList.remove('open'); layoutChanged();
+        }, { capture: true });
         window.addEventListener('workspace:tabchanged', () => {
             if (!$('chat-tab').classList.contains('active')) { inspector.classList.remove('open'); sessions.classList.remove('open'); }
             layoutChanged();
@@ -188,7 +193,7 @@
             if (event.key === 'Escape' && sessions.contains(event.target) && !$('pi-session-search-field').hidden) return;
             if (event.key === 'Escape' && inspector.classList.contains('open')) { event.preventDefault(); inspector.classList.remove('open'); }
             else if (event.key === 'Escape' && sessions.classList.contains('open')) { event.preventDefault(); sessions.classList.remove('open'); }
-            if (event.key !== 'Tab' || !modal) return;
+            if (event.key !== 'Tab' || !modal || modal === sessions) return;
             const focusable = [...modal.querySelectorAll('button, input, select, textarea, summary, a[href], [tabindex]')].filter(node => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length && getComputedStyle(node).visibility !== 'hidden');
             if (!focusable.length) return;
             if (event.shiftKey && document.activeElement === focusable[0]) { event.preventDefault(); focusable.at(-1).focus(); }

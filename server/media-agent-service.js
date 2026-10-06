@@ -378,8 +378,8 @@ class MediaAgentService {
         const current = { modelId: model.id, parameters: { ...input.parameters } };
         const { mediaParameters } = require('./media-attachments');
         const attachments = mediaParameters(model.parameters, current.parameters);
-        const retainedBytes = [...this.mediaLabService.planningAttachments.values()].reduce((total, ref) => total + Buffer.byteLength(ref.value), 0);
-        const incomingBytes = Object.keys(attachments).reduce((total, key) => total + Buffer.byteLength(current.parameters[key]), 0);
+        const retainedBytes = [...this.mediaLabService.planningAttachments.values()].reduce((total, ref) => total + Buffer.byteLength(JSON.stringify(ref.value)), 0);
+        const incomingBytes = Object.keys(attachments).reduce((total, key) => total + Buffer.byteLength(JSON.stringify(current.parameters[key])), 0);
         if (this.mediaLabService.planningAttachments.size + Object.keys(attachments).length > 100 || retainedBytes + incomingBytes > 64 * 1024 * 1024) throw planError('媒体附件规划繁忙，请稍后再试', 429);
         const images = [], references = [];
         for (const [key, attachment] of Object.entries(attachments)) {
@@ -387,7 +387,7 @@ class MediaAgentService {
             this.mediaLabService.planningAttachments.set(token, { modelId: model.id, key, value: current.parameters[key] });
             references.push(token);
             current.parameters[key] = token;
-            if (attachment.mimeType.startsWith('image/')) images.push({ type: 'image', mimeType: attachment.mimeType, data: attachment.data });
+            for (const item of [attachment].flat()) if (item.mimeType.startsWith('image/')) images.push({ type: 'image', mimeType: item.mimeType, data: item.data });
         }
         try {
         const plannerPrompt = [
@@ -410,7 +410,7 @@ class MediaAgentService {
                 const parameters = { ...raw.parameters };
                 for (const key of Object.keys(attachments)) parameters[key] = input.parameters[key];
                 const plan = await this.mediaLabService.plan({ ...raw, parameters });
-                if (Object.values(attachments).some(item => item.mimeType.startsWith('video/'))) plan.warnings.push('参考视频会提交给生成模型；辅助 Agent 未读取视频内容。');
+                if (Object.values(attachments).flat().some(item => item.mimeType.startsWith('video/'))) plan.warnings.push('参考视频会提交给生成模型；辅助 Agent 未读取视频内容。');
                 return { ok: true, plan, plannerModel: candidate, fallbackUsed: errors.length > 0, failedAttempts: errors };
             } catch (error) {
                 errors.push({ provider: candidate.provider, modelId: candidate.modelId, error: cleanText(error.message, 'Planner failed', 500) });

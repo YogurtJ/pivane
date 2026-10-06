@@ -1,5 +1,5 @@
 const { setTimeout: delay } = require('node:timers/promises');
-const { MEDIA_TYPES, parseMedia } = require('./media-attachments');
+const { MEDIA_TYPES, parseMedia, parseMediaField } = require('./media-attachments');
 const MAX_OUTPUT = 64 * 1024 * 1024;
 const MAX_JSON = 90 * 1024 * 1024;
 const MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'audio/wav', 'audio/mpeg'];
@@ -57,8 +57,17 @@ function validateTemplate(value, definitions, depth = 0) {
         if (entries.some(([key]) => key.startsWith('$'))) {
             if (entries.length !== 1) fail('Template references must stand alone');
             const [key, target] = entries[0];
+            if (key === '$concat' && Array.isArray(target) && target.length <= 64) { target.forEach(item => validateTemplate(item, definitions, depth + 1)); return; }
+            if (key === '$media') {
+                keys(target, ['parameter', 'format', 'role'], 'media mapping');
+                const field = definitions[target.parameter];
+                if (!MEDIA_TYPES.has(field?.type) || !['inlineData', 'image_url', 'video_url'].includes(target.format)
+                    || target.format === 'image_url' && field.type !== 'image' || target.format === 'video_url' && field.type !== 'video'
+                    || target.role !== undefined && (typeof target.role !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(target.role))) fail('Invalid media mapping');
+                return;
+            }
             if (key === '$param' && typeof target === 'string' && Object.hasOwn(definitions, target)) return;
-            if (['$base64', '$mimeType'].includes(key) && MEDIA_TYPES.has(definitions[target]?.type)) return;
+            if (['$base64', '$mimeType'].includes(key) && MEDIA_TYPES.has(definitions[target]?.type) && !definitions[target].multiple) return;
             if ((key === '$model' || key === '$params') && target === true) return;
             fail('Unknown request template reference');
         }
@@ -73,6 +82,18 @@ function renderTemplate(value, parameters, remoteModel, definitions = {}) {
         budget -= 2; if (budget < 0) fail(`Rendered media request exceeds ${limit}MiB`);
         if (Array.isArray(value)) return value.map(render).filter(item => item !== undefined);
         if (!object(value)) return consume(value);
+        if (Object.hasOwn(value, '$concat')) {
+            const lists = value.$concat.map(render);
+            if (lists.some(list => !Array.isArray(list))) fail('Concatenated media content must contain arrays');
+            return lists.flat();
+        }
+        if (Object.hasOwn(value, '$media')) {
+            const { parameter, format, role } = value.$media;
+            if (parameters[parameter] === undefined) return [];
+            const values = [parameters[parameter]].flat(), media = [parseMediaField(parameters[parameter], definitions[parameter])].flat();
+            return media.map((item, index) => consume(format === 'inlineData' ? { inlineData: { mimeType: item.mimeType, data: item.data } }
+                : { type: format, [format]: { url: values[index] }, ...(role ? { role } : {}) }));
+        }
         if (Object.hasOwn(value, '$param')) return parameters[value.$param] === undefined ? undefined : consume(parameters[value.$param]);
         for (const [ref, property] of [['$base64', 'data'], ['$mimeType', 'mimeType']]) {
             if (Object.hasOwn(value, ref)) {
@@ -209,9 +230,10 @@ class MediaHttpExecutor {
             for (const [name, value] of Object.entries(requestBody)) {
                 const field = model.parameters[http.body[name]?.$param];
                 if (MEDIA_TYPES.has(field?.type)) {
-                    const media = parseMedia(value, field.type);
-                    const extension = media.mimeType.split('/')[1];
-                    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"; filename="reference.${extension}"\r\nContent-Type: ${media.mimeType}\r\n\r\n`), Buffer.from(media.data, 'base64'), Buffer.from('\r\n'));
+                    for (const media of [parseMediaField(value, field)].flat()) {
+                        const extension = media.mimeType.split('/')[1];
+                        parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"; filename="reference.${extension}"\r\nContent-Type: ${media.mimeType}\r\n\r\n`), Buffer.from(media.data, 'base64'), Buffer.from('\r\n'));
+                    }
                 } else parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
             }
             parts.push(Buffer.from(`--${boundary}--\r\n`));

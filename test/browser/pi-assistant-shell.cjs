@@ -57,12 +57,13 @@ async function assertFooterActions(page, label) {
         const rect = footer.getBoundingClientRect(), padding = getComputedStyle(footer);
         const count = document.getElementById('pi-session-count').getBoundingClientRect();
         const search = document.getElementById('pi-search-conversations').getBoundingClientRect();
+        const locate = document.getElementById('pi-locate-session').getBoundingClientRect();
         const refresh = document.getElementById('pi-refresh-sessions').getBoundingClientRect();
         return { innerRight: rect.right - parseFloat(padding.paddingRight), countRight: count.right,
-            searchLeft: search.left, searchRight: search.right, refreshLeft: refresh.left, refreshRight: refresh.right };
+            searchLeft: search.left, searchRight: search.right, locateLeft: locate.left, locateRight: locate.right, refreshLeft: refresh.left, refreshRight: refresh.right };
     });
-    assert.ok(bounds.countRight <= bounds.searchLeft && bounds.searchRight <= bounds.refreshLeft &&
-        bounds.refreshLeft - bounds.searchRight <= 8 &&
+    assert.ok(bounds.countRight <= bounds.searchLeft && bounds.searchRight <= bounds.locateLeft && bounds.locateRight <= bounds.refreshLeft &&
+        bounds.locateLeft - bounds.searchRight <= 8 && bounds.refreshLeft - bounds.locateRight <= 8 &&
         Math.abs(bounds.refreshRight - bounds.innerRight) <= 1, `${label}: ${JSON.stringify(bounds)}`);
 }
 
@@ -146,7 +147,8 @@ async function main() {
             await page.locator('#pi-input').fill('Unsent synthetic draft');
             await page.locator('#pi-file-input').setInputFiles({ name: 'fixture.txt', mimeType: 'text/plain', buffer: Buffer.from('Fixture attachment') });
             await page.waitForFunction(() => document.querySelectorAll('#pi-attachments .pi-attachment-chip').length === 1 && document.querySelector('#pi-attachments').getAttribute('aria-busy') === 'false');
-            assert.equal(await page.locator('#pi-stop-button').isVisible(), true);
+            assert.equal(await page.locator('#pi-stop-button').isVisible(), false);
+            assert.equal(await page.locator('#pi-send-button').isVisible(), true);
             if (width < 700) {
                 assert.equal(await page.locator('#workspace-more-toggle').isVisible(), true);
                 assert.equal(await page.locator('.nav-menu [data-tab="media"]').isVisible(), false);
@@ -222,7 +224,8 @@ async function main() {
             }
             assert.equal(await page.locator('#pi-input').inputValue(), 'Unsent synthetic draft');
             assert.equal(await page.locator('#pi-attachments .pi-attachment-chip').count(), 1);
-            assert.equal(await page.locator('#pi-stop-button').isVisible(), true);
+            assert.equal(await page.locator('#pi-stop-button').isVisible(), false);
+            assert.equal(await page.locator('#pi-send-button').isVisible(), true);
             assert.equal(closedSockets, 0, 'page routing keeps the current worker socket');
             assert.equal(await page.locator('#pi-actual-identity').isVisible(), false);
             await page.locator('#workspace-assistant-toggle').click();
@@ -441,8 +444,26 @@ async function main() {
                 assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1 && bounds.y >= 0 && bounds.y + bounds.height <= 852, JSON.stringify(bounds));
                 await page.screenshot({ path: path.join(evidence, `shell-project-browser-${width}.png`) });
                 await editor.locator('[data-close]').click();
-                await page.locator('#pi-close-sessions').click();
+                // The assistant drawer shares the same directly usable bottom navigation.
+                for (const selector of ['#workspace-theme-toggle', '#workspace-more-toggle', '#workspace-settings-toggle']) {
+                    assert.equal(await page.locator('#workspace-sidebar').evaluate(node => node.inert), false);
+                    await page.locator(selector).click();
+                    await page.waitForFunction(() => !document.querySelector('#pi-session-pane').classList.contains('open'));
+                    if (selector === '#workspace-settings-toggle') {
+                        assert.equal(await page.locator('#workspace-settings-dialog').isVisible(), true);
+                        await page.locator('#workspace-settings-close').click();
+                        assert.match(page.url(), /#\/assistant/);
+                    } else {
+                        const menu = selector === '#workspace-theme-toggle' ? '#workspace-theme-menu' : '#workspace-more-menu';
+                        assert.equal(await page.locator(menu).isVisible(), true);
+                        await page.keyboard.press('Escape');
+                        assert.equal(await page.locator(menu).isVisible(), false);
+                    }
+                    await page.locator('#pi-toggle-sessions').click();
+                    await page.waitForFunction(() => document.querySelector('#pi-session-pane').classList.contains('open'));
+                }
                 await page.locator('[data-tab="chat"]').click();
+                assert.equal(await page.locator('#pi-session-pane').evaluate(node => node.classList.contains('open')), false);
                 await page.locator('#pi-toggle-sessions').click();
                 await page.waitForFunction(() => document.querySelector('#pi-session-pane').classList.contains('open') && document.querySelector('#pi-session-pane').getBoundingClientRect().left >= -1);
                 await assertDrawerControls(page, `${width} Pi Agent`);

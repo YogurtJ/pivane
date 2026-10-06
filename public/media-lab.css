@@ -93,6 +93,20 @@
 .lab-preview-actions a { text-decoration: none; }
 .lab-preview p { font-size: 12px; color: var(--text-muted); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; margin: 14px 0; max-height: 180px; overflow: auto; }
 .lab-fields > .lab-parameter-note { grid-column: 1 / -1; }
+.lab-reference-inputs, .lab-advanced-fields { grid-column: 1 / -1; }
+.lab-reference-inputs { display: grid; gap: 14px; min-width: 0; }
+.lab-reference-inputs h3 { margin: 0; font-size: 15px; }
+.lab-reference-slot { padding: 14px; border: 1px dashed var(--line); border-radius: 12px; min-width: 0; }
+.lab-reference-slot:focus-within { border-color: var(--accent); }
+.lab-reference-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr)); gap: 10px; }
+.lab-reference-card { min-width: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.lab-reference-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 6px; }
+.lab-reference-actions button { font-size: 12px; padding: 5px 7px; }
+.lab-reference-slot small { overflow-wrap: anywhere; }
+.lab-advanced-fields > summary, .lab-planner > summary { cursor: pointer; font-weight: 600; padding-bottom: 12px; }
+.lab-advanced-fields[open] > .lab-fields { margin-top: 12px; }
+.mc-reference-setup { min-width: 0; border-top: 1px solid var(--line); padding-top: 12px; }
+.mc-reference-definition { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .lab-attachment-preview { display: block; width: 100%; max-height: 200px; object-fit: contain; }
 .lab-attachment-preview[hidden] { display: none; }
 .lab-field input[type="file"] { min-width: 0; width: 100%; font-size: 16px; }

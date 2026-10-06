@@ -182,7 +182,7 @@
         $('close').addEventListener('click', close);
         dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
         dialog.addEventListener('close', () => { if (view && !dialog.open) close(); });
-        $('connect').addEventListener('click', () => { close(); window.PiMediaConnections?.open({ kind: 'tts' }); });
+        $('connect').addEventListener('click', () => { close(); window.PiMediaConnections?.open({ kind: 'tts', origin: 'settings' }); });
         document.getElementById('settings-reply-tts').addEventListener('click', open);
         window.PiReplyTts = { open, close, reset, speak, plainText,
             bind(button, request) { button._speech = request; paintButton(button); button.addEventListener('click', () => void speak(request)); },

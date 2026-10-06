@@ -39,7 +39,10 @@
             return drafts.get(modelId);
         }
         const fields = (container, selectedModel, values = {}, invalidJson = {}) => window.PiMediaFields.render(container, selectedModel, values, invalidJson, { compact: true, reviewed: container.id === 'lab-review-fields' });
-        const readableJson = value => JSON.stringify(value, (_key, item) => window.PiMediaFields.displayValue(item), 2);
+        const readableJson = value => JSON.stringify(value, function (key, item) {
+            if (key === 'data' && typeof item === 'string' && /^(image|video)\//.test(this?.mimeType || '')) return translateUi('[二进制编码 · {0} 字符]', item.length);
+            return window.PiMediaFields.displayValue(item);
+        }, 2);
         const collect = window.PiMediaFields.collect;
         function remember() {
             if (!modelId) return;

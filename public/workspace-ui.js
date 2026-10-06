@@ -304,6 +304,10 @@
             const configuredMax = Number(handle.dataset.max) || 720;
             const direction = handle.dataset.splitEdge === 'right' ? -1 : 1;
             let preferredSize = storedNumber(key, defaultSize);
+            // Expanded reading has a page-local width; it must not replace the
+            // browser's saved width for details, history and side chat.
+            let expandedReadingSize = 1120;
+            const expandedReading = () => target.id === 'pi-inspector' && target.classList.contains('show-changes') && target.classList.contains('files-expanded');
             let currentSize = preferredSize;
             let draggingPointerId = null;
             let dragStart = null;
@@ -314,13 +318,13 @@
                     const occupied = [...container.children].filter(node => node !== target && !node.classList.contains('pi-transcript-shell')
                         && !(target.id === 'pi-session-pane' && ['pi-inspector', 'pi-inspector-split'].includes(node.id))
                         && getComputedStyle(node).position !== 'absolute').reduce((total, node) => total + node.getBoundingClientRect().width, 0);
-                    // Desktop side chat stays docked. Fit both splitters without changing
-                    // the saved preference; other tool panels retain their overlay policy.
+                    // Fit every desktop tool against the main conversation. File
+                    // expansion uses the same splitter with a larger reading limit.
                     if (target.id === 'pi-inspector') {
-                        const max = target.classList.contains('show-side') ? containerWidth - occupied - 480 : containerWidth - 80;
-                        return Math.max(minSize, Math.min(configuredMax, max));
+                        const max = expandedReading() ? 1120 : configuredMax;
+                        return Math.max(minSize, Math.min(max, containerWidth - occupied - 480));
                     }
-                    const reserve = target.id === 'pi-session-pane' && container.querySelector('#pi-inspector.open.show-side') ? 480 + 280 + 6 : 600;
+                    const reserve = target.id === 'pi-session-pane' && container.querySelector('#pi-inspector.open') ? 480 + 280 + 6 : 600;
                     return Math.max(minSize, Math.min(configuredMax, containerWidth - occupied - reserve));
                 }
                 if (containerWidth < minSize + 320) return configuredMax;
@@ -334,8 +338,11 @@
                 handle.setAttribute('aria-valuemax', String(Math.round(availableMax())));
                 handle.setAttribute('aria-valuenow', String(currentSize));
                 if (persist) {
-                    preferredSize = currentSize;
-                    localStorage.setItem(key, String(currentSize));
+                    if (expandedReading()) expandedReadingSize = currentSize;
+                    else {
+                        preferredSize = currentSize;
+                        localStorage.setItem(key, String(currentSize));
+                    }
                 }
             }
 
@@ -351,7 +358,7 @@
                         if (draggingPointerId !== null) finishResize({ pointerId: draggingPointerId });
                         return;
                     }
-                    if (draggingPointerId === null) applySize(preferredSize);
+                    if (draggingPointerId === null) applySize(expandedReading() ? expandedReadingSize : preferredSize);
                 });
             };
             const resizeObserver = new ResizeObserver(scheduleSize);

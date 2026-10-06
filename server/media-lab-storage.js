@@ -46,7 +46,8 @@ function saveExternalMedia(root, { model, parameters, bytes, mimeType, taskId })
     const filename = `lab_${id}.${extensions[mimeType]}`;
     const media = require('./media-attachments').mediaParameters(model.parameters || {}, parameters);
     const savedParameters = Object.fromEntries(Object.entries(parameters).filter(([key]) => !Object.hasOwn(media, key)));
-    const references = Object.fromEntries(Object.entries(media).map(([key, value]) => [key, { mimeType: value.mimeType, bytes: value.bytes }]));
+    const metadata = value => ({ mimeType: value.mimeType, bytes: value.bytes });
+    const references = Object.fromEntries(Object.entries(media).map(([key, value]) => [key, Array.isArray(value) ? value.map(metadata) : metadata(value)]));
     const item = { id, filename, [config.urlKey]: config.prefix + filename, mimeType,
         model: model.remoteModel || model.id, labModelId: model.id, source: model.adapter === 'http-provider' ? 'media-lab-http' : 'media-lab-http-json', parameters: savedParameters,
         ...(Object.keys(references).length ? { references } : {}),

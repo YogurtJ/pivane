@@ -15,16 +15,23 @@ function parseMedia(value, kind) {
     if (!valid) fail();
     return { mimeType: mime, data: match[2], bytes: bytes.length };
 }
+function parseMediaField(value, field) {
+    if (!field.multiple) return parseMedia(value, field.type);
+    if (!Array.isArray(value) || !value.length || value.length > (field.maxItems || 8)) throw Object.assign(new Error('Invalid attachment list or too many references'), { statusCode: 400 });
+    return value.map(item => parseMedia(item, field.type));
+}
 function mediaParameters(definitions, parameters) {
     const result = {};
-    let bytes = 0;
+    let bytes = 0, count = 0;
     for (const [key, field] of Object.entries(definitions)) {
         if (!MEDIA_TYPES.has(field.type) || parameters[key] === undefined) continue;
-        const parsed = parseMedia(parameters[key], field.type);
-        bytes += parsed.bytes;
+        const parsed = parseMediaField(parameters[key], field);
+        count += [parsed].flat().length;
+        if (count > 20) throw Object.assign(new Error('At most 20 reference attachments per request'), { statusCode: 400 });
+        bytes += [parsed].flat().reduce((total, item) => total + item.bytes, 0);
         result[key] = parsed;
     }
     if (bytes > MAX_MEDIA_BYTES) throw Object.assign(new Error('Attachments exceed the combined 20MiB limit'), { statusCode: 400 });
     return result;
 }
-module.exports = { MAX_MEDIA_BYTES, MEDIA_TYPES, parseMedia, mediaParameters };
+module.exports = { MAX_MEDIA_BYTES, MEDIA_TYPES, parseMedia, parseMediaField, mediaParameters };

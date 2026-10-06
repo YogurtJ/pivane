@@ -58,6 +58,26 @@ function connectionTemplates() {
     const arkFirstFrame = clone(arkVideo); arkFirstFrame.name = 'Seedance Image to Video'; arkFirstFrame.parameters.image = { ...reference, label: '首帧图片' };
     arkFirstFrame.http.body.content.push({ type: 'image_url', image_url: { url: { $param: 'image' } }, role: 'first_frame' });
     arkFirstFrame.instructions = 'Seedance image-to-video with one first-frame image. Check model support and image limits in the provider documentation.';
+    const openaiMulti = clone(imageEdit); openaiMulti.name = 'GPT Image · Multi-reference';
+    delete openaiMulti.parameters.image; delete openaiMulti.http.body.image;
+    openaiMulti.parameters.images = { type: 'image', label: '参考图片', multiple: true, maxItems: 8, required: true, role: 'reference' };
+    openaiMulti.http.body['image[]'] = { $param: 'images' };
+    const geminiMulti = clone(geminiImage); geminiMulti.name = 'Gemini · Text or Reference Images';
+    geminiMulti.parameters.images = { type: 'image', label: '参考图片', multiple: true, maxItems: 8, role: 'reference' };
+    geminiMulti.http.body.contents[0].parts = { $concat: [[{ text: { $param: 'prompt' } }], { $media: { parameter: 'images', format: 'inlineData' } }] };
+    geminiMulti.instructions = 'Gemini image-capable generateContent model. Optional reference images are sent as inlineData; omitting all references generates from text. Check model limits.';
+    const arkMulti = clone(arkImage); arkMulti.name = 'Seedream · Text or Reference Images';
+    arkMulti.parameters.images = { type: 'image', label: '参考图片', multiple: true, maxItems: 8, role: 'reference' }; arkMulti.http.body.image = { $param: 'images' };
+    const arkFrames = clone(arkVideo); arkFrames.name = 'Seedance · First and Last Frame';
+    arkFrames.parameters.first_frame = { type: 'image', label: '首帧图片', required: true, role: 'first_frame' };
+    arkFrames.parameters.last_frame = { type: 'image', label: '尾帧图片', role: 'last_frame' };
+    arkFrames.http.body.content = { $concat: [[{ type: 'text', text: { $param: 'prompt' } }], { $media: { parameter: 'first_frame', format: 'image_url', role: 'first_frame' } }, { $media: { parameter: 'last_frame', format: 'image_url', role: 'last_frame' } }] };
+    arkFrames.instructions = 'Choose a Seedance model that supports first/last-frame input. A missing last frame is omitted entirely. Verify model-specific duration, image sizes and supported input combinations.';
+    const arkReferences = clone(arkVideo); arkReferences.name = 'Seedance · Reference Images and Videos';
+    arkReferences.parameters.images = { type: 'image', label: '参考图片', multiple: true, maxItems: 8, role: 'reference' };
+    arkReferences.parameters.videos = { type: 'video', label: '参考视频', multiple: true, maxItems: 3, role: 'reference' };
+    arkReferences.http.body.content = { $concat: [[{ type: 'text', text: { $param: 'prompt' } }], { $media: { parameter: 'images', format: 'image_url', role: 'reference_image' } }, { $media: { parameter: 'videos', format: 'video_url', role: 'reference_video' } }] };
+    arkReferences.instructions = 'For models and endpoints documenting reference_image/reference_video content roles and inline data URLs. Older Seedance models may not support these roles. Verify accepted video encoding, duration, counts and model input combinations before use. No remote upload service is implied.';
     return [
         { id: 'openai-image', name: 'OpenAI 兼容图像 · base64', model: image },
         { id: 'image-url', name: '图像 JSON · 下载 URL', model: imageUrl },
@@ -72,14 +92,19 @@ function connectionTemplates() {
         { id: 'gemini-image-edit', name: 'Google · 参考图生图', model: geminiEdit, recommended: true },
         { id: 'ark-image-edit', name: '火山方舟 · 参考图生图', model: arkEdit, recommended: true },
         { id: 'ark-video-first-frame', name: '火山方舟 · 首帧生视频', model: arkFirstFrame, recommended: true },
-        { id: 'ark-video', name: '火山方舟 · Seedance 视频', model: arkVideo, recommended: true, help: '使用方舟 /api/v3 地址；已预填创建和查询协议，模型 ID 由你填写。下载来源需按账号区域配置。' }
+        { id: 'ark-video', name: '火山方舟 · Seedance 视频', model: arkVideo, recommended: true, help: '使用方舟 /api/v3 地址；已预填创建和查询协议，模型 ID 由你填写。下载来源需按账号区域配置。' },
+        { id: 'openai-image-multi', name: 'OpenAI 兼容 · 多图参考编辑', model: openaiMulti, recommended: true },
+        { id: 'gemini-image-multi', name: 'Google · 文生图 / 多图参考', model: geminiMulti, recommended: true },
+        { id: 'ark-image-multi', name: '火山方舟 · 文生图 / 多图参考', model: arkMulti, recommended: true },
+        { id: 'ark-video-frames', name: '火山方舟 · 首尾帧生视频', model: arkFrames, recommended: true },
+        { id: 'ark-video-references', name: '火山方舟 · 图片 / 视频参考', model: arkReferences, recommended: true, help: '仅适用于文档明确支持参考图片/视频角色和内联文件的模型；不支持这些输入的旧模型请使用文生视频或首帧模板。' }
     ];
 }
 function connectionSchema() {
     return { version: 1, modelFields: ['id?','name','kind=image|video|tts','remoteModel','instructions','parameters','http'],
-        parameters: 'Object keyed by parameter name; existing types: text, textarea, number, select, boolean, json, image, video. image/video are uploaded data URLs (PNG/JPEG/WebP or MP4), combined maximum 20MiB, no default/const. Supported required/default/const/min/max/step/integer/maxLength/choices/label/description.',
+        parameters: 'Object keyed by parameter name; existing types: text, textarea, number, select, boolean, json, image, video. image/video are uploaded data URLs (PNG/JPEG/WebP or MP4), combined maximum 20MiB, no default/const. multiple:true accepts a nonempty ordered array, maxItems defaults to 8 (1–16); role: reference|first_frame|last_frame|mask is UI metadata. Supported required/default/const/min/max/step/integer/maxLength/choices/label/description.',
         http: { encoding: 'json (default) or multipart. Multipart is a flat map of scalar values/$model/$param; image/video parameters become file parts.', path: 'POST path relative to provider Base URL (leading slash does not remove its prefix); optional {model} or {param:fieldName} (scalar parameter values are URL-encoded)',
-            body: 'JSON object template: {$param:"field"} inserts a typed parameter, {$model:true} inserts the remote model ID, {$params:true} inserts the entire parameter object. {$base64:"attachment"} and {$mimeType:"attachment"} extract image/video payload and MIME. No code or expressions.',
+            body: 'JSON object template: {$param:"field"} inserts a typed parameter, {$model:true} inserts the remote model ID, {$params:true} inserts the entire parameter object. {$base64:"attachment"} and {$mimeType:"attachment"} extract single image/video payload and MIME. {$media:{parameter:"images",format:"inlineData"|"image_url"|"video_url",role?:"provider_role"}} renders zero or more media parts, omitting missing optional inputs. {$concat:[arrayOrMediaMapping,...]} joins part arrays. Multipart $param references to multiple media emit repeated parts using the literal field name (e.g. image[]). No code or expressions.',
             response: { type: 'base64 | url | binary | image-json (image only: path points to an object with b64_json or url)', path: 'JSON key/index array for base64/url; * selects the first matching array element (e.g. Gemini image parts)', mimeType: 'auto | image/png | image/jpeg | image/webp | video/mp4 | audio/wav | audio/mpeg' },
             poll: 'Optional: idPath, path containing {id} OR urlPath, statusPath, distinct pending/succeeded/failed scalar arrays (string/number/boolean/null; null matches an absent status), intervalMs 1000–60000. Poll uses GET on the provider origin only. Polling response must be JSON with base64/url result.',
             timeoutMs: '1000–1800000; default 180000 synchronous or 1800000 asynchronous' },
