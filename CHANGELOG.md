@@ -2,9 +2,9 @@
 
 本页概括用户可见变化与升级要点。安装步骤见[安装与恢复](docs/INSTALL_RECOVERY.md)；每版完整说明和验收附件见 [Releases](https://github.com/YogurtJ/pivane/releases)。历史行为不代表当前功能，当前用法以[用户指南](docs/USER_GUIDE.md)为准。
 
-## 1.6.2 · 发布候选（Pi 1.0.2）
+## 1.6.2（Pi 1.0.2）
 
-[版本说明](docs/releases/1.6.2.md)
+[版本说明](docs/releases/1.6.2.md) · [Release](https://github.com/YogurtJ/pivane/releases/tag/v1.6.2)
 
 - 持久聊天线程可上传 DOCX、XLSX、PPTX 和 PDF 原件，单文件 20 MiB、每条最多五份。文件卡片可下载，Agent 使用 `read_document` 按段落、工作表/行列或页读取；保留公式原式与缓存值，明确部分读取和未 OCR 内容。原件私有保存，解析并发、时间及展开量受限；Office 原版预览与在线编辑尚未支持。
 
