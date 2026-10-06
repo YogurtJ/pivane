@@ -9,7 +9,7 @@ const { once } = require('node:events');
 const { WebSocket } = require('ws');
 
 const project = path.resolve(__dirname, '..');
-const token = 'integration-only-access-token-123456';
+const token = 'Test12345!';
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
 test('full service protects legacy routes and static media; cookie WS revocation retains persistent workers', { timeout: 90000 }, async t => {

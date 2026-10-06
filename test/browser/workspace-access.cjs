@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.PI_ACCESS_TEST_URL;
 if (!base || new URL(base).port === '3001') throw Error('Set PI_ACCESS_TEST_URL to an isolated instance, never production');
-const token = 'browser-fixture-access-token-987654321';
+const token = 'Test12345!';
 (async () => {
     const status = await (await fetch(base + '/api/pi/status')).json();
     assert.ok(status.projectRoots.every(p => p.startsWith('/tmp/pi-access-')), 'must use isolated project roots');
@@ -10,6 +10,7 @@ const token = 'browser-fixture-access-token-987654321';
     try {
         for (const width of [1440, 393, 320]) {
             const context = await browser.newContext({ locale: 'zh-CN', viewport: { width, height: width === 1440 ? 1000 : 852 } });
+            await context.addInitScript(cwd => localStorage.setItem('pi.web.cwd', cwd), status.projectRoots[0]);
             const page = await context.newPage(); const errors = [];
             page.on('pageerror', e => errors.push(e.message)); page.on('dialog', d => d.accept());
             await page.goto(base, { waitUntil: 'domcontentloaded' });
@@ -18,6 +19,7 @@ const token = 'browser-fixture-access-token-987654321';
             await page.evaluate(() => { document.querySelector('#workspace-settings-toggle').click(); });
             await page.locator('[data-settings-tab="access"]').click();
             await page.locator('#workspace-access-enabled').waitFor();
+            assert.match(await page.locator('label[for="workspace-access-token"]').textContent(), /10–256/);
             await page.locator('#workspace-access-enabled').check();
             await page.locator('#workspace-access-token').fill(token);
             await page.locator('#workspace-access-save').click();

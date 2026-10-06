@@ -6233,8 +6233,8 @@
         "Set or replace token"
     ],
     [
-        "自行设置（16–256 位英文、数字或符号）",
-        "Choose your own (16–256 ASCII letters, digits or symbols)"
+        "自行设置（10–256 位英文、数字或符号）",
+        "Choose your own (10–256 ASCII letters, digits or symbols)"
     ],
     [
         "自动生成随机 Token",
@@ -6669,8 +6669,8 @@
         "Choose either your own token or a generated token"
     ],
     [
-        "Token 需为 16–256 个英文字符、数字或符号，不含空格",
-        "Token must contain 16–256 ASCII letters, digits or symbols, without spaces"
+        "Token 需为 10–256 个英文字符、数字或符号，不含空格",
+        "Token must contain 10–256 ASCII letters, digits or symbols, without spaces"
     ],
     [
         "访问请求格式无效或过大",

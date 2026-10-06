@@ -253,7 +253,7 @@ class WorkspaceAccessService extends EventEmitter {
             if (body.enabled) {
                 if (body.generate === true && body.token) throw failure('请选择自行设置或生成 Token');
                 newToken = body.generate === true ? randomBytes(32).toString('base64url') : body.token;
-                if (typeof newToken !== 'string' || !/^[\x21-\x7e]{16,256}$/.test(newToken)) throw failure('Token 需为 16–256 个英文字符、数字或符号，不含空格');
+                if (typeof newToken !== 'string' || !/^[\x21-\x7e]{10,256}$/.test(newToken)) throw failure('Token 需为 10–256 个英文字符、数字或符号，不含空格');
             }
             const data = { version: 1, enabled: body.enabled, revision: randomUUID(), sessions: [] };
             if (newToken) { data.salt = randomBytes(16).toString('hex'); data.verifier = scryptSync(newToken, data.salt, 32).toString('hex'); }

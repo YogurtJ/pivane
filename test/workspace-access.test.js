@@ -107,6 +107,28 @@ test('settings require current authorization and revision; failed or malformed w
     assert.equal(fs.readFileSync(f.filePath, 'utf8'), '{broken');
 });
 
+test('new tokens accept the 10 and 256 character boundaries and reject invalid changes atomically', async t => {
+    const f = await fixture(t);
+    const minimum = 'Test12345!';
+    const enabled = await f.change({ enabled: true, token: minimum });
+    assert.equal(enabled.status, 200);
+    const cookie = cookieOf(enabled);
+    const before = fs.readFileSync(f.filePath);
+    for (const invalid of ['x'.repeat(9), 'x'.repeat(257), '12345 7890', '12345\n7890', '12345\u00007890', '中文'.repeat(5)]) {
+        const response = await f.change({ enabled: true, token: invalid }, cookie);
+        assert.equal(response.status, 400);
+        assert.match((await response.json()).error, /10–256/);
+        assert.deepEqual(fs.readFileSync(f.filePath), before);
+    }
+    assert.equal((await f.call('/api/private', 'GET', undefined, { Authorization: `Bearer ${minimum}` })).status, 200);
+    const maximum = 'x'.repeat(256);
+    const rotated = await f.change({ enabled: true, token: maximum }, cookie);
+    assert.equal(rotated.status, 200);
+    assert.equal((await f.call('/api/private', 'GET', undefined, { Authorization: `Bearer ${maximum}` })).status, 200);
+    assert.equal((await f.call('/api/private', 'GET', undefined, { Authorization: `Bearer ${minimum}` })).status, 401);
+    assert.equal((await f.call('/api/private', 'GET', undefined, { Cookie: cookie })).status, 401);
+});
+
 test('deployment token overrides local preferences and cannot be changed by the browser', async t => {
     const f = await fixture(t, { envToken: () => token, secureCookie: true });
     assert.equal((await f.call('/api/private')).status, 401);
