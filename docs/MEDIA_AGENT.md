@@ -25,11 +25,14 @@
 card confirm (user session) -> POST /api/pi/media/chat/requests {key, modelId, parameters, confirmed:true, again?}
   -> MediaLabService.review: canonical parameters + ticket
   -> canonical != submitted: return {status:"changed", parameters}, nothing executed
-  -> otherwise journal attempt "running" (persisted) -> MediaLabService.execute(ticket) in background
-  -> done {asset} | failed (not submitted) | uncertain
+  -> slot free and nobody waiting: journal "running" (persisted) -> MediaLabService.execute(ticket) in background
+  -> otherwise journal "queued", discard the ticket; when a slot frees: review again, start if unchanged
+  -> done {asset} | failed (not submitted) | uncertain | cancelled (queued, never sent)
 ```
 
-`MediaChatRequests`（`server/media-chat-requests.js`）以方案 id 为键，把每次尝试保存到媒体数据目录的 `media_chat_requests.json`（私有权限、原子替换、最多 2000 张卡片、每张最多 20 次）。已有尝试时必须带 `again:true`，同一张卡片提交中或运行中返回 409；服务启动时把遗留的 running 改为 uncertain。票据只在内存中，不写入记录；参数超过 64KiB（含附件）时记录中省略参数。执行失败但票据从未开始时记为 failed，其余记为 uncertain，均不重试。生成文件和历史仍由实验室存储负责。
+`MediaChatRequests`（`server/media-chat-requests.js`）以方案 id 为键，把每次尝试保存到媒体数据目录的 `media_chat_requests.json`（私有权限、原子替换、最多 2000 张卡片、每张最多 20 次）。已有尝试时必须带 `again:true`，同一张卡片提交中或运行中返回 409；服务启动时把遗留的 running 改为 uncertain，遗留的 queued 改为 failed（从未发送）。票据只在内存中，不写入记录；参数超过 64KiB（含附件）时记录中省略参数。执行失败但票据从未开始时记为 failed，其余记为 uncertain，均不重试。生成文件和历史仍由实验室存储负责。
+
+执行名额由 `MediaLabService.canExecute` 统一判断（实验室直接生成也使用）：远程服务（`http-provider`、`http-json`、`minimax-video`）合计 4 项，其中视频最多 2 项；本机 GPU/本地语音后端 1 项。远程请求在服务器上主要是等待网络，单项输出上限 64MiB；视频单独限额以控制内存峰值。名额已满时卡片进入服务器内存中的先进先出队列（最多 20 项、参数合计 64MiB），显示排队位置并可取消；有名额释放时按确认顺序重新 review，参数或配置变化则记为 failed 而不执行。排队项计入维护空闲判定。队列不跨重启保存，重启后排队项标记为未发送。
 
 ## 数据流
 

@@ -141,7 +141,7 @@ function createPiAgentGateway(options = {}) {
         idle: () => !profiles.busy && !agentThreads.jobs.size && !agentThreads.catalogIndex.busy && !agentThreads.returns.busy && !agentThreads.messages.busy && !settingsService.mutating && !settingsService.loginService.busy && !nativeService.busy && !mcpSettingsService.busy && !sessionTransfer.running && !sessionMoves.running
             && !titles.jobs.size && !titles.savingModel && !transcription.active && !learning?.busy && !cron.busy && !deferred.running && !sideChat.connections.size && !sideChat.tickets.size
             && ![...sideChat.parents.values()].some(parent => parent.preparing) && supervisor.isIdle()
-            && !options.mediaLabService?.inFlight && !options.mediaLabService?.providerService?.busy && !options.mediaLabService?.providerService?.active,
+            && !options.mediaLabService?.inFlight && !options.mediaLabService?.chatRequests?.waiting?.length && !options.mediaLabService?.providerService?.busy && !options.mediaLabService?.providerService?.active,
         pause: () => deferred.pauseAll()
     });
     require('./pi-file-routes').mountFilePreviews(router, { files, store, supervisor });

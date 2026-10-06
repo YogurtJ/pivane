@@ -86,12 +86,18 @@ function validateParameters(definitions, raw = {}) {
     return result;
 }
 
+const SLOT_LIMITS = { remote: 4, video: 2, local: 1 };
+const REMOTE_ADAPTERS = new Set(['http-provider', 'http-json', 'minimax-video']);
+const slotOf = model => ({ pool: REMOTE_ADAPTERS.has(model?.adapter) ? 'remote' : 'local', video: model?.kind === 'video' });
+
 class MediaLabService {
     constructor(options) {
         Object.assign(this, options);
         this.tickets = new Map();
         this.planningAttachments = new Map();
         this.inFlight = 0;
+        this.running = { remote: 0, video: 0, local: 0 };
+        this.slotListeners = new Set();
         this.now = options.now || Date.now;
         this.httpExecutor = options.httpExecutor || new MediaHttpExecutor({ fetch: options.fetch });
         for (const model of this.profile.models) validateDefinition(model);
@@ -255,10 +261,13 @@ class MediaLabService {
         if (ticket.status !== 'reviewed') fail(ticket.status === 'running' ? 'This request is already running' : 'Previous submission failed or is uncertain; check history before making a new request', 409);
         if (ticket.expiresAt < this.now()) fail('Review expired; review parameters again', 409);
         if (!ticket.model.configured || ticket.model.adapter === 'manual') fail('Media backend is not configured for execution', 503);
-        if (this.inFlight >= 2) fail('Media execution slots are busy', 429);
+        if (!this.canExecute(ticket.model)) fail('Media execution slots are busy', 429);
         // Consume before awaiting: duplicate requests cannot incur a second generation.
         ticket.status = 'running';
+        const slot = slotOf(ticket.model);
         this.inFlight++;
+        this.running[slot.pool]++;
+        if (slot.video) this.running.video++;
         try {
             const { model, payload } = ticket;
             let result;
@@ -281,12 +290,31 @@ class MediaLabService {
             throw error;
         } finally {
             this.inFlight--;
+            this.running[slot.pool]--;
+            if (slot.video) this.running.video--;
+            // Waiting chat requests start from here; listeners run after this request is settled.
+            setImmediate(() => { for (const listener of this.slotListeners) { try { listener(); } catch (error) { console.error('Media slot listener failed:', error.message); } } });
             delete ticket.payload;
             delete ticket.source;
             delete ticket.parameters;
             ticket.retainedBytes = 0;
             ticket.expiresAt = this.now() + 30 * 60 * 1000;
         }
+    }
+
+    // Remote requests mostly wait on the network, so several can run together; video
+    // outputs are large and limited separately. Local GPU/TTS backends run one at a time.
+    canExecute(model) {
+        const slot = slotOf(model);
+        if (slot.pool === 'local') return this.running.local < SLOT_LIMITS.local;
+        return this.running.remote < SLOT_LIMITS.remote && (!slot.video || this.running.video < SLOT_LIMITS.video);
+    }
+
+    onSlotFree(listener) { this.slotListeners.add(listener); return () => this.slotListeners.delete(listener); }
+
+    // Drop a reviewed ticket that will not be executed (for example, a queued chat request reviews again later).
+    discard(id) {
+        if (this.tickets.get(id)?.status === 'reviewed') this.tickets.delete(id);
     }
 
     executionStatus(id) {
@@ -328,4 +356,4 @@ class MediaLabService {
     }
 }
 
-module.exports = { MediaLabService, validateDefinition, validateParameters };
+module.exports = { MediaLabService, validateDefinition, validateParameters, SLOT_LIMITS };

@@ -6,7 +6,7 @@ function connectionTemplates() {
     const text = { type: 'textarea', label: '合成文本', required: true, maxLength: 10000 };
     const image = { name: 'Image model', kind: 'image', remoteModel: '', instructions: 'Check the selected service/model documentation for supported sizes and other constraints.',
         parameters: { prompt, size: { type: 'text', label: '尺寸', default: '1024x1024', maxLength: 40 } },
-        http: { path: '/images/generations', body: { model: { $model: true }, prompt: { $param: 'prompt' }, size: { $param: 'size' }, n: 1, response_format: 'b64_json' }, response: { type: 'base64', path: ['data', 0, 'b64_json'], mimeType: 'auto' }, timeoutMs: 180000 } };
+        http: { path: '/images/generations', body: { model: { $model: true }, prompt: { $param: 'prompt' }, size: { $param: 'size' }, n: 1, response_format: 'b64_json' }, response: { type: 'base64', path: ['data', 0, 'b64_json'], mimeType: 'auto' }, timeoutMs: 600000 } };
     const imageUrl = clone(image); imageUrl.http.body.response_format = 'url'; imageUrl.http.response = { type: 'url', path: ['data', 0, 'url'], mimeType: 'auto' };
     const speech = { name: 'Speech model', kind: 'tts', remoteModel: '', instructions: 'Use a voice ID supported by this service. This template expects a complete MP3 or WAV response.',
         parameters: { input: text, voice: { type: 'text', label: '音色 ID', required: true, maxLength: 200 }, speed: { type: 'number', label: '语速', min: 0.5, max: 2, default: 1 }, response_format: { type: 'select', label: '音频格式', choices: ['mp3','wav'], default: 'mp3' } },
@@ -23,7 +23,7 @@ function connectionTemplates() {
             poll: { idPath: ['id'], path: '/tasks/{id}', statusPath: ['status'], pending: ['queued','running'], succeeded: ['succeeded'], failed: ['failed','cancelled'], intervalMs: 5000 },
             response: { type: 'url', path: ['output','url'], mimeType: 'video/mp4' }, timeoutMs: 1800000 } };
     const generic = { name: 'Custom model', kind: 'image', remoteModel: '', instructions: 'Define the fields and request mapping from the service documentation.', parameters: { prompt, settings: { type: 'json', label: '模型专属参数', default: {} } },
-        http: { path: '/generate', body: { model: { $model: true }, input: { $params: true } }, response: { type: 'base64', path: ['data', 0, 'b64_json'], mimeType: 'auto' }, timeoutMs: 180000 } };
+        http: { path: '/generate', body: { model: { $model: true }, input: { $params: true } }, response: { type: 'base64', path: ['data', 0, 'b64_json'], mimeType: 'auto' }, timeoutMs: 600000 } };
     const gptImage = clone(image);
     gptImage.name = 'GPT Image';
     gptImage.parameters.size = { type: 'text', label: '尺寸（可选）', maxLength: 40 };
@@ -35,7 +35,7 @@ function connectionTemplates() {
     const geminiImage = { name: 'Gemini Image', kind: 'image', remoteModel: '', instructions: 'Gemini generateContent image output. Choose an image-capable model ID, without the models/ prefix. Text and image parts may be interleaved. This template generates from text; reference-image uploads are not included.',
         parameters: { prompt },
         http: { path: '/models/{model}:generateContent', body: { contents: [{ parts: [{ text: { $param: 'prompt' } }] }], generationConfig: { responseModalities: ['TEXT','IMAGE'] } },
-            response: { type: 'base64', path: ['candidates', 0, 'content', 'parts', '*', 'inlineData', 'data'], mimeType: 'auto' }, timeoutMs: 180000 } };
+            response: { type: 'base64', path: ['candidates', 0, 'content', 'parts', '*', 'inlineData', 'data'], mimeType: 'auto' }, timeoutMs: 600000 } };
     const arkImage = clone(imageUrl);
     arkImage.name = 'Seedream'; delete arkImage.parameters.size.default;
     delete arkImage.http.body.n;
@@ -107,7 +107,7 @@ function connectionSchema() {
             body: 'JSON object template: {$param:"field"} inserts a typed parameter, {$model:true} inserts the remote model ID, {$params:true} inserts the entire parameter object. {$base64:"attachment"} and {$mimeType:"attachment"} extract single image/video payload and MIME. {$media:{parameter:"images",format:"inlineData"|"image_url"|"video_url",role?:"provider_role"}} renders zero or more media parts, omitting missing optional inputs. {$concat:[arrayOrMediaMapping,...]} joins part arrays. Multipart $param references to multiple media emit repeated parts using the literal field name (e.g. image[]). No code or expressions.',
             response: { type: 'base64 | url | binary | image-json (image only: path points to an object with b64_json or url)', path: 'JSON key/index array for base64/url; * selects the first matching array element (e.g. Gemini image parts)', mimeType: 'auto | image/png | image/jpeg | image/webp | video/mp4 | audio/wav | audio/mpeg' },
             poll: 'Optional: idPath, path containing {id} OR urlPath, statusPath, distinct pending/succeeded/failed scalar arrays (string/number/boolean/null; null matches an absent status), intervalMs 1000–60000. Poll uses GET on the provider origin only. Polling response must be JSON with base64/url result.',
-            timeoutMs: '1000–1800000; default 180000 synchronous or 1800000 asynchronous' },
+            timeoutMs: '1000–1800000; default 600000 for synchronous image/video, 180000 for synchronous speech, 1800000 asynchronous. Image models often need several minutes; a timeout does not cancel the remote request' },
         boundaries: ['Draft only: no credentials, network test, save, or execution', 'Never put keys in instructions, parameters, request body or URLs', 'No arbitrary headers, request signing, raw PCM, arbitrary workflow code or automatic retries', 'Downloads require provider-approved exact origins; cross-origin downloads receive no provider credentials', 'One API request/task and one output up to 64MiB per confirmation; do not add batch parameters'],
         providerTemplates: [
             { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', auth: { mode: 'bearer' }, modelsPath: '/models', probePath: '/models', downloadOrigins: [] },

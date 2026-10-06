@@ -196,6 +196,8 @@ Once an image, video or speech model is configured, ask for it directly in a Pi 
 - **Confirm and generate** runs one generation with the parameters shown on the card. The image, audio or video then appears in the card with open/download links and is added to the media lab history.
 - Use **Edit parameters** to change values in the card, or tell the Agent what to change and it will prepare a new card. If the server normalizes defaults or formats, the adjusted values come back for review and need another confirmation.
 - Generation continues on the server. You can leave the page or switch to your phone; the card shows the result when you return. Refreshing, a second tab or a double click cannot submit the same card twice.
+- You can confirm several cards at once: remote services run up to 4 generations together (2 for video) and local GPU models one at a time. Extra cards show **Queued** with their position and start automatically when a slot frees up; a queued card has not been sent yet and can be cancelled.
+- A running card shows how long it has waited. Exceeding the model's time limit marks the result uncertain: the provider may still finish and charge, but the result cannot be retrieved. Raise **Request time limit** under model connections for models that often time out; new image and video templates default to 10 minutes.
 - Generating again takes two clicks; after an uncertain result the button warns that the previous request may already have been charged. Failures and uncertain results are never retried automatically; check the history first.
 - Cards stay visible in compact, reading and full transcript modes. Side chat does not offer generation cards.
 

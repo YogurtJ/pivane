@@ -127,7 +127,7 @@ function validateHttp(raw, definitions, kind) {
     const mimeType = response.mimeType || 'auto';
     if (mimeType !== 'auto' && (!MIME_TYPES.includes(mimeType) || !mimeType.startsWith((kind === 'tts' ? 'audio' : kind) + '/'))) fail('Output MIME type does not match media kind');
     if (response.type !== 'binary') jsonPath(response.path);
-    const http = { path: raw.path, body: clone(raw.body), response: { type: response.type, mimeType, ...(response.type !== 'binary' ? { path: clone(response.path) } : {}) }, timeoutMs: raw.timeoutMs ?? (raw.poll ? 1800000 : 180000) };
+    const http = { path: raw.path, body: clone(raw.body), response: { type: response.type, mimeType, ...(response.type !== 'binary' ? { path: clone(response.path) } : {}) }, timeoutMs: raw.timeoutMs ?? (raw.poll ? 1800000 : kind === 'tts' ? 180000 : 600000) };
     if (raw.encoding) http.encoding = raw.encoding;
     if (!Number.isInteger(http.timeoutMs) || http.timeoutMs < 1000 || http.timeoutMs > 1800000) fail('HTTP timeout must be 1000–1800000 ms');
     if (raw.poll) {

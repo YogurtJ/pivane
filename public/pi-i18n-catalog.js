@@ -9582,6 +9582,15 @@
         ['确认再生成（上次可能已计费）', 'Confirm another generation (the last one may have been charged)'],
         ['取消修改', 'Discard edits'],
         ['修改参数', 'Edit parameters'],
-        ['服务端调整了部分参数（如默认值或格式），请核对后再确认。', 'The server adjusted some parameters (such as defaults or format). Review them and confirm again.']);
+        ['服务端调整了部分参数（如默认值或格式），请核对后再确认。', 'The server adjusted some parameters (such as defaults or format). Review them and confirm again.'],
+        ['排队中…', 'Queued…'],
+        ['取消排队', 'Cancel'],
+        ['排队中，前面还有 {0} 个请求；有空位后自动开始，还没有提交给服务', 'Queued behind {0} request(s). It starts automatically when a slot frees up; nothing has been sent yet'],
+        ['排队中，有空位后自动开始；还没有提交给服务', 'Queued. It starts automatically when a slot frees up; nothing has been sent yet'],
+        ['已提交，等待服务返回结果', 'Sent; waiting for the service to return the result'],
+        ['已等待 {0}', 'waited {0}'],
+        ['已取消排队，没有提交给服务', 'Removed from the queue; nothing was sent to the service'],
+        ['等待超过这个模型设置的最长时间（{0}）。服务商可能仍会完成并计费，但这次结果拿不回来；请先在多媒体实验室的生成记录里核对。经常超时可在模型接入里调大“本次请求最长等待”。', 'Waited longer than this model\'s time limit ({0}). The provider may still finish and charge for it, but this result cannot be retrieved; check the media lab history first. If this model often times out, raise its request time limit under model connections.'],
+        ['更早的 {0} 次未完成尝试', '{0} earlier unfinished attempt(s)']);
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

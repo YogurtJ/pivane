@@ -30,7 +30,7 @@
             .catch(error => { catalog = null; throw error; });
         const slot = key => { if (!memory.has(key)) memory.set(key, { state: null, parameters: null, editing: false, error: '', notice: '', armed: false, busy: false }); return memory.get(key); };
         const live = () => [...cards.values()].filter(card => card.root.isConnected);
-        const running = key => memory.get(key)?.state?.attempts?.some(attempt => attempt.status === 'running');
+        const running = key => memory.get(key)?.state?.attempts?.some(attempt => attempt.status === 'running' || attempt.status === 'queued');
 
         function request(keys) {
             for (const key of keys) queued.add(key);
@@ -85,7 +85,8 @@
         function parametersOf(card) { return slot(card.key).parameters || card.plan.parameters; }
         function statusLabel(attempt) {
             if (!attempt) return [t('待确认'), 'pending'];
-            return { running: [t('生成中'), 'running'], done: [t('已完成'), 'done'], failed: [t('未生成'), 'failed'], uncertain: [t('结果不确定'), 'uncertain'] }[attempt.status] || [attempt.status, 'failed'];
+            return { queued: [t('排队中'), 'queued'], running: [t('生成中'), 'running'], done: [t('已完成'), 'done'], failed: [t('未生成'), 'failed'],
+                uncertain: [t('结果不确定'), 'uncertain'], cancelled: [t('已取消'), 'cancelled'] }[attempt.status] || [attempt.status, 'failed'];
         }
 
         function preview(card, model) {
@@ -122,6 +123,13 @@
             return box;
         }
 
+        function elapsed(from, to) {
+            const ms = (to ? Date.parse(to) : Date.now()) - Date.parse(from || '');
+            if (!Number.isFinite(ms) || ms < 0) return '';
+            const seconds = Math.round(ms / 1000);
+            return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+        }
+
         function result(attempt) {
             const row = el('div', `pi-media-request-result ${attempt.status}`);
             if (attempt.status === 'done' && attempt.asset && MEDIA_URL.test(attempt.asset.url)) {
@@ -139,11 +147,18 @@
                 const meta = el('div', 'pi-media-request-meta');
                 meta.append(el('span', '', `${attempt.modelName || attempt.modelId || ''}${attempt.finishedAt ? ' · ' + new Date(attempt.finishedAt).toLocaleTimeString(globalThis.PiI18n?.locale || 'zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''}`), link);
                 row.append(meta);
+            } else if (attempt.status === 'queued') {
+                row.append(icon('fa-hourglass-half'), el('span', '', attempt.position > 1 ? t('排队中，前面还有 {0} 个请求；有空位后自动开始，还没有提交给服务', attempt.position - 1) : t('排队中，有空位后自动开始；还没有提交给服务')));
             } else if (attempt.status === 'running') {
-                const stages = { submitting: t('正在提交'), polling: t('正在查询任务'), downloading: t('正在下载结果') };
-                row.append(icon('fa-spinner fa-spin'), el('span', '', `${stages[attempt.progress?.stage] || t('正在生成，可以离开此页面，回来后会显示结果')}${attempt.progress?.taskId ? ' · ' + attempt.progress.taskId : ''}`));
+                const stages = { submitting: t('已提交，等待服务返回结果'), polling: t('正在查询任务'), downloading: t('正在下载结果') };
+                const waited = elapsed(attempt.startedAt);
+                row.append(icon('fa-spinner fa-spin'), el('span', '', `${stages[attempt.progress?.stage] || t('正在生成，可以离开此页面，回来后会显示结果')}${waited ? ' · ' + t('已等待 {0}', waited) : ''}${attempt.progress?.taskId ? ' · ' + attempt.progress.taskId : ''}`));
+            } else if (attempt.status === 'cancelled') {
+                row.append(icon('fa-ban'), el('span', '', t('已取消排队，没有提交给服务')));
             } else if (attempt.status === 'failed') {
                 row.append(icon('fa-circle-exclamation'), el('span', '', t('没有开始生成，未提交给服务：{0}', t(attempt.error || ''))));
+            } else if (/timed out/i.test(attempt.error || '')) {
+                row.append(icon('fa-triangle-exclamation'), el('span', '', t('等待超过这个模型设置的最长时间（{0}）。服务商可能仍会完成并计费，但这次结果拿不回来；请先在多媒体实验室的生成记录里核对。经常超时可在模型接入里调大“本次请求最长等待”。', elapsed(attempt.startedAt, attempt.finishedAt) || '?')));
             } else {
                 row.append(icon('fa-triangle-exclamation'), el('span', '', t('结果不确定：{0}。请先在多媒体实验室的生成记录里核对，避免重复计费。', t(attempt.error || ''))));
             }
@@ -155,7 +170,7 @@
             const model = card.model;
             const attempts = item.state?.attempts || [];
             const last = attempts.at(-1);
-            const busy = item.busy || last?.status === 'running';
+            const busy = item.busy || last?.status === 'running' || last?.status === 'queued';
             const root = card.root;
             const focused = root.contains(document.activeElement) ? document.activeElement : null;
             // Keep an open editor (and its unsaved values) while only actions or errors change.
@@ -189,8 +204,15 @@
             root.append(error); card.error = error;
             // Newest result first, then the actions; while editing, actions stay next to the form.
             const actions = el('div', 'pi-media-request-actions'); card.actions = actions;
+            // Newest attempt and earlier finished media stay visible; earlier problems fold away.
             const results = el('div', 'pi-media-request-results');
-            for (const attempt of [...attempts].reverse()) results.append(result(attempt));
+            const newest = [...attempts].reverse(), earlier = newest.slice(1).filter(attempt => attempt.status !== 'done');
+            for (const attempt of newest) if (attempt === newest[0] || attempt.status === 'done') results.append(result(attempt));
+            if (earlier.length) {
+                const fold = el('details', 'pi-media-request-earlier');
+                fold.append(el('summary', '', t('更早的 {0} 次未完成尝试', earlier.length)), ...earlier.map(result));
+                results.append(fold);
+            }
             if (item.editing) root.append(actions, ...(attempts.length ? [results] : []));
             else root.append(...(attempts.length ? [results] : []), actions);
             paintActions(card, model, attempts, last, busy);
@@ -206,11 +228,18 @@
                 node.addEventListener('click', handler); actions.append(node); return node;
             };
             const disabled = busy || (model && !model.executable);
+            if (!item.busy && last?.status === 'queued') {
+                button(t('排队中…'), 'fa-hourglass-half', 'lab-primary', () => {}).disabled = true;
+                button(t('取消排队'), 'fa-xmark', 'lab-secondary', () => cancel(card));
+                return;
+            }
             if (busy) { button(item.busy ? t('正在提交…') : t('生成中…'), 'fa-spinner fa-spin', 'lab-primary', () => {}).disabled = true; return; }
             const again = attempts.length > 0;
-            const primaryText = !again ? t('确认生成') : item.armed ? (last?.status === 'uncertain' ? t('确认再生成（上次可能已计费）') : t('确认再生成（会再次计费）')) : t('再生成一次');
-            const primary = button(primaryText, item.armed || !again ? 'fa-play' : 'fa-rotate-right', 'lab-primary', () => {
-                if (again && !item.armed) {
+            // Nothing was ever sent (cancelled or not started): a single confirmation is enough.
+            const charged = attempts.some(attempt => !['failed', 'cancelled'].includes(attempt.status));
+            const primaryText = !charged ? t('确认生成') : item.armed ? (last?.status === 'uncertain' ? t('确认再生成（上次可能已计费）') : t('确认再生成（会再次计费）')) : t('再生成一次');
+            const primary = button(primaryText, item.armed || !charged ? 'fa-play' : 'fa-rotate-right', 'lab-primary', () => {
+                if (charged && !item.armed) {
                     item.armed = true; paint(card);
                     clearTimeout(item.armTimer); item.armTimer = setTimeout(() => { item.armed = false; card.update(); }, 8000);
                     return;
@@ -246,6 +275,22 @@
                 if (error.data?.state) item.state = error.data.state;
             } finally {
                 // The transcript may have been rebuilt during the request; paint the card that is shown.
+                item.busy = false; paint(cards.get(card.key)?.root.isConnected ? cards.get(card.key) : card); schedulePolling();
+            }
+        }
+
+        async function cancel(card) {
+            const item = slot(card.key);
+            if (item.busy) return;
+            item.busy = true; item.error = ''; paint(card);
+            try {
+                const data = await fetch('/api/pi/media/chat/requests/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: card.key }) });
+                if (data.state) item.state = data.state;
+            } catch (error) {
+                // It may have started meanwhile; show the current state.
+                item.error = error.message;
+                if (error.data?.state) item.state = error.data.state;
+            } finally {
                 item.busy = false; paint(cards.get(card.key)?.root.isConnected ? cards.get(card.key) : card); schedulePolling();
             }
         }

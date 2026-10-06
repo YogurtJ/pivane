@@ -27,7 +27,7 @@ function load() {
     const timers = new Map(); let nextTimer = 1;
     const schedule = (fn, ms, repeat) => { const id = nextTimer++; timers.set(id, { fn, ms, repeat }); return id; };
     const documentListeners = {};
-    const document = { createElement: tag => new Node(tag), createTextNode: text => text, activeElement: null, visibilityState: 'visible',
+    const document = { createElement: tag => new Node(tag), createTextNode: text => Object.assign(new Node('#text'), { textContent: text }), activeElement: null, visibilityState: 'visible',
         addEventListener: (type, handler) => (documentListeners[type] ||= []).push(handler) };
     const context = { document, window: {}, globalThis: null, console, Promise, Map, Set, Object, Array, JSON, String, Number, Date, encodeURIComponent,
         setTimeout: (fn, ms) => schedule(fn, ms, false), clearTimeout: id => timers.delete(id),
@@ -80,4 +80,34 @@ test('returning to a hidden tab refreshes running cards at once', async () => {
     for (const handler of documentListeners.visibilitychange || []) handler();
     await tick('queue');
     assert.equal(card.dataset.state, 'done');
+});
+
+test('a queued card offers cancellation and keeps polling until it starts', async () => {
+    const { api, tick, pollers } = load();
+    const queued = { key: KEY, attempts: [{ id: 'a', status: 'queued', position: 2, kind: 'image', parameters: { prompt: 'synthetic' } }] };
+    let server = queued; const posts = [];
+    const fetch = async (url, options) => {
+        if (url === '/api/pi/media/lab') return { models: [] };
+        if (options?.method === 'POST') { posts.push([url, JSON.parse(options.body)]); server = { key: KEY, attempts: [{ ...queued.attempts[0], status: 'cancelled', position: undefined }] }; return { status: 'cancelled', state: server }; }
+        return { requests: { [KEY]: server } };
+    };
+    const cards = api.create({ fetch });
+    const transcript = new Node('div'); documentRoot.append(transcript);
+    const card = cards.render(message); transcript.append(card);
+    await tick('queue');
+    assert.equal(card.dataset.state, 'queued');
+    assert.equal(pollers(), 1, 'queued cards keep polling so they show when they start');
+    const all = node => [node, ...node.children.flatMap(all)];
+    const text = node => [node.textContent, ...node.children.map(text)].join('');
+    assert.match(text(card), /前面还有 1 个请求/);
+    const cancel = all(card).find(node => node.tag === 'button' && text(node).includes('取消排队'));
+    assert.ok(cancel, 'cancel button is shown for a queued card');
+    cancel.listeners.click[0]();
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    assert.deepEqual(posts, [['/api/pi/media/chat/requests/cancel', { key: KEY }]]);
+    assert.equal(cards.planOf(message).id, KEY);
+    const current = transcript.children.at(-1);
+    assert.equal(current.dataset.state, 'cancelled');
+    // Nothing was sent, so confirming again is a single plain confirmation.
+    assert.ok(all(current).some(node => node.tag === 'button' && text(node) === '确认生成'));
 });

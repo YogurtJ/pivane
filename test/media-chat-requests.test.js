@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { MediaLabService } = require('../server/media-lab-service');
+const { MediaLabService, SLOT_LIMITS } = require('../server/media-lab-service');
 const { MediaChatRequests } = require('../server/media-chat-requests');
 const { loadMediaProfile } = require('../server/media-profile');
 const { saveExternalMedia, mediaHistory, deleteMedia } = require('../server/media-lab-storage');
@@ -78,14 +78,6 @@ test('failures are recorded without retry; a request interrupted by a restart be
     const attempt = chat.status([key]).requests[key].attempts[0];
     assert.equal(attempt.status, 'uncertain');
     assert.equal(calls, 1);
-    // Busy execution slots reject before submission: nothing was sent, so it is "failed", not uncertain.
-    const other = 'plan-00000000-0000-4000-8000-000000000003';
-    lab.inFlight = 2;
-    await chat.run({ key: other, modelId: 'fixture-image', parameters, confirmed: true });
-    await settle(chat);
-    lab.inFlight = 0;
-    assert.equal(chat.status([other]).requests[other].attempts[0].status, 'failed');
-    assert.equal(calls, 1);
     const records = JSON.parse(fs.readFileSync(file, 'utf8'));
     records[0].attempts[0].status = 'running';
     fs.writeFileSync(file, JSON.stringify(records));
@@ -102,4 +94,52 @@ test('unreadable records block new submissions without being overwritten', async
     await assert.rejects(chat.run({ key: 'plan-00000000-0000-4000-8000-000000000004', modelId: 'fixture-image', parameters: { prompt: 'x', size: '1x1' }, confirmed: true }), error => error.statusCode === 503);
     assert.equal(fs.readFileSync(file, 'utf8'), '{not json');
     assert.throws(() => chat.status(['not-a-plan']), /plan ids/);
+});
+
+test('cards confirmed while every slot is busy queue in order, can be cancelled and never survive a restart as submitted', async () => {
+    // Each request waits until the test releases it, like a slow image service.
+    const releases = [], bodies = [];
+    const { chat, lab, file } = fixture({ fetch: (url, options) => new Promise(resolve => {
+        bodies.push(JSON.parse(options.body).prompt);
+        releases.push(() => resolve({ ok: true, json: async () => ({ data: [{ b64_json: png.toString('base64') }] }) }));
+    }) });
+    const key = index => `plan-00000000-0000-4000-8000-${String(100 + index).padStart(12, '0')}`;
+    const total = SLOT_LIMITS.remote + 2;
+    const results = [];
+    for (let index = 0; index < total; index++) results.push(await chat.run({ key: key(index), modelId: 'fixture-image', parameters: { prompt: `card ${index}`, size: '1024x1024' }, confirmed: true }));
+    assert.deepEqual(results.map(result => result.status), [...Array(SLOT_LIMITS.remote).fill('running'), 'queued', 'queued']);
+    assert.equal(bodies.length, SLOT_LIMITS.remote);
+    const waiting = chat.status([key(total - 2), key(total - 1)]).requests;
+    assert.equal(waiting[key(total - 2)].attempts[0].position, 1);
+    assert.equal(waiting[key(total - 1)].attempts[0].position, 2);
+    // A queued card cannot be confirmed twice, and only queued requests can be cancelled.
+    await assert.rejects(chat.run({ key: key(total - 2), modelId: 'fixture-image', parameters: { prompt: 'again', size: '1024x1024' }, confirmed: true, again: true }), error => error.statusCode === 409);
+    assert.throws(() => chat.cancel({ key: key(0) }), error => error.statusCode === 409);
+    assert.equal(chat.cancel({ key: key(total - 1) }).state.attempts[0].status, 'cancelled');
+    // A queued request was never sent: after a restart it is "failed", never "uncertain".
+    const restarted = new MediaChatRequests({ lab: { onSlotFree() {} }, file });
+    assert.equal(restarted.status([key(total - 2)]).requests[key(total - 2)].attempts[0].status, 'failed');
+    assert.match(restarted.status([key(total - 2)]).requests[key(total - 2)].attempts[0].error, /nothing was submitted/);
+    // Freeing one slot starts the oldest queued card after a fresh review.
+    releases.shift()();
+    for (let i = 0; i < 50 && bodies.length === SLOT_LIMITS.remote; i++) await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(bodies.slice(SLOT_LIMITS.remote), [`card ${total - 2}`]);
+    assert.equal(chat.status([key(total - 2)]).requests[key(total - 2)].attempts[0].status, 'running');
+    for (const release of releases.splice(0)) release();
+    await settle(chat);
+    assert.equal(bodies.length, SLOT_LIMITS.remote + 1, 'the cancelled card is never sent');
+    const final = chat.status(Array.from({ length: total }, (_, index) => key(index))).requests;
+    assert.deepEqual(Object.values(final).map(state => state.attempts[0].status), [...Array(total - 1).fill('done'), 'cancelled']);
+    assert.equal(lab.inFlight, 0);
+});
+
+test('local backends run one at a time while remote slots stay available', () => {
+    const { lab } = fixture();
+    assert.equal(lab.canExecute({ adapter: 'zimage', kind: 'image' }), true);
+    lab.running.local = 1;
+    assert.equal(lab.canExecute({ adapter: 'zimage', kind: 'image' }), false);
+    assert.equal(lab.canExecute({ adapter: 'http-provider', kind: 'image' }), true);
+    lab.running.video = SLOT_LIMITS.video; lab.running.remote = SLOT_LIMITS.video;
+    assert.equal(lab.canExecute({ adapter: 'http-provider', kind: 'video' }), false);
+    assert.equal(lab.canExecute({ adapter: 'http-provider', kind: 'tts' }), true);
 });

@@ -821,8 +821,9 @@ Skill 创建 body：
 | POST | `/api/pi/media/lab/execute` | 只接受 `{ticket, confirmed:true}`，执行该服务器票据 |
 | GET | `/api/pi/media/lab/history?kind=image\|video\|tts` | 只读旧、新媒体记录，不自动导入或改写 |
 | DELETE | `/api/pi/media/lab/history/:kind/:id` | 明确删除选中的本地文件和记录 |
-| GET | `/api/pi/media/chat/requests?keys=plan-…,…` | 至多 100 张聊天生成卡片的 `{requests:{[key]:{key,attempts}}}`；attempt 含 status（running/done/failed/uncertain）、模型、时间、asset `{url,kind,id,mimeType}`、error、运行中 progress；不含票据 |
-| POST | `/api/pi/media/chat/requests` | `{key, modelId, parameters, confirmed:true, again?}`：服务端 review；规范参数与提交不同返回 `{status:"changed",parameters}` 不执行，否则后台执行并返回 `{status:"running",state}`。已有尝试未带 again、提交中或运行中返回 409（附 state）；记录不可读返回 503。详见 [MEDIA_AGENT.md](MEDIA_AGENT.md#聊天生成卡片) |
+| GET | `/api/pi/media/chat/requests?keys=plan-…,…` | 至多 100 张聊天生成卡片的 `{requests:{[key]:{key,attempts}}}`；attempt 含 status（queued/running/done/failed/uncertain/cancelled）、模型、时间、asset `{url,kind,id,mimeType}`、error、运行中 progress、排队 position；不含票据 |
+| POST | `/api/pi/media/chat/requests` | `{key, modelId, parameters, confirmed:true, again?}`：服务端 review；规范参数与提交不同返回 `{status:"changed",parameters}` 不执行，否则后台执行并返回 `{status:"running",state}`；执行名额已满或已有排队时返回 `{status:"queued",state}`，有名额后按确认顺序重新 review 再执行，排队超过 20 项返回 429。已有尝试未带 again、提交中或运行中返回 409（附 state）；记录不可读返回 503。详见 [MEDIA_AGENT.md](MEDIA_AGENT.md#聊天生成卡片) |
+| POST | `/api/pi/media/chat/requests/cancel` | `{key}`：取消该卡片排队中的请求（从未发送），返回 `{status:"cancelled",state}`；已开始或不在排队返回 409（附 state） |
 
 plan 不生成、不取得 ticket；review 不生成。两者都验证实时模型定义和参数类型/范围/固定值。浏览器可修改清单，修改后原生成按钮失效，需要重新 review。execute 不接受参数覆盖，不能通过重复同一票据再次生成；运行中 409，完成后返回原结果，失败/不确定 409，缺票据 404，未配置执行器 503，并发/容量满 429。服务最多两项执行、100 条票据，保留 payload 总计 64MiB；票据不落盘，重启失效。
 
