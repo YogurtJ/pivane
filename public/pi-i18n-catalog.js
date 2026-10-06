@@ -9563,6 +9563,25 @@
         ['编辑{0}模型', 'Edit {0} model'],
         ['服务：{0}', 'Service: {0}'],
         ['草稿属于其他媒体类型，请核对文档后重新生成。', 'This draft is for another media type. Check the documentation and create a new draft.'],
-        ['模型已保存，可在实验室或朗读配置中选择。', 'Model saved. Select it in the media lab or reading settings.']);
+        ['模型已保存，可在实验室或朗读配置中选择。', 'Model saved. Select it in the media lab or reading settings.'],
+        ['媒体生成卡片', 'Media generation card'],
+        ['媒体生成', 'Media generation'],
+        ['待确认', 'Awaiting confirmation'],
+        ['未生成', 'Not generated'],
+        ['生成的图片', 'Generated image'],
+        ['正在生成，可以离开此页面，回来后会显示结果', 'Generating. You can leave this page; the result appears here when you return'],
+        ['没有开始生成，未提交给服务：{0}', 'Generation did not start and nothing was sent to the service: {0}'],
+        ['结果不确定：{0}。请先在多媒体实验室的生成记录里核对，避免重复计费。', 'Result uncertain: {0}. Check the media lab history first to avoid paying twice.'],
+        ['点确认后才会调用模型。', 'The model is called only after you confirm.'],
+        ['这个模型还没有可用的执行配置，请先在模型接入里完成配置。', 'This model has no working execution setup yet. Finish configuring it under model connections first.'],
+        ['无法读取这个模型的参数定义；它可能已被移除或尚未配置。', 'Cannot read this model\'s parameters; it may have been removed or not configured yet.'],
+        ['正在提交…', 'Submitting…'],
+        ['生成中…', 'Generating…'],
+        ['再生成一次', 'Generate again'],
+        ['确认再生成（会再次计费）', 'Confirm another generation (charged again)'],
+        ['确认再生成（上次可能已计费）', 'Confirm another generation (the last one may have been charged)'],
+        ['取消修改', 'Discard edits'],
+        ['修改参数', 'Edit parameters'],
+        ['服务端调整了部分参数（如默认值或格式），请核对后再确认。', 'The server adjusted some parameters (such as defaults or format). Review them and confirm again.']);
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

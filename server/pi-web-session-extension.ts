@@ -2,6 +2,7 @@ import { registerModelSpeed } from './pi-model-speed-extension.mjs';
 import { registerCron } from './pi-cron-runtime.js';
 import { registerTaskProgress } from './pi-task-progress-extension.ts';
 import { registerDeliverables } from './pi-deliverables-extension.ts';
+import { registerMediaChat } from './pi-media-chat-extension.ts';
 import { registerToolProvenance } from './pi-tool-provenance.js';
 import { receiveTaskReturn } from './pi-task-returns.js';
 import { receiveAgentMessages } from './pi-agent-message-format.js';
@@ -42,6 +43,7 @@ export default async function (pi: ExtensionAPI) {
     registerAgentMessages(pi);
     registerTaskProgress(pi);
     registerDeliverables(pi);
+    registerMediaChat(pi);
     registerSubagentHost(pi);
     registerAgentProfile(pi, getAgentDir);
     registerAssistantProject(pi, getAgentDir);

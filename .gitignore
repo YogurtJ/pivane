@@ -13,6 +13,7 @@ public/audio/
 generation_history.json
 video_history.json
 tts_history.json
+media_chat_requests.json
 prompts.json
 pi5-access.json*
 pivane-access.json*

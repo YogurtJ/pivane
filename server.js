@@ -17,6 +17,7 @@ const { createMiniMaxVideoService, MINIMAX_VIDEO_MODELS, MINIMAX_VIDEO_RATIOS } 
 const { buildFlux2Workflow } = require('./server/flux2-workflow');
 const { loadMediaProfile, applyPromptPrefix } = require('./server/media-profile');
 const { MediaLabService } = require('./server/media-lab-service');
+const { MediaChatRequests } = require('./server/media-chat-requests');
 const { MediaProviderService } = require('./server/media-provider-service');
 const { connectionSchema, validateConnectionDraft } = require('./server/media-connection-planner');
 const { saveExternalMedia, mediaHistory, deleteMedia } = require('./server/media-lab-storage');
@@ -79,6 +80,7 @@ const mediaLabService = new MediaLabService({ profile: mediaProfile, fetch, vide
     saveExternal: input => saveExternalMedia(mediaDataRoot, input), history: kind => mediaHistory(mediaDataRoot, kind),
     deleteMedia: (kind, id) => deleteMedia(mediaDataRoot, kind, id) });
 mediaAgentService.mediaLabService = mediaLabService;
+mediaLabService.chatRequests = new MediaChatRequests({ lab: mediaLabService, file: path.join(mediaDataRoot, 'media_chat_requests.json') });
 
 const workspaceAccess = new WorkspaceAccessService({
     publicFiles: ['/', '/index.html', '/pi-mermaid-frame.html', '/site.webmanifest', ...fs.readdirSync(path.join(__dirname, 'public'))

@@ -1,0 +1,62 @@
+/* In-chat media generation cards: stays visible in every transcript mode. */
+.pi-media-request {
+    margin: 4px 0 16px;
+    padding: 12px 14px;
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    background: var(--surface-1);
+    min-width: 0;
+    max-width: 640px;
+    overflow-wrap: anywhere;
+}
+.pi-media-request > header { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.pi-media-request > header > i { flex: 0 0 auto; margin-top: 3px; color: var(--primary); }
+.pi-media-request-title { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.pi-media-request-title strong { font-size: 14px; line-height: 1.45; color: var(--text-main); }
+.pi-media-request-title span { font-size: 12px; color: var(--text-muted); }
+.pi-media-request-state { flex: 0 0 auto; padding: 2px 9px; border-radius: 999px; font-size: 12px; line-height: 1.6; background: var(--surface-3); color: var(--text-muted); }
+.pi-media-request-state.running { background: color-mix(in srgb, var(--primary) 16%, transparent); color: var(--primary); }
+.pi-media-request-state.done { background: color-mix(in srgb, var(--green, #1f9d55) 16%, transparent); color: var(--green, #1f9d55); }
+.pi-media-request-state.failed, .pi-media-request-state.uncertain { background: color-mix(in srgb, var(--amber, #c27c0e) 18%, transparent); color: var(--amber, #c27c0e); }
+.pi-media-request-params { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.pi-media-request-text {
+    margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--surface-2);
+    font-size: 13px; line-height: 1.65; color: var(--text-main); white-space: pre-wrap;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.pi-media-request-text.expanded { display: block; max-height: 360px; overflow: auto; overscroll-behavior: contain; }
+.pi-media-request-more { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--primary); font: inherit; font-size: 12px; cursor: pointer; }
+.pi-media-request-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.pi-media-request-chip { display: inline-flex; gap: 6px; max-width: 100%; padding: 3px 9px; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; line-height: 1.6; }
+.pi-media-request-chip span { color: var(--text-muted); flex: 0 0 auto; }
+.pi-media-request-chip strong { font-weight: 500; color: var(--text-main); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pi-media-request-form { margin-top: 12px; }
+.pi-media-request-form select, .pi-media-request-form textarea, .pi-media-request-form input:not([type="checkbox"]):not([type="file"]) {
+    width: 100%; min-width: 0; border: 1px solid var(--line-strong); color: var(--text-main); background: var(--surface-2);
+    border-radius: 5px; font: inherit; font-size: 13px; padding: 8px 10px; outline: none;
+}
+.pi-media-request-form select { width: 0; min-width: 100%; }
+.pi-media-request-form textarea { resize: vertical; line-height: 1.6; min-height: 96px; }
+.pi-media-request-note { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: var(--text-muted); }
+.pi-media-request-error { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: var(--danger, #d64545); }
+.pi-media-request-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.pi-media-request-actions button:disabled { opacity: .55; cursor: not-allowed; }
+.pi-media-request-results { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.pi-media-request-result { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 12px; color: var(--text-muted); }
+.pi-media-request-result.running, .pi-media-request-result.failed, .pi-media-request-result.uncertain { flex-direction: row; align-items: flex-start; gap: 8px; line-height: 1.6; }
+.pi-media-request-result.uncertain, .pi-media-request-result.failed { color: var(--amber, #c27c0e); }
+.pi-media-request-result > i { margin-top: 3px; }
+.pi-media-request-image-link { display: block; align-self: flex-start; max-width: 100%; }
+.pi-media-request-media { display: block; max-width: 100%; border-radius: 8px; }
+img.pi-media-request-media { max-height: 420px; width: auto; border: 1px solid var(--line); background: var(--surface-2); }
+video.pi-media-request-media { max-height: 420px; background: #000; }
+audio.pi-media-request-media { width: 100%; max-width: 420px; }
+.pi-media-request-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.pi-media-request-link { color: var(--primary); text-decoration: none; }
+.pi-media-request-link i { margin-right: 5px; }
+@media (max-width: 680px) {
+    .pi-media-request { padding: 12px; }
+    .pi-media-request-actions button { flex: 1 1 auto; min-height: 42px; }
+    .pi-media-request-form select, .pi-media-request-form textarea, .pi-media-request-form input:not([type="checkbox"]):not([type="file"]) { font-size: 16px; }
+    .pi-media-request .lab-fields { grid-template-columns: minmax(0, 1fr); }
+}

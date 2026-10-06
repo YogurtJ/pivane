@@ -68,6 +68,18 @@ function mountMediaRoutes(router, { mediaAgentService, mediaLabService: lab, pre
         }
         return lab.execute(req.body.ticket);
     }));
+    // Chat cards: the user confirms a validated plan in the conversation; execution reuses lab tickets.
+    if (lab.chatRequests) {
+        router.get('/media/chat/requests', respond(req => lab.chatRequests.status(String(req.query.keys || '').split(',').filter(Boolean))));
+        router.post('/media/chat/requests', (req, res, next) => {
+            if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) return res.status(400).json({ error: 'A JSON request object is required' });
+            next();
+        }, async (req, res) => {
+            res.set('Cache-Control', 'no-store');
+            try { res.json(await lab.chatRequests.run(req.body)); }
+            catch (error) { res.status(error.statusCode || 500).json({ error: error.message, ...(error.state ? { state: error.state } : {}) }); }
+        });
+    }
     router.post('/media/lab/plan', respond(req => {
         const cwd = planningCwd(req);
         return mediaAgentService.createLabPlan({ ...req.body, cwd });

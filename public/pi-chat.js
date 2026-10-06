@@ -735,6 +735,8 @@ document.addEventListener('DOMContentLoaded', () => {
         transcript: elements.transcript, anchors: () => state.messageAnchors,
         scope: () => state.connected && state.session?.agentProfile?.id && !state.session.ephemeral && state.profileLearningSupported
             ? { cwd: state.cwd, sessionId: state.session.id, profileId: state.session.agentProfile.id, generation: state.socketGeneration, busy: knowledgeBusy() } : null });
+    // Media plans become confirmation cards in the conversation (chat is the main media entry).
+    const mediaRequests = window.PiMediaRequests?.create({ fetch: apiFetch });
     let accessBootstrapped = false;
     async function bootstrap() {
         await window.WorkspaceAccess?.ready;
@@ -2978,6 +2980,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 elements.transcript.appendChild(element); records[index].nodes.push(element); changed.push(element);
                 decorateCodeBlocks(element);
             }
+            const mediaCard = mediaRequests?.render(messages[index]);
+            if (mediaCard) { elements.transcript.appendChild(mediaCard); records[index].nodes.push(mediaCard); changed.push(mediaCard); }
             if (editCards.has(index)) {
                 const card = editCards.get(index);
                 elements.transcript.appendChild(card); records[index].nodes.push(card); changed.push(card);

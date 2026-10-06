@@ -1,12 +1,35 @@
 # Media Agent Integration
 
-最后核对：2026-09-08。当前入口是多媒体实验室，完整参数与执行契约见 [MEDIA_LAB.md](MEDIA_LAB.md)。
+最后核对：2026-10-06。主入口是聊天中的生成卡片（见下文“聊天生成卡片”）；多媒体实验室保留生成记录、模型接入和完整参数编辑，参数与执行契约见 [MEDIA_LAB.md](MEDIA_LAB.md)。
 
 ## 当前范围
 
 实验室以模型定义驱动参数表，Agent 规划一项可编辑请求；提交前由服务端重新校验并展示清单，用户明确确认才执行。规划和执行是独立 API。完整 Pi Agent、专用 planner、模型说明文件和 Skill 都不应通过规划工具直接生成媒体。
 
 旧 `media_plan_image`、`media_plan_video`、`media_plan_tts` 以及 `/api/pi/media/plan` 保留兼容。它们可生成多项 MediaPlan，未接入批量执行；统一实验室使用 `media_plan_request` 单项规划。
+
+## 聊天生成卡片
+
+受管的普通会话（Pi Agent、助手对话、任务线程和定时任务所用的持久 worker）由 `pi-web-session-extension` 注册两个工具，不依赖用户安装 `media-workbench` 包；侧聊和临时会话没有这两个工具。
+
+| 工具 | 作用 |
+|---|---|
+| `media_models` | 读取实验室目录中的图像/视频/语音模型，只返回 id、名称、可执行状态、要求和精简参数定义；预设、音色默认值和文档链接留在实验室 |
+| `media_generate` | `{modelId, summary, parameters}` 经 `/api/media-agent/validate` 生成规范方案，结果 `details.plan` 写入原生工具结果；不创建票据、不执行 |
+
+两者只使用受管进程的内部规划凭据，无法调用执行或聊天卡片接口。前端对 `media_generate` 和已有 `media_plan_request` 的成功工具结果（`details.plan.id` 为 `plan-<uuid>` 且有 modelId）在工具结果后渲染卡片；卡片不属于过程折叠，三种显示模式都可见。经 codemode 嵌套调用不会产生卡片。
+
+确认流程：
+
+```text
+card confirm (user session) -> POST /api/pi/media/chat/requests {key, modelId, parameters, confirmed:true, again?}
+  -> MediaLabService.review: canonical parameters + ticket
+  -> canonical != submitted: return {status:"changed", parameters}, nothing executed
+  -> otherwise journal attempt "running" (persisted) -> MediaLabService.execute(ticket) in background
+  -> done {asset} | failed (not submitted) | uncertain
+```
+
+`MediaChatRequests`（`server/media-chat-requests.js`）以方案 id 为键，把每次尝试保存到媒体数据目录的 `media_chat_requests.json`（私有权限、原子替换、最多 2000 张卡片、每张最多 20 次）。已有尝试时必须带 `again:true`，同一张卡片提交中或运行中返回 409；服务启动时把遗留的 running 改为 uncertain。票据只在内存中，不写入记录；参数超过 64KiB（含附件）时记录中省略参数。执行失败但票据从未开始时记为 failed，其余记为 uncertain，均不重试。生成文件和历史仍由实验室存储负责。
 
 ## 数据流
 
