@@ -138,7 +138,8 @@
             if (event.detail?.section === 'asr') { section.hidden = false; void load(); }
             else close();
         });
-        document.getElementById('lab-connections-dialog').addEventListener('close', close);
+        const dialog = document.getElementById('lab-connections-dialog');
+        dialog.addEventListener('close', () => { if (!dialog.open) close(); });
         window.addEventListener('media-lab:configured', () => { if (!section.hidden) void load(); });
     }
     window.PiTranscriptionSettings = { create };

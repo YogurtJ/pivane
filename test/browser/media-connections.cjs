@@ -227,14 +227,27 @@ async function run(browser, viewport, theme) {
         await page.locator('#mc-close').click(); await open(); await manage();
         assert.equal(await manager.getByText('Fixture speech recognition', { exact: true }).count(), 0, 'image management excludes ASR');
         assert.equal(await manager.getByRole('button', { name: '配置转录模型', exact: true }).count(), 0);
-        await page.locator('#mc-close').click();
-        await page.evaluate(() => window.PiMediaConnections.open({ kind: 'tts', origin: 'settings' }));
+        await page.evaluate(async () => {
+            const dialog = document.getElementById('lab-connections-dialog');
+            const closed = new Promise(resolve => dialog.addEventListener('close', () => queueMicrotask(resolve), { once: true }));
+            dialog.close();
+            window.PiMediaConnections.open({ kind: 'tts', origin: 'settings' });
+            await closed;
+        });
         await manager.locator('.mc-provider-list').waitFor();
         assert.equal(await manager.locator('.mc-provider-card').count(), 0, 'ASR does not count as TTS');
         await page.locator('#mc-asr-tab').click();
         await page.locator('#settings-transcription-model').waitFor({ state: 'visible' });
         assert.equal(await page.locator('#lab-connections-dialog').evaluate(n => n.matches(':modal')), true);
         assert.equal(await page.locator('#mc-asr-tab').getAttribute('aria-selected'), 'true');
+        await page.evaluate(async () => {
+            const dialog = document.getElementById('lab-connections-dialog');
+            const closed = new Promise(resolve => dialog.addEventListener('close', () => queueMicrotask(resolve), { once: true }));
+            dialog.close();
+            window.PiMediaConnections.open({ kind: 'tts', section: 'asr', origin: 'settings' });
+            await closed;
+        });
+        await page.locator('#settings-transcription-model').waitFor({ state: 'visible' });
         await page.locator('#mc-asr-tab').focus(); await page.keyboard.press('ArrowLeft');
         await page.locator('.mc-provider-list').waitFor();
         assert.equal(await page.locator('#mc-tts-tab').evaluate(n => n === document.activeElement), true);

@@ -444,7 +444,11 @@
             });
         }
         document.getElementById('mc-close').addEventListener('click', () => dialog.close());
-        dialog.addEventListener('close', () => { epoch++; content.querySelectorAll('input[type="password"]').forEach(input => { input.value = ''; }); content.replaceChildren(); footer.replaceChildren(); });
+        dialog.addEventListener('close', () => {
+            // A close event is queued; a new open can already own this view.
+            if (dialog.open) return;
+            epoch++; content.querySelectorAll('input[type="password"]').forEach(input => { input.value = ''; }); content.replaceChildren(); footer.replaceChildren();
+        });
         document.querySelectorAll('[data-media-settings-kind]').forEach(button => button.addEventListener('click', () => window.PiMediaConnections.open({ kind: button.dataset.mediaSettingsKind, origin: 'settings' })));
         window.PiMediaConnections = { open: options => {
             origin = options?.origin === 'settings' ? 'settings' : 'lab';
