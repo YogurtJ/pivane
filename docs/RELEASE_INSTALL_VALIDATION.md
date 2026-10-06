@@ -2,7 +2,17 @@
 
 本页是版本验收索引。**结果只适用于对应归档**：准确 SHA256、测试明细和失败尝试见各 [Release](https://github.com/YogurtJ/pivane/releases) 的 `pivane-<版本>.validation.json`。源码、浏览器模拟和旧版结果不能替代新包的实机验收。
 
-## 当前正式版 1.6.1
+## 当前正式版 1.6.2
+
+[1.6.2 说明](releases/1.6.2.md) · [验收附件](https://github.com/YogurtJ/pivane/releases/download/v1.6.2/pivane-1.6.2.validation.json)
+
+准确归档 SHA256：`dd992f00b4a362a4d03df22d9ba55324905d4f62ec55d49236f7812b773cb81c`，源码提交：`9fc875adc74b3937a7076e4d3ba86c24142f8340`。
+
+Linux ARM64 / Node 22.23.2、原生 Windows 11 x64 / Node 22.23.2、Apple Silicon macOS 15.5 / Node 22.23.1，均完成准确归档的独立锁定安装、各 661 项 Node 测试（零失败／跳过）、518 文件语法、74 份文档检查、生产 audit 零漏洞、本机打包、从正式 1.6.1 升级和 20 文件原路径逐字节恢复。每台机器核对全部 2,080 个包内文件，测试后不变；每台 7 次本地合成 Provider 请求、零付费请求。
+
+办公上传、全屏交付物、工作台、输入控制、聊天媒体卡片、媒体接入／实验室，以及干净安装／旧包／更新／恢复／文件查看的 Chromium 桌面和手机宽度回归通过。Linux 使用 Chromium 142.0.7444.175 / Playwright 1.62.1，Windows 与 Mac 使用 Chrome 154.0.8037.98 / Playwright 1.58.2。Windows 完整验收使用提升权限 SSH 用户，不宣称新普通权限安装已通过。首轮夹具失败及修正、准确环境和明细均保留在验收附件；浏览器模拟不代表 Safari 或真实手机。本次发布未切换运行实例或迁移用户数据。
+
+## 历史正式版 1.6.1
 
 [1.6.1 说明](releases/1.6.1.md) · [验收附件](https://github.com/YogurtJ/pivane/releases/download/v1.6.1/pivane-1.6.1.validation.json)
 

@@ -212,6 +212,8 @@ async function run(browser, base, width, locale = 'zh-CN') {
     await page.waitForFunction(() => document.querySelector('#pi-file-body img')?.naturalWidth > 0);
     assert.match(await page.locator('#pi-file-status').textContent(), /当前文件快照|Current file snapshot/i);
     await page.locator('#pi-close-inspector').click(); await openInspector(page, 'changes');
+    await page.waitForFunction(() => document.querySelector('#pi-file-body img')?.naturalWidth > 0);
+    await page.locator('#pi-file-body img').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#pi-file-body img').isVisible(), true, 'reopen keeps the project reader');
     await page.locator('#pi-file-fullscreen').click();
     await page.locator('[data-session-id="other"] .pi-session-main').dispatchEvent('click');
