@@ -96,7 +96,12 @@ test('bundled subagent runs against a synthetic provider, with native host contr
         baseUrl: `http://127.0.0.1:${provider.address().port}/v1`, api: 'openai-completions', apiKey: 'synthetic',
         models: [{ id: 'fixture', input: ['text'], contextWindow: 32000, maxTokens: 1000, cost: { input: 0.1, output: 0.2, cacheRead: 0, cacheWrite: 0 } }],
     } } }));
-    fs.writeFileSync(path.join(agentDir, 'extensions/fixture-spawn.ts'), `export default function(pi) {
+    fs.writeFileSync(path.join(agentDir, 'extensions/fixture-spawn.ts'), `import { backgroundWork } from ${JSON.stringify(require.resolve('../server/pi-subagent-host.ts'))};
+    export default function(pi) {
+        pi.registerCommand('fixture-idle', { description: 'Read native completion delivery state', handler: async (_args, ctx) => {
+            const retained = backgroundWork(ctx.sessionManager.getSessionId(), ctx.sessionManager.getSessionFile());
+            ctx.ui.notify('FIXTURE_IDLE:' + JSON.stringify({ idle: ctx.isIdle() && !ctx.hasPendingMessages() && !retained.active }));
+        } });
         pi.registerCommand('fixture-spawn', { description: 'Synthetic child launch', handler: async (_args, ctx) => {
             const requestId = 'fixture-spawn';
             await new Promise((resolve, reject) => {
@@ -178,8 +183,21 @@ test('bundled subagent runs against a synthetic provider, with native host contr
             assert.ok(completed.snapshot?.runs.some(run => run.kind === 'workflow' && run.state === 'complete'), JSON.stringify(completed));
         }
     }
-    for (let i = 0; i < 300 && (!worker.isIdle() || worker.retainsBackgroundWork()); i++) await new Promise(resolve => setTimeout(resolve, 100));
-    assert.ok(worker.isIdle() && !worker.retainsBackgroundWork(), 'completion notifications settled before reload');
+    // The host liveness projection is periodic. Read the native queue and live
+    // completion notifier together before reload, without replaying a reload.
+    let nativeIdle = false;
+    const offIdle = worker.subscribe(event => {
+        if (event.type === 'extension_ui_request' && event.message?.startsWith('FIXTURE_IDLE:')) nativeIdle = JSON.parse(event.message.slice(13)).idle === true;
+    });
+    try {
+        for (let i = 0; i < 300; i++) {
+            nativeIdle = false;
+            await worker.request('prompt', { message: '/fixture-idle' });
+            if (nativeIdle && worker.isIdle() && !worker.retainsBackgroundWork()) break;
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    } finally { offIdle(); }
+    assert.ok(nativeIdle && worker.isIdle() && !worker.retainsBackgroundWork(), 'completion notifications settled before reload');
     // Native reload must recompute resource filters without restarting or losing
     // the current session. The old package factories remain blocked.
     settings.pivaneBuiltins = { subagents: { extensions: [] } };

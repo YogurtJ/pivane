@@ -145,7 +145,10 @@ test('node-fetch transport tunnels remote HTTP through proxy and bypasses loopba
     });
     proxy.listen(0, '127.0.0.1'); await once(proxy, 'listening');
     const keys = ['http_proxy', 'HTTP_PROXY', 'no_proxy', 'NO_PROXY']; const prior = Object.fromEntries(keys.map(k => [k, process.env[k]]));
-    Object.assign(process.env, { HTTP_PROXY: `http://127.0.0.1:${proxy.address().port}`, http_proxy: '', no_proxy: '', NO_PROXY: '' });
+    const proxyAddress = `http://127.0.0.1:${proxy.address().port}`;
+    // Windows environment keys are case-insensitive; assigning an empty lowercase
+    // alias would also clear HTTP_PROXY and accidentally test a direct request.
+    Object.assign(process.env, { HTTP_PROXY: proxyAddress, http_proxy: proxyAddress, no_proxy: '', NO_PROXY: '' });
     t.after(async () => { for (const k of keys) if (prior[k] === undefined) delete process.env[k]; else process.env[k] = prior[k]; for (const socket of sockets) socket.destroy(); await Promise.all([new Promise(r => proxy.close(r)), new Promise(r => origin.close(r))]); });
     assert.equal(await (await networkFetch('http://remote.fixture.invalid/')).text(), 'fixture-response'); assert.equal(connects, 1);
     assert.equal(await (await networkFetch(`http://127.0.0.1:${origin.address().port}/`)).text(), 'fixture-response'); assert.equal(connects, 1);
