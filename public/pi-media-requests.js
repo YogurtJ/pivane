@@ -50,6 +50,13 @@
                 schedulePolling();
             }, 30);
         }
+        // Background tabs throttle timers; refresh running cards as soon as the page is visible again.
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState !== 'visible') return;
+            const keys = live().map(card => card.key).filter(running);
+            if (keys.length) request(keys);
+        });
+
         function schedulePolling() {
             const keys = live().map(card => card.key).filter(running);
             if (!keys.length) { clearInterval(poller); poller = null; return; }
@@ -69,7 +76,9 @@
             const card = { key, plan, root, update: () => paint(card) };
             cards.set(key, card);
             paint(card);
-            if (!item.state) request([key]);
+            // A card rebuilt after a session switch or reconnect may still be running:
+            // the poller stopped while the transcript was empty, so resume it here.
+            if (!item.state || running(key)) request([key]);
             return root;
         }
 
@@ -236,7 +245,8 @@
                 item.error = error.message;
                 if (error.data?.state) item.state = error.data.state;
             } finally {
-                item.busy = false; paint(card); schedulePolling();
+                // The transcript may have been rebuilt during the request; paint the card that is shown.
+                item.busy = false; paint(cards.get(card.key)?.root.isConnected ? cards.get(card.key) : card); schedulePolling();
             }
         }
 
