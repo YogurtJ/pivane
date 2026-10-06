@@ -50,16 +50,4 @@ Shell状态参与activity.busy、空闲回收、工作流互斥和空闲部署�
 
 ## 验证
 
-```bash
-node --test test/pi-shell.test.js test/pi-shell-state.test.js
-PLAYWRIGHT_MODULE=/path/to/playwright PI_SHELL_TEST_URL=http://127.0.0.1:3131 node test/browser/pi-shell.cjs
-npm test -- --test-concurrency=1
-npm run check
-npm audit --omit=dev
-```
-
-原生专项使用独立Agent/project/deferred配置，没有付费模型请求。覆盖双客户端互斥、Unicode/LF流式、活动/回收、冲突RPC/工作流、持久重连/重启、取消、!!排除、user_bash扩展直接返回、大输出原生截断、全局队列设置落盘及临时断开取消。状态专项验证停止ACK仍保持占用、未知结果不解锁、不重放以及其他请求片段不泄入当前输出。
-
-浏览器使用系统Chromium及mock REST/WS，覆盖1440/393/320px、三主题、旧后端、正文可见、执行/停止/完成去重、刷新恢复、草稿与附件、设置冲突和迟到线程输出；测量内部卡片/输出/详情实际宽度，检查pageerror。不在当前工作会话发送测试消息，不写生产配置或媒体。手机为Chromium仿真，不声称Safari真机键盘验证。
-
-部署前检查Agent、侧聊、Shell、媒体、配置、预约和导出活动，处理完毕再停机更新。真实Shell专项test/browser/pi-shell-live.cjs有隔离URL与临时项目保护，不用于用户正在工作的会话。
+Node、浏览器及真实 Shell 隔离专项见[模块导航](development/MODULES.md)，执行要求见[开发流程](development/WORKFLOW.md)。`test/browser/pi-shell-live.cjs` 只用于受保护的隔离 URL 和临时项目，不在用户会话发送测试命令。

@@ -49,13 +49,4 @@ JSON body：`{ cwd, content, requestId }`。
 
 ## 验证与部署
 
-```bash
-node --test test/pi-session-transfer.test.js
-PLAYWRIGHT_MODULE=/path/to/playwright PI_TRANSFER_TEST_URL=http://127.0.0.1:3112 node test/browser/pi-session-transfer.cjs
-```
-
-Node 使用临时 Agent/项目、真实原生 SessionManager 和 RPC：校验全树/单分支范围、独立 ID/cwd、书签/摘要/图片保留、空会话、旧版本、原文件不变、鉴权/来源/越界/忙碌拒绝和不启动导入 worker。浏览器用 mock API/WS 验证 1440/393/320px、三主题、真实下载、无自动切线程、草稿保留、失败/迟到结果和旧后端降级；可使用 Node 生成的测试 HTML 核对离线阅读。
-
-生产需要空闲切换后才会出现 `sessionTransfer=true`；仅刷新静态资源不启用旧后端。部署前须同时确认 Agent、临时 runtime、媒体及 `activity.sessionTransfers`均无活动；旧后端缺字段须结合其实际操作能力核对，不能把未知直接当零。不能中断当前工作会话来上线。
-
-
+入口见[模块导航](development/MODULES.md)，使用独立身份、原生 SessionManager/RPC 与合成浏览器服务核对树／分支、ID、恢复和不确定结果。能力以 `sessionTransfer` 为准，缺少字段不表示零活动；维护前按[运维](OPERATIONS.md)核对。

@@ -23,6 +23,7 @@ pivane-workspace.json*
 pivane-deferred-messages*.json*
 pivane-usage/
 pivane-cron/
+pivane-uploads/
 *.log
 *.bak*
 *.tmp

@@ -20,10 +20,13 @@ const documents = [
     { name: 'recording.wav', ...representation({ bytes: wav() }, 'recording.wav') },
     { name: 'broken.pdf', ...representation({ bytes: Buffer.from('%PDF-1.7\ninvalid') }, 'broken.pdf') }
 ];
-async function run(browser, base, width) {
-    const context = await browser.newContext({ viewport: { width, height: width < 900 ? 852 : 1000 }, locale: 'zh-CN', acceptDownloads: true });
+async function run(browser, base, width, locale = 'zh-CN') {
+    const t = (zh, en) => locale === 'en' ? en : zh;
+    const context = await browser.newContext({ viewport: { width, height: width < 900 ? 852 : 1000 }, locale, deviceScaleFactor: 2, hasTouch: width < 900, acceptDownloads: true });
     const page = await context.newPage(), errors = [], network = [], writes = [], reads = [];
     let delayed, hold = false, active = 'delivery';
+    const workerCount = { created: 0 };
+    page.on('worker', () => workerCount.created++);
     page.on('pageerror', e => errors.push(e.message));
     page.on('console', message => { if (message.text().startsWith('PDF preview:')) console.log(message.text()); });
     // Playwright reports CSP-blocked image attempts as request events too. A
@@ -61,15 +64,16 @@ async function run(browser, base, width) {
         ws.send(JSON.stringify({ type: 'response', id: cmd.id, command: cmd.type, success: true, data }));
     }));
     await page.goto(base, { waitUntil: 'domcontentloaded' });
+    await page.locator('#pi-input').fill('retained draft');
     const link = name => page.locator('#pi-transcript-content .assistant a').filter({ hasText: new RegExp('^' + name + '$') });
     await link('方案').click(); await page.locator('#pi-file-body h1').waitFor();
     assert.equal(await page.locator('#pi-file-body h1').textContent(), '成果方案');
-    assert.match(await page.locator('#pi-file-status').textContent(), /交付快照/);
+    assert.match(await page.locator('#pi-file-status').textContent(), /交付快照|Delivered snapshot/i);
     const readsBeforeReopen = reads.length;
     await page.locator('#pi-file-preview').click();
     await page.locator('#pi-close-inspector').click(); await openInspector(page, 'changes');
     assert.equal(await page.locator('#pi-file-body h1').count(), 0, 'reopen keeps the selected source view');
-    assert.match(await page.locator('#pi-file-status').textContent(), /交付快照/);
+    assert.match(await page.locator('#pi-file-status').textContent(), /交付快照|Delivered snapshot/i);
     assert.equal(reads.length, readsBeforeReopen, 'reopen does not re-read delivery bytes');
     await page.locator('#pi-file-preview').click();
     const download = page.waitForEvent('download'); await page.locator('#pi-file-download').click();
@@ -78,6 +82,39 @@ async function run(browser, base, width) {
     await page.waitForFunction(() => document.querySelector('#pi-file-body img')?.naturalWidth > 0);
     await page.locator('#pi-file-image-size').click(); assert.equal(await page.locator('.pi-file-image').evaluate(n => n.classList.contains('actual-size')), true);
     await page.locator('#pi-file-image-size').click();
+    const imageReads = reads.length;
+    await page.locator('#pi-file-body img').click({ timeout: 5000 }).catch(async error => {
+        console.error('Image geometry', await page.evaluate(() => ['#pi-file-body', '.has-image-controls', '.pi-file-image-viewport', '.pi-file-image-viewport img'].map(s => { const n = document.querySelector(s), r = n.getBoundingClientRect(); return { s, x: r.x, y: r.y, w: r.width, h: r.height, css: n.getAttribute('style') }; })), errors); throw error;
+    });
+    await page.locator('#pi-file-fullscreen-dialog[open]').waitFor();
+    await assertFullscreen(page);
+    await page.getByRole('button', { name: t('放大图片', 'Zoom image in'), exact: true }).click();
+    await page.locator('.pi-file-image-viewport').hover();
+    const oldZoom = await page.locator('.has-image-controls .pi-file-preview-toolbar span').textContent();
+    await page.mouse.wheel(0, -80);
+    await page.waitForFunction(old => document.querySelector('.has-image-controls .pi-file-preview-toolbar span').textContent !== old, oldZoom);
+    const scaled = await page.locator('.pi-file-image-viewport img').evaluate(n => n.getBoundingClientRect().width);
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#pi-file-fullscreen-dialog').evaluate(n => n.open), false);
+    assert.ok(Math.abs(await page.locator('.pi-file-image-viewport img').evaluate(n => n.getBoundingClientRect().width) - scaled) < .1, 'image zoom survives return to sidebar within subpixel rounding');
+    assert.equal(reads.length, imageReads, 'full-screen image reuses verified bytes');
+    assert.equal(await page.locator('#pi-input').inputValue(), 'retained draft');
+    assert.equal(await page.evaluate(() => document.querySelector('#pi-inspector').contains(document.activeElement)), true, 'focus returns to sidebar');
+    await page.locator('#pi-file-fullscreen').click();
+    await page.locator('.pi-file-image-viewport').focus();
+    for (let i = 0; i < 12; i++) await page.keyboard.press('+');
+    const beforePan = await page.locator('.pi-file-image-viewport img').evaluate(n => n.style.transform);
+    const rect = await page.locator('.pi-file-image-viewport').boundingBox();
+    await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2); await page.mouse.down();
+    await page.mouse.move(rect.x + rect.width / 2 + 50, rect.y + rect.height / 2 + 40, { steps: 5 }); await page.mouse.up();
+    assert.notEqual(await page.locator('.pi-file-image-viewport img').evaluate(n => n.style.transform), beforePan, 'drag pans zoomed image');
+    if (width < 900) await pinch(context, page);
+    await page.getByRole('button', { name: t('适应窗口', 'Fit window'), exact: true }).last().click();
+    for (const theme of ['daylight', 'dark', 'slate']) {
+        await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme); await assertFullscreen(page);
+    }
+    await page.screenshot({ path: path.join(os.tmpdir(), `pivane-reading-${locale}-${width}-image.png`) });
+    await page.getByRole('button', { name: t('返回侧栏', 'Back to sidebar'), exact: true }).click();
     for (const theme of ['daylight', 'dark']) { await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme); await checkWidth(page); }
     await page.screenshot({ path: path.join(os.tmpdir(), `pivane-deliveries-${width}-image.png`) });
     await page.locator('#pi-close-inspector').click(); await link('网页').click();
@@ -99,22 +136,52 @@ async function run(browser, base, width) {
         console.error('PDF diagnostic', await page.locator('#pi-file-body').textContent(), errors); throw error;
     });
     assert.equal(await page.locator('.pi-file-pdf-paper canvas').evaluate(n => n.width * n.height <= 4 * 1024 * 1024 + 8192), true);
-    await page.getByRole('button', { name: '下一页', exact: true }).click();
+    await page.getByRole('button', { name: t('下一页', 'Next'), exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.pi-file-pdf-text pre')?.textContent.includes('Preview page two'));
-    await page.getByRole('button', { name: '放大', exact: true }).click();
+    await page.getByRole('button', { name: t('放大', 'Zoom in'), exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.pi-file-pdf-text pre')?.textContent.includes('Preview page two'));
+    const pdfReads = reads.length, pdfWorkers = workerCount.created;
+    await page.locator('.pi-file-pdf-text summary').click();
+    await page.locator('#pi-file-body').evaluate(n => { n.scrollTop = 100; });
+    const sidebarCanvas = await page.locator('.pi-file-pdf-paper canvas').elementHandle();
+    await page.locator('#pi-file-fullscreen').click();
+    await assertFullscreen(page);
+    await page.waitForFunction(() => document.querySelector('.pi-file-pdf-paper canvas')?.clientWidth > innerWidth - 80);
+    assert.equal(await page.locator('.pi-file-pdf-text').evaluate(n => n.open), true);
+    assert.equal(await page.getByRole('spinbutton', { name: t('页码', 'Page number') }).inputValue(), '2');
+    assert.equal(await sidebarCanvas.evaluate(n => n === document.querySelector('.pi-file-pdf-paper canvas')), true, 'same live PDF canvas');
+    assert.equal(workerCount.created, pdfWorkers, 'no second PDF worker');
+    assert.equal(reads.length, pdfReads, 'no second PDF read');
+    await page.setViewportSize({ width: width < 900 ? 1024 : 393, height: 768 });
+    await assertFullscreen(page);
+    assert.equal(await page.getByRole('spinbutton', { name: t('页码', 'Page number') }).inputValue(), '2');
+    await page.setViewportSize({ width, height: width < 900 ? 852 : 1000 });
+    await assertFullscreen(page);
+    await page.locator('#pi-file-info > summary').click();
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#pi-file-fullscreen-dialog').evaluate(n => n.open), true, 'Escape closes metadata before full-screen');
+    assert.equal(await page.locator('#pi-file-info').evaluate(n => n.open), false);
+    await page.screenshot({ path: path.join(os.tmpdir(), `pivane-reading-${locale}-${width}-pdf.png`) });
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('#pi-file-fullscreen-dialog').open && document.querySelector('.pi-file-pdf-text pre')?.textContent.includes('Preview page two'));
+    assert.equal(await page.getByRole('spinbutton', { name: t('页码', 'Page number') }).inputValue(), '2');
+    assert.equal(workerCount.created, pdfWorkers);
     await checkWidth(page);
     await page.screenshot({ path: path.join(os.tmpdir(), `pivane-previews-${width}-pdf.png`) });
     await page.locator('#pi-close-inspector').click();
     await page.waitForFunction(() => document.querySelector('.pi-file-pdf-paper canvas')?.width === 0);
     await openInspector(page, 'changes');
-    await page.waitForFunction(() => document.querySelector('.pi-file-pdf-text pre')?.textContent.includes('Preview page one'));
+    await page.waitForFunction(() => document.querySelector('.pi-file-pdf-text pre')?.textContent.includes('Preview page two'));
     await page.locator('#pi-close-inspector').click(); await link('CSV').click();
     await page.locator('.pi-file-data-table').waitFor();
     assert.equal(await page.locator('.pi-file-data-table tr').count(), 50);
     assert.match(await page.locator('.pi-file-data-table').textContent(), /a,b.*line1\nline2/);
     assert.equal(await page.locator('.pi-file-data-table img').count(), 0);
-    await page.getByRole('button', { name: '下一页', exact: true }).click();
+    await page.getByRole('button', { name: t('下一页', 'Next'), exact: true }).click();
+    assert.equal(await page.locator('.pi-file-data-table th').first().textContent(), '51');
+    await page.locator('#pi-file-fullscreen').click(); await assertFullscreen(page);
+    assert.equal(await page.locator('.pi-file-data-table th').first().textContent(), '51');
+    await page.keyboard.press('Escape');
     assert.equal(await page.locator('.pi-file-data-table th').first().textContent(), '51');
     await page.locator('#pi-file-preview').click(); assert.match(await page.locator('#pi-file-body').textContent(), /"a,b"/);
     await page.locator('#pi-file-preview').click(); await checkWidth(page);
@@ -131,7 +198,7 @@ async function run(browser, base, width) {
     await page.locator('#pi-close-inspector').click();
     await page.waitForFunction(() => { const a = document.querySelector('.pi-file-audio'); return a?.paused && !a.getAttribute('src'); });
     await link('损坏PDF').click();
-    await page.getByText('PDF 无法预览，可下载原文件', { exact: true }).waitFor();
+    await page.getByText(t('PDF 无法预览，可下载原文件', 'PDF cannot be previewed; download the original'), { exact: true }).waitFor();
     await page.locator('#pi-files-deliveries').click(); await page.locator('.pi-delivery-card').first().waitFor();
     assert.equal(await page.locator('.pi-delivery-card').count(), documents.length); await checkWidth(page);
     const listReads = reads.length;
@@ -140,12 +207,19 @@ async function run(browser, base, width) {
     assert.equal(reads.length, listReads, 'reopen keeps the list instead of refreshing');
     await page.screenshot({ path: path.join(os.tmpdir(), `pivane-deliveries-${width}-list.png`) });
     await page.locator('#pi-close-inspector').click(); await link('旧路径').click(); await page.locator('#pi-file-body h1').waitFor();
-    assert.match(await page.locator('#pi-file-status').textContent(), /交付快照/);
+    assert.match(await page.locator('#pi-file-status').textContent(), /交付快照|Delivered snapshot/i);
     await page.locator('#pi-files-project').click(); await page.locator('[data-path="local.png"]').click();
     await page.waitForFunction(() => document.querySelector('#pi-file-body img')?.naturalWidth > 0);
-    assert.match(await page.locator('#pi-file-status').textContent(), /当前文件快照/);
+    assert.match(await page.locator('#pi-file-status').textContent(), /当前文件快照|Current file snapshot/i);
     await page.locator('#pi-close-inspector').click(); await openInspector(page, 'changes');
     assert.equal(await page.locator('#pi-file-body img').isVisible(), true, 'reopen keeps the project reader');
+    await page.locator('#pi-file-fullscreen').click();
+    await page.locator('[data-session-id="other"] .pi-session-main').dispatchEvent('click');
+    await page.waitForFunction(() => document.querySelector('#pi-meta-id').textContent === 'other');
+    assert.equal(await page.locator('#pi-file-fullscreen-dialog').evaluate(n => n.open), false, 'context reset closes modal');
+    assert.equal(await page.locator('#pi-file-body').textContent(), '');
+    await page.locator('[data-session-id="delivery"] .pi-session-main').dispatchEvent('click');
+    await link('网页').waitFor();
     await page.locator('#pi-close-inspector').click(); hold = true; await link('网页').click();
     await until(() => delayed);
     await page.locator('#pi-close-inspector').click();
@@ -155,8 +229,29 @@ async function run(browser, base, width) {
     await delayed.fulfill({ json: result(2) }).catch(() => {});
     assert.equal(await page.locator('#pi-file-body').textContent(), ''); assert.equal(await page.locator('.pi-file-html').count(), 0);
     assert.deepEqual(errors, []); assert.deepEqual(network, []); assert.deepEqual(writes, []);
-    console.log(`PASS deliveries ${width}: links, immutable source, exact download, image, HTML opt-in/sandbox, alias, list, project preview, late thread`);
+    console.log(`PASS deliveries ${locale} ${width}: full-screen, image pan/zoom, PDF state/worker reuse, table position, links/downloads/sandbox, late thread`);
     await context.close();
+}
+async function assertFullscreen(page) {
+    const metrics = await page.locator('#pi-file-fullscreen-dialog').evaluate(n => {
+        const r = n.getBoundingClientRect(); return { open: n.open, width: r.width, height: r.height, vw: innerWidth, vh: innerHeight, overflow: n.scrollWidth > n.clientWidth + 1 };
+    });
+    assert.equal(metrics.open, true); assert.ok(Math.abs(metrics.width - metrics.vw) <= 1); assert.ok(Math.abs(metrics.height - metrics.vh) <= 1); assert.equal(metrics.overflow, false);
+    assert.equal(await page.locator('#pi-file-reader').count(), 1);
+    for (let i = 0; i < 6; i++) {
+        await page.keyboard.press('Tab');
+        assert.equal(await page.evaluate(() => document.querySelector('#pi-file-fullscreen-dialog').contains(document.activeElement)), true, 'focus stays in modal');
+    }
+}
+async function pinch(context, page) {
+    const client = await context.newCDPSession(page), rect = await page.locator('.pi-file-image-viewport').boundingBox();
+    const old = await page.locator('.has-image-controls .pi-file-preview-toolbar span').textContent();
+    const cx = rect.x + rect.width / 2, cy = rect.y + rect.height / 2;
+    await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: cx - 60, y: cy, id: 1 }, { x: cx + 60, y: cy, id: 2 }] });
+    for (const spread of [50, 40, 30, 25]) await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: cx - spread, y: cy, id: 1 }, { x: cx + spread, y: cy, id: 2 }] });
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    assert.notEqual(await page.locator('.has-image-controls .pi-file-preview-toolbar span').textContent(), old, 'two-finger pinch changes zoom');
+    await client.detach();
 }
 async function checkWidth(page) {
     assert.deepEqual(await page.evaluate(() => ['body', '#pi-inspector', '#pi-changes', '#pi-file-viewer', '#pi-files-toolbar', '.pi-file-actions'].filter(s => { const n = document.querySelector(s); return n && n.clientWidth && n.scrollWidth > n.clientWidth + 1; })), []);
@@ -166,9 +261,9 @@ async function until(predicate) { for (let i = 0; i < 100; i++) { if (predicate(
     const app = express();
     for (const [name, folder] of [['marked', 'marked/lib'], ['dompurify', 'dompurify/dist'], ['highlight', '@highlightjs/cdn-assets']]) app.use(`/vendor/${name}`, express.static(path.join(root, 'node_modules', folder)));
     for (const directory of ['legacy/build', 'cmaps', 'standard_fonts', 'wasm']) app.use('/vendor/pdfjs/' + directory, express.static(path.join(root, 'node_modules/pdfjs-dist', directory)));
-    app.use(express.static(path.join(root, 'public')));
+    app.use(express.static(path.join(process.env.PI_PREVIEW_ASSET_ROOT || root, 'public')));
     const server = http.createServer(app); server.listen(0, '127.0.0.1'); await once(server, 'listening');
     const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
-    try { for (const width of [1440, 1024, 393, 320]) await run(browser, `http://127.0.0.1:${server.address().port}`, width); }
+    try { for (const locale of ['zh-CN', 'en']) for (const width of [1440, 1024, 393, 320]) await run(browser, `http://127.0.0.1:${server.address().port}`, width, locale); }
     finally { await browser.close(); server.closeAllConnections(); await new Promise(r => server.close(r)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

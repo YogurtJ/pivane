@@ -1,5 +1,6 @@
 (() => {
     const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
+    const label = (zh, en) => globalThis.PiI18n?.locale?.startsWith('en') ? en : zh;
     const $ = id => document.getElementById(id);
     const languages = { js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript', py: 'python', json: 'json', html: 'xml', htm: 'xml', xml: 'xml', svg: 'xml', css: 'css', sh: 'bash', bash: 'bash', yml: 'yaml', yaml: 'yaml', md: 'markdown', markdown: 'markdown', go: 'go', rs: 'rust', java: 'java', c: 'c', h: 'c', cpp: 'cpp', sql: 'sql', rb: 'ruby', php: 'php', ini: 'ini', toml: 'ini', diff: 'diff' };
     function linkTarget(href, base = '') {
@@ -54,7 +55,33 @@
             this.previewsEnabled = false; this.deliverablesEnabled = false; this.objectUrls = [];
             const action = (id, title, run) => { const b = document.createElement('button'); b.id = id; b.type = 'button'; b.textContent = title; b.addEventListener('click', run); $('pi-file-info').before(b); return b; };
             this.downloadButton = action('pi-file-download', translateUi('下载'), () => this.download());
-            this.imageSizeButton = action('pi-file-image-size', translateUi('原尺寸'), () => { this.actualSize = !this.actualSize; this.renderContent(); });
+            this.imageSizeButton = action('pi-file-image-size', translateUi('原尺寸'), () => this.previewCleanup?.toggleSize?.());
+            this.fullscreenButton = action('pi-file-fullscreen', label('全屏阅读', 'Full-screen reader'), () => this.openFullscreen());
+            this.fullscreen = document.createElement('dialog'); this.fullscreen.className = 'pi-file-fullscreen'; this.fullscreen.id = 'pi-file-fullscreen-dialog';
+            this.fullscreen.setAttribute('aria-labelledby', 'pi-file-fullscreen-title');
+            const heading = document.createElement('header'); heading.className = 'pi-file-fullscreen-heading';
+            this.fullscreenTitle = document.createElement('strong'); this.fullscreenTitle.id = 'pi-file-fullscreen-title';
+            this.fullscreenExit = document.createElement('button'); this.fullscreenExit.type = 'button'; this.fullscreenExit.textContent = label('返回侧栏', 'Back to sidebar');
+            this.fullscreenExit.addEventListener('click', () => this.closeFullscreen());
+            heading.append(this.fullscreenTitle, this.fullscreenExit); this.fullscreen.append(heading); document.body.append(this.fullscreen);
+            this.fullscreen.addEventListener('cancel', event => { event.preventDefault(); this.closeFullscreen(); });
+            this.fullscreen.addEventListener('close', () => { if (this.fullscreenMarker && !this.fullscreen.open) this.closeFullscreen(); });
+            this.fullscreen.addEventListener('keydown', event => {
+                if (event.key === 'Tab' && !event.defaultPrevented) {
+                    const items = [...this.fullscreen.querySelectorAll('button, input, select, textarea, summary, a[href], iframe, [tabindex]')]
+                        .filter(n => !n.disabled && n.tabIndex >= 0 && n.getClientRects().length);
+                    const index = items.indexOf(document.activeElement);
+                    if (items.length && (index < 0 || event.shiftKey && index === 0 || !event.shiftKey && index === items.length - 1)) {
+                        event.preventDefault(); items[event.shiftKey ? items.length - 1 : 0].focus();
+                    }
+                    return;
+                }
+                if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return;
+                event.preventDefault(); event.stopPropagation();
+                const menu = this.fullscreen.querySelector('details[open]:not(.pi-file-pdf-text)');
+                if (menu) { menu.open = false; menu.querySelector('summary')?.focus(); }
+                else this.closeFullscreen();
+            });
             this.runButton = action('pi-file-run-html', translateUi('运行交互'), () => { this.runHtml = !this.runHtml; this.renderContent(); });
             $('pi-file-diff-tab').addEventListener('click', () => this.show('diff'));
             $('pi-file-full-tab').addEventListener('click', () => this.show('full'));
@@ -75,6 +102,8 @@
             });
             this.clear();
             const visibility = new MutationObserver(() => {
+                const pane = $('pi-inspector');
+                if (this.fullscreen.open && (!pane.classList.contains('open') || !pane.classList.contains('show-changes') || $('pi-file-reader').hidden)) this.closeFullscreen(false);
                 const visible = this.isVisible();
                 if (!visible && this.runHtml) this.stopInteractive();
                 if (!visible && this.previewCleanup) { this.releaseUrls(); this.previewSuspended = true; }
@@ -83,9 +112,35 @@
             visibility.observe($('pi-inspector'), { attributes: true, attributeFilter: ['class'] });
             visibility.observe($('pi-file-reader'), { attributes: true, attributeFilter: ['hidden'] });
         }
+        openFullscreen() {
+            if (this.fullscreen.open || !this.data || this.mode !== 'full' || $('pi-file-reader').hidden) return;
+            this.stopInteractive();
+            const body = $('pi-file-body'), view = this.previewCleanup?.captureView?.();
+            const scroll = { top: body.scrollTop, left: body.scrollLeft };
+            this.fullscreenFocus = document.activeElement;
+            this.fullscreenMarker = document.createComment('file-reader-home');
+            $('pi-file-reader').before(this.fullscreenMarker);
+            this.fullscreen.classList.toggle('file-current-only', $('pi-changes').classList.contains('file-current-only'));
+            this.fullscreenTitle.textContent = this.data.name || this.file.path;
+            this.fullscreen.append($('pi-file-reader')); this.fullscreen.showModal();
+            body.scrollTop = scroll.top; body.scrollLeft = scroll.left;
+            this.previewCleanup?.resize?.(view); this.controls(); this.fullscreenExit.focus({ preventScroll: true });
+        }
+        closeFullscreen(restoreFocus = true) {
+            if (!this.fullscreenMarker) return;
+            this.stopInteractive();
+            const body = $('pi-file-body'), view = this.previewCleanup?.captureView?.();
+            const scroll = { top: body.scrollTop, left: body.scrollLeft };
+            this.fullscreen.close();
+            this.fullscreenMarker.replaceWith($('pi-file-reader')); this.fullscreenMarker = null;
+            body.scrollTop = scroll.top; body.scrollLeft = scroll.left;
+            this.previewCleanup?.resize?.(view); this.controls(); this.host.readerLayoutChanged?.();
+            if (restoreFocus) (this.fullscreenFocus?.isConnected ? this.fullscreenFocus : this.fullscreenButton).focus({ preventScroll: true });
+            this.fullscreenFocus = null;
+        }
         isVisible() {
             const pane = $('pi-inspector');
-            return pane.classList.contains('open') && pane.classList.contains('show-changes') && !$('pi-file-reader').hidden;
+            return (this.fullscreen.open || pane.classList.contains('open') && pane.classList.contains('show-changes')) && !$('pi-file-reader').hidden;
         }
         stopInteractive() { if (this.runHtml) { this.runHtml = false; this.renderContent(); } }
         cancel() { this.sequence++; this.controller?.abort(); this.controller = null; this.loading = false; }
@@ -102,6 +157,7 @@
             document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
         }
         clear() {
+            this.closeFullscreen(false); this.previewState = {}; this.previewKey = null;
             this.previewSuspended = false;
             this.cancel(); this.releaseUrls(); this.file = null; this.data = null; this.current = null; this.positions = new Map(); this.restoreTop = null;
             this.runHtml = false; this.actualSize = false;
@@ -121,7 +177,7 @@
         setFile(file) {
             if (this.file?.identity === file.identity && (this.file.path === file.path || this.file.deliveryId && this.file.deliveryId === file.deliveryId) && this.file.hasDiff === file.hasDiff && this.file.writes.length === file.writes.length
                 && this.file.writes.every((w, i) => w.id === file.writes[i].id && w.content === file.writes[i].content)) return;
-            this.rememberPosition();
+            this.closeFullscreen(false); this.rememberPosition(); this.previewState = {}; this.previewKey = null;
             this.previewSuspended = false;
             this.cancel(); this.releaseUrls(); this.file = file; this.data = null; this.current = null; this.jumped = false;
             this.runHtml = false; this.actualSize = false;
@@ -166,7 +222,9 @@
             $('pi-file-preview').hidden = !['markdown', 'html', 'table', 'svg'].includes(kind);
             this.downloadButton.hidden = !this.previewsEnabled && !this.file?.deliveryId;
             this.downloadButton.disabled = !this.data;
-            this.imageSizeButton.hidden = kind !== 'image'; this.imageSizeButton.textContent = this.actualSize ? translateUi('适应窗口') : translateUi('原尺寸');
+            this.fullscreenButton.hidden = this.fullscreen.open || kind === 'audio' || kind === 'binary';
+            this.fullscreenButton.disabled = !this.data || this.loading;
+            this.imageSizeButton.hidden = !['image', 'svg'].includes(kind) || kind === 'svg' && !this.preview; this.imageSizeButton.textContent = this.actualSize ? translateUi('适应窗口') : translateUi('原尺寸');
             this.runButton.hidden = kind !== 'html' || !this.preview;
             this.runButton.disabled = !this.data; this.runButton.setAttribute('aria-pressed', String(Boolean(this.runHtml)));
             this.runButton.textContent = this.runHtml ? translateUi('停止交互') : translateUi('运行交互');
@@ -187,6 +245,7 @@
                 if (!write || new TextEncoder().encode(write.content).length > window.PiFilePolicy.maxBytes) { this.status(translateUi("写入内容超过 2 MiB，暂不支持全文展示"), true); this.controls(); return; }
                 const ext = this.file.path.split('.').at(-1).toLowerCase();
                 const kind = ['md', 'markdown'].includes(ext) ? 'markdown' : this.previewsEnabled ? ({ html: 'html', htm: 'html', csv: 'table', tsv: 'table', svg: 'svg' }[ext] || 'text') : 'text';
+                if (this.previewKey !== this.source) { this.previewState = {}; this.previewKey = this.source; }
                 this.data = { content: write.content, kind, delimiter: ext === 'tsv' ? '\t' : ',' };
                 if (this.defaultPreview) { this.preview = ['markdown', 'html', 'table', 'svg'].includes(this.data.kind); this.defaultPreview = false; }
                 this.status(translateUi("本次成功写入的内容 · 不随磁盘后续修改而更新")); this.renderContent(); return;
@@ -219,6 +278,8 @@
             }
         }
         applyCurrent() {
+            const key = 'current:' + this.current.revision;
+            if (this.previewKey !== key) { this.previewState = {}; this.previewKey = key; }
             this.data = this.current;
             const readAt = new Date(this.data.readAt), modifiedAt = new Date(this.data.modifiedAt);
             this.status(this.file.deliveryId ? translateUi('交付快照 · {0} · SHA256 {1}', new Date(this.data.createdAt).toLocaleString(globalThis.PiI18n?.locale), this.data.revision)
@@ -231,18 +292,15 @@
             const body = $('pi-file-body'), oldTop = body.scrollTop;
             this.releaseUrls(); body.replaceChildren(); this.controls();
             if (!this.data) return;
-            if (['pdf', 'audio'].includes(this.data.kind) || this.preview && ['table', 'svg'].includes(this.data.kind)) {
+            if (['image', 'pdf', 'audio'].includes(this.data.kind) || this.preview && ['table', 'svg'].includes(this.data.kind)) {
                 if (!this.isVisible()) { this.previewSuspended = true; return; }
                 this.previewCleanup = window.PiFilePreviews.render(body, this.data, {
-                    name: this.data.name || this.file.path, bytes: () => this.bytes(), blob: (bytes, mime) => this.blob(bytes, mime)
+                    name: this.data.name || this.file.path, bytes: () => this.bytes(), blob: (bytes, mime) => this.blob(bytes, mime),
+                    state: this.previewState, openFullscreen: () => this.openFullscreen(),
+                    isFullscreen: () => this.fullscreen.open,
+                    imageChanged: mode => { this.actualSize = mode === 'actual'; this.controls(); }
                 });
                 return;
-            }
-            if (this.data.kind === 'image') {
-                const wrap = document.createElement('div'); wrap.className = 'pi-file-image'; wrap.classList.toggle('actual-size', Boolean(this.actualSize));
-                const image = document.createElement('img'); image.alt = this.data.name || this.file.path; image.src = this.blob(this.bytes(), this.data.mime);
-                image.addEventListener('error', () => this.status(translateUi('图片无法解码，可下载原文件'), true), { once: true });
-                wrap.append(image); body.append(wrap); return;
             }
             if (this.data.kind === 'binary') { const note = document.createElement('p'); note.className = 'pi-file-large-note'; note.textContent = translateUi(this.data.previewReason || '此类型暂不支持预览，可下载原文件'); body.append(note); return; }
             const text = this.data.content;

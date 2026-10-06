@@ -20,14 +20,7 @@ settings 的 healthUrl、speechUrl、startScript 可分别被 `BREEZE_TTS_HEALTH
 
 ## Fast 长文本
 
-已验证的 fast profile 只预热到 batch 2/token bucket 512。长输入可能在 HTTP 200 streaming headers 后中断，得到半截 PCM。因此 adapter 根据本地 settings 的 maxChunkCharacters、maxCombinedCharacters、chunkPauseMs：
-
-1. 按标点优先拆分正文，每段满足字符预算。
-2. instruction 和语速指令计入合并预算。
-3. 各段以相同 options 串行生成。
-4. 插入指定静音后拼接一个 WAV。
-
-分段长度与静音间隔由部署者按实际fast profile验证，不在公共配置中提供个人配方。history 的 extraInfo 包括分段、耗时、音频时长、RTF 和 fast 状态。fast/eager 输出不保证逐字节等价，修改远端模式时同步本地 registry 的 fastMode。HTTP headers 的 TTFA 不能冒充首个 PCM 字节延迟。
+远端 fast 服务可能在 HTTP 200 headers 后中断，不能据此认定 PCM 完整。adapter 按 `maxChunkCharacters`、`maxCombinedCharacters` 和 `chunkPauseMs` 将 instruction／语速计入预算，以相同 options 串行分段，插入静音并拼为 WAV。分段与 fast 模式按实际服务验证；history 保留性能 metadata，HTTP headers 的 TTFA 不等于首个 PCM 字节延迟。
 
 ## 范围
 

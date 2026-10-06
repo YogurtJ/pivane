@@ -1,19 +1,21 @@
 (() => {
     const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
-    const limits = { files: 8, images: 6, imageBytes: 6 * 1024 * 1024, textBytes: 1024 * 1024, message: 400000, encodedBytes: 24 * 1024 * 1024 };
+    const limits = { files: 8, documents: 5, documentBytes: 20 * 1024 * 1024, images: 6, imageBytes: 6 * 1024 * 1024, textBytes: 1024 * 1024, message: 400000, encodedBytes: 24 * 1024 * 1024 };
     const imageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
     const textExtensions = 'txt,md,markdown,json,jsonl,js,mjs,cjs,ts,tsx,jsx,py,sh,bash,zsh,css,html,htm,xml,yaml,yml,toml,ini,csv,tsv,log,sql,rs,go,c,h,cpp,hpp,java,kt,swift,rb,php,r,lua,vue,svelte,conf,cfg,gitignore,env'.split(',');
-    const accept = [...imageTypes, 'text/*', ...textExtensions.map(ext => `.${ext}`)].join(',');
+    const documents = typeof module !== 'undefined' && module.exports ? require('./pi-document-references') : globalThis.PiDocumentReferences;
+    const accept = [...imageTypes, 'text/*', '.docx', '.xlsx', '.pptx', '.pdf', ...textExtensions.map(ext => `.${ext}`)].join(',');
     let nextId = 0;
     const id = () => `attachment-${++nextId}`;
     const escapeName = name => String(name).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
-    const textBlock = file => `\n\n<attached_file name="${escapeName(file.name)}">\n${file.text}\n</attached_file>`;
+    const textBlock = file => file.kind === 'document' ? `\n\n${documents.marker(file.reference)}` : `\n\n<attached_file name="${escapeName(file.name)}">\n${file.text}\n</attached_file>`;
     function payload(text, files) {
         const quotes = files.filter(file => file.kind === 'quote').map(file => window.PiQuotes.serialize(file)).join('');
-        return { message: `${quotes}${text}${files.filter(file => file.kind === 'text').map(textBlock).join('')}`.trim(),
+        return { message: `${quotes}${text}${files.filter(file => ['text', 'document'].includes(file.kind)).map(textBlock).join('')}`.trim(),
             images: files.filter(file => file.kind === 'image').map(file => ({ type: 'image', mimeType: file.mimeType, data: file.data })) };
     }
     function validatePayload({ message, images = [] }) {
+        if (documents.split(message).filter(part => part.reference).length > limits.documents) throw new Error(translateUi("一次最多添加 5 个文档附件"));
         if (message.length > limits.message) throw new Error(translateUi("正文与文本附件合计不能超过 400000 字符"));
         if (images.length > limits.images) throw new Error(translateUi("一次最多添加 6 张图片"));
         if (images.some(image => !imageTypes.includes(image.mimeType))) throw new Error(translateUi("图片仅支持 PNG/JPEG/WebP/GIF"));
@@ -29,7 +31,9 @@
         const inferred = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' }[ext];
         if (imageTypes.includes(type) || inferred && (!type || type === 'application/octet-stream')) return { kind: 'image', mimeType: inferred || type };
         if (type.startsWith('image/') || ['heic', 'heif', 'avif', 'svg', 'bmp', 'tif', 'tiff'].includes(ext)) throw new Error(translateUi("图片仅支持 PNG/JPEG/WebP/GIF，请先转换格式"));
-        if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'zip', 'gz', 'rar', '7z'].includes(ext)) throw new Error(translateUi("暂不支持 PDF、Office 或压缩包，请转换为文本后添加"));
+        if (['docx', 'xlsx', 'pptx', 'pdf'].includes(ext)) return { kind: 'document', format: ext };
+        if (['doc', 'xls', 'ppt'].includes(ext)) throw new Error(translateUi("请先将旧版 Office 文件另存为 DOCX、XLSX 或 PPTX 后上传"));
+        if (['zip', 'gz', 'rar', '7z'].includes(ext)) throw new Error(translateUi("暂不支持压缩包，请选择其中的文件"));
         if (type.startsWith('text/') || ['application/json', 'application/xml', 'application/javascript', 'application/yaml', 'application/x-yaml', 'application/toml'].includes(type)
             || textExtensions.includes(ext) || /^(Dockerfile|Makefile|LICENSE|README)$/i.test(file.name)) return { kind: 'text', mimeType: 'text/plain' };
         throw new Error(translateUi("不支持此文件格式，请添加图片或 UTF-8 文本/代码文件"));
@@ -43,8 +47,15 @@
         if (ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') return 'image/webp';
         throw new Error(translateUi("图片内容与支持的格式不符，文件可能损坏"));
     }
-    async function read(file) {
+    async function read(file, { upload } = {}) {
         const format = classify(file);
+        if (format.kind === 'document') {
+            if (!file.size || file.size > limits.documentBytes) throw new Error(translateUi("单个文档附件须为非空文件且不超过 20 MiB"));
+            if (!upload) throw new Error(translateUi("当前入口尚未启用文档上传，请使用支持此功能的持久线程"));
+            const result = await upload(file);
+            if (!documents.valid(result?.reference) || result.reference.name !== file.name || result.reference.size !== file.size || result.reference.format !== format.format) throw new Error(translateUi("文档上传返回无效，请核对原上传"));
+            return { id: id(), name: file.name, size: file.size, ...format, reference: result.reference };
+        }
         const maximum = format.kind === 'image' ? limits.imageBytes : limits.textBytes;
         if (!file.size) throw new Error(translateUi("文件为空"));
         if (file.size > maximum) throw new Error(format.kind === 'image' ? translateUi("单张图片不能超过 6MB") : translateUi("单个文本附件不能超过 1MB"));

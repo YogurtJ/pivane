@@ -68,6 +68,22 @@
 .pi-file-pdf-text { margin: 12px; color: var(--text-main); font-size: .8rem; }
 .pi-file-pdf-text pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .pi-file-audio { display: block; width: calc(100% - 24px); max-width: 600px; margin: 20px 12px; }
+/* A modal reuses the live reader DOM and keeps the background inert. */
+.pi-file-fullscreen:not([open]) { display: none; }
+.pi-file-fullscreen[open] { display: flex; flex-direction: column; position: fixed; inset: 0; margin: 0; width: 100%; height: 100dvh; max-width: none; max-height: none; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); border: 0; border-radius: 0; box-sizing: border-box; background: var(--surface-1); color: var(--text-main); overflow: hidden; }
+.pi-file-fullscreen::backdrop { background: #000a; }
+.pi-file-fullscreen-heading { display: flex; align-items: center; gap: 12px; padding: 8px 12px; min-height: 48px; flex-shrink: 0; border-bottom: 1px solid var(--line); }
+.pi-file-fullscreen-heading strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .9rem; }
+.pi-file-fullscreen-heading button { flex-shrink: 0; min-height: 36px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); color: var(--text-main); padding: 6px 12px; font: inherit; font-size: .85rem; cursor: pointer; transform: none; }
+.pi-file-fullscreen .pi-files-heading { display: none; }
+.pi-file-fullscreen #pi-file-body:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+.pi-file-fullscreen #pi-file-reader { flex: 1; min-height: 0; width: 100%; }
+.pi-file-fullscreen .pi-file-markdown { max-width: 960px; margin: 0 auto; padding: 24px clamp(16px, 4%, 44px); font-size: .95rem; line-height: 1.8; }
+.pi-file-fullscreen button:focus-visible, .pi-file-image-viewport:focus-visible, .pi-file-image-viewport img:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+.pi-file-image.has-image-controls { display: flex; flex-direction: column; align-items: stretch; width: 100%; height: 100%; min-height: 180px; padding: 0; box-sizing: border-box; }
+.pi-file-image-viewport { position: relative; flex: 1; min-height: 0; min-width: 0; overflow: hidden; touch-action: none; user-select: none; cursor: grab; }
+.pi-file-image-viewport:active { cursor: grabbing; }
+.pi-file-image-viewport img { position: absolute; left: 50%; top: 50%; max-width: none; max-height: none; transform-origin: center; object-fit: fill; }
 @media (max-width: 900px) {
     .pi-file-preview-toolbar button { min-height: 36px; }
     #pi-file-source { font-size: 16px; height: 36px; }

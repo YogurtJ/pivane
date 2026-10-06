@@ -89,6 +89,6 @@ succeeded -> task.content.url
 
 ## 费用边界
 
-`POST /api/video/generate` 是真实高成本请求。模块 Agent 的 `media_plan_video` 仍只有规划副作用，不会调用该接口。持久队列完成前，MediaPlan 固定为 `execution.mode=manual`。
+`POST /api/video/generate` 是真实高成本请求。`media_plan_video` 只规划，不执行；旧 MediaPlan 使用 `execution.mode=manual`，不接入聊天卡片队列。新接入使用[媒体连接](MEDIA_CONNECTIONS.md)及用户确认票据。
 
 官方 H3 需要 Pay-as-you-go API。未配置 Key 时生成按钮禁用，health 返回 `configured=false`。

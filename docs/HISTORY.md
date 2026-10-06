@@ -1,26 +1,26 @@
 # 历史搜索与原生书签
 
-Pi 0.87 的上下文编辑只影响模型后续请求；历史搜索、预览与主聊天保留原始文字。主聊天仍遵循原生压缩范围，压缩前记录从历史面板查询。`context_edit` 与 `usage` 不作为聊天节点或预览的当前位置；恢复到编辑之前的分支时，模型上下文按 Pi 原生规则恢复。
+原生上下文编辑只影响后续模型请求；历史搜索和预览保留原文，压缩前记录从历史面板查询。`context_edit` 和 `usage` 不作为聊天节点，恢复分支时按 Pi 原生规则恢复上下文。
 
-2026-09-10：项目线程栏底部新增跨线程正文搜索入口（sessionSearch标记）。GET /sessions/search独立有界只读扫描原生用户/assistant文字，返回线程与命中片段；打开结果接入本页现有get_history_entry正文预览，不导航分支、不自动发送。当前线程搜索/书签继续经唯一worker执行。跨线程搜索的路径、取消、分页和覆盖限制见 [NATIVE_COMPLETION.md](NATIVE_COMPLETION.md)。
+侧栏“搜正文”跨线程只读搜索用户／助手文字，打开结果仅预览、不导航或发送。当前线程的搜索和书签仍通过唯一 worker；范围和预算见[跨线程搜索](NATIVE_COMPLETION.md#跨线程正文搜索)。
 
 当前线程历史查询需要运行实例的 `/api/pi/status.historySearch=true`。
 
 ## 搜索结果的角色与回复阶段（2026-09-10）
 
-“搜索”列表及记录预览头部与会话树共用 `PiHistoryPresentation`：用户问题蓝色，AI过程回复为中性卡片，最终回复绿色强调，显示阶段标签与本地时间；工具记录/摘要有独立图标。关键词命中高亮、正文/工具投影、分页与复制范围保持原契约，搜索片段不按会话树的三行规则裁切，以保留命中上下文。
+搜索结果与会话树统一标明角色、回复阶段和本地时间；关键词片段保留命中上下文，工具与摘要单独区分。
 
 `search_history.results[]` 与 `get_history_entry` 新增 `replyStage`（仅assistant）和 `summaryType`（仅摘要）。`server/pi-history-model.js` 调用树模块的同一个replyStages函数，对完整原生entries和当前branch计算后才做关键词/类型/书签/分页筛选；未命中的后续消息仍参与阶段判断，不能把搜索页最后一个结果猜成最终回复。空闲信息仍由内部扩展读取ctx.isIdle及pending messages，不接受浏览器传入的settled；旧响应无字段时保持通用AI回复。
 
-历史面板内全宽文本框和select的focus-visible使用2px内侧轮廓（offset=-2px），保留键盘焦点提示；不再在滚动区域边缘画向外的绿色轮廓或阴影。输入尺寸、页面滚动和搜索投递时机不变。
+搜索和树视图保留键盘焦点与内部滚动。
 
 新后端由 `historyPresentation=true` 标记；旧worker须在空闲时重开以加载history-presentation-v1扩展。
 
 ## 会话树的角色、时间与回复阶段（2026-09-10）
 
-用户问题使用蓝色角色图标和浅色卡片，AI过程回复使用中性卡片，最终回复使用绿色强调及明确标签；停止/失败单独标记。卡片标题旁显示浏览器本地时间，非本年带年份，完整本地日期时间在time标题和无障碍标签中；使用原生消息timestamp，缺省时使用entry的原生timestamp，无有效时间则不展示，数值0是有效时间。预览摘要最多显示三行，点击仍读取原正文。
+时间来自原生消息或 entry，缺失时不展示，0为有效值。树节点显示短预览，点击读取原文；停止和失败分别标记，不把最后一条可见回复猜成最终回复。
 
-上方“搜索 / 会话树”为共用底板的分段视图切换，下方“定位当前 / 刷新”为轻量图标操作栏；选择态、焦点、手机触控尺寸和三主题保持明确区分。树视图不再显示旧搜索的结果计数。
+在“搜索／会话树”之间切换，使用“定位当前”或刷新；单击节点仅预览，显式继续才导航。
 
 `get_session_tree.rows[].replyStage` 为 `progress|final|pending|stopped|error|unknown`，只为assistant节点返回。服务端在折叠/分页之前按完整原生parent链反向计算下一条消息：后面仍有assistant或toolResult的文字是过程回复，toolUse/toolCall同样是过程。只凭stopReason=stop不能判为最终回复；无继续消息、具有stop/length终态且运行尾段已原生空闲（ctx.isIdle且无pending messages）时才标final。当前未结束尾段为pending；中断/失败分别为stopped/error。跨压缩/分支摘要或特殊消息边界、不足以确认的旧记录保留unknown，不从retainedTail、相邻分页或折叠后的可见列表推算。
 
@@ -51,7 +51,7 @@ Pi 0.87 的上下文编辑只影响模型后续请求；历史搜索、预览与
 
 成功导航通过公开 pi.appendEntry 追加 `pivane-web-navigation` metadata（兼容旧 `pi5-web-navigation`） 保持重启后的 leaf；不含聊天副本。已有原生 summary 保持原格式与 usage；当前状态仅内存。未知/迟到 pivaneNavigation 与 pivaneHistory 响应及其旧 pi5 别名在 Supervisor 截获。
 
-专项 `test/pi-session-tree.test.js` 使用原生 SessionManager、真实RPC和loopback SSE，覆盖正文/工具投影、折叠/分页、无摘要/有摘要/取消/错误、图片草稿、修订冲突、双客户端、预约暂停及重启恢复。`test/browser/pi-session-tree.cjs` 验证1440/393/320px三主题、正文阅读面积、树操作、确认取消、草稿与迟到线程隔离；沿用原历史、工作流、附件、输入与文件查看回归。所有测试使用独立数据或mock，不操作用户线程或调用付费模型。
+树及导航专项：`test/pi-session-tree.test.js`、`test/browser/pi-session-tree.cjs`，使用隔离原生会话和合成服务；执行范围见[开发流程](development/WORKFLOW.md)。
 
 ## 用户交互
 

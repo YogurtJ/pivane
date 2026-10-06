@@ -380,11 +380,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    const documentAttachments = new window.PiDocumentAttachments({
+        context: () => ({ cwd: state.cwd, session: state.session, connected: state.connected, generation: state.socketGeneration }),
+        api: apiFetch, toast, fetchBytes: url => (window.WorkspaceAccess?.fetch || fetch)(url, { headers: apiHeaders() })
+    });
     const workflows = new window.PiSessionWorkflows({
         getContext: () => ({ cwd: state.cwd, session: state.session, connected: state.connected, model: state.model, generation: state.socketGeneration,
             busy: state.shellBusy || state.streaming || state.compacting || state.compactRequested || state.controlRequested || state.controlsStopping || state.pendingUi.size > 0,
             draftBusy: state.attachmentReads > 0 || state.submittingDrafts.has(state.composerSessionKey) }),
-        apiFetch, toast,
+        apiFetch, toast, uploadDocument: file => documentAttachments.upload(file), documentCard: reference => documentAttachments.card(reference),
         reconcile: reconcileSession,
         getDraft: () => {
             if (window.PiShell.parse(elements.input.value)) throw new Error(translateUi("Shell 命令不支持延迟发送，请在当前会话空闲时直接执行"));
@@ -769,6 +773,7 @@ document.addEventListener('DOMContentLoaded', () => {
             composer.setEnabled(status.composerTools === true);
             state.composerTools = status.composerTools === true;
             voice?.setEnabled(status.transcription === true);
+            documentAttachments.enabled = status.documentUploads === true;
             state.nativeSettings = status.nativeSettings === true;
             state.nativeResources = status.nativeResources === true;
             extensionAssistant.setEnabled(status.extensionAssistant === true);
@@ -2716,6 +2721,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Subagent notices start collapsed; their Markdown renders on first expansion.
                 if (subagentNotice) { text.dataset.pendingMarkdown = ''; text._piMarkdown = block.text || ''; }
                 else if (role === 'assistant') text.innerHTML = renderMarkdown(block.text);
+                else if (role === 'user') documentAttachments.render(text, block.text);
                 else window.PiQuotes.renderUser(text, block.text);
                 body.appendChild(text);
                 if (role === 'user') foldLongUserText(text, block.text || '');
@@ -4038,13 +4044,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (images.length && !state.model?.input?.includes('image')) {
             return toast(translateUi("当前模型不支持图片输入，请先切换多模态模型"), 'error', 6500);
         }
-        const textAttachments = state.attachmentFiles.filter(file => file.kind === 'text');
+        const textAttachments = state.attachmentFiles.filter(file => ['text', 'document'].includes(file.kind));
         const command = selectedCommand?.source === 'extension' ? 'prompt' : state.streaming ? elements.deliveryMode.value : 'prompt';
         const draft = { text: elements.input.value, files: [...state.attachmentFiles] };
         state.submittingDrafts.add(key);
         autoResizeInput(); workflows.update();
         composer.hide();
-        const optimistic = selectedCommand ? null : appendOptimisticUser(hasQuotes ? attachments.payload(text, state.attachmentFiles.filter(file => file.kind === 'quote')).message : text || textAttachments.map(file => translateUi("附件：{0}", file.name)).join(', '), images, message);
+        const optimistic = selectedCommand ? null : appendOptimisticUser(hasQuotes || state.attachmentFiles.some(file => file.kind === 'document') ? attachments.payload(text, state.attachmentFiles.filter(file => ['quote', 'document'].includes(file.kind))).message : text || textAttachments.map(file => translateUi("附件：{0}", file.name)).join(', '), images, message);
         try {
             await requestRpc(command, { message, images }, 60000);
             state.uncertainDrafts.delete(key);
@@ -4151,7 +4157,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     if (state.attachmentFiles.length >= attachments.limits.files) throw new Error(translateUi("一次最多添加 8 个附件"));
                     if (attachments.classify(file).kind === 'image' && state.attachmentFiles.filter(item => item.kind === 'image').length >= attachments.limits.images) throw new Error(translateUi("一次最多添加 6 张图片"));
-                    const item = await attachments.read(file);
+                    if (attachments.classify(file).kind === 'document' && state.attachmentFiles.filter(item => item.kind === 'document').length >= attachments.limits.documents) throw new Error(translateUi('一次最多添加 5 个文档附件'));
+                    const item = await attachments.read(file, { upload: file => documentAttachments.upload(file) });
                     if (epoch !== state.attachmentEpoch) return;
                     attachments.validateDraft(elements.input.value, [...state.attachmentFiles, item]);
                     state.attachmentFiles.push(item);
@@ -4189,6 +4196,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function previewAttachment(file) {
+        if (file.kind === 'document') { void documentAttachments.download(file.reference).catch(error => toast(error.message, 'error')); return; }
         $('pi-attachment-preview-name').textContent = file.name;
         const body = $('pi-attachment-preview-content');
         const original = $('pi-attachment-original');

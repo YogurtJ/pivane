@@ -31,11 +31,11 @@
 - **HTTPS 反向代理**：同机 Caddy/Nginx 等可转发到 `http://127.0.0.1:11408`，需保留原 Host、支持 WebSocket 和长连接；启用 PIVANE_WEB_SECURE_COOKIE，限制后端直接入口。程序不自动信任 X-Forwarded-*；该配置也影响 HTTPS Origin 校验，不能假设原 HTTP 登录入口继续适用。不同机器的代理不能直接连接服务器回环地址。
 - **SSH/本机隧道**：例如从客户端执行 `ssh -N -L 11408:127.0.0.1:11408 user@server`，再访问客户端 `http://127.0.0.1:11408`。服务器端 Pivane 仍可仅本机监听；自行处理端口冲突，保持 Token 验证。其他同机隧道亦可使用回环目标，但可能公开服务，须核对服务商访问策略、TLS 和凭据。
 
-本功能源码完成不表示运行实例已切换，界面与网络验证以实际部署回执为准。
+网络能力以实际服务返回的状态为准。
 
-2026-09-11 Windows存储补充：访问/通知/预约文件在创建时携带受保护DACL，允许当前用户、SYSTEM和管理员；关键写入用可写句柄fsync与MoveFileEx写透替换。专用Pi目录和私有导出目录单独保护，不修改系统Temp的ACL。POSIX模式验证继续保留，Windows以实际ACL及反向开放测试验证；恢复命令的备份也必须私有。范围见WINDOWS.md。
+平台私密存储采用 POSIX 私密模式或 Windows 受保护 DACL，关键写入刷盘后原子替换；恢复备份同样受保护，不修改系统临时目录权限，不以降低校验绕过原生组件故障。见[Windows](WINDOWS.md)及[原生组件](../native/README.md)。
 
-实现日期：2026-09-09。统一入口由 `/api/access/status.accessControl=true` 与已认证的 `/api/pi/status.accessControl=true` 标记；代码完成不等于生产进程已加载。
+能力由 `/api/access/status.accessControl=true` 与认证后的 `/api/pi/status.accessControl=true` 标记。
 
 ## 使用方式
 
@@ -47,7 +47,7 @@ Token 修改撤销全部旧 Cookie 和旧 Token；“撤销所有登录”只撤
 
 重新登录不刷新整个页面，不清理主输入框未发送草稿。登录覆盖层使其他界面不可交互、暂停媒体，并关闭当前原生 dialog；不代替用户回答扩展确认。已下载或已在浏览器内存中的内容不能远程撤回。新浏览器只取得公开页面资源，私人数据请求需认证。
 
-2026-09-10 登录界面静态优化：使用本地π品牌图标和独立卡片布局，输入框、复选框及按钮不再混用旧弹窗尺寸；浅色/薄荷/深色主题共用结构。提供输入提示、Token显示/隐藏、登录中反馈和可展开帮助；解锁或再次要求登录时恢复隐藏。窄屏/低高度窗口允许滚动，键盘焦点循环包含帮助入口。刷新页面即可生效，不改变认证、保存或会话规则。
+登录页支持 Token 显隐、提交反馈和错误提示；重新锁定时恢复隐藏。
 
 ## 认证和同源边界
 
@@ -112,8 +112,4 @@ Package 只有目标 origin 精确匹配当前内部 origin 才携带内部凭�
 
 ## 验证
 
-`test/workspace-access.test.js` 覆盖开关、同源与Cookie CSRF、Token/登录持久化、轮换/退出/撤销、过期、修订、损坏/断链文件、权限、内部凭据范围、限流与本地恢复。`test/workspace-access-http.test.js` 在独立完整服务检查旧API/媒体/编码路径、公共资源、Range/no-store、原生Cookie WS与撤销后持久worker保留。`test/media-lab-rpc.test.js` 用原生受限Pi＋本地模型fixture验证已鉴权规划、无票据/JSONL/模型凭据泄漏。
-
-接入planner的RPC fixture同样必须显式覆盖内部origin/Token，不能从运行测试的受管Agent继承真实工作台地址。
-
-`test/browser/workspace-access.cjs` 只允许隔离实例，验证1440/393/320px、三主题、登录开关/设置、随机Token一次展示、免storage Cookie、全新浏览器登录页、退出/撤销、草稿保持、字段对比度与内部宽度。登录页另检查卡片实际留白、复选框宽高、品牌图片、显示/隐藏、帮助焦点循环和420px低高度滚动，并保存三视口×三主题截图 `/tmp/pi-login-ui-*`。截图在 `/tmp/pi-access-*`。既有设置/附件/正文/实验室/朗读/导出回归仍需通过。附加隔离浏览器验收用合成PNG/WAV/MP4，实际验证启用Cookie认证后的图片解码、音视频播放/跳转、下载、退出拒绝和sandbox Mermaid渲染，不调用模型或生成服务。
+访问控制专项覆盖认证、同源/CSRF、撤销、配置失败、内部凭据和恢复，入口见[模块导航](development/MODULES.md)。测试使用独立身份和合成媒体；planner fixture 必须覆盖内部 origin/Token，不能继承真实实例地址。发布范围见[平台验证](RELEASE_INSTALL_VALIDATION.md)。

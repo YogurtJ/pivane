@@ -89,6 +89,9 @@ test('Unrelated threads message each other, wake a closed recipient, reply, and 
         await deadline(() => entries(a.path).some(entry => entry.type === 'custom_message' && entry.customType === MESSAGE_IN));
         await deadline(() => entries(a.path).some(entry => entry.type === 'message' && entry.message.role === 'assistant' && lastText(entry.message).includes('A_GOT_ANSWER')));
         await deadline(() => !aWorker.activity.snapshot().busy);
+        // A can observe the answer before B has durably appended its outbound
+        // receipt. Wait for B's turn to settle before snapshotting its records.
+        await deadline(() => gateway.supervisor.getActiveWorker(b.path)?.isIdle());
         const bEntries = entries(b.path);
         const question = bEntries.find(entry => entry.type === 'custom_message' && entry.customType === MESSAGE_IN);
         assert.ok(question.content.startsWith('[Agent message from thread "Thread A"'));

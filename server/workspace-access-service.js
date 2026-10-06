@@ -191,7 +191,7 @@ class WorkspaceAccessService extends EventEmitter {
                 const assistant = req.method === 'POST' && ['/extension-assistant/inventory', '/extension-assistant/package'].includes(assistantPath)
                     && equal(String(req.headers.authorization || ''), `Bearer ${this.extensionAssistantToken}`);
                 const threadPath = pathname.replace(/^\/api\/pi(?=\/)/, '');
-                const thread = req.method === 'POST' && (/^\/agent-threads\/(create|status|models|result)$/.test(threadPath) || /^\/agent-messages\/(threads|send|status)$/.test(threadPath))
+                const thread = req.method === 'POST' && (/^\/agent-threads\/(create|status|models|result)$/.test(threadPath) || /^\/agent-messages\/(threads|send|status)$/.test(threadPath) || threadPath === '/uploads/read')
                     ? this.agentThreadIdentity?.(req) : null;
                 const identity = internal ? { kind: 'internal' } : assistant ? { kind: 'extension-assistant' } : thread || this.authenticate(req);
                 if (req.method === 'OPTIONS') {

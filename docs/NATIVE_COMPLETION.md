@@ -1,10 +1,6 @@
 # 原生功能收尾：运行恢复、扩展交互、跨线程搜索与配置生效
 
-2026-09-11 跨线程扫描已接入Windows原生句柄路径、完整文件身份与BigInt stat，保留根/隐藏项目/载荷/预算/前后变化检查。Windows11 x64原生搜索/恢复、单worker、Shell和侧聊验证通过，具体OS/文件系统范围见WINDOWS.md。
-
-2026-09-11 跨线程搜索的macOS描述符验证已接入共享F_GETPATH组件，Linux仍用/proc；所有预算、角色排除、路径/身份与前后检查保持。组件不可用则不启用sessionSearch，并拒绝扫描，不把漏扫当零结果。Mac大小写与/tmp通过native realpath规范，完整平台范围见MACOS.md。
-
-2026-09-10 源码实现。后端需空闲启用，以实际 `/api/pi/status` 的 `liveRecovery`、`extensionDrafts`、`sessionSearch`、`runtimeConfiguration` 为准。没有修改上游 Pi 包或新增持久聊天历史。
+按 `/api/pi/status` 的 `liveRecovery`、`extensionDrafts`、`sessionSearch` 和 `runtimeConfiguration` 核对能力。搜索使用 Linux /proc、macOS F_GETPATH 或 Windows HANDLE 验证已打开文件；缺少安全后端时拒绝扫描，不把漏扫当作零结果。平台范围见[验证说明](RELEASE_INSTALL_VALIDATION.md)。
 
 ## 运行现场恢复
 
@@ -54,8 +50,4 @@ assistant stopReason=length 显示达到输出上限，用户自行决定是否�
 
 ## 验证与启用
 
-- `node --test --test-concurrency=1 test/pi-native-completion.test.js`：实际Pi与loopback SSE验证流式恢复、响应边界、建议、配置差异、忙碌拒绝、同session唯一worker重开和历史保留；只读搜索边界；启动交互拒绝。
-- `PLAYWRIGHT_MODULE=... PI_COMPLETION_TEST_URL=http://127.0.0.1:3001 node test/browser/pi-native-completion.cjs`：生产静态资源+mock API/WS，1440/393/320px验证事件边界、恢复、草稿确认失败不重复、搜索预览、配置反馈与重开，无真实模型或写请求。
-- 既有跨线程浏览器用例在选线程前明确切换“全部”，兼容共享目录同期的“工作中”默认视图，不改变产品默认或删除原断言。启动失败专项发现并修复了浏览器不接受1011/1008主动关闭码的问题，初次失败日志保留在本轮快照。
-- 最终验证：147/147项Node、check、audit（0漏洞）、试用包清单，以及新增功能/原生设置/队列控制/历史/会话树/Shell/附件/正文阅读/会话工作流/侧聊/供应商登录共11组Chromium回归全部通过，validation.json为validated且源码哈希一致。新增界面覆盖1440/393/320px与三主题；手机为Chromium视口仿真。没有真实模型或生产会话写入。
-- 候选包验证记录应绑定版本与SHA256；运行能力以实例status为准，不把等待部署写成启用。
+Node：`test/pi-native-completion.test.js`；浏览器：`test/browser/pi-native-completion.cjs`。使用独立身份和合成服务，按[开发流程](development/WORKFLOW.md)执行。发布结果绑定归档 SHA256，运行能力按实际 status 核对。

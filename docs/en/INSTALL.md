@@ -25,7 +25,7 @@ Pivane selects its own package versions without rewriting existing CLI package d
 
 ## Installation scope
 
-For an ordinary deployment, check prerequisites, reuse the intended Pi identity, choose instance media/schedule paths and project roots, run `node scripts/install.cjs` once, start the server, and verify read-only status and that the page opens. Full test suites, desktop/mobile regression, packaging and recovery drills belong to development validation. Persistent background service setup is an optional follow-up. Report time to first usable page separately from later validation or troubleshooting.
+For an ordinary deployment, check prerequisites, reuse the intended Pi identity, configure instance data paths and project roots, run `node scripts/install.cjs` once, and install the background service. Verify read-only status and that the page opens. Foreground startup is for trials or troubleshooting. Full tests, browser regression, packaging and recovery drills belong to development validation. Report time to first usable page separately from later checks.
 
 When given only the GitHub repository URL, prefer the Release archive and checksum. If the user explicitly chooses a Git checkout, record its commit and follow the same instance setup; a source checkout does not require development tests. After switching Node versions, check `node --version` and `node -p 'process.execPath'`. Chain the switch and installation with `&&` so a failed switch cannot silently run installation under the previous Node. Node 22 is the installation baseline, not proof that every other major version is incompatible.
 
@@ -149,7 +149,7 @@ The Windows example includes all drive roots visible at installation, such as `C
 
 ## First use and remote access
 
-Open Settings → Providers and models and check the existing native configuration. Log in only if usable credentials are missing. Tests send small billable requests; saving configuration alone does not test a model. Select an existing project directory, create a thread and choose its model. Send a simple question, then reopen the persistent thread to verify it was saved. Start with a synthetic project, not private production files.
+Open Settings → Providers and models and check existing native configuration; sign in only if credentials are missing. Read-only status and a usable page complete basic startup. If the user has authorized a real model test, select a project, create a thread, send a simple question and reopen it to verify persistence. The request may incur charges. Use a synthetic file for any separate tool check, and verify uncertain requests before sending again.
 
 The examples listen only on loopback. `localhost` on a phone means the phone, not the server. To connect from another device, configure the server's listen address, firewall, reachable workspace URL and access authentication. Use trusted HTTPS or a trusted private network for credentials. Change both `PORT` and `PI_WORKSPACE_BASE_URL` if you change the port.
 
@@ -159,7 +159,7 @@ A fresh installation has no executable media service. Configure your own image, 
 
 ## Backups, upgrades and recovery
 
-The current source defaults to port `11408`. When upgrading an installation on port `3001`, change `PORT` and the workspace URL in its actual configuration to `11408`. Before changing ports, set `PI_WEB_DEFERRED_FILE` to the absolute path of the existing scheduled-message queue if it was using a port-dependent default. Update any service overrides, shortcuts and reverse proxy targets, then restart when idle. Explicit custom ports remain supported.
+New installations default to port `11408`; existing instances may keep an explicitly configured port. If changing it, update `PORT`, the workspace URL, service overrides, shortcuts and reverse proxy targets. First pin `PI_WEB_DEFERRED_FILE` to the existing queue’s absolute path if it used a port-dependent default. Never run two owners of the same queue.
 
 Preserve these together:
 

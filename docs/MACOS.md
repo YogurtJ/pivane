@@ -8,8 +8,7 @@ Pivane 在 macOS 上原生运行，原生组件同时包含 Apple Silicon 与 In
 
 - Node 22.x、npm、系统ripgrep。可以保留已有其他版本Node，为本实例指定独立Node22。
 - 安装包必须包含`native/pi-darwin-fd.node`、对应C源码与manifest；它们为同一批构建，不需现场编译该组件。缺失或不匹配时不启用全文/搜索/统计，不回退为较弱的路径检查。当前源码内置记忆的 SQLite 依赖另行安装适配当前 Node 的二进制，缺少预构建文件时需要 Python 与 Xcode Command Line Tools，见[内置能力包](BUNDLED_CAPABILITIES.md)。
-- 本轮实测使用独立Node22官方Darwin ARM64归档，并用官方SHASUMS256核对；没有替换原全局Node。也可通过自己的Node版本管理器或Homebrew提供Node22，启动前用`node --version`核对。
-- 若缺少rg，可用`brew install ripgrep`；不要因系统已装Node25而认为该版本已在本项目验收。
+- 若缺少rg，可用`brew install ripgrep`；Node 实际版本及平台验收分别核对。
 
 ## 安装前先核对当前 Node
 

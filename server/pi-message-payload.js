@@ -3,6 +3,7 @@ const { INTERNAL_COMMAND, INTERNAL_COMMAND_PATTERN } = require('./pivane-compat'
 
 function validateMessage(input, { plain = false } = {}) {
     if (typeof input.message !== 'string' || input.message.length > 400000) throw new Error('消息必须为不超过 400000 字符的文本');
+    if (require('../public/pi-document-references').split(input.message).filter(part => part.reference).length > 5) throw new Error('一次最多添加 5 个文档附件');
     if (plain && /^\s*\//.test(input.message)) throw new Error('此操作仅支持普通消息，不支持斜杠命令');
     if (new RegExp(`^\\s*/${INTERNAL_COMMAND_PATTERN}(?:\\s|:|$)`).test(input.message)) throw new Error('内部会话命令不能直接发送');
     if (input.images !== undefined && !Array.isArray(input.images)) throw new Error('图片格式无效');

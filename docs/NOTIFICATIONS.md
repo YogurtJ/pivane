@@ -12,7 +12,7 @@
 
 提示音用本地Web Audio短音，不用TTS或生成API；开关/测试点击尝试解锁，刷新后可能需再次点击，系统可阻止播放。页面系统通知不依赖推送服务，但仍要求页面在运行；关闭/休眠/锁屏不可承诺送达。点击仅聚焦工作台，不导航或自动已读。
 
-新UI使用独立 `public/pi-notifications.css`，标题、两条开关、状态/测试分别成行；后台推送与帮助默认折叠，移动端操作为两列。后台状态仅展开或检测已有订阅时读取，普通首次访问不初始化通知密钥。此优化是静态文件变化，已有activity后端可用；Web Push仍需browserNotifications后端及浏览器条件。
+后台推送设置默认折叠，仅展开或检测已有订阅时读取状态；普通首次访问不初始化推送密钥。
 
 ## 通知范围
 
@@ -56,18 +56,4 @@ subscription 是浏览器 PushSubscription.toJSON() 的 endpoint 与 keys.p256dh
 
 ## 部署与验证
 
-更新后端需要实例空闲。按[访问控制](ACCESS_CONTROL.md)配置独立HTTPS来源、安全Cookie、代理和来源验证；不要覆盖其他应用的入口。401不代表实例空闲。
-
-验证命令：
-
-```bash
-node --test test/pi-notifications.test.js
-PLAYWRIGHT_MODULE=/path/to/playwright PI_NOTIFICATION_TEST_URL=http://127.0.0.1:3131 node test/browser/pi-notifications.cjs
-node --test --test-concurrency=1 test/*.test.js
-npm run check
-npm audit --omit=dev
-```
-
-单元测试使用临时配置和模拟推送发送器；浏览器专项使用模拟权限／PushManager和API，覆盖桌面1440px、手机393/320px的启用、关闭、测试、拒绝和内部宽度。自动化不代表 Safari 真机或外部推送服务实测。
-
-专项覆盖通知设置三视口/三主题、桌面Notification与Android showNotification模拟、无VAPID初始化、旧/手动完成标记排除，以及正文/工具/重连；系统授权和真机锁屏需在目标设备验证。
+Web Push 需要实例能力、可信 HTTPS 与安全 Cookie／来源校验，见[访问控制](ACCESS_CONTROL.md)。Node 专项为 `test/pi-notifications.test.js`，浏览器为 `test/browser/pi-notifications.cjs`，按[开发流程](development/WORKFLOW.md)使用隔离配置和模拟推送。系统授权、锁屏显示及外部推送送达须在目标设备另验。

@@ -5477,8 +5477,8 @@
         "Upload attachments from your phone or computer"
     ],
     [
-        "上传图片、文本或代码文件",
-        "Upload images, text or code files"
+        "上传图片、文档、表格或代码文件",
+        "Upload images, documents, spreadsheets or code files"
     ],
     [
         "指定时间发送消息",
@@ -9592,5 +9592,29 @@
         ['已取消排队，没有提交给服务', 'Removed from the queue; nothing was sent to the service'],
         ['等待超过这个模型设置的最长时间（{0}）。服务商可能仍会完成并计费，但这次结果拿不回来；请先在多媒体实验室的生成记录里核对。经常超时可在模型接入里调大“本次请求最长等待”。', 'Waited longer than this model\'s time limit ({0}). The provider may still finish and charge for it, but this result cannot be retrieved; check the media lab history first. If this model often times out, raise its request time limit under model connections.'],
         ['更早的 {0} 次未完成尝试', '{0} earlier unfinished attempt(s)']);
+    rows.push(
+        ['一次最多添加 5 个文档附件', 'Up to 5 document attachments at a time'],
+        ['单个文档附件须为非空文件且不超过 20 MiB', 'Each document must be nonempty and within 20 MiB'],
+        ['请先将旧版 Office 文件另存为 DOCX、XLSX 或 PPTX 后上传', 'Save older Office files as DOCX, XLSX or PPTX before uploading'],
+        ['暂不支持压缩包，请选择其中的文件', 'Archives are not supported. Select the files inside'],
+        ['当前入口尚未启用文档上传，请使用支持此功能的持久线程', 'Document upload requires a persistent thread on a supporting server'],
+        ['文档上传返回无效，请核对原上传', 'Invalid upload response. Check the original upload'],
+        ['会话已切换，上传结果未加入当前草稿', 'Conversation changed; the uploaded file was not added to this draft'],
+        ['上传结果未确认，未自动重试（标识 {0}）', 'Upload outcome unconfirmed; no automatic retry (request {0})'],
+        ['下载原件', 'Download original'], ['下载 {0}', 'Download {0}'], ['正在下载…', 'Downloading…'],
+        ['文档附件正在处理，请稍后再试', 'Document attachments are being processed. Try again later'],
+        ['文档读取正在进行，请稍后再试', 'Document readers are busy. Try again later'],
+        ['文档服务正在维护，请稍后再试', 'Document service is under maintenance. Try again later'],
+        ['文档附件不属于当前会话分支', 'This document is not on the current conversation branch'],
+        ['文档原件已变化', 'The original document has changed'],
+        ['PDF 需要密码，请先解除密码后上传', 'Remove the PDF password before uploading'],
+        ['PDF 损坏或无法提取文字', 'The PDF is damaged or its text cannot be extracted'],
+        ['Office 内容与扩展名不符或为启用宏的文件', 'Office content does not match its extension, or is macro-enabled'],
+        ['暂不支持包含宏的 Office 文件', 'Office files containing macros are not supported'],
+        ['Office 解压后超过 64 MiB 读取预算', 'Expanded Office contents exceed the 64 MiB budget'],
+        ['Office 单个 XML 部分超过 8 MiB 读取预算', 'An Office XML part exceeds the 8 MiB budget'],
+        ['文档存储额度已满（每线程 256 MiB，实例 2 GiB），请由管理员整理', 'Document storage is full (256 MiB per thread, 2 GiB per instance). Ask the administrator to manage storage'],
+        ['请上传 DOCX、XLSX、PPTX 或 PDF 文件', 'Upload a DOCX, XLSX, PPTX or PDF file']
+    );
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

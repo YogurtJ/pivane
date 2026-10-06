@@ -1,4 +1,4 @@
-# Profile memory adapter (source candidate)
+# Profile memory adapter
 
 The adapter uses selected components from **pi-hermes-memory 0.9.9** (MIT) with
 the application-pinned Pi 1.0.2. It never loads upstream's default factory: that factory scans the
@@ -23,21 +23,7 @@ source provenance. Pagination is 50, with bounded files, rows and query length.
 Distinct SQLite rows keep distinct IDs; the revision hashes logical rows (also
 when changes are still in SQLite WAL), plus the bytes of Markdown/skill files.
 
-For `/api/pi/status`, the parent can call
-`profileMemoryCapability({ bundlePath, reviewModel })`, exported by the same
-module, and publish its `{ installed, autoLearn }` result as `profileMemory`.
-`reviewModel` is the same JSON string as the worker's
-`PIVANE_PROFILE_MEMORY_REVIEW_MODEL` configuration. `autoLearn` is false if no
-model is configured; this capability does **not** prove credentials or a
-completed review. Actual per-worker loaded-state remains A's separate signal;
-actual per-review completion/failure is a native
-`pivane-profile-review` custom entry with `{version,profileId,status,reason,at,provider?,modelId?,usage?}`.
-The receipt includes only bounded reported token counts and provider-reported total USD cost
-when the provider supplies them, even when a charged proposal is rejected. No
-conversation body, credential or proposal text is stored in the receipt. Absent usage
-is omitted, not estimated. Neither this receipt nor a nested boundary model call contributes
-to normal native session usage totals; a parent-owned ledger integration would be required.
-A zero model-catalogue price is not evidence of free service and is rejected for review.
+`/api/pi/status.profileMemory` reports component availability; its public `autoLearn` value remains false. The retired in-worker reviewer is not enabled by this status. Background learning uses `ProfileLearningService` and explicit [auxiliary routes](#background-learning); `runtime.json.reviewModel` is a compatibility hint for explicit adoption. Installation, saved data, indexing and confirmed worker loading are separate states.
 
 The managed web-session extension must **await** `registerProfileMemory(pi)`
 inside an async default factory. Provide `PIVANE_AGENT_PROFILE_CONTEXT` only
@@ -114,7 +100,9 @@ and returns `ready`, `missing`, `disabled` or `unsupported`. A ready item adds
 the verified `content` and its file `revision`; no shared installed skill or
 arbitrary path can be read through the route.
 
-## Unified knowledge management (source candidate)
+<a id="unified-knowledge-management-source-candidate"></a>
+
+## Unified knowledge management
 
 `mountProfileKnowledgeRoutes(router, { service })` mounts same-origin GET
 `/profiles/:id/knowledge?kind=memory|skill&query=&offset=&sessionId=`, GET
@@ -506,7 +494,7 @@ this is not an active-session/tool limit. A search rejects verification beyond
 5,000 tracked rows or 64 MiB read budget
 rather than returning unchecked data. Oversized native histories remain
 unindexed and visibly partial; no full-recall promise is made. Cwd must remain
-resolvable. The source candidate has not been deployed.
+resolvable. Release and local activation states are recorded separately from this contract.
 
 ## Bundled installation
 
@@ -549,21 +537,7 @@ PIVANE_PROFILE_MEMORY_ESBUILD=/path/to/esbuild \
 HOME=/private/disposable-identity node scripts/profile-memory-install.cjs /private/fresh-prefix
 PIVANE_TEST_HERMES_BUNDLE=/private/fresh-prefix/package/profile-memory-bundle.mjs \
 PIVANE_TEST_PI_JITI=/private/fresh-prefix/node_modules/@earendil-works/pi-coding-agent/node_modules/jiti \
-  node --test test/pi-profile-memory*.test.js
+  npm test -- test/pi-profile-memory-integration.test.js test/pi-profile-memory-scope.test.js test/pi-profile-memory-management.test.js
 ```
 
-These tests require both variables; integration is not silently skipped in the
-parent gate.
-`test/browser/pi-memory-learning-e2e.cjs` (requires `PIVANE_TEST_HERMES_BUNDLE`)
-runs the whole loop against the real assembled gateway, real Pi RPC workers and
-a loopback synthetic provider in a throwaway identity: dedicated learning
-models, an explicit Chinese preference learned in a real chat turn, the chat
-card receipt, injection into the next turn, an agent `memory_add` through the
-journal, `skill_manage view`, edit and undo in the management page, exit
-extraction without re-learning, and the 393 px layout. Keep the prefix and record its bundle, lock and native hashes.
-Before enabling a real profile, finish active work and back up
-`<agentDir>/pivane-profiles/` and configuration. Parent activates only reviewed
-new workers under its maintenance flow. Rollback removes the hook/env/router
-and keeps profile data and native sessions. This lane has not deployed or
-published the adapter. Node 22 ARM64, macOS and Windows native ABI remain
-separate platform verification gates; the evidence here is Node 24 Linux ARM64.
+Use both test variables for isolated compatibility checks. The browser E2E at `test/browser/pi-memory-learning-e2e.cjs` uses a throwaway identity, real Pi RPC and a synthetic provider; preserve bundle, lock and native hashes. Before activation, finish work and back up `<agentDir>/pivane-profiles/` and configuration. Rollback removes the hook/env/router but preserves profile data and native sessions. Platform validation belongs to [release evidence](RELEASE_INSTALL_VALIDATION.md), not this adapter contract.

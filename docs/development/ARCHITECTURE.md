@@ -78,11 +78,13 @@ Pi Provider 身份与工作台访问身份独立。登录/退出使用公开 Mod
 
 文件服务、搜索、用量、备份与恢复复用原生描述符边界。Linux 使用 /proc，macOS 使用 F_GETPATH，Windows 查询 HANDLE 的最终路径和完整身份。打开对象的类型、预算、路径和前后变化均需核对；原生后端不可用时不能回退到未经验证的请求路径。
 
-POSIX 私密权限和目录刷盘、Windows 受保护 DACL 和写透替换分别处理。原生源码、二进制和 manifest 成批分发，普通安装不现场编译。详见 [native](../../native/README.md)。
+POSIX 私密权限和目录刷盘、Windows 受保护 DACL 和写透替换分别处理。Pivane 自有原生组件的源码、二进制和 manifest 成批分发，普通安装不现场编译这些组件；SQLite 平台依赖另按内置能力安装规则处理。详见 [native](../../native/README.md)。
 
 项目全文读取与目录浏览共用 `pi-file-scope` 的项目范围和私密根规则。`pi-file-browser` 只枚举受控元数据，父目录与返回条目分别验证打开描述符；文件名搜索有扫描、结果、时间与并发预算，不维护持久文件索引，不调用模型。
 
 `pi-file-bytes` 统一普通文本、类型化预览和交付快照的有界描述符读取证明；`pi-file-types` 只负责 UTF-8/签名/像素预算及 JSON 表示。`DeliverableStore` 在身份私有目录保存不可变字节与原子清单，受管 `deliver_files` 工具独占追加原生 `pivane-deliverable` 引用；`DeliverableService` 从当前原生分支证明读取资格，活动会话走唯一 worker，关闭会话只读原生文件。快照不是聊天事实源，无引用不对网页开放；新工具仍属原生工具生命周期，不增加 worker 工作类型。来源路径别名仅匹配当前分支已登记成果，不改变项目读取范围。文件查看器用受认证 JSON 创建图片/下载 Blob；`pi-file-previews` 拥有按需 PDF.js 单页解析、分页表格、清理后的 SVG 图片和原生音频组件，查看器在切文件／线程／关闭面板时释放任务、播放器和对象 URL。PDF 依赖仅从本地静态入口加载，不在服务端运行转换。HTML 在无 same-origin 的 iframe 中默认静态展示，脚本需显式启用，CSP 限制资源/API 但不宣称对恶意脚本全网络隔离。
+
+`DocumentUploads` 保存办公/PDF 原件与私有清单，聊天只保留原生用户消息中的规范文件引用；不复制聊天或全文入上下文。活动线程由唯一 worker 证明当前分支，关闭线程只读原生 SessionManager；受管 `read_document` 经限定的内部接口使用网关共享解析池。解析器在无凭据的独立 Node 进程读取验证后的字节，不打开压缩路径，不执行宏，不自动 OCR 或调用 LibreOffice。并发、V8 堆、时间、展开量和输出有界；取消/超时等待实际退出，活动读取加入 worker 生命周期，上传/解析参与维护及关闭等待。上传下载接口另行返回受认证的 attachment 原字节；项目文件预览不因此获得 Office 在线编辑能力。
 
 实例偏好保存置顶、隐藏、归档、完成提醒及辅助模型设置；这些都是原生项目/会话的附属元数据。归档不改变 worker 或 JSONL。会话列表启用档案／项目功能时，`pi-session-store.js` 的 `sessionStats(manager)` 复用绑定解析已打开的 SessionManager，派生当前分支消息数、压缩次数、上下文消息数、最近上下文 token 与模型，不额外读取文件；可选 `stats` 供线程行原生悬停提示使用，不成为新的会话事实源。搜索只读扫描原生文件，缓存可丢弃。用量由 `pi-usage-service` 串行调度 Worker，`pi-usage-worker` 校验原生来源，`pi-usage-ledger` 事务保存无正文的用量事实、去重指纹、读取游标与时区日汇总；扫描器用完整前缀校验保护追加解析，改写时重新核对；`pi-usage-pricing` 从上游官方供应商目录按精确 ID 取得参考价。用量账本保留已删除会话的统计，必须随身份目录备份；它不参与聊天恢复或 worker 状态。网页删除在停止 worker 后先完成用量入账检查，关闭服务时等待统计线程退出。
 
@@ -116,7 +118,7 @@ POSIX 私密权限和目录刷盘、Windows 受保护 DACL 和写透替换分别
 
 `pi-subagent-runs.js` 拥有输入框上方的子 Agent 面板与操作对话框，只读取当前连接的 controls 投影，经 `subagent_control` 请求并按连接代次丢弃迟到结果；`pi-subagent-notices.js` 只为插件自定义消息补标题、语气和折叠，正文仍经 marked + DOMPurify。
 
-`pi-workbench.js` / `pi-workbench.css` 只管理首屏呈现：复用现有模型控件、工具入口、基于剩余宽度的停靠／覆盖、抽屉 inert 与焦点。`placeHeader` 在宽度大于 900px 时隐藏独立顶栏，将同一项目按钮和上下文指示器移入 `#pi-connection-banner`，平板／手机移回；不复制节点。手机输入区保持单行，模型／思考／上下文摘要仅在文本框聚焦或任务运行时显示；错误文本使用 `pre-wrap` 与 `overflow-wrap:anywhere`，`#pi-transcript` 限制横向溢出，关闭的会话抽屉不投影。起步卡只追加草稿、保留附件并选中括号占位内容，不发送消息。右侧不再提供任务工具，计划／子 Agent／任务结果标签只在输入框上方展示。它不持有 RPC、会话或任务数据，不写分栏偏好；分栏偏好和键盘／拖动仍由 `workspace-ui.js` 管理。面板内容及异步生命周期继续属于文件、历史、侧聊等原组件，重新打开同一文件／历史入口保留所选阅读状态。
+`pi-workbench.js` / `pi-workbench.css` 管理布局投影、停靠／抽屉、inert 与焦点；复用现有控件节点，不持有 RPC、会话或任务数据。手机采用整宽文本区与独立操作行，起步卡只追加草稿并保留附件。分栏偏好和调宽由 `workspace-ui.js` 管理；面板内容与异步生命周期属于原功能组件，切换布局保留阅读状态。计划、子 Agent 和任务结果由输入区组件拥有。
 
 `pi-composer-chips.js` 拥有输入框上方状态标签行的互斥展开、外部点击和 Esc 收起；卡片默认收起，详情以浮层显示，不参与聊天区布局。计划、子 Agent 与任务结果卡始终留在输入区，统一参与互斥展开。`pi-task-progress.js` 拥有计划卡渲染，只接受当前连接快照与进度事件，不解析回复文本、不从运行终态推断步骤完成，计划完成不覆盖用户的展开选择。
 

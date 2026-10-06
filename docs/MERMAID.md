@@ -30,12 +30,8 @@ flowchart LR
 
 SHA-256：`581ed7d74bd9048d0e3a91363927d72ef22942d7722546b27f7cc29e35390eb8`。
 
-升级时从精确版本 npm 包提取官方 bundle 和 LICENSE，更新文件名、iframe 引用、打包清单、此文档与哈希。在独立临时目录生成该版本的依赖锁并审计，同时执行项目审计及浏览器回归；不覆盖项目 Pi 依赖。11.17.2 的独立依赖审计为0漏洞。
+升级时从精确版本 npm 包提取官方 bundle 和 LICENSE，更新文件名、iframe 引用、打包清单、此文档与哈希。在独立临时目录生成该版本的依赖锁并审计，同时执行项目审计及浏览器回归；不覆盖项目 Pi 依赖。依赖审计结果按对应版本证据记录。
 
 ## 验证
 
-```bash
-PLAYWRIGHT_MODULE=/path/to/playwright PI_MERMAID_TEST_URL=http://127.0.0.1:3001 node test/browser/pi-mermaid.cjs
-```
-
-使用系统 Chromium、mock REST/WebSocket，检查1440/393/320px、三主题、中文流程图/时序图/状态图、源码、流式围栏、错误/配置拒绝、隔离与内部宽度，无真实模型请求或会话写入。截图在 `/tmp/pi-mermaid-*.png`。手机为 Chromium 仿真，未宣称 Safari 真机验证。
+`test/browser/pi-mermaid.cjs` 使用独立静态服务和合成 REST/WS，检查图表、源码回退、流式围栏、隔离与预算；执行范围见[开发流程](development/WORKFLOW.md)。Chromium 仿真不代替 Safari 真机验证。

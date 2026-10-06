@@ -286,7 +286,7 @@
                                 <input id="pi-file-input" type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,text/*,.md,.json,.js,.ts,.tsx,.jsx,.py,.sh,.css,.html,.xml,.yaml,.yml,.toml,.ini,.csv" hidden>
                                 <button id="pi-composer-add-button" class="icon-btn subtle" type="button" title="添加附件、延迟发送或创建定时任务" aria-label="添加操作" aria-haspopup="menu" aria-expanded="false" aria-controls="pi-composer-add-menu" data-i18n-title="s1365" data-i18n-aria-label="s1366"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
                                 <div id="pi-composer-add-menu" class="pi-composer-add-menu" role="menu" aria-label="添加操作" hidden data-i18n-aria-label="s1366">
-                                    <button id="pi-attach-button" type="button" role="menuitem" tabindex="-1" title="从手机或电脑上传附件" data-i18n-title="s1367"><i class="fa-solid fa-paperclip" aria-hidden="true"></i><span><!--i18n:s1003-->添加附件<small><!--i18n:s1368-->上传图片、文本或代码文件</small></span></button>
+                                    <button id="pi-attach-button" type="button" role="menuitem" tabindex="-1" title="从手机或电脑上传附件" data-i18n-title="s1367"><i class="fa-solid fa-paperclip" aria-hidden="true"></i><span><!--i18n:s1003-->添加附件<small><!--i18n:s1368-->上传图片、文档、表格或代码文件</small></span></button>
                                     <button id="pi-delivery-toggle" type="button" role="menuitem" tabindex="-1" aria-expanded="false" aria-controls="pi-delivery-choices" data-menu-keep-open><i class="fa-solid fa-code-branch" aria-hidden="true"></i><span><!--i18n:s1371-->运行中消息投递方式<small id="pi-delivery-current"></small></span><i class="fa-solid fa-chevron-down pi-delivery-chevron" aria-hidden="true"></i></button>
                                     <div id="pi-delivery-choices" class="pi-delivery-choices" role="group" aria-label="运行中消息投递方式" hidden>
                                         <button type="button" role="menuitemradio" data-delivery-mode="steer" aria-checked="true" tabindex="-1"><i class="fa-solid fa-turn-up" aria-hidden="true"></i><span><!--i18n:s860-->引导<small><!--i18n:s3527-->本轮工具后送达</small></span><i class="fa-solid fa-check pi-delivery-check" aria-hidden="true"></i></button>
@@ -966,6 +966,8 @@
     <script src="pi-thread-menu.js"></script>
     <script src="pi-transcript-scroll.js"></script>
     <script src="pi-transcript-view.js"></script>
+    <script src="pi-document-references.js"></script>
+    <script src="pi-document-attachments.js"></script>
     <script src="pi-attachments.js"></script>
     <script src="pi-session-workflows.js"></script>
     <script src="pi-session-titles.js"></script>

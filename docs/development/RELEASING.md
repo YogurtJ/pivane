@@ -4,7 +4,7 @@
 
 package.json的应用版本、Pi依赖版本和快照时间戳是不同概念。npm run pack:release生成按应用版本命名的包，TRIAL_MANIFEST.json含appVersion/piVersion，保留原文件名与version=1格式。`/api/pi/status.version`表示加载的Pi版本；它不能单独证明网页和后端属于同一候选包。用压缩包SHA256及TRIAL_MANIFEST逐文件核对构建内容。
 
-版本下载与发布时间以[GitHub Releases](https://github.com/YogurtJ/pivane/releases)为准，不能把本地pack成功称为已公开发布。v1.0.0-rc.1标签固定已验收源码，主分支可继续更新项目介绍与文档；不要据主分支README的变化推断发行包被替换。Pivane 名称变更保持旧配置可读取；目录、服务或持久化标识需要改名时执行[明确的兼容与迁移流程](NAMING.md)，不将改名混入普通升级。
+发布包绑定源码提交和归档 SHA256。主分支文档可以补记发布结果，不改变冻结标签或归档；本地打包成功不表示已经[公开发布](https://github.com/YogurtJ/pivane/releases)。名称兼容与目录迁移见[命名与迁移](NAMING.md)。
 
 ## 候选包
 
@@ -24,7 +24,7 @@ Git忽略不删除已经跟踪的内容或历史。新仓库初始化时检查�
 使用独立Node22、系统Bash/rg/tar，以及自行安装的Playwright 1.58.2和对应平台Chrome/Chromium。Playwright不属于用户安装的必要依赖。下列参数都替换为自己已核对的绝对路径与哈希，output目录必须尚不存在：
 
 ```sh
-node test/release/acceptance.cjs --archive /path/pivane-1.0.0-rc.1.tar.gz --sha256 SHA256_VALUE --browser /path/to/chrome --playwright /path/to/playwright --output /path/to/new-report-directory
+node test/release/acceptance.cjs --archive /path/pivane-VERSION.tar.gz --sha256 SHA256_VALUE --browser /path/to/chrome --playwright /path/to/playwright --output /path/to/new-report-directory
 ```
 
 Windows用自己的node.exe和带引号的Windows路径传递相同参数。可选--previous-archive和--previous-sha256用于真正的旧包升级验收；没有旧包时结果只表示同包重开与恢复，不称跨版本升级。不要将来自未知来源的压缩包交给此脚本。

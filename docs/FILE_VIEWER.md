@@ -2,9 +2,9 @@
 
 项目文件浏览需要 `/api/pi/status.fileBrowser=true`，全文读取需要 `fileViewer=true`。仅更新前端时，旧后端仍可查看本轮写入记录与原有文件链接，并明确提示不支持项目浏览。
 
-2026-09-11 Windows适配：文件打开拒绝末尾reparse，内核最终路径及完整卷/128位File ID共同校验，读取前后BigInt stat保留。Windows大小写敏感目录不使用大小写折叠的relative作为安全边界；ADS/设备路径拒绝。网页盘符/反斜杠/file URI/行号链接归一化为受控文件入口，不执行原生路径协议。详情见WINDOWS.md与native/README.md；Windows11 x64实际文件、路径/权限、浏览器回归已通过。
+文件服务保留各平台内核路径和完整身份检查，拒绝私密、越界与不安全类型。平台契约见[Windows](WINDOWS.md)和[原生组件](../native/README.md)，验收范围见[平台验证](RELEASE_INSTALL_VALIDATION.md)。
 
-2026-09-09 实现。成功 write 的本轮文件记录属于静态展示；读取当前磁盘文件需要 `/api/pi/status.fileViewer=true`。不修改 Pi 上游，不创建文件基线或第二份会话历史。
+历史工具记录只用于展示，不建立文件基线或第二份会话历史；当前磁盘读取需后端能力。
 
 ## 使用
 
@@ -21,6 +21,8 @@
 - 右侧页签名为“文件”，项目浏览与本轮记录共用查看器。从回复卡片打开时定位到原记录；从目录树打开时查看当前文件。原轮次／文件选择器保留为浮层，选择后收起。
 - 桌面支持“展开阅读”，文件面板至少 760px 宽且已打开文件时，目录树可在预览右侧并排显示；较窄面板和手机切换浏览／阅读。“浏览项目文件”、面包屑目录和“在项目中定位”均可返回树。后端提供 `filePreviews` 时支持图片、PDF、CSV/TSV 表格、SVG、音频、隔离 HTML 和下载；Office 等未支持预览的类型显示下载提示，不提供编辑接口。
 
+办公附件从聊天加号上传，与项目目录浏览分开。DOCX/XLSX/PPTX/PDF 保留原件，发送后显示下载卡片，Agent 按需读取；格式与限制见[办公附件](COMPOSER_TOOLS.md#上传办公文档与-pdf)。项目文件查看器的 Office 原版预览仍未支持。
+
 ## 交付物、图片与 HTML
 
 当前源码新增以下能力，部署后以 `/api/pi/status.filePreviews` 和 `deliverables` 为准；旧后端保持原文本功能。
@@ -32,7 +34,7 @@
 - 同一 session/requestId 重复调用返回原快照，不追随原件更新；不同参数复用 ID 拒绝。快照部分写入或结果不确定时不覆盖、不自动重放。需要新版本时使用新的 requestId。实例中的既有 worker 需在安全空闲时重新加载受管扩展，才能获得新工具。
 - 从回复点击交付链接可直接打开；已登记的同分支来源路径也能映射到交付快照，兼容旧路径链接。尚未登记的项目外文件仍拒绝并给出处理提示，不静默切项目。目录树始终读取磁盘，不用交付快照替代项目文件。
 - PNG/JPEG/WebP/GIF 依据文件签名和尺寸识别，支持适应窗口、原尺寸及下载。单边最多 16384 像素、总计最多 32M 像素；超限或签名不匹配降为下载，不按后缀直接执行。SVG 使用单独的受限预览，不作为普通图片直接放行。
-- HTML 默认静态隔离预览，点“运行交互”才启用页面脚本；也可切源码或下载原件。iframe 不获得 same-origin、弹窗、表单、顶层导航或工作台存储权限，CSP 禁止 fetch/XHR、外部脚本、远程图片/字体和子 frame。切文件、切线程、关闭面板或“停止交互”会移除运行中的 frame。
+- HTML 默认静态隔离预览，点“运行交互”才启用页面脚本；也可切源码或下载原件。iframe 不获得 same-origin、弹窗、表单、顶层导航或工作台存储权限，CSP 禁止 fetch/XHR、外部脚本、远程图片/字体和子 frame。切文件、切线程、关闭面板、进入／退出全屏阅读或“停止交互”会移除运行中的 frame。
 - **HTML 不是恶意脚本的离线执行沙箱。** 浏览器对 iframe 自身导航的限制不等于禁止所有网络：用户启用脚本后，脚本仍可能导航自己的 frame 并向网络发送数据。仅对可信任务页面启用交互；界面明确提示此限制。自包含页面可交互，多文件相对资源、浏览器剪贴板和外部联网能力尚未支持。
 - 下载由受认证 JSON 快照在浏览器生成 `application/octet-stream` Blob，保留原 UTF-8/BOM/换行或原二进制字节，不导航同源 HTML。没有公开静态文件目录、Bearer 查询参数或任意路径 `sendFile`。旧后端不显示下载入口。
 
@@ -42,7 +44,9 @@
 - CSV/TSV 默认表格视图，可切换原始源码。支持 UTF-8 BOM、CRLF、引号内换行／分隔符和双引号转义；CSV 使用逗号、TSV 使用制表符，不猜测编码或分隔符。每页显示 50 行，最多保留前 5000 行、100 列及约 50000 个单元格，部分展示有明确提示；单元格超过 32768 字符或引号格式无效时提示切换源码。首行作为数据保留，不计算公式。
 - SVG 默认显示清理后的静态图片，可切换源码；清理只用于显示，不修改原件。拒绝 DTD／实体声明，移除脚本、事件、外部资源、内联样式、动画和 foreignObject；不会将 SVG 节点插入工作台。最多 512 Ki 字符、10000 个 XML 元素，尺寸沿用图片像素预算；依赖样式、外部图片或动画的 SVG 可能与原图不同。
 - 音频识别 WAV、MP3、FLAC 和 Ogg Vorbis/Opus 签名，提供浏览器原生播放器，不自动播放、不转码、不转录；具体编码能否播放由浏览器决定，失败可下载。
-- PDF 任务、音频和 Blob URL 在切文件、切线程、切到差异或关闭文件面板时释放；再次打开面板重新建立预览，PDF 从第一页开始，音频不自动续播。
+- 已打开文件后可点击“全屏阅读”，图片也可点击进入。阅读器占满工作区，背景暂不可操作；“返回侧栏”或 Esc 返回原侧栏，文件信息浮层打开时 Esc 先关闭浮层。使用同一个阅读组件和已验证快照，不重复请求文件或新建 PDF worker；普通“展开阅读”继续用于聊天与文件并排。
+- 图片和受限 SVG 支持适应窗口、原尺寸、按钮／滚轮缩放、鼠标拖动和双指缩放；方向键移动，`+`/`-` 缩放，`0` 适应窗口、`1` 原尺寸。最大放大至 800%，缩放复用已加载的图片，不生成服务器图片。PDF 在阅读区尺寸变化时以相同页码及缩放倍率重绘，并尽量保持页内位置；适应宽度随阅读区调整，Retina 渲染仍受约 4M 画布像素限制。
+- PDF 任务、音频和 Blob URL 在切文件、切线程、切到差异或关闭文件面板时释放；仅在侧栏／全屏间切换时保留组件。再次打开同一面板重新建立预览，PDF 保留页码及缩放、表格保留分页、图片保留查看状态，音频不自动续播。切换文件或文本来源、刷新后文件修订变化、切线程时重置这些临时状态，不写入会话或磁盘。
 - 以上均复用项目范围、交付分支、描述符和读取并发检查，不调用模型。仍完整读取最多 16 MiB，文本型 CSV/TSV/SVG 最多 2 MiB；未增加流式接口，超大文件和 Office 预览不在本批范围。PDF 解析、图片解码及音频播放使用客户端资源，服务器不启动转换服务。
 
 ## 文件面板布局
@@ -120,15 +124,4 @@ Markdown 继续经过 marked + DOMPurify；文件预览额外移除图片、音�
 
 ## 验证与部署
 
-```bash
-node --test test/pi-file-service.test.js test/pi-file-browser.test.js test/pi-deliverables.test.js test/pi-deliverables-runtime.test.js
-PLAYWRIGHT_MODULE=/path/to/playwright node test/browser/pi-deliverables.cjs
-PLAYWRIGHT_MODULE=/path/to/playwright node test/browser/pi-file-browser.cjs
-PLAYWRIGHT_MODULE=/path/to/playwright PI_FILE_TEST_URL=http://127.0.0.1:3118 node test/browser/pi-file-viewer.cjs
-```
-
-Node 测试使用独立临时项目/Agent 目录，验证完整文本与版本、软链接/私密路径、文件变化、FIFO/编码/二进制/大小/并发边界、鉴权及不启动 worker。浏览器使用 mock REST/WS，在桌面与手机验证写入记录、历史与当前区分、显式刷新、Markdown/源码/高亮/行号/换行/复制、文件链接、空/缺失文件、来源/线程迟到结果、刷新恢复和旧后端降级，不调用真实模型或修改用户文件。
-
-本次项目目录功能在 Linux 上完成接口与 Chromium 合成验证；macOS／Windows 复用已有原生描述符后端，本批未新增这两个平台的实机验收。
-
-磁盘全文需当前实例fileViewer能力可用，更新后按实际状态核对；旧后端降级展示不代表支持磁盘读取。
+Node 入口为 `test/pi-file-service.test.js`、`test/pi-file-browser.test.js`、`test/pi-deliverables.test.js` 和 `test/pi-deliverables-runtime.test.js`；浏览器专项见[模块导航](development/MODULES.md)。使用隔离项目及合成 REST/WS，核对来源、描述符、格式预算和阅读生命周期。实际平台范围见[平台验证](RELEASE_INSTALL_VALIDATION.md)。

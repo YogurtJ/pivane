@@ -13,7 +13,7 @@
 
 ## 模型参数
 
-字符上限、音色、语言和instruct限制来自实际registry。常见CustomVoice音色包括Vivian、Serena、Uncle Fu、Dylan、Eric、Ryan、Aiden、Ono Anna和Sohee，语种能力以模型和服务实际版本为准。
+字符上限、音色、语言及 instruct 限制以实例 registry 和实际服务版本为准，网页不维护固定音色名单。
 
 语速滑杆会转换为附加风格指令，属于语义控制，不保证精确倍速。实际控件由服务端目录提供，前端不固定音色列表。
 

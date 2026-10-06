@@ -1,14 +1,13 @@
 # TTS Provider Contract
 
-TTS provider 的模型、音色、语言、字符限制和专属控件维护在实例本地 `media-lab/tts-providers.json`。路径跟随 `PI_MEDIA_CONFIG_DIR` 或 `PI_CODING_AGENT_DIR`；公共 `config/tts-providers.json` 是空 registry。浏览器通过 `/api/tts/config` 或实验室动态目录读取脱敏元数据，不保存静态音色表。
+本目录说明旧 `tts-providers.json` registry adapter，路径跟随 `PI_MEDIA_CONFIG_DIR` 或 `PI_CODING_AGENT_DIR`。公共 registry 为空，模型、音色、语言、限额和控件由实例配置提供，API 只返回脱敏 metadata。网页托管 HTTP TTS 另见[媒体连接](../MEDIA_CONNECTIONS.md)，配置和凭据路径不混用。
 
 ## 增加 Provider
 
-1. 在本地 `tts-providers.json` 增加 provider 和 model metadata。
-2. 在 `server/tts-provider-service.js` 增加或复用 adapter；凭据只能从服务端环境读取。
-3. 在本目录增加 provider 文档，并通过 provider 的 `documentation` 字段关联。
-4. 为配置解析、校验与 adapter 协议增加隔离 fixture 测试；真实收费生成须用户明确授权。
-5. 更新架构、API、运维、路线图和 CHANGELOG。
+1. 在本地 registry 登记 Provider 和模型 metadata。
+2. 在 `server/tts-provider-service.js` 增加或复用 adapter；registry 凭据从服务端环境读取，正文经 stdin，不能拼入 Shell。网页 HTTP 服务另走原生凭据生命周期。
+3. 在本目录新增说明并通过 `documentation` 关联，登记公开文档。
+4. 添加隔离协议测试，更新实际受影响的契约；真实收费请求需授权。
 
 配置中的 `settings` 只在服务端使用，不会通过 config API 返回。文档读取被限制在本目录内。新增 adapter 时不得把用户文本拼进 shell 命令；命令型 provider 应通过 stdin 或临时文件传结构化 payload。
 

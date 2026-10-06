@@ -22,7 +22,7 @@ Pi Agent 每个用户问题段的最终文字回复，在复制／分叉所在�
 
 ## 执行与生命周期
 
-- 2026-09-08 用户明确要求一键生成并自动播放，喇叭点击作为当前回复与默认配置的单项执行授权。继续通过 `/review` 和 `/execute`，只提交 `{ticket, confirmed:true}`；不新增直连合成端点或放开 Agent 生成工具，实验室其他生成流程仍保留清单确认。
+- 喇叭点击作为当前回复与默认配置的单项执行授权。继续通过 `/review` 和 `/execute`，只提交 `{ticket, confirmed:true}`；不新增直连合成端点或放开 Agent 生成工具，实验室其他生成流程仍保留清单确认。
 - 当前页面最多一项未完成的合成请求，不增加队列或自动批量执行。设置弹窗独立于播放器，关闭设置不影响生成／播放。收起播放器暂停播放；已提交的远端生成仍会完成并保存历史。
 - 主连接切换或播放器收起使尚未执行的迟到 review 失效，已经提交的迟到结果可以保留音频引用，但不重新打开播放器或自动播放到新线程。继续发送同线程消息不会停止生成或清空草稿。
 - 失败、超时或无有效音频返回在状态栏显示；没有自动重试。“重新生成”是用户显式操作，不确定提交仍要求先核对历史／服务方任务。刷新不能视作取消或确认未提交。
@@ -65,11 +65,4 @@ models 使用实验室公开模型结构，仅列有可编辑文本字段的语�
 
 ## 实现与验证
 
-- `server/pi-reply-tts-service.js`：偏好读写边界、动态校验、修订冲突。
-- `public/pi-reply-tts.js`：默认配置窗口、一键后台生成、正文转换、页面内播放器及迟到结果隔离。
-- `public/media-fields.js`：从实验室提取的共享动态字段渲染／读取，支持 text/textarea/number/select/boolean/json。
-- `public/pi-chat.js` 仅提供最终回复按钮、能力标志和主连接关闭回调。
-
-Node 专项 `test/pi-reply-tts.test.js` 使用临时偏好与模拟服务；实验室 gateway 用例检查鉴权与非法类型拒绝。浏览器 `test/browser/pi-reply-tts.cjs` 使用 mock REST/WebSocket 和 WAV，验证三视口／主题一键生成、生成时继续输入并发送、草稿保持、自动播放／浏览器拦截兜底、缓存播放／暂停、默认保存／冲突、已有 registry 默认、超限、失败／显式重试及切线程／收起期间迟到响应；不创建真实 session 或发起真实合成。此交互调整只修改静态资源，刷新生产页面生效，无需重启。
-
-真实 GPU／付费 TTS smoke 未执行。浏览器为系统 Chromium 仿真，未替代 Safari 真机播放验证。
+偏好服务为 `server/pi-reply-tts-service.js`，播放器和迟到保护为 `public/pi-reply-tts.js`。专项 `test/pi-reply-tts.test.js` 与 `test/browser/pi-reply-tts.cjs` 使用独立配置和合成音频；真实 TTS 及 Safari 播放需分别验证。

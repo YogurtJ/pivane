@@ -17,7 +17,7 @@ Pivane 使用 Pi 原生身份目录读取供应商、认证、模型、设置与
 
 ## 新安装：直接采用 Pi 的原生目录
 
-在发布目录完成 `npm ci` 后，从与 Pi CLI 相同的用户和配置环境运行：
+在发布目录运行 `node scripts/install.cjs` 完成依赖安装；仅旧归档没有该脚本时使用 `npm ci`。随后从与 Pi CLI 相同的用户和配置环境运行：
 
 ```sh
 node scripts/pi-agent-dir.cjs

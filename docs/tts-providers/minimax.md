@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-MiniMax adapter 保留用于以后续费恢复。没有 `MINIMAX_API_KEY` 时 provider 会出现在网页中，但标记为未配置并禁止生成；历史播放不受影响。
+本地 registry 包含并启用 MiniMax 条目时才显示该 Provider；公共空 registry 不自动注入模型。服务端读取 `MINIMAX_API_KEY` 或兼容旧拼写 `MIMIMAX_API_KEY`，均缺失时禁止生成，历史播放保留。
 
 ## 配置
 
@@ -17,6 +17,6 @@ MINIMAX_API_KEY=
 
 ## 接口约定
 
-adapter 请求 `${MINIMAX_TTS_BASE_URL}/audio/speech`，接受直接音频响应或 MiniMax hex audio JSON。若中转接口拒绝 `speed`，会移除语速参数自动重试一次。
+adapter 请求 `${MINIMAX_TTS_BASE_URL}/audio/speech`，接受直接音频或 MiniMax hex audio JSON。旧实现首次响应未形成可用音频且请求含 `speed` 时，会移除 `speed` 及其他未保留可选字段再提交一次，条件不只限于“不支持语速”。此兼容重试不等同统一票据的不重放保证；排障需核对服务任务和费用。
 
 模型和音色 metadata 维护在本地 `media-lab/tts-providers.json`。配置或更换服务后，以真实接口核对模型 ID、音色 ID、字符限制和返回格式，再更新本地配置。

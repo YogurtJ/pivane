@@ -69,9 +69,6 @@
 
 桌面筛选横排，手机日期字段至少 16px；长表格和图表在内部滚动，外层统计面板不产生横向滚动。只使用安全 DOM 显示模型、项目、会话标识。
 
-```bash
-node --test test/pi-usage.test.js test/pi-usage-ledger.test.js
-PLAYWRIGHT_MODULE=/path/to/playwright PI_USAGE_TEST_URL=http://127.0.0.1:3123 node test/browser/pi-usage.cjs
-```
+验证入口为 `test/pi-usage.test.js`、`test/pi-usage-ledger.test.js` 和对应浏览器专项，按[开发流程](development/WORKFLOW.md)运行。
 
 Node 覆盖原生复制去重、侧聊继承边界与实际调用入账/重试去重、持久化/删除/重启、日周月和时区、阶梯价、事务失败回滚、损坏存储、项目范围、增量推进、删除检查、源文件不变、鉴权和并发。浏览器采用独立身份及 mock API，在桌面/手机核对图表、周期、边界宽度、空状态/错误、迟到响应和 pageerror，不向真实会话发测试消息。

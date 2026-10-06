@@ -1492,6 +1492,12 @@ button.pi-action-pending:not(.icon-btn):not(.pi-message-action) .pi-spinner { ma
 .pi-attachment-chip button:hover { color: var(--danger); background: #2b2224; }
 .pi-attachment-chip .pi-attachment-open { width: 36px; height: 36px; padding: 0; }
 .pi-attachment-chip .pi-attachment-open:hover { outline: 2px solid var(--blue); background: transparent; }
+.pi-document-card { display: flex; align-items: center; gap: 12px; width: min(100%, 440px); box-sizing: border-box; padding: 12px; margin: 8px 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface, rgba(128, 128, 128, .06)); overflow: hidden; }
+.pi-document-card > i { flex: 0 0 auto; color: var(--green); }
+.pi-document-card > span { flex: 1; min-width: 0; }
+.pi-document-card strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .85rem; }
+.pi-document-card small { display: block; color: var(--muted); font-size: .72rem; margin-top: 3px; }
+.pi-document-card > button { flex: 0 0 40px; width: 40px; height: 40px; }
 .pi-file-dragover { outline: 2px dashed var(--blue); outline-offset: -3px; background: color-mix(in srgb, var(--blue) 8%, var(--surface-1)); }
 .pi-attachment-status { color: var(--text-muted); font-size: 0.78rem; line-height: 1.5; overflow-wrap: anywhere; padding-bottom: 5px; }
 .pi-attachment-status[hidden], .pi-attachment-preview [hidden] { display: none !important; }

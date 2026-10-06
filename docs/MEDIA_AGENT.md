@@ -4,7 +4,7 @@
 
 ## 当前范围
 
-实验室以模型定义驱动参数表，Agent 规划一项可编辑请求；提交前由服务端重新校验并展示清单，用户明确确认才执行。规划和执行是独立 API。完整 Pi Agent、专用 planner、模型说明文件和 Skill 都不应通过规划工具直接生成媒体。
+聊天使用 `media_models` 读取配置、`media_generate` 提交单项方案；实验室支持直接编辑参数及可选受限 Agent 规划。两者复用服务器校验和确认票据，只有用户明确确认才执行。规划工具、模型说明和 Skill 均不能代替执行授权。
 
 旧 `media_plan_image`、`media_plan_video`、`media_plan_tts` 以及 `/api/pi/media/plan` 保留兼容。它们可生成多项 MediaPlan，未接入批量执行；统一实验室使用 `media_plan_request` 单项规划。
 
@@ -54,9 +54,9 @@ Pi 仍是上游依赖。本功能通过官方 CLI/RPC、extension registerTool �
 
 ## 模型定义和当前参数
 
-2026-09-11：网页常用字段直接编辑，模型专属字段在只读参数清单展示；两者继续作为完整parameters提交给相同planner和服务端校验。自然语言参数要求需点击生成方案后才应用，参数显示不读取Agent的自由文本说明。缺少必填专属参数时引导重新规划；长期模型要求仍在接入的instructions配置中，未新增独立提示词存储。完整界面/草稿语义见MEDIA_LAB.md。
+实验室按实时模型定义直接编辑常用和专属参数，固定值不可修改。自然语言要求经可选规划后应用，不从 Agent 自由文本猜参数；必填项可直接补齐。修改参数使旧票据失效。见[完整参数编辑](MEDIA_LAB.md#直接生成与完整参数编辑)。
 
-`MediaLabService.catalog()` 聚合公共中性定义、本地媒体 profile、MiniMax config 和动态 TTS registry。公开模型包含 id、kind、参数、要求、预设、可执行状态等；不包含 HTTP 连接 URL、认证变量、固定请求 body 或 adapter settings。
+实验室目录列出用户配置的模型和动态 TTS registry，不自动展示旧 Z-Image、Flux 和 MiniMax 视频固定执行器；底层定义供兼容接口使用。公开目录包含参数、要求和可执行状态，不包含连接 URL、认证变量、固定请求 body 或 adapter 私有 settings。
 
 `instructionsFile` 只能读取配置目录中经 realpath 校验的相对 Markdown 文件，最大 32KB。字段支持 text、textarea、number、select、boolean、json；顶层未知字段、类型、范围、固定值均拒绝。JSON 对象/数组的嵌套厂商语义需 adapter 继续验证。
 
@@ -107,4 +107,4 @@ TTS 的字段来自 `TtsProviderService.getPublicConfig()`；已配置模型复�
 
 `test/media-lab-rpc.test.js` 通过真实 Pi RPC 加载工具，以本地 SSE fixture 完成 capabilities → media_plan_request，验证只激活两个工具、保留结构化参数、无 ticket、无 session 文件；不调用付费 Provider。服务与浏览器测试覆盖 review/execute、参数修改、重复/过期/不确定提交、首帧、HTTP adapter、动态 TTS 与桌面/手机交互。
 
-持久队列、批量执行、进度、取消、重试和跨模块流水线仍在路线图中。不得由 Agent 或前端循环调用执行接口冒充队列。
+聊天卡片已支持有界内存排队、未提交取消和执行阶段展示；队列不跨重启恢复。尚无持久恢复队列、旧 MediaPlan 批量执行、运行中远端取消或跨模块流水线。失败及不确定请求不自动重试，不能循环调用执行接口绕过确认。

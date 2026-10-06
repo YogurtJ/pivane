@@ -2,7 +2,7 @@
 
 `server/pi-file-descriptor.js` supplies opened-object final paths for file preview, session text search and usage scanning. Linux retains `/proc/self/fd`. The macOS Node-API 8 bundle calls `fcntl(fd, F_GETPATH)`. The Windows x64 Node-API 8 DLL calls Node's exported libuv descriptor conversion API, then Win32 filesystem APIs. No backend substitutes the requested path for a failed descriptor lookup.
 
-All native artifacts ship with source and SHA256 build manifests. Normal installation does not download native code or compile anything. The loaders check binary/source hashes; missing or mismatched modules fail closed. The Windows module is also required for private filesystem writes, so a damaged Windows component can prevent configuration initialization rather than merely disabling file previews.
+Pivane's native artifacts ship with source and SHA256 build manifests, so normal installation does not compile these components. SQLite's separate platform requirements are documented under [bundled capabilities](../docs/BUNDLED_CAPABILITIES.md). The loaders check binary/source hashes; missing or mismatched modules fail closed. The Windows module is also required for private filesystem writes, so a damaged component can prevent configuration initialization.
 
 ## macOS
 
@@ -36,6 +36,6 @@ node scripts/build-win32-fd.cjs
 
 The build uses the Windows API headers bundled with the verified compiler distribution, records compiler/header/import-library hashes and flags, and links without a CRT. The compiled result must still pass actual Windows tests. Invalid and closed fd probes run in separate processes, and final-link/ADS/device/case-sensitive-boundary/ACL tests exercise the real OS. Win32 refusal to rename an open object is recorded separately from successful POSIX renames; it is not reported as a successful move.
 
-The verified target is Windows 11 x64 with official Node 22.23.2. ARM64, other Windows versions, network filesystems and other disk formats are not hardware-validated. See docs/WINDOWS.md for deployment and validation scope.
+Platform and hardware acceptance is version-specific; see [validation scope](../docs/RELEASE_INSTALL_VALIDATION.md). Deployment instructions are in the [Windows guide](../docs/WINDOWS.md). A successful cross-build does not establish support on untested architectures or filesystems.
 
 This is project-owned code under the project's ISC license declaration. It does not patch Pi or any node_modules package.

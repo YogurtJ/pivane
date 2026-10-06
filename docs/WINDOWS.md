@@ -84,13 +84,4 @@ node.exe scripts/install-service.cjs
 
 ## 验证结果
 
-- Windows、Linux、Apple Silicon macOS 全量 Node 各 **161/161**，无跳过。
-- 未提权用户的核心配置、ACL、认证、模型目录及预约等 **24/24**；该用户不能创建文件符号链接是系统权限限制。完整平台安全场景由有权限的测试会话创建测试链接。
-- 原生 Chrome 桌面/手机宽度：空身份网页接入合成供应商、真实 Pi RPC 聊天、刷新恢复、文件预览/链接与主题/布局回归通过。没有真实模型账户或付费请求。
-- 文件全文、跨线程正文搜索、正数持久用量、Shell/停止、历史/书签/树、侧聊、HTML/JSONL 导出导入、单 worker 及独立数据根通过。
-- 同路径更新保留数据；停机备份/恢复 **16 个文件逐项哈希一致**，再验证模型凭据、偏好、暂停预约、媒体解码和搜索。不能用改写 JSONL 路径冒充跨路径迁移。
-- npm run check 已改为 Node 文件枚举；Windows 原生 tar 打包、check、audit 通过。
-
-Windows 10、Windows Server、ARM64、ReFS/exFAT、网络共享/映射盘及真实供应商/硬件未在本轮验收。打开文件时系统可能拒绝父目录移动；测试分别记录系统拒绝及可执行的路径竞争场景，不把无法发生的重命名算成成功移动。
-
-平台基线、当前发布包与尚未验收范围见[RELEASE_INSTALL_VALIDATION.md](RELEASE_INSTALL_VALIDATION.md)。
+各版已验收及未覆盖系统、架构与文件系统见[平台验证](RELEASE_INSTALL_VALIDATION.md)。完整测试的符号链接 fixture 可能需要开发者模式或提升权限，普通安装不因此要求管理员。系统拒绝移动或替换已打开文件时记录实际失败，不把无法发生的路径竞争当作成功。

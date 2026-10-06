@@ -1,224 +1,190 @@
 # Pivane user guide
 
-[简体中文](../USER_GUIDE.md) · [English home](../../README.md) · [Install](INSTALL.md)
+[简体中文](../USER_GUIDE.md) · [Install](INSTALL.md) · [Documentation](../README.md)
 
-Pivane runs on your computer or server. You can open it from another device's browser, but project paths, Shell commands and Agent tools operate on the **server's filesystem**.
+Pivane runs on your computer or server. Other devices can use its browser interface, but project paths, Shell commands and Agent tools use the **server's filesystem and OS permissions**.
 
 ## Start your first session
 
-1. Follow the [installation guide](INSTALL.md), start your instance and open its URL.
-2. Open **Settings → Providers and models** and check the configuration shared with Pi CLI. Sign in with an API key or OAuth only if usable credentials are missing. If the CLI has models but Pivane does not, check the identity and startup environment using [existing Pi users](INSTALL.md#existing-pi-cli-users). Enter credentials in settings, not in chat. For remote OAuth, a localhost callback refers to the server; use a device code or manual callback if the provider offers one.
-3. Close settings, select an existing server project directory and click **New chat**. Select its model and thinking level. Open threads refresh the model catalog when idle; if no model is available, follow the settings link in the composer.
+1. Follow the [installation guide](INSTALL.md), start the instance and open its URL.
+2. In **Settings → Providers and models**, check existing Pi configuration. Add an API key or complete OAuth if credentials are missing. Keep credentials out of chat. For remote OAuth, localhost means the server; use the provider's device-code or manual-callback flow when available.
+3. Return to Pi Agent, select a server project directory and choose **New chat**, a model and its thinking level.
+4. Send a simple question, then refresh and reopen the persistent thread to check that the reply is retained. Requests use your provider account.
 
-On desktop, click the model name in the composer to see favorites, the current model and recently used models. On desktop (over 900px wide), the separate top command bar is hidden: the same project button and context meter move into the conversation status header alongside the thread title and connection state. They move back on tablets and phones; the project button tooltip shows its path. Model and thinking controls remain in the composer. On phones, the composer has a full-width text box above an action row with Add, the context ring, the microphone and Send/Stop. Long drafts grow automatically, then scroll inside the text box at its height limit. Its model, thinking and context summary appears above the text box only while it is focused or a task is running. Tap the context ring to open the settings sheet, then Model for the searchable picker; closing the picker returns focus to the ring. The folder/project name at the top opens the project picker directly, including the option to add a server directory. Files, history and details have separate tool entries; message display modes are under Settings → Preferences. A new browser defaults to Compact, while existing browsers retain their saved choice. Long inline code, paths and identifiers wrap within the message in every view; fenced code blocks keep their own horizontal scrolling. Context usage shows `--` when no reliable measurement is available, not a fabricated 0%. While running, an empty draft shows Stop; text, quotes or attachments switch the main action to Send. Choose Steer or Follow-up from the Add menu. Long errors and JSON wrap on phones without sideways transcript panning; a closed session drawer no longer casts a shadow along the chat edge.
-
-Search names, full IDs or providers across the entire available catalog, or choose **View all models** to browse by provider. Stars only change favorites; clicking a model row switches the session. Favorites are saved on the Pivane instance and shared across devices; up to five recent models remain local to each browser. Existing browser favorites merge once when that browser loads the new picker. Reopening the picker or returning to the page reads the latest favorites; an open picker checks every five seconds. This does not change the global default. On phones and touch devices, the bottom sheet initially focuses its close button, so search input only receives focus when tapped.
-4. Send a simple question. Refresh and reopen the persistent thread to verify that the reply is retained. This request uses your own provider account.
-
-Before selecting a project, you can manage global Pi settings, Packages and Skills. `@` inserts a server project file path. Attachment uploads, paste and drag-and-drop read files supplied by your browser; they are different workflows.
-
-Main chat, side chat and Markdown file previews support LaTeX formulas. Short formulas fit into the text; formulas wider than the available space scroll within their own area. Long replies no longer stop rendering after 128 formulas. Invalid formulas and formulas exceeding the text or output budget retain their LaTeX source, while the rest of the reply remains visible.
+If Pi CLI has models but the browser does not, check its identity directory and startup environment using [existing Pi users](INSTALL.md#existing-pi-cli-users). Global models and extensions can be managed before selecting a project.
 
 ## Workspace navigation
 
-The colorful π at the top identifies Pivane. New browsers start with a labelled 72px navigation rail; use the panel button below the brand to expand it. Existing explicit expanded/collapsed preferences remain intact. The project pane defaults to 272px and the inspector to 336px; drag their dividers, use arrow keys, or double-click to reset.
+- **Pi Agent** groups threads by directory; **Assistant chat** groups them by identity and project category. Profiles, extensions, scheduled tasks and the media lab have separate pages.
+- Phones place additional entries under **More**. Navigation remains available while the project/thread drawer is open; selecting another entry closes it first.
+- **Projects** browses directories; **Activity** shows running work, items needing attention and recent threads. Sidebar search matches titles and first questions. **Search text** searches conversation content; Ctrl/Cmd+K focuses sidebar search.
+- Text search retains its query, results page and reading position within the current page. **Locate current thread** adjusts the list and focus without changing archive state or restarting the session.
+- Details, Files, History and Side chat share the right panel. Desktop panels dock and resize; narrow desktops temporarily hide the thread list. Phones use a drawer with Close and Esc support. Closing a panel does not stop its task.
 
-**Projects** browses directories and threads; **Activity** groups work needing attention, running work, unknown status and recent conversations. Sidebar search matches projects, thread names and first questions; **Search text** is a separate cross-thread search whose bottom button stays on one line. Ctrl/Cmd+K focuses sidebar search. The lighter outlined **New chat** button creates a thread in the selected project; the project menu uses the same action label and also offers temporary sessions. Long assistant-project lists show six threads plus the selected thread, with explicit show-more controls; search results are not capped.
-
-The desktop tool rail and phone tool chooser provide Details, Files, History and Side chat; the Tasks tool has been removed. A selector inside the inspector switches tools. On desktop (browser width over 900px), all four panels dock beside the main chat and both remain interactive. Drag the divider to resize; narrower windows fit the visible width while preserving your saved preference. On narrow desktops, opening a panel temporarily hides the project/thread list; closing it restores the list. Files → Expand reading widens the reader and temporarily hides that list while keeping the main chat usable; collapsing restores the ordinary panel width. At 900px and below, panels use a drawer. Escape, the scrim and Close dismiss the drawer and restore focus. Closing a panel does not stop its task or side chat. The empty-thread start page centers a logo, title, subtitle and project chip above four starter cards for exploring a project, diagnosing a problem, planning an idea and writing documentation, with skill-exploration pills below. Cards append to the draft, preserve attachments and select the bracketed blank for typing; they never send automatically. Phones show compact icon-and-title cards.
-
-Narrow tablets use an icon rail, with entry names available on hover. Phones use bottom navigation with visible labels. Workspace navigation stays available while the project/thread drawer is open; selecting Pi Agent, Assistant chat, More, Theme or Settings closes the drawer before switching pages or opening the menu. These layouts do not show the desktop collapse button.
-
-Models whose channel supports Fast or Ultrafast show a Speed control in the desktop composer and the phone’s model sheet. Ordinary models hide it. Speed and thinking are independent; accelerated options show their cost multiplier. Settings → Providers and models → Speed saves model defaults and custom channel capabilities. Session selections restore from native history; older sessions keep their previous behavior. See [model speed](../PROVIDER_SETTINGS.md#模型速度fast--ultrafast) for capability, inheritance and pricing details.
+Opening management pages does not end the session. When switching between Pi Agent and Assistant chat, select the thread again to continue. Drafts and loaded attachments are retained per thread within the page; **preserve unsent content before refreshing or closing it**.
 
 ## Models and capabilities
 
-**Settings → Models & capabilities** combines Multimodal services (image, video and speech) with Subagents, powered by bundled pi-subagents 0.74.0. The version is managed with Pivane; the settings page shows **Pivane built-in**, and Packages does not update or remove it independently. Existing CLI declarations, role settings and resource filters are preserved. Missing, disabled and unsupported states are explicit. Reopen the runtime after current tasks finish to load the new version. New sessions use dynamic tool activation on models that support it and provide the full tool from the start on other models to preserve prompt caching.
+Click the model name on desktop, or the context ring on phones. Search by name, ID or provider. Favorites are shared across devices using the instance; recent selections stay in the browser. Models, thinking levels and speed options come from actual capabilities and require an idle conversation to change.
 
-Subagent defaults and role overrides use the plugin's existing Pi settings, with global/project scope. Expand a role card to change its settings and view the original role ID; translated display names do not change role identity. The model picker supports search by name, full ID or provider, a provider filter, and batches of 40 results. Selecting a model still requires saving. Unavailable saved selections remain intact. **Automatic** removes the override for this scope; **Discard changes** clears only its unsaved draft. Plugin details and custom role overrides are under the expandable help section.
+Channels supporting Fast or Ultrafast show a separate Speed control with cost multipliers. Defaults are managed under **Providers and models**; see [model settings](../PROVIDER_SETTINGS.md).
 
-While background subagents run, a collapsed **Subagents** chip above the composer shows the run count, with a green dot while the session is retained. It shares one row with the **Task progress** chip; clicking a chip opens its details as a popover above the composer without taking transcript height. Only one popover is open at a time; click elsewhere or press Esc to close it. The details list each run with state, elapsed time, current tool, turns and child steps. **View models** lists the model and thinking level of each step ("Default model" when pi-subagents reports none); **Steer** sends guidance now or after the current task; **Stop** asks the run to stop; **Continue** resumes a paused, stopped, failed or finished run with new instructions; **Usage and cost** summarizes main-Agent and subagent usage (0.71.0+). pi-subagents validates ownership and state; unconfirmed mutations are reported as uncertain and never retried automatically. Subagent tool calls use readable titles. Notices sent to the main Agent (results, progress, requests, reminders) collapse to one row with type, first-line summary and source; requests needing the main Agent's reply have an amber border. Click a row to read the full notice.
+**Settings → Models & capabilities** manages image, video, speech and subagent settings. Media entries show their own category; Speech separates TTS from ASR. Changing a shared service URL or credential affects all its models. Chat credentials do not automatically configure media services.
 
-**Session kept open** means background subagents are still working. Pivane does not reclaim that idle session, even with the page closed, so the main Agent can continue automatically when results arrive; maintenance and restarts also wait. Stop the runs in the panel if maintenance cannot wait.
+### Use subagents
 
-The role list contains bundled native roles and saved overrides, not complete live discovery. Adding an override by name does not create a role definition. Model options come from the available Pi catalog. Saved values may be overridden by role definitions, provider-specific settings or per-run choices. Saving does not launch tasks or interrupt existing runs; reopen the runtime when idle to apply changes.
+Ask the main Agent explicitly to delegate. The **Subagents** chip above the composer shows status, models, tools and usage. Steer sends guidance, Stop requests cancellation, and Continue is offered for eligible runs. Actual availability depends on the run's state. Check uncertain outcomes before repeating an action.
 
-## Customize system prompts
+Subagents ship with Pivane. Global/project defaults and role overrides are saved in Models & capabilities; an override does not create a role definition. Saving leaves active tasks unchanged, and an idle runtime reopen applies new settings. See [bundled capabilities](../BUNDLED_CAPABILITIES.md).
 
-Open **Settings → System prompts** and follow three steps:
-
-1. Choose **All projects** for your usual preferences, or the named **This project** card for project-specific instructions.
-2. Type your instructions directly, or click an example such as **Keep it concise** to append it to your draft. Examples never save or send automatically. Preview the result or review changes, then click **Save instructions**.
-3. When the conversation is idle, click **Update current conversation** to reload all its native resources and check the prompt. Saving alone does not interrupt tasks or change open conversations; update other conversations separately. The page explains when a conversation is busy or not connected.
-
-Without project-specific instructions, the editor shows the saved shared instructions and lets you customize them directly. Project instructions **replace**, rather than combine with, shared instructions and require project trust. Resetting defaults or choosing **Use instructions for all projects** creates a draft first; **Save reset** removes this scope's file, retaining a private backup. **Discard changes** returns to the last read saved content.
-
-Click **View current conversation**, or **Conversation details → View system prompt**, to read the full prompt immediately, search, copy, or jump to **Edit my instructions**. **Parts and sources** shows the base instructions, additional instructions, context files and Skills. The assembled prompt is read-only; file details and base-prompt replacement remain in folded advanced sections.
-
-Drafts stay in this page's memory across settings tabs and scopes; save before refreshing the browser. A browser refresh does not guarantee a new runtime. A conflict or uncertain save blocks resubmission until you **Refresh and compare draft** and review the latest disk content against your draft. See the detailed [native configuration contract](../NATIVE_SETTINGS.md#系统提示词查看与编辑) in Chinese for file locations and limits.
-
-## Network & access
-
-The former Access control settings page is now **Network & access**, with access security, listening scope, outbound proxy and remote-access guidance. Advanced details are collapsed by default. Model and version pages link directly to proxy settings.
-
-Listening and proxy changes are saved separately and apply after a safe restart of the **entire service**. Saving does not interrupt tasks, restart the service or change firewall rules. Enable sign-in before editing network settings or testing a proxy. A deployment HOST override remains read-only. Localhost in a proxy URL means the server, not your browser device. Tailscale Serve, a same-host HTTPS reverse proxy or a local tunnel can forward to loopback without opening all interfaces. See [Network & access](../ACCESS_CONTROL.md).
-
-## Interface language
-
-Pivane provides Simplified Chinese and English in one application. With no explicit preference, Pivane uses the first supported language in the browser's preference list. Chinese variants use Simplified Chinese; English variants use English. If no supported language is listed, English is used.
-
-Under **Settings → Preferences → Interface language**, choose **Follow browser**, **简体中文** or **English**. The choice is stored on this browser for this site; other browsers and devices can choose independently. If browser storage is blocked, Pivane reports that the setting could not be saved.
-
-A saved change applies the next time you open or refresh the page. Pivane does not refresh automatically: your current draft, attachments and temporary side chat stay available. Preserve them before refreshing, since a refresh ends temporary sessions and side chats and clears unsent page content.
-
-Language selection changes application labels, dialogs, known application messages and displayed dates/numbers. It does not translate chat history, model replies, code, filenames, custom model names, saved prompts or user-defined metadata. It does not choose a speech language or add a language instruction to model requests. Built-in prompt-template examples are offered in the page's language when creating a new template; existing templates retain their original content.
-
-Advanced documents, upstream/third-party diagnostics and background push notification text may retain their original language. The legacy media interface is not translated.
-
-## Extensions, featured items and installed resources
-
-Open **Extensions** in the desktop navigation, or at the top of the project/thread drawer on mobile. Empty conversations also offer **Explore skills**. The mobile bottom bar keeps its existing buttons. Settings retains links to **Installed packages** and **Installed skills**.
-
-The extension center has **Discover**, **Installed** and **MCP** tabs. Search featured items by name, purpose or author. The directory includes [PPT Master](https://github.com/hugohe3/ppt-master), [native Pi MCP](../MCP.md), [pi-web-access](https://pi.dev/packages/pi-web-access), [pi-computer-use](https://github.com/injaneity/pi-computer-use), [pi-subagents](https://pi.dev/packages/pi-subagents) and [pi-hermes-memory](https://pi.dev/packages/pi-hermes-memory?name=memory). Cards show sources, requirements and examples. Native MCP ships with the application-pinned Pi; no adapter is required. Use Extensions → MCP to edit redacted global/trusted-project configuration; existing private values are presence-only, with explicit keep/replace/remove. Reading and saving do not connect or reload. Existing project partial overrides edit only state and tool exposure, keeping global connections and credentials inherited; no additional configuration page is introduced. An already open persistent thread can explicitly inspect native status, reconnect, or sign in/out through native OAuth; continue authorization and redirect input in chat. Pi settings expose Codemode/Tool Search names, ordered +/- modifiers, presentation mode and declaration budget. Legacy migration requires stopped backups; do not copy old tool caches or OAuth stores as native credentials. The PPT Master badge checks the discovered skill's name and declared source in the selected global/project scope, showing found, disabled or not found. An untrusted project or older server may require assistant review; the badge does not prove dependencies are ready or the current session has loaded it. PPT Master requires Python and project dependencies; computer use requires a graphical session and OS permissions on the deployment machine. Memory setup should review storage scope, automatic learning and native dependency compatibility.
-
-Cards show **Installed** with its scope, **Not installed**, **Configured · files unavailable**, or an unknown status requiring a check. Select global or current-project scope (including global resources), and use **Refresh installation status** to read the native inventory again. Matching uses registered sources, not skill names; manually copied skills need an assistant check. Untrusted project scope cannot establish that an item is absent. Failed reads clear stale status labels. Installed does not mean loaded in the current session or validated for your task.
-
-**Learn & set up** passes the exact source to the Extension Assistant. **Add custom** accepts other needs or links. Browsing and searching do not install anything or send model requests. Installed resources continue to use the native inventory; after installation, reload resources in an idle session and verify them.
-
-Execution records use readable labels for skill-file reads, inventory checks and package operations. Extension tools with recorded call-time provenance show a source label; expand the row to inspect the original tool name, source, arguments and result. Older records are not attributed using today's installation. Reading a skill file does not prove the model followed it. Reading mode still folds tool records; expand them or use the full record view.
-
-Use **Composer + → Add capabilities…** or **Extensions → Installed packages / Installed skills → Set up with assistant** to create a dedicated Extension Assistant session. Choose an installation scope, describe a task or paste a source link, then select **Continue to assistant** in the footer. Installation host and project details can be expanded when needed. The request is placed in the composer for you to send; opening the assistant does not call a model or install anything. The Check for updates bubble drafts a request to inspect all installed Packages and Skills, verify their scopes, sources and versions, and propose updates with compatibility notes. Unknown versions are flagged, and updates wait for your confirmation. The Office documents example checks Word/PDF capabilities, sources, setup and compatibility before proposing installation. The Presentations bubble has been removed; use PPT Master in Featured. The question mark on each package or skill offers **About this package / skill** and **Troubleshoot**. About requests a read-only explanation of purpose, suitable tasks, an example and dependencies; troubleshooting requests a diagnosis and proposed fixes. Both include the exact source and scope in a draft for you to send.
-
-The assistant checks existing resources, sources, licenses, dependencies and compatibility, then proposes a setup plan. Package changes use the native management service and a confirmation dialog. Standalone skill files and dependency setup use the session's enabled Agent tools. Installs run on the Pivane host. **Return to original chat** preserves the original draft and attachments in this page's memory; refresh clears unsent drafts. Existing runtimes need an explicit idle reload. Publicly available files are not automatically licensed for adaptation or redistribution, and arbitrary third-party packages are not guaranteed to work. See the [detailed assistant contract](../NATIVE_SETTINGS.md#扩展助手).
-
-Open **Extensions → Installed packages** and choose all projects or the current project. Cards show package names, scope and installation status. Expand **Install from a link** to use npm, Git or a local path on the server. Installation, updates and removal still require confirmation of the source and scope.
-
-**Advanced settings** starts collapsed and contains configured resource counts and controls; counts do not indicate what a conversation has loaded. Resources use available skill names, with directory or file names as a fallback instead of repeated SKILL.md or index.ts labels. Search the resource list, browse batches of 40, or expand **View source** to inspect a full path. Choose enabled, disabled or project inheritance and save. Untrusted projects cannot receive project writes. If a read fails, refresh to verify the current configuration; operations are not retried automatically. Reload resources when the conversation is idle. See the detailed [native settings contract](../NATIVE_SETTINGS.md).
-
-On touch devices, Preferences scrolls vertically, with language, automatic titles, planner and notification controls fitting the available width. Browser zoom controls remain available.
-
-## Versions and updates
-
-Open **Settings → Versions and updates** for the current and latest Pivane/Pi versions. The first visit without a cached result checks once automatically; **Check for updates** can also query GitHub Releases (including prereleases) and npm from the server. Results are cached for five minutes and never install anything. While the page is visible, Pi checks stable releases automatically at most once a day. Its optional reminder can open the version page, be snoozed, or ignore that version.
-
-The page no longer offers installation, backup, restart, archive or checksum downloads. Expand **Ask an independent Agent to help update** and copy its prompt to an Agent running separately on the host machine. It should inspect the instance, target release, compatibility and backup/rollback plan first, then wait for your approval. An Agent running inside the Pivane instance being updated must not stop or restart the service hosting its conversation. The cards still link to the official release pages; see [installation and recovery](../INSTALL_RECOVERY.md) for manual operations.
-
-Backups include Pi identity, sessions, configuration and media history/files, but exclude project source and external link targets. They stay in the private `.pivane-runtime` directory. Verify data and resume scheduled messages individually after maintenance. Installation compatibility checks do not certify every third-party extension or provider. The managed release contains a snapshot of Pivane's code; later edits to the original source directory do not automatically change it. Use `start:direct` in a separate development instance.
-
-A global Pi CLI and extensions managed under Packages remain separate from Pivane's Pi dependency. For retained managed-maintenance API compatibility and recovery details, see the [update contract](../UPDATES.md) in Chinese.
+**Session kept open** means background work is still active. Closing the page does not stop it; maintenance also waits. Use the run's Stop control when needed. Result notices and requests can be expanded from their compact rows.
 
 ## Conversation and tools
 
-**Compact** is the default for new browsers. **Reading** groups consecutive thinking and tool records, while **Full record** shows them individually. The browser remembers your selection. While a task runs, send steering or follow-up messages, or stop the task. After a timeout or disconnect, check thread state before repeating a request.
+`@` inserts a server project path; attachments, paste and drag-and-drop upload browser-supplied files. Persistent threads accept DOCX, XLSX, PPTX and PDF originals, up to 20 MiB each and five documents per message. Ask the Agent to summarize or analyze them; it reads selected ranges on demand, and file cards download originals. Formulas use saved cached values, scanning requires a separate OCR workflow, and Office layout preview/editing is not included. See [document attachments](../COMPOSER_TOOLS.md#上传办公文档与-pdf). While the Agent runs, choose Steer or Follow-up from Add. An empty draft shows Stop; text, quotes or attachments show Send.
 
-Final replies in the main chat show the local message time to the right of the action icons. Hover to see the full date and time. This uses the native message timestamp, which can mark the start of generation rather than its exact completion. Missing or invalid timestamps are omitted.
+Choose a message display mode under **Settings → Preferences**:
 
-Long user messages in the main chat use a generous folding threshold: text blocks exceeding 2,400 characters or 30 lines show a preview of about 20 lines. Choose **Show full message** to expand, or **Collapse message** to fold it again. Short messages stay fully visible, image attachments remain visible, and copying a question still copies its complete text. Expansion is retained during chat updates and resets to the default after a page refresh.
+| Mode | Display |
+|---|---|
+| Compact | Final reply per turn, with expandable execution details |
+| Reading | Every reply, with grouped thinking and tool records |
+| Full record | Individual records for inspection |
 
-In the main composer, `!command` runs server Shell; `!!command` keeps its output out of later model context while retaining the native execution record. Tools use the server user's permissions. Project roots are not a sandbox. Install only trusted Packages, extensions and Skills.
+Expand tool details before using browser Find to search their output. Long inline code wraps; code blocks and wide formulas scroll within their own areas. Invalid or over-budget formulas retain their source. Long user messages can be expanded, and Copy still returns their complete text. Reply timestamps may indicate generation start rather than completion.
 
-Temporary sessions do not save a session file and end on refresh or disconnect. Unsent drafts and attachments live only in the current page.
+`!command` runs server Shell; `!!command` excludes it from later model context but retains its native execution record. Project roots are not a sandbox. Install only trusted extensions. After a timeout, disconnect or uncertain Stop/Take queue result, verify state before repeating a request. Stopping does not undo completed file changes or external requests.
 
-If Stop or Take queue fails, a persistent **Operation needs verification** notice offers a state refresh and access to recovered text. Verification never repeats the original operation. Review actual runtime state and recovered content; closing the notice is not proof that an external operation was undone.
+Temporary sessions have no saved session file and end on refresh or disconnect. See [composer tools](../COMPOSER_TOOLS.md), [Shell](../WEB_SHELL.md) and [runtime controls](../NATIVE_CONTROLS.md).
+
+### Voice input
+
+Tap the microphone to record and again to stop and transcribe. Text enters an editable draft for you to send. Recording lasts up to two minutes and requires HTTPS or localhost plus browser permission. Audio goes to the selected service and may incur a charge; failures are not retried automatically. The setup link opens **Models & capabilities → Speech → ASR**. See [transcription](../COMPOSER_TOOLS.md#语音转录).
 
 ## Task progress
 
-When the Agent creates a plan for a substantial task, a collapsed **Task progress** chip appears above the composer with the completed count and current step. Click it to open the full step list as a popover above the composer, without taking transcript height; click elsewhere, click the chip again or press Esc to close it. A completed plan keeps the reader's current expanded/collapsed choice. Plan, subagent and task-result chips stay only above the composer, not in an inspector panel. Long lists scroll inside the popover without changing drafts or attachments.
+The **Task progress** chip opens an Agent-maintained step list. You can ask the Agent to create, revise or clear it. Progress is reported, not independently verified; a stop or final reply does not automatically complete unfinished steps. Persistent threads restore the latest plan for their current branch. Side chat does not offer this card.
 
-The built-in `update_plan` tool needs no extra package or user prompt configuration. The Agent decides when planning helps; you can also ask it to create and maintain a plan. Progress is reported by the Agent. Stopping, errors or a finished reply do not automatically complete unfinished steps. Ask the Agent to revise or clear the plan when needed.
+## Agent task threads and messages
 
-Persistent threads restore the latest plan from the native Pi session after refresh, reconnect or restart. History navigation and forks follow their selected branch, and compaction preserves the plan. Temporary sessions retain it only during their lifetime; side chat has no progress card. Existing workers need an idle extension reload or runtime restart to acquire the new tool; refreshing the browser alone is insufficient.
+Ask “open another thread to handle this” to create and immediately start a persistent task in the same project. You may specify its model and thinking level; otherwise new-thread defaults apply. Results return as receipts without automatically waking the source. Stopping the source does not stop the new thread.
 
-## Move a thread to another project
+If creation is uncertain, inspect the original task instead of creating it again. Threads share project files, so assign distinct editing responsibilities. Agents can also contact existing project threads; delivery waits for idle, and **Leave a note only** does not actively wake the recipient. Repeated automatic exchanges eventually stop waking threads. Agent messages identify their source and do not extend user authorization. See [task threads and messages](../AGENT_THREADS.md).
 
-Choose **Move to project…** in the thread menu, select an existing server directory, then **Check and preview** and **Confirm move**. The default list shows other projects that currently contain sessions; enter an empty project through **Other project path…**. The original session ID, full tree, branches, bookmarks and creation time are retained. Archive state, completion notices, usage and past deliveries follow the thread. Open pages retain their draft and loaded attachments and reconnect the same thread in the target project; old session addresses resolve through verified move records. Future tools and project instructions use the target directory. Prepare project files separately; historical paths remain unchanged.
+## Assistant identities and memory
 
-The initial implementation supports idle ordinary persistent v3 sessions up to 64 MiB within one identity and filesystem. Assistant bindings, task receipts or Agent messages, scheduled references, parent sessions referenced by other forks, side chats and unfinished background work are reported as blockers before moving. Failed or uncertain requests are not repeated automatically. Interrupted moves block writes to both locations and keep private original backups for recovery. The menu appears only when the running backend supports it. See the [session workflow contract](../SESSION_WORKFLOWS.md#移动线程到其他项目).
+Create an identity under **Assistant profiles**, with SOUL (behavior), USER (preferences) and MEMORY (long-term memory). Select it in Assistant chat, then choose a project category and thread. New ordinary Pi Agent threads do not bind an identity.
 
-## Archive projects and threads
+Categories may share a server directory and add different instructions, but **files, AGENTS.md and memory scoped to the physical directory remain shared**. Identities are not security sandboxes, and opening a thread does not change its existing identity. See [assistant profiles](../AGENT_PROFILES.md).
 
-The sidebar opens in **Projects**. Choose **Archive project** to move a project into **Archived projects** at the bottom, or **Archive thread** to move one thread into **Archived threads** under its project. Both sections start collapsed. Expand either section to open and read a thread directly; only **Restore project / Restore thread** moves it back to the regular list.
+Use **Learning & skills** to manage memories, learned skills, deleted records and supported undo operations. Feedback distinguishes saved content from pending indexing. Saved or injected content does not prove that an open runtime has loaded it or that the model followed it.
 
-The two archive states are independent. Restoring a project keeps individually archived threads archived; restoring a thread does not restore its project. **Project archived** identifies a thread collected under its project's archive. Archiving preserves directories and native session records and does not stop running tasks. Archive state is shared by devices; disclosure state stays in this page.
+Chat memory cards show receipts and eligible undo, correction or edit controls. Enabled skills need an idle resource reload. Background learning is off by default and requires dedicated auxiliary models; missing models, exhausted budgets, full memory and failures are shown explicitly. It does not silently use the chat model.
 
-The Activity view still shows running, unread, failed and waiting archived threads with an archive label. Archived threads stay out of Recent. Sidebar search and cross-thread content search exclude archives unless you check **Include archived**. Archive actions are available only when supported by the backend.
+Consolidation prepares a proposal for review before applying it; stale item versions cannot overwrite newer content. Project memory editing requires a verified session scope. Correction and long-term preference triggers support customization; one-time requests can be excluded. Suspected credentials and prompt injection are rejected. Store credentials through model settings or a credential manager. See [memory and learning](../PROFILE_MEMORY.md#background-learning) for limits, migration and recovery.
 
-The thread menu groups **Session tree**, **Search history and bookmarks**, and **Export records** under **History and records**. The existing Copy submenu retains thread name and session ID. Arrow keys, Back and Escape work within the same popup.
+## Customize system prompts
 
-## Auxiliary models
+Under **Settings → System prompts**, select All projects or This project, edit and save instructions, then **Update current conversation** when idle. **Project instructions replace shared instructions; they do not automatically combine.** Project writes require trust.
 
-**Settings → Preferences → Auxiliary models** groups title generation and media planning by purpose. Each row offers provider/model selectors; its gear button opens guidance and implemented options. Click **Save changes** to apply edits. Existing title and media Feature Agent selections are retained without migration. Reopening this page reads the latest local model catalog while preserving unsaved selections. Subagent and auxiliary settings use native model configuration; models registered only by session extensions must also be configured under **Providers and models** to be available here.
+**View current conversation** shows the actual assembled prompt and sources. Saving does not interrupt tasks; browser refresh may reconnect the same runtime. After a conflict or uncertain save, refresh and compare your draft first. See [system prompt configuration](../NATIVE_SETTINGS.md#系统提示词查看与编辑).
 
-Title generation’s **Auto** follows the current thread model. Media planning’s **Auto** uses its planner defaults, described in the row. Both purposes may share the same inexpensive model. An unavailable or failing dedicated model is not replaced with another model. **Set all to Auto** stages automatic choices for saving while preserving the automatic-title switch.
+## Extensions, featured items and installed resources
 
-This does not change chat models, media execution models or resource installation. The Extension Assistant uses a normal dedicated conversation and its model selector; it does not add an auxiliary-model route. See the detailed [auxiliary model contract](../AUXILIARY_MODELS.md) for scope and future integration.
+Open **Extensions** on desktop or **More → Extensions** on phones:
+
+- **Discover** shows sources and requirements. Learn & set up places a request in a dedicated Extension Assistant draft for you to send; browsing does not install or call a model.
+- **Installed** filters Packages, Skills, extension modules, templates and terminal themes. Enable/disable is in the row; update, remove and restore inheritance are in its menu. Review source, scope and code-execution implications before installation.
+- **MCP** manages global or trusted-project configuration. Saving is separate from connecting or reloading. Existing credentials stay unless explicitly replaced or removed. Status, reconnect and OAuth use an open persistent thread.
+
+Installed does not mean loaded in the current conversation. Reload idle resources and verify them after setup. Untrusted projects cannot receive project writes. Legacy MCP adapter migration requires stopped backups; see [MCP](../MCP.md) and [native resources](../NATIVE_SETTINGS.md).
+
+Use **Add → Add capabilities…** for setup or troubleshooting. Package operations use web confirmation, and tools run on the deployment machine. Computer-use extensions do not directly control the phone viewing Pivane. Third-party resources need their own dependencies and permissions.
+
+## Scheduled tasks
+
+Use **Scheduled tasks** for recurring or one-off work in a chosen thread or an identity's main thread. Add in the composer can create a task for the current thread. Check the timezone, next run, budget and missed-run behavior before enabling it.
+
+Pausing a schedule and stopping its current run are separate actions. The server must remain running; busy work waits, and uncertain outcomes need verification. See [scheduled tasks](../SCHEDULED_TASKS.md).
 
 ## Thread list display
 
-Regular thread cards show a title and a compact metadata row without repeating the first question. Named titles use one line, with the full title available on hover. Unnamed threads use up to two lines from the first question. Update time and selection highlighting remain visible; after a mouse pause of about 0.7 seconds, a hover card shows the full title, update time and, when available, message, compaction, context and model details (not on touch), and Activity also identifies the project.
+The list shows thread titles and status; hover reveals the full title and available statistics. Idle does not mean the runtime has been released. Use `/quit` in the relevant thread to exit it explicitly; switching threads does not immediately stop its worker.
 
-Running, tool use, compaction, retries, waiting, unread, failure, stopped and unknown connection states remain visible. A retained runtime shows a green circle-check icon and **Idle** label with a tooltip explaining `/quit`; threads without a workspace runtime omit the inactive label. When a search match in the first question needs context, the card shows a nearby excerpt; clearing search removes it. Temporary threads retain their unsaved/disconnection notice. Each thread row's native hover tooltip shows its full title and update time, plus current-branch message count, compaction count, messages retained in context, latest context tokens and model when list statistics are available. These statistics require the backend's profile/project features; missing values are not invented.
+## Archive projects and threads
 
-The project menu groups **Import Pi session**, **Project trust**, and **Copy project path** under **More actions**. Common actions such as creating, pinning, refreshing and archiving remain at the top level. Thread menus omit the duplicate **Pending messages** entry; use the pending-message count/manage control above the composer. Queue indicators remain on thread cards.
+Archive from the project or thread menu and read or restore entries in the Archived groups. Their archive states are independent. Archiving changes display preferences without deleting data or stopping work. Activity still surfaces running and unread archived threads; enable **Include archived** when searching old content.
 
-Idle does not mean resources have been released. The default idle eviction threshold is 15 minutes, but eviction also requires no browser subscribers, running tasks or operations that prevent eviction; retained recovery drafts can also prevent it. Switching threads does not immediately stop the runtime. To release one explicitly, open that thread and use `/quit`.
+## Move a thread to another project
+
+Choose **Move to project… → Check and preview → Confirm move**. The destination is a server directory; empty projects can be entered manually. Moving preserves session ID, full history and bookmarks. Future tools use the target directory; project files are not moved with the thread.
+
+Only eligible idle ordinary persistent sessions can move. The preview lists blockers such as assistant bindings, task relationships, schedules or background work. Verify both locations after a failed or uncertain result before retrying. See [move and recovery boundaries](../SESSION_WORKFLOWS.md#移动线程到其他项目).
 
 ## Conversation titles
 
-The **Automatically name conversations** switch is under the gear button in **Settings → Preferences → Auxiliary models → Title generation**. It is enabled by default and shared by devices using this instance. New persistent threads created without a name receive a short title after their first substantive exchange. Greetings defer naming; later turns keep the title stable. Until then, the list shows a shortened first question. Existing history, copied/imported threads and manual names are protected.
+New unnamed threads can receive a title after their first substantive exchange. Existing history and manual names are protected. **Generate a new title** offers a suggestion to edit and save; direct Rename remains available.
 
-In the title row, keep **Auto · current thread model** or choose a dedicated provider and model, then click **Save changes**. This choice is independent of other auxiliary purposes and chat defaults. Saving checks availability without running a generation. Disabling automatic naming preserves the model selection and still permits manual generation.
+Title generation sends a bounded question/answer excerpt to the selected provider, incurs extra usage and is outside persistent-chat statistics. Configure its model and automatic switch under Auxiliary models.
 
-Choose **Generate a new title** in the thread menu to preview a suggestion using this preference. Edit it and save, or close the window to keep the existing name. If the name or conversation changes while generating, saving the stale suggestion is rejected. The regular **Rename** action remains available. A successful suggestion shows the model used and the input, output and cache token counts returned by Pi. Missing fields show “—”; entirely missing usage is identified as unreported.
+## Auxiliary models
 
-Generation uses at most six recent questions/completed answers, capped at 2,000 characters each and 8,000 characters total. A long conversation never causes its full history to be sent. Thinking, tool output and images are excluded. If you select a different provider, that provider receives the excerpt. Generation adds no chat messages, but incurs additional model usage, currently outside persistent-session usage statistics; no cumulative title-usage log is stored. Failures keep the existing title and are not automatically retried. Models that depend on extension registration or request hooks may not support independent title generation; use manual naming in that case. Turning the feature off or changing the title model does not cancel a request already sent to the provider. The new choice applies to subsequent requests and prevents the previous in-flight automatic result from being applied. Manual suggestions identify the model actually used and still require saving.
+**Settings → Preferences → Auxiliary models** assigns models by purpose: titles, media planning and background learning. Title Auto follows the thread; media Auto follows the displayed rules; learning needs dedicated models. An explicitly selected model is not silently replaced on failure. Saving does not execute a request. See [auxiliary models](../AUXILIARY_MODELS.md).
 
 ## History, files and side chat
 
-With `sideChatModels` enabled, expand side-chat settings to choose its own model and Thinking level. New side chats inherit the main model. Idle changes preserve messages and drafts without affecting the main chat. Insufficient context capacity or incompatible images reject the change rather than silently discarding context.
+**History** supports search, bookmarks, trees, forks and conversation navigation. Restoring a conversation position **does not undo files, commands or external requests**. HTML exports are for reading; JSONL exports contain the active branch. Back up stopped data directories to preserve complete session trees. See [history](../HISTORY.md), [workflows](../SESSION_WORKFLOWS.md) and [import/export](../SESSION_TRANSFER.md).
 
-Use History to search records, manage bookmarks and view the session tree. Navigation, edit-and-retry and version restoration change the conversation position; **they do not undo files, commands or external requests**. Copying or forking creates a new thread sharing the same project files.
+**Files** browses and searches the project without adding contents to model context. Historical diffs, Current file and immutable Deliverables are distinct sources. Expand reading on desktop, or enter Full-screen reader; Esc/Back to sidebar preserves PDF page, zoom and table pagination. Images and SVG support drag, wheel and pinch zoom. Audio does not autoplay. The 16 MiB file limit and private-path restrictions remain. Self-contained HTML starts as an isolated static preview; enable interaction only for trusted pages, since isolation does not guarantee complete network blocking. Ask the Agent to use `deliver_files` for stable output links. See [files and deliverables](../FILE_VIEWER.md).
 
-HTML exports are for reading. JSONL exports contain the current active branch for import and continuation, not the complete session tree. A complete backup requires stopping the service and preserving the data directories.
+**Side chat** handles a separate question with main-chat background frozen at its first send. It can use its own model and read current project files. Writes and commands require approval for that reply. Both chats share files, so avoid concurrent edits. A settled side chat releases its runtime after 12 idle hours; refreshing its background can keep older sections on the page, but the new Agent does not inherit their discussion. Refreshing, closing the page or signing out ends temporary side chats. Copy useful content back to the main chat first. See [side chat](../SIDE_CHAT.md).
 
-Open **Files → Project files** to browse the selected project's directory tree or find a file by name or relative path, including folders you have not expanded. Clicking a file reads its current contents. Breadcrumbs, Reveal in project and Copy file path help navigate. Browsing does not call a model or add file contents to its context; refresh directories and files explicitly.
+### Discuss selected text
 
-On desktop, **Expand reader** provides more space and shows the tree beside the preview when the panel is wide enough. Narrow screens switch between browsing and reading. The hidden-file toggle retains private-path restrictions. Folder expansion and a bounded set of reading positions stay in this page only.
-
-**Files this turn** retains successful edit/write tool records. Diffs and recorded write contents describe those operations. **Current file** reads the current disk file only when requested; use Refresh to update its snapshot. When the backend advertises file previews, images support fit/actual-size viewing and original-byte downloads. PDF supports page navigation, zoom and page text; CSV/TSV has a paginated table view; SVG has a restricted static image/source view; supported audio uses browser playback without autoplay. Closing the file panel releases PDF tasks and audio. The 16 MiB file limit still applies. Self-contained HTML starts as a static isolated preview; enable interaction only for trusted pages. Scripts cannot access workbench storage or the parent DOM, but iframe navigation may still contact the network. **Deliverables** contains immutable files explicitly published with the managed `deliver_files` tool. Links work within the current native branch and inherited forks without changing projects; ordinary external paths are not automatically authorized. See [file browsing and viewing](../FILE_VIEWER.md) for limits, source distinctions and search scope.
-
-With `sideChatLifecycle`, opening side chat only reveals the composer. Its first send captures the main context and starts a runtime. After a fully settled reply, 12 hours of inactivity releases the runtime while keeping readable messages and drafts on this page. New side chat and Refresh background & start new preserve previous sections for reading, but the new Agent receives none of that old discussion. Copy anything needed yourself. End and clear removes all side-chat sections and drafts for the current main thread; other threads are unaffected. Refreshing or closing the page does not restore temporary records. Use the info button at the top of side chat for a short guide to separate discussions, non-inherited history, 12-hour expiry, page-only records and execution approval. These notes do not clutter the default view. Side chat freezes the main task's effective context when created. With `sideChatTools` enabled, it can read and search current files. Explicit modification requests can use edit, write and command tools after an approval inside side chat; the grant lasts for that reply and is reset afterwards. Main and side agents share files: avoid concurrent edits to the same files, and remember that stopping does not undo completed changes. Tool activity is shown in side chat; use Copy to bring useful replies back to the main draft. This page can retain a limited number of side chats across persistent threads. Refresh, closing the page and signing out end them.
+Select message text to add a quote to the main draft, ask in side chat or read the selection aloud. Nothing is sent automatically; phones retain system copying. Unsent quotes disappear on refresh, and read-aloud may incur charges. See [quotes](../COMPOSER_TOOLS.md#选中文字提问).
 
 ## Generate images, video and speech in chat
 
-Once an image, video or speech model is configured, ask for it directly in a Pi Agent or assistant conversation, for example "draw a cover for this report" or "read this paragraph aloud". The Agent reads your configured models and their parameter requirements and places a generation card in the conversation with the model, a summary and the main parameters; long prompts or scripts can be expanded. When the card appears nothing has been generated and no paid service has been called.
+Configure a media model, then ask “draw a cover for this report” or “read this paragraph aloud.” The Agent prepares a card; **nothing is generated or charged until you confirm it**.
 
-- **Confirm and generate** runs one generation with the parameters shown on the card. The image, audio or video then appears in the card with open/download links and is added to the media lab history.
-- Use **Edit parameters** to change values in the card, or tell the Agent what to change and it will prepare a new card. If the server normalizes defaults or formats, the adjusted values come back for review and need another confirmation.
-- Generation continues on the server. You can leave the page or switch to your phone; the card shows the result when you return. Refreshing, a second tab or a double click cannot submit the same card twice.
-- You can confirm several cards at once: remote services run up to 4 generations together (2 for video) and local GPU models one at a time. Extra cards show **Queued** with their position and start automatically when a slot frees up; a queued card has not been sent yet and can be cancelled.
-- A running card shows how long it has waited. Exceeding the model's time limit marks the result uncertain: the provider may still finish and charge, but the result cannot be retrieved. Raise **Request time limit** under model connections for models that often time out; new image and video templates default to 10 minutes.
-- Generating again takes two clicks; after an uncertain result the button warns that the previous request may already have been charged. Failures and uncertain results are never retried automatically; check the history first.
-- Cards stay visible in compact, reading and full transcript modes. Side chat does not offer generation cards.
+- Edit parameters before confirming. Server-normalized changes return for another review.
+- Results appear in the card and lab history, including after reconnecting or changing devices. The same card is not submitted twice.
+- Multiple confirmed cards queue for available slots and can be cancelled before starting. Remote services allow 4 concurrent items (2 videos); local backends allow 1.
+- A timeout may mean the provider is still processing and charging. Check history and the remote task first. Failures and uncertain results are not retried automatically; another generation needs confirmation.
 
-The media lab keeps the history, model connections and full parameter editing, and will gradually become the gallery and configuration page.
+Side chat does not provide generation cards. See [the media lab](../MEDIA_LAB.md).
 
 ## Media lab and read aloud
 
-A new installation has no executable image, video or speech service. Add your own service URL, key and model ID under **Settings → Models & capabilities → Image / Video / Speech** or through the lab's connection manager. Each entry shows only its category's services, models, counts and protocol templates. Click a model name to edit it directly. Adding a model lets you reuse an existing service or connect a new one; saving a new service continues to model setup. Saving from Settings returns to the model list with feedback and preserves the current lab selection and draft. Shared URL and key changes affect that service's models in every category. Speech separates TTS and ASR and retains the read-aloud defaults entry. Select a protocol supported by the service's documentation. Chat credentials do not automatically configure media services.
+New installations have no executable media service. Add a URL, credentials, model and supported protocol through Models & capabilities or the lab. Upload supported reference material, edit parameters directly or ask for planning help, then review and confirm.
 
-Describe what you want, ask the Agent to create a plan, or edit common parameters. Review the submission checklist and explicitly confirm one generation. A plan, connection probe and generation are distinct operations. If a request fails or its result is uncertain, check service tasks and history first; Pivane does not automatically repeat it.
+A reply's speaker button authorizes that audio request using read-aloud defaults and may incur a charge. Interface language does not change its voice or speech language. See [media connections](../MEDIA_CONNECTIONS.md) and [read aloud](../REPLY_TTS.md).
 
-Configure read-aloud defaults under Preferences. Clicking a reply's speaker button authorizes generation of that reply's audio with those defaults and may incur a charge. Interface language does not change the selected voice, language or audio parameters.
+## Network & access
+
+**Settings → Network & access** manages sign-in, listening scope and proxy settings. Listening and proxy changes are saved separately and apply after a safe service restart; saving does not restart or open a firewall. Enable sign-in before allowing other devices. Localhost in a proxy URL means the server. See [network and access](../ACCESS_CONTROL.md).
+
+## Appearance and interface language
+
+Theme and font size apply immediately under Preferences and stay local to this browser. Browser zoom still works; phone inputs remain at least 16px.
+
+### Interface language
+
+Simplified Chinese and English follow the browser preference by default, falling back to English. A saved language change applies on next open or refresh. Preserve drafts, attachments and side-chat content first. Language settings do not translate conversations, files or custom names, or change model requests and speech language. See [language](../I18N.md).
+
+## Missing project directories
+
+The picker is limited by server `PI_PROJECT_ROOTS` and OS permissions. Projects need not live in Documents, and a remote browser cannot select its device's local folders as server projects. Change the server startup configuration and safely restart; moving sessions is unnecessary. See [directory troubleshooting](../INSTALL_RECOVERY.md#项目选择器找不到目录).
+
+## Versions and updates
+
+**Settings → Versions and updates** checks Pivane and Pi versions without installing them. Copy the independent-Agent prompt to a separate Agent on the host to inspect compatibility, backups and an update plan. An Agent inside the service must not directly stop the service hosting its own conversation. Pi and Pivane are upgraded together. See [updates](../UPDATES.md).
 
 ## Settings, usage and notifications
 
-Current source uses Pivane names while retaining compatibility with existing settings and session metadata. Ordinary upgrades do not require manual file renaming. Moving a project requires a separate offline migration of its native session ownership and runtime paths; never replace path strings throughout conversation JSONL. Maintainer details are in [naming and migration](../development/NAMING.md).
+- Usage covers persistent conversations and supported side-chat calls. Costs are estimates, not provider invoices; exclusions such as titles, temporary sessions and media planning are documented under [usage](../USAGE.md).
+- Saving configuration generally leaves open runtimes unchanged. Finish work before reloading; browser refresh may reconnect to the same worker.
+- Notifications, sounds and background push depend on browser/system permissions. See [notifications](../NOTIFICATIONS.md).
+- Before upgrading, preserve drafts and wait for tasks and other active operations to finish, then follow [installation and recovery](INSTALL.md). Ordinary upgrades do not require renaming data files.
 
-Usage statistics read native persistent-session records and the actual new model calls made in newly created side chats. Inherited main-thread history is not counted twice; only compact usage facts, not conversation text or references, are stored. Costs are historical estimates, not provider invoices. Side chats ended before this feature cannot be recovered, and an unsaved call may be lost if the ledger remains unavailable until an in-memory side chat ends. Ordinary temporary sessions, title generation and media planning remain outside cumulative usage statistics.
-
-Saved Pi configuration generally applies to new runtimes. Existing tasks are not automatically stopped. When a setting requires reopening the runtime, finish the task, use `/quit`, then reopen the thread. Refreshing the webpage can reconnect to the same existing worker.
-
-Page notifications and sounds can notify you while the page is running. Background push requires HTTPS and browser/system support. On iPhone/iPad, use a supported iOS version and add the site to the Home Screen. System sleep, permission and power settings can prevent notifications. Background push messages currently retain the server's original text.
-
-Before upgrades or backups, pause scheduled messages, finish tasks, preserve drafts and stop the service. Follow [installation and recovery](INSTALL.md). For detailed feature and API contracts, use the [documentation index](../README.md); these detailed documents are primarily in Chinese.
+For help, supply redacted errors, steps and instance paths, not credentials. Detailed feature contracts in the [documentation index](../README.md) are primarily in Chinese.

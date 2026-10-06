@@ -17,8 +17,7 @@ test('isolated server preserves private adapter defaults, executes mock GPU/Flux
     fs.symlinkSync(path.join(source, 'node_modules'), path.join(appDir, 'node_modules'));
     fs.mkdirSync(path.join(appDir, 'public/images'), { recursive: true });
     // The file service shares its pure path policy with the browser; include this code dependency in the isolated app.
-    fs.copyFileSync(path.join(source, 'public/pi-file-policy.js'), path.join(appDir, 'public/pi-file-policy.js'));
-    fs.copyFileSync(path.join(source, 'public/pi-file-policy.js'), path.join(appDir, 'public/pi-file-policy.js'));
+    for (const name of ['pi-file-policy.js', 'pi-document-references.js']) fs.copyFileSync(path.join(source, 'public', name), path.join(appDir, 'public', name));
     fs.writeFileSync(path.join(appDir, 'public/images', 'must-not-leak.png'), png);
     fs.writeFileSync(path.join(appDir, 'public', 'old.html.bak-test'), 'must not be served');
     const gpu = path.join(root, 'fixture-gpu.cjs');

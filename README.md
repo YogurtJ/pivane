@@ -46,7 +46,7 @@ The agent plans the task, reads and edits files, runs the tests and reports back
 
 - Threads are organized by project and run directly in folders on the server.
 - Replies stream in with thinking, tool calls and the files changed in each turn. The default compact view folds each finished turn into a one-line "time · tool calls" summary.
-- You can attach images and files by paste or drag-and-drop, reference project files with `@`, or quote a text selection into your next message.
+- You can attach images and files by paste or drag-and-drop, reference project files with `@`, or quote a text selection into your next message. DOCX, XLSX, PPTX and PDF uploads keep their originals, and the agent reads selected ranges on demand.
 - While a task runs, you can steer it or queue a follow-up. You can also stop, retry or compact the context.
 - `!command` runs a shell command on the server, and `!!command` keeps its output out of the model context.
 - The model picker has search, favorites that sync across devices, per-model thinking levels and a context usage meter.
@@ -77,7 +77,7 @@ The agent plans the task, reads and edits files, runs the tests and reports back
 ### Files and rendering
 
 - You can browse and search project files, review each turn's diff and compare it with the current file.
-- Previews cover Markdown, code, images, PDF, CSV/TSV, SVG, audio and sandboxed HTML.
+- Previews cover Markdown, code, images, PDF, CSV/TSV, SVG, audio and sandboxed HTML. Full-screen reading keeps your position; images support pan and zoom, and PDFs keep the page and zoom level.
 - Agents can publish finished files as unchangeable snapshots that you can open and download from the chat.
 - Markdown is rendered with syntax highlighting, LaTeX math (KaTeX) and Mermaid diagrams.
 
@@ -90,10 +90,10 @@ The agent plans the task, reads and edits files, runs the tests and reports back
 
 ### Media lab and voice
 
-<img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/media-en.webp" alt="The media lab with an agent-planned image request and generation history" width="100%">
+<img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/media-en.webp" alt="A media generation card in Pivane chat, with editable parameters and a completed synthetic image" width="100%">
 
 - You can add image, video, text-to-speech and speech-to-text services. Presets cover OpenAI, Google Gemini, Volcengine Ark (Seedream and Seedance) and Alibaba Cloud Model Studio, and any compatible HTTP API can be added manually.
-- An agent drafts editable parameters from a plain-language request. Each generation runs only after you confirm it, and reference images or videos can be attached when the model supports them.
+- An agent drafts editable parameters from a plain-language request in chat or the lab. Each generation runs only after you confirm it; busy requests queue, and the same status returns after a refresh. Reference images or videos can be attached when the model supports them.
 - Generation history lets you preview, reuse and download earlier results.
 - You can dictate messages into the composer and have replies or selected text read aloud.
 

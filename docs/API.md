@@ -1,12 +1,12 @@
 # API Reference
 
-2026-09-11 Windows原生支持补充：文件请求接受经过规范化校验的Windows盘符/分隔符路径，返回相对path使用网页斜杠表示；ADS、设备命名空间、保留设备名及盘符相对路径拒绝。fileViewer/sessionSearch/usageStats仍由实际后端可用性决定，Windows原生组件承担私密文件ACL与句柄检查，缺失时配置初始化也可能拒绝。没有增加任意句柄/路径写入REST或绕过已有身份/同源检查。范围见WINDOWS.md。
+平台路径：文件请求接受经过规范化校验的Windows盘符/分隔符路径，返回相对path使用网页斜杠表示；ADS、设备命名空间、保留设备名及盘符相对路径拒绝。fileViewer/sessionSearch/usageStats仍由实际后端可用性决定，Windows原生组件承担私密文件ACL与句柄检查，缺失时配置初始化也可能拒绝。没有增加任意句柄/路径写入REST或绕过已有身份/同源检查。范围见WINDOWS.md。
 
-2026-09-11 媒体快速接入：GET `/api/pi/media/lab/connections` 新增 `providerTemplates`，协议模板含可选 `recommended/help`。HTTP response.type 增加仅图像可用的 `image-json`，path 指向含 `b64_json/url` 的对象；JSON 路径 `*` 查找数组内第一份匹配结果，不批量执行。GET lab 省略所有旧 zimage/flux2/minimax-video 项（包括configured=true），前端也过滤旧进程返回的这些项，内部兼容定义仍可被旧 API 使用。CRUD、Key、修订和票据确认契约保持；详见 [MEDIA_CONNECTIONS.md](MEDIA_CONNECTIONS.md)。
+媒体协议：GET `/api/pi/media/lab/connections` 新增 `providerTemplates`，协议模板含可选 `recommended/help`。HTTP response.type 增加仅图像可用的 `image-json`，path 指向含 `b64_json/url` 的对象；JSON 路径 `*` 查找数组内第一份匹配结果，不批量执行。GET lab 省略所有旧 zimage/flux2/minimax-video 项（包括configured=true），前端也过滤旧进程返回的这些项，内部兼容定义仍可被旧 API 使用。CRUD、Key、修订和票据确认契约保持；详见 [MEDIA_CONNECTIONS.md](MEDIA_CONNECTIONS.md)。
 
-2026-09-10 新增 liveRecovery/extensionDrafts/sessionSearch/runtimeConfiguration 标记。主连接 get_messages.webLive 为有界partial/tool展示快照，广播增加webRuntimeId/webSequence；主WS新增 ack_extension_draft、get_runtime_configuration、restart_runtime（空闲持久线程，runtimeId/expectedRevision/confirmed）。GET /sessions/search?q&cwd?&offset?&searchId? 提供受保护、可取消、有界原生正文跨线程检索。完整字段、预算、实际信任、配置修订、重开互斥与接受ACK语义见 [NATIVE_COMPLETION.md](NATIVE_COMPLETION.md)。不添加裸导航/工具权限、不存持久聊天副本。
+运行能力包括 liveRecovery/extensionDrafts/sessionSearch/runtimeConfiguration 标记。主连接 get_messages.webLive 为有界partial/tool展示快照，广播增加webRuntimeId/webSequence；主WS新增 ack_extension_draft、get_runtime_configuration、restart_runtime（空闲持久线程，runtimeId/expectedRevision/confirmed）。GET /sessions/search?q&cwd?&offset?&searchId? 提供受保护、可取消、有界原生正文跨线程检索。完整字段、预算、实际信任、配置修订、重开互斥与接受ACK语义见 [NATIVE_COMPLETION.md](NATIVE_COMPLETION.md)。不添加裸导航/工具权限、不存持久聊天副本。
 
-原生设置：GET `/api/pi/settings/native` schema 提供 `defaultTools`（type=tools、choices/defaults/platform、maxEntries=1024/maxNameLength=500）、`codemode.mode`（on/only）、`codemode.inlineBudget`（0–1000000）与 `defaultProjectTrust`（ask/always/never、globalOnly）。PUT 接受普通／自定义工具名和顺序 +/- 条目；普通名称替换，只有修饰符时修改继承选择，重复修饰符保留，重复普通名拒绝。null 删除本层覆盖，Pivane [] 不默认启用任何工具；受信项目修饰符叠加全局 [] 不恢复默认。信任策略仅全局写入，项目范围即使 null 也拒绝。保存返回 requiresRuntimeRestart=true，不改变现有实例或逐项目信任决定；完整语义见 [NATIVE_SETTINGS.md](NATIVE_SETTINGS.md)。
+原生设置：GET `/api/pi/settings/native` schema 提供 `defaultTools`（type=tools、choices/defaults/platform、maxEntries=1024/maxNameLength=500）、`codemode.mode`（on/only）、`codemode.inlineBudget`（0–1000000）与 `defaultProjectTrust`（ask/always/never、globalOnly）。PUT 接受普通／自定义工具名和顺序 +/- 条目；普通名称替换，只有修饰符时修改继承选择，重复修饰符保留，重复普通名拒绝。null 删除本层覆盖，Pivane [] 不默认启用内置工具，扩展工具可能仍自动激活；受信项目修饰符叠加全局 [] 不恢复默认。信任策略仅全局写入，项目范围即使 null 也拒绝。保存返回 requiresRuntimeRestart=true，不改变现有实例或逐项目信任决定；完整语义见 [NATIVE_SETTINGS.md](NATIVE_SETTINGS.md)。
 
 页面通知/提示音仅复用现有GET /api/pi/activity，不新增API；后台推送仍是显式可选功能，基础localhost通知无需调用订阅或VAPID接口。详见NOTIFICATIONS.md。
 
@@ -15,6 +15,20 @@
 本文件描述当前代码中的实际接口，不是未来设计。
 
 工具结果的可选 `details.pi5ToolProvenance` 包含 `{version:1,toolName,toolCallId,source?:{source,path,scope,origin},skill?:{name,path}}`，由受管 worker 的调用前元数据生成，随原生 toolResult 和原有 WS 工具结果传递。缺失即未知，不通过设置清单补填；前端核对名称与调用 ID，仅作来源显示。扩展助手包确认取消时提供 `details.pi5PackageOperation.status='cancelled'`。不新增 REST 或改动原始正文、错误和用量，详见[执行来源](NATIVE_SETTINGS.md#执行记录中的技能与扩展来源)。
+
+## 办公文档附件（documentUploads）
+
+状态 `GET /api/pi/status` 返回 `documentUploads` 和 `documentUploadLimits:{fileBytes:20971520,files:5}`；原生描述符组件不可用时能力为 false，接口拒绝。格式、存储与解析预算见[办公附件](COMPOSER_TOOLS.md#上传办公文档与-pdf)。
+
+- `POST /api/pi/uploads?cwd&sessionId&requestId&name`：持久线程原件上传，Content-Type 必须为 application/octet-stream，非空原始字节最多 20 MiB。requestId 为 1–160 字符的字母/数字/点/短横线/下划线/冒号，首字符为字母或数字；name 为不含路径分隔符或控制字符的 1–240 字符文件名。返回 `{reference:{id,revision,name,format,size},marker,reused?}`，id/revision 是 64 位小写 hex。先预占两项操作额度再读取 HTTP body，不自动解压请求 body。重复同一规范 cwd/sessionId/requestId 只返回相同原件，参数或字节不同返回 DOCUMENT_CONFLICT，不覆盖。
+- `GET /api/pi/uploads/status?cwd&sessionId&requestId`：仅查询同一上传标识的已保存原件，返回 reference/marker。404 只表示尚未找到已发布原件，不表示在途上传已取消，不能据此自动重传。
+- `GET /api/pi/uploads?cwd&sessionId`：从当前完整原生分支返回 `{items:[reference]}`，最多 500 个引用，不启动关闭的 worker。
+- 同接口加 `id`：核对引用、描述符及 SHA256 后返回原始字节，使用 attachment、application/octet-stream、nosniff、no-store、sandbox CSP 与同源资源策略。未发送原件仅原上传 cwd/sessionId 可下载。浏览器不使用公开静态目录或 URL Token。
+- `POST /api/pi/uploads/read`：只允许当前活跃持久 worker 的受限内部凭据；普通工作台 Cookie/Bearer 不能调用。JSON 为 `{id,action?:inspect|read,start?,count?,sheet?,column?,columns?}`，默认 inspect/start=1/count=20/column=1/columns=20。Word start 为正文段落／表格行，Excel 为行，PPT/PDF 为页；全部从 1 开始。count 1–200，PPT/PDF 实际最多 10 页；column 1–16384、columns 1–50。sheet 为准确工作表名，省略取首张表。读取前后核对同一 worker 与当前分支；不存在于分支返回 DOCUMENT_SCOPE，变化返回 DOCUMENT_CONTEXT。原生 `read_document` 工具复用此接口，其结果存入原生 toolResult。
+
+原生用户消息使用规范 `<pivane_document ... />` 标记保留原件引用，不存二进制或另一份会话。仅用户消息中的有效引用参与分支授权；助手／工具输出不授予读取资格。继承或显式携带原引用的分支可以读取同一身份存储中的原件；单独导入到其他实例不会复制原件。分支属于授权输入，标记本身不是服务器文件路径。
+
+错误为 `{error,code}`：400 DOCUMENT_INPUT/DOCUMENT_SHEET，401/403 访问/作用域，409 DOCUMENT_CONTEXT/DOCUMENT_CHANGED/DOCUMENT_CONFLICT，413 DOCUMENT_LIMIT/DOCUMENT_STORAGE/DOCUMENT_TIMEOUT，415 DOCUMENT_FORMAT，429 DOCUMENT_BUSY，503 服务关闭或描述符/进程不可用。读取结果提供 format、unit、warnings、范围、truncated、nextStart；Excel 同时提供工作表名、日期系统、单元格地址、原始值、公式与缓存值；公式未保存计算结果时 cachedValue 为 null，不将缺失结果当作零。临时上传目录不对外开放；已保存原件不自动清理。 `GET /activity.documentOperations` 和 worker 的 document-read 生命周期投影参与空闲与停机等待。
 
 ## 任务进度（taskProgress）
 
@@ -26,7 +40,7 @@
 
 ## 工作台访问验证（accessControl）
 
-2026-09-09 新后端以 `/api/access/status.accessControl=true` 标记，公开接口仅返回 enabled/authenticated。设置/登录/退出/撤销与全部字段见 [ACCESS_CONTROL.md](ACCESS_CONTROL.md)。配置缺省免认证；开启后所有私人API、WebSocket和静态媒体均需要Cookie或Bearer，不能凭同源Origin或URL Token绕过。非空PI_WEB_TOKEN强制启用；网页配置可由用户修改且要求修订/确认。
+服务以 `/api/access/status.accessControl=true` 标记，公开接口仅返回 enabled/authenticated。设置/登录/退出/撤销与全部字段见 [ACCESS_CONTROL.md](ACCESS_CONTROL.md)。配置缺省免认证；开启后所有私人API、WebSocket和静态媒体均需要Cookie或Bearer，不能凭同源Origin或URL Token绕过。非空PI_WEB_TOKEN强制启用；网页配置可由用户修改且要求修订/确认。
 
 `/api/access/{login,logout,revoke}` 为POST，`/settings` 为GET/PUT；写入要求JSON和X-Pi-Access:1。Cookie写请求保留同源/CSRF检查；Origin须匹配HTTP/HTTPS scheme与Host，HTTPS代理需配置PI_WEB_SECURE_COOKIE。直接图片/音频/视频、Range/HEAD和下载使用同一Cookie；后续文字中原Bearer/首消息Token方式仍兼容。新服务覆盖本文件第6节旧媒体API，旧业务协议不因鉴权而变成review票据接口。
 
@@ -214,7 +228,7 @@ Pi 0.99.1 候选的原生资源清单包含 `builtin:mcp`、`builtin:codemode`�
 
 页面可见时每 3 秒读取；失败显示未知。临时会话使用当前 WebSocket 本地状态。
 
-前端默认“全部”保留项目管理/完整列表；“工作中”按需处理、处理中、最近会话分组，同一线程按此优先级只出现一次。最近默认6条可展开至12条，保留选中线程并高亮，前两组不截断。工作中一次浏览期间保留已有候选的排序快照，避免点击后重排，再次进入时更新；状态变化仍可换组。分组、展开及排序仅为页面状态，不改变本接口、任务执行或未读标记；刷新恢复全部与6条，后台元数据补读仍使用现有 GET sessions。
+页面分组与阅读状态仅影响展示，不改变活动、执行或未读契约；操作见[用户指南](USER_GUIDE.md#工作区导航)。
 
 ### 项目与线程归档
 
@@ -305,7 +319,9 @@ Body: `{ "cwd": "/workspace/demo" }`。先经过 token/Origin/realpath 根检查
 
 `/status.extensionAssistant=true` 时，`POST /extension-assistant/sessions` 接受 `{cwd,scope,language,returnSessionId?}`，创建独立原生会话并返回 `assistant` 元数据，不提交模型消息。`POST /extension-assistant/inventory` 和 `/extension-assistant/package` 为已打开的助手提供固定安装范围的配置读取与包操作，分别接受 `{cwd,sessionId}` 和附加的 `{action,source,expectedRevision,confirmed:true}`。包操作复用原生配置互斥、trust 和修订检查；独立进程凭据只授权这两个管理端点，不能用于其他 API，媒体规划凭据不能用于扩展管理。请求/响应、确认、取消、身份恢复和限制见[扩展助手契约](NATIVE_SETTINGS.md#扩展助手接口与持久化)。
 
-`/status.sessionClassification=true` 启用助手会话分类变更。GET `/sessions/:id/classification?cwd=...` 返回 `{session,projectId,revision,projectsRevision,projects}`：revision 为当前归属的原生 entry ID／null，projects 仅含同档案、同真实 cwd 的未归档分类。PUT 同路径接受 `{cwd,projectId,expectedRevision,expectedProjectsRevision}`，projectId 可为 null（未分类）；拒绝未知字段、无档案／起草／扩展助手会话、跨目录／跨身份／归档目标和冲突标记。保存在共享设置与 Supervisor editing 互斥下执行，会话、标题与后台任务不空闲或有关联侧聊时返回 409（忙碌 code=SESSION_BUSY），归属／分类注册表修订变化返回 409。成功 `{session,changed}`，同目标为无写入；原生历史和 ID 保留，只追加分类变更。打开该线程的 WS 收到 `{type:'gateway_session_classified',session}` 后关闭码 1012，重连加载新分类指令；页面保留草稿／附件，不抢占已切换线程。不确定结果不能自动重放，重新 GET 核对。\n\n### 会话移动
+`/status.sessionClassification=true` 启用助手会话分类变更。GET `/sessions/:id/classification?cwd=...` 返回 `{session,projectId,revision,projectsRevision,projects}`：revision 为当前归属的原生 entry ID／null，projects 仅含同档案、同真实 cwd 的未归档分类。PUT 同路径接受 `{cwd,projectId,expectedRevision,expectedProjectsRevision}`，projectId 可为 null（未分类）；拒绝未知字段、无档案／起草／扩展助手会话、跨目录／跨身份／归档目标和冲突标记。保存在共享设置与 Supervisor editing 互斥下执行，会话、标题与后台任务不空闲或有关联侧聊时返回 409（忙碌 code=SESSION_BUSY），归属／分类注册表修订变化返回 409。成功 `{session,changed}`，同目标为无写入；原生历史和 ID 保留，只追加分类变更。打开该线程的 WS 收到 `{type:'gateway_session_classified',session}` 后关闭码 1012，重连加载新分类指令；页面保留草稿／附件，不抢占已切换线程。不确定结果不能自动重放，重新 GET 核对。
+
+### 会话移动
 
 `GET /status.sessionMoves=true` 启用跨物理项目目录的线程移动，`GET /activity.sessionMoves` 是运行中的移动数，计入维护空闲／停机等待。均沿用工作台访问身份、Origin、允许根与原生会话发现，不接受任意 sessionPath。
 

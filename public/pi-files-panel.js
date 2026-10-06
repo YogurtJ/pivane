@@ -5,7 +5,10 @@
     class PiFilesPanel {
         constructor(host) {
             this.host = host; this.mode = 'project'; this.browsing = true; this.enabled = false;
-            this.viewer = new window.PiFileViewer({ ...host, selected: file => this.selected(file) });
+            this.viewer = new window.PiFileViewer({ ...host, selected: file => this.selected(file), readerLayoutChanged: () => {
+                if (this.mode === 'project' && !this.wide && this.viewer.file) this.browsing = false;
+                this.sync();
+            } });
             this.browser = new window.PiFileBrowser({ ...host, enabled: () => this.enabled, openFile: path => this.openPath({ path }) });
             this.projectButton = node('button', '', translateUi("项目文件")); this.projectButton.id = 'pi-files-project'; this.projectButton.type = 'button';
             this.historyButton = node('button', '', translateUi("本轮文件")); this.historyButton.id = 'pi-files-history'; this.historyButton.type = 'button';
@@ -115,6 +118,7 @@
             this.host.showPane('changes'); this.sync(); $('pi-changes-title').focus({ preventScroll: true });
         }
         async openDeliveries() {
+            this.viewer.closeFullscreen(false);
             this.cancelOpen(); this.rememberContext(); this.viewer.clear(); this.mode = 'deliveries'; this.browsing = false;
             if (this.history) this.history.active = false;
             this.deliveriesList.replaceChildren(); $('pi-changes-content').hidden = false; $('pi-changes-empty').hidden = true;
@@ -161,11 +165,13 @@
             });
         }
         showHistory() {
+            this.viewer.closeFullscreen(false);
             this.cancelOpen(); this.rememberContext(); this.viewer.stopInteractive();
             this.mode = 'history'; this.browsing = false; this.returnLink = null; this.history.active = true;
             this.host.showPane('changes'); this.sync();
         }
         openProject(browse = true) {
+            this.viewer.closeFullscreen(false);
             this.cancelOpen(); this.rememberContext();
             this.viewer.rememberPosition(); this.viewer.stopInteractive();
             if (this.viewer.file?.deliveryId) this.viewer.clear();
@@ -211,7 +217,7 @@
             $('pi-changes').classList.toggle('files-has-file', hasFile);
             $('pi-file-explorer').hidden = this.mode !== 'project' || !this.browsing;
             this.deliveriesList.hidden = this.mode !== 'deliveries';
-            $('pi-file-reader').hidden = this.mode === 'deliveries' || this.mode === 'project' && this.browsing && (!this.wide || !hasFile);
+            $('pi-file-reader').hidden = !this.viewer.fullscreen.open && (this.mode === 'deliveries' || this.mode === 'project' && this.browsing && (!this.wide || !hasFile));
             this.deliveriesButton.setAttribute('aria-pressed', String(['deliveries', 'delivery'].includes(this.mode)));
             this.projectButton.setAttribute('aria-pressed', String(this.mode === 'project'));
             this.historyButton.setAttribute('aria-pressed', String(this.mode === 'history'));
