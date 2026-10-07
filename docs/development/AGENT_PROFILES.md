@@ -8,7 +8,7 @@
 
 ## 分类与运行配置
 
-`pi-assistant-project-registry.js` 保存独立于 cwd 的逻辑分类。多个分类可以关联同一真实目录，保存各自的名称、附加指令和关联档案；cwd 创建后不可修改。分类不复制文件或会话，也不将原有按档案／真实 cwd 保存的记忆及技能重新分组。
+`pi-assistant-project-registry.js` 保存独立于 cwd 的逻辑分类。多个分类可以关联同一真实目录，保存各自的名称、附加指令和关联档案；cwd 创建后不可修改。分类不复制文件或会话，也不将原有按档案／真实 cwd 保存的记忆及技能重新分组。空分类删除复用 profiles.reserve 与原子注册表 CAS，核对整个原生会话目录的成员身份／修订及全部助手的有效当前归属；不可读成员或涉及目标的非法归属链不被视为空。最终同步成员证明在注册表锁内再次核对，删除仅移除分类记录，保留未知持久字段及会话／目录内容。
 
 `pi-assistant-project-state.js` 的初始原生标记包含 `{version,sessionId,projectId,cwd}`；当前 ID 的重复初始标记仍使归属失效。`pivane-assistant-project-change` 记录 `{version,sessionId,cwd,previousRevision,previousProjectId,projectId}`，以原生 entry ID 串联显式 CAS 变更，projectId=null 表示未分类；链断裂、非法字段或 cwd 冲突不接受最后一个标记。归属独立于会话树活动位置，分叉只读取来源当前有效归属并为新 ID 重新绑定。旧档案会话没有分类标记时保持未分类。分类归档阻止新建或移入，不改变已有会话或 worker。
 

@@ -5,7 +5,7 @@
         const apiRoot = '/api/pi/media/lab';
         const labels = { image: translateUi("图像"), video: translateUi("视频"), tts: translateUi("语音") };
         const icons = { image: 'fa-regular fa-image', video: 'fa-solid fa-film', tts: 'fa-solid fa-volume-high' };
-        const drafts = new Map();
+        const drafts = new Map(), selectedModels = new Map(), selectedImageModes = new Map();
         let catalog = [], kind = 'image', modelId = '', revision = 0, historyRevision = 0, catalogRevision = 0;
         let history = [], review = null, reviewing = false, planning = false, hasConnections = false;
         let sourceReadId = 0, sourceLoading = false, infoRevision = 0, previewRevision = 0;
@@ -21,6 +21,30 @@
             const node = element('button', className); node.type = 'button'; node.title = label; node.setAttribute('aria-label', label);
             if (name) node.append(icon(name)); if (className !== 'icon-btn') node.append(document.createTextNode(label));
             node.addEventListener('click', handler); return node;
+        }
+        const imageMode = item => Object.values(item?.parameters || {}).some(field => field.type === 'image') ? 'edit' : 'text';
+        const imageModeLabel = mode => translateUi(mode === 'edit' ? '图像编辑' : '文生图');
+        const imageModes = element('div', 'lab-image-modes'); imageModes.id = 'lab-image-modes'; imageModes.hidden = true;
+        imageModes.setAttribute('role', 'group'); imageModes.setAttribute('aria-label', translateUi('图像操作'));
+        const modeButtons = new Map();
+        for (const mode of ['text', 'edit']) {
+            const control = button(imageModeLabel(mode), mode === 'edit' ? 'fa-regular fa-images' : 'fa-solid fa-pen', () => {
+                const choices = catalog.filter(item => item.kind === 'image' && imageMode(item) === mode);
+                const sameService = item => item.id.startsWith('media:') && item.id.split(':')[1] === modelId.split(':')[1];
+                const target = choices.find(item => item.id === modelId) || choices.find(item => item.id === selectedImageModes.get(mode)) || choices.find(item => item.configured && sameService(item)) || choices.find(item => item.configured) || choices[0];
+                if (target && target.id !== modelId) { changeKind('image', target.id); $('lab-parameters').scrollIntoView({ block: 'nearest' }); }
+            });
+            control.dataset.imageMode = mode; modeButtons.set(mode, control); imageModes.append(control);
+        }
+        const modeHint = element('p', 'lab-image-mode-hint'); imageModes.append(modeHint);
+        $('lab-model').before(imageModes);
+        function renderImageModes() {
+            imageModes.hidden = kind !== 'image' || !model();
+            modeHint.textContent = translateUi(imageMode(model()) === 'edit' ? '上传原图或参考图，填写编辑要求后检查提交清单。' : catalog.some(item => item.kind === 'image' && imageMode(item) === 'edit') ? '当前为文生图；编辑已有图片请切换到“图像编辑”。' : '编辑图片需要接入带图片输入的模型。');
+            for (const [mode, control] of modeButtons) {
+                control.setAttribute('aria-pressed', String(kind === 'image' && model() && imageMode(model()) === mode));
+                control.disabled = !catalog.some(item => item.kind === 'image' && imageMode(item) === mode);
+            }
         }
         function errorAt(id, message = '') { $(id).textContent = message; $(id).hidden = !message; }
         async function api(path = '', options = {}, format = 'json') {
@@ -64,7 +88,7 @@
         }
         function renderModel() {
             revision++; review = null; stopSourceRead(); errorAt('lab-error');
-            const selectedModel = model();
+            const selectedModel = model(); renderImageModes();
             $('lab-parameters').replaceChildren();
             $('lab-review').disabled = !selectedModel;
             $('lab-plan').disabled = !selectedModel || planning;
@@ -90,12 +114,12 @@
             sourceView();
         }
         function changeKind(nextKind, preferredModelId) {
-            remember(); kind = nextKind;
+            remember(); if (model()?.kind === kind) { selectedModels.set(kind, modelId); if (kind === 'image') selectedImageModes.set(imageMode(model()), modelId); } kind = nextKind;
             const choices = catalog.filter(item => item.kind === kind);
-            const previous = choices.find(item => item.id === (preferredModelId || modelId));
+            const previous = choices.find(item => item.id === (preferredModelId || selectedModels.get(kind) || modelId));
             modelId = (previous || choices.find(item => item.preferred) || choices.find(item => item.configured) || choices[0])?.id || '';
             $('lab-model').replaceChildren();
-            for (const item of choices) $('lab-model').append(new Option(item.name, item.id));
+            for (const item of choices) $('lab-model').append(new Option(kind === 'image' ? imageModeLabel(imageMode(item)) + ' · ' + item.name : item.name, item.id));
             if (!choices.length) $('lab-model').append(new Option(translateUi("尚未接入模型"), ''));
             $('lab-model').value = modelId;
             document.querySelectorAll('[data-lab-kind]').forEach(node => {
@@ -320,7 +344,7 @@
             $('lab-review-json').textContent = readableJson({ modelId, parameters: collect($('lab-review-fields'), false) });
         });
         $('lab-instruction').addEventListener('input', () => { revision++; review = null; $('lab-confirm').disabled = true; remember(); $('lab-plan-state').textContent = translateUi("要求已修改，点击生成方案后才会应用到参数。"); });
-        $('lab-model').addEventListener('change', () => { remember(); modelId = $('lab-model').value; renderModel(); });
+        $('lab-model').addEventListener('change', () => { remember(); modelId = $('lab-model').value; selectedModels.set(kind, modelId); if (kind === 'image') selectedImageModes.set(imageMode(model()), modelId); renderModel(); });
         $('lab-preset').addEventListener('change', () => {
             const preset = model()?.presets?.find(item => item.id === $('lab-preset').value);
             if (preset) { currentDraft().parameters = { ...collect($('lab-parameters'), false), ...preset.parameters }; renderModel(); }

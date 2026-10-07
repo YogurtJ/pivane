@@ -166,7 +166,18 @@ test('file API requires existing origin/token authentication, advertises capabil
     const response = await fetch(url, { headers }); assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'no-store');
     assert.equal((await response.json()).content, content + 'new');
     const status = await (await fetch(base + '/api/pi/status', { headers })).json();
-    assert.equal(status.fileViewer, true); assert.equal(status.fileBrowser, true);
+    assert.equal(status.fileViewer, true); assert.equal(status.fileBrowser, true); assert.equal(status.fileRoots, true);
+    for (const [kind, params] of [['roots', { cwd: project }], ['directories', { path: project }], ['resolve', { cwd: project, path: '报告.md' }]]) {
+        const endpoint = base + `/api/pi/files/${kind}?` + new URLSearchParams(params);
+        assert.equal((await fetch(endpoint)).status, 401);
+        assert.equal((await fetch(endpoint, { headers: { ...headers, Origin: 'https://other.test' } })).status, 403);
+        const result = await fetch(endpoint, { headers }); assert.equal(result.status, 200);
+        assert.equal(result.headers.get('cache-control'), 'no-store'); assert.equal(result.headers.get('x-content-type-options'), 'nosniff');
+    }
+    const rootsBody = JSON.stringify({ cwd: project, root: project, action: 'add', expectedRevision: 0 });
+    assert.equal((await fetch(base + '/api/pi/files/roots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: rootsBody })).status, 401);
+    assert.equal((await fetch(base + '/api/pi/files/roots', { method: 'POST', headers: { ...headers, Origin: 'https://other.test', 'Content-Type': 'application/json' }, body: rootsBody })).status, 403);
+    assert.equal((await fetch(base + '/api/pi/files/roots', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: rootsBody })).status, 200);
     for (const [kind, params] of [['list', { path: '' }], ['search', { q: '报告' }]]) {
         const browseUrl = base + `/api/pi/files/${kind}?` + new URLSearchParams({ cwd: project, ...params });
         assert.equal((await fetch(browseUrl)).status, 401);

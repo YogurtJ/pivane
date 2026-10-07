@@ -1,5 +1,9 @@
 # API Reference
 
+## 成果中心（artifacts）
+
+`GET /api/pi/status.artifacts` 表示成果能力；`GET /api/pi/activity.artifactOperations` 为真实读写操作数量。`GET /api/pi/artifacts` 仍返回有界、来源重验的待保存目录；新增 `/artifacts/library` 独立库分页、`POST /artifacts/batch` 逐文件／批量保存、收藏、收藏夹、重命名、归类、导出和回收站，`GET /artifacts/operations/:requestId` 核对不确定写入。`/artifacts/:key/preview|cover|origin|location` 按来源 key 或稳定 library ID 读取。已独立保存的文件不依赖来源会话；删除会话与删除成果副本分开。原交付链接语义不变，source key 仍不是授权。完整字段、确认／修订、预算和错误见 [成果中心](ARTIFACTS.md#预算资格与接口)。
+
 平台路径：文件请求接受经过规范化校验的Windows盘符/分隔符路径，返回相对path使用网页斜杠表示；ADS、设备命名空间、保留设备名及盘符相对路径拒绝。fileViewer/sessionSearch/usageStats仍由实际后端可用性决定，Windows原生组件承担私密文件ACL与句柄检查，缺失时配置初始化也可能拒绝。没有增加任意句柄/路径写入REST或绕过已有身份/同源检查。范围见WINDOWS.md。
 
 媒体协议：GET `/api/pi/media/lab/connections` 新增 `providerTemplates`，协议模板含可选 `recommended/help`。HTTP response.type 增加仅图像可用的 `image-json`，path 指向含 `b64_json/url` 的对象；JSON 路径 `*` 查找数组内第一份匹配结果，不批量执行。GET lab 省略所有旧 zimage/flux2/minimax-video 项（包括configured=true），前端也过滤旧进程返回的这些项，内部兼容定义仍可被旧 API 使用。CRUD、Key、修订和票据确认契约保持；详见 [MEDIA_CONNECTIONS.md](MEDIA_CONNECTIONS.md)。
@@ -100,7 +104,8 @@
 `/status.assistantProjects=true` 标记逻辑项目后端。项目是独立命名分组，同一规范 cwd 可对应多个项目；分组的 `instructions` 作为额外上下文追加到已加载的助手提示词，不修改共享 AGENTS.md，也不改变 profile+物理 cwd 的记忆范围。归档仅阻止创建新线程，已保存的线程及其绑定不删除。档案不是文件权限沙箱。
 
 - `GET /assistant-projects[?profileId=UUID]` 返回 `{version:1,revision,projects}`。省略筛选返回全部记录；提供 ID 时仅返回关联该档案的组。
-- `PUT /assistant-projects` 接受 `{expectedRevision,project:{id?,name,cwd,description,instructions,profileIds,archived}}`，返回 `{ok,revision,project,requiresReload:true}`。新建省略 ID；更新必须给出已有 ID。name 非空且最多 80 字符、description 最多 500 字符、instructions 最多 8192 UTF-8 字节、profileIds 为不重复 UUID 数组，archived 为布尔值。新关联必须是已启用档案；cwd 经现有 realpath/允许根校验，创建后不可改变。无删除接口。
+- `PUT /assistant-projects` 接受 `{expectedRevision,project:{id?,name,cwd,description,instructions,profileIds,archived}}`，返回 `{ok,revision,project,requiresReload:true}`。新建省略 ID；更新必须给出已有 ID。name 非空且最多 80 字符、description 最多 500 字符、instructions 最多 8192 UTF-8 字节、profileIds 为不重复 UUID 数组，archived 为布尔值。新关联必须是已启用档案；cwd 经现有 realpath/允许根校验，创建后不可改变。
+- `DELETE /assistant-projects/:id` 接受严格 `{expectedRevision}` JSON，返回 `{ok:true,deletedId,revision}`。仅删除已核实为空的分类记录，不删除目录、文件、会话或身份。检查该 cwd 的全部原生会话（不限当前助手或启用状态），有当前绑定或相关冲突归属、无法完整读取、成员变化／修订过期／设置占用返回 409；不存在返回 404，非法参数返回 400。已有效转出分类的历史标记不阻止删除。结果不确定时重新读取列表核对，不自动重放。
 - `GET /assistant-projects/:id/sessions?profileId=UUID` 返回 `{sessions:[...]}`，只返回原生当前会话 ID 的项目绑定和实际档案绑定均匹配的线程；缺少 profileId 或无效 ID 拒绝。不按浏览器选中状态推断身份。
 - `POST /sessions` 可增加 `assistantProjectId`，此时必须同时显式提交关联、启用的 `profileId`，cwd 必须匹配项目且项目未归档。未知 ID、无效身份或 cwd 冲突在原生文件创建前拒绝，不回退到普通线程。省略 assistantProjectId 保持旧调用和项目默认档案行为。
 
@@ -173,6 +178,8 @@ Pi 0.99.1 候选的原生资源清单包含 `builtin:mcp`、`builtin:codemode`�
 `composerTools=true` 标记原生模板 CRUD、内置命令 Web 映射目录、项目文件搜索和主 WS `reload_resources` 已启用。REST 包括 `GET /composer/catalog?cwd`、`GET/PUT/DELETE /composer/template` 与 `GET /composer/files?cwd&q`，复用 token/Origin，响应 no-store。模板写入使用 scope/name/content/expectedRevision，修订冲突 409；重载成功广播 `gateway_commands`。完整字段、限制、命令映射及未接入项见 [COMPOSER_TOOLS.md](COMPOSER_TOOLS.md)。
 
 `fileBrowser=true` 标记项目浏览接口 `GET /files/list?cwd&path&hidden` 和 `GET /files/search?cwd&q&hidden`，可在没有会话 worker 时使用。只返回经项目／私密路径及描述符验证的文件和目录元数据，`entries` 含 `name/path/kind/link`，`partial` 明确扫描是否不完整；目录按需读取，文件名搜索覆盖未展开目录但跳过目录链接及常见依赖／构建目录。2 并发、3 秒扫描预算，目录最多返回 500 项、搜索最多返回 100 项；参数、范围与错误见 [FILE_VIEWER.md](FILE_VIEWER.md#目录与文件名搜索-api)。
+
+`fileRoots=true` 标记独立于会话 cwd 的多目录浏览：`GET/POST /files/roots` 读取／修改按项目保存的关联目录（`expectedRevision`、最多16根）；`GET /files/directories?path` 安全选择服务器目录；`GET /files/resolve?cwd&path` 返回文件所属根与是否已关联，不读取正文或自动授权。关联根只是导航偏好，不更改会话、工具权限或交付分支。字段与错误见 [关联目录 API](FILE_VIEWER.md#关联目录-api)。
 
 `filePreviews=true` 提供 `GET /files/preview?cwd&path` 的类型化 JSON 快照（16 MiB、UTF-8 文本或 base64），供图片、PDF、CSV/TSV、SVG、音频、HTML 隔离预览及浏览器原字节下载；`/files/content` 保持原语义。`deliverables=true` 提供 `GET /deliverables?cwd&sessionId` 列表，加 `path` 查已登记来源别名，加 `id/index` 读取原生当前分支可见的交付快照。新 `deliver_files` 工具在受管 worker 中登记授权成果并追加原生引用，不提供任意 Web 注册接口。类型、来源、边界和错误见 [文件交付契约](FILE_VIEWER.md#类型化预览与交付-api)。
 

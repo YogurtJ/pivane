@@ -187,6 +187,69 @@ test('logical projects: CAS, native binding, filtered sessions, runtime and life
         assert.equal((await gateway.store.projects.list()).projects.some(p => p.name === 'Blocked replacement'), false);
     }
     const registry = gateway.store.projects;
+    await t.test('delete checks every associated assistant, CAS and immutable session bytes', async () => {
+        const latest = () => call('GET', '/assistant-projects');
+        const empty = await call('PUT', '/assistant-projects', { expectedRevision: (await latest()).data.revision,
+            project: project('Accidental empty category', [firstProfile, secondProfile], other) });
+        assert.equal(empty.status, 200);
+        const file = path.join(other, 'keep.txt'); fs.writeFileSync(file, 'Keep directory contents');
+        assert.equal((await call('DELETE', `/assistant-projects/${empty.data.project.id}`, { expectedRevision: 'stale' })).status, 409);
+        assert.equal((await call('DELETE', `/assistant-projects/${empty.data.project.id}`, { expectedRevision: empty.data.revision, force: true })).status, 400);
+        const beforeBytes = fs.readFileSync(imported.session.path);
+        const removed = await call('DELETE', `/assistant-projects/${empty.data.project.id}`, { expectedRevision: empty.data.revision });
+        assert.equal(removed.status, 200); assert.equal(removed.cache, 'no-store');
+        assert.equal(removed.data.deletedId, empty.data.project.id);
+        assert.deepEqual(fs.readFileSync(imported.session.path), beforeBytes);
+        assert.equal(fs.readFileSync(file, 'utf8'), 'Keep directory contents');
+        assert.deepEqual(JSON.parse(fs.readFileSync(stored, 'utf8')).extra, { kept: true });
+        assert.equal((await call('DELETE', `/assistant-projects/${empty.data.project.id}`, { expectedRevision: removed.data.revision })).status, 404);
+        const shared = await call('PUT', '/assistant-projects', { expectedRevision: removed.data.revision,
+            project: project('Shared category', [firstProfile, secondProfile]) });
+        const second = await call('POST', '/sessions', { cwd, profileId: secondProfile, assistantProjectId: shared.data.project.id });
+        const originalBytes = fs.readFileSync(second.data.path);
+        assert.deepEqual((await call('GET', `/assistant-projects/${shared.data.project.id}/sessions?profileId=${firstProfile}`)).data.sessions, []);
+        assert.equal((await call('DELETE', `/assistant-projects/${shared.data.project.id}`, { expectedRevision: shared.data.revision })).status, 409,
+            'another linked assistant owns a thread: selected assistant is not an emptiness proof');
+        assert.deepEqual(fs.readFileSync(second.data.path), originalBytes);
+        const { PROJECT_CHANGE_ENTRY, readProjectAssignment } = require('../server/pi-assistant-project-state');
+        const manager = SessionManager.open(second.data.path), assignment = readProjectAssignment(manager);
+        manager.appendCustomEntry(PROJECT_CHANGE_ENTRY, { version: 1, sessionId: second.data.id, cwd,
+            previousRevision: assignment.revision, previousProjectId: assignment.projectId, projectId: null });
+        const unclassifiedBytes = fs.readFileSync(second.data.path);
+        assert.equal((await call('DELETE', `/assistant-projects/${shared.data.project.id}`, { expectedRevision: shared.data.revision })).status, 200,
+            'historical references do not block deletion after a valid classification change');
+        assert.deepEqual(fs.readFileSync(second.data.path), unclassifiedBytes);
+        assert.equal((await call('DELETE', `/assistant-projects/${one.data.project.id}`, { expectedRevision: (await latest()).data.revision })).status, 409,
+            'a conflicting binding must not look like an empty category');
+        const archivedEmpty = await call('PUT', '/assistant-projects', { expectedRevision: (await latest()).data.revision,
+            project: { ...project('Archived empty category', [firstProfile]), archived: true } });
+        assert.equal((await call('DELETE', `/assistant-projects/${archivedEmpty.data.project.id}`, { expectedRevision: archivedEmpty.data.revision })).status, 200);
+    });
+    await t.test('delete refuses unreadable native members and list changes, reserves settings', async () => {
+        const saved = await call('PUT', '/assistant-projects', { expectedRevision: (await registry.state()).revision,
+            project: project('Checked empty category', [firstProfile]) });
+        const directory = SessionManager.create(cwd).getSessionDir();
+        const malformed = path.join(directory, 'malformed.jsonl'); fs.writeFileSync(malformed, 'Not JSON');
+        try { assert.equal((await call('DELETE', `/assistant-projects/${saved.data.project.id}`, { expectedRevision: saved.data.revision })).status, 409); }
+        finally { fs.unlinkSync(malformed); }
+        const native = gateway.store._nativeSessionMetadata.bind(gateway.store);
+        let gate, continueRead;
+        gateway.store._nativeSessionMetadata = async (...args) => {
+            const rows = await native(...args);
+            await new Promise(resolve => { continueRead = resolve; gate(); });
+            return rows;
+        };
+        const entered = new Promise(resolve => { gate = resolve; });
+        const deleting = call('DELETE', `/assistant-projects/${saved.data.project.id}`, { expectedRevision: saved.data.revision });
+        await entered;
+        try {
+            assert.equal(gateway.store.profiles.busy, true);
+            assert.equal((await call('POST', '/sessions', { cwd, profileId: firstProfile, assistantProjectId: saved.data.project.id })).status, 400);
+            SessionManager.open(old.path).appendSessionInfo('Changed during deletion proof');
+        } finally { continueRead(); gateway.store._nativeSessionMetadata = native; }
+        assert.equal((await deleting).status, 409);
+        assert.equal((await call('DELETE', `/assistant-projects/${saved.data.project.id}`, { expectedRevision: saved.data.revision })).status, 200);
+    });
     const originalPaths = registry.paths.bind(registry);
     let release;
     registry.paths = create => create ? new Promise(resolve => { release = () => resolve(originalPaths(create)); }) : originalPaths(create);

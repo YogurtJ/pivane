@@ -44,6 +44,7 @@
     <link rel="stylesheet" href="pi-selection-actions.css">
     <link rel="stylesheet" href="pi-side-chat.css">
     <link rel="stylesheet" href="media-lab.css">
+    <link rel="stylesheet" href="pi-artifacts.css">
     <link rel="stylesheet" href="media-connections.css">
     <link rel="stylesheet" href="pi-transcription-settings.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -79,10 +80,12 @@
                 <button class="nav-btn workspace-more-toggle" id="workspace-more-toggle" type="button" title="更多功能" aria-label="更多功能" aria-haspopup="menu" aria-expanded="false" aria-controls="workspace-more-menu" data-i18n-title="s2651" data-i18n-aria-label="s2651"><i class="fa-solid fa-layer-group" aria-hidden="true"></i><span><!--i18n:s2651-->更多功能</span></button>
                 <div id="workspace-more-menu" class="workspace-more-menu" role="menu" aria-label="更多功能" data-i18n-aria-label="s2651" hidden>
                     <button type="button" role="menuitem" data-more-tab="cron"><i class="fa-regular fa-calendar-check" aria-hidden="true"></i><span data-cron-nav>定时任务</span></button>
+                    <button type="button" role="menuitem" data-more-tab="artifacts"><i class="fa-solid fa-box-archive" aria-hidden="true"></i><span data-artifacts-label>成果中心</span></button>
                     <button type="button" role="menuitem" data-more-tab="media"><i class="fa-solid fa-flask" aria-hidden="true"></i><span><!--i18n:s1318-->多媒体实验室</span></button>
                     <button type="button" role="menuitem" data-more-tab="profiles"><i class="fa-solid fa-user-gear" aria-hidden="true"></i><span><!--i18n:s2468-->助手身份</span></button>
                     <button type="button" role="menuitem" data-more-tab="extensions"><i class="fa-solid fa-puzzle-piece" aria-hidden="true"></i><span><!--i18n:s530-->扩展</span></button>
                 </div>
+                <button class="nav-btn" data-tab="artifacts" type="button"><i class="fa-solid fa-box-archive" aria-hidden="true"></i><span data-artifacts-label>成果中心</span></button>
                 <button class="nav-btn" data-tab="media" title="多媒体实验室" data-i18n-title="s1318">
                     <i class="fa-solid fa-flask" aria-hidden="true"></i><span><!--i18n:s1318-->多媒体实验室</span>
                 </button>
@@ -180,6 +183,7 @@
                     <div id="pi-assistant-switcher" class="pi-assistant-switcher" hidden>
                         <div class="pi-assistant-switcher-head"><label for="pi-assistant-profile"><!--i18n:s2549-->助手档案</label><button id="pi-assistant-add-project" class="icon-btn subtle" type="button" title="新建项目" aria-label="新建项目" data-i18n-title="s2563" data-i18n-aria-label="s2563"><i class="fa-solid fa-folder-plus"></i></button></div>
                         <div class="pi-assistant-profile-row"><span id="pi-assistant-avatar" class="pi-identity-avatar" aria-hidden="true"></span><select id="pi-assistant-profile" aria-label="选择助手档案" data-i18n-aria-label="s2550"></select></div>
+                        <button id="pi-assistant-manage-profiles" class="pi-assistant-manage-profiles" type="button"><i class="fa-solid fa-user-gear" aria-hidden="true"></i><span>管理助手身份</span><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></button>
                         <p id="pi-assistant-profile-status" role="status"></p>
                     </div>
                     <div class="pi-pane-heading pi-session-heading">
@@ -528,6 +532,7 @@
         </main>
 
         <main class="content-area tab-content cron-page" id="cron-tab"></main>
+        <main class="content-area tab-content" id="artifacts-tab"></main>
         <main class="content-area tab-content media-lab" id="media-tab">
             <header class="lab-header">
                 <h1><i class="fa-solid fa-flask" aria-hidden="true"></i><!--i18n:s1318--> 多媒体实验室</h1>
@@ -991,7 +996,11 @@
     <script src="pi-math.js"></script>
     <script src="pi-file-previews.js"></script>
     <script src="pi-file-viewer.js"></script>
+    <script src="pi-artifacts-preview.js"></script>
+    <script src="pi-artifacts-manage.js"></script>
+    <script src="pi-artifacts.js"></script>
     <script src="pi-file-browser.js"></script>
+    <script src="pi-file-roots.js"></script>
     <script src="pi-files-panel.js"></script>
     <script src="pi-nested-tools.js"></script>
     <script src="pi-turn-edits.js"></script>

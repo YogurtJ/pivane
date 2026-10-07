@@ -769,7 +769,7 @@ document.addEventListener('DOMContentLoaded', () => {
             historyView.setCapabilities(status);
             filesPanel.viewer.setEnabled(status.fileViewer === true);
             filesPanel.setEnabled(status.fileBrowser === true);
-            filesPanel.setCapabilities({ previews: status.filePreviews === true, deliverables: status.deliverables === true });
+            filesPanel.setCapabilities({ previews: status.filePreviews === true, deliverables: status.deliverables === true, roots: status.fileRoots === true });
             composer.setEnabled(status.composerTools === true);
             state.composerTools = status.composerTools === true;
             voice?.setEnabled(status.transcription === true);
@@ -1487,6 +1487,11 @@ document.addEventListener('DOMContentLoaded', () => {
             .find(id => state.assistantProfiles.some(profile => profile.id === id)) || state.assistantProfiles[0]?.id || null;
         state.assistantProfileId = chosen;
         selector.value = chosen || '';
+        selector.disabled = !chosen;
+        if (!chosen) {
+            const option = document.createElement('option'); option.value = ''; option.textContent = translateUi('暂无可用助手'); selector.append(option);
+        }
+        $('pi-assistant-manage-profiles').querySelector('span').textContent = translateUi(profiles.profiles.length ? '管理助手身份' : '添加助手身份');
         const profile = state.assistantProfiles.find(item => item.id === chosen);
         $('pi-assistant-avatar').replaceWith(Object.assign(window.PiAssistantProjects.avatar(profile), { id: 'pi-assistant-avatar' }));
         $('pi-assistant-add-project').disabled = !chosen || !state.assistantSupported;
@@ -1494,9 +1499,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!chosen || !state.assistantSupported) {
             state.assistantGroups = []; state.assistantSessions = new Map(); state.assistantProjectId = null;
             status.replaceChildren(document.createTextNode(!state.assistantSupported ? translateUi('当前服务尚未启用助手项目') : translateUi('还没有已启用的助手身份')));
-            const button = document.createElement('button'); button.type = 'button'; button.className = 'settings-secondary-button';
-            button.textContent = translateUi('管理助手身份'); button.addEventListener('click', () => window.PiWorkspaceRoute.navigate('profiles'));
-            status.append(' ', button); renderAssistantSessions(); return;
+            renderAssistantSessions(); return;
         }
         localStorage.setItem('pi.web.assistantProfile', chosen);
         const previousProjectId = state.assistantProjectId;
@@ -2132,7 +2135,7 @@ document.addEventListener('DOMContentLoaded', () => {
         dialog.innerHTML = `<div class="pi-request-heading"><h3 id="pi-session-delete-title">${translateUi('删除线程')}</h3><button type="button" class="icon-btn subtle" data-close aria-label="${translateUi('关闭')}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div><p class="pi-delete-name"></p><p class="pi-delete-description"></p><p class="pi-action-status" role="status" hidden></p><p class="pi-workflow-error" role="alert" hidden></p><div class="pi-request-actions"><button type="button" class="pi-request-cancel" data-close>${translateUi('取消')}</button><button type="button" class="primary-btn pi-delete-confirm">${translateUi('删除线程')}</button></div>`;
         dialog.querySelector('.pi-delete-name').textContent = getSessionTitle(session);
         const description = dialog.querySelector('.pi-delete-description');
-        description.textContent = translateUi('会先停止此线程的运行并取消待发送消息，再尝试移入回收站；回收站不可用时将永久删除。项目文件不受影响。');
+        description.textContent = translateUi('会先停止此线程的运行并取消待发送消息，再尝试移入回收站；回收站不可用时将永久删除。项目文件不受影响。') + ' ' + translateUi('已保存到成果库的文件不会删除；未入库的交付请先保存或收藏。');
         const submit = dialog.querySelector('.pi-delete-confirm');
         const status = dialog.querySelector('[role="status"]');
         const errorBox = dialog.querySelector('[role="alert"]');
@@ -4504,7 +4507,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     const projectEditor = window.PiAssistantProjects.createEditor({ apiFetch, profileId: () => state.assistantProfileId,
-        onSaved: project => { state.assistantProjectId = project.id; refreshAssistant(); } });
+        onSaved: project => { state.assistantProjectId = project.id; refreshAssistant(); },
+        onDeleted: async project => {
+            toast(translateUi('分类已删除，目录和文件未更改'), 'success');
+            if (state.assistantProjectId === project.id) state.assistantProjectId = null;
+            try { await refreshAssistant(); }
+            catch { toast(translateUi('分类已删除，请刷新列表查看'), 'info'); }
+        } });
     function showAssistantMenu(target, group) {
         const cwd = group.cwd;
         const command = (label, icon, run) => ({ label, icon, run: () => Promise.resolve().then(run).catch(error => toast(error.message, 'error')) });
@@ -4642,6 +4651,10 @@ document.addEventListener('DOMContentLoaded', () => {
         void (async () => { if (group.cwd !== state.cwd) await selectProject(group.cwd); await createSession(); })().catch(error => toast(error.message, 'error'));
     });
     $('pi-assistant-add-project').addEventListener('click', () => projectEditor.open(null, state.assistantRevision, state.cwd));
+    $('pi-assistant-manage-profiles').addEventListener('click', () => {
+        if (innerWidth <= 900) elements.sessionPane.classList.remove('open');
+        window.PiWorkspaceRoute.navigate('profiles', { profileId: state.assistantProfileId });
+    });
     $('pi-profile-authoring-return').addEventListener('click', () => {
         const session = state.session;
         if (!session?.profileAuthoring || session.ephemeral) return;

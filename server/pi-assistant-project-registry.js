@@ -153,6 +153,50 @@ class PiAssistantProjectRegistry {
         });
     }
 
+    remove(id, input) {
+        return this.profiles.reserve(async () => {
+            if (typeof id !== 'string' || !UUID.test(id) || !object(input)
+                || Object.keys(input).some(key => key !== 'expectedRevision') || typeof input.expectedRevision !== 'string')
+                fail('分类删除参数无效');
+            const snapshot = await this.state();
+            if (snapshot.revision !== input.expectedRevision) fail('分类已变化，请刷新后重新核对', 409);
+            const project = snapshot.state.projects.find(record => record.id === id);
+            if (!project) fail('分类不存在', 404);
+            const cwd = this.store.resolveProject(project.cwd);
+            const { SessionManager } = await getSdk();
+            const directory = SessionManager.create(cwd).getSessionDir();
+            const proof = () => {
+                try { fs.lstatSync(directory); }
+                catch (error) { if (error.code === 'ENOENT') return 'absent'; throw error; }
+                const value = require('./pi-session-list-revision').sessionListRevision(directory);
+                if (!value) fail('无法核实分类是否为空，请稍后重试', 409);
+                return value;
+            };
+            const before = proof();
+            const sessions = await this.store._nativeSessionMetadata(cwd, SessionManager);
+            // No UI/profile filter: a shared category may contain another assistant's
+            // threads. Unreadable native members must never prove an empty category.
+            if (before !== proof() || sessions.length !== (before === 'absent' ? 0 : JSON.parse(before)[3].length))
+                fail('会话列表已变化或无法完整读取，请重新核对', 409);
+            const { readProjectAssignment, PROJECT_ENTRY, PROJECT_CHANGE_ENTRY } = require('./pi-assistant-project-state');
+            for (const session of sessions) {
+                const manager = this.store.profileManager(session, SessionManager);
+                const assignment = readProjectAssignment(manager);
+                if (assignment.projectId === id || !assignment.valid && manager.getEntries().some(entry => entry.type === 'custom'
+                    && [PROJECT_ENTRY, PROJECT_CHANGE_ENTRY].includes(entry.customType) && entry.data?.sessionId === manager.getSessionId()
+                    && (entry.data.projectId === id || entry.data.previousProjectId === id)))
+                    fail('此分类仍有会话或归属冲突，不能删除；可以归档或先更改会话分类', 409);
+            }
+            // Hold the existing settings reservation and registry lock; after this
+            // final synchronous proof no await can admit a new grouped session.
+            return this.mutate(input.expectedRevision, state => {
+                if (before !== proof()) fail('会话列表已变化，请重新核对', 409);
+                state.projects = state.projects.filter(record => record.id !== id);
+                return { ok: true, deletedId: id };
+            });
+        });
+    }
+
     describe(manager, cwd, state) {
         const binding = readProjectBinding(manager);
         if (!binding || binding.cwd !== cwd) return null;

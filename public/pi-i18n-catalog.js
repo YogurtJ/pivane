@@ -9616,8 +9616,35 @@
         ['文档存储额度已满（每线程 256 MiB，实例 2 GiB），请由管理员整理', 'Document storage is full (256 MiB per thread, 2 GiB per instance). Ask the administrator to manage storage'],
         ['请上传 DOCX、XLSX、PPTX 或 PDF 文件', 'Upload a DOCX, XLSX, PPTX or PDF file']
     );
+    rows.push(['文生图', 'Text to image'], ['图像编辑', 'Image editing'], ['图像操作', 'Image operation'],
+        ['上传原图或参考图，填写编辑要求后检查提交清单。', 'Upload an original or reference image, describe the edit, then review the submission.'],
+        ['当前为文生图；编辑已有图片请切换到“图像编辑”。', 'Text to image is selected. Switch to Image editing to edit an existing image.'],
+        ['编辑图片需要接入带图片输入的模型。', 'Connect a model with image inputs to edit images.']);
+    rows.push(['浏览', 'Browse'], ['浏览位置', 'Browse location'], ['主目录', 'Primary'], ['临时浏览', 'Temporary'],
+        ['添加或管理目录', 'Add or manage folders'], ['文件目录响应无效', 'Invalid folder response'],
+        ['关联目录只影响文件浏览，不改变会话工作目录或 Agent 权限。', 'Linked folders only affect browsing, not the session working directory or Agent permissions.'],
+        ['输入绝对路径，或在下方选择', 'Enter an absolute path or choose below'], ['前往', 'Go'],
+        ['路径属于运行 Pivane 的服务器，不是当前设备。敏感目录仍受保护。', 'Paths belong to the Pivane server, not this device. Sensitive folders remain protected.'],
+        ['临时打开', 'Open temporarily'], ['关联并打开', 'Link and open'], ['移除关联，不删除文件', 'Unlink without deleting files'],
+        ['已移除关联，文件未删除', 'Folder unlinked. Files were not deleted.'], ['允许的位置', 'Allowed locations'], ['上一级目录', 'Parent folder'],
+        ['没有可显示的子目录，可直接打开当前位置。', 'No subfolders to show. You can open this location.'], ['仅显示部分目录，可输入完整路径前往。', 'Some folders are shown. Enter a full path to navigate directly.'],
+        ['打开项目外文件', 'Open an external file'], ['此文件不在已关联的目录中。可以只查看它，或关联所在目录。', 'This file is outside your linked folders. Open just the file, or link its folder.'],
+        ['仅打开文件不会列出父目录，也不会把文件加入模型上下文。', 'Opening just the file will not list its parent folder or add it to model context.'],
+        ['仅打开文件', 'Open file only'], ['关联目录并打开', 'Link folder and open'], ['正在保存，请稍候', 'Saving, please wait'],
+        ['目录不可访问', 'Folder is not accessible'], ['此目录不提供网页浏览', 'This folder is not available for web browsing'],
+        ['关联目录已变化，请刷新后重试', 'Linked folders changed. Refresh before trying again'], ['最多添加 16 个关联目录', 'You can link up to 16 folders'],
+        ['文件目录设置已达上限', 'Folder preferences storage limit reached'], ['文件目录参数无效', 'Invalid folder parameters'], ['目录路径无效', 'Invalid folder path'],
+        ['请使用服务器上的绝对路径', 'Use an absolute path on the server'], ['正在保存关联目录，请稍后核对', 'Linked folders are being saved. Check again shortly'],
+        ['维护期间暂不能保存关联目录', 'Linked folders cannot be saved during maintenance']);
+    rows.push(['已保存到成果库的文件不会删除；未入库的交付请先保存或收藏。', 'Files saved in the artifact library are preserved. Save or favorite unsaved deliveries first.']);
     rows.push(['[参考素材]', '[Reference media]'],
         ['继续查询原任务', 'Continue querying original task'],
         ['已保留远端任务 {0}。可继续查询并取回结果，不会重新提交生成。', 'Remote task {0} is saved. Continue querying to retrieve its result without submitting another generation.']);
+    rows.push(
+        ['添加助手身份', 'Add assistant profile'],
+        ['暂无可用助手', 'No available assistants'],
+        ['分类已删除，目录和文件未更改', 'Category deleted; folder and files unchanged'],
+        ['分类已删除，请刷新列表查看', 'Category deleted. Refresh the list to see the change']
+    );
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

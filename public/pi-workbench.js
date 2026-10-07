@@ -12,7 +12,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         const workbench = document.querySelector('.pi-workbench');
         const inspector = $('pi-inspector'), sessions = $('pi-session-pane'), transcript = document.querySelector('.pi-transcript-shell');
-        const sidebar = $('workspace-sidebar');
+        const sidebar = $('workspace-sidebar'), commandBar = document.querySelector('.pi-command-bar');
         const headerControls = document.querySelector('.pi-runtime-controls');
         // The text row precedes the actions visually on desktop and phone.
         document.querySelector('.pi-composer-add').before($('pi-input'));
@@ -20,7 +20,7 @@
         modelBar.append(document.querySelector('.pi-model-field'), document.querySelector('.pi-thinking-field'));
         modelBar.querySelector('#pi-thinking-select').setAttribute('aria-label', t('思考'));
         document.querySelector('.pi-composer-actions.right').before(modelBar); // Keep keyboard order aligned with visual order; move, never copy controls.
-        const navLabels = { chat: t('工作'), assistant: t('助手'), cron: t('定时'), media: t('创作'), profiles: t('身份'), extensions: t('扩展') };
+        const navLabels = { chat: t('工作'), assistant: t('助手'), cron: t('定时'), artifacts: globalThis.PiI18n?.locale?.startsWith('en') ? 'Artifacts' : '成果', media: t('创作'), profiles: t('身份'), extensions: t('扩展') };
         document.querySelectorAll('.nav-btn[data-tab]').forEach(node => {
             const short = document.createElement('span'); short.className = 'workspace-nav-short'; short.textContent = navLabels[node.dataset.tab];
             node.append(short);
@@ -144,7 +144,7 @@
                 modal = nextModal;
                 if (!modal && previous) {
                     // Remove inert before restoring focus; focusing an inert background is ignored.
-                    document.querySelector('.pi-command-bar').inert = false;
+                    commandBar.inert = false;
                     $('workspace-sidebar').inert = false; transcript.inert = false; sessions.inert = false; rail.inert = false; inspector.inert = false;
                     if (!document.querySelector('dialog[open]')) {
                         const fallback = previous === sessions ? $('pi-toggle-sessions') : innerWidth <= 900 ? toolsToggle : toolButtons.find(node => node.getAttribute('aria-expanded') === 'true') || toolButtons.find(node => !node.hidden);
@@ -156,7 +156,7 @@
                     returnFocus = null;
                 }
             }
-            document.querySelector('.pi-command-bar').inert = Boolean(modal);
+            commandBar.inert = Boolean(modal && modal !== sessions);
             sidebar.inert = Boolean(modal && modal !== sessions);
             transcript.inert = Boolean(modal);
             sessions.inert = Boolean(modal && modal !== sessions) || mobile && !sessions.classList.contains('open');
@@ -179,6 +179,12 @@
         new MutationObserver(schedule).observe($('pi-inspector-tabs'), { subtree: true, attributes: true, attributeFilter: ['hidden', 'disabled', 'aria-selected'] });
         new MutationObserver(schedule).observe($('pi-project-button'), { attributes: true, attributeFilter: ['hidden'] });
         window.addEventListener('resize', schedule);
+        commandBar.addEventListener('click', event => {
+            const trigger = event.target.closest('button');
+            if (innerWidth > 900 || !sessions.classList.contains('open') || !trigger || trigger.id === 'pi-toggle-sessions') return;
+            // Keep the drawer toggle available; hand other header actions a clear workspace.
+            sessions.classList.remove('open'); inspector.classList.remove('open'); layoutChanged();
+        }, { capture: true });
         sidebar.addEventListener('click', event => {
             if (innerWidth > 900 || !sessions.classList.contains('open') || !event.target.closest('button')) return;
             // Close before navigation/menu owners act, so focus and their new UI stay available.

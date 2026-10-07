@@ -164,6 +164,34 @@ class WorkspacePreferencesService {
         return this.getModelFavorites();
     }
 
+    getFileRoots(cwd) {
+        const data = this.readDocument().fileRoots;
+        if (data !== undefined && (!Array.isArray(data) || data.length > 256)) throw new Error('文件目录设置无效');
+        const saved = (data || []).find(item => item?.cwd === cwd);
+        if (saved && (!Number.isSafeInteger(saved.revision) || saved.revision < 0 || !Array.isArray(saved.roots)
+            || saved.roots.length > 16 || saved.roots.some(root => typeof root !== 'string' || !path.isAbsolute(root) || root.length > 4096))) throw new Error('文件目录设置无效');
+        return { revision: saved?.revision || 0, roots: [...(saved?.roots || [])] };
+    }
+
+    changeFileRoot(cwd, root, action, expectedRevision) {
+        if (![cwd, root].every(value => typeof value === 'string' && path.isAbsolute(value) && value.length <= 4096)
+            || !['add', 'remove'].includes(action) || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new Error('文件目录参数无效');
+        const current = this.getFileRoots(cwd);
+        if (current.revision !== expectedRevision) throw Object.assign(new Error('关联目录已变化，请刷新后重试'), { status: 409, code: 'FILE_ROOTS_CHANGED' });
+        const roots = current.roots.filter(value => value !== root && value !== cwd);
+        if (action === 'add' && root !== cwd) roots.push(root);
+        if (roots.length > 16) throw Object.assign(new Error('最多添加 16 个关联目录'), { status: 400, code: 'FILE_ROOTS_LIMIT' });
+        // No await between revision validation and atomic save. Re-read other
+        // preferences rather than replacing another feature's changes.
+        const document = this.readDocument(), items = document.fileRoots || [];
+        const previous = items.find(item => item?.cwd === cwd) || {};
+        const next = items.filter(item => item?.cwd !== cwd);
+        if (next.length >= 256) throw Object.assign(new Error('文件目录设置已达上限'), { status: 400, code: 'FILE_ROOTS_LIMIT' });
+        next.push({ ...previous, cwd, roots, revision: current.revision + 1 });
+        this.writeDocument({ ...document, fileRoots: next });
+        return { revision: current.revision + 1, roots };
+    }
+
     getPinnedProjects() {
         const pins = this.readDocument().pinnedProjects;
         return Array.isArray(pins) ? [...new Set(pins.filter(cwd => typeof cwd === 'string' && path.isAbsolute(cwd)))] : [];

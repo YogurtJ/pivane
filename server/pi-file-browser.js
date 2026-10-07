@@ -30,6 +30,36 @@ async function opened(scope, requested) {
 
 class PiFileBrowser {
     constructor(store) { this.store = store; this.running = 0; }
+    async resolveRoot(input) {
+        if (typeof input !== 'string' || !input.trim() || input.length > 4096 || /[\x00-\x1f\x7f]/.test(input)
+            || policy.restricted(input)) throw fail('目录不可访问', 403, 'FILE_PRIVATE');
+        if (this.running >= 2) throw fail('文件浏览正在进行，请稍后再试', 429, 'FILE_BUSY');
+        this.running++;
+        let entry;
+        try {
+            const scope = await fileScope(this.store, input);
+            entry = await opened(scope, scope.cwd);
+            if (!entry.stat.isDirectory()) throw fail('请选择一个目录', 415, 'FILE_TYPE');
+            await entry.verify();
+            if (!sameStat(entry.stat, await entry.handle.stat({ bigint: true }))) throw changed();
+            return scope.cwd;
+        } catch (error) { throw fileError(error); }
+        finally { try { await entry?.handle.close(); } finally { this.running--; } }
+    }
+    async resolveFile(root, requested) {
+        if (this.running >= 2) throw fail('文件浏览正在进行，请稍后再试', 429, 'FILE_BUSY');
+        this.running++;
+        let entry;
+        try {
+            const scope = await fileScope(this.store, root);
+            entry = await opened(scope, requested);
+            if (!entry.stat.isFile()) throw fail('只支持普通文件', 415, 'FILE_TYPE');
+            await entry.verify();
+            if (!sameStat(entry.stat, await entry.handle.stat({ bigint: true }))) throw changed();
+            return { root: scope.cwd, path: webPath(path.relative(scope.cwd, entry.resolved)), absolutePath: entry.resolved };
+        } catch (error) { throw fileError(error); }
+        finally { try { await entry?.handle.close(); } finally { this.running--; } }
+    }
     async request(input, search = false, signal) {
         const allowed = search ? ['cwd', 'q', 'hidden'] : ['cwd', 'path', 'hidden'];
         if (!input || Object.keys(input).some(key => !allowed.includes(key))

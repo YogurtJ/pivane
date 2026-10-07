@@ -36,6 +36,7 @@
 | 围绕当前任务的临时侧聊 | [侧聊](SIDE_CHAT.md) |
 | 让 Agent 新开线程交办任务、线程间直接沟通 | [Agent 任务线程与线程间消息](AGENT_THREADS.md) |
 | 周期执行、文字问候与身份主线程 | [定时任务](SCHEDULED_TASKS.md) |
+| 跨会话查看明确交付和媒体结果 | [成果中心](ARTIFACTS.md) |
 | 文件浏览、交付物与正文渲染 | [文件查看](FILE_VIEWER.md) · [数学公式](MATH.md) · [Mermaid](MERMAID.md) |
 | 用量与朗读 | [用量统计](USAGE.md) · [回复朗读](REPLY_TTS.md) |
 

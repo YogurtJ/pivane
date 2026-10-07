@@ -161,7 +161,7 @@ app.post('/api/media-agent/connection/validate', (req, res) => {
     catch (error) { res.status(error.statusCode || 400).json({ error: error.message }); }
 });
 
-const piAgentGateway = createPiAgentGateway({ mediaAgentService, workspacePreferencesService, mediaLabService, accessService: workspaceAccess, maintenance });
+const piAgentGateway = createPiAgentGateway({ mediaAgentService, workspacePreferencesService, mediaLabService, artifactMediaRoot: mediaDataRoot, accessService: workspaceAccess, maintenance });
 piAgentGateway.mount(app);
 
 // Ensure directories exist

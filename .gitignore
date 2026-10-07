@@ -24,6 +24,7 @@ pivane-deferred-messages*.json*
 pivane-usage/
 pivane-cron/
 pivane-uploads/
+pivane-artifacts/
 *.log
 *.bak*
 *.tmp

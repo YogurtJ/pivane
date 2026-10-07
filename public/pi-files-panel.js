@@ -9,8 +9,14 @@
                 if (this.mode === 'project' && !this.wide && this.viewer.file) this.browsing = false;
                 this.sync();
             } });
-            this.browser = new window.PiFileBrowser({ ...host, enabled: () => this.enabled, openFile: path => this.openPath({ path }) });
-            this.projectButton = node('button', '', translateUi("项目文件")); this.projectButton.id = 'pi-files-project'; this.projectButton.type = 'button';
+            this.roots = new window.PiFileRoots({ ...host, change: () => {
+                this.cancelOpen(); this.viewer.rememberPosition(); const positions = this.viewer.positions;
+                this.viewer.clear(); this.viewer.positions = positions; this.browser.reset(); this.openProject(true);
+            } });
+            this.browser = new window.PiFileBrowser({ ...host, context: () => ({ ...host.context(), cwd: this.roots.root() }),
+                enabled: () => this.enabled, openFile: path => this.openPath({ path, root: this.roots.root() }) });
+            $('pi-file-explorer').prepend(this.roots.element);
+            this.projectButton = node('button', '', translateUi("浏览")); this.projectButton.id = 'pi-files-project'; this.projectButton.type = 'button';
             this.historyButton = node('button', '', translateUi("本轮文件")); this.historyButton.id = 'pi-files-history'; this.historyButton.type = 'button';
             this.projectButton.addEventListener('click', () => this.openProject());
             this.historyButton.addEventListener('click', () => { this.showHistory(); this.history.open(); });
@@ -27,11 +33,12 @@
             $('pi-files-toolbar').append(modes, this.browseButton, this.expandButton);
             this.breadcrumb = node('nav', 'pi-file-breadcrumb'); this.breadcrumb.ariaLabel = translateUi("文件路径");
             this.copyPath = button(translateUi("复制文件路径"), 'copy', () => {
-                if (this.viewer.file) void host.copy(this.viewer.file.path).then(() => host.notify(translateUi("已复制文件路径"), 'success')).catch(e => host.notify(e.message, 'error'));
+                if (this.viewer.file) void host.copy(this.roots.enabled ? this.viewer.current?.absolutePath || this.viewer.file.path : this.viewer.file.path).then(() => host.notify(translateUi("已复制文件路径"), 'success')).catch(e => host.notify(e.message, 'error'));
             }); this.copyPath.id = 'pi-file-copy-path';
             this.locate = button(translateUi("在项目中定位"), 'crosshairs', () => {
-                const path = this.viewer.file?.path;
-                this.openProject(true); if (path) void this.browser.reveal(path);
+                const file = this.viewer.file;
+                this.roots.choose(file?.root || host.context().cwd, false); this.browser.reset();
+                this.openProject(true); if (file?.path) void this.browser.reveal(file.path);
             }); this.locate.id = 'pi-file-locate';
             $('pi-changes-title').after(this.breadcrumb, this.locate, this.copyPath);
             $('pi-changes-tab').addEventListener('click', () => this.reopen());
@@ -56,7 +63,7 @@
             this.panelWasOpen = false;
             new MutationObserver(() => {
                 const pane = $('pi-inspector'), open = pane.classList.contains('open') && pane.classList.contains('show-changes');
-                if (open && !this.panelWasOpen && this.mode === 'project' && this.browsing) void this.browser.open();
+                if (open && !this.panelWasOpen && this.mode === 'project' && this.browsing) this.loadBrowser();
                 this.panelWasOpen = open;
             }).observe($('pi-inspector'), { attributes: true, attributeFilter: ['class'] });
             new ResizeObserver(() => {
@@ -76,7 +83,7 @@
                 // and reader DOM. Reopening is not a refresh or a new selection.
                 if (this.history) this.history.active = this.mode === 'history';
                 this.host.showPane('changes'); this.sync();
-                if (this.mode === 'project' && this.browsing) void this.browser.open();
+                if (this.mode === 'project' && this.browsing) this.loadBrowser();
                 return;
             }
             if (saved) this.reset();
@@ -84,7 +91,8 @@
             else this.openProject(true);
         }
         setEnabled(value) { this.enabled = value; this.sync(); }
-        setCapabilities({ previews, deliverables }) {
+        setCapabilities({ previews, deliverables, roots }) {
+            this.roots.setEnabled(Boolean(roots));
             this.viewer.previewsEnabled = Boolean(previews); this.deliverablesEnabled = Boolean(deliverables);
             this.viewer.deliverablesEnabled = Boolean(deliverables); this.deliveriesButton.hidden = !deliverables; this.sync();
         }
@@ -105,7 +113,22 @@
                     this.host.notify(error.message, 'error'); return;
                 }
             }
-            if (this.sameContext(context, sequence)) this.openPath(target);
+            if (!this.sameContext(context, sequence)) return;
+            if (!this.roots.enabled) { this.openPath(target); return; }
+            this.openController = new AbortController();
+            try {
+                const file = await this.host.api(`/api/pi/files/resolve?${new URLSearchParams({ cwd: context.cwd, path: target.path })}`, { signal: this.openController.signal });
+                if (!this.sameContext(context, sequence)) return;
+                let associated = file.associated;
+                if (!associated) {
+                    const answer = await this.roots.confirmFile(file);
+                    if (!answer || !this.sameContext(context, sequence)) return;
+                    associated = answer === 'associated';
+                }
+                // A one-file preview does not select or enumerate its parent root.
+                if (associated) { this.roots.choose(file.root, false); this.browser.reset(); }
+                this.openPath({ ...target, path: file.path, root: file.root, singleFile: !associated });
+            } catch (error) { if (this.sameContext(context, sequence) && error.name !== 'AbortError') this.host.notify(error.message, 'error'); }
         }
         openDelivery(target) {
             this.cancelOpen();
@@ -131,7 +154,11 @@
                 const data = await this.host.api(`/api/pi/deliverables?${new URLSearchParams({ cwd: context.cwd, sessionId: context.sessionId })}`, { signal: this.openController.signal });
                 if (!this.sameContext(context, sequence)) return;
                 this.deliveriesList.replaceChildren();
-                const toolbar = node('div', 'pi-deliveries-heading'); toolbar.append(node('p', '', translateUi('交付时保存的版本，不随源文件变化')), button(translateUi('刷新'), 'rotate', () => this.openDeliveries())); this.deliveriesList.append(toolbar);
+                const toolbar = node('div', 'pi-deliveries-heading'); toolbar.append(node('p', '', translateUi('交付时保存的版本，不随源文件变化')), button(translateUi('刷新'), 'rotate', () => this.openDeliveries()));
+                if (window.PiArtifactPreview) toolbar.append(button(globalThis.PiI18n?.locale?.startsWith('en') ? 'Artifacts' : '成果中心', 'box-archive', () => {
+                    if (this.sameContext(context, sequence)) window.PiWorkspaceRoute?.navigate('artifacts', { cwd: context.cwd, sessionId: context.sessionId });
+                }));
+                this.deliveriesList.append(toolbar);
                 for (const item of data.items || []) {
                     const card = node('button', 'pi-delivery-card'); card.type = 'button'; card.disabled = Boolean(item.unavailable);
                     card.append(icon('file'), node('strong', '', item.name), node('span', '', item.unavailable ? translateUi('交付文件暂不可用') : `${item.title} · ${Math.ceil(item.size / 1024)} KiB`));
@@ -143,7 +170,7 @@
         }
         reset() {
             this.cancelOpen(); this.paneContext = null; this.deliveriesList.replaceChildren();
-            this.viewer.clear(); this.browser.reset(); this.mode = 'project'; this.browsing = true; this.returnLink = null;
+            this.viewer.clear(); this.roots.reset(); this.browser.reset(); this.mode = 'project'; this.browsing = true; this.returnLink = null;
             $('pi-changes-content').hidden = true;
             for (const id of ['pi-changes-diffs', 'pi-changes-files', 'pi-changes-round', 'pi-file-source']) $(id).replaceChildren();
             $('pi-file-path').textContent = ''; $('pi-file-status').textContent = '';
@@ -153,7 +180,15 @@
             // turn. Reopen metadata only after that context transition is complete.
             queueMicrotask(() => {
                 const pane = $('pi-inspector');
-                if (pane.classList.contains('open') && pane.classList.contains('show-changes') && this.mode === 'project') void this.browser.open();
+                if (pane.classList.contains('open') && pane.classList.contains('show-changes') && this.mode === 'project') this.loadBrowser();
+            });
+        }
+        loadBrowser() {
+            void this.browser.open();
+            const context = this.host.context();
+            void this.roots.load().catch(error => {
+                const now = this.host.context();
+                if (error.name !== 'AbortError' && context.key === now.key && context.generation === now.generation) this.host.notify(error.message, 'error');
             });
         }
         returnFocus() {
@@ -176,15 +211,17 @@
             this.viewer.rememberPosition(); this.viewer.stopInteractive();
             if (this.viewer.file?.deliveryId) this.viewer.clear();
             this.mode = 'project'; this.browsing = browse || !this.viewer.file; if (this.history) this.history.active = false;
-            this.host.showPane('changes'); this.sync(); if (this.browsing) void this.browser.open();
+            this.host.showPane('changes'); this.sync();
+            if (this.browsing) this.loadBrowser();
         }
         openPath(target) {
             this.cancelOpen(); this.rememberContext();
             if (this.history) this.history.active = false;
-            this.mode = 'project'; this.browsing = Boolean(this.wide && this.browsing);
+            this.mode = 'project'; this.browsing = Boolean(this.wide && this.browsing && !target.singleFile);
             $('pi-changes-diffs').replaceChildren(); $('pi-changes-empty').hidden = true; $('pi-changes-content').hidden = false;
             $('pi-changes-file-list').hidden = true;
-            this.viewer.setFile({ ...target, identity: `project:${target.path}:${target.line || ''}`, hasDiff: false, writes: [] });
+            const root = target.root || this.host.context().cwd;
+            this.viewer.setFile({ ...target, root, identity: `project:${JSON.stringify([root, target.path, target.line || ''])}`, hasDiff: false, writes: [] });
             this.host.showPane('changes'); this.sync(); this.viewer.restorePosition(); $('pi-changes-title').focus({ preventScroll: true });
         }
         selected(file) {
@@ -193,21 +230,26 @@
                 this.breadcrumb.append(button(translateUi('交付物'), 'box', () => this.openDeliveries()), icon('chevron-right'), node('span', 'pi-breadcrumb-current', file.path));
                 this.breadcrumb.title = translateUi('交付快照'); $('pi-changes').classList.add('file-current-only'); this.locate.hidden = true; return;
             }
-            const cwd = this.host.context().cwd.replace(/\\/g, '/').replace(/\/$/, '');
+            const root = file.root || this.host.context().cwd;
+            const cwd = root.replace(/\\/g, '/').replace(/\/$/, '');
             let relative = file.path.replace(/\\/g, '/'); if (relative.startsWith(cwd + '/')) relative = relative.slice(cwd.length + 1);
             const parts = relative.split('/');
-            const home = button(translateUi("项目根目录"), 'folder', () => { this.openProject(true); void this.browser.reveal(''); });
-            this.breadcrumb.append(home);
+            const browse = relative => { this.roots.choose(root, false); this.browser.reset(); this.openProject(true); void this.browser.reveal(relative); };
+            const home = button(translateUi("项目根目录"), 'folder', () => browse(''));
+            home.append(node('span', '', cwd.split('/').filter(Boolean).at(-1) || root)); home.title = root;
+            home.disabled = Boolean(file.singleFile); this.breadcrumb.append(home);
             parts.forEach((part, index) => {
                 this.breadcrumb.append(icon('chevron-right'));
                 if (index === parts.length - 1) this.breadcrumb.append(node('span', 'pi-breadcrumb-current', part));
                 else {
                     const item = node('button', '', part); item.type = 'button';
-                    item.addEventListener('click', () => { this.openProject(true); void this.browser.reveal(parts.slice(0, index + 1).join('/') + '/'); });
+                    item.disabled = Boolean(file.singleFile);
+                    item.addEventListener('click', () => browse(parts.slice(0, index + 1).join('/') + '/'));
                     this.breadcrumb.append(item);
                 }
             });
-            this.breadcrumb.title = relative; this.browser.selected = relative; this.browser.render();
+            this.breadcrumb.title = `${cwd}/${relative}`;
+            if (root === this.browser.cwd) { this.browser.selected = relative; this.browser.render(); }
             $('pi-changes').classList.toggle('file-current-only', !file.hasDiff && !file.writes.length);
         }
         sync() {
@@ -224,7 +266,7 @@
             this.browseButton.setAttribute('aria-pressed', String(this.mode === 'project' && this.browsing));
             this.expandButton.setAttribute('aria-pressed', String($('pi-inspector').classList.contains('files-expanded')));
             this.expandButton.title = this.expandButton.ariaLabel = $('pi-inspector').classList.contains('files-expanded') ? translateUi("收起阅读区") : translateUi("展开阅读");
-            this.locate.hidden = !this.enabled || Boolean(this.viewer.file?.deliveryId); this.browseButton.hidden = !this.enabled;
+            this.locate.hidden = !this.enabled || Boolean(this.viewer.file?.deliveryId || this.viewer.file?.singleFile); this.browseButton.hidden = !this.enabled;
         }
     }
     window.PiFilesPanel = PiFilesPanel;

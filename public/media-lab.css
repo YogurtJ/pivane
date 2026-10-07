@@ -32,6 +32,10 @@
 .media-lab select, .media-lab textarea, .media-lab input:not([type="checkbox"]):not([type="file"]), .lab-dialog select, .lab-dialog textarea, .lab-dialog input:not([type="checkbox"]) { width: 100%; min-width: 0; border: 1px solid var(--line-strong); color: var(--text-main); background: var(--surface-2); border-radius: 5px; font: inherit; font-size: 13px; padding: 9px 10px; outline: none; }
 .media-lab :is(input, textarea, select):focus, .lab-dialog :is(input, textarea, select):focus { border-color: var(--primary); box-shadow: 0 0 0 2px var(--green-soft); }
 .media-lab textarea, .lab-dialog textarea { resize: vertical; line-height: 1.6; min-height: 88px; }
+.lab-image-modes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.lab-image-modes > button { flex: 1 1 100px; min-width: 0; }
+.lab-image-modes > button[aria-pressed="true"] { border-color: var(--green); color: var(--green); background: var(--green-soft); }
+.lab-image-mode-hint { flex: 1 1 100%; margin: 2px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
 .lab-model-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; min-height: 32px; color: var(--text-muted); font-size: 12px; }
 .lab-model-meta > span, #lab-plan-state { min-width: 0; overflow-wrap: anywhere; }
 .lab-model-meta [data-configured="true"] { color: var(--green); }

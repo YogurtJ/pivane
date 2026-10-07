@@ -31,7 +31,8 @@ async function run(browser, base, viewport, preferences = {}) {
             : url.pathname === '/api/pi/projects' ? { projects: [{ cwd, name: 'Workbench', sessionCount: 1 }], roots: ['/synthetic'] }
                 : url.pathname === '/api/pi/sessions' ? { sessions: [session] }
                     : url.pathname === '/api/pi/activity' ? { runtimes: [], pinnedProjects: [], hiddenProjects: [], replyNotices: [] }
-                        : url.pathname.includes('history') || url.pathname === '/api/prompts' ? [] : {};
+                        : url.pathname === '/api/pi/directories' ? { current: cwd, parent: '/synthetic', directories: [] }
+                            : url.pathname.includes('history') || url.pathname === '/api/prompts' ? [] : {};
         return route.fulfill({ json: data });
     });
     await page.routeWebSocket('**/api/pi/ws', ws => {
@@ -152,6 +153,30 @@ async function run(browser, base, viewport, preferences = {}) {
     if (viewport.width <= 900) {
         assert.equal(await page.locator('#pi-session-pane').getAttribute('aria-modal'), null);
         assert.equal(await page.locator('#workspace-sidebar').evaluate(node => node.inert), false, 'project drawer keeps workspace navigation available');
+        assert.equal(await page.locator('.pi-command-bar').evaluate(node => node.inert), false, 'project drawer keeps header navigation available');
+        // The same header icon closes and reopens the project drawer without discarding the draft.
+        await page.locator('#pi-toggle-sessions').focus();
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(() => !document.querySelector('#pi-session-pane').classList.contains('open') && !document.querySelector('.pi-transcript-shell').inert);
+        await page.locator('#pi-toggle-sessions').click();
+        await page.waitForFunction(() => document.querySelector('#pi-session-pane').classList.contains('open'));
+        const projectTrigger = viewport.width <= 680 ? '#pi-mobile-summary' : '#pi-project-button';
+        await page.locator(projectTrigger).click();
+        await page.locator('#pi-project-dialog').waitFor({ state: 'visible' });
+        await page.waitForFunction(() => document.activeElement.id === 'pi-project-input');
+        assert.equal(await page.locator('#pi-project-input').inputValue(), cwd);
+        assert.equal(await page.locator('#pi-session-pane').evaluate(node => node.classList.contains('open')), false, 'project selection closes the drawer before opening');
+        await page.locator('#pi-project-dialog-close').click();
+        await page.locator('#pi-project-dialog').waitFor({ state: 'hidden' });
+        assert.equal(await page.locator('#pi-input').inputValue(), 'Keep the draft');
+        assert.equal(await page.locator('#pi-attachments .pi-attachment-chip').count(), 1);
+        // Other header actions also close the drawer before opening a modal tool chooser.
+        await page.locator('#pi-toggle-sessions').click();
+        await page.locator('#pi-tools-toggle').click();
+        assert.equal(await page.locator('#pi-tools-dialog').isVisible(), true);
+        assert.equal(await page.locator('#pi-session-pane').evaluate(node => node.classList.contains('open')), false);
+        await page.locator('#pi-tools-close').click();
+        await page.locator('#pi-toggle-sessions').click();
         await page.locator('#pi-close-sessions').click();
         await page.waitForFunction(() => !document.querySelector('.pi-transcript-shell').inert);
     }

@@ -5015,6 +5015,10 @@ body.is-resizing * {
 .pi-assistant-switcher label { color: var(--text-muted); font-size: .72rem; font-weight: 650; }
 .pi-assistant-profile-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .pi-assistant-profile-row select { min-width: 0; flex: 1; height: 40px; padding: 7px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface-2); color: var(--text-main); }
+.pi-assistant-manage-profiles { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 40px; margin-top: 8px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--text-muted); font-size: .78rem; cursor: pointer; text-align: start; }
+.pi-assistant-manage-profiles span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pi-assistant-manage-profiles:hover { background: var(--surface-2); color: var(--text-main); }
+.pi-assistant-manage-profiles:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .pi-assistant-switcher p { margin: 8px 0 0; color: var(--text-muted); font-size: .76rem; line-height: 1.4; }
 .pi-assistant-switcher p:empty { display: none; }
 .pi-identity-avatar { flex: 0 0 30px; width: 30px; height: 30px; border-radius: 6px; display: inline-grid; place-items: center; overflow: hidden; background: var(--green-soft); color: var(--accent); font-size: .9rem; font-weight: 650; }
@@ -5042,7 +5046,9 @@ body.is-resizing * {
 .pi-assistant-project-form input[readonly] { opacity: .72; }
 .pi-assistant-project-form .pi-assistant-archive { display: flex; align-items: center; }
 .pi-assistant-project-form [data-status] { min-height: 1em; margin: 0; color: var(--amber); overflow-wrap: anywhere; }
-.pi-assistant-project-form footer { display: flex; justify-content: flex-end; }
+.pi-assistant-project-form footer { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.pi-assistant-project-form .pi-assistant-delete { margin-inline-end: auto; color: var(--danger, #b5433d); border-color: currentColor; }
+.pi-assistant-project-form .pi-assistant-delete[hidden] { display: none; }
 .pi-assistant-directory-field { display: grid; gap: 6px; min-width: 0; }
 .pi-assistant-directory-field > label { color: var(--text-muted); font-size: .8rem; }
 .pi-assistant-directory-field small { color: var(--text-soft); }

@@ -176,7 +176,9 @@
         }
         setFile(file) {
             if (this.file?.identity === file.identity && (this.file.path === file.path || this.file.deliveryId && this.file.deliveryId === file.deliveryId) && this.file.hasDiff === file.hasDiff && this.file.writes.length === file.writes.length
-                && this.file.writes.every((w, i) => w.id === file.writes[i].id && w.content === file.writes[i].content)) return;
+                && this.file.writes.every((w, i) => w.id === file.writes[i].id && w.content === file.writes[i].content)) {
+                this.file = file; this.host.selected?.(file); return;
+            }
             this.closeFullscreen(false); this.rememberPosition(); this.previewState = {}; this.previewKey = null;
             this.previewSuspended = false;
             this.cancel(); this.releaseUrls(); this.file = file; this.data = null; this.current = null; this.jumped = false;
@@ -191,7 +193,7 @@
             picker.append(new Option(file.deliveryId ? translateUi('交付快照') : translateUi("当前文件"), 'current')); picker.value = this.source;
             $('pi-file-tabs').hidden = false; $('pi-file-diff-tab').disabled = !file.hasDiff;
             $('pi-file-path').textContent = file.path; $('pi-file-path').title = file.path;
-            const prefix = this.host.context().cwd.replace(/\/$/, '') + '/';
+            const prefix = (file.root || this.host.context().cwd).replace(/\/$/, '') + '/';
             $('pi-changes-title').textContent = file.path.startsWith(prefix) ? file.path.slice(prefix.length) : file.path;
             $('pi-changes-title').title = file.path;
             $('pi-file-info').open = false;
@@ -255,7 +257,7 @@
             const context = this.host.context(), sequence = this.sequence;
             this.controller = new AbortController(); this.loading = true; this.status(translateUi("正在读取当前文件…"), false, true); this.controls();
             try {
-                const query = this.file.deliveryId ? new URLSearchParams({ cwd: context.cwd, sessionId: context.sessionId || '', id: this.file.deliveryId, index: this.file.index }) : new URLSearchParams({ cwd: context.cwd, path: this.file.path });
+                const query = this.file.deliveryId ? new URLSearchParams({ cwd: context.cwd, sessionId: context.sessionId || '', id: this.file.deliveryId, index: this.file.index }) : new URLSearchParams({ cwd: this.file.root || context.cwd, path: this.file.path });
                 const endpoint = this.file.deliveryId ? 'deliverables' : `files/${this.previewsEnabled ? 'preview' : 'content'}`;
                 const data = await this.host.api(`/api/pi/${endpoint}?${query}`, { signal: this.controller.signal });
                 if (sequence !== this.sequence || context.key !== this.host.context().key || context.generation !== this.host.context().generation) return;

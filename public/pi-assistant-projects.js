@@ -36,7 +36,7 @@
         }).join('');
     }
 
-    function createEditor({ apiFetch, onSaved, profileId }) {
+    function createEditor({ apiFetch, onSaved, onDeleted, profileId }) {
         const dialog = document.createElement('dialog');
         dialog.className = 'pi-assistant-project-editor';
         dialog.setAttribute('aria-labelledby', 'pi-assistant-project-editor-title');
@@ -54,7 +54,7 @@
             <label>${t('描述', 'Description')}<textarea name="description" maxlength="500" rows="2"></textarea></label>
             <label>${t('项目附加指令', 'Additional project instructions')}<textarea name="instructions" rows="6" spellcheck="false"></textarea></label>
             <label class="pi-assistant-archive"><input name="archived" type="checkbox">${t('归档项目', 'Archive project')}</label>
-            <p data-status role="status"></p><footer><button type="submit" class="settings-primary-button">${t('保存项目', 'Save project')}</button></footer>
+            <p data-status role="status"></p><footer><button type="button" data-delete class="settings-secondary-button pi-assistant-delete" hidden>${t('删除分类', 'Delete category')}</button><button type="submit" class="settings-primary-button">${t('保存项目', 'Save project')}</button></footer>
         </form>`;
         document.body.append(dialog);
         const form = dialog.querySelector('form'), status = dialog.querySelector('[data-status]');
@@ -103,7 +103,34 @@
         directoryList.addEventListener('click', event => { const path = event.target.closest('[data-path]')?.dataset.path; if (path) void browse(path); });
         filter.addEventListener('input', renderDirectories);
         dialog.addEventListener('close', () => { browseRevision++; browser.hidden = true; });
-        dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close());
+        const deleteButton = dialog.querySelector('[data-delete]');
+        const setBusy = value => {
+            saving = value;
+            for (const control of form.querySelectorAll('button, input, textarea')) control.disabled = value;
+        };
+        dialog.querySelector('[data-close]').addEventListener('click', () => { if (!saving) dialog.close(); });
+        deleteButton.addEventListener('click', async () => {
+            if (saving || !project) return;
+            const target = project, expectedRevision = revision;
+            setBusy(true);
+            try {
+                const accepted = await globalThis.PiProfileDialog.confirm({ title: t('删除分类', 'Delete category'),
+                    message: t('删除“{0}”？仅空分类可以删除，关联的其他助手也将不再看到此分类。项目目录和文件不会删除。', 'Delete “{0}”? Only empty categories can be deleted. Other linked assistants will also lose this category. The project folder and files are not deleted.', target.name),
+                    accept: t('删除分类', 'Delete category'), cancelLabel: t('取消', 'Cancel') });
+                if (!accepted || !dialog.open) return;
+                status.textContent = t('正在删除分类…', 'Deleting category…');
+                const result = await apiFetch(`/api/pi/assistant-projects/${encodeURIComponent(target.id)}`, { method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedRevision }), signal: AbortSignal.timeout(45000) });
+                if (result.deletedId !== target.id || result.ok !== true) throw new Error(t('删除结果待核对', 'Deletion result needs checking'));
+                dialog.close();
+                try { await onDeleted(target); }
+                catch { /* The category was removed; refreshing must not replay deletion. */ }
+            } catch (error) {
+                status.textContent = !error.status || error.status >= 500
+                    ? t('删除结果待核对，请关闭后刷新分类列表，不要重复提交。', 'Deletion result needs checking. Close and refresh the category list; do not submit again.') : error.message;
+                if (!error.status || error.status >= 500 || error.status === 409) deleteButton.dataset.uncertain = 'true';
+            } finally { setBusy(false); deleteButton.disabled = deleteButton.dataset.uncertain === 'true'; }
+        });
         dialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
         form.addEventListener('submit', async event => {
             event.preventDefault();
@@ -111,8 +138,7 @@
             const name = form.elements.name.value.trim(), cwd = form.elements.cwd.value.trim();
             const description = form.elements.description.value, instructions = form.elements.instructions.value;
             if (!name || !cwd || new TextEncoder().encode(instructions).length > 8192) { status.textContent = t('请填写名称、目录；附加指令不能超过 8192 字节。', 'Enter a name and directory; instructions must not exceed 8192 bytes.'); return; }
-            saving = true; status.textContent = t('正在保存项目…', 'Saving project…');
-            form.querySelector('[type=submit]').disabled = true;
+            setBusy(true); status.textContent = t('正在保存项目…', 'Saving project…');
             try {
                 const result = await apiFetch('/api/pi/assistant-projects', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ expectedRevision: revision, project: {
@@ -122,10 +148,12 @@
                 dialog.close(); onSaved(result.project);
             } catch (error) {
                 status.textContent = error.status === 409 ? t('保存冲突。草稿已保留；请核对最新项目后再提交。', 'Save conflict. Draft retained; review current projects before retrying.') : error.message;
-            } finally { saving = false; form.querySelector('[type=submit]').disabled = false; }
+            } finally { setBusy(false); deleteButton.disabled = deleteButton.dataset.uncertain === 'true'; }
         });
         return { open(value, currentRevision, cwd = '') {
+            if (saving) return;
             project = value || null; revision = currentRevision;
+            deleteButton.hidden = !project; delete deleteButton.dataset.uncertain; deleteButton.disabled = false;
             dialog.querySelector('h2').textContent = project ? t('编辑项目', 'Edit project') : t('新建项目', 'New project');
             form.elements.name.value = project?.name || '';
             form.elements.cwd.value = project?.cwd || cwd;
