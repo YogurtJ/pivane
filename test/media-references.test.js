@@ -35,3 +35,12 @@ test('references have a storage budget and reject symlinks; gallery copies stay 
     fs.unlinkSync(file); fs.symlinkSync(path.join(gallery, 'one.png'), file);
     await assert.rejects(refs.read(ref), /invalid/);
 });
+
+test('references reject storage root redirection even when the referenced bytes are unchanged', async () => {
+    const directory = path.join(root, 'original-root');
+    const refs = new MediaReferences({ directory });
+    const { ref } = refs.put(png);
+    fs.renameSync(directory, directory + '-moved');
+    fs.symlinkSync(directory + '-moved', directory, 'dir');
+    await assert.rejects(refs.read(ref), /Reference directory changed/);
+});

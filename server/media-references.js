@@ -81,6 +81,7 @@ class MediaReferences {
         const found = this.locate(match[1]);
         if (!found) fail('This reference image is no longer available; attach it again', 404);
         const root = await fs.promises.realpath(this.directory);
+        if (root !== this.directory) fail('Reference directory changed', 409);
         const { bytes } = await readVerifiedFile(found.file, { maxBytes: MAX_MEDIA_BYTES, check: file => {
             if (path.dirname(file) !== root) fail('Reference is outside its storage directory', 403);
         } });
