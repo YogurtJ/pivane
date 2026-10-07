@@ -231,7 +231,7 @@ class MediaHttpExecutor {
         fail('Too many media output redirects', 502);
     }
     async execute({ provider, key, model, parameters, progress = () => {}, resume }) {
-        const http = model.http;
+        const http = validateHttp(model.http, model.parameters, model.kind);
         const signal = AbortSignal.timeout(http.timeoutMs);
         const headers = { ...authHeaders(provider, key) };
         if (resume && (!http.poll || resume.version !== 1 || resume.binding !== resumeBinding(provider, model)

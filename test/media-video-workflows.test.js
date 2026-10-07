@@ -46,6 +46,14 @@ test('video defaults allow hours, preserve explicit budgets, and cap waits at 24
     assert.throws(() => validateHttp({ ...http, timeoutMs: MAX_TIMEOUT_MS + 1 }, {}, 'video'), /timeout/);
 });
 
+test('execution applies defaults to valid saved contracts without an explicit budget', async t => {
+    let budget; t.mock.method(AbortSignal, 'timeout', value => { budget = value; return new AbortController().signal; });
+    const model = { kind: 'video', remoteModel: 'generic', parameters: {}, http: { path: '/video', body: {}, response: { type: 'binary', mimeType: 'video/mp4' } } };
+    const executor = new MediaHttpExecutor({ fetch: async () => new Response(mp4) });
+    await executor.execute({ provider: { baseUrl: 'http://fixture.invalid', auth: { mode: 'none' } }, key: '', model, parameters: {} });
+    assert.equal(budget, 7200000);
+});
+
 test('frames and ordered video references submit once; timed-out/restarted cards retrieve the same task without POST', async t => {
     const requests = [], budgets = []; let abort = new AbortController(), stop = true;
     t.mock.method(AbortSignal, 'timeout', value => { budgets.push(value); return abort.signal; });
