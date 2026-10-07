@@ -86,6 +86,15 @@ function mountMediaRoutes(router, { mediaAgentService, mediaLabService: lab, pre
             catch (error) { res.status(error.statusCode || 500).json({ error: error.message, ...(error.state ? { state: error.state } : {}) }); }
         });
     }
+    // Thumbnails of the reference attachments shown on chat cards (content-addressed, immutable).
+    if (lab.references) router.get('/media/references/:id', async (req, res) => {
+        let found;
+        try { found = await lab.references.read(`mediaref:${req.params.id}`); }
+        catch (error) { return res.status(error.statusCode || error.status || 500).set('Cache-Control', 'no-store').json({ error: error.message }); }
+        res.set({ 'Content-Type': found.mimeType, 'Cache-Control': 'private, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff',
+            'Content-Security-Policy': "default-src 'none'; sandbox" });
+        res.send(found.bytes);
+    });
     router.post('/media/lab/plan', respond(req => {
         const cwd = planningCwd(req);
         return mediaAgentService.createLabPlan({ ...req.body, cwd });

@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { MediaLabService, SLOT_LIMITS } = require('../server/media-lab-service');
+const { MediaReferences } = require('../server/media-references');
 const { MediaChatRequests } = require('../server/media-chat-requests');
 const { loadMediaProfile } = require('../server/media-profile');
 const { saveExternalMedia, mediaHistory, deleteMedia } = require('../server/media-lab-storage');
@@ -26,6 +27,7 @@ function fixture({ fetch } = {}) {
         fetch: fetch || (async (url, options) => { requests.push(JSON.parse(options.body)); return { ok: true, json: async () => ({ data: [{ b64_json: png.toString('base64') }] }) }; }),
         saveExternal: input => saveExternalMedia(dataRoot, input), history: kind => mediaHistory(dataRoot, kind),
         deleteMedia: (kind, id) => deleteMedia(dataRoot, kind, id), generateImage: async () => ({}), generateTts: async () => ({}) });
+    lab.references = new MediaReferences({ directory: path.join(dataRoot, 'refs') });
     const file = path.join(dataRoot, 'media_chat_requests.json');
     return { lab, requests, file, dataRoot, chat: new MediaChatRequests({ lab, file }) };
 }
@@ -142,4 +144,36 @@ test('local backends run one at a time while remote slots stay available', () =>
     lab.running.video = SLOT_LIMITS.video; lab.running.remote = SLOT_LIMITS.video;
     assert.equal(lab.canExecute({ adapter: 'http-provider', kind: 'video' }), false);
     assert.equal(lab.canExecute({ adapter: 'http-provider', kind: 'tts' }), true);
+});
+
+
+test('image edit cards keep short references across confirmation, execution, restart and gallery reuse', async () => {
+    const { lab, chat, requests, file } = fixture();
+    lab.profile.models[lab.profile.models.length - 1].parameters.image = { type: 'image', required: true };
+    const image = `data:image/png;base64,${png.toString('base64')}`;
+    const ref = lab.references.put(image).ref;
+    const plan = await lab.plan({ modelId: 'fixture-image', parameters: { prompt: 'Make the background blue', image: ref } });
+    assert.equal(plan.parameters.image, ref);
+    assert.equal(requests.length, 0, 'planning never calls the image provider');
+    const review = await lab.review({ modelId: plan.modelId, parameters: plan.parameters });
+    assert.equal(review.parameters.image, ref);
+    lab.discard(review.ticket);
+    await chat.run({ key: plan.id, modelId: plan.modelId, parameters: plan.parameters, confirmed: true });
+    await settle(chat);
+    assert.equal(requests[0].image, image, 'the provider receives actual bytes, never a reference token');
+    assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /base64/);
+    const images = chat.images([plan.id]).images;
+    assert.equal(images.length, 1);
+    const followup = await lab.plan({ modelId: plan.modelId, parameters: { prompt: 'Make it green', image: images[0].url } });
+    assert.match(followup.parameters.image, /^mediaref:/);
+    const restarted = new MediaChatRequests({ lab, file });
+    await restarted.run({ key: plan.id, modelId: plan.modelId, parameters: restarted.publicState(plan.id).attempts[0].parameters, confirmed: true, again: true });
+    await settle(restarted);
+    assert.equal(requests.length, 2);
+    assert.equal(requests[1].image, image);
+    // A replacement uploaded in the editor is also stored as a short reference.
+    const next = await chat.run({ key: followup.id, modelId: followup.modelId, parameters: { ...followup.parameters, image }, confirmed: true });
+    assert.equal(next.status, 'running');
+    assert.equal(next.parameters.image, ref);
+    await settle(chat);
 });

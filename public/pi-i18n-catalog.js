@@ -9616,5 +9616,6 @@
         ['文档存储额度已满（每线程 256 MiB，实例 2 GiB），请由管理员整理', 'Document storage is full (256 MiB per thread, 2 GiB per instance). Ask the administrator to manage storage'],
         ['请上传 DOCX、XLSX、PPTX 或 PDF 文件', 'Upload a DOCX, XLSX, PPTX or PDF file']
     );
+    rows.push(['[参考素材]', '[Reference media]']);
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

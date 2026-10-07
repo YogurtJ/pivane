@@ -5,7 +5,10 @@
     };
     const attachments = new WeakMap();
     const isMedia = field => ['image', 'video'].includes(field.type);
-    const displayValue = value => typeof value === 'string' && /^data:(image\/|video\/)/.test(value) ? translateUi('[附件 · {0} · {1} KiB]', value.slice(5, value.indexOf(';')), Math.round((value.length - value.indexOf(',') - 1) * 3 / 4 / 1024)) : typeof value === 'string' && value.length > 1000 && /^[A-Za-z0-9+/]+={0,2}$/.test(value) ? translateUi('[二进制编码 · {0} 字符]', value.length) : value;
+    // Chat cards keep stored references (`mediaref:<sha256>`) or gallery URLs instead of the bytes.
+    const sourceUrl = value => typeof value !== 'string' ? '' : /^mediaref:[0-9a-f]{64}$/.test(value) ? `/api/pi/media/references/${value.slice(9)}`
+        : /^\/images\/[^/?#\\]+$/.test(value) || /^data:(image\/|video\/)/.test(value) ? value : '';
+    const displayValue = value => typeof value === 'string' && (/^mediaref:[0-9a-f]{64}$/.test(value) || /^\/images\/[^/?#\\]+$/.test(value)) ? translateUi('[参考素材]') : typeof value === 'string' && /^data:(image\/|video\/)/.test(value) ? translateUi('[附件 · {0} · {1} KiB]', value.slice(5, value.indexOf(';')), Math.round((value.length - value.indexOf(',') - 1) * 3 / 4 / 1024)) : typeof value === 'string' && value.length > 1000 && /^[A-Za-z0-9+/]+={0,2}$/.test(value) ? translateUi('[二进制编码 · {0} 字符]', value.length) : value;
     function attachmentInput(container, label, field, value) {
         const input = element('input'); input.type = 'hidden';
         let items = field.multiple ? (Array.isArray(value) ? [...value] : []) : value ? [value] : [];
@@ -17,7 +20,8 @@
         const note = element('small', '', translateUi('选择、拖入或粘贴参考素材；附件合计最多 20 MiB。'));
         const clear = element('button', 'lab-secondary', translateUi('移除附件')); clear.type = 'button';
         label.classList.add('lab-reference-slot'); label.tabIndex = 0;
-        const bytes = values => values.reduce((total, item) => total + (item.length - item.indexOf(',') - 1) * 3 / 4, 0);
+        // Stored references are already on the server; only new uploads count toward the 20 MiB limit.
+        const bytes = values => values.filter(item => item.startsWith('data:')).reduce((total, item) => total + (item.length - item.indexOf(',') - 1) * 3 / 4, 0);
         const changed = () => input.dispatchEvent(new Event('input', { bubbles: true }));
         const refresh = () => {
             input.value = field.multiple ? JSON.stringify(items) : items[0] || ''; clear.disabled = !items.length;
@@ -26,7 +30,7 @@
                 const card = element('div', 'lab-reference-card');
                 const preview = element(field.type === 'image' ? 'img' : 'video', 'lab-attachment-preview');
                 if (field.type === 'video') { preview.controls = true; preview.preload = 'metadata'; preview.playsInline = true; } else preview.alt = (field.label || field.type) + ' ' + (index + 1);
-                preview.src = item;
+                preview.src = sourceUrl(item);
                 const actions = element('div', 'lab-reference-actions'); actions.append(element('span', '', String(index + 1)));
                 const action = (text, handler) => { const button = element('button', 'lab-secondary', text); button.type = 'button'; button.addEventListener('click', () => { sequence++; attachments.delete(input); handler(); refresh(); changed(); }); actions.append(button); return button; };
                 if (field.multiple) action(translateUi('前移'), () => { [items[index - 1], items[index]] = [items[index], items[index - 1]]; }).disabled = index === 0;
@@ -182,5 +186,5 @@
         }
         return result;
     }
-    window.PiMediaFields = { render, collect, displayValue, isLoading: container => [...container.querySelectorAll('[data-param]')].some(input => attachments.has(input)) };
+    window.PiMediaFields = { render, collect, displayValue, sourceUrl, isLoading: container => [...container.querySelectorAll('[data-param]')].some(input => attachments.has(input)) };
 })();

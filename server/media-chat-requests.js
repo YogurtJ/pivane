@@ -110,8 +110,29 @@ class MediaChatRequests {
         return { requests: Object.fromEntries([...new Set(keys)].map(key => [key, this.publicState(key)])) };
     }
 
+    // Attachments uploaded while editing a card become stored references, so the journal,
+    // the queue and a later "generate again" keep a short id instead of the bytes.
+    async intern(modelId, parameters) {
+        const references = this.lab.references;
+        if (!references) return parameters;
+        const definitions = (await this.lab.models()).find(model => model.id === modelId)?.parameters || {};
+        const one = value => references.constructor.isDataUrl(value) ? references.put(value).ref : value;
+        return Object.fromEntries(Object.entries(parameters).map(([name, value]) => [name, ['image', 'video'].includes(definitions[name]?.type)
+            ? Array.isArray(value) ? value.map(one) : one(value) : value]));
+    }
+
+    // Finished images of these cards in completion order, for the Agent's "chat-result" references.
+    images(keys) {
+        if (!Array.isArray(keys) || keys.length > 500 || keys.some(key => !KEY.test(key))) fail('Provide up to 500 media plan ids');
+        return { images: [...new Set(keys)].flatMap(key => (this.entries.get(key)?.attempts || [])
+            .filter(attempt => attempt.status === 'done' && attempt.asset?.kind === 'image' && /^\/images\//.test(attempt.asset.url))
+            .map(attempt => ({ key, url: attempt.asset.url.split('?')[0], finishedAt: attempt.finishedAt || null })))
+            .sort((a, b) => String(a.finishedAt || '').localeCompare(String(b.finishedAt || ''))) };
+    }
+
     async run(input = {}) {
-        const { key, modelId, parameters, confirmed, again } = input;
+        const { key, modelId, confirmed, again } = input;
+        let { parameters } = input;
         if (!KEY.test(key || '')) fail('Unknown media plan id');
         if (confirmed !== true) fail('Generation requires an explicit confirmation');
         if (typeof modelId !== 'string' || !parameters || typeof parameters !== 'object' || Array.isArray(parameters)) fail('A model and parameters are required');
@@ -125,6 +146,7 @@ class MediaChatRequests {
         if ((this.entries.get(key)?.attempts.length || 0) >= MAX_ATTEMPTS) fail('Too many generations from one card; ask the Agent for a new request', 429);
         this.pending.add(key);
         try {
+            parameters = await this.intern(modelId, parameters);
             const review = await this.lab.review({ modelId, parameters });
             if (!review.model.executable) { this.lab.discard?.(review.ticket); fail('Media backend is not configured for execution', 503); }
             // Run exactly what the card shows: normalized values go back for another confirmation.
@@ -158,10 +180,10 @@ class MediaChatRequests {
                 this.lab.discard?.(review.ticket);
                 this.waiting.push({ key, attempt, entry, modelId, parameters: review.parameters, model: review.model, bytes });
                 void this.pump();
-                return { status: 'queued', state: this.publicState(key) };
+                return { status: 'queued', parameters: review.parameters, state: this.publicState(key) };
             }
             this.start(attempt, entry, review.ticket);
-            return { status: 'running', state: this.publicState(key) };
+            return { status: 'running', parameters: review.parameters, state: this.publicState(key) };
         } finally { this.pending.delete(key); }
     }
 

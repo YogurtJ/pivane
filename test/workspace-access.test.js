@@ -143,6 +143,9 @@ test('internal planning credential only permits designated planning routes', asy
     const headers = { Authorization: `Bearer ${f.service.internalToken}` };
     assert.equal((await f.call('/api/media-agent/capabilities/image', 'GET', undefined, headers)).status, 404, 'authenticated planning route reaches handler');
     for (const p of ['/api/private', '/audio/test.wav', '/api/access/settings', '/api/pi/settings/models']) assert.equal((await f.call(p, 'GET', undefined, headers)).status, 401, p);
+    for (const p of ['/api/media-agent/references', '/api/media-agent/chat-images']) assert.equal((await f.call(p, 'POST', {}, headers)).status, 404, 'planning route authenticated: ' + p);
+    for (const p of ['/api/pi/media/chat/requests', '/api/pi/media/lab/execute', '/api/pi/media/lab/review']) assert.equal((await f.call(p, 'POST', {}, headers)).status, 401, 'no execution authority: ' + p);
+    assert.equal((await f.call('/api/pi/media/references/' + 'a'.repeat(64), 'GET', undefined, headers)).status, 401);
     assert.equal((await f.call('/api/tts', 'POST', {}, headers)).status, 401); assert.equal(f.executions(), 0);
 });
 

@@ -147,6 +147,7 @@ Select message text to add a quote to the main draft, ask in side chat or read t
 
 Configure a media model, then ask “draw a cover for this report” or “read this paragraph aloud.” The Agent prepares a card; **nothing is generated or charged until you confirm it**.
 
+- To edit an image, upload a PNG/JPEG/WebP in Pi Agent or an assistant conversation and describe the changes. The Agent selects a model with image inputs and shows the reference on the confirmation card. You can also ask to edit a completed card image, or replace the reference under Edit parameters. Available inputs depend on the model.
 - Edit parameters before confirming. Server-normalized changes return for another review.
 - Results appear in the card and lab history, including after reconnecting or changing devices. The same card is not submitted twice.
 - Multiple confirmed cards queue for available slots and can be cancelled before starting. Remote services allow 4 concurrent items (2 videos); local backends allow 1.

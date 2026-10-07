@@ -1,6 +1,6 @@
 # Media Agent Integration
 
-最后核对：2026-10-06。主入口是聊天中的生成卡片（见下文“聊天生成卡片”）；多媒体实验室保留生成记录、模型接入和完整参数编辑，参数与执行契约见 [MEDIA_LAB.md](MEDIA_LAB.md)。
+最后核对：2026-10-07。主入口是聊天中的生成卡片（见下文“聊天生成卡片”）；多媒体实验室保留生成记录、模型接入和完整参数编辑，参数与执行契约见 [MEDIA_LAB.md](MEDIA_LAB.md)。
 
 ## 当前范围
 
@@ -33,6 +33,22 @@ card confirm (user session) -> POST /api/pi/media/chat/requests {key, modelId, p
 `MediaChatRequests`（`server/media-chat-requests.js`）以方案 id 为键，把每次尝试保存到媒体数据目录的 `media_chat_requests.json`（私有权限、原子替换、最多 2000 张卡片、每张最多 20 次）。已有尝试时必须带 `again:true`，同一张卡片提交中或运行中返回 409；服务启动时把遗留的 running 改为 uncertain，遗留的 queued 改为 failed（从未发送）。票据只在内存中，不写入记录；参数超过 64KiB（含附件）时记录中省略参数。执行失败但票据从未开始时记为 failed，其余记为 uncertain，均不重试。生成文件和历史仍由实验室存储负责。
 
 执行名额由 `MediaLabService.canExecute` 统一判断（实验室直接生成也使用）：远程服务（`http-provider`、`http-json`、`minimax-video`）合计 4 项，其中视频最多 2 项；本机 GPU/本地语音后端 1 项。远程请求在服务器上主要是等待网络，单项输出上限 64MiB；视频单独限额以控制内存峰值。名额已满时卡片进入服务器内存中的先进先出队列（最多 20 项、参数合计 64MiB），显示排队位置并可取消；有名额释放时按确认顺序重新 review，参数或配置变化则记为 failed 而不执行。排队项计入维护空闲判定。队列不跨重启保存，重启后排队项标记为未发送。
+
+## 聊天图片编辑与参考素材
+
+Pi Agent 和助手对话中，先上传 PNG/JPEG/WebP 图片并说明修改要求，例如“用已配置的图片编辑模型，保留主体，把背景改成夜景”。Agent 选择声明了图片输入的模型（编辑接口可能单独列为模型），把当前原生会话分支的图片交给生成卡片。用户核对原图缩略图、修改要求和模型后确认；“修改参数”也能替换参考图。可接着要求“把刚生成的图再改成水彩风格”。没有图片输入的文生图模型不能代替编辑模型。
+
+`media_generate` 的 image/video 参数接受下列引用；multiple 字段使用有序数组：
+
+| 引用 | 来源 |
+|---|---|
+| `chat-image:-1` | 当前分支最近一张用户图片；-2 为倒数第二张，1 为第一张，多图消息按附件顺序计数 |
+| `chat-result:-1` | 当前分支最近 500 张生成卡片中最后完成的图片；只选已完成结果，排除失败和不确定结果 |
+| `file:<path>` | 当前项目内 PNG/JPEG/WebP 或 MP4 文件；复用项目隐私规则、描述符身份与完整读取校验 |
+
+引用仅解释模型声明的 image/video 字段，不改变普通提示词。上传图来自原生 SessionManager 当前分支；不创建聊天副本，不读取其他分支或会话。GIF 不作为编辑参考图，需先转换格式；聊天原有上传大小限制不变。具体多图、蒙版或首尾帧能力以模型字段为准，不额外提供画笔蒙版编辑器。
+
+素材存入媒体数据目录下的 `media_references/`，用 `mediaref:<sha256>` 放入方案和卡片记录，避免把 base64 重复写入聊天。图库图片也先固定为同样的引用。读取时验证实际打开的文件路径、完整身份、预算与哈希；数据为私有权限，不进入 Git 或发行包。每项及单次参考素材总计最多 20 MiB，实例最多 5000 个文件／4 GiB；相同字节去重，不自动清理或过期，迁移与备份媒体数据时一并保留该目录。卡片刷新、服务重启和再次生成继续使用该引用。Agent 的引用存储与结果查询仅用于准备方案；付费执行仍由用户确认票据触发。
 
 ## 数据流
 
@@ -91,7 +107,7 @@ TTS 的字段来自 `TtsProviderService.getPublicConfig()`；已配置模型复�
 统一accessControl后端会保护这些能力/校验端点。受管进程使用仅允许规划端点、绑定本实例origin的内部凭据；独立CLI Package使用显式PI_WORKSPACE_BASE_URL和PI_WORKSPACE_ACCESS_TOKEN。Package不跟随重定向，不把内部Token送到其他origin或模型输入；旧业务执行仍需各自授权。见 [ACCESS_CONTROL.md](ACCESS_CONTROL.md)。
 
 - `/api/pi/media/lab/plan` 受 Origin/token 与项目 realpath 校验保护。
-- 旧 `/api/media-agent/capabilities/:kind` 和 `/api/media-agent/validate` 无生成或历史写入副作用；前者增加 `lab` 目录，后者根据 plan.modelId 分派实验室或旧参数校验。
+- `/api/media-agent/capabilities/:kind` 只读目录；`/api/media-agent/validate` 不生成或写入生成历史，规划图库图片引用时可保存其私有素材快照。
 - extension 在存在内部进程身份时使用所属实例的实际绑定地址/端口；独立CLI使用 `PI_WORKSPACE_BASE_URL`，无配置时 fallback `http://127.0.0.1:11408`。隔离实例仍须覆盖可能继承的生产地址，并使用独立身份/媒体/项目目录。
 - 旧 `/api/pi/media/capabilities/:kind` 保留旧返回结构；新代码使用实验室目录。
 

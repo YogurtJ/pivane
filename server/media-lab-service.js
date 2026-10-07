@@ -184,7 +184,8 @@ class MediaLabService {
     async validate(input = {}) {
         const model = (await this.models()).find(item => item.id === input.modelId);
         if (!model) fail('Media model is unavailable');
-        const parameters = validateParameters(model.parameters, input.parameters);
+        const { values, references } = await this.resolveReferences(model, input.parameters);
+        const parameters = validateParameters(model.parameters, values);
         const warnings = [];
         let source = null;
         if (input.source && (input.source.imageData || input.source.imageUrl)) {
@@ -217,7 +218,44 @@ class MediaLabService {
         if (source) payload.imageData = source.dataUrl;
         if (!model.configured) warnings.push(model.adapter === 'manual' ? '仅规划：尚无执行适配器，可导出参数清单。' : '后端未配置：可以编辑清单，不能提交生成。');
         if (['http-json','http-provider'].includes(model.adapter)) warnings.push('外部服务仍可能有额外约束；费用以服务方账单为准。');
-        return { model, parameters, payload, source, warnings };
+        // `parameters` carry the bytes that are sent; `display` keeps the short references the card shows and compares.
+        const display = Object.keys(references).length ? { ...parameters, ...clone(references) } : parameters;
+        return { model, parameters, display, payload, source, warnings };
+    }
+
+    // Chat cards reference attachments as `mediaref:<sha256>` (stored references) or
+    // `/images/<file>` (gallery images); both resolve to data URLs before validation.
+    async resolveReferences(model, raw) {
+        if (!object(raw)) return { values: raw, references: {} };
+        const values = { ...raw }, references = {};
+        let bytes = 0, count = 0;
+        const isReference = item => typeof item === 'string' && (item.startsWith('mediaref:') || item.startsWith('/images/'));
+        const resolve = async (item, type) => {
+            if (!this.references) fail('Reference attachments are not available');
+            if (!item.startsWith('mediaref:')) {
+                if (type !== 'image') fail('Gallery references are images');
+                item = await this.references.gallery(item, this.videoService.imagesDir);
+            }
+            return { ref: item, data: await this.references.resolve(item, type) };
+        };
+        for (const [key, field] of Object.entries(model.parameters)) {
+            if (!MEDIA_TYPES.has(field.type) || !Object.hasOwn(raw, key)) continue;
+            const value = raw[key], list = Array.isArray(value);
+            if (!(list ? value : [value]).some(isReference)) continue;
+            if (list !== Boolean(field.multiple)) fail('Invalid attachment list');
+            if (list && value.length > (field.maxItems || 8)) fail('Invalid attachment list or too many references');
+            const resolved = [];
+            for (const item of list ? value : [value]) {
+                if (++count > 20) fail('At most 20 reference attachments per request');
+                const result = isReference(item) ? await resolve(item, field.type) : { ref: item, data: item };
+                if (typeof result.data === 'string') bytes += result.data.length * 3 / 4;
+                if (bytes > 20 * 1024 * 1024 + 1024) fail('Attachments exceed the combined 20MiB limit');
+                resolved.push(result);
+            }
+            references[key] = list ? resolved.map(item => item.ref) : resolved[0].ref;
+            values[key] = list ? resolved.map(item => item.data) : resolved[0].data;
+        }
+        return { values, references };
     }
 
     async plan(input) {
@@ -231,10 +269,10 @@ class MediaLabService {
             parameters[key] = ref.value;
         }
         const resolved = await this.validate({ ...input, parameters });
-        Object.assign(resolved.parameters, references);
+        const shown = { ...resolved.display, ...references };
         return { version: 1, id: `plan-${randomUUID()}`, kind: resolved.model.kind,
             modelId: resolved.model.id, summary: String(input.summary || resolved.model.name).slice(0, 500),
-            parameters: resolved.parameters, jobs: [resolved.parameters], warnings: resolved.warnings,
+            parameters: shown, jobs: [shown], warnings: resolved.warnings,
             execution: { mode: 'manual', count: 1 }, createdAt: new Date(this.now()).toISOString() };
     }
 
@@ -248,7 +286,7 @@ class MediaLabService {
         const id = randomUUID();
         const expiresAt = this.now() + 10 * 60 * 1000;
         this.tickets.set(id, { ...resolved, retainedBytes: Buffer.byteLength(JSON.stringify(resolved.payload)), status: 'reviewed', expiresAt });
-        return { ticket: id, expiresAt, model: this.publicModel(resolved.model), parameters: resolved.parameters,
+        return { ticket: id, expiresAt, model: this.publicModel(resolved.model), parameters: resolved.display,
             request,
             source: resolved.source ? { selected: true, imageUrl: resolved.source.historyUrl || '', bytes: Buffer.byteLength(resolved.source.dataUrl) } : null,
             warnings: resolved.warnings, execution: { mode: 'manual', count: 1 }, cost: '费用由所选后端决定；当前无法提供可靠报价。' };
@@ -297,6 +335,7 @@ class MediaLabService {
             delete ticket.payload;
             delete ticket.source;
             delete ticket.parameters;
+            delete ticket.display;
             ticket.retainedBytes = 0;
             ticket.expiresAt = this.now() + 30 * 60 * 1000;
         }

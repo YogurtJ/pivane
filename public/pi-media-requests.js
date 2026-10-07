@@ -107,9 +107,26 @@
                 box.append(text);
                 if (values[textKey].length > 90) box.append(toggle);
             }
+            // Reference images (image to edit, first frame...) are shown, so the user sees exactly what is sent.
+            const refs = el('div', 'pi-media-request-refs');
+            const sourceUrl = window.PiMediaFields?.sourceUrl || (() => '');
             const chips = el('div', 'pi-media-request-chips');
             for (const [key, value] of Object.entries(values)) {
                 if (key === textKey || value === undefined || value === '' || value === null) continue;
+                const items = Array.isArray(value) ? value : [value];
+                if (items.length && items.every(item => sourceUrl(item))) {
+                    const isVideo = defs[key]?.type === 'video';
+                    items.forEach((item, index) => {
+                        const figure = el('figure', 'pi-media-request-ref');
+                        const media = el(isVideo ? 'video' : 'img');
+                        if (isVideo) { media.preload = 'metadata'; media.muted = true; media.playsInline = true; }
+                        else { media.alt = `${label(key)}${items.length > 1 ? ' ' + (index + 1) : ''}`; media.loading = 'lazy'; }
+                        media.src = sourceUrl(item);
+                        figure.append(media, el('figcaption', '', `${label(key)}${items.length > 1 ? ' ' + (index + 1) : ''}`));
+                        refs.append(figure);
+                    });
+                    continue;
+                }
                 let shown = window.PiMediaFields?.displayValue(value) ?? value;
                 if (typeof shown === 'object') shown = JSON.stringify(shown);
                 shown = String(shown);
@@ -119,6 +136,7 @@
                 chip.title = `${label(key)}: ${String(typeof value === 'object' ? JSON.stringify(value) : value).slice(0, 2000)}`;
                 chips.append(chip);
             }
+            if (refs.children.length) box.append(refs);
             if (chips.children.length) box.append(chips);
             return box;
         }
@@ -268,7 +286,7 @@
                 if (data.status === 'changed') {
                     item.parameters = data.parameters; item.notice = t('服务端调整了部分参数（如默认值或格式），请核对后再确认。');
                     if (item.editing && card.model) item.editing = false;
-                } else { item.parameters = parameters; item.editing = false; }
+                } else { item.parameters = data.parameters || parameters; item.editing = false; }
                 if (data.state) item.state = data.state;
             } catch (error) {
                 item.error = error.message;

@@ -13,7 +13,7 @@ const failure = (message, status = 400) => Object.assign(new Error(message), { s
 const safeMethods = new Set(['GET', 'HEAD', 'OPTIONS']);
 const internalRoutes = new Map([
     ['/api/media-agent/capabilities/image', 'GET'], ['/api/media-agent/capabilities/video', 'GET'], ['/api/media-agent/capabilities/tts', 'GET'],
-    ['/api/media-agent/validate', 'POST'], ['/api/media-agent/connection-schema', 'GET'], ['/api/media-agent/connection/validate', 'POST']
+    ['/api/media-agent/validate', 'POST'], ['/api/media-agent/references', 'POST'], ['/api/media-agent/chat-images', 'POST'], ['/api/media-agent/connection-schema', 'GET'], ['/api/media-agent/connection/validate', 'POST']
 ]);
 
 class WorkspaceAccessService extends EventEmitter {

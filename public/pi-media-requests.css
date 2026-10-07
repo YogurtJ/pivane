@@ -28,6 +28,10 @@
 .pi-media-request-text.expanded { display: block; max-height: 360px; overflow: auto; overscroll-behavior: contain; }
 .pi-media-request-more { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--primary); font: inherit; font-size: 12px; cursor: pointer; }
 .pi-media-request-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.pi-media-request-refs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; min-width: 0; }
+.pi-media-request-ref { margin: 0; display: flex; flex-direction: column; gap: 3px; width: 88px; min-width: 0; }
+.pi-media-request-ref img, .pi-media-request-ref video { width: 88px; height: 88px; object-fit: contain; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); }
+.pi-media-request-ref figcaption { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pi-media-request-chip { display: inline-flex; gap: 6px; max-width: 100%; padding: 3px 9px; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; line-height: 1.6; }
 .pi-media-request-chip span { color: var(--text-muted); flex: 0 0 auto; }
 .pi-media-request-chip strong { font-weight: 500; color: var(--text-main); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -35,3 +35,4 @@ dist/
 /docs/local/
 # Local native linker output; release binaries are explicitly listed.
 /native/*.lib
+media_references/
