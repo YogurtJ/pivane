@@ -7,8 +7,8 @@
     const isMedia = field => ['image', 'video'].includes(field.type);
     // Chat cards keep stored references (`mediaref:<sha256>`) or gallery URLs instead of the bytes.
     const sourceUrl = value => typeof value !== 'string' ? '' : /^mediaref:[0-9a-f]{64}$/.test(value) ? `/api/pi/media/references/${value.slice(9)}`
-        : /^\/images\/[^/?#\\]+$/.test(value) || /^data:(image\/|video\/)/.test(value) ? value : '';
-    const displayValue = value => typeof value === 'string' && (/^mediaref:[0-9a-f]{64}$/.test(value) || /^\/images\/[^/?#\\]+$/.test(value)) ? translateUi('[参考素材]') : typeof value === 'string' && /^data:(image\/|video\/)/.test(value) ? translateUi('[附件 · {0} · {1} KiB]', value.slice(5, value.indexOf(';')), Math.round((value.length - value.indexOf(',') - 1) * 3 / 4 / 1024)) : typeof value === 'string' && value.length > 1000 && /^[A-Za-z0-9+/]+={0,2}$/.test(value) ? translateUi('[二进制编码 · {0} 字符]', value.length) : value;
+        : /^\/(images|videos)\/[^/?#\\]+$/.test(value) || /^data:(image\/|video\/)/.test(value) ? value : '';
+    const displayValue = value => typeof value === 'string' && (/^mediaref:[0-9a-f]{64}$/.test(value) || /^\/(images|videos)\/[^/?#\\]+$/.test(value)) ? translateUi('[参考素材]') : typeof value === 'string' && /^data:(image\/|video\/)/.test(value) ? translateUi('[附件 · {0} · {1} KiB]', value.slice(5, value.indexOf(';')), Math.round((value.length - value.indexOf(',') - 1) * 3 / 4 / 1024)) : typeof value === 'string' && value.length > 1000 && /^[A-Za-z0-9+/]+={0,2}$/.test(value) ? translateUi('[二进制编码 · {0} 字符]', value.length) : value;
     function attachmentInput(container, label, field, value) {
         const input = element('input'); input.type = 'hidden';
         let items = field.multiple ? (Array.isArray(value) ? [...value] : []) : value ? [value] : [];

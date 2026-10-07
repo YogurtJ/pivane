@@ -1,5 +1,17 @@
 const { setTimeout: delay } = require('node:timers/promises');
 const { MEDIA_TYPES, parseMedia, parseMediaField } = require('./media-attachments');
+const { createHash } = require('node:crypto');
+const MAX_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+const defaultTimeout = (kind, polling = false) => kind === 'video' ? 2 * 60 * 60 * 1000 : polling ? 1800000 : kind === 'tts' ? 180000 : 600000;
+// A resume receipt is private. Changing the endpoint, model or result contract
+// invalidates it; increasing the waiting budget or polling interval is safe.
+function resumeBinding(provider, model) {
+    const http = { ...model.http, timeoutMs: undefined, poll: { ...model.http.poll, intervalMs: undefined } };
+    const ordered = value => Array.isArray(value) ? value.map(ordered) : value && typeof value === 'object'
+        ? Object.fromEntries(Object.keys(value).sort().filter(key => value[key] !== undefined).map(key => [key, ordered(value[key])])) : value;
+    return createHash('sha256').update(JSON.stringify(ordered({ baseUrl: provider.baseUrl, auth: provider.auth, downloadOrigins: provider.downloadOrigins,
+        id: model.id, kind: model.kind, remoteModel: model.remoteModel, http, parameters: model.parameters }))).digest('hex');
+}
 const MAX_OUTPUT = 64 * 1024 * 1024;
 const MAX_JSON = 90 * 1024 * 1024;
 const MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'audio/wav', 'audio/mpeg'];
@@ -127,9 +139,9 @@ function validateHttp(raw, definitions, kind) {
     const mimeType = response.mimeType || 'auto';
     if (mimeType !== 'auto' && (!MIME_TYPES.includes(mimeType) || !mimeType.startsWith((kind === 'tts' ? 'audio' : kind) + '/'))) fail('Output MIME type does not match media kind');
     if (response.type !== 'binary') jsonPath(response.path);
-    const http = { path: raw.path, body: clone(raw.body), response: { type: response.type, mimeType, ...(response.type !== 'binary' ? { path: clone(response.path) } : {}) }, timeoutMs: raw.timeoutMs ?? (raw.poll ? 1800000 : kind === 'tts' ? 180000 : 600000) };
+    const http = { path: raw.path, body: clone(raw.body), response: { type: response.type, mimeType, ...(response.type !== 'binary' ? { path: clone(response.path) } : {}) }, timeoutMs: raw.timeoutMs ?? defaultTimeout(kind, Boolean(raw.poll)) };
     if (raw.encoding) http.encoding = raw.encoding;
-    if (!Number.isInteger(http.timeoutMs) || http.timeoutMs < 1000 || http.timeoutMs > 1800000) fail('HTTP timeout must be 1000–1800000 ms');
+    if (!Number.isInteger(http.timeoutMs) || http.timeoutMs < 1000 || http.timeoutMs > MAX_TIMEOUT_MS) fail('HTTP timeout must be 1000–86400000 ms');
     if (raw.poll) {
         const poll = raw.poll;
         keys(poll, ['idPath','path','urlPath','statusPath','pending','succeeded','failed','intervalMs'], 'polling');
@@ -218,11 +230,13 @@ class MediaHttpExecutor {
         }
         fail('Too many media output redirects', 502);
     }
-    async execute({ provider, key, model, parameters, progress = () => {} }) {
+    async execute({ provider, key, model, parameters, progress = () => {}, resume }) {
         const http = model.http;
         const signal = AbortSignal.timeout(http.timeoutMs);
         const headers = { ...authHeaders(provider, key) };
-        const requestBody = renderTemplate(http.body, parameters, model.remoteModel, model.parameters);
+        if (resume && (!http.poll || resume.version !== 1 || resume.binding !== resumeBinding(provider, model)
+            || typeof resume.taskId !== 'string' || !/^[A-Za-z0-9_./:+-]{1,500}$/.test(resume.taskId))) fail('The saved remote task does not match the current model connection', 409);
+        const requestBody = resume ? {} : renderTemplate(http.body, parameters, model.remoteModel, model.parameters);
         let body;
         if (http.encoding === 'multipart') {
             const boundary = `pivane-${require('node:crypto').randomUUID()}`;
@@ -242,29 +256,36 @@ class MediaHttpExecutor {
         } else { headers['Content-Type'] = 'application/json'; body = JSON.stringify(requestBody); }
         let taskId;
         try {
-            progress({ stage: 'submitting' });
-            let response = await this.request(endpoint(provider.baseUrl, http.path, { model: model.remoteModel, parameters }), { method: 'POST', headers, body, signal }, http.response.type === 'binary' ? MAX_OUTPUT : MAX_JSON);
-            let data = http.response.type === 'binary' ? null : await readJson(response);
+            let response, data;
+            if (!resume) {
+                progress({ stage: 'submitting' });
+                response = await this.request(endpoint(provider.baseUrl, http.path, { model: model.remoteModel, parameters }), { method: 'POST', headers, body, signal }, http.response.type === 'binary' ? MAX_OUTPUT : MAX_JSON);
+                data = http.response.type === 'binary' ? null : await readJson(response);
+            }
             if (http.poll) {
-                const poll = http.poll, rawId = atPath(data, poll.idPath);
+                const poll = http.poll, rawId = resume ? resume.taskId : atPath(data, poll.idPath);
                 if (!['string','number'].includes(typeof rawId) || !/^[A-Za-z0-9_./:+-]{1,500}$/.test(String(rawId)) || key.length >= 4 && String(rawId).includes(key)) fail('Media service did not return a valid task ID; do not resubmit automatically', 502);
                 taskId = String(rawId);
                 let pollUrl;
-                if (poll.path) pollUrl = endpoint(provider.baseUrl, poll.path, { id: taskId, model: model.remoteModel, parameters });
+                if (poll.path && !resume) pollUrl = endpoint(provider.baseUrl, poll.path, { id: taskId, model: model.remoteModel, parameters });
                 else {
-                    const rawUrl = atPath(data, poll.urlPath);
+                    const rawUrl = resume ? resume.pollUrl : atPath(data, poll.urlPath);
                     if (typeof rawUrl !== 'string' || rawUrl.length > 16000) fail('Media service did not return a valid polling URL', 502);
                     try { pollUrl = new URL(rawUrl, provider.baseUrl + '/'); } catch { fail('Invalid polling URL', 502); }
                 }
                 if (pollUrl.origin !== new URL(provider.baseUrl).origin || pollUrl.username || pollUrl.password || pollUrl.hash) fail('Polling URL must stay on the configured provider', 502);
+                if (resume && pollUrl.href !== resume.pollUrl) fail('The saved polling address no longer matches this task', 409);
+                const receipt = { version: 1, binding: resumeBinding(provider, model), taskId, pollUrl: pollUrl.href };
+                progress({ stage: 'polling', taskId }, receipt);
                 while (true) {
-                    signal.throwIfAborted(); progress({ stage: 'polling', taskId });
+                    signal.throwIfAborted();
                     response = await this.request(pollUrl, { method: 'GET', headers: authHeaders(provider, key), signal }, MAX_JSON);
                     data = await readJson(response);
                     const state = atPath(data, poll.statusPath) ?? null;
                     if (poll.succeeded.includes(state)) break;
-                    if (poll.failed.includes(state)) fail('Media task failed or was cancelled at the provider', 502);
+                    if (poll.failed.includes(state)) throw Object.assign(new Error('Media task failed or was cancelled at the provider'), { statusCode: 502, remoteFinished: true });
                     if (!poll.pending.includes(state)) fail('Media service returned an unknown task state', 502);
+                    progress({ stage: 'polling', taskId, providerState: state });
                     await this.delay(poll.intervalMs, undefined, { signal });
                 }
             }
@@ -290,8 +311,8 @@ class MediaHttpExecutor {
             return { bytes, mimeType, ...(taskId ? { taskId } : {}) };
         } catch (error) {
             const message = signal.aborted ? 'Media request timed out; its remote task may still be running' : error.statusCode ? error.message : 'Media request failed; check the existing task before submitting again';
-            throw Object.assign(new Error(message), { statusCode: error.statusCode || 502, ...(taskId ? { taskId } : {}) });
+            throw Object.assign(new Error(message), { statusCode: error.statusCode || 502, ...(error.remoteFinished ? { remoteFinished: true } : {}), ...(taskId ? { taskId } : {}) });
         }
     }
 }
-module.exports = { MediaHttpExecutor, validateHttp, renderTemplate, validateTemplate, jsonPath, atPath, endpoint, authHeaders, readJson, readBounded, detectMime, keys, object, fail, MIME_TYPES, MAX_OUTPUT };
+module.exports = { MAX_TIMEOUT_MS, defaultTimeout, MediaHttpExecutor, validateHttp, renderTemplate, validateTemplate, jsonPath, atPath, endpoint, authHeaders, readJson, readBounded, detectMime, keys, object, fail, MIME_TYPES, MAX_OUTPUT };

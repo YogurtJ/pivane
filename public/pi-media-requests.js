@@ -117,9 +117,9 @@
                 if (items.length && items.every(item => sourceUrl(item))) {
                     const isVideo = defs[key]?.type === 'video';
                     items.forEach((item, index) => {
-                        const figure = el('figure', 'pi-media-request-ref');
+                        const figure = el('figure', 'pi-media-request-ref' + (isVideo ? ' is-video' : ''));
                         const media = el(isVideo ? 'video' : 'img');
-                        if (isVideo) { media.preload = 'metadata'; media.muted = true; media.playsInline = true; }
+                        if (isVideo) { media.preload = 'metadata'; media.muted = true; media.playsInline = true; media.controls = true; }
                         else { media.alt = `${label(key)}${items.length > 1 ? ' ' + (index + 1) : ''}`; media.loading = 'lazy'; }
                         media.src = sourceUrl(item);
                         figure.append(media, el('figcaption', '', `${label(key)}${items.length > 1 ? ' ' + (index + 1) : ''}`));
@@ -169,12 +169,14 @@
                 row.append(icon('fa-hourglass-half'), el('span', '', attempt.position > 1 ? t('排队中，前面还有 {0} 个请求；有空位后自动开始，还没有提交给服务', attempt.position - 1) : t('排队中，有空位后自动开始；还没有提交给服务')));
             } else if (attempt.status === 'running') {
                 const stages = { submitting: t('已提交，等待服务返回结果'), polling: t('正在查询任务'), downloading: t('正在下载结果') };
-                const waited = elapsed(attempt.startedAt);
+                const waited = elapsed(attempt.resumedAt || attempt.startedAt);
                 row.append(icon('fa-spinner fa-spin'), el('span', '', `${stages[attempt.progress?.stage] || t('正在生成，可以离开此页面，回来后会显示结果')}${waited ? ' · ' + t('已等待 {0}', waited) : ''}${attempt.progress?.taskId ? ' · ' + attempt.progress.taskId : ''}`));
             } else if (attempt.status === 'cancelled') {
                 row.append(icon('fa-ban'), el('span', '', t('已取消排队，没有提交给服务')));
             } else if (attempt.status === 'failed') {
                 row.append(icon('fa-circle-exclamation'), el('span', '', t('没有开始生成，未提交给服务：{0}', t(attempt.error || ''))));
+            } else if (attempt.canResume) {
+                row.append(icon('fa-triangle-exclamation'), el('span', '', t('已保留远端任务 {0}。可继续查询并取回结果，不会重新提交生成。', attempt.taskId || '')), el('small', '', t(attempt.error || '')));
             } else if (/timed out/i.test(attempt.error || '')) {
                 row.append(icon('fa-triangle-exclamation'), el('span', '', t('等待超过这个模型设置的最长时间（{0}）。服务商可能仍会完成并计费，但这次结果拿不回来；请先在多媒体实验室的生成记录里核对。经常超时可在模型接入里调大“本次请求最长等待”。', elapsed(attempt.startedAt, attempt.finishedAt) || '?')));
             } else {
@@ -252,11 +254,13 @@
                 return;
             }
             if (busy) { button(item.busy ? t('正在提交…') : t('生成中…'), 'fa-spinner fa-spin', 'lab-primary', () => {}).disabled = true; return; }
+            const canResume = last?.canResume && !item.editing;
+            if (canResume) button(t('继续查询原任务'), 'fa-magnifying-glass', 'lab-primary', () => resume(card)).disabled = Boolean(disabled);
             const again = attempts.length > 0;
             // Nothing was ever sent (cancelled or not started): a single confirmation is enough.
             const charged = attempts.some(attempt => !['failed', 'cancelled'].includes(attempt.status));
             const primaryText = !charged ? t('确认生成') : item.armed ? (last?.status === 'uncertain' ? t('确认再生成（上次可能已计费）') : t('确认再生成（会再次计费）')) : t('再生成一次');
-            const primary = button(primaryText, item.armed || !charged ? 'fa-play' : 'fa-rotate-right', 'lab-primary', () => {
+            const primary = button(primaryText, item.armed || !charged ? 'fa-play' : 'fa-rotate-right', canResume ? 'lab-secondary' : 'lab-primary', () => {
                 if (charged && !item.armed) {
                     item.armed = true; paint(card);
                     clearTimeout(item.armTimer); item.armTimer = setTimeout(() => { item.armed = false; card.update(); }, 8000);
@@ -295,6 +299,18 @@
                 // The transcript may have been rebuilt during the request; paint the card that is shown.
                 item.busy = false; paint(cards.get(card.key)?.root.isConnected ? cards.get(card.key) : card); schedulePolling();
             }
+        }
+
+        async function resume(card) {
+            const item = slot(card.key);
+            if (item.busy) return;
+            item.busy = true; item.error = ''; item.armed = false; clearTimeout(item.armTimer); paint(card);
+            try {
+                const data = await fetch('/api/pi/media/chat/requests/resume', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: card.key, confirmed: true }) });
+                if (data.state) item.state = data.state;
+            } catch (error) { item.error = error.message; }
+            finally { item.busy = false; paint(cards.get(card.key)?.root.isConnected ? cards.get(card.key) : card); schedulePolling(); }
         }
 
         async function cancel(card) {

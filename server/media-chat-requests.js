@@ -47,6 +47,8 @@ class MediaChatRequests {
         this.lab.onSlotFree?.(() => { void this.pump(); });
     }
 
+    get preparing() { return this.pending.size + Number(Boolean(this.pumping)); }
+
     // Settles when every request started so far has finished (tests and orderly shutdown).
     get execution() { return Promise.allSettled([...this.executions]).then(() => this.executions.size ? this.execution : undefined); }
 
@@ -97,7 +99,8 @@ class MediaChatRequests {
     publicState(key) {
         const entry = this.entries.get(key);
         if (!entry) return { key, attempts: [] };
-        return { key, attempts: entry.attempts.map(({ ticket, ...attempt }) => {
+        return { key, attempts: entry.attempts.map(({ ticket, remote, ...stored }) => {
+            const attempt = { ...stored, canResume: Boolean(remote && !stored.remoteTerminal && stored.status === 'uncertain') };
             if (attempt.status === 'queued') return { ...attempt, position: this.waiting.findIndex(item => item.attempt.id === attempt.id) + 1 || null };
             if (attempt.status !== 'running' || !ticket) return attempt;
             try { return { ...attempt, progress: this.lab.executionStatus(ticket).progress || null }; }
@@ -119,6 +122,23 @@ class MediaChatRequests {
         const one = value => references.constructor.isDataUrl(value) ? references.put(value).ref : value;
         return Object.fromEntries(Object.entries(parameters).map(([name, value]) => [name, ['image', 'video'].includes(definitions[name]?.type)
             ? Array.isArray(value) ? value.map(one) : one(value) : value]));
+    }
+
+    // Branch-scoped, bounded metadata for the Agent. Stable references select an exact
+    // attempt, so completion order cannot swap storyboard frames.
+    results(keys) {
+        if (!Array.isArray(keys) || keys.length > 500 || keys.some(key => !KEY.test(key))) fail('Provide up to 500 media plan ids');
+        return { requests: [...new Set(keys)].map(key => {
+            const state = this.publicState(key);
+            return { key, attempts: state.attempts.map(attempt => ({
+                id: attempt.id, status: attempt.status, kind: attempt.kind, modelId: attempt.modelId, modelName: attempt.modelName,
+                startedAt: attempt.startedAt, finishedAt: attempt.finishedAt, progress: attempt.progress,
+                taskId: attempt.taskId, canResume: attempt.canResume, error: attempt.error,
+                prompt: String(attempt.parameters?.prompt || attempt.parameters?.text || '').slice(0, 1000),
+                ...(attempt.status === 'done' && attempt.asset ? { asset: attempt.asset,
+                    reference: ['image', 'video'].includes(attempt.kind) ? 'media-result:' + key + '/' + attempt.id : undefined } : {})
+            })) };
+        }) };
     }
 
     // Finished images of these cards in completion order, for the Agent's "chat-result" references.
@@ -187,6 +207,29 @@ class MediaChatRequests {
         } finally { this.pending.delete(key); }
     }
 
+    async resume(input = {}) {
+        const { key, confirmed } = input;
+        if (!KEY.test(key || '') || confirmed !== true || Object.keys(input).some(name => !['key', 'confirmed'].includes(name))) fail('Confirm retrieval of an existing media task');
+        if (this.unavailable) fail(this.unavailable, 503);
+        if (this.pending.has(key)) fail('This card is already being submitted', 409);
+        const entry = this.entries.get(key), attempt = entry?.attempts.at(-1);
+        if (!attempt?.remote || attempt.remoteTerminal || attempt.status !== 'uncertain') fail('No resumable remote task on this card', 409);
+        this.pending.add(key);
+        let review;
+        try {
+            review = await this.lab.reviewResume(attempt.modelId, attempt.remote, attempt.parameters);
+            if (!this.lab.canExecute(review.model)) fail('Media execution slots are busy; query this task again later', 429);
+            const before = { ...attempt };
+            Object.assign(attempt, { status: 'running', resumedAt: new Date(this.now()).toISOString(), ticket: review.ticket });
+            delete attempt.error; delete attempt.finishedAt;
+            entry.updatedAt = attempt.resumedAt;
+            try { this.save(); } catch (error) { for (const key of Object.keys(attempt)) delete attempt[key]; Object.assign(attempt, before); throw error; }
+            this.start(attempt, entry, review.ticket);
+            return { status: 'running', state: this.publicState(key) };
+        } catch (error) { if (review) this.lab.discard?.(review.ticket); throw error; }
+        finally { this.pending.delete(key); }
+    }
+
     cancel(input = {}) {
         const { key } = input;
         if (!KEY.test(key || '')) fail('Unknown media plan id');
@@ -238,14 +281,21 @@ class MediaChatRequests {
 
     start(attempt, entry, ticket) {
         // The request outlives the browser connection; the card polls this journal.
-        const execution = this.lab.execute(ticket).then(response => {
+        const execution = this.lab.execute(ticket, { onProgress: (progress, remote) => {
+            if (progress.taskId) attempt.taskId = progress.taskId;
+            if (remote && !attempt.remote) {
+                attempt.remote = remote; entry.updatedAt = new Date(this.now()).toISOString();
+                this.save(); // Persist accepted task before the first GET, including across restart.
+            }
+        } }).then(response => {
             const asset = assetOf(attempt.kind, response);
             Object.assign(attempt, asset ? { status: 'done', asset } : { status: 'uncertain', error: 'The generation finished without a viewable result; check the gallery' });
         }, error => {
             let started = true;
             try { started = this.lab.executionStatus(ticket).status !== 'reviewed'; } catch {}
             Object.assign(attempt, { status: started ? 'uncertain' : 'failed', error: String(error?.message || 'Generation failed').slice(0, 500),
-                ...(error?.taskId ? { taskId: String(error.taskId).slice(0, 200) } : {}) });
+                ...(error?.remoteFinished ? { remoteTerminal: true } : {}),
+                ...(error?.taskId ? { taskId: String(error.taskId).slice(0, 500) } : {}) });
         }).finally(() => {
             attempt.finishedAt = new Date(this.now()).toISOString(); entry.updatedAt = attempt.finishedAt; delete attempt.ticket;
             this.trySave('finish');

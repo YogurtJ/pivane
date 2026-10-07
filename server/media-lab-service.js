@@ -35,7 +35,7 @@ function validateDefinition(model) {
     }
     if (model.adapter === 'http-json' && model.connection) {
         const connection = model.connection;
-        if (connection.timeoutMs !== undefined && (!Number.isInteger(connection.timeoutMs) || connection.timeoutMs < 1000 || connection.timeoutMs > 600000)) fail('Invalid media timeout');
+        if (connection.timeoutMs !== undefined && (!Number.isInteger(connection.timeoutMs) || connection.timeoutMs < 1000 || connection.timeoutMs > 86400000)) fail('Invalid media timeout');
         const url = new URL(connection.url);
         if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.hash || url.search) fail('Invalid media endpoint');
         if (connection.tokenEnv && !/^[A-Z_][A-Z0-9_]*$/.test(connection.tokenEnv)) fail('Use an environment variable name for the API key');
@@ -171,6 +171,7 @@ class MediaLabService {
         return { id, name, kind, adapter, configured, parameters, presets, instructions, documentationUrl, sourceImage, voiceDefaults, preferred,
             managed: model.adapter === 'http-provider', providerId: model.providerId, providerName: model.providerName,
             executable: adapter !== 'manual' && configured,
+            waiting: model.http ? { timeoutMs: model.http.timeoutMs, asynchronous: Boolean(model.http.poll), resumable: Boolean(model.http.poll) } : undefined,
             reviewRequired: true };
     }
 
@@ -229,12 +230,11 @@ class MediaLabService {
         if (!object(raw)) return { values: raw, references: {} };
         const values = { ...raw }, references = {};
         let bytes = 0, count = 0;
-        const isReference = item => typeof item === 'string' && (item.startsWith('mediaref:') || item.startsWith('/images/'));
+        const isReference = item => typeof item === 'string' && (item.startsWith('mediaref:') || item.startsWith('/images/') || item.startsWith('/videos/'));
         const resolve = async (item, type) => {
             if (!this.references) fail('Reference attachments are not available');
             if (!item.startsWith('mediaref:')) {
-                if (type !== 'image') fail('Gallery references are images');
-                item = await this.references.gallery(item, this.videoService.imagesDir);
+                item = await this.references.gallery(item, type === 'video' ? this.videoService.videosDir : this.videoService.imagesDir, type);
             }
             return { ref: item, data: await this.references.resolve(item, type) };
         };
@@ -292,7 +292,20 @@ class MediaLabService {
             warnings: resolved.warnings, execution: { mode: 'manual', count: 1 }, cost: '费用由所选后端决定；当前无法提供可靠报价。' };
     }
 
-    async execute(id) {
+    // Retrieval-only ticket. Its receipt was recorded after the confirmed POST;
+    // execute will only query that same task, never recreate the generation.
+    async reviewResume(modelId, receipt, parameters) {
+        const model = (await this.models()).find(item => item.id === modelId);
+        if (!model || model.adapter !== 'http-provider' || !model.http?.poll || !model.configured) fail('This model cannot resume a saved remote task', 409);
+        for (const [id, ticket] of this.tickets) if (ticket.expiresAt < this.now() && ticket.status !== 'running') this.tickets.delete(id);
+        if (this.tickets.size >= 100) fail('Too many pending media reviews', 429);
+        const id = randomUUID();
+        this.tickets.set(id, { model, resume: clone(receipt), parameters: clone(parameters || {}), payload: {},
+            status: 'reviewed', expiresAt: this.now() + 600000, retainedBytes: 0 });
+        return { ticket: id, model: this.publicModel(model) };
+    }
+
+    async execute(id, { onProgress } = {}) {
         const ticket = this.tickets.get(id);
         if (!ticket) fail('Review not found; review parameters again', 404);
         if (ticket.status === 'done') return ticket.result;
@@ -311,9 +324,15 @@ class MediaLabService {
             let result;
             if (model.adapter === 'http-provider') {
                 result = await this.providerService.withExecution(model, async ({ provider, key, model: definition }) => {
+                    const metadata = value => Array.isArray(value) ? value.map(metadata) : { mimeType: value.mimeType, bytes: value.bytes };
+                    const referenceMetadata = ticket.resume?.referenceMetadata || Object.fromEntries(Object.entries(mediaParameters(definition.parameters, ticket.parameters)).map(([key, value]) => [key, metadata(value)]));
                     const output = await this.httpExecutor.execute({ provider, key, model: definition, parameters: ticket.parameters,
-                        progress: progress => { ticket.progress = { ...progress, updatedAt: new Date(this.now()).toISOString() }; } });
-                    return this.saveExternal({ model, parameters: ticket.parameters, ...output });
+                        resume: ticket.resume,
+                        progress: (progress, remote) => {
+                            ticket.progress = { ...progress, updatedAt: new Date(this.now()).toISOString() };
+                            onProgress?.(ticket.progress, remote ? { ...remote, referenceMetadata } : undefined);
+                        } });
+                    return this.saveExternal({ model, parameters: ticket.parameters, referenceMetadata, ...output });
                 });
             } else if (model.adapter === 'http-json') result = await this.executeHttp(model, ticket.parameters);
             else if (model.adapter === 'minimax-video') result = await this.videoService.generate(payload);
@@ -336,6 +355,7 @@ class MediaLabService {
             delete ticket.source;
             delete ticket.parameters;
             delete ticket.display;
+            delete ticket.resume;
             ticket.retainedBytes = 0;
             ticket.expiresAt = this.now() + 30 * 60 * 1000;
         }
@@ -373,7 +393,7 @@ class MediaLabService {
             response = await this.fetch(connection.url, {
                 method: 'POST', redirect: 'error', size: 90 * 1024 * 1024,
                 headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-                body: JSON.stringify(body), signal: AbortSignal.timeout(Math.min(connection.timeoutMs || 180000, 600000))
+                body: JSON.stringify(body), signal: AbortSignal.timeout(connection.timeoutMs || (model.kind === 'video' ? 7200000 : 180000))
             });
         } catch { fail('External media request failed or timed out; check provider before resubmitting', 502); }
         if (!response.ok) fail(`External media provider returned HTTP ${response.status}`, 502);

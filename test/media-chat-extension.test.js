@@ -10,6 +10,7 @@ test('managed media tool uses the current branch image, preserves prompt text, a
     const extension = path.join(__dirname, '../server/pi-media-chat-extension.ts');
     const { registerMediaChat } = require(process.env.PIVANE_TEST_PI_JITI).createJiti(extension)(extension);
     const events = new Map(), tools = new Map(), calls = [];
+    let mediaResults = [];
     for (const key of ['PI_WEB_NAVIGATION_TOKEN', 'PI_WORKSPACE_INTERNAL_ORIGIN', 'PI_WORKSPACE_INTERNAL_TOKEN', 'PI_CODING_AGENT_DIR']) {
         const previous = process.env[key]; t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
         process.env[key] = key === 'PI_CODING_AGENT_DIR' ? path.join(root, 'agent') : key.endsWith('ORIGIN') ? 'http://127.0.0.1:1' : 'synthetic';
@@ -26,6 +27,7 @@ test('managed media tool uses the current branch image, preserves prompt text, a
         else if (route === '/api/media-agent/references') data = store.put(body.data);
         else if (route === '/api/media-agent/validate') data = { plan: body.plan };
         else if (route === '/api/media-agent/chat-images') { assert.deepEqual(body.keys, ['plan-11111111-2222-4333-8444-555555555555']); data = { images: [{ url: '/images/result.png' }] }; }
+        else if (route === '/api/media-agent/chat-results') data = { requests: mediaResults.filter(row => body.keys.includes(row.key)) };
         else throw new Error('Unexpected request: ' + route);
         return { ok: true, json: async () => data };
     });
@@ -47,6 +49,24 @@ test('managed media tool uses the current branch image, preserves prompt text, a
     fs.writeFileSync(path.join(root, 'source.png'), Buffer.from(png, 'base64'));
     assert.match((await run({ image: 'file:source.png' })).details.plan.parameters.image, /^mediaref:/);
     await assert.rejects(run({ image: 'file:../outside.png' }), /不在当前项目/);
+    const first = 'plan-11111111-2222-4333-8444-555555555555', last = 'plan-22222222-2222-4333-8444-555555555555';
+    const attempt = 'aaaaaaaa-2222-4333-8444-555555555555';
+    entries = [first, last].map((id, i) => ({ type: 'message', message: { role: 'toolResult', toolName: 'media_generate', details: { plan: { id, kind: i ? 'video' : 'image', summary: i ? 'Video' : 'First frame' } } } }));
+    mediaResults = [{ key: first, attempts: [{ id: attempt, status: 'done', kind: 'image', asset: { kind: 'image', url: '/images/first.png' }, reference: 'media-result:' + first + '/' + attempt }] },
+        { key: last, attempts: [{ id: attempt, status: 'done', kind: 'video', asset: { kind: 'video', url: '/videos/clip.mp4' }, reference: 'media-result:' + last + '/' + attempt }] }];
+    Object.assign(model.parameters, { end: { type: 'image', role: 'last_frame' }, clips: { type: 'video', multiple: true } });
+    const chained = await run({ image: 'media-result:' + first + '/' + attempt, end: 'chat-image:1', clips: ['chat-video:-1'] }).catch(e => e);
+    assert.match(chained.message, /no attached images/);
+    const composed = await run({ image: 'media-result:' + first + '/' + attempt, clips: ['media-result:' + last + '/' + attempt, 'chat-video:-1'] });
+    assert.equal(composed.details.plan.parameters.image, '/images/first.png');
+    assert.deepEqual(composed.details.plan.parameters.clips, ['/videos/clip.mp4', '/videos/clip.mp4']);
+    await assert.rejects(run({ image: 'media-result:' + last + '/' + attempt }), /wrong media type/);
+    const beforeReads = calls.length;
+    const listing = JSON.parse((await tools.get('media_results').execute('results', { limit: 1 }, new AbortController().signal, () => {}, ctx)).content[0].text);
+    assert.equal(listing.cards[0].summary, 'Video'); assert.equal(listing.nextOffset, 1);
+    assert.ok(calls.slice(beforeReads).every(route => route === '/api/media-agent/chat-results'));
+    entries = [];
+    await assert.rejects(run({ image: 'media-result:' + first + '/' + attempt }), /not in the current conversation branch/);
     assert.ok(calls.every(url => url.startsWith('/api/media-agent/')));
     assert.ok(!calls.some(url => /execute|review/.test(url)));
 });

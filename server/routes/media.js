@@ -37,7 +37,7 @@ function mountMediaRoutes(router, { mediaAgentService, mediaLabService: lab, pre
     router.get('/settings/reply-tts', respond(() => replyTts.snapshot()));
     router.put('/settings/reply-tts', respond(req => replyTts.save(req.body)));
     router.get('/media/lab', respond(() => lab.catalog()));
-    router.get('/media/lab/activity', respond(() => ({ running: lab.inFlight, queued: lab.chatRequests?.waiting.length || 0, connectionMutation: Boolean(lab.providerService?.busy), connectionOperations: lab.providerService?.active || 0 })));
+    router.get('/media/lab/activity', respond(() => ({ running: lab.inFlight, preparing: lab.chatRequests?.preparing || 0, queued: lab.chatRequests?.waiting.length || 0, connectionMutation: Boolean(lab.providerService?.busy), connectionOperations: lab.providerService?.active || 0 })));
     router.get('/media/lab/execution/:ticket', respond(req => lab.executionStatus(req.params.ticket)));
     if (lab.providerService) {
         const providers = lab.providerService;
@@ -79,6 +79,7 @@ function mountMediaRoutes(router, { mediaAgentService, mediaLabService: lab, pre
             try { res.json(await lab.chatRequests.run(req.body)); }
             catch (error) { res.status(error.statusCode || 500).json({ error: error.message, ...(error.state ? { state: error.state } : {}) }); }
         });
+        router.post('/media/chat/requests/resume', respond(req => lab.chatRequests.resume(req.body || {})));
         // Only a queued request (never sent to a service) can be cancelled.
         router.post('/media/chat/requests/cancel', (req, res) => {
             res.set('Cache-Control', 'no-store');

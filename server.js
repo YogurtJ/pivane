@@ -146,6 +146,10 @@ app.post('/api/media-agent/references', (req, res) => {
     try { res.json(mediaLabService.references.put(req.body?.data)); }
     catch (error) { res.status(error.statusCode || 400).json({ error: error.message }); }
 });
+app.post('/api/media-agent/chat-results', (req, res) => {
+    try { res.json(mediaLabService.chatRequests.results(req.body?.keys)); }
+    catch (error) { res.status(error.statusCode || 400).json({ error: error.message }); }
+});
 app.post('/api/media-agent/chat-images', (req, res) => {
     try { res.json(mediaLabService.chatRequests.images(req.body?.keys)); }
     catch (error) { res.status(error.statusCode || 400).json({ error: error.message }); }

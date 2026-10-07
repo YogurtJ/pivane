@@ -89,12 +89,13 @@ class MediaReferences {
         return { ...found, bytes };
     }
 
-    async gallery(url, directory) {
-        if (typeof url !== 'string' || !/^\/images\/[^/?#\\]+$/.test(url) || !directory) fail('Invalid gallery image');
-        const filename = decodeURIComponent(url.slice(8));
+    async gallery(url, directory, kind = 'image') {
+        const prefix = kind === 'video' ? '/videos/' : '/images/';
+        if (typeof url !== 'string' || !url.startsWith(prefix) || !/^\/(images|videos)\/[^/?#\\]+$/.test(url) || !directory) fail('Invalid gallery image or video');
+        const filename = decodeURIComponent(url.slice(prefix.length));
         if (filename !== path.basename(filename) || /[/\\]/.test(filename)) fail('Invalid gallery image');
         const mimeType = MIME[path.extname(filename).toLowerCase().replace('.jpeg', '.jpg')];
-        if (!mimeType?.startsWith('image/')) fail('Invalid gallery image');
+        if (!mimeType?.startsWith(kind + '/')) fail('Invalid gallery image or video');
         const root = await fs.promises.realpath(directory);
         const { bytes } = await readVerifiedFile(path.join(root, filename), { maxBytes: MAX_MEDIA_BYTES, check: file => {
             if (path.dirname(file) !== root) fail('Gallery image is outside the gallery', 403);

@@ -21,7 +21,7 @@ function connectionTemplates() {
     const video = { name: 'Video model', kind: 'video', remoteModel: '', instructions: 'Adjust task creation, polling states and result paths to this service documentation. One task is submitted per confirmation.', parameters: { prompt },
         http: { path: '/video/generations', body: { model: { $model: true }, prompt: { $param: 'prompt' } },
             poll: { idPath: ['id'], path: '/tasks/{id}', statusPath: ['status'], pending: ['queued','running'], succeeded: ['succeeded'], failed: ['failed','cancelled'], intervalMs: 5000 },
-            response: { type: 'url', path: ['output','url'], mimeType: 'video/mp4' }, timeoutMs: 1800000 } };
+            response: { type: 'url', path: ['output','url'], mimeType: 'video/mp4' }, timeoutMs: 7200000 } };
     const generic = { name: 'Custom model', kind: 'image', remoteModel: '', instructions: 'Define the fields and request mapping from the service documentation.', parameters: { prompt, settings: { type: 'json', label: '模型专属参数', default: {} } },
         http: { path: '/generate', body: { model: { $model: true }, input: { $params: true } }, response: { type: 'base64', path: ['data', 0, 'b64_json'], mimeType: 'auto' }, timeoutMs: 600000 } };
     const gptImage = clone(image);
@@ -44,7 +44,7 @@ function connectionTemplates() {
         parameters: { prompt, duration: { type: 'number', label: '时长（秒，可选）', integer: true, min: 1, max: 30 }, ratio: { type: 'text', label: '画幅（可选）', maxLength: 40 }, resolution: { type: 'text', label: '分辨率（可选）', maxLength: 40 } },
         http: { path: '/contents/generations/tasks', body: { model: { $model: true }, content: [{ type: 'text', text: { $param: 'prompt' } }], duration: { $param: 'duration' }, ratio: { $param: 'ratio' }, resolution: { $param: 'resolution' } },
             poll: { idPath: ['id'], path: '/contents/generations/tasks/{id}', statusPath: ['status'], pending: ['queued','running'], succeeded: ['succeeded'], failed: ['failed','cancelled','expired'], intervalMs: 5000 },
-            response: { type: 'url', path: ['content','video_url'], mimeType: 'video/mp4' }, timeoutMs: 1800000 } };
+            response: { type: 'url', path: ['content','video_url'], mimeType: 'video/mp4' }, timeoutMs: 7200000 } };
     const reference = { type: 'image', label: '参考图片', required: true };
     const imageEdit = clone(gptImage);
     imageEdit.name = 'GPT Image Edit'; imageEdit.parameters.image = reference;
@@ -107,7 +107,7 @@ function connectionSchema() {
             body: 'JSON object template: {$param:"field"} inserts a typed parameter, {$model:true} inserts the remote model ID, {$params:true} inserts the entire parameter object. {$base64:"attachment"} and {$mimeType:"attachment"} extract single image/video payload and MIME. {$media:{parameter:"images",format:"inlineData"|"image_url"|"video_url",role?:"provider_role"}} renders zero or more media parts, omitting missing optional inputs. {$concat:[arrayOrMediaMapping,...]} joins part arrays. Multipart $param references to multiple media emit repeated parts using the literal field name (e.g. image[]). No code or expressions.',
             response: { type: 'base64 | url | binary | image-json (image only: path points to an object with b64_json or url)', path: 'JSON key/index array for base64/url; * selects the first matching array element (e.g. Gemini image parts)', mimeType: 'auto | image/png | image/jpeg | image/webp | video/mp4 | audio/wav | audio/mpeg' },
             poll: 'Optional: idPath, path containing {id} OR urlPath, statusPath, distinct pending/succeeded/failed scalar arrays (string/number/boolean/null; null matches an absent status), intervalMs 1000–60000. Poll uses GET on the provider origin only. Polling response must be JSON with base64/url result.',
-            timeoutMs: '1000–1800000; default 600000 for synchronous image/video, 180000 for synchronous speech, 1800000 asynchronous. Image models often need several minutes; a timeout does not cancel the remote request' },
+            timeoutMs: '1000–86400000; default 7200000 for video, 600000 for synchronous image, 180000 for synchronous speech, 1800000 for other asynchronous tasks. Saved explicit values are preserved. Timeout does not cancel remote work. Chat cards retain accepted polling tasks for explicit GET-only retrieval, including after restart; never resubmit automatically' },
         boundaries: ['Draft only: no credentials, network test, save, or execution', 'Never put keys in instructions, parameters, request body or URLs', 'No arbitrary headers, request signing, raw PCM, arbitrary workflow code or automatic retries', 'Downloads require provider-approved exact origins; cross-origin downloads receive no provider credentials', 'One API request/task and one output up to 64MiB per confirmation; do not add batch parameters'],
         providerTemplates: [
             { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', auth: { mode: 'bearer' }, modelsPath: '/models', probePath: '/models', downloadOrigins: [] },

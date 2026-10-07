@@ -37,17 +37,17 @@ function mediaHistory(root, kind) {
         return { ...item, kind, url: filename ? config.prefix + encodeURIComponent(filename) : '' };
     }).filter(item => item.url).reverse();
 }
-function saveExternalMedia(root, { model, parameters, bytes, mimeType, taskId }) {
+function saveExternalMedia(root, { model, parameters, bytes, mimeType, taskId, referenceMetadata }) {
     const config = storage(root, model.kind);
     const extensions = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'video/mp4': 'mp4', 'audio/wav': 'wav', 'audio/mpeg': 'mp3' };
     const history = read(config.file);
     fs.mkdirSync(config.directory, { recursive: true });
     const id = randomUUID();
     const filename = `lab_${id}.${extensions[mimeType]}`;
-    const media = require('./media-attachments').mediaParameters(model.parameters || {}, parameters);
-    const savedParameters = Object.fromEntries(Object.entries(parameters).filter(([key]) => !Object.hasOwn(media, key)));
+    const media = referenceMetadata ? {} : require('./media-attachments').mediaParameters(model.parameters || {}, parameters);
+    const savedParameters = Object.fromEntries(Object.entries(parameters).filter(([key]) => !['image', 'video'].includes(model.parameters?.[key]?.type)));
     const metadata = value => ({ mimeType: value.mimeType, bytes: value.bytes });
-    const references = Object.fromEntries(Object.entries(media).map(([key, value]) => [key, Array.isArray(value) ? value.map(metadata) : metadata(value)]));
+    const references = referenceMetadata || Object.fromEntries(Object.entries(media).map(([key, value]) => [key, Array.isArray(value) ? value.map(metadata) : metadata(value)]));
     const item = { id, filename, [config.urlKey]: config.prefix + filename, mimeType,
         model: model.remoteModel || model.id, labModelId: model.id, source: model.adapter === 'http-provider' ? 'media-lab-http' : 'media-lab-http-json', parameters: savedParameters,
         ...(Object.keys(references).length ? { references } : {}),

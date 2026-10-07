@@ -837,17 +837,18 @@ Skill 创建 body：
 | POST | `/api/pi/media/lab/execute` | 只接受 `{ticket, confirmed:true}`，执行该服务器票据 |
 | GET | `/api/pi/media/lab/history?kind=image\|video\|tts` | 只读旧、新媒体记录，不自动导入或改写 |
 | DELETE | `/api/pi/media/lab/history/:kind/:id` | 明确删除选中的本地文件和记录 |
-| GET | `/api/pi/media/chat/requests?keys=plan-…,…` | 至多 100 张聊天生成卡片的 `{requests:{[key]:{key,attempts}}}`；attempt 含 status（queued/running/done/failed/uncertain/cancelled）、模型、时间、asset `{url,kind,id,mimeType}`、error、运行中 progress、排队 position；不含票据 |
+| GET | `/api/pi/media/chat/requests?keys=plan-…,…` | 至多 100 张聊天生成卡片的 `{requests:{[key]:{key,attempts}}}`；attempt 含 status（queued/running/done/failed/uncertain/cancelled）、模型、时间、asset `{url,kind,id,mimeType}`、error、运行中 progress、排队 position、taskId、canResume；不含票据或私有查询地址 |
 | POST | `/api/pi/media/chat/requests` | `{key, modelId, parameters, confirmed:true, again?}`：服务端 review；规范参数与提交不同返回 `{status:"changed",parameters}` 不执行，否则后台执行并返回 `{status:"running",parameters,state}`（卡片上传素材转为私有引用）；执行名额已满或已有排队时返回 `{status:"queued",state}`，有名额后按确认顺序重新 review 再执行，排队超过 20 项返回 429。已有尝试未带 again、提交中或运行中返回 409（附 state）；记录不可读返回 503。详见 [MEDIA_AGENT.md](MEDIA_AGENT.md#聊天生成卡片) |
+| POST | `/api/pi/media/chat/requests/resume` | `{key,confirmed:true}`：仅恢复该卡片最后一次 uncertain 且可恢复的原异步任务；不接受模型、参数或查询地址覆盖，不再次 POST 生成。返回 `{status:"running",state}`；无可恢复任务/并发冲突 409、名额满 429。按当前连接契约校验私有任务记录，查询中仍计入媒体执行/维护空闲 |
 | POST | `/api/pi/media/chat/requests/cancel` | `{key}`：取消该卡片排队中的请求（从未发送），返回 `{status:"cancelled",state}`；已开始或不在排队返回 409（附 state） |
 
-plan 不生成、不取得 ticket；review 不生成。两者都验证实时模型定义和参数类型/范围/固定值。浏览器可修改清单，修改后原生成按钮失效，需要重新 review。execute 不接受参数覆盖，不能通过重复同一票据再次生成；运行中 409，完成后返回原结果，失败/不确定 409，缺票据 404，未配置执行器 503，并发/容量满 429。服务最多两项执行、100 条票据，保留 payload 总计 64MiB；票据不落盘，重启失效。
+plan 不生成、不取得 ticket；review 不生成。两者都验证实时模型定义和参数类型/范围/固定值。浏览器可修改清单，修改后原生成按钮失效，需要重新 review。execute 不接受参数覆盖，不能通过重复同一票据再次生成；运行中 409，完成后返回原结果，失败/不确定 409，缺票据 404，未配置执行器 503，并发/容量满 429。远程服务合计最多4项执行（视频最多2项），本地后端1项、最多100条票据，保留 payload 总计 64MiB；票据不落盘，重启失效。
 
 HTTP JSON adapter 返回值与原执行器一起置于 `{ok, kind, modelId, result}`，result 含 asset、image、video 或 historyItem。history API 增加统一 kind/url，不重写原记录。后端超时/断线不代表远端任务取消，不自动重新提交。完整字段、模型接入限制和错误语义见 [MEDIA_LAB.md](MEDIA_LAB.md)。
 
 `mediaConnections=true` 表示已启用媒体 Provider/模型/Key 管理、HTTP 输出/轮询与文档接入草稿；`GET /api/pi/media/lab` 同样提供该标志供旧前端降级。完整 CRUD、probe、connection-plan 和 execution 状态契约见 [MEDIA_CONNECTIONS.md](MEDIA_CONNECTIONS.md)。
 
-`GET /api/pi/media/lab/activity` 只返回 `{running, connectionMutation, connectionOperations}` 内存计数，供部署空闲检查；不包含参数、Key 或媒体历史。配置操作需要 expectedRevision 与 confirmed=true，冲突或执行期间改配置返回 409。Key 不回显，域名变化需重新绑定；新托管模型编译为 `media:<providerId>:<modelId>`。
+`GET /api/pi/media/lab/activity` 只返回 `{running, preparing, queued, connectionMutation, connectionOperations}` 内存计数，供部署空闲检查；不包含参数、Key 或媒体历史。配置操作需要 expectedRevision 与 confirmed=true，冲突或执行期间改配置返回 409。Key 不回显，域名变化需重新绑定；新托管模型编译为 `media:<providerId>:<modelId>`。
 
 ### 旧受保护 planner API（兼容）
 
@@ -907,6 +908,7 @@ Plan request：
 | GET | `/api/media-agent/capabilities/:kind` | Pi extension 读取当前 capability |
 | POST | `/api/media-agent/validate` | Pi extension 提交 raw tool plan，服务端返回 canonical plan；image/video 字段可传 `mediaref:<sha256>`，图库图片 `/images/<filename>` 会固定成私有引用；不执行生成 |
 | POST | `/api/media-agent/references` | `{data: dataURL}`：规划凭据或登录用户保存 PNG/JPEG/WebP/MP4 参考素材，返回 `{ref,mimeType,bytes}`；单项 20 MiB，实例 5000 项／4 GiB，超限 507；无生成调用 |
+| POST | `/api/media-agent/chat-results` | `{keys:[planId,…]}` 至多500项：返回 `{requests:[{key,attempts}]}` 的有界状态/完成媒体元数据，含图片和视频固定引用 `media-result:<plan-id>/<attempt-id>`；不含私有查询地址，不产生远端请求。受管 `media_results` 只从当前原生分支选择卡片并分页，详见 [MEDIA_AGENT.md](MEDIA_AGENT.md#聊天视频与分阶段创作) |
 | POST | `/api/media-agent/chat-images` | `{keys:[planId,…]}` 至多 500 项：按完成时间返回 `{images:[{key,url,finishedAt}]}`，只包含已完成图像；供受管工具按当前原生分支选择继续编辑 |
 | GET | `/api/pi/media/references/:sha256` | 登录用户读取私有参考素材；校验内容哈希、文件身份与预算，内部规划凭据无权使用该读取路由 |
 

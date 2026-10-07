@@ -354,7 +354,7 @@
             fields.interval = field(polling, translateUi("查询间隔（秒）"), 'number', poll.intervalMs / 1000, { min: 1, max: 60, step: 1 }).input;
             for (const [key, label] of [['pending',translateUi("处理中状态")],['succeeded',translateUi("成功状态")],['failed',translateUi("失败状态")]]) fields[key] = field(polling, label, 'text', poll[key].every(value => typeof value === 'string') ? poll[key].join(', ') : JSON.stringify(poll[key]), { wide: true, help: translateUi("多个字符串用英文逗号分隔；布尔值或数字用 JSON 数组，如 [true] 或 [false,null]。"), maxLength: 2000 }).input;
             protocolFields.append(polling);
-            fields.timeout = field(protocolFields, translateUi("本次请求最长等待（秒）"), 'number', current.http.timeoutMs / 1000, { min: 1, max: 1800, step: 1, help: translateUi("超时不代表远端任务已取消；不会自动重新提交。"), wide: true }).input;
+            fields.timeout = field(protocolFields, translateUi("本次请求最长等待（秒）"), 'number', current.http.timeoutMs / 1000, { min: 1, max: 86400, step: 1, help: translateUi("超时不代表远端任务已取消；不会自动重新提交。"), wide: true }).input;
             const advanced = node('details', 'mc-details wide'); advanced.append(node('summary', '', translateUi("高级：参数定义与请求映射")));
             fields.parameters = field(advanced, translateUi("参数定义 JSON"), 'textarea', JSON.stringify(current.parameters, null, 2), { rows: 10, code: true, maxLength: 64000 }).input;
             fields.body = field(advanced, translateUi("请求体模板 JSON"), 'textarea', JSON.stringify(current.http.body, null, 2), { rows: 8, code: true, maxLength: 32000, help: translateUi("{$param:\"字段\"} 引用参数；{$model:true} 引用模型 ID；{$params:true} 引用全部参数。") }).input;

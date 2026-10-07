@@ -147,6 +147,8 @@ Select message text to add a quote to the main draft, ask in side chat or read t
 
 Configure a media model, then ask “draw a cover for this report” or “read this paragraph aloud.” The Agent prepares a card; **nothing is generated or charged until you confirm it**.
 
+- For a staged video workflow, first ask for opening/ending frames or reference images, confirm those cards, and wait for them to finish. In the next turn, ask the Agent to use those images for a video. It reads current-branch results and uses stable asset references; the card shows frame roles and reference order. Finished videos can be played, downloaded and reused as video references.
+- Video requests default to a two-hour wait, configurable up to 24 hours; existing saved values are preserved. For accepted asynchronous jobs, Continue querying original task retrieves the same job after a timeout or restart without creating another generation. Synchronous requests without a task ID need checking at the provider.
 - To edit an image, upload a PNG/JPEG/WebP in Pi Agent or an assistant conversation and describe the changes. The Agent selects a model with image inputs and shows the reference on the confirmation card. You can also ask to edit a completed card image, or replace the reference under Edit parameters. Available inputs depend on the model.
 - Edit parameters before confirming. Server-normalized changes return for another review.
 - Results appear in the card and lab history, including after reconnecting or changing devices. The same card is not submitted twice.
