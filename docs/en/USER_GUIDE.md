@@ -51,6 +51,10 @@ Choose a message display mode under **Settings → Preferences**:
 | Reading | Every reply, with grouped thinking and tool records |
 | Full record | Individual records for inspection |
 
+Enable **Show average reply request speed** in the same section to display `Request average ≈ … tok/s` below finished replies. It is hidden by default and saved per browser. Hover or focus the value for valid request count, output tokens and request time. The rate divides this reply segment's valid main-model output tokens by their combined request time, including first-output waiting, reasoning, network and retries within a request. Tools, compaction summaries and waits between requests are excluded. Automatic compaction preserves the running totals; failed, aborted or unmeasurable requests are excluded and the remaining result is marked partial. Reasoning tokens are already included in reported output. Legacy messages without measurements show no value; side chat and subagent calls are not merged into the main reply.
+
+Timing uses boundary-only monotonic clock reads and a small snapshot stored with each native assistant message. It adds no per-token listener, timer, model request or separate statistics file. The visibility preference does not disable this lightweight recording.
+
 Expand tool details before using browser Find to search their output. Long inline code wraps; code blocks and wide formulas scroll within their own areas. Invalid or over-budget formulas retain their source. Long user messages can be expanded, and Copy still returns their complete text. Reply timestamps may indicate generation start rather than completion.
 
 `!command` runs server Shell; `!!command` excludes it from later model context but retains its native execution record. Project roots are not a sandbox. Install only trusted extensions. After a timeout, disconnect or uncertain Stop/Take queue result, verify state before repeating a request. Stopping does not undo completed file changes or external requests.

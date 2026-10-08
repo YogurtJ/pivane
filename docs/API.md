@@ -2,7 +2,7 @@
 
 ## 成果中心（artifacts）
 
-`GET /api/pi/status.artifacts` 表示成果能力；`GET /api/pi/activity.artifactOperations` 为真实读写操作数量。`GET /api/pi/artifacts` 仍返回有界、来源重验的待保存目录；新增 `/artifacts/library` 独立库分页、`POST /artifacts/batch` 逐文件／批量保存、收藏、收藏夹、重命名、归类、导出和回收站，`GET /artifacts/operations/:requestId` 核对不确定写入。`/artifacts/:key/preview|cover|origin|location` 按来源 key 或稳定 library ID 读取。已独立保存的文件不依赖来源会话；删除会话与删除成果副本分开。原交付链接语义不变，source key 仍不是授权。完整字段、确认／修订、预算和错误见 [成果中心](ARTIFACTS.md#预算资格与接口)。
+`GET /api/pi/status.artifacts` 表示成果能力；`GET /api/pi/activity.artifactOperations` 为真实读写操作数量。`GET /api/pi/artifacts` 仍返回有界、来源重验的待保存目录；新增 `/artifacts/library` 独立库分页、`POST /artifacts/batch` 逐文件／批量保存、星标、合集、重命名、项目标签、导出、回收站和永久删除（purge 要求回收站状态、当前库 ID/revision 及确认），`GET /artifacts/operations/:requestId` 核对不确定写入。`/artifacts/:key/preview|cover|origin|location` 按来源 key 或稳定 library ID 读取。已独立保存的文件不依赖来源会话；删除会话与删除成果副本分开。原交付链接语义不变，source key 仍不是授权。完整字段、确认／修订、预算和错误见 [成果中心](ARTIFACTS.md#预算资格与接口)。
 
 平台路径：文件请求接受经过规范化校验的Windows盘符/分隔符路径，返回相对path使用网页斜杠表示；ADS、设备命名空间、保留设备名及盘符相对路径拒绝。fileViewer/sessionSearch/usageStats仍由实际后端可用性决定，Windows原生组件承担私密文件ACL与句柄检查，缺失时配置初始化也可能拒绝。没有增加任意句柄/路径写入REST或绕过已有身份/同源检查。范围见WINDOWS.md。
 
@@ -636,6 +636,10 @@ Gateway 在响应或 timeout 时向订阅者发送 `{ "type": "gateway_ui_resolv
 新增 Pi event 支持时，优先保持透传，在 `pi-chat.js` 增加渲染分支。
 
 Web 的“简洁 / 正文 / 完整记录”是纯本地展示模式，不新增 REST/RPC，不影响模型输入或 Pi session。未保存偏好时默认简洁（每轮只显示最终回复，其余收进轮次摘要）；正文保留所有普通文字，连续 thinking/tool/bash 收为执行记录；工具结果按 toolCallId 填回调用详情，孤立结果仍可查看。失败工具不强制展开，最终失败/停止提示及待确认请求仍显示。`localStorage.pi.web.transcriptMode` 仅保存模式（`compact`/`reading`/`full`，其他页签修改后同步），展开状态不持久化。
+
+受管主会话的 assistant 消息可含 `pivaneRequestStats: { version: 1, outputTokens, requestMs, requests, excludedRequests }`，随 `message_end`、原生 JSONL 与 `get_messages` 透传。字段为当前回复段截至该消息的累计快照；`outputTokens` 是有效主模型请求的输出量（含已上报思考，不重复加 reasoning），`requestMs` 为 `before_provider_request` 至对应 `message_end` 的单调时钟耗时之和，`requests` 为有效请求数。仅纳入 stop/length/toolUse、有有效计时及非全零用量的请求；失败、停止、deferred、用量／钩子缺失计入 `excludedRequests`。同一消息内部传输重试保留最初计时，模型请求之间的自动重试等待不计入。新的原生 user 消息重置回复段，agent_settled／会话切换／树导航清空临时累计；自动恢复的 agent_start 不重置。压缩期间暂停计时，摘要请求及用量不进入统计，压缩完成或失败后沿用既有累计。
+
+前端只在最终回复操作区显示 `outputTokens * 1000 / requestMs`，不做实时 TPS 更新。`localStorage['pivane.reply.requestStats']` 保存当前浏览器显示偏好，只有字符串 `true` 开启，默认关闭；开关不控制服务端轻量记录。无有效输出、旧消息或非法元数据不显示，有排除请求时标明部分统计。无新增 HTTP/RPC、独立账本或历史补算；侧聊及子调用不聚合进该值。
 
 “本轮文件”的操作记录派生自 get_messages/打开快照：按原生 user 分段，关联成功 edit 的 toolCallId/path 与 details.patch/diff，以及成功 write 的 path/content；实时尾段在 agent_settled 后重读快照才显示。bash、失败或孤立工具结果不计入，原执行记录仍保留。各次编辑行数为累计而非净变化；写入不能无基线标为新建。刷新从仍可用的快照重建，不创建持久文件审计。用户选择“当前文件”时另调用受控 GET `/files/content`，与历史工具内容分开标注；详见 [FILE_VIEWER.md](FILE_VIEWER.md) 和 [NATIVE_CONTROLS.md](NATIVE_CONTROLS.md#本轮编辑记录)。
 

@@ -100,7 +100,8 @@ class MediaChatRequests {
         const entry = this.entries.get(key);
         if (!entry) return { key, attempts: [] };
         return { key, attempts: entry.attempts.map(({ ticket, remote, ...stored }) => {
-            const attempt = { ...stored, canResume: Boolean(remote && !stored.remoteTerminal && stored.status === 'uncertain') };
+            const status = stored.status === 'uncertain' && stored.remoteTerminal === true ? 'failed' : stored.status;
+            const attempt = { ...stored, status, canResume: Boolean(remote && !stored.remoteTerminal && status === 'uncertain') };
             if (attempt.status === 'queued') return { ...attempt, position: this.waiting.findIndex(item => item.attempt.id === attempt.id) + 1 || null };
             if (attempt.status !== 'running' || !ticket) return attempt;
             try { return { ...attempt, progress: this.lab.executionStatus(ticket).progress || null }; }
@@ -293,8 +294,8 @@ class MediaChatRequests {
         }, error => {
             let started = true;
             try { started = this.lab.executionStatus(ticket).status !== 'reviewed'; } catch {}
-            Object.assign(attempt, { status: started ? 'uncertain' : 'failed', error: String(error?.message || 'Generation failed').slice(0, 500),
-                ...(error?.remoteFinished ? { remoteTerminal: true } : {}),
+            Object.assign(attempt, { status: started && error?.remoteFinished !== true ? 'uncertain' : 'failed', error: String(error?.message || 'Generation failed').slice(0, 500),
+                ...(error?.remoteFinished === true ? { remoteTerminal: true } : {}),
                 ...(error?.taskId ? { taskId: String(error.taskId).slice(0, 500) } : {}) });
         }).finally(() => {
             attempt.finishedAt = new Date(this.now()).toISOString(); entry.updatedAt = attempt.finishedAt; delete attempt.ticket;

@@ -1043,7 +1043,9 @@ button.pi-action-pending:not(.icon-btn):not(.pi-message-action) .pi-spinner { ma
     color: var(--text-main);
 }
 .pi-message-action:disabled { opacity: 0.45; cursor: default; }
-.pi-message-actions { display: flex; align-items: center; gap: 2px; min-height: 32px; margin-top: 8px; }
+.pi-message-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; min-height: 32px; margin-top: 8px; }
+.pi-request-stats { margin-left: 8px; color: var(--text-muted); font-size: 0.69rem; font-variant-numeric: tabular-nums; line-height: 1.5; overflow-wrap: anywhere; }
+.pi-request-stats[hidden] { display: none; }
 .pi-reply-time {
     margin-left: 8px;
     color: var(--text-muted);

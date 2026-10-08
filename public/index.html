@@ -738,6 +738,8 @@
                                 <button type="button" data-transcript-mode="full" aria-pressed="false" aria-controls="pi-transcript-content"><!--i18n:s1352-->完整记录</button>
                             </div>
                             <p id="pi-transcript-mode-hint" class="pi-transcript-mode-hint" aria-live="polite"></p>
+                            <label class="settings-toggle-line" for="pi-show-request-stats"><strong id="pi-request-stats-label">显示回复请求平均速度</strong><input id="pi-show-request-stats" type="checkbox" aria-describedby="pi-request-stats-hint"></label>
+                            <p id="pi-request-stats-hint" class="settings-feature-description">回复结束后显示 Token/s；包含请求等待，不含工具执行与压缩摘要。默认隐藏，仅影响当前浏览器。</p>
                         </section>
                         <section id="settings-auxiliary-models" class="pi-auxiliary-models" hidden></section>
                         <div id="settings-session-titles" class="settings-feature-card" hidden>
@@ -1024,6 +1026,7 @@
     <script src="pi-model-speed.js"></script>
     <link rel="stylesheet" href="pi-workbench.css">
     <script src="pi-workbench.js"></script>
+    <script src="pi-request-stats.js"></script>
     <script src="pi-chat.js?v=subagent-runtime-1"></script>
 </body>
 </html>

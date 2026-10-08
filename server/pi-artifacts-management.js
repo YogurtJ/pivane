@@ -46,15 +46,16 @@ class ArtifactManagement {
         const allowed = ['requestId', 'action', 'files', 'name', 'favorite', 'collectionId', 'cwd', 'directory', 'confirmed'];
         if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(k => !allowed.includes(k))
             || typeof input.requestId !== 'string' || !/^[\w.-]{8,160}$/.test(input.requestId)
-            || !['save', 'favorite', 'rename', 'collection-add', 'collection-remove', 'project', 'trash', 'restore', 'hide', 'unhide', 'export', 'collection-create', 'collection-rename', 'collection-delete'].includes(input.action)) throw fail('成果操作参数无效');
+            || !['save', 'favorite', 'rename', 'collection-add', 'collection-remove', 'project', 'trash', 'restore', 'purge', 'hide', 'unhide', 'export', 'collection-create', 'collection-rename', 'collection-delete'].includes(input.action)) throw fail('成果操作参数无效');
         const collectionAction = input.action.startsWith('collection-') && !['collection-add', 'collection-remove'].includes(input.action);
         if (!collectionAction && (!Array.isArray(input.files) || !input.files.length || input.files.length > 50 || new Set(input.files.map(f => f?.key)).size !== input.files.length
             || input.files.some(f => !f || !ID.test(f.key) || Object.keys(f).some(k => !['key', 'revision'].includes(k)) || f.revision !== undefined && (!Number.isSafeInteger(f.revision) || f.revision < 1)))) throw fail('一次请选择 1–50 个文件');
-        if (['trash', 'export', 'collection-delete'].includes(input.action) && input.confirmed !== true) throw fail('请确认此批操作', 409, 'ARTIFACT_CONFIRM');
-        if (input.action === 'favorite' && typeof input.favorite !== 'boolean') throw fail('收藏参数无效');
+        if (['trash', 'purge', 'export', 'collection-delete'].includes(input.action) && input.confirmed !== true) throw fail('请确认此批操作', 409, 'ARTIFACT_CONFIRM');
+        if (input.action === 'purge' && input.files.some(f => !Number.isSafeInteger(f.revision))) throw fail('永久删除需要当前文件修订，请刷新', 409, 'ARTIFACT_CONFLICT');
+        if (input.action === 'favorite' && typeof input.favorite !== 'boolean') throw fail('星标参数无效');
         if (input.action === 'rename' && input.files.length !== 1) throw fail('重命名请一次选择一个文件');
         if (['rename', 'collection-create', 'collection-rename'].includes(input.action)) { const cleaned = input.action === 'rename' ? name(input.name) : text(input.name); if (cleaned !== input.name) throw fail('名称首尾不能有空格'); }
-        if (['collection-add', 'collection-remove', 'collection-rename', 'collection-delete'].includes(input.action) && !ID.test(input.collectionId)) throw fail('收藏夹标识无效');
+        if (['collection-add', 'collection-remove', 'collection-rename', 'collection-delete'].includes(input.action) && !ID.test(input.collectionId)) throw fail('合集标识无效');
         if (input.action === 'project' && input.cwd !== null && (typeof input.cwd !== 'string' || input.cwd.length > 4096)) throw fail('项目参数无效');
         if (input.action === 'export' && (typeof input.cwd !== 'string' || typeof input.directory !== 'string' || input.directory.length > 4096)) throw fail('保存目录参数无效');
         return { ...input };
@@ -79,7 +80,7 @@ class ArtifactManagement {
                 if (input.action === 'project' && input.cwd !== null) {
                     const cwd = this.service.store.resolveProject(input.cwd); this.service.qualify({ cwd }); input.cwd = cwd;
                 }
-                if (['collection-add', 'collection-remove'].includes(input.action) && !catalog.collections.some(c => c.id === input.collectionId)) throw fail('收藏夹不存在', 404, 'ARTIFACT_MISSING');
+                if (['collection-add', 'collection-remove'].includes(input.action) && !catalog.collections.some(c => c.id === input.collectionId)) throw fail('合集不存在', 404, 'ARTIFACT_MISSING');
                 if (input.action.startsWith('collection-') && !['collection-add', 'collection-remove'].includes(input.action)) result = await this.collection(catalog, input);
                 else {
                     const results = []; let bytes = 0;
@@ -87,6 +88,15 @@ class ArtifactManagement {
                         try {
                             this.service.check();
                             let entry = catalog.entries.find(e => e.id === file.key || e.sourceKey === file.key);
+                            if (input.action === 'purge') {
+                                if (!entry || file.key !== entry.id) throw fail('只能永久删除成果库回收站中的文件', 404, 'ARTIFACT_MISSING');
+                                if (entry.revision !== file.revision) throw fail('成果已变化，请刷新后核对', 409, 'ARTIFACT_CONFLICT');
+                                bytes += entry.size;
+                                if (bytes > 128 * 1024 ** 2) throw fail('本批删除校验超过 128 MiB，请分批操作', 413, 'ARTIFACT_LIMIT');
+                                await this.library.purge(catalog, entry);
+                                results.push({ key: file.key, ok: true, deleted: true }); continue;
+                            }
+                            if (entry?.deletingAt) throw fail('此成果删除结果待核对，请在回收站重新确认永久删除', 409, 'ARTIFACT_INCOMPLETE');
                             if (entry && file.revision !== undefined && entry.revision !== file.revision) throw fail('成果已变化，请刷新后重试', 409, 'ARTIFACT_CONFLICT');
                             if (entry && file.key !== entry.id) {
                                 // A source locator never gains saved-copy authority.
@@ -108,7 +118,7 @@ class ArtifactManagement {
                             case 'favorite': entry.favorite = input.favorite; break;
                             case 'rename': entry.name = input.name; break;
                             case 'collection-add':
-                                if (!catalog.collections.some(c => c.id === input.collectionId)) throw fail('收藏夹不存在', 404, 'ARTIFACT_MISSING');
+                                if (!catalog.collections.some(c => c.id === input.collectionId)) throw fail('合集不存在', 404, 'ARTIFACT_MISSING');
                                 if (!entry.collections.includes(input.collectionId)) entry.collections.push(input.collectionId); break;
                             case 'collection-remove': entry.collections = entry.collections.filter(id => id !== input.collectionId); break;
                             case 'project': entry.project = input.cwd ? { cwd: input.cwd, name: path.basename(input.cwd) || input.cwd } : null; break;
@@ -133,11 +143,11 @@ class ArtifactManagement {
     }
     async collection(catalog, input) {
         if (input.action === 'collection-create') {
-            if (catalog.collections.length >= 100) throw fail('最多创建 100 个收藏夹', 413, 'ARTIFACT_LIMIT');
+            if (catalog.collections.length >= 100) throw fail('最多创建 100 个合集', 413, 'ARTIFACT_LIMIT');
             catalog.collections.push({ id: hash('collection:' + input.requestId), name: input.name });
         } else {
             const collection = catalog.collections.find(c => c.id === input.collectionId);
-            if (!collection) throw fail('收藏夹不存在', 404, 'ARTIFACT_MISSING');
+            if (!collection) throw fail('合集不存在', 404, 'ARTIFACT_MISSING');
             if (input.action === 'collection-rename') collection.name = input.name;
             else {
                 catalog.collections = catalog.collections.filter(c => c !== collection);

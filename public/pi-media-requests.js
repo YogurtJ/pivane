@@ -85,7 +85,7 @@
         function parametersOf(card) { return slot(card.key).parameters || card.plan.parameters; }
         function statusLabel(attempt) {
             if (!attempt) return [t('待确认'), 'pending'];
-            return { queued: [t('排队中'), 'queued'], running: [t('生成中'), 'running'], done: [t('已完成'), 'done'], failed: [t('未生成'), 'failed'],
+            return { queued: [t('排队中'), 'queued'], running: [t('生成中'), 'running'], done: [t('已完成'), 'done'], failed: [attempt.remoteTerminal === true ? t('生成失败') : t('未生成'), 'failed'],
                 uncertain: [t('结果不确定'), 'uncertain'], cancelled: [t('已取消'), 'cancelled'] }[attempt.status] || [attempt.status, 'failed'];
         }
 
@@ -174,7 +174,9 @@
             } else if (attempt.status === 'cancelled') {
                 row.append(icon('fa-ban'), el('span', '', t('已取消排队，没有提交给服务')));
             } else if (attempt.status === 'failed') {
-                row.append(icon('fa-circle-exclamation'), el('span', '', t('没有开始生成，未提交给服务：{0}', t(attempt.error || ''))));
+                row.append(icon('fa-circle-exclamation'), el('span', '', attempt.remoteTerminal === true
+                    ? t('服务已确认生成失败或取消：{0}', t(attempt.error || ''))
+                    : t('没有开始生成，未提交给服务：{0}', t(attempt.error || ''))));
             } else if (attempt.canResume) {
                 row.append(icon('fa-triangle-exclamation'), el('span', '', t('已保留远端任务 {0}。可继续查询并取回结果，不会重新提交生成。', attempt.taskId || '')), el('small', '', t(attempt.error || '')));
             } else if (/timed out/i.test(attempt.error || '')) {
@@ -258,8 +260,8 @@
             if (canResume) button(t('继续查询原任务'), 'fa-magnifying-glass', 'lab-primary', () => resume(card)).disabled = Boolean(disabled);
             const again = attempts.length > 0;
             // Nothing was ever sent (cancelled or not started): a single confirmation is enough.
-            const charged = attempts.some(attempt => !['failed', 'cancelled'].includes(attempt.status));
-            const primaryText = !charged ? t('确认生成') : item.armed ? (last?.status === 'uncertain' ? t('确认再生成（上次可能已计费）') : t('确认再生成（会再次计费）')) : t('再生成一次');
+            const charged = attempts.some(attempt => attempt.remoteTerminal === true || !['failed', 'cancelled'].includes(attempt.status));
+            const primaryText = !charged ? t('确认生成') : item.armed ? (last?.status === 'uncertain' || last?.remoteTerminal === true ? t('确认再生成（上次可能已计费）') : t('确认再生成（会再次计费）')) : t('再生成一次');
             const primary = button(primaryText, item.armed || !charged ? 'fa-play' : 'fa-rotate-right', canResume ? 'lab-secondary' : 'lab-primary', () => {
                 if (charged && !item.armed) {
                     item.armed = true; paint(card);

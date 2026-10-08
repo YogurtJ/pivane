@@ -2135,7 +2135,7 @@ document.addEventListener('DOMContentLoaded', () => {
         dialog.innerHTML = `<div class="pi-request-heading"><h3 id="pi-session-delete-title">${translateUi('删除线程')}</h3><button type="button" class="icon-btn subtle" data-close aria-label="${translateUi('关闭')}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div><p class="pi-delete-name"></p><p class="pi-delete-description"></p><p class="pi-action-status" role="status" hidden></p><p class="pi-workflow-error" role="alert" hidden></p><div class="pi-request-actions"><button type="button" class="pi-request-cancel" data-close>${translateUi('取消')}</button><button type="button" class="primary-btn pi-delete-confirm">${translateUi('删除线程')}</button></div>`;
         dialog.querySelector('.pi-delete-name').textContent = getSessionTitle(session);
         const description = dialog.querySelector('.pi-delete-description');
-        description.textContent = translateUi('会先停止此线程的运行并取消待发送消息，再尝试移入回收站；回收站不可用时将永久删除。项目文件不受影响。') + ' ' + translateUi('已保存到成果库的文件不会删除；未入库的交付请先保存或收藏。');
+        description.textContent = translateUi('会先停止此线程的运行并取消待发送消息，再尝试移入回收站；回收站不可用时将永久删除。项目文件不受影响。') + ' ' + translateUi('已保存到成果库的文件不会删除；待保存的交付请先保存。');
         const submit = dialog.querySelector('.pi-delete-confirm');
         const status = dialog.querySelector('[role="status"]');
         const errorBox = dialog.querySelector('[role="alert"]');
@@ -2787,6 +2787,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     actions.appendChild(time);
                 }
             }
+            window.PiRequestStats?.append(actions, message);
             article.appendChild(actions);
         }
         return article;

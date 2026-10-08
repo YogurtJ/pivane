@@ -1,4 +1,5 @@
 import { registerModelSpeed } from './pi-model-speed-extension.mjs';
+import { registerRequestStats } from './pi-request-stats-extension.mjs';
 import { registerCron } from './pi-cron-runtime.js';
 import { registerTaskProgress } from './pi-task-progress-extension.ts';
 import { registerDeliverables } from './pi-deliverables-extension.ts';
@@ -38,6 +39,7 @@ function currentSystemPrompt(ctx: any, messages: any[]) {
 export default async function (pi: ExtensionAPI) {
     const cron = registerCron(pi);
     const modelSpeed = registerModelSpeed(pi, { agentDir: getAgentDir(), bridge: true });
+    registerRequestStats(pi);
     registerToolProvenance(pi);
     registerExtensionAssistant(pi);
     registerAgentThreads(pi);

@@ -9636,7 +9636,7 @@
         ['文件目录设置已达上限', 'Folder preferences storage limit reached'], ['文件目录参数无效', 'Invalid folder parameters'], ['目录路径无效', 'Invalid folder path'],
         ['请使用服务器上的绝对路径', 'Use an absolute path on the server'], ['正在保存关联目录，请稍后核对', 'Linked folders are being saved. Check again shortly'],
         ['维护期间暂不能保存关联目录', 'Linked folders cannot be saved during maintenance']);
-    rows.push(['已保存到成果库的文件不会删除；未入库的交付请先保存或收藏。', 'Files saved in the artifact library are preserved. Save or favorite unsaved deliveries first.']);
+    rows.push(['已保存到成果库的文件不会删除；待保存的交付请先保存。', 'Files saved in the artifact library are preserved. Save unsaved deliveries first.']);
     rows.push(['[参考素材]', '[Reference media]'],
         ['继续查询原任务', 'Continue querying original task'],
         ['已保留远端任务 {0}。可继续查询并取回结果，不会重新提交生成。', 'Remote task {0} is saved. Continue querying to retrieve its result without submitting another generation.']);
@@ -9645,6 +9645,18 @@
         ['暂无可用助手', 'No available assistants'],
         ['分类已删除，目录和文件未更改', 'Category deleted; folder and files unchanged'],
         ['分类已删除，请刷新列表查看', 'Category deleted. Refresh the list to see the change']
+    );
+    rows.push(
+        ['显示回复请求平均速度', 'Show average reply request speed'],
+        ['回复结束后显示 Token/s；包含请求等待，不含工具执行与压缩摘要。默认隐藏，仅影响当前浏览器。', 'Show tokens/s after a reply finishes, including request waiting but excluding tools and compaction summaries. Hidden by default; applies to this browser.'],
+        ['请求平均 ≈ {0} tok/s', 'Request average ≈ {0} tok/s'],
+        ['（部分）', ' (partial)'],
+        ['{0} 次有效请求 · {1} 输出 Token · {2} 秒。含首次输出等待、思考、网络及请求内重试；不含工具执行、压缩摘要及请求之间的等待。', '{0} valid requests · {1} output tokens · {2}s. Includes first-output waiting, reasoning, network and retries within a request; excludes tools, compaction summaries and waits between requests.'],
+        ['已排除 {0} 次失败、用量缺失或计时不可用的请求。', 'Excluded {0} failed requests or requests with unavailable usage or timing.']
+    );
+    rows.push(
+        ['生成失败', 'Generation failed'],
+        ['服务已确认生成失败或取消：{0}', 'The service confirmed generation failure or cancellation: {0}']
     );
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

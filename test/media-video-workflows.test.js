@@ -101,6 +101,32 @@ test('frames and ordered video references submit once; timed-out/restarted cards
     assert.equal(await f.lab.references.resolve(next.parameters.clips[0], 'video'), 'data:video/mp4;base64,' + mp4.toString('base64'));
 });
 
+test('confirmed provider failure is failed; legacy terminal receipts project failure without rewriting or replay', async t => {
+    let posts = 0, gets = 0, ticket;
+    const f = fixture(t, async (_url, request) => {
+        if (request.method === 'POST') { posts++; return json({ id: 'terminal-task' }); }
+        gets++; return json({ status: 'failed' });
+    });
+    const execute = f.lab.execute.bind(f.lab);
+    t.mock.method(f.lab, 'execute', (...args) => { ticket = args[0]; return execute(...args); });
+    const plan = await f.lab.plan({ modelId: f.id, parameters: { prompt: 'A video' } });
+    await f.chat.run({ key: plan.id, modelId: f.id, parameters: plan.parameters, confirmed: true }); await f.chat.execution;
+    const state = f.chat.publicState(plan.id).attempts[0];
+    assert.equal(state.status, 'failed'); assert.equal(state.remoteTerminal, true); assert.equal(state.canResume, false);
+    assert.equal(f.lab.executionStatus(ticket).status, 'failed');
+    await assert.rejects(f.lab.execute(ticket), /Previous submission failed or is uncertain/);
+    await assert.rejects(f.chat.resume({ key: plan.id, confirmed: true }), /No resumable/);
+    const disk = JSON.parse(fs.readFileSync(f.file)); disk[0].attempts[0].status = 'uncertain';
+    fs.writeFileSync(f.file, JSON.stringify(disk)); const before = fs.readFileSync(f.file, 'utf8');
+    const restored = new MediaChatRequests({ lab: f.lab, file: f.file });
+    const legacy = restored.publicState(plan.id).attempts[0];
+    assert.equal(legacy.status, 'failed'); assert.equal(legacy.id, state.id); assert.equal(legacy.canResume, false);
+    assert.equal(restored.results([plan.id]).requests[0].attempts[0].status, 'failed');
+    assert.equal(fs.readFileSync(f.file, 'utf8'), before, 'the existing journal remains intact');
+    await assert.rejects(restored.resume({ key: plan.id, confirmed: true }), /No resumable/);
+    assert.equal(posts, 1); assert.equal(gets, 1);
+});
+
 test('recovery rejects connection changes and terminal provider failures; concurrent resume cannot duplicate a query', async t => {
     let posts = 0, gets = 0, failPoll = true, terminal = false, release;
     const f = fixture(t, async (_url, request) => {
@@ -122,6 +148,7 @@ test('recovery rejects connection changes and terminal provider failures; concur
     await pending;
     while (!release) await new Promise(resolve => setImmediate(resolve));
     terminal = true; release(); await f.chat.execution;
+    assert.equal(f.chat.publicState(plan.id).attempts[0].status, 'failed');
     assert.equal(f.chat.publicState(plan.id).attempts[0].canResume, false);
     await assert.rejects(f.chat.resume({ key: plan.id, confirmed: true }), /No resumable/);
     assert.equal(posts, 1);

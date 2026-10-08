@@ -49,6 +49,11 @@ class ArtifactLibrary {
                 || e.project && (typeof e.project.cwd !== 'string' || !path.isAbsolute(e.project.cwd) || typeof e.project.name !== 'string')
                 || e.origin && (typeof e.origin.cwd !== 'string' || !path.isAbsolute(e.origin.cwd) || typeof e.origin.sessionId !== 'string' || !ID.test(e.origin.deliveryId) || !ID.test(e.origin.revision) || !Number.isInteger(e.origin.index))
                 || !Array.isArray(e.collections) || e.collections.length > 100 || e.collections.some(c => !data.collections.some(item => item.id === c)) || typeof e.favorite !== 'boolean')) throw fail('成果目录无效，请保留原文件并联系管理员', 409, 'ARTIFACT_STORAGE');
+        data.deletedSources ||= []; data.deletedVersions ||= {};
+        if (!data.deletedVersions || typeof data.deletedVersions !== 'object' || Array.isArray(data.deletedVersions) || Object.keys(data.deletedVersions).length > MAX_ENTRIES
+            || Object.entries(data.deletedVersions).some(([key, id]) => !ID.test(key) || !ID.test(id))) throw fail('成果删除版本记录无效', 409, 'ARTIFACT_STORAGE');
+        if (!Array.isArray(data.deletedSources) || data.deletedSources.length > MAX_ENTRIES || data.deletedSources.some(k => !ID.test(k))
+            || data.entries.some(e => e.deletingAt && (!e.trashedAt || !Number.isFinite(Date.parse(e.deletingAt))))) throw fail('成果删除记录无效', 409, 'ARTIFACT_STORAGE');
         return data;
     }
     async operationPath(requestId, create = false) {
@@ -81,7 +86,9 @@ class ArtifactLibrary {
     }
     async save(catalog, sourceKey, bytes, metadata) {
         if (!ID.test(sourceKey) || !Buffer.isBuffer(bytes) || bytes.length > 64 * 1024 ** 2) throw fail('成果保存参数无效');
-        const id = hash('saved:' + sourceKey), old = catalog.entries.find(e => e.id === id);
+        // Preserve deterministic exclusive-create protection for uncertain saves;
+        // a confirmed deletion advances the generation instead of reviving old IDs.
+        const id = hash('saved:' + sourceKey + (catalog.deletedVersions?.[sourceKey] ? ':' + catalog.deletedVersions[sourceKey] : '')), old = catalog.entries.find(e => e.sourceKey === sourceKey);
         if (old) { if (old.sha256 !== hash(bytes)) throw fail('原成果版本已变化', 409, 'ARTIFACT_SOURCE'); return old; }
         if (catalog.entries.length >= MAX_ENTRIES || catalog.entries.reduce((n, e) => n + e.size, 0) + bytes.length > MAX_BYTES) throw fail('成果库已达保存额度（4 GiB／10000 文件）', 413, 'ARTIFACT_LIMIT');
         const root = await this.root(true), file = path.join(root, id + '.bin');
@@ -101,7 +108,51 @@ class ArtifactLibrary {
         catch (error) { if (error.code === 'EEXIST') throw fail('此成果曾有未确认的保存，请核对原请求；未重放', 409, 'ARTIFACT_INCOMPLETE'); throw error; }
         const entry = { ...metadata, id, sourceKey, name: name(metadata.name), originalName: name(metadata.name), sha256: hash(bytes), size: bytes.length,
             revision: 1, savedAt: new Date().toISOString(), favorite: false, collections: [], trashedAt: null, hiddenAt: null };
+        catalog.deletedSources = (catalog.deletedSources || []).filter(k => k !== sourceKey);
         catalog.entries.push(entry); await this.commit(catalog); return entry;
+    }
+    async purge(catalog, entry) {
+        if (!entry.trashedAt) throw fail('请先移入回收站，再永久删除', 409, 'ARTIFACT_CONFIRM');
+        const deleted = catalog.deletedSources || (catalog.deletedSources = []), versions = catalog.deletedVersions || (catalog.deletedVersions = {});
+        if ((!deleted.includes(entry.sourceKey) && deleted.length >= MAX_ENTRIES) || (!versions[entry.sourceKey] && Object.keys(versions).length >= MAX_ENTRIES)) throw fail('删除记录额度已满，请联系管理员', 413, 'ARTIFACT_LIMIT');
+        const root = await this.root(), file = path.join(root, entry.id + '.bin'), parentFd = io.openReadSync(root);
+        let fd;
+        try {
+            const parentIdentity = io.identity(parentFd), parent = fs.fstatSync(parentFd, { bigint: true });
+            const checkParent = () => {
+                const named = fs.lstatSync(root, { bigint: true });
+                if (descriptorPathSync(parentFd) !== root || fs.realpathSync.native(root) !== root || !named.isDirectory()
+                    || !io.sameIdentityAtPath(root, parentIdentity) || ['dev', 'ino', 'mode'].some(k => parent[k] !== named[k])) throw fail('成果目录身份已变化', 409, 'ARTIFACT_STORAGE');
+            };
+            checkParent();
+            try { fd = io.openReadSync(file); }
+            catch (error) { if (error.code !== 'ENOENT' || !entry.deletingAt) throw error; }
+            let checkFile;
+            if (fd !== undefined) {
+                const before = fs.fstatSync(fd, { bigint: true }), identity = io.identity(fd);
+                checkFile = () => {
+                    const after = fs.fstatSync(fd, { bigint: true }), named = fs.lstatSync(file, { bigint: true });
+                    if (!before.isFile() || !named.isFile() || before.size !== BigInt(entry.size) || descriptorPathSync(fd) !== file
+                        || !io.sameIdentityAtPath(file, identity) || ['dev', 'ino', 'mode', 'size', 'mtimeNs', 'ctimeNs'].some(k => before[k] !== after[k] || after[k] !== named[k])) throw fail('成果文件身份或字节已变化，未删除', 409, 'ARTIFACT_STORAGE');
+                };
+                checkFile();
+                if (hashFileSafe(file, 64 * 1024 ** 2).sha256 !== entry.sha256) throw fail('成果字节已变化，未删除', 409, 'ARTIFACT_STORAGE');
+                checkFile();
+            }
+            // Durable intent denies restoration after a crash between unlink and
+            // catalog commit. Only a new explicit confirmed request may reconcile.
+            entry.deletingAt ||= new Date().toISOString(); await this.commit(catalog);
+            checkParent();
+            if (fd !== undefined) { checkFile(); fs.unlinkSync(file); }
+            else { try { fs.lstatSync(file); throw fail('成果文件重新出现，请核对后再删除', 409, 'ARTIFACT_STORAGE'); } catch (error) { if (error.code !== 'ENOENT') throw error; } }
+            checkParent(); if (process.platform !== 'win32') fs.fsyncSync(parentFd);
+            const entries = catalog.entries, previousDeleted = [...deleted], previousVersions = { ...versions };
+            catalog.entries = entries.filter(e => e.id !== entry.id);
+            if (!deleted.includes(entry.sourceKey)) deleted.push(entry.sourceKey);
+            versions[entry.sourceKey] = entry.id;
+            try { await this.commit(catalog); }
+            catch (error) { catalog.entries = entries; catalog.deletedSources = previousDeleted; catalog.deletedVersions = previousVersions; throw error; }
+        } finally { if (fd !== undefined) fs.closeSync(fd); fs.closeSync(parentFd); }
     }
     async content(entry, cover = false) {
         const root = await this.root(), file = path.join(root, entry.id + '.bin');
@@ -117,7 +168,7 @@ class ArtifactLibrary {
         return { key: entry.id, source: 'library', sourceKey: entry.sourceKey, title: entry.name, createdAt: entry.createdAt, savedAt: entry.savedAt,
             project: visibleProject && entry.project ? { key: hash(entry.project.cwd), name: entry.project.name } : null,
             origin: entry.origin?.sessionId ? { sessionId: entry.origin.sessionId } : null, saved: true, independent: true,
-            favorite: entry.favorite, collections: entry.collections, trashedAt: entry.trashedAt, hiddenAt: entry.hiddenAt, revision: entry.revision,
+            favorite: entry.favorite, collections: entry.collections, trashedAt: entry.trashedAt, hiddenAt: entry.hiddenAt, deletionPending: Boolean(entry.deletingAt), revision: entry.revision,
             ...(entry.model ? { model: entry.model } : {}), types: [entry.kind], files: [{ key: entry.id, name: entry.name, originalName: entry.originalName, kind: entry.kind, size: entry.size }] };
     }
     async list(input = {}, eligibleProject = () => true) {
@@ -129,8 +180,8 @@ class ArtifactLibrary {
         const entries = [...catalog.entries].sort((a, b) => b.savedAt.localeCompare(a.savedAt));
         return { items: entries.slice(offset, offset + 200).map(e => this.item(e, !e.project || eligibleProject(e.project.cwd))), collections: catalog.collections,
             projects: [...new Map(catalog.entries.filter(e => e.project && eligibleProject(e.project.cwd)).map(e => [e.project.cwd, { key: hash(e.project.cwd), ...e.project }])).values()],
-            savedSources: catalog.entries.map(e => e.sourceKey), revision: catalog.revision, nextOffset: offset + 200 < entries.length ? offset + 200 : null, total: entries.length,
-            bytes: entries.reduce((n, e) => n + e.size, 0), limitBytes: MAX_BYTES };
+            savedSources: [...new Set([...catalog.entries.map(e => e.sourceKey), ...(catalog.deletedSources || [])])], revision: catalog.revision, nextOffset: offset + 200 < entries.length ? offset + 200 : null, total: entries.length,
+            bytes: entries.reduce((n, e) => n + e.size, 0), trashBytes: entries.filter(e => e.trashedAt).reduce((n, e) => n + e.size, 0), limitBytes: MAX_BYTES };
     }
 }
 module.exports = { ArtifactLibrary, artifactName: name, artifactText: text, artifactFail: fail, artifactHash: hash };

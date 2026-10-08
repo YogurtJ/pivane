@@ -96,6 +96,8 @@ POSIX 私密权限和目录刷盘、Windows 受保护 DACL 和写透替换分别
 
 模型速度由 `pi-model-speed` 投影精确渠道能力和 models.json 模型覆盖，`pi-model-speed-extension` 在原生 branch 恢复 custom entry、通过公开 provider hooks 添加 service_tier 和记录实际档位；`pi-model-speed-runtime` 从 token/原生阶梯价计算一次估算费用，并为独立辅助调用使用模型默认值。`pi-model-speed-control` 复用唯一 worker 的空闲独占槽和私有命令，未知/迟到回复截获，超时关闭该预先空闲 worker 后重连，不另存会话选择或建立轮询。主侧 UI 只消费 runtimeId/revision 和模型身份投影，未知能力隐藏控件。
 
+`pi-request-stats-extension` 仅注册主会话请求开始、消息结束及生命周期边界，以单调时钟和常数大小累计器记录有效输出 Token／请求耗时，快照随原生 assistant 消息保存。压缩暂停计时但保留本回复段累计；摘要、工具和子调用不进入分子或分母；重试缺失项标为部分。无逐 Token 钩子、定时器、历史扫描、独立持久层或额外 worker 工作类型。`pi-request-stats.js` 在最终回复操作区按浏览器显示偏好呈现平均值，默认隐藏，刷新沿用原生快照。
+
 ## 浏览器
 
 普通聊天 bootstrap 并行发起全局发现与保存项目的 resolve/activity 验证；只有明确非隐藏时才快速恢复，否则等待权威列表。被动选择禁止取消隐藏；项目选择、导航及列表失效代次过滤迟到结果。同 cwd 的在途列表 Promise 合并，其他展开项目在后台加载；不新增持久正文缓存。
@@ -132,7 +134,7 @@ POSIX 私密权限和目录刷盘、Windows 受保护 DACL 和写透替换分别
 
 ## 成果中心
 
-成果中心同时展示独立库与待保存来源。`pi-artifacts-library` 保存不可变原字节和原子组织目录，`pi-artifacts-management` 拥有持久请求预占、修订、收藏夹、归类、回收站及不覆盖导出。保存/收藏从当时合法来源取得完整字节后建立独立ID；之后会话删除不删除成果，来源仅用于追溯。没有第二份聊天正文或媒体历史，不自动迁移旧数据。`pi-artifacts-discovery` 是预算受限、可终止的只读发现 Worker；候选缓存不是授权，`pi-artifacts` 用验证字节构造原生内存 SessionManager 并复用 DeliverableService 的前后分支、清单修订及迁移证明，媒体则重验历史与限定文件身份。来源资格在最终响应前再次核对；读取操作参与维护空闲、迁移互斥与停机等待。浏览器详情独立于右栏文件阅读器，静态 HTML 无脚本权限，离页取消读取并释放资源。范围、预算及未支持项见 [成果中心](../ARTIFACTS.md)。
+成果中心同时展示独立库与待保存来源。`pi-artifacts-library` 保存不可变原字节和原子组织目录，`pi-artifacts-management` 拥有持久请求预占、修订、收藏夹、归类、回收站及不覆盖导出。保存/收藏从当时合法来源取得完整字节后建立独立ID；之后会话删除不删除成果，来源仅用于追溯。永久删除限回收站库 ID 和当前修订，删除前持久意图、校验描述符与完整身份／哈希，再 unlink 和提交目录；失败不自动重放，保留来源哈希抑制发现重现，再保存生成新 ID。没有第二份聊天正文或媒体历史，不自动迁移旧数据。`pi-artifacts-discovery` 是预算受限、可终止的只读发现 Worker；候选缓存不是授权，`pi-artifacts` 用验证字节构造原生内存 SessionManager 并复用 DeliverableService 的前后分支、清单修订及迁移证明，媒体则重验历史与限定文件身份。来源资格在最终响应前再次核对；读取操作参与维护空闲、迁移互斥与停机等待。浏览器详情独立于右栏文件阅读器，静态 HTML 无脚本权限，离页取消读取并释放资源。范围、预算及未支持项见 [成果中心](../ARTIFACTS.md)。
 
 ## 媒体
 

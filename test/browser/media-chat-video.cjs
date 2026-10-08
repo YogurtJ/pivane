@@ -28,7 +28,7 @@ const mp4 = Buffer.from('AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAPBbW9vdgA
         saveExternal: input => saveExternalMedia(root, input),
         providerService: { withExecution: async (_snapshot, operation) => operation({ provider, model, key: '' }), requestPreview: () => ({}) } });
     lab.models = async () => [{ ...model, id: 'media:fixture:video', adapter: 'http-provider', configured: true }];
-    let posts = 0, failQuery = true, plan;
+    let posts = 0, failQuery = true, terminalFailure = false, plan;
     lab.httpExecutor = new MediaHttpExecutor({ fetch: async (url, request) => {
         if (request.method === 'POST') {
             posts++; const body = JSON.parse(request.body);
@@ -37,6 +37,7 @@ const mp4 = Buffer.from('AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAPBbW9vdgA
             return new Response(JSON.stringify({ id: 'job-' + posts }));
         }
         if (url.includes('/jobs/')) {
+            if (terminalFailure) return new Response(JSON.stringify({ state: 'failed' }));
             if (failQuery) throw Error('Synthetic connection interruption');
             return new Response(JSON.stringify({ state: 'done', url: 'http://mock.invalid/api/out.mp4' }));
         }
@@ -60,7 +61,7 @@ document.querySelector('#chat').append(cards.render(message));
             const image = lab.references.put('data:image/png;base64,' + png).ref;
             const video = lab.references.put('data:video/mp4;base64,' + mp4.toString('base64')).ref;
             plan = await lab.plan({ modelId: 'media:fixture:video', summary: '从首帧过渡到尾帧 · 合成测试', parameters: { prompt: '镜头缓慢推进', first: image, last: image, clips: [video] } });
-            failQuery = true;
+            failQuery = true; terminalFailure = false;
             const context = await browser.newContext({ viewport: { width, height: 900 }, isMobile: width < 500 });
             const page = await context.newPage(), errors = []; page.on('pageerror', error => errors.push(error.message));
             await page.goto('http://127.0.0.1:' + server.address().port, { waitUntil: 'networkidle' });
@@ -89,7 +90,29 @@ document.querySelector('#chat').append(cards.render(message));
             assert.ok(metrics.scroll <= width, JSON.stringify(metrics)); for (const row of metrics.rows) assert.ok(row.scroll <= row.width + 1, JSON.stringify(metrics));
             assert.deepEqual(errors, []);
             if (process.env.PI_MEDIA_SCREENSHOT_DIR) { fs.mkdirSync(process.env.PI_MEDIA_SCREENSHOT_DIR, { recursive: true }); await page.screenshot({ path: path.join(process.env.PI_MEDIA_SCREENSHOT_DIR, 'chat-video-' + width + '.png') }); }
-            await context.close(); console.log(JSON.stringify({ width, passed: true, submissions: posts, resumedWithoutResubmit: true }));
+            terminalFailure = true;
+            plan = await lab.plan({ modelId: 'media:fixture:video', summary: '服务明确失败 · 合成测试', parameters: { prompt: '终态测试', first: image, last: image, clips: [video] } });
+            await page.reload({ waitUntil: 'networkidle' });
+            await page.getByRole('button', { name: '确认生成', exact: true }).click();
+            await page.locator('.pi-media-request[data-state=failed]').waitFor();
+            assert.equal(posts, before + 2);
+            assert.equal(await page.getByRole('button', { name: '继续查询原任务', exact: true }).count(), 0);
+            assert.doesNotMatch(await page.locator('.pi-media-request').textContent(), /结果不确定|未提交给服务|没有开始生成/);
+            assert.match(await page.locator('.pi-media-request').textContent(), /服务已确认生成失败或取消/);
+            const stored = JSON.parse(fs.readFileSync(root + '/chat.json'));
+            stored.find(row => row.key === plan.id).attempts[0].status = 'uncertain';
+            fs.writeFileSync(root + '/chat.json', JSON.stringify(stored));
+            lab.chatRequests = new MediaChatRequests({ lab, file: root + '/chat.json' });
+            await page.reload({ waitUntil: 'networkidle' });
+            await page.locator('.pi-media-request[data-state=failed]').waitFor();
+            assert.equal(posts, before + 2, 'legacy terminal receipt must not resubmit');
+            assert.deepEqual(errors, []);
+            assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+            if (process.env.PI_MEDIA_SCREENSHOT_DIR) await page.screenshot({ path: path.join(process.env.PI_MEDIA_SCREENSHOT_DIR, 'chat-video-failed-' + width + '.png') });
+            await page.getByRole('button', { name: '再生成一次', exact: true }).click();
+            await page.getByRole('button', { name: '确认再生成（上次可能已计费）', exact: true }).waitFor();
+            assert.equal(posts, before + 2, 'a confirmed provider failure still needs an explicit new-generation confirmation');
+            await context.close(); console.log(JSON.stringify({ width, passed: true, submissions: posts, resumedWithoutResubmit: true, terminalFailure: true, legacyTerminalFailure: true }));
         }
     } finally {
         await browser?.close(); await lab.chatRequests.execution; server.closeAllConnections(); await new Promise(resolve => server.close(resolve));

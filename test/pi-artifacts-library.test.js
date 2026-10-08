@@ -107,3 +107,61 @@ test('batch is reserved before await, canceled clients do not release write owne
  assert.deepEqual(await service.management.result(input.requestId), result);
  await assert.rejects(run('rename', [{ key: saved.key }], { name: '../escape.md' }), { code: 'ARTIFACT_INPUT' });
 });
+test('permanent deletion requires trash, confirmation, exact saved ID and revision; preserves originals and never revives an old ID', async () => {
+ const bytes = Buffer.from('fixture permanent copy'), sourceKey = 'c'.repeat(64);
+ const save = () => service.library.mutation(c => service.library.save(c, sourceKey, bytes, { name: 'purge.txt', kind: 'document' }));
+ const entry = await save(), file = (await service.management.location(entry.id)).storagePath;
+ await assert.rejects(run('purge', [{ key: entry.id, revision: entry.revision }]), { code: 'ARTIFACT_CONFIRM' });
+ await assert.rejects(run('purge', [{ key: entry.id }], { confirmed: true }), { code: 'ARTIFACT_CONFLICT' });
+ assert.equal((await run('purge', [{ key: entry.id, revision: entry.revision }], { confirmed: true })).results[0].code, 'ARTIFACT_CONFIRM');
+ const trash = (await run('trash', [{ key: entry.id }], { confirmed: true })).results[0].item;
+ assert.equal((await run('purge', [{ key: sourceKey, revision: trash.revision }], { confirmed: true })).results[0].code, 'ARTIFACT_MISSING');
+ assert.equal((await run('purge', [{ key: entry.id, revision: entry.revision }], { confirmed: true })).results[0].code, 'ARTIFACT_CONFLICT');
+ const before = await service.library.list(), input = { requestId: 'permanent-deletion-once', action: 'purge', files: [{ key: entry.id, revision: trash.revision }], confirmed: true };
+ const result = await service.management.batch(input); assert.deepEqual(result.results, [{ key: entry.id, ok: true, deleted: true }]);
+ assert.equal(fs.existsSync(file), false); const after = await service.library.list(); assert.equal(after.bytes, before.bytes - bytes.length); assert.ok(after.savedSources.includes(sourceKey));
+ assert.ok(!after.items.some(i => i.key === entry.id)); assert.ok(fs.existsSync(path.join(cwd, 'kept.md')));
+ assert.deepEqual(await service.management.batch(input), result, 'same request returns receipt, not another delete');
+ const again = await save(); assert.notEqual(again.id, entry.id, 'fresh save cannot revive stale library ID');
+ assert.deepEqual(await service.management.batch(input), result); assert.equal((await service.library.content(again)).bytes.toString(), bytes.toString());
+ const againTrash = (await run('trash', [{ key: again.id }], { confirmed: true })).results[0].item;
+ assert.equal((await run('purge', [{ key: again.id, revision: againTrash.revision }], { confirmed: true })).results[0].deleted, true);
+ const third = await save(); assert.ok(![entry.id, again.id].includes(third.id));
+ const uncertainKey = '7'.repeat(64), uncertainID = require('../server/pi-artifacts-library').artifactHash('saved:' + uncertainKey), uncertainPath = path.join(await service.library.root(), uncertainID + '.bin');
+ fs.writeFileSync(uncertainPath, 'reserved partial write');
+ await assert.rejects(service.library.mutation(c => service.library.save(c, uncertainKey, bytes, { name: 'uncertain.txt', kind: 'document' })), { code: 'ARTIFACT_INCOMPLETE' });
+ assert.equal(fs.readFileSync(uncertainPath, 'utf8'), 'reserved partial write');
+});
+test('purge rejects links and tampered bytes, and reports mixed results without touching unrelated files', async () => {
+ const make = sourceKey => service.library.mutation(c => service.library.save(c, sourceKey, Buffer.from('verified'), { name: 'copy.txt', kind: 'document' }));
+ const a = await make('d'.repeat(64)), b = await make('e'.repeat(64));
+ const trashed = (await run('trash', [{ key: a.id }, { key: b.id }], { confirmed: true })).results.map(r => r.item);
+ const file = (await service.management.location(a.id)).storagePath, raw = fs.readFileSync(file), target = path.join(cwd, 'kept.md');
+ fs.unlinkSync(file); fs.symlinkSync(target, file);
+ assert.equal((await run('purge', [{ key: a.id, revision: trashed[0].revision }], { confirmed: true })).results[0].ok, false); assert.ok(fs.existsSync(target)); fs.unlinkSync(file); fs.writeFileSync(file, 'tampered');
+ const mixed = await run('purge', trashed.map(i => ({ key: i.key, revision: i.revision })), { confirmed: true });
+ assert.equal(mixed.results[0].ok, false); assert.equal(mixed.results[1].deleted, true); assert.ok(fs.existsSync(file)); fs.writeFileSync(file, raw);
+});
+test('purge rechecks descriptor identity after durable intent and refuses replacement at unlink boundary', async () => {
+ const entry = await service.library.mutation(c => service.library.save(c, '8'.repeat(64), Buffer.from('boundary'), { name: 'boundary.txt', kind: 'document' }));
+ const item = (await run('trash', [{ key: entry.id }], { confirmed: true })).results[0].item, file = (await service.management.location(entry.id)).storagePath;
+ const target = path.join(cwd, 'kept.md'), before = fs.readFileSync(target), commit = service.library.commit; let swapped = false;
+ service.library.commit = async function(catalog) { await commit.call(this, catalog); if (!swapped && catalog.entries.find(e => e.id === entry.id)?.deletingAt) { swapped = true; fs.renameSync(file, file + '.held'); fs.symlinkSync(target, file); } };
+ try { const result = await run('purge', [{ key: entry.id, revision: item.revision }], { confirmed: true }); assert.equal(result.results[0].ok, false); assert.deepEqual(fs.readFileSync(target), before); assert.ok(fs.lstatSync(file).isSymbolicLink()); }
+ finally { service.library.commit = commit; if (swapped) { fs.unlinkSync(file); fs.renameSync(file + '.held', file); } }
+ assert.equal((await run('restore', [{ key: entry.id }])).results[0].code, 'ARTIFACT_INCOMPLETE');
+ assert.equal((await run('purge', [{ key: entry.id, revision: item.revision }], { confirmed: true })).results[0].deleted, true);
+});
+test('interrupted purge never restores missing bytes and requires a new confirmed request to reconcile', async () => {
+ const entry = await service.library.mutation(c => service.library.save(c, '9'.repeat(64), Buffer.from('recover intent'), { name: 'intent.txt', kind: 'document' }));
+ const item = (await run('trash', [{ key: entry.id }], { confirmed: true })).results[0].item, file = (await service.management.location(entry.id)).storagePath;
+ const commit = service.library.commit; let failed = false;
+ service.library.commit = async function(catalog) { if (!failed && !catalog.entries.some(e => e.id === entry.id)) { failed = true; throw Error('injected catalog failure after unlink'); } return commit.call(this, catalog); };
+ const input = { requestId: 'purge-crash-fixture', action: 'purge', files: [{ key: entry.id, revision: item.revision }], confirmed: true };
+ try { const r = await service.management.batch(input); assert.equal(r.results[0].ok, false); } finally { service.library.commit = commit; }
+ assert.equal(fs.existsSync(file), false); assert.equal((await service.management.batch(input)).results[0].ok, false, 'failed request is not replayed');
+ // Recreate exact durable intent to model process death before the operation's final catalog commit.
+ await service.library.mutation(async catalog => { if (!catalog.entries.some(e => e.id === entry.id)) catalog.entries.push({ ...entry, revision: item.revision, trashedAt: new Date().toISOString(), deletingAt: new Date().toISOString() }); await service.library.commit(catalog); });
+ assert.equal((await run('restore', [{ key: entry.id }])).results[0].code, 'ARTIFACT_INCOMPLETE');
+ assert.equal((await run('purge', [{ key: entry.id, revision: item.revision }], { confirmed: true })).results[0].deleted, true);
+});

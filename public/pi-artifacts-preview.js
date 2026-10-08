@@ -22,17 +22,17 @@
             this.files = node('div', null, 'artifacts-detail-files'); this.files.setAttribute('aria-label', tr('成果文件', 'Artifact files'));
             this.actions = node('div', null, 'artifacts-detail-actions');
             this.toggle = button(tr('查看源码', 'View source'), () => { this.source = !this.source; this.render(); });
-            this.download = button(tr('下载原文件', 'Download original'), () => { void this.downloadFile(); });
+            this.download = button(tr('下载到设备', 'Download to device'), () => { void this.downloadFile(); });
             this.origin = button(tr('返回来源会话', 'Open source conversation'), () => { void this.openOrigin(); });
-            this.actions.append(this.toggle, this.download, this.origin);
+            this.actions.append(this.download);
             this.managementButtons = [];
             this.managementMenu = node('details', null, 'artifacts-detail-management');
-            this.managementMenu.append(node('summary', tr('整理与管理', 'Organize and manage')));
-            const managementActions = node('div', null, 'artifacts-management-actions'); this.managementMenu.append(managementActions); this.actions.append(this.managementMenu);
-            for (const [action, label] of [['save', tr('保存到成果库', 'Save to library')], ['favorite', tr('收藏／取消收藏', 'Toggle favorite')], ['rename', tr('重命名', 'Rename')], ['collection-add', tr('加入收藏夹', 'Add to collection')], ['project', tr('关联项目', 'Link project')], ['location', tr('位置与来源', 'Location and origin')], ['export', tr('保存到文件夹', 'Save to folder')], ['trash', tr('移入回收站', 'Trash')], ['restore', tr('恢复', 'Restore')]]) {
+            this.managementMenu.append(node('summary', tr('更多操作', 'More actions')));
+            const managementActions = node('div', null, 'artifacts-management-actions'); managementActions.append(this.origin, this.toggle); this.managementMenu.append(managementActions); this.actions.append(this.managementMenu);
+            for (const [action, label] of [['save', tr('保存', 'Save')], ['favorite', tr('加星标', 'Star')], ['rename', tr('重命名', 'Rename')], ['collection-add', tr('加入合集', 'Add to collection')], ['project', tr('设置项目标签…', 'Set project label…')], ['location', tr('文件信息', 'File information')], ['export', tr('导出到服务器…', 'Export to server…')], ['trash', tr('移入回收站', 'Move to trash')], ['restore', tr('恢复', 'Restore')], ['purge', tr('永久删除', 'Delete permanently')]]) {
                 const b = button(label, async () => { if (!this.manage) return; const file = this.file; this.managementButtons.forEach(button => { button.disabled = true; }); try { await this.manage(action, file); } finally { this.managementButtons.forEach(button => { button.disabled = false; }); } });
                 b.dataset.action = action; this.managementButtons.push(b);
-                if (['save', 'favorite'].includes(action)) this.actions.insertBefore(b, this.managementMenu); else managementActions.append(b);
+                if (['save', 'favorite', 'collection-add', 'restore', 'purge'].includes(action)) this.actions.insertBefore(b, this.managementMenu); else managementActions.append(b);
             }
             this.meta = node('div', null, 'artifacts-detail-meta');
             this.body = node('div', null, 'artifacts-preview-body'); this.body.id = 'artifacts-preview-body';
@@ -52,11 +52,11 @@
         open(item) {
             this.release(); this.item = item; this.title.textContent = item.title || item.files[0].name;
             this.eyebrow.textContent = item.independent ? tr('独立成果 · 会话删除不影响文件', 'Independent artifact · Preserved beyond conversations') : item.source === 'delivery' ? tr('交付快照 · 多格式成果', 'Delivered snapshot · Artifact') : tr('媒体生成结果', 'Generated media');
-            this.origin.hidden = !item.origin; this.files.replaceChildren();
+            this.origin.hidden = !item.origin; this.files.replaceChildren(); this.files.hidden = item.files.length < 2;
             this.managementMenu.open = false;
             this.managementButtons.forEach(b => {
-                b.hidden = item.trashedAt ? b.dataset.action !== 'restore' && b.dataset.action !== 'location' : b.dataset.action === 'restore' || (b.dataset.action === 'save' && item.independent);
-                if (b.dataset.action === 'favorite') b.textContent = item.favorite ? tr('取消收藏', 'Unfavorite') : tr('收藏并保存', 'Favorite and save');
+                b.hidden = item.trashedAt ? !['restore', 'purge', 'location'].includes(b.dataset.action) || (item.deletionPending && b.dataset.action === 'restore') : ['restore', 'purge'].includes(b.dataset.action) || (b.dataset.action === 'save' && item.independent) || (!item.independent && ['rename', 'project', 'trash'].includes(b.dataset.action));
+                if (b.dataset.action === 'favorite') b.textContent = item.favorite ? tr('取消星标', 'Unstar') : item.independent ? tr('加星标', 'Star') : tr('保存并加星标', 'Save & star');
             });
             for (const file of item.files) { const b = button(file.name, () => { void this.select(file); }); b.dataset.key = file.key; this.files.append(b); }
             if (!this.dialog.open) this.dialog.showModal();
@@ -67,14 +67,20 @@
             this.cleanup(); this.file = file; this.data = null; this.raw = null; this.source = false;
             this.files.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.key === file.key)));
             this.download.disabled = this.toggle.disabled = true; this.origin.disabled = false;
+            this.download.hidden = this.toggle.hidden = Boolean(this.item.trashedAt);
+            if (this.item.trashedAt) {
+                this.meta.textContent = `${file.name} · ${Math.ceil((file.size || 0) / 1024)} KB`;
+                this.status.textContent = this.item.deletionPending ? tr('上次删除未完成。请核对后重新确认永久删除，不会自动重试。', 'The previous deletion needs review. Confirm a new deletion to reconcile; no automatic retry.') : tr('文件在回收站，仍占用空间。恢复后可预览和下载。', 'This file is in trash and still uses space. Restore it to preview or download.');
+                this.body.append(node('p', tr('恢复文件，或永久删除成果库副本。', 'Restore this file, or permanently delete the library copy.'), 'artifacts-preview-empty')); return;
+            }
             this.status.textContent = tr('正在验证来源并读取文件…', 'Verifying source and reading file…'); this.meta.textContent = '';
             try {
                 const data = await this.api(`/api/pi/artifacts/${file.key}/preview`, { signal: this.controller.signal });
                 if (seq !== this.sequence || !this.dialog.open) return;
                 this.raw = bytes(data); this.data = data;
-                this.meta.textContent = `${this.item.project?.name || tr('未关联项目', 'Unlinked project')} · ${file.name} · ${Math.ceil(this.raw.length / 1024).toLocaleString()} KB`;
+                this.meta.textContent = `${this.item.project?.name || tr('无项目标签', 'No project label')} · ${file.name} · ${Math.ceil(this.raw.length / 1024).toLocaleString()} KB`;
                 this.download.disabled = false; this.toggle.disabled = false;
-                this.status.textContent = this.item.independent ? tr('已独立保存到成果库。删除来源会话不会删除本文件；原来源仅用于追溯。', 'Saved independently. Deleting the source conversation does not delete this file; provenance is navigation only.') : this.item.saved ? tr('已保存版本；源文件后来改变，不影响此快照。来源分支仍需有效。', 'Saved version: later source-file changes do not affect this snapshot. Its source branch must remain valid.') : tr('来自现有媒体历史；不复制文件，也不推测来源会话。', 'From existing media history. Files are not duplicated and conversation ownership is not inferred.');
+                this.status.textContent = this.item.independent ? tr('已独立保存到成果库。删除来源会话不会删除本文件；原来源仅用于追溯。', 'Saved independently. Deleting the source conversation does not delete this file; provenance is navigation only.') : tr('尚未独立保存。点「保存」保留副本，再清理来源聊天或媒体历史。', 'Not saved independently. Choose Save to keep a copy before removing the source conversation or media history.');
                 this.render();
             } catch (error) { if (seq === this.sequence && error.name !== 'AbortError') this.status.textContent = error.message; }
         }

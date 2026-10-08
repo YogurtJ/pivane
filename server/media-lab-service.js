@@ -342,7 +342,7 @@ class MediaLabService {
             ticket.status = 'done';
             return ticket.result;
         } catch (error) {
-            ticket.status = 'uncertain';
+            ticket.status = error?.remoteFinished === true ? 'failed' : 'uncertain';
             if (error.taskId) ticket.progress = { ...ticket.progress, taskId: error.taskId };
             throw error;
         } finally {

@@ -97,6 +97,12 @@ test('native RPC compaction: manual, automatic threshold/overflow, retries, hist
     await prompt();
     await prompt();
     const before = (await worker.request('get_entries')).entries;
+    const measured = before.filter(entry => entry.message?.role === 'assistant').map(entry => entry.message.pivaneRequestStats);
+    assert.equal(measured.length, 2);
+    for (const stats of measured) {
+        assert.equal(stats.outputTokens, 10); assert.equal(stats.requests, 1); assert.equal(stats.excludedRequests, 0);
+        assert.ok(stats.requestMs > 0, 'provider boundary timing survives native RPC persistence');
+    }
     summaryFailures = 1;
     const result = await worker.request('compact', { customInstructions: 'Keep the fixture requirement' }, 15000);
     assert.ok(result.summary.includes('fixture goal'));
@@ -152,6 +158,11 @@ test('native RPC compaction: manual, automatic threshold/overflow, retries, hist
     mode = 'overflow';
     await prompt();
     assert.ok(events.some(event => event.type === 'compaction_end' && event.reason === 'overflow' && event.willRetry && event.result));
+    const recovered = (await worker.request('get_messages')).messages.findLast(message => message.role === 'assistant').pivaneRequestStats;
+    assert.equal(recovered.outputTokens, 10, 'overflow recovery excludes summary tokens and previous turns');
+    assert.equal(recovered.requests, 1);
+    assert.equal(recovered.excludedRequests, 1, 'failed overflow request is marked partial');
+    assert.ok(recovered.requestMs > 0);
     assert.ok((await worker.request('get_session_stats')).contextUsage.tokens > 0);
     assert.equal(worker.activity.snapshot().busy, false);
     worker.client.emit('event', { type: 'agent_start' });
@@ -163,6 +174,7 @@ test('native RPC compaction: manual, automatic threshold/overflow, retries, hist
     assert.equal(cancelledState.webCompaction.status, 'cancelled');
     assert.equal(Object.hasOwn(cancelledState.webCompaction, 'summary'), false);
     const persisted = SessionManager.open(manager.getSessionFile());
+    assert.deepEqual(persisted.getEntries().findLast(entry => entry.message?.role === 'assistant').message.pivaneRequestStats, recovered);
     assert.ok(persisted.getEntries().filter(entry => entry.type === 'compaction').length >= 4);
     assert.ok(requests.some(body => JSON.stringify(body.messages).includes('Keep the fixture requirement')));
     assert.ok(requests.filter(body => body.messages.some(message => JSON.stringify(message.content).includes('<conversation>')))
