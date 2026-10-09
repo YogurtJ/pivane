@@ -1,3 +1,4 @@
+// pivane-browser: manual — needs an isolated live server with userShell and the /tmp/pi-web-shell-preview/project root.
 const assert = require('node:assert/strict');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.PI_SHELL_LIVE_URL || 'http://127.0.0.1:3131';

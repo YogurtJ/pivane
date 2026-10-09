@@ -59,8 +59,6 @@ Pi 原生会话仍是唯一聊天事实来源。工作台使用所选偏好文�
 
 当前没有额外的视觉、网页提取、上下文压缩、批准、MCP 或 Packages/Skills 辅助模型用途。边界提炼在压缩**之后**登记作业，不取代 Pi 原生压缩模型或其上下文。Packages 和 Skills 的现有安装/管理不因为配置辅助模型而运行 AI 或自动安装资源。将来的 AI 搜索、推荐或审查可以使用这一入口，但必须先有对应实现；不能仅登记一行就声称已具备该能力。
 
-Node 用例 `test/pi-auxiliary-models.test.js`、`test/pi-profile-learning-runtime.test.js` 验证专用路由、原生来源、去重、预算、重启、取消和停机；不代表真实供应商可用。标题及媒体的原有真实 Pi RPC + 本地模型回归继续验证实际调用。浏览器 `test/browser/pi-auxiliary-models.cjs` 覆盖标题、媒体和三个学习用途。所有测试使用独立身份和合成服务。
-
 ## 后台学习 REST 与边界
 
 学习开关独立于模型路由，默认关闭。`GET /api/pi/profiles/:id/learning` 返回 `{version:1,status,revision,settings,health,legacy,proposals,drafts,jobs,recentRuns,capabilities}`，revision 是整数。`capabilities` 明示可用动作、专用模型、物理 profile/cwd 范围、输入/输出上限、`limits`、`capacity`（队列、游标、动作剩余额度与被阻断的分支）及价格报告状态。`PUT` 同路径提交 `{expectedRevision,changes}`；开关为 `enabled`、`correctionEnabled`、`reviewEnabled`、`extractionEnabled`，额度为 `maxRunsPerDay` (1..20)、`maxTokensPerDay` (6000..200000)，可选 `periodicReviewMinutes` (0..10080)。默认 UTC 日额度 20 次、200000 保留 Token；问答作业每次预占 6000，整理合并按 `consolidationInputChars + 6000` 预占（默认18000）。`consolidationInputChars` 默认12000，范围4000–40000字符。额度是预留量准入，不是供应商账单上限。保存不执行作业。

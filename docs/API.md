@@ -127,7 +127,7 @@
 
 `fileViewer`、`usageStats`、`sessionSearch`以安全描述符后端为前提：Linux/proc、macOS F_GETPATH或Windows HANDLE组件。缺失/哈希不一致不回退为请求路径，Windows组件也用于私密写入，损坏可能导致配置初始化失败。系统native realpath规范文件身份，同一文件别名共享唯一受管worker；实际平台范围见WINDOWS.md和MACOS.md。
 
-`projectRoots` 返回实际规范根目录。未设置或留空 `PI_PROJECT_ROOTS` 时，Linux/macOS 默认 `/`，Windows 在服务启动时枚举 A:–Z: 中存在的盘符根目录；新盘符需重启发现，UNC 共享须显式配置。非空配置仍作为完整覆盖，POSIX 使用冒号、Windows 使用分号分隔；配置的根全部失效时返回空范围，不自动扩大。此默认行为从 RC3 安装修订包提供，修订前的 RC3 实例以实际状态为准。
+`projectRoots` 返回实际规范根目录。未设置或留空 `PI_PROJECT_ROOTS` 时，Linux/macOS 默认 `/`，Windows 在服务启动时枚举 A:–Z: 中存在的盘符根目录；新盘符需重启发现，UNC 共享须显式配置。非空配置仍作为完整覆盖，POSIX 使用冒号、Windows 使用分号分隔；配置的根全部失效时返回空范围，不自动扩大。
 
 `defaultProject` 返回允许根内可读/可进入的规范默认目录，优先运行用户主目录，其次服务cwd与可用根；没有可用目录时为null。只供首次目录浏览和未选项目的全局设置上下文，不创建或打开项目/会话。项目列表不再为零会话身份注入WebUI源码cwd。显式项目根 `/` 可包含子目录，根校验和系统权限继续生效。
 
@@ -136,7 +136,7 @@
 ```json
 {
   "ok": true,
-  "version": "0.85.0",
+  "version": "1.0.2",
   "authRequired": false,
   "projectRoots": ["/workspace"]
 }
@@ -150,7 +150,7 @@
 
 当前绑定 Pi 的应用对 `POST /settings/updates/review {action:'update'}` 返回 409，需同时更新 Pivane 与已验证适配；备份、重启和应用票据保留原语义。
 
-Pi 0.99.1 候选的原生资源清单包含 `builtin:mcp`、`builtin:codemode`、`builtin:tool-search`、`builtin:llama.cpp`，沿用 `path/enabled/override` 开关语义；它们不是可独立安装的 npm 包。新增或更新可识别的旧 `pi-mcp-adapter` 包返回 400 管理说明，移除旧声明仍可执行。原生 MCP/Codemode 不新增 Pivane MCP HTTP 网关；嵌套工具事件沿用原生 `parentToolCallId`，当前工具调用仍受权限钩子。旧配置的显式停机迁移见 [MCP.md](MCP.md)。
+原生资源清单包含 `builtin:mcp`、`builtin:codemode`、`builtin:tool-search`、`builtin:llama.cpp`，沿用 `path/enabled/override` 开关语义；它们不是可独立安装的 npm 包。新增或更新可识别的旧 `pi-mcp-adapter` 包返回 400 管理说明，移除旧声明仍可执行。原生 MCP/Codemode 不新增 Pivane MCP HTTP 网关；嵌套工具事件沿用原生 `parentToolCallId`，当前工具调用仍受权限钩子。旧配置的显式停机迁移见 [MCP.md](MCP.md)。
 
 `nativeMcpManagement=true` 标记 MCP 网页接口：
 
@@ -613,7 +613,7 @@ Gateway 在响应或 timeout 时向订阅者发送 `{ "type": "gateway_ui_resolv
 - 手动压缩请求必须在 worker 空闲时执行；同时提交的压缩只转发第一条，其他返回失败。压缩期间拒绝 prompt/steer/follow_up 和模型/思考切换，避免中断或重入。
 - `customInstructions` 可选，必须为最多 10000 字符的 string。`set_auto_compaction`、`set_auto_retry` 的 enabled 必须是 boolean。
 - gateway compact 等待 10 分钟；超时不是取消，仍保留 runtime busy。浏览器等待 11 分钟并在错误后同步状态，不自动重发 compact。
-- 0.85.0 原生 `abort` 可取消手动压缩并等待空闲；runtimeControls 后端通过 stop_and_recover 对应网页取消入口。`quit_session` 终止整个 runtime，不能描述为只取消摘要。
+- 原生 `abort` 可取消手动压缩并等待空闲；runtimeControls 后端通过 stop_and_recover 对应网页取消入口。`quit_session` 终止整个 runtime，不能描述为只取消摘要。
 - `get_session_stats.contextUsage.tokens/percent=null` 表示压缩后尚无新 usage，必须显示未知，不是零；`estimatedTokensAfter` 只是摘要结果中的消息估计，不能冒充 provider 统计。
 
 ### 3.9 事件

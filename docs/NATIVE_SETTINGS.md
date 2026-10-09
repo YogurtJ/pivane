@@ -21,7 +21,6 @@
 
 保存不启动子任务或重启服务，空闲后重开运行实例核对加载。失败或结果不明时先刷新，不自动重放；草稿按项目／范围保留，浏览器刷新会丢失。
 
-
 ## 扩展中心
 
 内置子 Agent 包返回 `managedBy:"pivane"`、`name` 和 `version`，界面不提供独立更新和移除；资源开关写入当前范围的 `pivaneBuiltins.subagents`，保留原 CLI Packages 声明。发现页通过服务端内置元数据识别该包，不猜测本地目录名称。档案记忆仍通过 `status.profileMemory` 核对。
@@ -62,8 +61,6 @@ Pi 包操作使用 `extensions_inventory` 和 `extensions_package`：读取真�
 
 管理工具使用独立的进程凭据，只授权 inventory/package 两个 POST 端点，禁止重定向；媒体规划凭据的范围不变。REST 仍检查 Origin、实例访问验证及实际会话/worker，返回 no-store。该凭据不进入模型提示、工具结果或 JSONL。它不隔离同一系统用户下的恶意扩展。包确认通过原有 RPC UI；取消不提交，请求中断不表示服务端取消。包写入计入 `nativeSettingsBusy`，不另开同会话 worker。
 
-验证：`test/pi-extension-assistant.test.js` 使用独立身份、合成模型与本地测试包，覆盖原生身份、真实工具调用、确认取消/执行、普通会话工具隔离、凭据范围、Origin、修订冲突及项目 trust。`test/browser/pi-extension-assistant.cjs` 使用合成 REST/WS 覆盖 320/393/1440 宽度、中英文、无项目入口、重复点击、迟到取消、返回后的草稿附件及身份恢复。未进行真实第三方下载或其他平台实机验收。
-
 ## 执行记录中的技能与扩展来源
 
 实际工具调用沿用原执行记录，不为设置页读取或启动加载额外生成聊天条目。`read` 请求 `SKILL.md` 时显示“读取技能文件”；这是文件名提示，不证明技能已加载。内置 read 的请求路径若精确匹配本轮 `before_agent_start.systemPromptOptions.skills` 清单，工具结果携带技能名称和路径，显示“读取技能 · 名称”。读取失败仍显示失败，不声称已读完或已遵循技能。
@@ -74,7 +71,7 @@ Pi 包操作使用 `extensions_inventory` 和 `extensions_package`：读取真�
 
 扩展助手的 `extensions_inventory` 与 `extensions_package` 分别显示“检查扩展清单”和安装/更新/移除操作；取消确认时结果提供 `details.pi5PackageOperation.status='cancelled'`，执行记录显示“已取消”。其他状态仍来自真实工具生命周期。正文视图保持原折叠规则，完整视图可逐条核对。
 
-前端刷新后可改善原有工具名称；调用来源采集需要会话 worker 加载新扩展，新建运行实例或空闲时重新加载资源后生效。不会改写以前的 JSONL。`test/pi-tool-provenance.test.js`、真实扩展助手工具测试与 `test/browser/pi-tool-labels.cjs` 覆盖来源快照、字段兼容、持久化、取消、历史/流式同一行、未知来源、安全文本及手机宽度。
+前端刷新后可改善原有工具名称；调用来源采集需要会话 worker 加载新扩展，新建运行实例或空闲时重新加载资源后生效。不会改写以前的 JSONL。
 
 ## 系统提示词查看与编辑
 
@@ -99,8 +96,6 @@ GET 快照含 `cwd/revision/maxBytes/trust/files/selected`；`files` 为 global/
 | WS | `get_system_prompt` | 当前主连接的提示正文、组成、来源核对、runtimeId/sessionId/capturedAt |
 
 REST 复用工作台身份、Pi token、Origin 和 no-store，以及配置/登录互斥；写入计入 `nativeSettingsBusy`。WS 使用同一主连接鉴权，正文不会进入通知广播、自动补全、持久历史或普通配置保存事件。旧后端隐藏编辑入口，旧 worker 缺少扩展 marker 时明确要求空闲后退出重开。
-
-系统提示词验证入口：`test/pi-system-prompts.test.js` 与 `test/browser/pi-system-prompts.cjs`。使用独立身份及合成服务，实际平台范围见[平台验证](RELEASE_INSTALL_VALIDATION.md)。
 
 未选项目时可管理全局配置和资源；使用 `status.defaultProject` 的合法上下文，不发送空 cwd、不自动选项目或启动线程。选择项目后按 trust 和范围覆盖规则处理。
 

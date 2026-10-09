@@ -2823,6 +2823,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const output = document.createElement('pre'); output.className = 'pi-tool-output';
             detail.append(args, output); row.append(detail);
             if (row._piResult) renderToolOutput(row, row._piResult);
+            window.PiToolLabels?.update(row);
         };
         row.querySelector('summary').addEventListener('click', row._piEnsureDetails);
         row.addEventListener('toggle', () => { if (row.open) row._piEnsureDetails(); });

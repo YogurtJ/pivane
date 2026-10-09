@@ -1,3 +1,4 @@
+// pivane-browser: manual — needs an isolated live server with PI_ONBOARDING_TEST_URL and PI_ONBOARDING_PROJECT.
 const assert=require('node:assert/strict');
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base=process.env.PI_ONBOARDING_TEST_URL;

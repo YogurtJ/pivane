@@ -179,6 +179,7 @@ async function run(browser, base, width, locale) {
     assert.equal(await page.locator('#pi-input').inputValue(), draft);
     assert.equal(await page.locator('#pi-attachments .pi-attachment-chip').count(), 1);
     await selectMessageView(page, 'full');
+    await page.locator('.pi-tool-row summary').first().click();
     assert.ok((await page.locator('.pi-tool-output').textContent()).includes('fixture tool output'));
     if (width < 900) { await page.locator('#pi-toggle-sessions').click(); await page.locator('#pi-toggle-sessions').click(); }
     assert.equal(calls.filter(type => type === 'open_session').length, 1);

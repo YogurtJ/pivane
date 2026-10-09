@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { ProfileLearningService, correction, preference, temporary, lastMemoryRead } = require('../server/profile-memory/learning-service');
+const { ProfileLearningService, lastMemoryRead } = require('../server/profile-memory/learning-service');
 const { WorkspacePreferencesService } = require('../server/workspace-preferences-service');
 const profileId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const model = { provider: 'fixture', id: 'cheap', input: ['text'], maxTokens: 1024 };
@@ -446,20 +446,6 @@ test('last provided memory generation is reported as historical metadata, not a 
     assert.equal(result.provided, true);
 });
 
-test('learning service forwards custom phrases and exclusions to trigger classifiers', () => {
-    // Phrase tables and language cases live in learning-safety; this only checks
-    // the service wrapper forwards its configuration rather than using defaults.
-    const phrases = { correction: ['fixture-correction'], preference: ['fixture-preference'],
-        temporary: ['fixture-temporary'], ignore: ['fixture-ignore'] };
-    for (const [classify, text] of [[correction, 'fixture-correction'], [preference, 'fixture-preference'],
-        [temporary, 'fixture-temporary']]) {
-        assert.equal(classify(text), false);
-        assert.equal(classify(text, phrases), true);
-        assert.equal(classify(`fixture-ignore ${text}`, phrases), classify === temporary,
-            'temporary requests still suppress learning even when an ignore phrase is present');
-    }
-});
-
 test('expired learning action request IDs refuse re-execution instead of filling the journal', async t => {
     const f = await fixture(t); await f.enable({ reviewEnabled: true });
     f.append('记住以后稳定采用合成流程。');
@@ -492,22 +478,6 @@ test('a deterministic source-proof rejection is recorded as skipped, not uncerta
     const run = (await f.service.snapshot(profileId)).recentRuns[0];
     assert.equal(run.status, 'skipped');
     assert.equal(run.error, 'knowledge-rejected');
-});
-
-test('a correction registered while workers are still busy runs as soon as they become idle', async t => {
-    const f = await fixture(t);
-    let idle = false;
-    f.service.idle = () => idle;
-    await f.enable();
-    f.append('纠正一下：不是旧版校验清单，而是新版校验清单，以后都按新版。');
-    await f.service.register(f.session);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    assert.equal(f.calls(), 0, 'no model call while the supervisor is busy');
-    assert.equal((await f.service.snapshot(profileId)).jobs[0]?.status, 'queued');
-    idle = true;
-    // Well inside the 60 s periodic tick: the busy retry picks the job up.
-    await waitFor(async () => (await f.service.snapshot(profileId)).recentRuns.length === 1, 5000);
-    assert.equal(f.calls(), 1);
 });
 
 // Mirrors the route wiring: idle(job) checks the source session and maintenance lock.

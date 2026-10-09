@@ -135,7 +135,7 @@ async function run(browser, base, width, locale) {
  await openProjectPicker();
  await page.locator('#pi-project-dialog').waitFor();
  assert.equal(await page.locator('#pi-project-list .pi-project-row, #pi-project-list .pi-project-row em').evaluateAll(ns=>ns.some(n=>n.scrollWidth>n.clientWidth+1)),false,'localized archive labels fit the project picker');
- await page.locator('#pi-project-dialog-close').click();
+ await page.locator('#pi-project-dialog-close').click();await drawer();
  await projectAction(cwdB,'恢复项目');await page.waitForFunction(()=>!document.querySelector('[data-archive-kind="projects"]'));
  enabled=false;await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(()=>!document.getElementById('pi-input').disabled);await drawer();
  await row('a2').locator('[data-action="menu"]').click();assert.equal(await menu.getByRole('menuitem',{name:t('归档线程'),exact:true}).count(),0,'old backend has no unsupported action');

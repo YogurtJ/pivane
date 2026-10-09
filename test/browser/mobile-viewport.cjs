@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const { openWorkspaceTab } = require('./pi-mobile-view-helper.cjs');
 const baseUrl = process.env.PI_MOBILE_TEST_URL || 'http://127.0.0.1:3001';
 const cwd = '/srv/pi-mobile-viewport-fixture';
 const session = { id: 'mobile-viewport', cwd, name: 'Mobile viewport fixture', messageCount: 30 };
@@ -79,7 +80,8 @@ async function run(browser, size, mobile) {
         assert.ok(Math.abs(await scale() - 1) < 0.02, 'double tap must not zoom the shell');
         const transcript = page.locator('#pi-transcript');
         const box = await transcript.boundingBox();
-        const before = await transcript.evaluate(el => el.scrollTop);
+        // Guarantee overflow independent of the fixture length and transcript view mode.
+        const before = await transcript.evaluate(el => { const pad = document.createElement('div'); pad.id = 'viewport-scroll-pad'; pad.style.height = '1200px'; el.append(pad); el.scrollTop = el.scrollHeight; return el.scrollTop; });
         const point = { x: box.x + box.width / 2, y: box.y + 50 };
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
         for (let i = 1; i <= 8; i++) {
@@ -89,6 +91,7 @@ async function run(browser, size, mobile) {
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
         await page.waitForTimeout(250);
         assert.ok(await transcript.evaluate(el => el.scrollTop) < before - 30, 'single-finger transcript scroll remains usable');
+        await page.evaluate(() => document.getElementById('viewport-scroll-pad').remove());
     } else {
         assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).touchAction), 'auto');
         assert.equal(await page.evaluate(() => document.dispatchEvent(new Event('gesturestart', { cancelable: true }))), true);
@@ -96,7 +99,7 @@ async function run(browser, size, mobile) {
     }
     const measurements = [];
     for (const tab of ['chat', 'image', 'video', 'tts']) {
-        await page.locator(`.nav-btn[data-tab="${tab === 'chat' ? 'chat' : 'media'}"]`).click();
+        if (tab === 'chat') await page.locator('.nav-btn[data-tab="chat"]').click(); else await openWorkspaceTab(page, 'media');
         if (tab !== 'chat') await page.locator(`[data-lab-kind="${tab}"]`).click();
         const input = page.locator(tab === 'chat' ? '#pi-input' : '#lab-parameters textarea');
         await input.focus();

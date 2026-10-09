@@ -30,7 +30,3 @@ SHA-256：
 ```
 
 更新时在独立临时 npm 目录安装精确版本并 audit，复制官方 dist 与许可证，修改版本路径/允许清单和哈希，再运行专项及 Markdown 相关回归。
-
-## 验证
-
-专项为 `test/browser/pi-math.cjs`，使用独立静态服务及合成 API/WS，检查公式、流式闭合、注入、预算和内部滚动。通用执行范围见[开发流程](development/WORKFLOW.md)，平台结果见[验证范围](RELEASE_INSTALL_VALIDATION.md)。

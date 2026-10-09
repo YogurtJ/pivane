@@ -70,7 +70,3 @@ write、bash 和自定义工具不推算文件前后差异；不是工作目录�
 `server/pi-runtime-controls.js` 在原生事件入口保存 setStatus、字符串数组 setWidget、setTitle 当前值；按 key 替换，字段省略/null 清除。最多 64 个状态、32 个 widget；key 256 字符，标题 512 字符，状态文字 16000 字符，widget 最多 100 行/32000 字符。超限不会无限增长内存，显示长度有上限。
 
 会话详情的“扩展状态”默认折叠；widget 自身可折叠。setTitle 更新当前浏览器标题，切线程/断开重建时恢复工作台标题。全局 activity 不返回这些内容。仅显示 RPC 支持的文字数据；组件式 widget、ui.custom、自定义 footer/editor 等 TUI 专属 API 不受支持。原 confirm/select/input/editor 和私有侧聊上下文拦截不变。
-
-## 验证
-
-入口为 `test/pi-native-controls.test.js` 与 `test/browser/pi-native-controls.cjs`，按[开发流程](development/WORKFLOW.md)使用隔离身份和合成服务。重点核对停止终态、未知结果互斥、取回草稿与迟到响应。

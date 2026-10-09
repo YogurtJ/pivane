@@ -162,10 +162,10 @@ async function main() {
                 assert.equal(await page.locator('#workspace-more-menu').isVisible(), true);
                 assert.equal(await page.locator('#workspace-more-toggle').getAttribute('aria-expanded'), 'true');
                 assert.equal(await page.evaluate(() => document.activeElement?.dataset.moreTab), 'cron');
-                await page.keyboard.press('ArrowDown');
-                assert.equal(await page.evaluate(() => document.activeElement?.dataset.moreTab), 'media');
-                await page.keyboard.press('ArrowDown');
-                assert.equal(await page.evaluate(() => document.activeElement?.dataset.moreTab), 'profiles');
+                for (const tab of ['artifacts', 'media', 'profiles']) {
+                    await page.keyboard.press('ArrowDown');
+                    assert.equal(await page.evaluate(() => document.activeElement?.dataset.moreTab), tab);
+                }
                 const menuBounds = await page.locator('#workspace-more-menu').boundingBox();
                 assert.ok(menuBounds.x >= 0 && menuBounds.x + menuBounds.width <= width + 1 && menuBounds.y >= 0, JSON.stringify(menuBounds));
                 await page.screenshot({ path: path.join(evidence, `shell-more-${width}.png`) });

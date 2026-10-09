@@ -130,8 +130,10 @@ async function run(browser, viewport) {
     await page.keyboard.press('Escape');
     assert.equal(await addMenu.isVisible(), false); assert.equal(await plus.evaluate(n => n === document.activeElement), true);
     assert.equal(await input.inputValue(), 'Keep this draft');
+    // Tab closes the menu and continues the natural tab order after the plus control.
     await plus.press('ArrowDown'); await page.keyboard.press('Tab');
-    assert.equal(await addMenu.isVisible(), false); assert.equal(await input.evaluate(n => n === document.activeElement), true);
+    assert.equal(await addMenu.isVisible(), false);
+    assert.equal(await page.evaluate(() => document.activeElement !== document.body && !document.getElementById('pi-composer-add-menu').contains(document.activeElement)), true);
     await plus.click(); await input.click(); assert.equal(await addMenu.isVisible(), false, 'outside focus dismisses plus menu');
     await plus.click(); const chooser = page.waitForEvent('filechooser'); await page.locator('#pi-attach-button').click();
     await (await chooser).setFiles({ name: 'sample.txt', mimeType: 'text/plain', buffer: Buffer.from('File chooser fixture') });

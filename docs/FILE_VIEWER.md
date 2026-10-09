@@ -142,7 +142,3 @@
 新增精确依赖 `@highlightjs/cdn-assets@11.11.1`，脚本从本实例 `/vendor/highlight/highlight.min.js` 提供，不访问远端 CDN 获取代码或语言包。高亮结果只允许 span/class，经 DOMPurify 后再构造安全逐行 DOM；SVG 源码和清理后的图片预览共存；脚本文件显示源码，不在主页面执行。HTML 的显式运行只发生在上述隔离 frame，下载也不生成可执行的同源页面。
 
 Markdown 继续经过 marked + DOMPurify；文件预览额外移除图片、音视频、iframe/object/embed 和表单，不自动加载文件正文中的远端资源。源码切换可查看完整原文。文件链接由受控查看器解析后交给同一只读接口校验，不能把模型提供的链接或 `#pi-file` 标记当成权限凭证。
-
-## 验证与部署
-
-Node 入口为 `test/pi-file-service.test.js`、`test/pi-file-browser.test.js`、`test/pi-file-roots.test.js`、`test/pi-deliverables.test.js` 和 `test/pi-deliverables-runtime.test.js`；浏览器专项见[模块导航](development/MODULES.md)。使用隔离项目及合成 REST/WS，核对来源、描述符、格式预算和阅读生命周期。实际平台范围见[平台验证](RELEASE_INSTALL_VALIDATION.md)。

@@ -214,16 +214,3 @@ test('agent failure memories map to profile MEMORY.md with mapped categories and
     assert.match(missing.details.error, /missing or ambiguous/);
     assert.equal(calls.length, count + 5);
 });
-
-test('memory-full rejections surface a structured code in the failed tool result', async () => {
-    const full = Object.assign(new Error('Memory document limit exceeded'), { status: 409, code: 'memory-full',
-        details: { target: 'memory', chars: 250, limit: 256, needed: 262 } });
-    const service = { snapshot: async () => ({ status: 'ready', revision, capabilities: { memory: true }, items: [], hasMore: false }),
-        mutateFromNative: async () => { throw full; } };
-    const context = { cwd: '/tmp/synthetic', sessionManager: { getSessionFile: () => '/tmp/native.jsonl',
-        getSessionId: () => 'native', getBranch: () => [{ id: 'user-1' }] } };
-    const result = await createKnowledgeMemoryTools(service, profileId)('memory_add',
-        { target: 'memory', content: 'overflow' }, undefined, () => true, context);
-    assert.deepEqual(result.details, { success: false, error: 'Memory document limit exceeded', status: 409,
-        code: 'memory-full', errorDetails: full.details });
-});

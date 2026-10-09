@@ -132,8 +132,6 @@ TTS 的字段来自 `TtsProviderService.getPublicConfig()`；已配置模型复�
 
 草稿必须通过 `normalizeModel` 和 HTTP 合约校验后才能返回；模型不受支持则返回 unsupported 原因，不保存、探测、生成或取得票据。用户在管理页继续编辑并明确保存，生产生成仍需单独 review/execute。详情见 [MEDIA_CONNECTIONS.md](MEDIA_CONNECTIONS.md)。
 
-## 验证和后续
-
-`test/media-lab-rpc.test.js` 通过真实 Pi RPC 加载工具，以本地 SSE fixture 完成 capabilities → media_plan_request，验证只激活两个工具、保留结构化参数、无 ticket、无 session 文件；不调用付费 Provider。服务与浏览器测试覆盖 review/execute、参数修改、重复/过期/不确定提交、首帧、HTTP adapter、动态 TTS 与桌面/手机交互。
+## 后续
 
 聊天卡片已支持有界内存排队、未提交取消和执行阶段展示；队列不跨重启恢复。尚无持久恢复队列、旧 MediaPlan 批量执行、运行中远端取消或跨模块流水线。失败及不确定请求不自动重试，不能循环调用执行接口绕过确认。

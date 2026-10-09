@@ -51,8 +51,6 @@
 
 成功导航通过公开 pi.appendEntry 追加 `pivane-web-navigation` metadata（兼容旧 `pi5-web-navigation`） 保持重启后的 leaf；不含聊天副本。已有原生 summary 保持原格式与 usage；当前状态仅内存。未知/迟到 pivaneNavigation 与 pivaneHistory 响应及其旧 pi5 别名在 Supervisor 截获。
 
-树及导航专项：`test/pi-session-tree.test.js`、`test/browser/pi-session-tree.cjs`，使用隔离原生会话和合成服务；执行范围见[开发流程](development/WORKFLOW.md)。
-
 ## 用户交互
 
 入口为线程菜单“历史与记录 → 搜索历史与书签”和右侧“历史”页签；会话详情不再重复放置入口。历史顶部“搜索／会话树”同排右侧的更多（⋯）只收纳“从历史问题分叉”和“恢复旧版本”，复用原工作流窗口与确认，不增加常驻操作卡片。菜单不挤压列表、预览正文，不触发额外历史读取；外部点击、Escape、切页或切线程收起，键盘关闭返回入口。分叉到新线程与会话树的原线程继续保持不同语义。此入口调整为静态刷新生效。
@@ -122,9 +120,3 @@
 - 单次私有响应最多 256 KiB；列表只返回 30 条短预览，详情分段传输。
 - 超限明确报错，不默默截断搜索后返回“没有匹配”。可以按分支、类型或仅书签缩小文本范围；超过 entries 总限额时明确不支持该大线程。
 - 这是当前线程内的搜索和会话树，不包含跨项目全局搜索、任意树编辑或文件回滚。
-
-## 验证
-
-`test/pi-history.test.js` 覆盖原生压缩前记录、其他分支、分页修订、工具参数、隐藏数据排除、label 改名/移除/冲突；真实 Pi RPC + loopback provider 验证无模型调用的历史查询、运行中持久化标签、双客户端冲突、重连、单 worker、私有迟到响应隔离，以及写超时不重放。测试使用独立 Agent/session 目录。
-
-`test/browser/pi-history.cjs` 用 mock REST/WS 和原生内存 SessionManager，检查 1440/393/320px 三主题下筛选/分页、字面高亮和安全文本、其他分支、长正文、标签冲突、跨线程迟到结果及宽度。现有侧聊、变更记录、停止、会话工作流和输入框回归必须同时通过。

@@ -174,21 +174,6 @@ test('large changed-file parsing yields to unrelated event-loop work', async t =
     t.diagnostic(JSON.stringify({ fileMiB: +(fs.statSync(file).size / 1048576).toFixed(1), elapsedMs: +(performance.now() - start).toFixed(1), parsingTicks, maxHeartbeatGapMs: +maxGap.toFixed(1) }));
 });
 
-test('synthetic native/cache before-after benchmark (no timing assertion)', async t => {
-    const sdk = await getSdk(); const cwd = path.join(root, 'benchmark'); fs.mkdirSync(cwd);
-    const directory = sdk.SessionManager.create(cwd).getSessionDir();
-    for (let i = 0; i < 24; i++) fixture(directory, String(i), [header(cwd, 'bench-' + i), ...Array.from({ length: 80 }, (_, n) => message(n % 2 ? 'assistant' : 'user', 'x'.repeat(4096)))]);
-    const cache = new SessionMetadataCache();
-    const run = async action => { const start = performance.now(); await action(); return +(performance.now() - start).toFixed(1); };
-    const baseline = await run(() => sdk.SessionManager.list(cwd));
-    const cold = await run(() => cache.list(directory, sdk, () => sdk.SessionManager.list(cwd)));
-    const unchanged = await run(() => cache.list(directory, sdk, () => sdk.SessionManager.list(cwd)));
-    fs.appendFileSync(path.join(directory, '0.jsonl'), '\n' + JSON.stringify({ type: 'session_info', name: 'changed' }));
-    const oneFile = await run(() => cache.list(directory, sdk, () => sdk.SessionManager.list(cwd)));
-    t.diagnostic(JSON.stringify({ files: 24, approximateMiB: 7.5, nativeMs: baseline, coldMs: cold, unchangedMs: unchanged, oneFileMs: oneFile }));
-});
-
-
 test('large image records share native fallback and cache only proven metadata', async () => {
     const sdk = await getSdk(), directory = path.join(root, 'image-records'); fs.mkdirSync(directory);
     const file = fixture(directory, 'image', [header(root, 'image'), message('user', 'small preview'),

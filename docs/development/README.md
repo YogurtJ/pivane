@@ -24,4 +24,4 @@
 
 统一的 [验证矩阵](WORKFLOW.md#验证矩阵) 定义日常迭代、源码交付和正式发行所需检查；[Node 测试入口](WORKFLOW.md#node-测试入口与计时) 提供定向运行、清单与耗时报告。
 
-Node 用例递归发现 `test/` 下的 `.test.js`；浏览器专项位于 `test/browser/`，归档演练位于 `test/release/`，两者不由 `npm test` 执行。运行前按 [浏览器与重型专项](WORKFLOW.md#浏览器与重型专项) 核对依赖、URL 和隔离身份，不能把测试默认地址当成可安全操作的实例。
+Node 用例递归发现 `test/` 下的 `.test.js`；浏览器回归位于 `test/browser/`（`npm run test:browser`），归档演练位于 `test/release/`，两者不由 `npm test` 执行。依赖、手动脚本和隔离要求见 [浏览器与重型专项](WORKFLOW.md#浏览器与重型专项)。

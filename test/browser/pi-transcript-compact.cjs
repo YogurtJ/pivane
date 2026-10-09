@@ -101,7 +101,7 @@ async function run(browser, size) {
     assert.match(await hint.textContent(), /排查/, 'hint follows the focused option');
     await modeSwitch.locator('[data-transcript-mode="reading"]').click();
     assert.match(await hint.textContent(), /执行记录/, 'hint shows the new choice');
-    assert.equal(await page.locator('#settings-message-view p').count(), 1, 'a single explanatory line');
+    assert.equal(await page.locator('#settings-message-view .pi-transcript-mode-hint').count(), 1, 'a single explanatory line');
     await page.locator('#workspace-settings-close').click();
     await page.locator('#workspace-settings-dialog').waitFor({ state: 'hidden' });
     assert.equal(await visibleTurnBars().count(), 0, 'reading mode keeps turn summaries hidden');

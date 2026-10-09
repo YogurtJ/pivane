@@ -75,7 +75,8 @@ async function run(browser, base, width, locale) {
     assert.deepEqual(overflow, []);
     await page.screenshot({ path: `/tmp/pivane-tool-labels-${locale}-${width}.png` });
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => document.querySelector('[data-tool-id="skill"] .pi-tool-provenance'));
+    await row('skill').locator('summary').click();
+    await row('skill').locator('.pi-tool-provenance').waitFor();
     assert.equal(await row('package').locator('.pi-tool-source').count(), 1);
     assert.deepEqual(errors, []); await context.close(); console.log(`PASS tool labels ${width} ${locale}`);
 }

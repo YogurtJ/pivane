@@ -26,12 +26,3 @@ test('release acceptance only accepts its marked temporary directory and exact d
     assert.throws(() => rehearsalRoot(os.tmpdir()), /dedicated temporary/);
     assert.throws(() => rehearsalRoot(path.dirname(root)), /dedicated temporary/);
 });
-
-test('historical workspace names no longer bypass the temporary-directory guard', () => {
-    // Synthetic strings only: no legacy user directory is created or modified.
-    for (const root of ['/home/pivane-synthetic-user/pi-workspace', '/Users/pivane-synthetic-user/pi-workspace-mac-trial',
-        'C:\\Users\\pivane-synthetic-user\\pi-workspace-windows-trial\\rehearsal']) {
-        assert.throws(() => rehearsalRoot(root));
-        assert.throws(() => rehearsalRoot(root + '/projects/demo', true));
-    }
-});

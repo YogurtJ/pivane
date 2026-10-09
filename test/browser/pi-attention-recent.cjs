@@ -99,7 +99,7 @@ async function run(browser, viewport) {
         await drawer();
     };
     await drawer();
-    assert.deepEqual(await page.locator('#pi-session-filters button').allTextContents(), ['全部', '工作中']);
+    assert.deepEqual(await page.locator('#pi-session-filters button').allTextContents(), ['项目', '动态']);
     assert.equal(await page.locator('[data-filter="all"]').getAttribute('aria-pressed'), 'true');
     assert.equal(await page.locator('[data-work-section]').count(), 0);
     await choose('work');
@@ -243,8 +243,13 @@ async function run(browser, viewport) {
         await toggle.click();
     }
     ephemeralStreaming = true;
-    await page.locator('#pi-temp-session').click();
+    // Temporary sessions start from the project menu, which the project view shows.
     await drawer();
+    await choose('all');
+    await page.locator(`[data-project-cwd="${cwdA}"] [data-project-action="menu"]`).click();
+    await page.locator('.pi-thread-menu:not(.hidden)').getByRole('menuitem', { name: '临时会话（不保存）', exact: true }).click();
+    await drawer();
+    await choose('work');
     await page.waitForFunction(() => document.querySelector('[data-work-section="running"] .ephemeral'));
     assert.equal(await section('recent').locator('.ephemeral').count(), 0);
     ephemeralStreaming = false;

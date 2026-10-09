@@ -413,6 +413,7 @@
         // same way for single edits and for a consolidation batch.
         async function runMutation(input, saved) {
             const profileId = profile, generation = ++serial;
+            let full = false; // Reload only for this submission's own rejection, so its notice is not replaced.
             busy = true; uncertain = { requestId: input.requestId, operation: input.operation, draft: JSON.stringify(draft) }; notice = t('正在提交，等待服务回执…'); render();
             try {
                 const result = await apiFetch(`${base()}/knowledge/mutations`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
@@ -424,7 +425,7 @@
             } catch (error) {
                 if (current(profileId, generation)) {
                     if (error.status === 409 && (error.data?.code === 'memory-full' || error.code === 'memory-full')) {
-                        uncertain = null; memoryFull = true; notice = t('记忆已满，新记忆会被拒绝。请整理合并后再试。');
+                        uncertain = null; memoryFull = full = true; notice = t('记忆已满，新记忆会被拒绝。请整理合并后再试。');
                     } else if (error.status === 409) { uncertain = null; conflict = true; notice = t('版本冲突；草稿已保留。刷新并核对服务器版本。'); }
                     else if (error.status === 400 && (error.data?.code || error.code) === 'content-blocked') {
                         uncertain = null; notice = (error.data?.details?.kind || error.details?.kind) === 'secret'
@@ -434,7 +435,7 @@
                 }
             } finally {
                 busy = false;
-                if (current(profileId, generation)) { render(); if (!uncertain && (receipt?.requestId === input.requestId || conflict || memoryFull)) void load(); }
+                if (current(profileId, generation)) { render(); if (!uncertain && (receipt?.requestId === input.requestId || conflict || full)) void load(); }
                 else if (active && root.isConnected) { render(); void load(); }
             }
         }

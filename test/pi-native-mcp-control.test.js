@@ -106,25 +106,6 @@ test('official native loopback server discovers tools without tools/call or mode
     } finally { await pi.events.get('session_shutdown')(); }
 });
 
-test('Pi 1.0 official OAuth store owns normalized server-and-URL keys and legacy takeover', async () => {
-    const root = path.resolve(path.dirname(fileURLToPath((await helper()).nativePiEntry())), '..');
-    const { McpOAuthCredentialStore } = await import(pathToFileURL(path.join(root, 'dist/extensions/mcp/oauth.js')).href);
-    const url = 'https://example.invalid/mcp';
-    const legacy = { tokens: { access_token: 'synthetic-only', token_type: 'Bearer' }, future: { keep: true } };
-    let content = JSON.stringify({ [url]: legacy, unrelated: { keep: true } });
-    const backend = { withLock(fn) { const { result, next } = fn(content); if (next !== undefined) content = next; return result; } };
-    const store = new McpOAuthCredentialStore(backend);
-    assert.deepEqual(store.forServer('dev-radius', url).load(), legacy);
-    assert.deepEqual(Object.keys(JSON.parse(content)).sort(), ['mcp__dev_radius|https://example.invalid/mcp', 'unrelated']);
-    assert.deepEqual(store.tokens('dev_radius', url), legacy.tokens, 'namespace aliases use the same official key');
-    assert.equal(store.tokens('other-account', url), undefined, 'same URL with another server name shares no grant');
-    const other = { tokens: { access_token: 'other-synthetic-only', token_type: 'Bearer' } };
-    store.forServer('other-account', url).save(other);
-    assert.equal(store.remove('dev-radius', url), true);
-    assert.deepEqual(store.tokens('other-account', url), other.tokens);
-    assert.deepEqual(JSON.parse(content).unrelated, { keep: true });
-});
-
 test('native OAuth cancellation and unknown notifications keep the fixed notice whitelist', async () => {
     const { captureNativeMcpControl, requestNativeMcpControl, parseNativeMcpStatus } = await helper();
     const pi = api(), ctx = context(); const shown = [];

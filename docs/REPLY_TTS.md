@@ -63,6 +63,6 @@ models 使用实验室公开模型结构，仅列有可编辑文本字段的语�
 - revision 覆盖实时公开模型目录与当前 replyTts 偏好。保存到 `pivane-workspace.json.replyTts`（既有 `pi5-workspace.json` 自动沿用），0600 原子替换并保留其他偏好；不写 models.json、auth.json 或 Pi session。
 - 成功返回 `{defaults, revision}`，下一次打开生效；不重启聊天 worker。
 
-## 实现与验证
+## 实现
 
-偏好服务为 `server/pi-reply-tts-service.js`，播放器和迟到保护为 `public/pi-reply-tts.js`。专项 `test/pi-reply-tts.test.js` 与 `test/browser/pi-reply-tts.cjs` 使用独立配置和合成音频；真实 TTS 及 Safari 播放需分别验证。
+偏好服务为 `server/pi-reply-tts-service.js`，播放器和迟到保护为 `public/pi-reply-tts.js`。

@@ -6,6 +6,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
 const { selectTests, testEnvironment } = require('../scripts/run-tests.cjs');
+const { selectBrowserTests } = require('../scripts/run-browser-tests.cjs');
 const { sourceFiles } = require('../scripts/source-files.cjs');
 const root = path.resolve(__dirname, '..');
 function fixture(t) {
@@ -28,6 +29,17 @@ test('targeted selection uses the full-suite inventory, deduplicates and preserv
     fs.unlinkSync(path.join(directory, 'test/a.test.js'));
     fs.unlinkSync(path.join(directory, 'test/nested/b.test.js'));
     assert.throws(() => selectTests(directory, []), /No Node tests/);
+});
+
+test('browser runner selects launching scripts and leaves helpers and manual live-server scripts out', t => {
+    const directory = fixture(t), browser = path.join(directory, 'test/browser');
+    fs.mkdirSync(browser);
+    fs.writeFileSync(path.join(browser, 'a.cjs'), 'chromium.launch()');
+    fs.writeFileSync(path.join(browser, 'live.cjs'), '// pivane-browser: manual \u2014 live server\nchromium.launch()');
+    fs.writeFileSync(path.join(browser, 'helper.cjs'), 'module.exports = {};');
+    assert.deepEqual(selectBrowserTests(directory, []), { files: ['test/browser/a.cjs'], list: false });
+    assert.deepEqual(selectBrowserTests(directory, ['--list', './test/browser/a.cjs']), { files: ['test/browser/a.cjs'], list: true });
+    for (const args of [['test/browser/live.cjs'], ['test/browser/helper.cjs'], ['test/browser/missing.cjs'], ['--headed']]) assert.throws(() => selectBrowserTests(directory, args));
 });
 
 test('selection still rejects linked source directories', t => {

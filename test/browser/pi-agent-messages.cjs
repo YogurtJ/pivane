@@ -72,11 +72,13 @@ async function check(browser, base, width, language) {
     await page.goto(base);
     await page.locator('.pi-agent-card[data-agent-card="message"]').first().waitFor();
     const zh = language !== 'en';
-    const boxes = () => page.evaluate(() => [...document.querySelectorAll('.pi-agent-card, .pi-summary-notice')].map(node => ({ kind: node.dataset.agentCard || 'summary', height: node.getBoundingClientRect().height })));
+    const boxes = () => page.evaluate(() => [...document.querySelectorAll('.pi-agent-card, .pi-summary-notice')].map(node => ({ kind: node.dataset.agentCard || 'summary', height: node.getBoundingClientRect().height,
+        collapsible: node.matches('.pi-summary-notice') || !!node.querySelector('details.pi-agent-card-body') })));
     await page.screenshot({ path: `/tmp/pi-agent-messages-collapsed-${width}-${language}.png` });
     const collapsed = await boxes();
     assert.deepEqual(collapsed.map(row => row.kind), ['receipt', 'message', 'result', 'summary', 'message']);
-    for (const row of collapsed) assert.ok(row.height <= (width < 400 ? 120 : 76), `${row.kind} is compact while collapsed: ${row.height}`);
+    // Short messages render in full; only cards with a collapsed body must stay compact.
+    for (const row of collapsed.filter(row => row.collapsible)) assert.ok(row.height <= (width < 400 ? 120 : 76), `${row.kind} is compact while collapsed: ${row.height}`);
     const layout = async () => {
         const bad = await page.evaluate(() => [...document.querySelectorAll('.pi-agent-card, .pi-agent-card *, .pi-summary-notice, .pi-summary-notice > summary')]
             .filter(node => { const box = node.getBoundingClientRect(); return box.width > 0 && (box.right > innerWidth + 1 || box.left < -1); }).map(node => node.className));

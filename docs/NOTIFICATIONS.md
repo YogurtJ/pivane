@@ -54,6 +54,6 @@
 
 subscription 是浏览器 PushSubscription.toJSON() 的 endpoint 与 keys.p256dh/auth。不返回已保存订阅列表、其他设备密钥、身份摘要或 VAPID 私钥。错误请求400，未登录401，访问来源拒绝403，配置不可读503；损坏配置不会被自动覆盖。
 
-## 部署与验证
+## 部署
 
-Web Push 需要实例能力、可信 HTTPS 与安全 Cookie／来源校验，见[访问控制](ACCESS_CONTROL.md)。Node 专项为 `test/pi-notifications.test.js`，浏览器为 `test/browser/pi-notifications.cjs`，按[开发流程](development/WORKFLOW.md)使用隔离配置和模拟推送。系统授权、锁屏显示及外部推送送达须在目标设备另验。
+Web Push 需要实例能力、可信 HTTPS 与安全 Cookie／来源校验，见[访问控制](ACCESS_CONTROL.md)。系统授权、锁屏显示及外部推送送达须在目标设备另验。

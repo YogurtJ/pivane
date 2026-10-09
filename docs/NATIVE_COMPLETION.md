@@ -47,7 +47,3 @@ assistant stopReason=length 显示达到输出上限，用户自行决定是否�
 首次连接含受信资源、全局ask、无决定/启动覆盖且当前实例实际未信任的项目，显示可关闭的项目信任提示；不自动授权。项目菜单和/trust保持可用，配置页增加查看当前实例入口。
 
 `restart_runtime {runtimeId,expectedRevision,confirmed:true}` 仅持久线程：在唯一worker空闲互斥内复核配置，拒绝运行、压缩、工具、等待确认、待发队列、未处理取回/建议以及关联侧聊。与设置保存互斥；暂停该线程预约后返回接受ACK，Supervisor发布replacement promise，关闭旧订阅、完整结束旧进程，再启动同一session文件的新worker。其他连接通过原重连取得新快照，不能并行创建第二个worker。ACK不是新实例启动成功；最终由重连和配置核对确认，不自动重放重开请求。当前网页草稿和附件保留。
-
-## 验证与启用
-
-Node：`test/pi-native-completion.test.js`；浏览器：`test/browser/pi-native-completion.cjs`。使用独立身份和合成服务，按[开发流程](development/WORKFLOW.md)执行。发布结果绑定归档 SHA256，运行能力按实际 status 核对。

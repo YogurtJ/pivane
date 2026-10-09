@@ -127,6 +127,7 @@ async function run(browser, viewport) {
     assert.equal(await page.locator('#pi-input').inputValue(), appended, 'ack retry must not append twice');
     await page.locator('#pi-queue-dialog .pi-native-heading button').click();
     controls.queue = { steering: ['Stop this next instruction'], followUp: [] }; update(); holdStop = true;
+    await page.locator('#pi-input').fill(''); // Stop is offered only while the composer has no draft.
     await page.locator('#pi-stop-button').click();
     await page.waitForFunction(() => document.querySelector('#pi-stop-button').disabled);
     await page.locator('#pi-input').fill('Draft typed during stop');

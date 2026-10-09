@@ -84,7 +84,7 @@ API Key 流程输入按 Pi config-value 字面量转义，`!`/`$` 不作为网�
 
 实际回复的 `pivaneSpeed` 保存请求速度、供应商返回的 service tier、采用的费用倍率与计价依据。聊天消息显示实际档位，悬停可核对请求档位；Fast 请求降为 Standard 时按返回档位估算。没有返回档位时显示“速度未确认”，费用采用请求档位估算并标记 requested-tier-estimate，不假装远端已确认。价格从 token 与模型原生阶梯价重新计算一次，避免重复乘底层旧倍率；估算不代表中转实扣或订阅额度。相关费用边界见[用量统计](USAGE.md)。
 
-能力读取复用本地模型目录和受管扩展通知，没有新增轮询或远端探测。相关验证：`test/pi-model-speed.test.js`、`test/browser/pi-model-speed.cjs`，使用独立身份及合成服务，覆盖实际请求参数、降档费用、修订冲突、模型切换/恢复、桌面与手机宽度，不发送真实付费请求。
+能力读取复用本地模型目录和受管扩展通知，没有新增轮询或远端探测。
 
 参考：[OpenAI Fast](https://developers.openai.com/api/docs/guides/fast-mode)、[Ultrafast](https://developers.openai.com/api/docs/guides/ultrafast-mode)、[模型价格](https://developers.openai.com/api/docs/pricing)。
 

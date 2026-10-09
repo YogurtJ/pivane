@@ -13,7 +13,7 @@
 | 变化 | 开发中 | 交付前增加的检查 |
 |---|---|---|
 | 应用源码、行为或模块边界 | 相关 Node 用例、语法检查 | `npm test`、`npm run check`；相关文档变化再跑文档检查 |
-| UI、样式、脚本加载 | 对应浏览器场景 | Chromium 桌面/手机，pageerror、子项宽度、抽屉/附件/tool 状态；涉及连接或线程状态时覆盖迟到事件与重连 |
+| UI、样式、脚本加载 | `npm run test:browser -- <相关脚本>` | 共享 UI 或部署前跑全量浏览器回归；Chromium 桌面/手机，pageerror、子项宽度、抽屉/附件/tool 状态；涉及连接或线程状态时覆盖迟到事件与重连 |
 | 文档文字 | 核对实际行为与链接 | `npm run check:docs`；改变公开清单、文件位置或发行链接时再跑 `npm run pack:trial` |
 | 路径、命名兼容、源码发现、打包、安装或维护 | 隔离行为/故障测试 | 完整 Node、语法、文档、`pack:trial` 和相应安装/恢复演练 |
 | 依赖、认证、网络边界或发布候选 | 对应测试 | `npm audit --omit=dev`；发布按 [RELEASING.md](RELEASING.md) 验证准确归档 |
@@ -40,25 +40,25 @@ Node 用例的清理必须先等待网关、worker 和 SQLite 连接关闭，再
 
 ## 浏览器与重型专项
 
-`npm test` **不执行** `test/browser/*.cjs` 或 `test/release/*.cjs`；语法检查和打包发现这些文件不代表执行过它们。按 [模块导航](MODULES.md) 选择与改动相关的专项，先阅读脚本的入口、环境参数和清理逻辑：
+`npm test` **不执行** `test/browser/*.cjs` 或 `test/release/*.cjs`；语法检查和打包发现这些文件不代表执行过它们。
 
-| 专项 | 运行前要求 | 适用范围 |
-|---|---|---|
-| 自建随机 loopback 服务、mock API/WS 的浏览器脚本 | 核对脚本自行启动/清理服务，指定本机 Playwright 与 Chromium | 对应 UI、时序与响应式改动 |
-| 依赖外部测试 URL 的浏览器脚本 | 显式传入该脚本支持的 URL，目标必须是独立测试服务，真实 worker 使用独立身份 | 对应 HTTP/WS、worker 集成 |
-| 发行安装、升级、恢复 | 新临时目录、合成服务、准确归档 SHA256，按 [发行流程](RELEASING.md) | 冻结发行候选及安装/恢复边界 |
-| Pi 受管联网更新 | 显式 opt-in，专用隔离环境，不自动升级开发依赖 | 受管更新链专项 |
+```bash
+PLAYWRIGHT_MODULE=/path/to/playwright npm run test:browser -- --list
+PLAYWRIGHT_MODULE=/path/to/playwright npm run test:browser -- test/browser/pi-workbench.cjs
+PLAYWRIGHT_MODULE=/path/to/playwright npm run test:browser
+```
 
-部分历史脚本仍有固定测试 URL 或浏览器路径；**不得依赖默认 URL，不能只换生产端口当作隔离**。独立服务需分开 Agent、媒体、项目、预约队列等路径，不继承真实供应商认证；测试不能在维护中的真实会话发消息。未核对入口的脚本不要批量执行，helper 也不是独立测试。
-
-例如 `pi-performance.cjs` 与 `pi-startup-performance.cjs` 自建临时服务，支持 `PLAYWRIGHT_MODULE` 和 `CHROMIUM_PATH`，可在准备好本机依赖后逐个运行。它们分别覆盖流式合并/迟到帧和启动/项目发现，不因同属“性能”而重复；只改无关展示时不必全跑，改变对应时序逻辑时必须覆盖。UI 专项继续检查桌面/手机、pageerror、实际宽度、抽屉、附件和工具状态。
+- 运行器串行执行会启动 Chromium 的脚本，沿用 `npm test` 的凭据过滤；脚本读取的 `*_URL` 统一指向一个只提供 `public/` 与 vendor 静态资源的 loopback 服务，API/WS 仍由脚本自己 mock。单个脚本超时 5 分钟，失败时输出末尾日志并以非零退出。`CHROMIUM_PATH` 可指定浏览器。
+- 开发中跑与改动相关的脚本（见 [模块导航](MODULES.md)）。改动共享 UI（工作台、导航、输入区、正文渲染、设置框架）或准备部署时跑全量，避免其他脚本随界面演进失效后无人发现。
+- 首行带 `pivane-browser: manual` 的脚本需要真实隔离服务或发行归档，运行器不执行：按脚本说明显式传入目标 URL，服务分开 Agent、媒体、项目、预约队列等路径且不继承真实供应商认证。**不得指向维护中的实例或依赖默认端口。** 发行安装、升级与恢复按 [发行流程](RELEASING.md) 使用准确归档；Pi 受管联网更新需显式 opt-in 的专用隔离环境。
+- 界面有意改变导致脚本失败时，修正期望并保留其独有场景；不要靠放宽超时或删断言让失败消失。UI 专项继续检查桌面/手机、pageerror、实际宽度、抽屉、附件和工具状态。
 
 ## 源码发现与发布
 
 `scripts/source-files.cjs` 统一枚举 server、public、scripts 和各类测试，递归发现功能子目录；排除用户媒体、旧工作台、vendor 自动发现、隐藏目录和备份，并拒绝代码符号链接。字体和第三方资源使用明确清单。内置能力的官方发布内容由 `vendor/manifest.json` 单独登记并逐文件校验，通过同一 `distributionFiles()` 纳入发行和受管快照；上游 Markdown 不作为 Pivane 自有指南进行链接改写。
 
 - `check-syntax.cjs` 使用相同发现规则检查应用、测试及受管 TypeScript 扩展的语法，不声称执行 TypeScript 类型检查。
-- `run-tests.cjs` 从统一发现的 `.test.js` 集合选择并串行执行，避免依赖平台 shell 展开；可选的 `test-timing-reporter.cjs` 只报告 Node 事件，不改变执行顺序或失败语义。
+- `run-tests.cjs` 从统一发现的 `.test.js` 集合选择并串行执行，避免依赖平台 shell 展开；可选的 `test-timing-reporter.cjs` 只报告 Node 事件，不改变执行顺序或失败语义。`run-browser-tests.cjs` 使用同一发现规则选择浏览器脚本。
 - `package-trial.cjs` 和受管 Pi 更新的源码快照使用相同的 `distributionFiles()`，保留各自的字节、描述符、预算和哈希检查。
 - 新增独立资产或文件类型时更新明确清单；新增文档更新 `docs/public-files.json`。改变源码目录还要核对 require/import、HTML 脚本入口、静态访问清单和浏览器 fixture。
 

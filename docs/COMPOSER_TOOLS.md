@@ -22,7 +22,7 @@
 
 命令、Skill、模板调用统一通过输入框 `/` 联想；文件通过 `@文件名` 模糊搜索。不再提供命令/项目文件对话框，也不接管 Ctrl/⌘ K。模板管理收在“设置 → Skills → 提示词模板（可选）”，只负责管理；调用时在聊天框直接填写 `/名称 参数`。迟到结果仍按输入、光标、线程和请求代次丢弃，不保存第二份历史。
 
-命令来自 Web 操作、与当前 Pi 0.85 对应的内置命令映射以及原生 `get_commands` 的扩展、Skill、模板。内部导航命令不向网页公开。模板/Skill 使用原生 prompt/steer/follow_up 展开；扩展命令即使运行中也走原生 prompt 命令分派，因为 steer/follow_up 不支持扩展命令。Web 不为这些命令伪造用户消息。
+命令来自 Web 操作、与当前 Pi 对应的内置命令映射以及原生 `get_commands` 的扩展、Skill、模板。内部导航命令不向网页公开。模板/Skill 使用原生 prompt/steer/follow_up 展开；扩展命令即使运行中也走原生 prompt 命令分派，因为 steer/follow_up 不支持扩展命令。Web 不为这些命令伪造用户消息。
 
 ## 上传办公文档与 PDF
 
@@ -119,7 +119,3 @@ Prompt Templates 是 Pi 原生的、按需调用的任务提示词。AGENTS.md �
 | GET | `/composer/files?cwd=...&q=...` | `{cwd,files:[{path}],truncated}` |
 
 主 WS `reload_resources` 无额外 payload；成功 data 为 `{commands:[...]}`，向同一 worker 所有订阅者广播 `{type:'gateway_commands',commands:[...]}`。不扩展裸 RPC 白名单，不向侧聊开放新权限。
-
-## 验证
-
-Node：`test/pi-composer.test.js`、`test/pi-transcription.test.js`。浏览器：`pi-composer-tools.cjs`、`pi-composer-controls.cjs`、`pi-selection-actions.cjs`（位于 `test/browser/`）。按[开发流程](development/WORKFLOW.md)使用独立身份、合成 REST/WS 和音频；不向生产会话或付费供应商发测试请求。

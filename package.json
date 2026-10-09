@@ -13,6 +13,7 @@
     "start": "node scripts/start-managed.cjs",
     "start:direct": "node server.js --direct",
     "test": "node scripts/run-tests.cjs",
+    "test:browser": "node scripts/run-browser-tests.cjs",
     "check": "node scripts/check-syntax.cjs",
     "check:docs": "node scripts/check-docs.cjs",
     "pack:trial": "node scripts/package-trial.cjs",

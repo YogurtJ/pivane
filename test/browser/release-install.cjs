@@ -1,3 +1,4 @@
+// pivane-browser: manual — driven by test/release/acceptance.cjs against an installed release archive.
 // Real HTTP/WebSocket onboarding against an isolated release rehearsal only.
 // Run with PI_RELEASE_TEST_URL, PI_RELEASE_PHASE=install|verify and PLAYWRIGHT_MODULE.
 const assert = require('node:assert/strict');
