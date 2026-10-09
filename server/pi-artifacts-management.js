@@ -89,14 +89,14 @@ class ArtifactManagement {
                             this.service.check();
                             let entry = catalog.entries.find(e => e.id === file.key || e.sourceKey === file.key);
                             if (input.action === 'purge') {
-                                if (!entry || file.key !== entry.id) throw fail('只能永久删除成果库回收站中的文件', 404, 'ARTIFACT_MISSING');
+                                if (!entry || file.key !== entry.id) throw fail('只能永久删除已保存到成果库的文件', 404, 'ARTIFACT_MISSING');
                                 if (entry.revision !== file.revision) throw fail('成果已变化，请刷新后核对', 409, 'ARTIFACT_CONFLICT');
                                 bytes += entry.size;
                                 if (bytes > 128 * 1024 ** 2) throw fail('本批删除校验超过 128 MiB，请分批操作', 413, 'ARTIFACT_LIMIT');
                                 await this.library.purge(catalog, entry);
                                 results.push({ key: file.key, ok: true, deleted: true }); continue;
                             }
-                            if (entry?.deletingAt) throw fail('此成果删除结果待核对，请在回收站重新确认永久删除', 409, 'ARTIFACT_INCOMPLETE');
+                            if (entry?.deletingAt) throw fail('此成果删除结果待核对，请重新确认永久删除', 409, 'ARTIFACT_INCOMPLETE');
                             if (entry && file.revision !== undefined && entry.revision !== file.revision) throw fail('成果已变化，请刷新后重试', 409, 'ARTIFACT_CONFLICT');
                             if (entry && file.key !== entry.id) {
                                 // A source locator never gains saved-copy authority.

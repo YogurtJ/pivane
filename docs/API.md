@@ -2,7 +2,7 @@
 
 ## 成果中心（artifacts）
 
-`GET /api/pi/status.artifacts` 表示成果能力；`GET /api/pi/activity.artifactOperations` 为真实读写操作数量。`GET /api/pi/artifacts` 仍返回有界、来源重验的待保存目录；新增 `/artifacts/library` 独立库分页、`POST /artifacts/batch` 逐文件／批量保存、星标、合集、重命名、项目标签、导出、回收站和永久删除（purge 要求回收站状态、当前库 ID/revision 及确认），`GET /artifacts/operations/:requestId` 核对不确定写入。`/artifacts/:key/preview|cover|origin|location` 按来源 key 或稳定 library ID 读取。已独立保存的文件不依赖来源会话；删除会话与删除成果副本分开。原交付链接语义不变，source key 仍不是授权。完整字段、确认／修订、预算和错误见 [成果中心](ARTIFACTS.md#预算资格与接口)。
+`GET /api/pi/status.artifacts` 表示成果能力；`GET /api/pi/activity.artifactOperations` 为真实读写操作数量。`GET /api/pi/artifacts` 仍返回有界、来源重验的待保存目录；新增 `/artifacts/library` 独立库分页、`POST /artifacts/batch` 逐文件／批量保存、星标、合集、重命名、项目标签、导出、回收站和永久删除（purge 可从任意视图永久删除已保存的库条目，要求 confirmed=true、精确 library ID 及当前 revision；中断的删除在回收站显示为删除待核对／deletionPending），`GET /artifacts/operations/:requestId` 核对不确定写入。`/artifacts/:key/preview|cover|origin|location` 按来源 key 或稳定 library ID 读取。已独立保存的文件不依赖来源会话；删除会话与删除成果副本分开。原交付链接语义不变，source key 仍不是授权。完整字段、确认／修订、预算和错误见 [成果中心](ARTIFACTS.md#预算资格与接口)。
 
 平台路径：文件请求接受经过规范化校验的Windows盘符/分隔符路径，返回相对path使用网页斜杠表示；ADS、设备命名空间、保留设备名及盘符相对路径拒绝。fileViewer/sessionSearch/usageStats仍由实际后端可用性决定，Windows原生组件承担私密文件ACL与句柄检查，缺失时配置初始化也可能拒绝。没有增加任意句柄/路径写入REST或绕过已有身份/同源检查。范围见WINDOWS.md。
 

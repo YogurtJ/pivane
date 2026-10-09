@@ -69,24 +69,22 @@ async function run(browser, base, width, locale, theme) {
     await page.locator('#artifacts-search').fill('');
     await page.locator('.artifacts-types [data-kind="image"]').click(); assert.equal(await page.locator('.artifacts-card').count(), 1);
     await page.locator('.artifacts-types [data-kind="all"]').click();
-    await page.locator('.artifacts-filters summary').click();
     await page.locator('#artifacts-project').selectOption('unknown'); assert.equal(await page.locator('.artifacts-card').count(), 3);
     await page.locator('#artifacts-project').selectOption('');
-    await page.locator('.artifacts-filters summary').click();
     await card('Research report').click(); await page.locator('#artifacts-preview-body h1').waitFor();
     assert.equal(await page.locator('#artifacts-preview-body h1').textContent(), 'Report');
     assert.equal(await page.locator('#artifacts-preview-body a[href^="#pi-file"]').count(), 0);
     const download = page.waitForEvent('download'); await page.getByRole('button', { name: locale === 'en' ? 'Download to device' : '下载到设备', exact: true }).click();
     const downloaded = await download; assert.equal(downloaded.suggestedFilename(), names[0]); assert.deepEqual(fs.readFileSync(await downloaded.path()), raw[0]); assert.ok(previews.filter(k => k === key(1)).length >= 2, 'download revalidates source');
-    await page.locator('.artifacts-detail-files button').filter({ hasText: 'prototype.html' }).click();
+    await page.locator('.artifacts-file-tab[role=tab]').filter({ hasText: 'prototype.html' }).click();
     await page.locator('#artifacts-preview-body iframe').waitFor();
     assert.equal(await page.locator('#artifacts-preview-body iframe').getAttribute('sandbox'), '');
     const frame = page.frameLocator('#artifacts-preview-body iframe'); await frame.locator('h1').waitFor();
     assert.equal(await frame.locator('a').getAttribute('href'), null); assert.equal(await page.locator('body').getAttribute('data-escaped'), null);
     await widths(page);
-    await page.locator('.artifacts-detail-files button').filter({ hasText: 'table.csv' }).click(); await page.locator('#artifacts-preview-body table').waitFor();
+    await page.locator('.artifacts-file-tab[role=tab]').filter({ hasText: 'table.csv' }).click(); await page.locator('#artifacts-preview-body table').waitFor();
     assert.equal(await page.locator('#artifacts-preview-body img').count(), 0);
-    await page.locator('.artifacts-detail-files button').filter({ hasText: 'report.pdf' }).click(); await page.locator('#artifacts-preview-body canvas').waitFor();
+    await page.locator('.artifacts-file-tab[role=tab]').filter({ hasText: 'report.pdf' }).click(); await page.locator('#artifacts-preview-body canvas').waitFor();
     await page.keyboard.press('Escape'); assert.equal(await page.locator('#artifacts-detail').evaluate(n => n.open), false);
     assert.equal(await card('Research report').evaluate(n => n === document.activeElement), true);
     await card('Narration').click(); await page.locator('#artifacts-preview-body audio').waitFor();
@@ -97,10 +95,11 @@ async function run(browser, base, width, locale, theme) {
     await page.keyboard.press('Escape'); await page.locator('#artifacts-preview-body video').waitFor({ state: 'detached' }); assert.equal(await page.locator('#artifacts-preview-body video').count(), 0);
     await card('Generated image').click(); await page.waitForFunction(() => document.querySelector('#artifacts-preview-body img')?.naturalWidth > 0);
     await widths(page); await page.keyboard.press('Escape');
-    revoke = true; await card('Research report').click(); await page.getByText('Source branch revoked', { exact: true }).waitFor();
-    assert.equal(await page.locator('.artifacts-detail-actions button').filter({ hasText: /下载到设备|Download to device/ }).isDisabled(), true);
+    revoke = true; await card('Research report').click(); await page.locator('.artifacts-preview-state.is-error').getByText('Source branch revoked', { exact: true }).waitFor();
+    await page.locator('.artifacts-preview-state.is-error').getByRole('button', { name: locale === 'en' ? 'Retry' : '重试', exact: true }).waitFor();
+    assert.equal(await page.locator('.artifacts-detail-actions [data-action=download]').isDisabled(), true);
     await page.keyboard.press('Escape'); revoke = false;
-    hold = true; await card('Research report').click(); await page.waitForFunction(() => document.querySelector('.artifacts-detail-status').textContent.includes('…'));
+    hold = true; await card('Research report').click(); await page.waitForFunction(() => document.querySelector('#artifacts-preview-body .artifacts-preview-state')?.textContent.includes('…'));
     await until(() => Boolean(delayed));
     await page.evaluate(() => PiWorkspaceRoute.navigate('chat')); assert.equal(await page.locator('#artifacts-detail').evaluate(n => n.open), false);
     await delayed.fulfill({ json: data[0] }).catch(() => {}); hold = false;
@@ -114,8 +113,8 @@ async function run(browser, base, width, locale, theme) {
     await page.goBack(); await page.locator('#media-tab.active').waitFor();
     await page.goForward(); await card('Research report').waitFor();
     await card('Research report').click(); await page.locator('#artifacts-preview-body h1').waitFor();
-    await page.locator('.artifacts-detail-management summary').click();
-    await page.getByRole('button', { name: locale === 'en' ? 'Open source conversation' : '返回来源会话', exact: true }).click();
+    await page.locator('.artifacts-detail-actions [aria-haspopup=menu]').click();
+    await page.locator('.artifacts-menu-item[data-action=origin]').click();
     await page.locator('#chat-tab.active').waitFor(); assert.equal(await page.locator('#pi-input').inputValue(), 'retained draft');
     await openInspector(page, 'changes'); await page.locator('#pi-files-deliveries').click();
     await page.locator('.pi-deliveries-heading').getByRole('button', { name: locale === 'en' ? 'Artifacts' : '成果中心', exact: true }).click();
@@ -130,7 +129,12 @@ async function run(browser, base, width, locale, theme) {
     console.log(`artifacts: ${width}px ${locale} ${theme} passed`); await context.close();
 }
 async function widths(page) {
-    assert.deepEqual(await page.evaluate(() => ['body', '#artifacts-tab', '.artifacts-toolbar', '.artifacts-grid', '#artifacts-detail', '.artifacts-detail-actions'].filter(s => { const n = document.querySelector(s); return n && n.clientWidth && n.scrollWidth > n.clientWidth + 1; })), []);
+    await page.waitForFunction(() => document.getAnimations().filter(a => a.effect?.target?.matches('.artifacts-manage-dialog, #artifacts-detail')).every(a => a.playState === 'finished'));
+    assert.deepEqual(await page.evaluate(() => ['body', '#artifacts-tab', '.artifacts-toolbar', '.artifacts-grid', '#artifacts-detail', '.artifacts-detail-actions'].filter(s => { const n = document.querySelector(s); if (!n || !n.clientWidth || n.scrollWidth <= n.clientWidth + 1) return false;
+        // The phone filter scroller intentionally bleeds into the shell's 14px gutters.
+        // Keep the toolbar check, but fail only if that bleed overflows the actual page.
+        if (s === '.artifacts-toolbar') return n.getBoundingClientRect().right + n.scrollWidth - n.clientWidth > innerWidth + 1;
+        return true; })), []);
     if (page.viewportSize().width < 680) assert.ok(await page.locator('#artifacts-search').evaluate(n => parseFloat(getComputedStyle(n).fontSize)) >= 16);
 }
 async function until(fn) { for (let i = 0; i < 100; i++) { if (fn()) return; await new Promise(r => setTimeout(r, 20)); } assert.ok(fn()); }

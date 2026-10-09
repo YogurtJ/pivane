@@ -112,7 +112,6 @@ class ArtifactLibrary {
         catalog.entries.push(entry); await this.commit(catalog); return entry;
     }
     async purge(catalog, entry) {
-        if (!entry.trashedAt) throw fail('请先移入回收站，再永久删除', 409, 'ARTIFACT_CONFIRM');
         const deleted = catalog.deletedSources || (catalog.deletedSources = []), versions = catalog.deletedVersions || (catalog.deletedVersions = {});
         if ((!deleted.includes(entry.sourceKey) && deleted.length >= MAX_ENTRIES) || (!versions[entry.sourceKey] && Object.keys(versions).length >= MAX_ENTRIES)) throw fail('删除记录额度已满，请联系管理员', 413, 'ARTIFACT_LIMIT');
         const root = await this.root(), file = path.join(root, entry.id + '.bin'), parentFd = io.openReadSync(root);
@@ -139,9 +138,10 @@ class ArtifactLibrary {
                 if (hashFileSafe(file, 64 * 1024 ** 2).sha256 !== entry.sha256) throw fail('成果字节已变化，未删除', 409, 'ARTIFACT_STORAGE');
                 checkFile();
             }
-            // Durable intent denies restoration after a crash between unlink and
-            // catalog commit. Only a new explicit confirmed request may reconcile.
-            entry.deletingAt ||= new Date().toISOString(); await this.commit(catalog);
+            // Durable intent surfaces interrupted deletion in trash and denies
+            // restoration. Only a new explicit confirmed request may reconcile.
+            const deletingAt = entry.deletingAt || new Date().toISOString();
+            entry.trashedAt ||= deletingAt; entry.deletingAt ||= deletingAt; await this.commit(catalog);
             checkParent();
             if (fd !== undefined) { checkFile(); fs.unlinkSync(file); }
             else { try { fs.lstatSync(file); throw fail('成果文件重新出现，请核对后再删除', 409, 'ARTIFACT_STORAGE'); } catch (error) { if (error.code !== 'ENOENT') throw error; } }
