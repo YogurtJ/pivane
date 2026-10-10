@@ -40,9 +40,37 @@
             const target = linkTarget(token.href, base);
             return original.call(this, target && !target.deliveryId ? { ...token, href: `#pi-file=${encodeURIComponent(target.path + (target.line ? ':' + target.line : ''))}` } : token);
         };
-        const math = window.PiMath?.create(renderer);
+        const tokenizer = new window.marked.Tokenizer(), originalTag = tokenizer.tag, originalEmStrong = tokenizer.emStrong;
+        const rawTags = [], emphasisMasks = new Map();
+        tokenizer.tag = function(source) {
+            const token = originalTag.call(this, source);
+            const raw = token && /^<\/?(code|pre|kbd|samp|textarea)\b/i.exec(token.raw);
+            if (raw) {
+                const name = raw[1].toLowerCase();
+                if (token.raw.startsWith('</')) {
+                    const index = rawTags.lastIndexOf(name);
+                    if (index !== -1) rawTags.splice(index);
+                } else rawTags.push(name);
+            }
+            return token;
+        };
+        tokenizer.emStrong = function(source, masked, previous) {
+            if (!this.lexer.state.inRawBlock && !rawTags.length && source.startsWith('**') && !source.startsWith('***')) {
+                // Relax only a CJK punctuation/**/Han boundary, using Marked's mask
+                // so code spans, links and escaped punctuation keep their native rules.
+                if (!emphasisMasks.has(masked)) emphasisMasks.set(masked, masked.replace(/[。！？：；，、）》」』】”’…:;,.!?)](?=\*{2}(?!\*)\p{Script=Han})/gu, 'a'));
+                const relaxed = emphasisMasks.get(masked);
+                if (relaxed !== masked) {
+                    const token = originalEmStrong.call(this, source, relaxed, previous);
+                    if (token) return token;
+                }
+            }
+            return originalEmStrong.call(this, source, masked, previous);
+        };
+        const options = { tokenizer };
+        const math = window.PiMath?.create(renderer, options);
         const source = text.replace(/^\uFEFF/, ''); // BOM belongs to the downloadable bytes, not the first heading.
-        const html = window.DOMPurify.sanitize(math ? math.parse(source) : window.marked.parse(source, { renderer }), {
+        const html = window.DOMPurify.sanitize(math ? math.parse(source) : new window.marked.Marked({ ...options, renderer }).parse(source), {
             USE_PROFILES: { html: true }, FORBID_TAGS: ['style', 'iframe', 'form', 'input', 'button', ...(preview ? ['img', 'video', 'audio', 'source', 'object', 'embed'] : [])],
             FORBID_ATTR: ['style', 'onerror', 'onclick']
         });

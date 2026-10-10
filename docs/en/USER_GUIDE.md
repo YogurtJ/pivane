@@ -55,7 +55,7 @@ Enable **Show average reply request speed** in the same section to display `Requ
 
 Timing uses boundary-only monotonic clock reads and a small snapshot stored with each native assistant message. It adds no per-token listener, timer, model request or separate statistics file. The visibility preference does not disable this lightweight recording.
 
-Expand tool details before using browser Find to search their output. Long inline code wraps; code blocks and wide formulas scroll within their own areas. Invalid or over-budget formulas retain their source. Long user messages can be expanded, and Copy still returns their complete text. Reply timestamps may indicate generation start rather than completion.
+Expand tool details before using browser Find to search their output. Long inline code wraps; code blocks and wide formulas scroll within their own areas. Invalid or over-budget formulas retain their source. Main chat, side chat and Markdown file previews protect vertical bars inside complete table formulas and support bold text whose closing markers follow punctuation and immediately precede Chinese characters. These display adaptations preserve original messages, code examples and escapes, and also apply when old messages are rendered again. Long user messages can be expanded, and Copy still returns their complete text. Reply timestamps may indicate generation start rather than completion.
 
 `!command` runs server Shell; `!!command` excludes it from later model context but retains its native execution record. Project roots are not a sandbox. Install only trusted extensions. After a timeout, disconnect or uncertain Stop/Take queue result, verify state before repeating a request. Stopping does not undo completed file changes or external requests.
 
