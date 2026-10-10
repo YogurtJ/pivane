@@ -22,6 +22,7 @@ class PiRuntimeActivity {
                 this.replyReady = false;
                 break;
             case 'agent_settled': {
+                if (event.aborted === true) this.outcome = 'stopped';
                 const completed = this.running && this.replyReady && !this.outcome;
                 this.replyReady = false;
                 this.running = false;

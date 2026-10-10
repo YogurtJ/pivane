@@ -1,4 +1,6 @@
-// Version-reviewed against Pi Coding Agent 1.0.0's CodemodeModelRuntime and
+import './pi-codemode-output-loader.mjs';
+
+// Version-reviewed against Pi Coding Agent 1.1.0's CodemodeModelRuntime and
 // createModelGlobals: only these five registry methods cross the script bridge.
 function codemodeModelRegistry(registry) {
     // Do not inherit ModelRegistry: its prototype and runtime would expose the
@@ -15,7 +17,7 @@ function codemodeModelRegistry(registry) {
 }
 
 /**
- * Wrap the official Pi 1.0.0 createCodemodeExtension(options) factory (or its
+ * Wrap the official Pi 1.1.0 createCodemodeExtension(options) factory (or its
  * built-in factory) before loading it in main or child native extensions.
  * Pass options to the official factory unchanged, then wrap its returned factory:
  *   factory: wrapCodemodeExtension(createCodemodeExtension(options))

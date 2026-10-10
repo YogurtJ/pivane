@@ -30,7 +30,7 @@ async function fixtureSession(t, tools, factories) {
     const sdk = await import('@earendil-works/pi-coding-agent');
     const native = await import('../server/pi-native-mcp.mjs');
     const settings = sdk.SettingsManager.create(cwd, agentDir, { projectTrusted: false });
-    const extensionFactories = factories || await native.nativeExtensionFactories();
+    const extensionFactories = factories || await native.nativeExtensionFactories({ tools });
     const loader = new sdk.DefaultResourceLoader({ cwd, agentDir, settingsManager: settings, noSkills: true, noPromptTemplates: true,
         noContextFiles: true, extensionFactories });
     await loader.reload();
@@ -86,6 +86,55 @@ test('native MCP codemode runs through nested tool hooks, records children, and 
     assert.deepEqual(resolver.resolveMcpDirectToolResolution(['fixture/echo'], cwd).unresolvedSelectors, ['fixture/echo']);
     fs.writeFileSync(path.join(agentDir, 'mcp.json'), JSON.stringify(config));
 });
+test('Pi 1.1 managed explicit lists hide implicit MCP tools before discovery and nested calls', async t => {
+    const native = await import('../server/pi-native-mcp.mjs'), resolver = await import('../server/pi-subagent-mcp-resolution.mjs');
+    for (const tools of [[], ['read'], ['codemode'], ['codemode', 'mcp__fixture__echo'], ['codemode', 'mcp__fixture__*']]) {
+        const session = await fixtureSession(t, tools);
+        const granted = tools.some(name => name.startsWith('mcp__'));
+        if (granted) await waitTools(session);
+        assert.equal((session.getAllTools().find(tool => tool.name === 'mcp__fixture__echo')?.exposure ?? 'hidden') === 'hidden', !granted);
+        assert.equal((session.getAllTools().find(tool => tool.name === 'mcp__fixture__forbidden')?.exposure ?? 'hidden') === 'hidden', !tools.includes('mcp__fixture__*'));
+        assert.deepEqual(resolver.readNativeSnapshot().map(tool => tool.raw).sort(), granted ? (tools.includes('mcp__fixture__*') ? ['echo', 'forbidden'] : ['echo']) : []);
+        if (tools.includes('codemode')) {
+            syntheticCall(session, 'strict-parent', 'codemode');
+            const before = fs.existsSync(callsFile) ? fs.readFileSync(callsFile, 'utf8') : '';
+            const result = await session.agent.state.tools.find(tool => tool.name === 'codemode').execute('strict-parent', {
+                code: 'text(ALL_TOOLS.map(t => t.name)); text(await tools.mcp__fixture__echo({value:"strict"}));',
+            });
+            assert.equal(Boolean(result.isError), !granted);
+            if (!granted) assert.equal(fs.existsSync(callsFile) ? fs.readFileSync(callsFile, 'utf8') : '', before);
+        } else assert.equal(session.getActiveToolNames().includes('codemode'), false);
+        await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' }); session.dispose();
+    }
+    const tools = ['codemode', 'mcp__fixture__*'];
+    const session = await fixtureSession(t, tools, await native.nativeExtensionFactories({ tools, excludeTools: ['mcp__fixture__for*'] }));
+    await waitTools(session);
+    assert.equal(session.getAllTools().find(tool => tool.name === 'mcp__fixture__forbidden').exposure, 'hidden');
+    assert.deepEqual(resolver.readNativeSnapshot().map(tool => tool.raw), ['echo']);
+    for (const names of [['*'], ['+read'], ['mcp__fixture__*']]) assert.throws(() => native.childNativeExtensions({ cwd, agentDir, allowedTools: names }), /exact resolved tool names/);
+});
+
+test('--no-mcp suppresses even explicit builtin paths and extension-only registrations never connect', async t => {
+    const sdk = await import('@earendil-works/pi-coding-agent');
+    const { managedLoaderOptions } = await import('../server/pi-bundled-loader.mjs');
+    const settings = sdk.SettingsManager.inMemory({ enableInstallTelemetry: false });
+    const { options, settingsView } = await managedLoaderOptions({ cwd, agentDir, settings, parsed: { noMcp: true, extensions: ['builtin:mcp'] } });
+    assert.deepEqual(options.disabledBuiltinExtensions, ['mcp']);
+    const remote = await loopbackMcp(t, ['echo']);
+    options.extensionFactories.push({ name: 'registered-only', factory: pi => pi.registerMcpServer('extension-only', remote.config) });
+    const loader = new sdk.DefaultResourceLoader({ cwd, agentDir, settingsManager: settingsView, ...options });
+    await loader.reload();
+    assert.equal(loader.getExtensions().extensions.some(entry => entry.path === 'builtin:mcp'), false);
+    const runtime = await sdk.ModelRuntime.create({ allowModelNetwork: false });
+    const { session } = await sdk.createAgentSession({ cwd, agentDir, modelRuntime: runtime, settingsManager: settingsView,
+        resourceLoader: loader, sessionManager: sdk.SessionManager.inMemory(cwd), noTools: 'all' });
+    const errors = []; await session.bindExtensions({ mode: 'print', onError: error => errors.push(error) });
+    t.after(async () => { await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' }); session.dispose(); });
+    assert.equal(session.getAllTools().some(tool => tool.name.startsWith('mcp__')), false);
+    assert.deepEqual(remote.methods, []);
+    assert.ok(errors.some(error => /extension-only|MCP/.test(error.error)), JSON.stringify(errors));
+});
+
 test('explicit child tools deny unauthorized nested MCP calls even with codemode enabled', async t => {
     const native = await import('../server/pi-native-mcp.mjs');
     const resolver = await import('../server/pi-subagent-mcp-resolution.mjs');

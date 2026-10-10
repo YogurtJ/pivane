@@ -27,6 +27,16 @@
 
 Pivane 使用未打包的 Pi SDK／RPC 入口；Pi 自带 `dist/bundle` 中的内联代码不受依赖目录修正覆盖，不把本机运行修复宣称为所有上游分发产物已修复。
 
+## Pi 1.1 接入约束
+
+版本审查包含 `agent_settled.aborted`、原生耗时字段、工具模式/默认修饰语、`disabledBuiltinExtensions`、MCP 取消与关停，以及 Codemode 的 `getPromptGuidelines()`、图片结构化输出/私有临时文件和模型注册表隔离。自定义流必须返回原生 `AssistantMessageEventStream`，不伪造已移除导出；原生 provider 与自定义扩展分别核对。Azure provider 标识改为 `azure`，API 标识 `azure-openai-responses` 与环境变量保持；真实旧配置须另行有界迁移审查，不改写会话正文或凭据，也不凭全局无引用推断全部项目/历史兼容。
+
+## Codemode 输出适配
+
+`pi-codemode-output-loader.mjs` 仅重定向经过版本及执行器 SHA256 审查的 SDK executor 对沙箱的精确 import；其他模块、未知版本、改变的执行器字节或不同解析失败关闭，不修改 node_modules／Pi 实现。`pi-codemode-output.mjs` 继承公开 `CodemodeSandbox`，执行结算后只对至少 256 条且全为文本的结果做一次线性合并，保留原文本分隔、console 分组、返回值位置和失败字段。256 是格式化阈值，不是执行上限；含图片或较小结果不改变。
+
+原生沙箱继续拥有输出限制、worker 关闭、取消、调用及 store；官方 executor 继续拥有目录／嵌套权限、用量、截断与私有文件。适配从主／子 Codemode 工厂的 policy 入口安装，不扩大能力。验证包括原 60 秒真实 100001 条压力场景、文本语义逐字节对照、完整输出文件、成功／失败 store、usage／不重放及取消。新 Pi 版本须重新审查 seam，不能仅改版本白名单。
+
 ## 验证与交付
 
 1. 在隔离身份和目录中安装目标精确版本，保留依赖、锁文件、原生组件和恢复材料。

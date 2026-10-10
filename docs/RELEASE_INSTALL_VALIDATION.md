@@ -2,6 +2,10 @@
 
 本页是版本验收索引。**结果只适用于对应归档**：准确 SHA256、测试明细和失败尝试见各 [Release](https://github.com/YogurtJ/pivane/releases) 的 `pivane-<版本>.validation.json`。源码、浏览器模拟和旧版结果不能替代新包的实机验收。
 
+## 1.7.0 候选（未发布）
+
+[候选说明](releases/1.7.0.md)。最终准确归档、源码提交与各平台结论由包外 `pivane-1.7.0.validation.json` 绑定；候选源码和历史试包通过不自动转移给正式归档。Linux ARM64 的完整准确包验收在发行准备中执行，本批 macOS／Windows 尚无准确包原生验收记录，不能沿用1.6.2报告。所有宣称平台门槛完成前不声明本版已公开发行。
+
 ## 当前正式版 1.6.2
 
 [1.6.2 说明](releases/1.6.2.md) · [验收附件](https://github.com/YogurtJ/pivane/releases/download/v1.6.2/pivane-1.6.2.validation.json)

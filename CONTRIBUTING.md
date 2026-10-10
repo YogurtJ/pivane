@@ -14,7 +14,7 @@
 
 测试实例使用独立的 Agent、媒体、预约、项目路径与实例 URL。只换端口不能隔离身份；不继承真实供应商认证。Node 测试统一通过 `npm test` 运行，全量与定向模式均去掉供应商环境凭据和 Pivane 实例别名变量，再串行执行选中的测试。
 
-日常迭代先跑相关文件，例如 `npm test -- test/source-files.test.js`；列表与计时用法见 [测试入口](docs/development/WORKFLOW.md#node-测试入口与计时)，交付检查以 [验证矩阵](docs/development/WORKFLOW.md#验证矩阵) 为准。浏览器与发行专项不在 `npm test` 内；UI 改动用 `npm run test:browser` 跑 Chromium/Playwright 桌面与手机回归，平台组件变更须在目标系统验证，浏览器模拟或容器不能代替原生实机验收。
+日常迭代先跑相关文件，例如 `npm test -- test/source-files.test.js`；列表与计时用法见 [测试入口](docs/development/WORKFLOW.md#node-测试入口与计时)。源码交付和本机部署按 [验证矩阵](docs/development/WORKFLOW.md#验证矩阵) 分局部功能与共享基础能力，选择专项、必要集成或相应全量；同源码、依赖和环境的通过结果可 [留证复用](docs/development/WORKFLOW.md#验证结果复用与失效)，不是每次提交或切换都重跑全套。公开发布仍须最终准确包完整验收。浏览器与发行专项不在 `npm test` 内；UI 改动用 `npm run test:browser -- <相关脚本>` 跑 Chromium/Playwright 桌面与手机回归，全量触发条件见矩阵。平台组件变更须在目标系统验证，浏览器模拟或容器不能代替原生实机验收。
 
 ## 提交与文档
 

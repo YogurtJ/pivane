@@ -18,7 +18,8 @@ export async function managedLoaderOptions({ cwd, agentDir, settings, parsed }) 
         ? fileURLToPath(new URL('./pi-bundled-subagents.mjs', import.meta.url)) : file;
     return { settingsView, options: {
         noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true,
-        extensionFactories: await nativeExtensionFactories(),
+        extensionFactories: await nativeExtensionFactories(parsed),
+        disabledBuiltinExtensions: parsed.noMcp ? ['mcp'] : undefined,
         noContextFiles: parsed.noContextFiles, systemPrompt: parsed.systemPrompt, appendSystemPrompt: parsed.appendSystemPrompt,
         additionalExtensionPaths: [...new Set([...selectedNativeBuiltins(settingsView, parsed), ...explicit(parsed.extensions), ...(parsed.noExtensions ? [] : paths('extensions'))])].map(extensionPath),
         additionalSkillPaths: [...explicit(parsed.skills), ...(parsed.noSkills ? [] : paths('skills'))],
