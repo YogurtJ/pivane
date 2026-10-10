@@ -55,7 +55,9 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
 .pi-session-filters { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 0; margin: 0 12px 14px; gap: 18px; display: flex; }
 .pi-session-filters button { border-radius: 0; min-height: 36px; font-size: .76rem; padding: 0 4px; color: var(--text-muted); }
 .pi-session-filters button[aria-pressed="true"] { background: transparent; box-shadow: none; border-bottom: 2px solid var(--green); }
-.pi-session-list { padding: 0 10px 16px; }
+/* Activity refresh restores the visible thread anchor itself; browser anchoring
+   must not apply a second scroll adjustment after the rows are moved. */
+.pi-session-list { padding: 0 10px 16px; overflow-anchor: none; }
 .pi-project-group.current { background: transparent; }
 .pi-project-group-heading { min-height: 42px; grid-template-columns: 20px minmax(0,1fr) auto 24px 26px; gap: 1px; }
 .pi-project-group-main { grid-template-columns: 20px minmax(0,1fr); gap: 6px; min-height: 36px; }

@@ -124,11 +124,14 @@ async function run(browser, viewport) {
     assert.ok(toggleGeometry.y >= rowBottom.y + rowBottom.height, 'collapse control follows all recent rows');
     await toggle.focus();
     const scrollTop = await page.locator('#pi-session-list').evaluate(node => node.scrollTop);
-    await page.waitForResponse('**/api/pi/activity');
-    await page.waitForTimeout(100);
-    assert.equal((await ids('recent')).length, 12, 'poll preserves expanded limit');
-    assert.equal(await toggle.evaluate(node => node === document.activeElement), true);
-    assert.equal(await page.locator('#pi-session-list').evaluate(node => node.scrollTop), scrollTop);
+    // Repeated activity projections must not accumulate browser anchor corrections.
+    for (let poll = 0; poll < 3; poll++) {
+        await page.waitForResponse('**/api/pi/activity');
+        await page.waitForTimeout(100);
+        assert.equal((await ids('recent')).length, 12, 'poll preserves expanded limit');
+        assert.equal(await toggle.evaluate(node => node === document.activeElement), true);
+        assert.equal(await page.locator('#pi-session-list').evaluate(node => node.scrollTop), scrollTop);
+    }
     await toggle.press('Enter');
     assert.equal((await ids('recent')).length, 6);
     assert.equal(await toggle.evaluate(node => node === document.activeElement), true);
