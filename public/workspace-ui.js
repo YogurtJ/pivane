@@ -27,6 +27,61 @@
         }
     };
 
+    // Skeleton placeholders for lists and panels waiting for their first data.
+    // Returns trusted static markup; the label is escaped. Variants: list, compact, lines, cards, chat, threads, projects.
+    // decorative: true omits the status role when an outer element already announces the loading state.
+    const SKELETON_WIDTHS = [68, 52, 74, 46, 60, 56, 70, 48];
+    const escapeLabel = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    window.PiSkeleton = {
+        html(variant = 'list', { rows = 4, label = translateUi('正在读取'), decorative = false } = {}) {
+            const count = Math.max(1, Math.min(12, Number(rows) || 4));
+            const width = (index, offset = 0) => SKELETON_WIDTHS[(index + offset) % SKELETON_WIDTHS.length];
+            let body = '';
+            if (variant === 'cards') {
+                for (let i = 0; i < count; i++) body += `<span class="pv-skel-card"><span class="pv-skel-block"></span><span class="pv-skel-line" style="--w:${width(i)}%"></span><span class="pv-skel-line is-sub" style="--w:${width(i, 3)}%"></span><span class="pv-skel-line is-sub" style="--w:${width(i, 5) - 10}%"></span></span>`;
+            } else if (variant === 'chat') {
+                // Shaped like a real turn: a labelled question box, then a labelled answer.
+                for (let i = 0; i < Math.min(count, 3); i++) body += `<span class="pv-skel-turn is-user"><span class="pv-skel-line is-tag"></span><span class="pv-skel-bubble"></span></span><span class="pv-skel-turn"><span class="pv-skel-line is-tag"></span><span class="pv-skel-line" style="--w:${Math.min(96, width(i, 2) + 26)}%"></span><span class="pv-skel-line" style="--w:${Math.min(92, width(i, 4) + 22)}%"></span><span class="pv-skel-line" style="--w:${width(i)}%"></span></span>`;
+            } else if (variant === 'threads' || variant === 'projects') {
+                // Session pane: optional project heading, then indented thread rows.
+                if (variant === 'projects') body += '<span class="pv-skel-row is-head"><span class="pv-skel-icon"></span><span class="pv-skel-lines"><span class="pv-skel-line" style="--w:44%"></span></span></span>';
+                for (let i = 0; i < count; i++) body += `<span class="pv-skel-row is-indent"><span class="pv-skel-lines"><span class="pv-skel-line" style="--w:${width(i)}%"></span><span class="pv-skel-line is-sub" style="--w:${width(i, 3) - 22}%"></span></span></span>`;
+            } else {
+                const icon = variant === 'lines' ? '' : '<span class="pv-skel-icon"></span>';
+                for (let i = 0; i < count; i++) body += `<span class="pv-skel-row">${icon}<span class="pv-skel-lines"><span class="pv-skel-line" style="--w:${width(i)}%"></span>${variant === 'lines' ? '' : `<span class="pv-skel-line is-sub" style="--w:${width(i, 3) - 14}%"></span>`}</span></span>`;
+            }
+            const kind = ['list', 'compact', 'lines', 'cards', 'chat', 'threads', 'projects'].includes(variant) ? variant : 'list';
+            const semantics = decorative ? 'aria-hidden="true"' : `role="status" aria-busy="true" aria-label="${escapeLabel(label)}"`;
+            return `<div class="pv-skeleton pv-skeleton--${kind}" ${semantics}>${body}</div>`;
+        }
+    };
+
+    // Inline status next to the control that caused it. Success hides itself by default;
+    // errors and warnings stay until the next action replaces them.
+    const statusTimers = new WeakMap();
+    const STATUS_ICONS = { success: 'fa-circle-check', error: 'fa-circle-exclamation', warning: 'fa-triangle-exclamation', info: 'fa-circle-info' };
+    window.PiInlineStatus = {
+        show(node, { tone = 'info', text = '', timeout } = {}) {
+            if (!node) return;
+            clearTimeout(statusTimers.get(node));
+            node.classList.add('pv-inline-status'); node.classList.remove('is-leaving');
+            if (!text) { node.hidden = true; node.replaceChildren(); return; }
+            const mark = tone === 'pending' ? document.createElement('span') : document.createElement('i');
+            if (tone === 'pending') mark.className = 'pi-spinner';
+            else mark.className = `fa-solid ${STATUS_ICONS[tone] || STATUS_ICONS.info}`;
+            mark.setAttribute('aria-hidden', 'true');
+            const label = document.createElement('span'); label.textContent = text;
+            node.dataset.tone = tone; node.replaceChildren(mark, label); node.hidden = false;
+            if (!node.hasAttribute('role')) node.setAttribute('role', tone === 'error' ? 'alert' : 'status');
+            const delay = timeout === undefined ? (tone === 'success' ? 6000 : 0) : timeout;
+            if (delay > 0) statusTimers.set(node, setTimeout(() => {
+                node.classList.add('is-leaving');
+                statusTimers.set(node, setTimeout(() => { node.hidden = true; node.classList.remove('is-leaving'); }, 220));
+            }, delay));
+        },
+        clear(node) { if (node) this.show(node, { text: '' }); }
+    };
+
     const THEME_KEY = 'pi.workspace.theme';
     const SIDEBAR_KEY = 'pi.workspace.sidebarCollapsed';
     const SPLIT_PREFIX = 'pi.workspace.split:';

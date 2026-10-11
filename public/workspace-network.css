@@ -20,18 +20,19 @@
 #network-custom-proxy { display: grid; gap: 8px; }
 .network-addresses { display: grid; gap: 10px; }
 .network-address { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; min-width: 0; padding: 12px; border-radius: 10px; background: var(--surface-2); }
-.network-address span { color: var(--text-muted); font-size: .8rem; }
+.network-address > span { color: var(--text-muted); font-size: .8rem; }
 .network-address code { grid-column: 1; overflow-wrap: anywhere; white-space: normal; font-size: .85rem; }
 .network-address button { grid-column: 2; grid-row: 1 / span 2; }
+.network-address .network-copy-status { grid-column: 1 / -1; }
 .network-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .network-pending { max-width: 840px; box-sizing: content-box; padding: 16px 24px; margin-bottom: 18px; display: grid; gap: 10px; border: 1px solid color-mix(in srgb, var(--text-muted) 35%, var(--line)); border-radius: 12px; background: var(--surface-2); }
 .network-pending strong { font-size: .9rem; }
 .network-pending button { justify-self: start; }
-.network-footer { max-width: 840px; display: grid; gap: 12px; padding-bottom: 18px; }
-.network-footer button { justify-self: start; }
-#network-feedback { margin: 0; line-height: 1.7; font-size: .9rem; overflow-wrap: anywhere; }
-#network-feedback[data-error=true] { color: var(--danger, #c43a3a); }
-.network-card [hidden], #network-pending[hidden], #network-feedback[hidden], #network-auth-hint[hidden] { display: none !important; }
+#network-auth-hint, #network-load-status { margin-bottom: 18px; }
+#network-pending[data-required="false"] > :not(#network-discard-status) { display: none; }
+#network-pending[data-required="false"]:not(:has(#network-discard-status:not([hidden]))) { display: none; }
+#workspace-access-panel:not([data-network-ready="true"]) :is(#network-listen, #network-proxy, #network-pending) { display: none; }
+.network-card [hidden], #network-pending[hidden] { display: none !important; }
 .network-settings-link { display: inline-flex; align-items: center; gap: 7px; font-size: .85rem; color: var(--text-muted); text-underline-offset: 3px; }
 @media (max-width: 680px) {
     .network-card { padding: 18px 16px; gap: 14px; border-radius: 13px; }

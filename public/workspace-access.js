@@ -6,7 +6,10 @@
     const inertBefore = new Map();
     const $ = id => document.getElementById(id);
     const emit = name => window.dispatchEvent(new Event(name));
-    const message = (id, text) => { $(id).textContent = text; $(id).hidden = !text; };
+    const message = (id, text, tone = id === 'workspace-access-error' ? 'error' : 'success') => {
+        if (id === 'workspace-access-error' || id === 'workspace-access-result') window.PiInlineStatus.show($(id), { tone, text });
+        else { $(id).textContent = text; $(id).hidden = !text; }
+    };
     function hideToken() {
         $('pi-token-input').type = 'password';
         $('workspace-access-token-visibility').textContent = translateUi("显示");
@@ -168,6 +171,8 @@
             const epoch = settingsEpoch;
             const body = { enabled, expectedRevision: snapshot.revision, confirmed: true,
                 ...(enabled ? generate ? { generate: true } : { token: $('workspace-access-token').value } : {}) };
+            const label = translateUi('正在保存访问设置…');
+            const finish = window.PiActionFeedback.begin($('workspace-access-save'), label);
             busy = true; statusEpoch++; controls(); message('workspace-access-error', ''); message('workspace-access-result', '');
             try {
                 const data = await request('/settings', 'PUT', body);
@@ -180,16 +185,18 @@
                     $('workspace-access-generated').hidden = !data.generatedToken;
                     $('workspace-access-generated-token').value = data.generatedToken || '';
                 }
-            } catch (error) { if (active && epoch === settingsEpoch) message('workspace-access-error', error.message + translateUi("；未自动重试。若连接中断，请先刷新状态核对。")); }
-            finally { busy = false; controls(); }
+            } catch (error) { if (active && epoch === settingsEpoch) { message('workspace-access-result', ''); message('workspace-access-error', error.message + translateUi("；未自动重试。若连接中断，请先刷新状态核对。")); } }
+            finally { finish(); busy = false; controls(); }
         });
         for (const [id, route] of [['workspace-access-logout', '/logout'], ['workspace-access-revoke', '/revoke']]) {
             $(id).addEventListener('click', async () => {
                 if (busy || !confirm(route === '/revoke' ? translateUi("撤销所有浏览器登录？持久任务继续运行；临时会话和侧聊将结束。") : translateUi("退出当前浏览器？持久任务继续运行；当前临时会话和侧聊将结束。"))) return;
-                busy = true; statusEpoch++; controls(); message('workspace-access-error', '');
-                try { await request(route, 'POST', {}); statusEpoch++; access.requireLogin(); }
-                catch (error) { message('workspace-access-error', error.message + translateUi("；请核对状态，未自动重试。")); }
-                finally { busy = false; controls(); }
+                const label = route === '/revoke' ? translateUi('正在撤销所有登录…') : translateUi('正在退出当前登录…');
+                const finish = window.PiActionFeedback.begin($(id), label);
+                busy = true; statusEpoch++; controls(); message('workspace-access-error', ''); message('workspace-access-result', '');
+                try { await request(route, 'POST', {}); statusEpoch++; message('workspace-access-result', ''); access.requireLogin(); }
+                catch (error) { message('workspace-access-result', ''); message('workspace-access-error', error.message + translateUi("；请核对状态，未自动重试。")); }
+                finally { finish(); busy = false; controls(); }
             });
         }
         $('workspace-access-refresh').addEventListener('click', () => { if (!busy) { message('workspace-access-result', ''); void loadSettings(); } });

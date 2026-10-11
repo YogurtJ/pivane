@@ -16,6 +16,8 @@
             : (['daylight', 'mint', 'slate', 'violet', 'dark'].includes(savedTheme) ? savedTheme : 'daylight');
         const savedFontSize = localStorage.getItem('pi.workspace.fontSize');
         document.documentElement.style.fontSize = ({ small: '15px', default: '16px', large: '18px', xlarge: '20px' })[savedFontSize] || '16px';
+        // Cover the first paint until body stylesheets and the workbench layout are applied (removed at DOMContentLoaded).
+        document.documentElement.classList.add('pv-booting');
     </script>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="workspace.css">
@@ -47,10 +49,12 @@
     <link rel="stylesheet" href="pi-artifacts.css">
     <link rel="stylesheet" href="media-connections.css">
     <link rel="stylesheet" href="pi-transcription-settings.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Optional web font: never block first paint when the font host is slow or unreachable. -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
     <link rel="stylesheet" href="/brand/fontawesome-6.4.0/css/all.min.css">
 </head>
 <body>
+    <div class="pv-boot" aria-hidden="true"><div class="pv-boot-mark"><img src="brand/logo-192.png" width="52" height="52" alt=""><div class="pv-boot-bar"></div></div></div>
     <div class="app-container">
         <!-- Sidebar -->
         <aside id="workspace-sidebar" class="sidebar">
@@ -206,7 +210,7 @@
                         <button type="button" data-filter="work" aria-pressed="false"><!--i18n:s1342-->工作中</button>
                     </div>
                     <div id="pi-session-list" class="pi-session-list" aria-live="polite">
-                        <div class="pi-list-state"><span class="pi-spinner"></span><!--i18n:s126-->正在读取</div>
+                        <div class="pv-skeleton pv-skeleton--projects" role="status" aria-busy="true" aria-label="正在读取" data-i18n-aria-label="s126"><span class="pv-skel-row is-head"><span class="pv-skel-icon"></span><span class="pv-skel-lines"><span class="pv-skel-line" style="--w:44%"></span></span></span><span class="pv-skel-row is-indent"><span class="pv-skel-lines"><span class="pv-skel-line" style="--w:68%"></span><span class="pv-skel-line is-sub" style="--w:24%"></span></span></span><span class="pv-skel-row is-indent"><span class="pv-skel-lines"><span class="pv-skel-line" style="--w:52%"></span><span class="pv-skel-line is-sub" style="--w:38%"></span></span></span><span class="pv-skel-row is-indent"><span class="pv-skel-lines"><span class="pv-skel-line" style="--w:74%"></span><span class="pv-skel-line is-sub" style="--w:34%"></span></span></span><span class="pv-skel-row is-indent"><span class="pv-skel-lines"><span class="pv-skel-line" style="--w:46%"></span><span class="pv-skel-line is-sub" style="--w:48%"></span></span></span></div>
                     </div>
                     <div class="pi-pane-footer">
                         <span id="pi-session-count"><!--i18n:s1343-->0 个项目</span>
@@ -237,13 +241,11 @@
                     <div id="pi-chat-knowledge" hidden></div>
                     <div class="pi-transcript-viewport">
                         <div id="pi-transcript" class="pi-transcript" tabindex="0" role="region" aria-label="会话消息" data-i18n-aria-label="s1354">
+                            <section id="pi-transcript-archive" class="pi-transcript-archive" hidden></section>
                             <div id="pi-transcript-content" class="pi-transcript-content" aria-live="polite">
-                                <div class="pi-empty-state">
-                                    <div class="pi-empty-mark">π</div>
-                                    <h2>Pi Coding Agent</h2>
-                                    <p><!--i18n:s359-->选择项目会话后开始工作</p>
-                                </div>
+                                <div class="pi-transcript-loading" role="status" aria-live="polite" aria-busy="true" data-placeholder="boot"><span class="pi-transcript-loading-label"><span class="pi-spinner" aria-hidden="true"></span><span data-loading-label><!--i18n:s477-->正在连接 Pi Agent</span></span><div class="pv-skeleton pv-skeleton--chat" aria-hidden="true"><span class="pv-skel-turn is-user"><span class="pv-skel-line is-tag"></span><span class="pv-skel-bubble"></span></span><span class="pv-skel-turn"><span class="pv-skel-line is-tag"></span><span class="pv-skel-line" style="--w:96%"></span><span class="pv-skel-line" style="--w:82%"></span><span class="pv-skel-line" style="--w:68%"></span></span><span class="pv-skel-turn is-user"><span class="pv-skel-line is-tag"></span><span class="pv-skel-bubble"></span></span><span class="pv-skel-turn"><span class="pv-skel-line is-tag"></span><span class="pv-skel-line" style="--w:72%"></span><span class="pv-skel-line" style="--w:78%"></span><span class="pv-skel-line" style="--w:52%"></span></span></div></div>
                             </div>
+                            <div id="pi-transcript-activity" class="pi-transcript-activity" hidden></div>
                         </div>
                         <div id="pi-transcript-track" class="pi-transcript-track inactive" role="scrollbar" tabindex="-1" aria-label="消息滚动位置" aria-controls="pi-transcript" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" data-i18n-aria-label="s1355">
                             <div id="pi-transcript-thumb" class="pi-transcript-thumb"></div>
@@ -252,13 +254,13 @@
                             <i class="fa-solid fa-arrow-down" aria-hidden="true"></i>
                         </button>
                     </div>
-                    <div id="pi-deferred-banner" class="pi-deferred-banner" hidden><button id="pi-deferred-open" type="button"><i class="fa-regular fa-clock" aria-hidden="true"></i><span id="pi-deferred-count"></span></button></div>
                     <div id="pi-queue" class="pi-queue hidden"></div>
                     <div class="pi-composer-wrap">
                         <div id="pi-composer-chips" class="pi-composer-chips">
                             <details id="pi-subagent-runs" class="pi-subagent-runs pi-status-chip" hidden></details>
                             <details id="pi-task-results" class="pi-task-results pi-status-chip" hidden></details>
                             <details id="pi-task-progress" class="pi-task-progress pi-status-chip" hidden></details>
+                            <div id="pi-deferred-banner" class="pi-deferred-chip pi-status-chip" hidden><button id="pi-deferred-open" type="button" aria-haspopup="dialog"><i class="fa-regular fa-clock" aria-hidden="true"></i><strong id="pi-deferred-count"></strong><span id="pi-deferred-next" class="pi-deferred-next"></span></button></div>
                         </div>
                         <div id="pi-model-guidance" class="pi-model-guidance" role="status" hidden>
                             <span id="pi-model-guidance-text"></span>
@@ -314,7 +316,7 @@
                         </div>
                         <div class="pi-composer-meta">
                             <span id="pi-composer-identity" class="pi-composer-identity" hidden></span>
-                            <span id="pi-composer-status"><!--i18n:s321-->未打开会话</span>
+                            <span id="pi-composer-status" role="status" aria-live="polite" aria-atomic="true"><!--i18n:s321-->未打开会话</span>
                             <span id="pi-attachment-limit"><!--i18n:s1373-->最多 6 张图片，文本附件单个 1MB</span>
                         </div>
                     </div>
@@ -1017,6 +1019,10 @@
     <script src="pi-session-tree.js"></script>
     <script src="pi-session-search.js"></script>
     <script src="pi-history.js"></script>
+    <link rel="stylesheet" href="pi-transcript-archive.css">
+    <script src="pi-transcript-archive.js"></script>
+    <link rel="stylesheet" href="pi-transcript-timeline.css">
+    <script src="pi-transcript-timeline.js"></script>
     <link rel="stylesheet" href="pi-mermaid.css">
     <script src="pi-mermaid.js"></script>
     <script src="pi-extension-assistant.js"></script>
@@ -1028,6 +1034,17 @@
     <link rel="stylesheet" href="pi-workbench.css">
     <script src="pi-workbench.js"></script>
     <script src="pi-request-stats.js"></script>
+    <link rel="stylesheet" href="pi-transcript-activity.css">
+    <script src="pi-transcript-activity.js"></script>
     <script src="pi-chat.js?v=subagent-runtime-1"></script>
+    <script>
+        // Registered after every module's DOMContentLoaded handler: fade the boot cover once the
+        // workbench layout is applied, even if a module failed to initialise.
+        document.addEventListener('DOMContentLoaded', () => requestAnimationFrame(() => {
+            const root = document.documentElement;
+            root.classList.add('pv-boot-leaving'); root.classList.remove('pv-booting');
+            setTimeout(() => root.classList.remove('pv-boot-leaving'), 260);
+        }), { once: true });
+    </script>
 </body>
 </html>

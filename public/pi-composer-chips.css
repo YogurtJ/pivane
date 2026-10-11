@@ -83,3 +83,35 @@
         position: absolute; width: 1px; height: 1px; overflow: hidden; clip: inset(50%); white-space: nowrap;
     }
 }
+/* Deferred messages share the status row as a plain button chip that opens the list dialog. */
+.pi-composer-chips > .pi-deferred-chip { margin-left: auto; flex-shrink: 1; }
+.pi-composer-chips > .pi-deferred-chip > button {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 32px;
+    padding: 5px 12px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    white-space: nowrap;
+    cursor: pointer;
+    animation: pi-status-pop .18s ease-out;
+}
+.pi-composer-chips > .pi-deferred-chip > button:hover { background: var(--surface-2); }
+.pi-composer-chips > .pi-deferred-chip > button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pi-deferred-chip > button > i { flex-shrink: 0; color: var(--blue); }
+.pi-deferred-chip > button > strong { flex-shrink: 0; font-weight: 600; }
+.pi-deferred-next { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.pi-deferred-next:not(:empty)::before { content: '·'; margin-right: 6px; }
+.pi-deferred-chip[data-tone="attention"] { border-color: color-mix(in srgb, var(--amber) 45%, var(--line)); }
+.pi-deferred-chip[data-tone="attention"] > button > i, .pi-deferred-chip[data-tone="attention"] .pi-deferred-next { color: var(--amber); }
+@media (max-width: 600px) {
+    .pi-composer-chips > .pi-deferred-chip > button { min-height: 38px; padding: 6px 11px; gap: 6px; }
+    .pi-composer-chips:has(> details.pi-status-chip:not([hidden])) .pi-deferred-next { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .pi-composer-chips > .pi-deferred-chip > button { animation: none; } }

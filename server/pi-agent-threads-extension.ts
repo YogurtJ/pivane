@@ -18,7 +18,7 @@ export function registerAgentThreads(pi: ExtensionAPI) {
         if (enabled(ctx) && taskProfile(ctx.sessionManager) && taskState(ctx.sessionManager)?.status !== 'submitted')
             pi.appendEntry('pivane-agent-task-state', { version: 2, sessionId: ctx.sessionManager.getSessionId(), status: 'submitted', runId: randomUUID() });
     });
-    pi.on('agent_settled', (_event, ctx) => {
+    pi.on('agent_settled', (event, ctx) => {
         const task = taskProfile(ctx.sessionManager), state = taskState(ctx.sessionManager);
         if (!enabled(ctx) || !task || state?.status !== 'submitted' || !ctx.isIdle() || ctx.hasPendingMessages()) return;
         const last = ctx.sessionManager.getBranch().findLast((entry: any) => entry.type === 'message' && entry.message.role === 'assistant') as any;
@@ -27,7 +27,7 @@ export function registerAgentThreads(pi: ExtensionAPI) {
             .filter((block: any) => block.type === 'text' && typeof block.text === 'string').map((block: any) => block.text).join('\n');
         const reason = last?.message.stopReason;
         pi.appendEntry('pivane-agent-task-state', { version: 2, sessionId: ctx.sessionManager.getSessionId(), status: 'settled',
-            outcome: reason === 'error' ? 'error' : reason === 'aborted' ? 'stopped' : reason === 'stop' ? 'completed' : 'needs_attention',
+            outcome: event.aborted || reason === 'aborted' ? 'stopped' : reason === 'error' ? 'error' : reason === 'stop' ? 'completed' : 'needs_attention',
             resultId: state.runId || randomUUID(), replyEntryId: last?.id || null, completedAt: new Date().toISOString(),
             preview: text.slice(0, 6000), truncated: text.length > 6000 });
     });

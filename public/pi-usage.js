@@ -36,6 +36,7 @@ window.PiUsage = (() => {
             controller = new AbortController();
             result.replaceChildren(); result.setAttribute('aria-busy', 'true');
             status.textContent = translateUi("正在读取持久会话用量…");
+            if (window.PiSkeleton) { status.textContent = ''; result.innerHTML = window.PiSkeleton.html('compact', { rows: 6, label: translateUi("正在读取持久会话用量…") }); }
             try {
                 const options = { signal: controller.signal };
                 const capabilities = await apiFetch('/api/pi/status', options);
@@ -47,7 +48,7 @@ window.PiUsage = (() => {
                 render(data);
             } catch (error) {
                 if (revision === epoch && opened && error.name !== 'AbortError') status.textContent = translateUi("统计失败：{0}。可点击刷新重试。", error.message);
-            } finally { if (revision === epoch) result.removeAttribute('aria-busy'); }
+            } finally { if (revision === epoch) { result.querySelector('.pv-skeleton')?.remove(); result.removeAttribute('aria-busy'); } }
         }
         function table(title, rows, columns) {
             const section = node('section', undefined, 'pi-usage-section');

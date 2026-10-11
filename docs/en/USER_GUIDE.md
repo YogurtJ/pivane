@@ -55,7 +55,7 @@ Enable **Show average reply request speed** in the same section to display `Requ
 
 Timing uses boundary-only monotonic clock reads and a small snapshot stored with each native assistant message. It adds no per-token listener, timer, model request or separate statistics file. The visibility preference does not disable this lightweight recording.
 
-Expand tool details before using browser Find to search their output. Long inline code wraps; code blocks and wide formulas scroll within their own areas. Invalid or over-budget formulas retain their source. Long user messages can be expanded, and Copy still returns their complete text. Reply timestamps may indicate generation start rather than completion.
+Expand tool details before using browser Find to search their output. Long inline code wraps; code blocks and wide formulas scroll within their own areas. Invalid or over-budget formulas retain their source. Main chat, side chat and Markdown file previews protect vertical bars inside complete table formulas and support bold text whose closing markers follow punctuation and immediately precede Chinese characters. These display adaptations preserve original messages, code examples and escapes, and also apply when old messages are rendered again. Long user messages can be expanded, and Copy still returns their complete text. Reply timestamps may indicate generation start rather than completion.
 
 `!command` runs server Shell; `!!command` excludes it from later model context but retains its native execution record. Project roots are not a sandbox. Install only trusted extensions. After a timeout, disconnect or uncertain Stop/Take queue result, verify state before repeating a request. Stopping does not undo completed file changes or external requests.
 
@@ -137,7 +137,9 @@ Title generation sends a bounded question/answer excerpt to the selected provide
 
 ## History, files and side chat
 
-**History** supports search, bookmarks, trees, forks and conversation navigation. Restoring a conversation position **does not undo files, commands or external requests**. HTML exports are for reading; JSONL exports contain the active branch. Back up stopped data directories to preserve complete session trees. See [history](../HISTORY.md), [workflows](../SESSION_WORKFLOWS.md) and [import/export](../SESSION_TRANSFER.md).
+On desktop, the **conversation outline** on the chat's left edge shows one tick per question: point at a tick to preview the question and a reply summary, click to jump, and bookmark from the card or the question header (on phones, use the question header). Bookmarks are native Pi labels and also appear in the terminal `/tree`. After context compaction, earlier questions and replies stay above the “Context compacted” marker; scroll up to keep reading. They are for reading only—the model no longer reads that original text—and the outline includes them too.
+
+**History** supports search, bookmarks, trees, forks and conversation navigation; **Show in conversation** in a preview jumps back to the record in context. Restoring a conversation position **does not undo files, commands or external requests**. HTML exports are for reading; JSONL exports contain the active branch. Back up stopped data directories to preserve complete session trees. See [history](../HISTORY.md), [workflows](../SESSION_WORKFLOWS.md) and [import/export](../SESSION_TRANSFER.md).
 
 **Files** browses and searches the project and linked folders without adding contents to model context. Use the location selector to switch roots; Add or manage folders can open a server folder temporarily or save it for this project, without changing the chat working directory. External file links offer Open file only or Link folder and open, without requiring delivery first. Unlinking never deletes files. Historical diffs, Current file and immutable Deliverables are distinct sources. Expand reading on desktop, or enter Full-screen reader; Esc/Back to sidebar preserves PDF page, zoom and table pagination. Images and SVG support drag, wheel and pinch zoom. Audio does not autoplay. The 16 MiB file limit and private-path restrictions remain. Self-contained HTML starts as an isolated static preview; enable interaction only for trusted pages, since isolation does not guarantee complete network blocking. Ask the Agent to use `deliver_files` for stable output links. See [files and deliverables](../FILE_VIEWER.md).
 
@@ -177,7 +179,7 @@ Theme and font size apply immediately under Preferences and stay local to this b
 
 ### Interface language
 
-Simplified Chinese and English follow the browser preference by default, falling back to English. A saved language change applies on next open or refresh. Preserve drafts, attachments and side-chat content first. Language settings do not translate conversations, files or custom names, or change model requests and speech language. See [language](../I18N.md).
+Simplified Chinese and English follow the browser preference by default, falling back to English. Changing it reloads the page at once and restores unsent composer text. If draft attachments, a temporary session, side chats or a message being submitted would be affected, Settings lists them first: choose “Switch now” or let the change apply on the next refresh. Language settings do not translate conversations, files or custom names, or change model requests and speech language. See [language](../I18N.md).
 
 ## Missing project directories
 

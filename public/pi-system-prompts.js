@@ -240,6 +240,7 @@
         }
         async function open() {
             active = true; const n = ++epoch, selected = currentCwd(); panel.replaceChildren(node('p', translateUi("正在读取配置…")));
+            if (window.PiSkeleton) panel.innerHTML = window.PiSkeleton.html('lines', { rows: 6, label: translateUi("正在读取配置…") });
             try {
                 capabilities = await apiFetch('/api/pi/status'); const cwd = cwdNow();
                 if (!valid(n, cwd) || selected !== currentCwd()) return;
@@ -344,6 +345,7 @@
             const n = ++epoch, parent = key(); reading = true; sync();
             status.textContent = apply ? translateUi("正在重新加载资源…") : translateUi("正在读取系统提示词…");
             delete status.dataset.state; body.replaceChildren(); value = null;
+            if (!apply && window.PiSkeleton) { status.textContent = ''; body.innerHTML = window.PiSkeleton.html('lines', { rows: 6, label: translateUi("正在读取系统提示词…") }); }
             let loaded = false;
             try {
                 if (apply) { await window.PiNativeRuntime.reload(); loaded = true; }
@@ -354,7 +356,7 @@
                 status.textContent = snapshot.matchesSavedFiles === null ? translateUi("已读取当前提示，但无法核对磁盘文件。") : snapshot.matchesSavedFiles ? translateUi("当前基础与追加内容和已保存文件一致。") : translateUi("当前加载内容或信任与保存状态不同。请检查来源，必要时重新加载或重新打开运行实例。");
                 status.dataset.state = snapshot.matchesSavedFiles === true ? 'matched' : 'check';
             } catch (e) { if (n === epoch && parent === key() && dialog.open) status.textContent = (loaded ? translateUi("资源已重新加载，但提示词核对失败。请点击刷新核对。") : '') + e.message; }
-            finally { if (n === epoch) { reading = false; sync(); } }
+            finally { if (n === epoch) { body.querySelector('.pv-skeleton')?.remove(); reading = false; sync(); } }
         }
         function open(apply = false) {
             if (!context().connected || !context().systemPrompts) return;

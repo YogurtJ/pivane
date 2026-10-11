@@ -6,7 +6,7 @@ const cwd = '/srv/attachment-browser-fixture';
 let png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5V8AAAAASUVORK5CYII=';
 const model = { provider: 'fixture', id: 'fixture', name: 'Fixture', input: ['text', 'image'], contextWindow: 128000 };
 const sessions = ['a', 'b'].map(id => ({ id, cwd, name: `Attachment ${id}`, messageCount: 0 }));
-async function run(browser, viewport) {
+async function run(browser, viewport, transcriptActivity = true) {
     const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
     const page = await context.newPage();
     const errors = [], writes = [], prompts = [];
@@ -15,6 +15,7 @@ async function run(browser, viewport) {
     const reply = (ws, command, data) => ws.send(JSON.stringify({ type: 'response', id: command.id, command: command.type, success: true, data }));
     const reject = (ws, command, error) => ws.send(JSON.stringify({ type: 'response', id: command.id, command: command.type, success: false, error }));
     page.on('pageerror', error => errors.push(error.message));
+    if (!transcriptActivity) await page.route('**/pi-transcript-activity.js', route => route.fulfill({ contentType: 'application/javascript', body: '' }));
     await page.addInitScript(({ cwd }) => {
         localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem(`pi.web.session:${cwd}`, 'a');
         Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true });
@@ -81,6 +82,17 @@ async function run(browser, viewport) {
         return canvas.toDataURL('image/png').split(',')[1];
     });
     const input = page.locator('#pi-input');
+    const waitSubmitting = async () => {
+        await page.waitForFunction(() => document.querySelector('#pi-send-button').disabled && document.querySelector('#pi-attach-button').disabled);
+        if (transcriptActivity) {
+            await page.waitForFunction(() => document.querySelector('#pi-transcript-activity .pi-activity-live')?.dataset.phase === 'sending');
+            assert.equal(await page.locator('#pi-attachment-status').textContent(), '', 'submission feedback is owned by transcript activity');
+            assert.equal(await page.locator('#pi-attachment-status').isVisible(), false);
+        } else {
+            assert.match(await page.locator('#pi-attachment-status').textContent(), /正在提交消息/, 'submission text remains when transcript activity is unavailable');
+            assert.equal(await page.locator('#pi-attachment-status').isVisible(), true);
+        }
+    };
     const chips = page.locator('#pi-attachments .pi-attachment-chip');
     const count = async n => page.waitForFunction(n => document.querySelectorAll('#pi-attachments .pi-attachment-chip').length === n && document.querySelector('#pi-attachments').getAttribute('aria-busy') === 'false', n);
     const select = files => page.locator('#pi-file-input').setInputFiles(files);
@@ -134,6 +146,8 @@ async function run(browser, viewport) {
     await select([textFile('slow.txt')]);
     await page.waitForFunction(() => typeof window.releaseAttachmentRead === 'function');
     assert.equal(await page.locator('#pi-send-button').isDisabled(), true);
+    assert.equal(await page.locator('#pi-attachment-status').textContent(), '正在读取附件…');
+    assert.equal(await page.locator('#pi-attachment-status').isVisible(), true);
     assert.equal(await page.locator('#pi-schedule-button').isDisabled(), true);
     await input.press('Enter'); assert.equal(prompts.length, 0);
     await changeSession('b'); await input.fill('other thread');
@@ -146,7 +160,7 @@ async function run(browser, viewport) {
     await page.waitForFunction(() => document.querySelector('#pi-toast-region').textContent.includes('fixture: rejected'));
     assert.equal(await input.inputValue(), 'keep draft'); await count(2);
     mode = 'hold'; await input.press('Enter');
-    await page.waitForFunction(() => document.querySelector('#pi-attachment-status').textContent.includes('正在提交'));
+    await waitSubmitting();
     const before = prompts.length; await input.press('Enter'); assert.equal(prompts.length, before);
     await input.fill('newer draft'); held();
     await page.waitForFunction(() => !document.querySelector('#pi-send-button').disabled);
@@ -159,7 +173,7 @@ async function run(browser, viewport) {
     await page.waitForFunction(() => document.querySelector('#pi-input').value === ''); await count(0);
     await input.fill('source pending'); await select([imageFile]); await count(1);
     mode = 'hold'; await input.press('Enter');
-    await page.waitForFunction(() => document.querySelector('#pi-attachment-status').textContent.includes('正在提交'));
+    await waitSubmitting();
     await changeSession('b'); assert.equal(await input.inputValue(), 'other thread'); await count(0);
     mode = 'accept'; await input.press('Enter');
     await page.waitForFunction(() => document.querySelector('#pi-input').value === '');
@@ -213,6 +227,9 @@ async function run(browser, viewport) {
 }
 (async () => {
     const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
-    try { for (const viewport of [{ width: 1440, height: 1000 }, { width: 393, height: 852 }, { width: 412, height: 915 }]) await run(browser, viewport); }
+    try {
+        for (const viewport of [{ width: 1440, height: 1000 }, { width: 393, height: 852 }, { width: 412, height: 915 }]) await run(browser, viewport);
+        await run(browser, { width: 1440, height: 1000 }, false);
+    }
     finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

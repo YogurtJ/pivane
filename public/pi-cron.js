@@ -67,6 +67,11 @@
                 node('p', '', t('正在确认任务、主线程和预算。')));
             for (let i = 0; i < 3; i++) placeholder.append(node('div', 'cron-loading-line'));
             detail.append(placeholder);
+            if (window.PiSkeleton) {
+                stats.innerHTML = window.PiSkeleton.html('lines', { rows: 3, label: t('正在读取定时任务…') });
+                list.innerHTML = window.PiSkeleton.html('list', { rows: 4, label: t('正在读取定时任务…') });
+                detail.innerHTML = window.PiSkeleton.html('lines', { rows: 6, label: t('正在读取定时任务…') });
+            }
         }
         async function load() {
             const version = ++epoch;
@@ -143,7 +148,9 @@
             if (ref?.sessionId) card.append(button('打开目标线程', 'fa-arrow-up-right-from-square', () => openThread(ref)));
             detail.append(card);
             const prompt = node('div', 'cron-card'); prompt.append(node('h3', '', t('任务内容')), node('pre', 'cron-prompt', job.prompt)); detail.append(prompt);
-            const history = node('div', 'cron-card'); history.append(node('h3', '', t('运行记录')), node('p', '', t('正在读取…'))); detail.append(history);
+            const history = node('div', 'cron-card'); history.append(node('h3', '', t('运行记录')), node('p', '', t('正在读取…')));
+            if (window.PiSkeleton) { const placeholder = node('div'); placeholder.innerHTML = window.PiSkeleton.html('compact', { rows: 3, label: t('正在读取…') }); history.lastElementChild.replaceWith(placeholder); }
+            detail.append(history);
             const version = epoch, id = selected;
             try {
                 const data = await api(`/api/pi/cron/jobs/${encodeURIComponent(job.id)}/runs`);
@@ -163,7 +170,7 @@
                     }));
                     row.append(buttons); history.append(row);
                 }
-            } catch (error) { if (history.isConnected) history.append(node('p', 'error', error.message)); }
+            } catch (error) { if (history.isConnected) { history.querySelector('.pv-skeleton')?.parentElement.remove(); history.append(node('p', 'error', error.message)); } }
         }
         function reason(value) {
             const reasons = { offline: '服务离线，已跳过', expired: '超过执行时间，已跳过', overlap: '上次任务尚未结束', 'user-active': '用户已在今天出现，保持静默', restart: '服务重启，执行结果待核对', 'worker-exited': '运行实例退出，执行结果待核对', 'time-limit': '已达到时长限制', 'run-limit': '已达到单次预算', 'target-deleted': '目标线程已删除' };

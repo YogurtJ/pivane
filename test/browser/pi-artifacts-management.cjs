@@ -14,7 +14,8 @@ async function run(browser, base, width, locale, theme) {
  await page.route('**/api/**', async route => {
   const req = route.request(), u = new URL(req.url());
   if (u.pathname === '/api/pi/artifacts/batch') {
-   assert.equal(req.method(), 'POST'); const input = req.postDataJSON(); writes.push(input); assert.ok(!outcomes.has(input.requestId));
+   assert.equal(req.method(), 'POST'); const input = req.postDataJSON(); writes.push(input);
+   assert.match(input.requestId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/); assert.ok(!outcomes.has(input.requestId));
    let result;
    if (input.action === 'collection-create') { collections.push({ id: key(88 + collections.length), name: input.name }); result = { results: [], collections }; }
    else {
@@ -55,6 +56,9 @@ async function run(browser, base, width, locale, theme) {
   return route.fulfill({ json: {} });
  });
  await page.goto(base + '/#/artifacts', { waitUntil: 'domcontentloaded' });
+ const secure = new URL(base).hostname === '127.0.0.1';
+ assert.deepEqual(await page.evaluate(() => ({ secure: isSecureContext, uuid: typeof crypto.randomUUID, random: typeof crypto.getRandomValues })),
+  { secure, uuid: secure ? 'function' : 'undefined', random: 'function' }, 'exercise the actual HTTP browser capabilities without stubbing crypto');
  await page.locator('.artifacts-views [data-view="saved"][aria-current]').waitFor();
  assert.equal(await page.locator('.artifacts-card').count(), 0);
  await page.locator('.artifacts-views [data-view="all"]').click(); await page.locator('.artifacts-card').waitFor();
@@ -212,7 +216,7 @@ async function run(browser, base, width, locale, theme) {
   await page.locator('#artifacts-tab').evaluate(n => { n.scrollTop = 0; }); await widths(page); await screenshot('polished-batch');
  }
  assert.deepEqual(errors, []);
- console.log(`artifact management ${width}px ${locale} ${theme}: per-file save/favorite, collections, drawer toasts/Undo, rename, deleted origin, location, selection, quick save/View, direct delete, trash/restore and uncertain-response no replay passed`);
+ console.log(`artifact management ${width}px ${locale} ${theme} ${secure ? 'localhost' : 'insecure HTTP'}: per-file save/favorite, collections, drawer toasts/Undo, rename, deleted origin, location, selection, quick save/View, direct delete, trash/restore and uncertain-response no replay passed`);
  await context.close();
 }
 async function widths(page) {
@@ -227,7 +231,7 @@ async function widths(page) {
 (async () => {
  const app = express(); for (const [name, folder] of [['marked', 'marked/lib'], ['dompurify', 'dompurify/dist'], ['highlight', '@highlightjs/cdn-assets']]) app.use(`/vendor/${name}`, express.static(path.join(root, 'node_modules', folder)));
  app.use(express.static(path.join(root, 'public'))); const server = http.createServer(app); server.listen(0, '127.0.0.1'); await once(server, 'listening');
- const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
- try { for (const [width, locale, theme] of [[1440, 'zh-CN', 'daylight'], [1024, 'en', 'dark'], [393, 'zh-CN', 'dark'], [320, 'en', 'daylight']]) await run(browser, `http://127.0.0.1:${server.address().port}`, width, locale, theme); }
+ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox', '--no-proxy-server', '--host-resolver-rules=MAP pivane-http.test 127.0.0.1'] });
+ try { for (const [width, locale, theme] of [[1440, 'zh-CN', 'daylight'], [1024, 'en', 'dark'], [393, 'zh-CN', 'dark'], [320, 'en', 'daylight']]) await run(browser, `http://${width === 1024 ? '127.0.0.1' : 'pivane-http.test'}:${server.address().port}`, width, locale, theme); }
  finally { await browser.close(); server.closeAllConnections(); await new Promise(r => server.close(r)); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

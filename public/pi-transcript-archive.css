@@ -1,0 +1,160 @@
+/* Pre-compaction turns above the live transcript: read-only, loaded in segments. */
+.pi-transcript-archive {
+    display: flow-root;
+    padding: 26px max(28px, calc((100% - var(--workspace-reading-width, 800px)) / 2)) 2px;
+}
+.pi-transcript-archive[hidden] { display: none; }
+.pi-transcript-shell.pi-has-outline .pi-transcript-archive { padding-left: max(48px, calc((100% - var(--workspace-reading-width, 800px)) / 2)); }
+
+/* A quiet divider naming what this block is. */
+.pi-archive-head {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    margin: 0 0 22px;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    line-height: 1.5;
+    text-align: center;
+}
+.pi-archive-head::before, .pi-archive-head::after {
+    content: '';
+    flex: 1 1 24px;
+    min-width: 24px;
+    height: 1px;
+    background: var(--line);
+}
+.pi-archive-head i { margin-right: 6px; font-size: 11px; opacity: .8; }
+.pi-archive-head-text { font-weight: 600; color: var(--text-main); white-space: nowrap; }
+.pi-archive-head-note { color: var(--text-soft, var(--text-muted)); }
+.pi-archive-head-note::before { content: '·'; margin-right: 8px; color: var(--text-soft, var(--text-muted)); }
+.pi-archive-head .pi-spinner { width: 11px; height: 11px; }
+
+/* Unloaded runs: one pill to show more. */
+.pi-archive-gap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 24px;
+}
+.pi-archive-gap:last-child { margin-bottom: 0; }
+.pi-archive-load {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 5px 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface-1, transparent);
+    color: var(--text-muted);
+    font-size: 12.5px;
+    line-height: 1.4;
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.pi-archive-load:hover:not(:disabled) { border-color: var(--line-strong); background: var(--surface-2); color: var(--text-main); }
+.pi-archive-load:disabled { cursor: progress; opacity: .75; }
+.pi-archive-load i { font-size: 10px; }
+.pi-archive-load .pi-spinner { width: 11px; height: 11px; }
+
+.pi-archive-error { margin: 0; color: var(--danger); font-size: 12px; line-height: 1.5; text-align: center; }
+.pi-archive-error .pi-archive-link { margin-left: 8px; }
+
+/* Process summary in the same voice as the live transcript's turn groups. */
+.pi-archive-process {
+    margin: -10px 0 16px;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+.pi-archive-process > summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    margin: 0 -8px;
+    padding: 0 8px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    list-style: none;
+}
+.pi-archive-process > summary:hover { background: var(--surface-2); }
+.pi-archive-process > summary::-webkit-details-marker { display: none; }
+.pi-archive-process > summary > i { font-size: 0.6rem; transition: transform 120ms ease; }
+.pi-archive-process[open] > summary > i { transform: rotate(90deg); }
+
+.pi-archive-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin: 4px 0 0;
+    padding: 2px 0 2px 12px;
+    border-left: 1px solid var(--line);
+}
+.pi-archive-step {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    line-height: 1.45;
+    text-align: left;
+    cursor: pointer;
+}
+.pi-archive-step:hover { background: var(--surface-2); color: var(--text-main); }
+.pi-archive-step > i { flex: 0 0 14px; font-size: 11px; text-align: center; opacity: .75; }
+.pi-archive-step > strong { flex: 0 0 auto; color: var(--text-main); font-weight: 600; }
+.pi-archive-step > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pi-archive-step.is-tool > span, .pi-archive-step.is-bash > span { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.pi-archive-step.is-error > i { color: var(--danger); opacity: 1; }
+.pi-archive-steps-state { display: flex; align-items: center; gap: 8px; margin: 4px 8px; }
+.pi-archive-steps .pi-archive-more { align-self: flex-start; margin: 4px 8px; }
+
+/* Small notes: truncation, images, and a turn that continues below. */
+.pi-archive-note, .pi-archive-continues {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    margin: -14px 0 22px;
+    color: var(--text-soft, var(--text-muted));
+    font-size: 12px;
+    line-height: 1.5;
+}
+.pi-archive-continues i { font-size: 10px; }
+.pi-archive-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    cursor: pointer;
+}
+.pi-archive-link:hover { text-decoration: underline; }
+
+.pi-archive-agent-text { white-space: pre-wrap; color: var(--text-muted); }
+
+@media (max-width: 900px) {
+    .pi-transcript-archive { padding-inline: 20px; }
+    .pi-archive-process > summary { min-height: 40px; }
+    .pi-archive-step { padding-block: 8px; }
+}
+@media (max-width: 680px) {
+    .pi-transcript-archive { padding: 20px 14px 2px; }
+    /* Two centred lines between hairlines instead of one long row. */
+    .pi-archive-head { flex-direction: column; gap: 2px; padding: 10px 0; border-block: 1px solid var(--line); }
+    .pi-archive-head::before, .pi-archive-head::after { content: none; }
+    .pi-archive-head-note::before { content: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .pi-archive-process > summary > i, .pi-archive-load { transition: none; }
+}

@@ -19,8 +19,7 @@
         catch { return 'system'; }
     }
     const browserLanguages = () => globalThis.navigator?.languages?.length ? navigator.languages : [globalThis.navigator?.language || 'en'];
-    // Freeze the display language for this page's lifetime. Reopening applies the saved preference
-    // without rebuilding active dialogs, losing drafts, or disconnecting temporary sessions.
+    // Modules translate at load: keep this locale fixed and deliberately reload to apply a change.
     const locale = resolve(preference(), browserLanguages());
     function t(source, ...values) {
         if (source === null || source === undefined) return '';
@@ -66,19 +65,65 @@
         if (!select) return;
         const languageHint = document.getElementById('workspace-language-hint');
         if (languageHint) languageHint.hidden = locale === 'en';
+        const actions = document.createElement('div'); actions.className = 'workspace-language-actions'; actions.hidden = true;
+        const switchButton = document.createElement('button'); switchButton.type = 'button'; switchButton.id = 'workspace-language-switch';
+        switchButton.className = 'settings-primary-button'; switchButton.textContent = t('立即切换');
+        const note = document.createElement('p'); actions.append(switchButton, note); status.after(actions);
+        let switching = false;
+        const assess = () => {
+            const assessment = window.PiWorkbenchReload?.assess?.();
+            return { blockers: Array.isArray(assessment?.blockers) ? assessment.blockers : [], restorable: assessment?.restorable || 0 };
+        };
+        const preservedDrafts = count => count > 0 ? t('未发送的文字草稿会在刷新后恢复（{0} 份）。', count) : '';
         const render = () => {
             select.value = preference();
             const pending = resolve(preference(), browserLanguages()) !== locale;
-            status.textContent = pending
-                ? t('语言已保存，下次打开或刷新页面时生效。刷新前请保留草稿和附件；临时会话与侧聊会结束。')
+            const { blockers, restorable } = pending ? assess() : { blockers: [], restorable: 0 };
+            actions.hidden = !pending || !blockers.length;
+            note.textContent = [t('也可在下次刷新时应用语言。'), preservedDrafts(restorable)].filter(Boolean).join(' ');
+            const text = pending ? blockers.length
+                ? t('语言已保存。以下内容会受刷新影响：\n{0}', blockers.map(reason => '• ' + reason).join('\n'))
+                : t('语言已保存，下次打开或刷新页面时生效。刷新前请保留草稿和附件；临时会话与侧聊会结束。')
                 : t('跟随浏览器语言，也可为当前浏览器单独选择。界面语言不改变模型回复或朗读语言。');
+            window.PiInlineStatus.show(status, { tone: pending && blockers.length ? 'warning' : 'info', text });
+        };
+        const reload = () => {
+            if (switching) return;
+            const target = resolve(preference(), browserLanguages());
+            if (target === locale) return render();
+            switching = true; select.disabled = true; switchButton.disabled = true;
+            const overlay = document.createElement('div'); overlay.id = 'workspace-language-switch-overlay';
+            overlay.setAttribute('role', 'status'); overlay.setAttribute('aria-busy', 'true'); overlay.lang = target;
+            const mark = document.createElement('div'); mark.className = 'workspace-language-switch-mark';
+            const spinner = document.createElement('span'); spinner.className = 'pi-spinner'; spinner.setAttribute('aria-hidden', 'true');
+            const label = document.createElement('span');
+            // This label intentionally uses the target language, independent of the frozen locale.
+            label.textContent = target === 'zh-CN' ? '正在切换为简体中文…' : 'Switching to English…';
+            mark.append(spinner, label); overlay.append(mark); document.body.append(overlay);
+            // If another beforeunload handler cancels navigation, return to the saved/pending status.
+            setTimeout(() => { overlay.remove(); switching = false; select.disabled = false; switchButton.disabled = false; render(); }, 4000);
+            requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => {
+                window.PiWorkbenchReload?.prepare?.();
+                location.reload();
+            }, 150)));
         };
         select.setAttribute('aria-label', t('界面语言'));
         select.options[0].textContent = t('跟随浏览器');
         render();
         select.addEventListener('change', () => {
-            if (save(select.value)) render();
-            else { select.value = preference(); status.textContent = t('浏览器无法保存语言设置，请检查网站存储权限。'); }
+            if (save(select.value)) {
+                render();
+                if (resolve(preference(), browserLanguages()) !== locale && !assess().blockers.length) reload();
+            } else {
+                select.value = preference(); actions.hidden = true;
+                window.PiInlineStatus.show(status, { tone: 'error', text: t('浏览器无法保存语言设置，请检查网站存储权限。') });
+            }
+        });
+        switchButton.addEventListener('click', () => {
+            const { blockers, restorable } = assess();
+            const text = t('立即切换语言并刷新页面？以下内容会受影响：\n{0}', blockers.map(reason => '• ' + reason).join('\n'));
+            if (blockers.length && !confirm([text, preservedDrafts(restorable)].filter(Boolean).join('\n\n'))) return;
+            reload();
         });
         window.addEventListener('storage', event => { if (event.key === KEY || event.key === null) render(); });
         window.addEventListener('languagechange', render);

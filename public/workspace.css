@@ -667,8 +667,8 @@ select:focus-visible {
 .pi-spinner {
     width: 13px;
     height: 13px;
-    border: 2px solid #343b39;
-    border-top-color: var(--green);
+    border: 2px solid color-mix(in srgb, currentColor 18%, transparent);
+    border-top-color: var(--accent, var(--green));
     border-radius: 50%;
     display: inline-block;
     animation: pi-spin 700ms linear infinite;
@@ -2938,8 +2938,6 @@ body.is-resizing * {
 .pi-workflow-file input { max-width: 230px; font-size: 0.8rem; }
 .pi-workflow-check { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; margin-top: 12px; }
 .pi-workflow-empty { padding: 20px 0; color: var(--text-muted); font-size: 0.85rem; }
-.pi-deferred-banner { border-top: 1px solid var(--line); padding: 3px 16px; }
-.pi-deferred-banner button { display: flex; gap: 8px; align-items: center; min-height: 28px; background: none; border: 0; color: var(--blue); cursor: pointer; font-size: 0.78rem; }
 @media (max-width: 900px) {
     .pi-workflow-dialog { padding: 14px; }
     .pi-workflow-field :is(input, select, textarea), .pi-workflow-file input { font-size: 16px; }
@@ -5132,3 +5130,112 @@ body.is-resizing * {
     .pi-conversation-origin span { display: none; }
 }
 
+
+/* ---------- Feedback primitives (skeleton, inline status, boot splash) ----------
+   Skeletons replace "正在读取" text while a list or panel waits for its first data.
+   They appear after a short delay so fast responses never flash a placeholder. */
+.pv-skeleton {
+    --pv-skel-base: color-mix(in srgb, var(--text-muted) 11%, transparent);
+    --pv-skel-shine: color-mix(in srgb, var(--text-muted) 21%, transparent);
+    display: grid;
+    gap: 6px;
+    width: 100%;
+    padding: 6px 4px;
+    box-sizing: border-box;
+    animation: pv-skel-in 260ms ease-out 140ms both;
+    pointer-events: none;
+}
+.pv-skel-row { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 4px 8px; }
+.pv-skel-lines { display: grid; gap: 8px; flex: 1; min-width: 0; }
+.pv-skel-line, .pv-skel-icon, .pv-skel-block, .pv-skel-bubble {
+    display: block;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--pv-skel-base) 0%, var(--pv-skel-base) 38%, var(--pv-skel-shine) 50%, var(--pv-skel-base) 62%, var(--pv-skel-base) 100%);
+    background-size: 240% 100%;
+    animation: pv-skel-shine 1.5s ease-in-out infinite;
+}
+.pv-skel-line { height: 11px; width: var(--w, 64%); }
+.pv-skel-line.is-sub { height: 9px; opacity: .75; }
+.pv-skel-icon { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 8px; }
+.pv-skeleton--compact .pv-skel-row { min-height: 34px; padding: 3px 8px; }
+.pv-skeleton--compact .pv-skel-icon { width: 18px; height: 18px; border-radius: 5px; }
+.pv-skeleton--lines .pv-skel-row { min-height: 0; padding: 3px 0; }
+.pv-skeleton--cards { grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 14px; padding: 4px 0; }
+.pv-skeleton--cards .pv-skel-card { display: grid; gap: 12px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
+.pv-skeleton--cards .pv-skel-block { height: 34px; width: 34px; border-radius: 10px; }
+/* Transcript placeholder: question box and answer lines, shaped like a real turn. */
+.pv-skeleton--chat { gap: 26px; padding: 10px 0 8px; }
+.pv-skel-turn { display: grid; gap: 11px; }
+.pv-skel-turn.is-user { padding-inline: 28px 14px; }
+.pv-skel-bubble { height: 46px; width: 100%; border-radius: 12px; }
+.pv-skel-turn .pv-skel-line { height: 12px; }
+.pv-skel-turn .pv-skel-line.is-tag { width: 64px; height: 9px; opacity: .8; }
+@keyframes pv-skel-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pv-skel-shine { from { background-position: 100% 0; } to { background-position: 0 0; } }
+
+/* Inline status next to the action that caused it (instead of a page-level footer line). */
+.pv-inline-status {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    width: fit-content;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 8px 12px;
+    border: 1px solid color-mix(in srgb, var(--text-muted) 22%, transparent);
+    border-radius: 10px;
+    background: var(--surface-3, var(--surface-1));
+    color: var(--text-main);
+    font-size: .86rem;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+    animation: pv-status-in 180ms ease-out;
+    transition: opacity .2s ease;
+}
+.pv-inline-status[hidden] { display: none !important; }
+.pv-inline-status > i, .pv-inline-status > .pi-spinner { flex: 0 0 auto; margin-top: .28em; font-size: .9em; }
+.pv-inline-status > .pi-spinner { width: .95em; height: .95em; }
+.pv-inline-status[data-tone="success"] { color: var(--green); background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 30%, transparent); }
+.pv-inline-status[data-tone="error"] { color: var(--danger); background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
+.pv-inline-status[data-tone="warning"] { color: var(--amber); background: color-mix(in srgb, var(--amber) 9%, transparent); border-color: color-mix(in srgb, var(--amber) 32%, transparent); }
+.pv-inline-status[data-tone="pending"], .pv-inline-status[data-tone="info"] { color: var(--text-muted); }
+.pv-inline-status.is-leaving { opacity: 0; }
+@keyframes pv-status-in { from { opacity: 0; transform: translateY(-3px); } }
+
+/* Boot splash: covers the unstyled first paint until every stylesheet and the workbench layout are applied. */
+.pv-boot { display: none; }
+html.pv-booting .pv-boot, html.pv-boot-leaving .pv-boot {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    display: grid;
+    place-items: center;
+    background: var(--surface-0, #edf2f7);
+    color: var(--text-muted);
+}
+html.pv-boot-leaving .pv-boot { opacity: 0; transition: opacity 220ms ease; pointer-events: none; }
+.pv-boot-mark { display: grid; justify-items: center; gap: 16px; animation: pv-boot-in 420ms ease-out both; }
+.pv-boot-mark img { width: 52px; height: 52px; border-radius: 14px; box-shadow: 0 10px 28px rgb(0 0 0 / 14%); }
+.pv-boot-bar { position: relative; width: 112px; height: 3px; overflow: hidden; border-radius: 3px; background: color-mix(in srgb, var(--text-muted) 16%, transparent); }
+.pv-boot-bar::after { content: ''; position: absolute; inset: 0; width: 42%; border-radius: inherit; background: var(--accent, #247a68); animation: pv-boot-slide 1.1s ease-in-out infinite; }
+@keyframes pv-boot-in { from { opacity: 0; transform: translateY(6px) scale(.98); } }
+@keyframes pv-boot-slide { from { transform: translateX(-110%); } to { transform: translateX(270%); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .pv-skeleton, .pv-inline-status, .pv-boot-mark { animation: none; }
+    .pv-skel-line, .pv-skel-icon, .pv-skel-block, .pv-skel-bubble, .pv-boot-bar::after { animation: none; }
+    .pv-boot-bar::after { width: 100%; opacity: .5; }
+}
+.pv-skeleton--threads, .pv-skeleton--projects { gap: 2px; padding: 4px 2px; }
+.pv-skel-row.is-head { min-height: 40px; }
+.pv-skel-row.is-head .pv-skel-icon { width: 20px; height: 18px; border-radius: 5px; }
+.pv-skel-row.is-indent { min-height: 50px; padding-left: 22px; }
+.pv-skeleton--threads .pv-skel-row.is-indent { padding-left: 14px; }
+
+/* Thread loading: a quiet status line above a transcript-shaped skeleton. */
+.pi-transcript-loading { display: block; min-height: 0; text-align: left; }
+.pi-transcript-loading-label { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 6px 0 14px; color: var(--text-muted); font-size: .78rem; }
+.pi-transcript-loading-label .pi-spinner[hidden] { display: none; }
+.pi-transcript-loading[role="alert"] .pv-skeleton { display: none; }
+.pi-transcript-loading[role="alert"] .pi-transcript-loading-label { padding: 56px 12px; color: var(--danger); font-size: .85rem; }

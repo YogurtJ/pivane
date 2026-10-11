@@ -1,7 +1,8 @@
 (() => {
     class PiTranscriptScroll {
-        constructor({ viewport, content, track, thumb, latest }) {
-            Object.assign(this, { viewport, content, track, thumb, latest });
+        constructor({ viewport, content, track, thumb, latest, archive = null }) {
+            // `archive` is an optional read-only block rendered above the live content.
+            Object.assign(this, { viewport, content, track, thumb, latest, archive });
             this.following = true;
             this.frame = null;
             this.lastTop = viewport.scrollTop;
@@ -57,6 +58,7 @@
             this.resizeObserver = new ResizeObserver(() => this.update());
             this.resizeObserver.observe(viewport);
             this.resizeObserver.observe(content);
+            if (archive) this.resizeObserver.observe(archive);
             this.mutationObserver = new MutationObserver(() => this.update());
             this.mutationObserver.observe(content, { childList: true, subtree: true, characterData: true });
             this.update();
@@ -121,6 +123,34 @@
             this.pendingRestore = null;
             const top = this.viewport.scrollTop + node.getBoundingClientRect().top - this.viewport.getBoundingClientRect().top - margin;
             this.setTop(top);
+            this.paint();
+        }
+
+        // Run a DOM change above or around the reader and keep what they were looking at in
+        // place (a tail-following reader stays at the bottom). Re-entrant.
+        preserve(mutate) {
+            if (this.preserving) return mutate();
+            const top = this.viewport.getBoundingClientRect().top, candidates = [];
+            if (!this.following && this.viewport.clientHeight) {
+                for (const root of [this.archive, this.content]) {
+                    for (const child of root?.children || []) {
+                        if (child.hidden || candidates.length >= 8) continue;
+                        const box = child.getBoundingClientRect();
+                        if (box.height && box.bottom > top) candidates.push([child, box.top]);
+                    }
+                }
+            }
+            this.preserving = true;
+            try { mutate(); } finally { this.preserving = false; }
+            if (!this.viewport.clientHeight) return;
+            if (this.following) this.setTop(this.maximum());
+            else {
+                const anchor = candidates.find(([node]) => node.isConnected && !node.hidden);
+                if (anchor) {
+                    const delta = anchor[0].getBoundingClientRect().top - anchor[1];
+                    if (Math.abs(delta) >= 1) this.setTop(this.viewport.scrollTop + delta);
+                }
+            }
             this.paint();
         }
 
@@ -197,7 +227,7 @@
             // replacement or reflow above it falls back to the ordered search.
             if ((previous?.key || previous?.readingKey) && previous.top === this.viewport.scrollTop && this.visibleAnchor(previous.anchorNode)
                 && Math.abs(previous.anchorNode.getBoundingClientRect().top - top - previous.offset) < 1) return previous;
-            const children = [...this.content.children].filter(child => !child.hidden);
+            const children = [...(this.archive?.hidden ? [] : this.archive?.children || []), ...this.content.children].filter(child => !child.hidden);
             // Message blocks are vertically ordered; only inspect the visible anchor on scroll.
             let low = 0;
             let high = children.length;

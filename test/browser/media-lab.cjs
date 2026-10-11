@@ -292,7 +292,7 @@ async function run(browser, size, theme) {
     await page.getByLabel('接入模板').selectOption('http-json');
     assert.ok((await page.getByLabel('模型接入定义 JSON').inputValue()).includes('tokenEnv'));
     await page.locator('#lab-info-content summary').click();
-    await page.waitForFunction(() => document.querySelector('#lab-info-content pre').textContent.includes('Fixture documentation'));
+    await page.waitForFunction(() => document.querySelector('#lab-info-content pre')?.textContent.includes('Fixture documentation'));
     await overflow(); await page.locator('#lab-info-close').click();
     models = models.filter(model => model.kind !== 'tts' && model.id !== 'reference-model'); await page.locator('#lab-refresh').click();
     await page.waitForFunction(() => !document.getElementById('lab-refresh').disabled);

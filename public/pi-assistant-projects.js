@@ -75,6 +75,10 @@
         async function browse(path) {
             const ticket = ++browseRevision;
             directoryList.textContent = t('正在读取目录…', 'Loading folders…');
+            if (window.PiSkeleton) {
+                directoryList.innerHTML = window.PiSkeleton.html('compact', { rows: 4, label: t('正在读取目录…', 'Loading folders…') });
+                directoryList.firstElementChild.style.gridColumn = '1 / -1';
+            }
             try {
                 const result = await apiFetch(`/api/pi/directories${path ? `?path=${encodeURIComponent(path)}` : ''}`);
                 if (ticket !== browseRevision || !dialog.open) return;
@@ -223,7 +227,9 @@
         return { async open(session, cwd) {
             if (saving) return;
             const ticket = ++epoch; origin = identity(); snapshot = null; uncertain = false; select = null;
-            body.replaceChildren(); feedback(t('正在读取分类…', 'Loading categories…')); update(); dialog.showModal();
+            body.replaceChildren(); feedback(t('正在读取分类…', 'Loading categories…'));
+            if (window.PiSkeleton) status.innerHTML = window.PiSkeleton.html('list', { rows: 3, label: t('正在读取分类…', 'Loading categories…') });
+            update(); dialog.showModal();
             try {
                 const data = await apiFetch(`/api/pi/sessions/${encodeURIComponent(session.id)}/classification?cwd=${encodeURIComponent(cwd)}`);
                 if (ticket !== epoch || !dialog.open || identity() !== origin) return;

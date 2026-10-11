@@ -9,7 +9,7 @@ import * as sdk from '@earendil-works/pi-coding-agent';
 import { createPlacementChildSessionFactory } from '../vendor/pi-subagents/src/runs/shared/child-session.js';
 import resources from './pi-bundled-resources.js';
 import { managedLoaderOptions } from './pi-bundled-loader.mjs';
-import { childNativeExtensions } from './pi-native-mcp.mjs';
+import { childNativeExtensions, nativeBuiltins } from './pi-native-mcp.mjs';
 
 class ChildResourceLoader {
     constructor(input) {
@@ -31,7 +31,7 @@ class ChildResourceLoader {
             // The upstream native-MCP/Codemode factories use the same names. Keep
             // Pivane's filtered factories, including the nested-call permission gate.
             extensionFactories: [...nativeFactories, pi => registerModelSpeed(pi, { agentDir: input.agentDir, preserveExisting: false }),
-                ...(input.extensionFactories || []).filter(entry => !nativeFactories.some(native => native.name === entry.name))] });
+                ...(input.extensionFactories || []).filter(entry => !nativeBuiltins.includes(entry.name) && !nativeFactories.some(native => native.name === entry.name))] });
         return new Proxy(loader, { get(target, prop) {
             if (prop === 'reload') return async () => {
                 await input.settingsManager.reload();

@@ -20,6 +20,19 @@
             this.rows = []; this.offset = 0; this.pageSize = 30; this.selected = null;
             this.bodyEnabled = false;
             this.tree = new window.PiSessionTreeView(this, host);
+            // Records still rendered in the conversation can be shown there in context.
+            this.locateButton = node('button', null, 'pi-history-locate'); this.locateButton.type = 'button'; this.locateButton.id = 'pi-history-locate'; this.locateButton.hidden = true;
+            const locateIcon = node('i', null, 'fa-solid fa-location-crosshairs'); locateIcon.setAttribute('aria-hidden', 'true');
+            this.locateButton.append(locateIcon, document.createTextNode(translateUi("在对话中定位")));
+            $('pi-history-text-prev').before(this.locateButton);
+            this.locateButton.addEventListener('click', async () => {
+                const entryId = this.selected?.entryId; if (!entryId || this.locateButton.disabled) return;
+                // Archived records may first load their segment; locate resolves to whether it worked.
+                this.locateButton.disabled = true;
+                let found = false;
+                try { found = await this.host.locate?.(entryId); } catch {} finally { this.locateButton.disabled = false; }
+                if (!found) this.host.toast(translateUi("这条记录不在当前显示的对话中，可能已被压缩或位于其他分支"), 'info');
+            });
             $('pi-history-tab').addEventListener('click', () => this.resume());
             this.query.addEventListener('input', () => this.queueSearch());
             for (const input of [this.scope, this.filter, this.onlyBookmarks]) input.addEventListener('change', () => this.queueSearch(0));
@@ -88,6 +101,15 @@
             this.host.showPane('history'); this.sync();
             if (this.tree.mode === 'tree' && !this.tree.loaded && !this.tree.loading) this.tree.load('current');
             (this.selected ? $('pi-history-preview-close') : this.tree.mode === 'tree' ? $('pi-tree-current') : this.query).focus({ preventScroll: true });
+        }
+        // Open one record's preview from elsewhere (archived turns: full text or a process step).
+        show(entryId, view = 'body') {
+            if (!entryId) return;
+            if (!this.available()) return this.host.toast(translateUi("请先连接持久线程再查看历史"), 'info');
+            if (!this.leavePreview()) return;
+            this.host.showPane('history'); this.sync();
+            if (this.tree.mode !== 'search') { this.tree.mode = 'search'; this.tree.sync(); }
+            void this.openEntry(entryId, 0, view);
         }
         open(mode = 'search') {
             if (!this.available()) return this.host.toast(translateUi("请先连接持久线程再查看历史"), 'info');
@@ -158,6 +180,7 @@
                     while (walker.nextNode()) nodes.push(walker.currentNode);
                     if (this.query.value.trim()) for (const n of nodes) { const fragment = document.createDocumentFragment(); highlight(fragment, n.textContent, this.query.value.trim()); n.replaceWith(fragment); }
                 } else highlight(text, data.text || (data.images ? translateUi("本条含 {0} 张图片，历史预览仅显示文字。", data.images) : translateUi("无文字正文")), this.query.value.trim());
+                this.locateButton.hidden = !data.inCurrentBranch || !this.host.canLocate?.(data.entryId);
                 $('pi-history-record-toggle').hidden = !this.bodyEnabled || !data.hasTools || data.kind === 'tool';
                 $('pi-history-record-toggle').textContent = data.view === 'record' ? translateUi("只看回复正文") : translateUi("查看工具参数");
                 const paged = Boolean(data.offset || data.hasMore);

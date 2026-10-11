@@ -100,7 +100,7 @@ function fixture(query) {
             mode = 'partial'; await page.locator('#settings-usage-filters button').click(); await page.locator('.pi-usage-warning').waitFor();
             mode = 'empty'; await page.locator('#settings-usage-filters button').click(); await page.locator('#settings-usage-result .settings-empty').waitFor();
             mode = 'delay'; await page.locator('#settings-usage-filters button').click();
-            await page.waitForFunction(() => document.getElementById('settings-usage-status').textContent.includes('正在读取'));
+            await page.locator('#settings-usage-result .pv-skeleton[role="status"][aria-label="正在读取持久会话用量…"]').waitFor();
             while (!release) await new Promise(resolve => setTimeout(resolve, 10));
             await page.locator('#settings-usage-from').fill('2026-02-02'); release(); mode = 'normal';
             assert.equal(await page.locator('.pi-usage-cards').count(), 0);

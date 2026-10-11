@@ -1,0 +1,119 @@
+/* Live activity at the end of the conversation (pi-transcript-activity.js).
+   A sibling after #pi-transcript-content inside the same scroller, aligned to the reading column. */
+.pi-transcript-activity {
+    display: grid;
+    gap: 10px;
+    padding: 0 max(28px, calc((100% - var(--workspace-reading-width, 800px)) / 2)) 38px;
+}
+.pi-transcript-activity[hidden] { display: none; }
+.pi-transcript-shell.pi-has-outline .pi-transcript-activity { padding-left: max(48px, calc((100% - var(--workspace-reading-width, 800px)) / 2)); }
+/* While the activity is shown it continues the conversation directly below the last message. */
+.pi-transcript-content.pi-activity-active { min-height: 0; padding-bottom: 12px; }
+
+.pi-activity-live {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    min-height: 30px;
+    color: var(--text-muted);
+    font-size: .84rem;
+    animation: pi-activity-in 220ms ease-out;
+}
+.pi-activity-live[hidden], .pi-activity-notice[hidden] { display: none; }
+.pi-activity-dots { display: inline-flex; align-items: center; gap: 4px; padding: 0 2px; }
+.pi-activity-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); opacity: .3; animation: pi-activity-dot 1.2s ease-in-out infinite; }
+.pi-activity-dots i:nth-child(2) { animation-delay: .16s; }
+.pi-activity-dots i:nth-child(3) { animation-delay: .32s; }
+/* The label shimmers gently so a long wait still reads as alive. */
+.pi-activity-label {
+    background: linear-gradient(90deg, var(--text-muted) 0%, var(--text-muted) 40%, var(--text-main) 50%, var(--text-muted) 60%, var(--text-muted) 100%);
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: pi-activity-shine 2.4s linear infinite;
+    overflow-wrap: anywhere;
+}
+.pi-activity-time { color: var(--text-soft, var(--text-muted)); font-size: .78rem; font-variant-numeric: tabular-nums; }
+.pi-activity-time:empty { display: none; }
+.pi-activity-hint { flex-basis: 100%; padding-left: 28px; color: var(--amber); font-size: .78rem; }
+.pi-activity-hint[hidden] { display: none; }
+.pi-activity-live[data-phase="tool"] .pi-activity-dots i { background: var(--blue); }
+.pi-activity-live[data-phase="retry"] .pi-activity-dots i { background: var(--amber); }
+
+/* Compaction is long and blocks sending, so it gets a visible card with an indeterminate bar. */
+.pi-activity-live[data-phase="compacting"] {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px 12px;
+    padding: 14px 16px 16px;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--accent) 6%, var(--surface-2));
+}
+.pi-activity-compact-icon {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
+    animation: pi-activity-breathe 1.8s ease-in-out infinite;
+}
+.pi-activity-compact-copy { display: grid; gap: 3px; min-width: 0; }
+.pi-activity-compact-copy strong { color: var(--text-main); font-size: .9rem; font-weight: 600; }
+.pi-activity-compact-detail { color: var(--text-muted); font-size: .8rem; line-height: 1.5; overflow-wrap: anywhere; }
+.pi-activity-progress { position: absolute; inset: auto 0 0; height: 3px; overflow: hidden; background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.pi-activity-progress::after { content: ''; position: absolute; inset: 0 auto 0 0; width: 36%; border-radius: 3px; background: var(--accent); animation: pi-activity-slide 1.6s ease-in-out infinite; }
+
+/* Result of the last compaction: stays at the bottom until the next turn or until closed. */
+.pi-activity-notice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 8px 8px 8px 14px;
+    border: 1px solid color-mix(in srgb, var(--text-muted) 24%, transparent);
+    border-radius: 12px;
+    background: var(--surface-3, var(--surface-1));
+    color: var(--text-muted);
+    font-size: .84rem;
+    animation: pi-activity-in 220ms ease-out;
+}
+.pi-activity-notice > i { flex: 0 0 auto; }
+.pi-activity-notice[data-tone="success"] { border-color: color-mix(in srgb, var(--green) 30%, transparent); background: var(--green-soft); }
+.pi-activity-notice[data-tone="success"] > i { color: var(--green); }
+.pi-activity-notice[data-tone="error"] { border-color: color-mix(in srgb, var(--danger) 30%, transparent); background: var(--danger-soft); }
+.pi-activity-notice[data-tone="error"] > i, .pi-activity-notice[data-tone="error"] strong { color: var(--danger); }
+.pi-activity-notice-copy { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; flex: 1; min-width: 0; line-height: 1.5; }
+.pi-activity-notice-copy strong { color: var(--text-main); font-weight: 600; }
+.pi-activity-notice-detail { overflow-wrap: anywhere; }
+.pi-activity-notice button { flex: 0 0 auto; min-height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--accent); font: inherit; cursor: pointer; }
+.pi-activity-notice-action { padding: 0 10px; font-weight: 600; }
+.pi-activity-notice-close { width: 30px; color: var(--text-muted) !important; }
+.pi-activity-notice button:hover { background: color-mix(in srgb, var(--text-muted) 12%, transparent); }
+.pi-activity-notice button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+@keyframes pi-activity-in { from { opacity: 0; transform: translateY(4px); } }
+@keyframes pi-activity-dot { 0%, 80%, 100% { opacity: .3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+@keyframes pi-activity-shine { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+@keyframes pi-activity-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(.9); } }
+@keyframes pi-activity-slide { from { transform: translateX(-110%); } to { transform: translateX(290%); } }
+
+@media (max-width: 900px) { .pi-transcript-activity { padding-inline: 20px; } }
+@media (max-width: 680px) {
+    .pi-transcript-activity { padding: 0 14px 32px; }
+    .pi-activity-live[data-phase="compacting"] { padding: 12px 13px 14px; gap: 4px 10px; }
+    .pi-activity-notice-action { padding: 0 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .pi-activity-live, .pi-activity-notice, .pi-activity-dots i, .pi-activity-compact-icon, .pi-activity-progress::after { animation: none; }
+    .pi-activity-dots i { opacity: .8; }
+    .pi-activity-label { animation: none; background: none; color: var(--text-muted); }
+    .pi-activity-progress::after { width: 100%; opacity: .5; }
+}

@@ -6,6 +6,7 @@ const error = (message, code = 'HISTORY_INVALID') => Object.assign(new Error(mes
 const idValid = id => typeof id === 'string' && /^[\w-]{1,128}$/.test(id);
 function validateHistoryRequest(kind, input = {}) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw error('历史查询参数无效');
+    if (kind === 'archive') return require('./pi-history-archive').validateArchiveRequest(input);
     if (kind === 'tree') return require('./pi-session-tree').validateTreeRequest(input);
     if (kind === 'search') {
         const q = input.q ?? '', scope = input.scope ?? 'branch', filter = input.filter ?? 'all', offset = input.offset ?? 0;
@@ -32,6 +33,8 @@ function validateHistoryRequest(kind, input = {}) {
 }
 function kindOf(entry) {
     if (['compaction', 'branch_summary'].includes(entry.type)) return 'summary';
+    // Native extension messages (scheduled tasks, agent messages) shown in the conversation.
+    if (entry.type === 'custom_message') return entry.display === false ? null : 'assistant';
     if (entry.type !== 'message' || !entry.message) return null;
     const message = entry.message;
     if (message.role === 'custom' && message.display !== true) return null;
@@ -66,7 +69,14 @@ function documentOf(entry, view = 'record') {
         else if (value && typeof value === 'object') { add('{'); for (const [key, item] of Object.entries(value)) { add(`${key}:`); args(item, depth + 1); } add('}'); }
     };
     if (kind === 'summary') add(entry.summary);
-    else {
+    else if (entry.type === 'custom_message') {
+        const content = entry.content;
+        if (typeof content === 'string') add(content);
+        else if (Array.isArray(content)) for (const block of content) {
+            if (block?.type === 'text') add(block.text);
+            else if (block?.type === 'image') images++;
+        }
+    } else {
         const m = entry.message;
         if (m.role === 'bashExecution') { add(m.command); add(m.output); }
         else if (typeof m.content === 'string') add(m.content);
@@ -111,7 +121,7 @@ function searchHistory(manager, raw, { settled = false } = {}) {
         if (!kind || input.scope === 'branch' && !view.branch.has(entry.id)) continue;
         const label = manager.getLabel(entry.id) || '';
         if (input.bookmarked && !label) continue;
-        const hasTools = kind === 'tool' || kind === 'assistant' && Array.isArray(entry.message.content) && entry.message.content.some(b => b.type === 'toolCall');
+        const hasTools = kind === 'tool' || kind === 'assistant' && Array.isArray(entry.message?.content) && entry.message.content.some(b => b.type === 'toolCall');
         if (input.filter === 'conversation' && kind === 'tool') continue;
         if (!['all', 'conversation'].includes(input.filter) && input.filter !== kind && !(input.filter === 'tool' && hasTools)) continue;
         const presentation = ['assistant', 'conversation'].includes(input.filter) ? 'body' : 'record';

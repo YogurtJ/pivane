@@ -47,6 +47,7 @@
         let snapshot = null, learning = null, learningDraft = null, selected = null, detail = null, draft = null, editing = false, reviewed = true;
         let busy = false, learningBusy = false, learningEpoch = 0, uncertain = null, learningUncertain = null, receipt = null, notice = '', conflict = false;
         let memoryFull = false, revealItem = null, modelCatalog = null, legacyModel = null;
+        let detailReadError = null;
         // Consolidation proposals (learning) are applied through the knowledge mutations;
         // group drafts and applied groups live only in this page.
         let proposalDrafts = new Map(), appliedGroups = new Set();
@@ -142,10 +143,10 @@
                 if (selected && data.status === 'ready') {
                     const newer = data.items.find(row => row.id === selected.id);
                     if (newer && newer.revision !== selected.revision) {
-                        selected = newer; detail = null; reviewed = false;
+                        selected = newer; detail = null; reviewed = false; detailReadError = null;
                         void apiFetch(`${base()}/knowledge/items/${encodeURIComponent(newer.id)}`).then(result => {
                             if (current(profileId, generation) && selected?.revision === newer.revision && result?.status === 'ready') { detail = result; render(); }
-                        }).catch(() => {});
+                        }).catch(error => { if (current(profileId, generation) && selected?.revision === newer.revision) { detailReadError = { id: newer.id, revision: newer.revision, text: error.message }; render(); } });
                     }
                 }
                 const found = data.receipts?.find(r => r.requestId === uncertain?.requestId);
@@ -186,14 +187,14 @@
         }
         async function choose(item) {
             if (!await discard()) return;
-            selected = item; detail = draft = null; editing = false; reviewed = true; render();
+            selected = item; detail = draft = null; editing = false; reviewed = true; detailReadError = null; render();
             root.querySelector('.pi-knowledge-detail')?.scrollIntoView({ block: 'nearest' });
             const profileId = profile, generation = serial;
             apiFetch(`${base()}/knowledge/items/${encodeURIComponent(item.id)}`).then(data => {
                 if (!current(profileId, generation) || selected?.id !== item.id) return;
                 if (data?.version !== 1 || data.status !== 'ready' || data.item?.id !== item.id) throw new Error(t('正文不可用，请刷新核对。'));
                 detail = data; render();
-            }).catch(error => { if (current(profileId, generation) && selected?.id === item.id) { notice = error.message; render(); } });
+            }).catch(error => { if (current(profileId, generation) && selected?.id === item.id) { notice = error.message; detailReadError = { id: item.id, revision: item.revision, text: error.message }; render(); } });
         }
         async function edit(item) {
             if (!await discard()) return;
@@ -281,6 +282,9 @@
             }
             const message = node('p', notice ? `${notice} · ${t('存储状态：{0}', t(statusLabel[snapshot?.status] || snapshot?.status || '状态未知'))}`
                 : snapshot ? t('已保存数据 · {0}', t(statusLabel[snapshot.status] || snapshot.status || '状态未知')) : t('正在读取…'), 'pi-knowledge-status'); message.setAttribute('role', 'status'); root.append(message);
+            if (!snapshot && notice === t('正在读取已保存数据…') && window.PiSkeleton) {
+                const placeholder = node('div'); placeholder.innerHTML = window.PiSkeleton.html('list', { rows: 4, label: t('正在读取已保存数据…') }); message.replaceWith(placeholder);
+            }
             if (receipt) {
                 const r = node('div', receiptText(receipt), 'pi-knowledge-receipt'); r.setAttribute('role', 'status');
                 if (receipt.undoable && receipt.id && allowed(snapshot, 'undo', receipt.kind, receipt.scope === 'project' ? { kind: receipt.kind, scope: 'project' } : null))
@@ -322,7 +326,12 @@
                 [...root.querySelectorAll('.pi-knowledge-row')].find(row => row.dataset.itemId === id)?.focus({ preventScroll: true });
             }));
             box.append(heading, node('small', meta(item)));
-            if (item.description) box.append(node('p', item.description)); box.append(node('pre', detail ? item.content || '' : t('正在读取正文…')));
+            if (item.description) box.append(node('p', item.description));
+            const error = detailReadError?.id === item.id && detailReadError.revision === item.revision ? detailReadError.text : '';
+            const content = node('pre', detail ? item.content || '' : error || t('正在读取正文…')); box.append(content);
+            if (!detail && !error && window.PiSkeleton) {
+                const placeholder = node('div'); placeholder.innerHTML = window.PiSkeleton.html('lines', { rows: 6, label: t('正在读取正文…') }); content.replaceWith(placeholder);
+            }
             if (detail) {
                 const actions = node('div', undefined, 'pi-knowledge-actions');
                 if (item.state === 'active' && allowed(snapshot, 'update', item.kind, item) && !detail?.item?.readOnly) actions.append(button(t('编辑'), () => edit(item)));
@@ -590,7 +599,11 @@
         }
         function renderLearning() {
             const box = node('section', undefined, 'pi-learning'); box.append(node('h4', t('后台学习')));
-            if (!learning || learning.error) { box.append(node('p', learning?.error || t('正在读取…'), 'pi-knowledge-status')); root.append(box); return; }
+            if (!learning || learning.error) {
+                box.append(node('p', learning?.error || t('正在读取…'), 'pi-knowledge-status'));
+                if (!learning && window.PiSkeleton) { const placeholder = node('div'); placeholder.innerHTML = window.PiSkeleton.html('lines', { rows: 4, label: t('正在读取…') }); box.lastElementChild.replaceWith(placeholder); }
+                root.append(box); return;
+            }
             const health = learning.health;
             if (health?.state) {
                 const line = node('p', undefined, 'pi-learning-health');

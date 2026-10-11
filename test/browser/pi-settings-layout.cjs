@@ -88,7 +88,7 @@ async function run(browser, width) {
     assert.equal((await button.boundingBox()).height, 44);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     assert.equal(await button.locator('i').evaluate(el => getComputedStyle(el).animationName), 'none');
-    await page.waitForFunction(() => document.getElementById('settings-usage-status').textContent.includes('正在读取'));
+    await page.locator('#settings-usage-result .pv-skeleton[role="status"][aria-label="正在读取持久会话用量…"]').waitFor();
     for (let i = 0; !release && i < 50; i++) await page.waitForTimeout(20);
     assert.ok(release); hold = false; release();
     await page.locator('.pi-usage-cards').waitFor();

@@ -101,6 +101,7 @@
         inventory = null; inventoryState = 'loading'; renderCards();
         const feedback = document.getElementById('extensions-inventory-status');
         feedback.textContent = text('正在读取安装清单…', 'Reading installation inventory…');
+        if (window.PiSkeleton) feedback.innerHTML = window.PiSkeleton.html('lines', { rows: 3, label: text('正在读取安装清单…', 'Reading installation inventory…') });
         const valid = () => ticket === generation && view === 'extensions' && selected === host.currentCwd();
         try {
             const status = await host.apiFetch('/api/pi/status');

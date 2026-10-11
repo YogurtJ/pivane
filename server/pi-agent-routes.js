@@ -254,6 +254,7 @@ function createPiAgentGateway(options = {}) {
             liveRecovery: true,
             extensionDrafts: true,
             historySearch: true,
+            historyArchive: true,
             sessionTree: true,
             treePresentation: true,
             historyBody: true,
@@ -862,8 +863,8 @@ function createPiAgentGateway(options = {}) {
                     safeSend(socket, { type: 'response', id: message.id, command: message.type, success: true, data });
                     return;
                 }
-                if (['get_session_tree', 'search_history', 'get_history_entry', 'set_history_bookmark'].includes(message.type)) {
-                    const kind = { get_session_tree: 'tree', search_history: 'search', get_history_entry: 'preview', set_history_bookmark: 'bookmark' }[message.type];
+                if (['get_session_tree', 'get_history_archive', 'search_history', 'get_history_entry', 'set_history_bookmark'].includes(message.type)) {
+                    const kind = { get_session_tree: 'tree', get_history_archive: 'archive', search_history: 'search', get_history_entry: 'preview', set_history_bookmark: 'bookmark' }[message.type];
                     const { id, type, token, ...input } = message;
                     const data = await worker.historyRequest(kind, input);
                     safeSend(socket, { type: 'response', id, command: type, success: true, data });

@@ -11,8 +11,7 @@
 .workspace-access-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .workspace-access-actions button { min-height: 42px; }
 .workspace-access-note { font-size: .9rem; opacity: .8; }
-#workspace-access-error, #workspace-access-login-error { color: var(--danger, #c43a3a); overflow-wrap: anywhere; }
-#workspace-access-result { color: var(--green, #187b55); }
+#workspace-access-login-error { color: var(--danger, #c43a3a); overflow-wrap: anywhere; }
 #workspace-access-generated { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--green, #187b55); border-radius: 10px; }
 /* The login form owns its spacing and controls; legacy .token-dialog rules
    apply text-field dimensions to every input, including checkboxes. */
@@ -88,3 +87,14 @@
     .workspace-access-actions button { flex: 1 1 auto; }
     .workspace-access-card { gap: 14px; }
 }
+
+/* Language changes reload the frozen page locale after protecting workbench drafts. */
+.workspace-language-card #workspace-language-status.pv-inline-status { font-size: .86rem; }
+.workspace-language-card #workspace-language-status[data-tone="warning"] { color: var(--amber); }
+.workspace-language-card #workspace-language-status > span { white-space: pre-line; min-width: 0; }
+.workspace-language-actions { grid-column: 1 / -1; display: grid; justify-items: start; gap: 10px; min-width: 0; }
+.workspace-language-actions[hidden] { display: none; }
+.workspace-language-actions p { max-width: 100%; }
+#workspace-language-switch-overlay { position: fixed; inset: 0; z-index: 2147483001; display: grid; place-items: center; padding: 24px; box-sizing: border-box; background: var(--surface-0); color: var(--text-main); }
+.workspace-language-switch-mark { display: grid; justify-items: center; gap: 18px; text-align: center; max-width: 100%; overflow-wrap: anywhere; font-size: 16px; }
+.workspace-language-switch-mark .pi-spinner { width: 28px; height: 28px; color: var(--accent); }

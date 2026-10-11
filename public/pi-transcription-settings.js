@@ -20,6 +20,7 @@
         }
         async function load() {
             const view = ++epoch; body.replaceChildren(); message(t("正在读取转录模型…"));
+            if (window.PiSkeleton) body.innerHTML = window.PiSkeleton.html('list', { rows: 3, label: t("正在读取转录模型…") });
             try {
                 const data = await apiFetch('/api/pi/composer/transcription/settings');
                 if (view !== epoch || section.hidden) return;

@@ -359,10 +359,18 @@
             this.replaceGroups('turnGroups', region, active);
         }
 
-        // Make one transcript node visible: open the folded turn that hides it.
+        // Make one transcript node visible: open the folded turn that hides it and any
+        // closed process group folding it (or, for a tool-only reply, its own rows).
         reveal(node) {
             const group = node?.dataset?.turnKey ? this.turnGroups.get(node.dataset.turnKey) : null;
             if (group && this.mode === 'compact' && !group.element.open) { group.element.open = true; this.refreshVisibility(group.region); }
+            if (node?.hidden && this.mode !== 'full') {
+                const keys = new Set([node.dataset.processKey, ...[...node.querySelectorAll('[data-process-key]')].map(item => item.dataset.processKey)]);
+                for (const key of keys) {
+                    const process = key ? this.groups.get(key) : null;
+                    if (process && !process.element.open) { process.element.open = true; this.refreshVisibility(process.region); }
+                }
+            }
             return Boolean(node?.isConnected) && !node.hidden;
         }
 

@@ -28,6 +28,10 @@
             const epoch = ++this.epoch, selectedCwd = this.currentCwd();
             this.closePicker(); this.needsRefresh = true;
             this.root.replaceChildren(node('h4', '子 Agent'), node('p', '正在读取设置', 'sa-note'));
+            if (window.PiSkeleton) {
+                const placeholder = node('div'); placeholder.innerHTML = window.PiSkeleton.html('list', { rows: 4, label: t('正在读取设置') });
+                this.root.lastElementChild.replaceWith(placeholder);
+            }
             try {
                 const status = await this.api('/api/pi/status');
                 const cwd = selectedCwd || status.defaultProject;

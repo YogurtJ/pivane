@@ -15,6 +15,7 @@ import { handleTitleRequest } from './pi-session-title-state.js';
 import { INTERNAL_COMMAND, isInternalCommand, customTypeIs } from './pivane-compat.js';
 import { randomUUID } from 'node:crypto';
 import { searchHistory, previewHistory, setHistoryBookmark } from './pi-history-model.js';
+import { historyArchive } from './pi-history-archive.js';
 import { sessionTree, checkNavigation } from './pi-session-tree.js';
 import { promptFromEntry, validateMessage } from './pi-message-payload.js';
 import { buildSessionContext, getAgentDir, type ExtensionAPI } from '@earendil-works/pi-coding-agent';
@@ -79,7 +80,7 @@ export default async function (pi: ExtensionAPI) {
         }
     });
     pi.registerCommand(INTERNAL_COMMAND, {
-        description: `Pivane internal session navigation and context snapshot; managed-v1; cron-v1; task-v1; task-results-v1; agent-messages-v1; title-v1; model-catalog-v1; speed-v1; resources-v1; history-v1; tree-v1; tree-presentation-v1; history-presentation-v1; history-body-v1; system-prompt-v1; subagents-v1; mcp-v1; reload-v1:${randomUUID()}`,
+        description: `Pivane internal session navigation and context snapshot; managed-v1; cron-v1; task-v1; task-results-v1; agent-messages-v1; title-v1; model-catalog-v1; speed-v1; resources-v1; history-v1; history-archive-v1; tree-v1; tree-presentation-v1; history-presentation-v1; history-body-v1; system-prompt-v1; subagents-v1; mcp-v1; reload-v1:${randomUUID()}`,
         handler: async (args, ctx) => {
             const request = JSON.parse(args);
             if (ctx.mode !== 'rpc' || request.token !== process.env.PI_WEB_NAVIGATION_TOKEN) throw new Error('Invalid navigation request');
@@ -210,7 +211,8 @@ export default async function (pi: ExtensionAPI) {
                 let response;
                 try {
                     let data;
-                    if (request.kind === 'tree') data = sessionTree(ctx.sessionManager, request.input, { settled: ctx.isIdle() && !ctx.hasPendingMessages() });
+                    if (request.kind === 'archive') data = historyArchive(ctx.sessionManager, request.input);
+                    else if (request.kind === 'tree') data = sessionTree(ctx.sessionManager, request.input, { settled: ctx.isIdle() && !ctx.hasPendingMessages() });
                     else if (request.kind === 'search') data = searchHistory(ctx.sessionManager, request.input, { settled: ctx.isIdle() && !ctx.hasPendingMessages() });
                     else if (request.kind === 'preview') data = previewHistory(ctx.sessionManager, request.input, { settled: ctx.isIdle() && !ctx.hasPendingMessages() });
                     else if (request.kind === 'bookmark') data = setHistoryBookmark(ctx.sessionManager, request.input, (id, label) => pi.setLabel(id, label));

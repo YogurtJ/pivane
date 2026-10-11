@@ -6,6 +6,9 @@
     const terminal = new Set(['sent', 'cancelled']);
     const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const date = value => new Date(value).toLocaleString(globalThis.PiI18n?.locale || 'zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    // Short due label for the chip: time only when it is today.
+    const dueLabel = value => new Date(value).toDateString() === new Date().toDateString()
+        ? new Date(value).toLocaleTimeString(globalThis.PiI18n?.locale || 'zh-CN', { hour: '2-digit', minute: '2-digit' }) : date(value);
     const uuid = () => {
         const bytes = crypto.getRandomValues(new Uint8Array(16));
         bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128;
@@ -97,10 +100,24 @@
             $('pi-history-more').disabled = !this.usable();
             $('pi-schedule-button').hidden = !this.enabled;
             $('pi-schedule-button').disabled = !this.usable() || this.context().draftBusy;
-            const count = this.jobs.filter(job => !terminal.has(job.status)).length;
-            $('pi-deferred-banner').hidden = !this.usable() || !count && !this.storeError;
-            $('pi-deferred-count').textContent = this.storeError || translateUi("{0} 条待发送{1}", count, this.jobs.some(job => ['expired', 'paused', 'uncertain', 'failed'].includes(job.status)) ? translateUi(" · 需确认") : '');
+            this.renderChip();
             this.decorate();
+        }
+
+        // Status chip beside progress/subagent chips: count plus the next due time or what needs attention.
+        renderChip() {
+            const pending = this.jobs.filter(job => !terminal.has(job.status));
+            const attention = pending.some(job => ['expired', 'paused', 'uncertain', 'failed'].includes(job.status));
+            const chip = $('pi-deferred-banner'), next = $('pi-deferred-next');
+            chip.hidden = !this.usable() || !pending.length && !this.storeError;
+            chip.dataset.tone = this.storeError || attention ? 'attention' : 'idle';
+            $('pi-deferred-count').textContent = this.storeError || translateUi("{0} 条待发送", pending.length);
+            const due = pending.filter(job => job.status === 'scheduled' && Number.isFinite(job.dueAt)).sort((a, b) => a.dueAt - b.dueAt)[0];
+            next.textContent = this.storeError ? '' : attention ? translateUi("需确认") : due ? dueLabel(due.dueAt)
+                : pending.some(job => job.status === 'waiting') ? translateUi("等待会话空闲") : '';
+            const button = $('pi-deferred-open');
+            button.title = [translateUi("待发送消息"), ...pending.slice(0, 5).map(job => `${statusText[job.status] || job.status} · ${job.preview || ''}`.slice(0, 120))].join('\n');
+            button.setAttribute('aria-label', [$('pi-deferred-count').textContent, next.textContent].filter(Boolean).join(' · '));
         }
 
         async refresh(includeHistory = false, { deferredRevision } = {}) {
@@ -455,7 +472,11 @@
                 if (completed || this.targetKey !== this.identity()) this.close();
             }
             if (completed) {
-                try { await this.host.reconcile(); await this.refresh(true); }
+                try {
+                    // Deferred-only changes are visible in the chip at once; the transcript reconcile can follow.
+                    if (['schedule', 'schedule-edit', 'job-cancel'].includes(mode)) { await this.refresh(); return; }
+                    await this.host.reconcile(); await this.refresh(true);
+                }
                 catch { this.host.toast(translateUi("操作已完成，列表刷新失败，请刷新查看"), 'info'); }
             }
         }

@@ -1,11 +1,13 @@
 const assert = require('node:assert/strict');
 const { selectMessageView, openInspector } = require('./pi-mobile-view-helper.cjs');
 const http = require('node:http');
+const fs = require('node:fs');
 const path = require('node:path');
 const { once } = require('node:events');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const express = require('express');
 const root = path.resolve(__dirname, '../..');
+const evidence = '/tmp/pivane-feedback/agent-a';
 const cwd = '/fixture/中文项目';
 const session = { id: 'language-fixture', cwd, name: '保存', messageCount: 2, modified: '2026-09-11T00:00:00Z' };
 const model = { provider: 'fixture', id: 'fixture-model', name: '模型', input: ['text', 'image'], contextWindow: 32000, available: true, thinkingLevels: ['off'] };
@@ -27,7 +29,14 @@ function usage(query) { return { from: query.get('from'), to: query.get('to'), t
 async function run(browser, base, width, language) {
     const context = await browser.newContext({ viewport: { width, height: 1000 }, locale: language, isMobile: width < 900, hasTouch: width < 900 });
     const page = await context.newPage(); page.setDefaultTimeout(12000);
-    const errors = [], calls = [], writes = [];
+    const errors = [], calls = [], writes = [], pendingRequests = new Map();
+    page.on('request', request => pendingRequests.set(request, request.url()));
+    page.on('requestfinished', request => pendingRequests.delete(request));
+    page.on('requestfailed', request => pendingRequests.delete(request));
+    const navigationCheck = async operation => {
+        try { await operation(); }
+        catch (error) { console.error({ language, width, pendingRequests: [...pendingRequests.values()], errors }); throw error; }
+    };
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(({ cwd }) => {
         localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem('pi.web.session:' + cwd, 'language-fixture');
@@ -62,7 +71,7 @@ async function run(browser, base, width, language) {
         else if (command.type === 'get_available_thinking_levels') data = { levels: ['off'] };
         ws.send(JSON.stringify({ type: 'response', id: command.id, command: command.type, success: true, data }));
     }));
-    await page.goto(base, { waitUntil: 'domcontentloaded' });
+    await navigationCheck(() => page.goto(base, { waitUntil: 'domcontentloaded' }));
     await page.waitForFunction(() => !document.getElementById('pi-input').disabled);
     const english = language.startsWith('en');
     assert.equal(await page.locator('html').getAttribute('lang'), english ? 'en' : 'zh-CN');
@@ -140,10 +149,33 @@ async function run(browser, base, width, language) {
     await page.locator('#native-settings-form').waitFor();
     assert.ok((await page.locator('#native-settings-form').textContent()).includes(english ? 'Tokens reserved for compaction' : '压缩预留 Token'));
     await page.locator('[data-settings-tab="models"]').click();
+    // Supply the reload contract with synthetic blockers; attachment/draft preservation remains observable.
+    await page.evaluate(() => {
+        window.PiWorkbenchReload = {
+            assess: () => ({ blockers: ['Fixture attachment <raw>', 'Fixture temporary session', 'Fixture side chat', 'Fixture sending message'], restorable: 1 }),
+            prepare: () => sessionStorage.setItem('fixture.language-prepared', 'yes')
+        };
+    });
     const beforeCalls = calls.length, beforeWrites = writes.length;
     await page.locator('#workspace-language').selectOption(english ? 'zh-CN' : 'en');
     assert.equal(await page.locator('html').getAttribute('lang'), english ? 'en' : 'zh-CN');
     assert.ok((await page.locator('#workspace-language-status').innerText()).includes(english ? 'Language saved' : '语言已保存'));
+    assert.equal(await page.locator('#workspace-language-status').getAttribute('data-tone'), 'warning');
+    assert.equal(await page.locator('#workspace-language-status').evaluate(n => Boolean(n.closest('.workspace-language-card'))), true);
+    assert.ok((await page.locator('#workspace-language-status').innerText()).includes('Fixture attachment <raw>'));
+    assert.equal(await page.locator('#workspace-language-status img').count(), 0, 'blockers render as safe text');
+    assert.equal(await page.locator('#workspace-language-switch').innerText(), english ? 'Switch now' : '立即切换');
+    assert.match(await page.locator('.workspace-language-actions p').innerText(), english ? /Unsent text drafts.*\(1\)/ : /文字草稿.*1/);
+    await overflow(['.workspace-language-card', '#workspace-language-status', '.workspace-language-actions']);
+    await page.locator('.workspace-language-card').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${evidence}/language-blockers-${language}-${width}.png` });
+    const cancelled = page.waitForEvent('dialog');
+    const cancelClick = page.locator('#workspace-language-switch').click();
+    const dialog = await cancelled; assert.equal(dialog.type(), 'confirm');
+    assert.ok(dialog.message().includes('Fixture attachment <raw>') && dialog.message().includes('Fixture sending message'));
+    await dialog.dismiss(); await cancelClick;
+    assert.equal(await page.locator('#workspace-language-switch-overlay').count(), 0);
+    assert.equal(await page.evaluate(() => sessionStorage.getItem('fixture.language-prepared')), null);
     assert.equal(calls.length, beforeCalls); assert.equal(writes.length, beforeWrites);
     await page.locator('#workspace-settings-close').click();
     assert.equal(await page.locator('#pi-input').inputValue(), '保存 {0} <原始草稿>');
@@ -166,13 +198,56 @@ async function run(browser, base, width, language) {
     await page.screenshot({ path: `/tmp/pivane-i18n-${language}-${width}-review.png` });
     assert.deepEqual(writes, ['/api/pi/media/lab/review']);
     assert.ok(!calls.includes('prompt') && !calls.includes('set_model'));
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await navigationCheck(() => page.reload({ waitUntil: 'domcontentloaded' }));
     assert.equal(await page.locator('html').getAttribute('lang'), english ? 'zh-CN' : 'en');
+    await page.waitForFunction(() => !document.getElementById('pi-input').disabled);
+    await page.locator('#workspace-settings-toggle').click(); await page.locator('[data-settings-tab="models"]').click();
+    if (width === 1440 || width === 393) {
+        // A blocker-free change reloads into the resolved target language and calls prepare once.
+        await page.evaluate(() => { window.PiWorkbenchReload = { assess: () => ({ blockers: [], restorable: 1 }), prepare: () => sessionStorage.setItem('fixture.language-prepared', 'yes') }; });
+        const navigation = page.waitForEvent('framenavigated', { predicate: frame => frame === page.mainFrame() });
+        await page.locator('#workspace-language').selectOption(english ? 'en' : 'zh-CN');
+        await page.locator('#workspace-language-switch-overlay').waitFor();
+        assert.equal(await page.locator('#workspace-language-switch-overlay').innerText(), english ? 'Switching to English…' : '正在切换为简体中文…');
+        await navigation; await page.waitForLoadState('domcontentloaded');
+        assert.equal(await page.locator('html').getAttribute('lang'), english ? 'en' : 'zh-CN');
+        assert.equal(await page.evaluate(() => sessionStorage.getItem('fixture.language-prepared')), 'yes');
+        assert.equal(await page.locator('#workspace-settings-toggle').getAttribute('title'), english ? 'Workspace settings' : '工作台设置');
+        await page.waitForFunction(() => !document.getElementById('pi-input').disabled);
+        await page.locator('[data-settings-tab="models"]').click();
+        // An explicit switch confirms the current blockers before preparing and reloading.
+        await page.evaluate(() => { window.PiWorkbenchReload = { assess: () => ({ blockers: ['Fixture explicit switch'], restorable: 2 }), prepare: () => sessionStorage.setItem('fixture.language-explicit', 'yes') }; });
+        await page.locator('#workspace-language').selectOption(english ? 'zh-CN' : 'en');
+        const confirmation = page.waitForEvent('dialog'); const switchClick = page.locator('#workspace-language-switch').click();
+        const confirmDialog = await confirmation; assert.ok(confirmDialog.message().includes('Fixture explicit switch')); assert.ok(confirmDialog.message().includes('2'));
+        const switched = page.waitForEvent('framenavigated', { predicate: frame => frame === page.mainFrame() });
+        await confirmDialog.accept(); await switchClick; await switched; await page.waitForLoadState('domcontentloaded');
+        assert.equal(await page.locator('html').getAttribute('lang'), english ? 'zh-CN' : 'en');
+        assert.equal(await page.evaluate(() => sessionStorage.getItem('fixture.language-explicit')), 'yes');
+        await page.waitForFunction(() => !document.getElementById('pi-input').disabled);
+        await page.locator('[data-settings-tab="models"]').click();
+        // A separate editor's beforeunload prompt may cancel reload; the overlay must recover.
+        await page.evaluate(() => {
+            window.fixtureBeforeUnload = event => { event.preventDefault(); event.returnValue = ''; };
+            window.addEventListener('beforeunload', window.fixtureBeforeUnload);
+            window.PiWorkbenchReload = { assess: () => ({ blockers: [], restorable: 0 }), prepare() {} };
+        });
+        const unload = page.waitForEvent('dialog', { predicate: dialog => dialog.type() === 'beforeunload' });
+        await page.locator('#workspace-language').selectOption(english ? 'en' : 'zh-CN');
+        const unloadDialog = await unload; await unloadDialog.dismiss();
+        await page.locator('#workspace-language-switch-overlay').waitFor({ state: 'hidden' });
+        assert.equal(await page.locator('html').getAttribute('lang'), english ? 'zh-CN' : 'en');
+        assert.equal(await page.locator('#workspace-language').isDisabled(), false);
+        assert.equal(await page.locator('#workspace-language-status').getAttribute('data-tone'), 'info');
+        assert.ok((await page.locator('#workspace-language-status').innerText()).includes(english ? '语言已保存' : 'Language saved'));
+        await page.evaluate(() => window.removeEventListener('beforeunload', window.fixtureBeforeUnload));
+    }
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ language, width, translatedStaticAndDynamic: true, rawContentPreserved: true, noGeneration: true, errors }));
     await context.close();
 }
 (async () => {
+    fs.mkdirSync(evidence, { recursive: true });
     const app = express();
     for (const [name, dir] of [['marked', 'marked/lib'], ['dompurify', 'dompurify/dist'], ['highlight', '@highlightjs/cdn-assets']]) app.use('/vendor/' + name, express.static(path.join(root, 'node_modules', dir)));
     app.use(express.static(path.join(root, 'public')));

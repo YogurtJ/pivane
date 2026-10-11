@@ -24,6 +24,45 @@
         }
         if (open.startsWith('\\')) return { raw: source, text: source, display: open === '\\[', pending: true };
     }
+    // GFM splits table cells before inline math. Protect only closed formulas,
+    // preserving escaped pipes and code spans according to Marked's own rules.
+    function tableMath(source, tokenizer) {
+        return source.split('\n').map(row => {
+            let output = '';
+            const rawTags = [];
+            for (let i = 0; i < row.length;) {
+                if (row[i] === '`') {
+                    const code = tokenizer.codespan(row.slice(i));
+                    if (code) { output += code.raw; i += code.raw.length; continue; }
+                }
+                if (row[i] === '<') {
+                    const tag = tokenizer.rules.inline.tag.exec(row.slice(i))?.[0];
+                    if (tag) {
+                        const raw = /^<\/?(code|pre|kbd|samp|textarea)\b/i.exec(tag);
+                        if (raw) {
+                            const name = raw[1].toLowerCase();
+                            if (tag.startsWith('</')) {
+                                const index = rawTags.lastIndexOf(name);
+                                if (index !== -1) rawTags.splice(index);
+                            } else rawTags.push(name);
+                        }
+                        output += tag; i += tag.length; continue;
+                    }
+                }
+                if (!rawTags.length && (row[i] === '$' || row.startsWith('\\(', i) || row.startsWith('\\[', i))) {
+                    const token = formula(row.slice(i));
+                    if (token?.pending) { output += row.slice(i); break; }
+                    if (token) {
+                        output += token.raw.replace(/(\\*)\|/g, (pipe, slashes) => slashes.length % 2 ? pipe : slashes + '\\|');
+                        i += token.raw.length; continue;
+                    }
+                }
+                const length = row[i] === '\\' && i + 1 < row.length ? 2 : 1;
+                output += row.slice(i, i + length); i += length;
+            }
+            return output;
+        }).join('\n');
+    }
     function render(token) {
         const key = `${token.display}:${token.raw}`;
         if (cache.has(key)) return cache.get(key);
@@ -54,7 +93,7 @@
         return html;
     }
     window.PiMath = {
-        create(renderer) {
+        create(renderer, options = {}) {
             const slots = new Map(), prefix = `pi-math-${Math.random().toString(36).slice(2)}-`;
             const slot = token => {
                 if (token.pending) return `<span class="pi-math-fallback">${escape(token.raw)}</span>`;
@@ -72,7 +111,18 @@
                 }
                 return originalCode.call(this, token);
             };
-            const parser = new window.marked.Marked({ renderer, extensions: [
+            const tokenizer = options.tokenizer || new window.marked.Tokenizer(), originalTable = tokenizer.table;
+            tokenizer.table = function(source) {
+                const match = this.rules.block.table.exec(source);
+                if (!match) return;
+                const protectedSource = tableMath(match[0], this);
+                if (protectedSource === match[0]) return originalTable.call(this, source);
+                const token = originalTable.call(this, protectedSource);
+                // Consumed bytes belong to the original source, not the added escapes.
+                if (token) token.raw = match[0].replace(/\n+$/, '');
+                return token;
+            };
+            const parser = new window.marked.Marked({ ...options, renderer, tokenizer, extensions: [
                 { name: 'piMathBlock', level: 'block', start: src => src.search(/^ {0,3}(?:\$\$|\\\[)/m),
                     tokenizer(src) {
                         const indent = /^ {0,3}/.exec(src)[0];

@@ -864,6 +864,8 @@
             }
             entry.destroy();
         }
+        // Side chats a page reload would end (checked before deliberate reloads such as a language switch).
+        liveCount() { return new Set([...this.entries.values(), this.current].filter(entry => entry && entry.hasState())).size; }
         disposeAll() {
             const entries = new Set([...this.entries.values(), this.current]);
             this.entries.clear();

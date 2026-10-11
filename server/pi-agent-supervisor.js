@@ -358,7 +358,7 @@ class AgentWorker extends EventEmitter {
             const extensionPath = path.join(__dirname, 'pi-web-session-extension.ts');
             const command = commands.commands.find(c => c.source === 'extension'
                 && (c.sourceInfo?.path || c.path) === extensionPath && isInternalCommand(c.name)
-                && c.description?.includes(kind === 'tree' ? 'tree-v1' : 'history-v1'));
+                && c.description?.includes(kind === 'tree' ? 'tree-v1' : kind === 'archive' ? 'history-archive-v1' : 'history-v1'));
             if (!command) throw new Error('当前运行实例尚未加载历史接口，请在任务结束后退出并重新打开会话');
             if (writing && (this.controlPending || this.compactPending || this.activity.compacting)) throw new Error('停止或压缩正在进行，请稍后保存书签');
             this.historyResults.set(id, slot); submitted = true;

@@ -36,7 +36,7 @@ async function run(browser, viewport) {
     const refresh = async () => {
         const count = commands.filter(c => c === 'get_messages').length;
         emit({ type: 'agent_settled' });
-        await page.waitForFunction(() => document.querySelector('#pi-composer-status').textContent === 'Pi Agent 已就绪');
+        await page.waitForFunction(() => document.querySelector('#pi-composer-status').textContent === '' && document.querySelector('.pi-composer').dataset.running === 'false');
         await assertEventually(() => commands.filter(c => c === 'get_messages').length > count);
     };
     page.on('pageerror', e => errors.push(e.message));

@@ -134,7 +134,8 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
 .pi-composer-models .pi-model-field > label, .pi-composer-models .pi-thinking-field > span { display: none; }
 .pi-composer-models .pi-model-picker-row { min-width: 0; }
 .pi-composer-models #pi-model-select { min-width: 0; width: 100%; max-width: 100%; min-height: 34px; height: 34px; font-size: .74rem; background: transparent; border: 0; padding-inline: 6px; }
-.pi-composer-models .pi-thinking-field { flex: 0 1 90px; }
+.pi-composer-models .pi-thinking-field { position: relative; flex: 0 0 auto; }
+.pi-composer-models .pi-thinking-field::after { content: ''; position: absolute; top: calc(50% - 4px); right: 9px; width: 5px; height: 5px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); pointer-events: none; }
 .pi-composer-models .pi-speed-field { flex: 0 1 168px; min-width: 0; }
 .pi-composer-models .pi-speed-field > span { display: none; }
 .pi-speed-field[hidden], .pi-mobile-speed[hidden] { display: none !important; }
@@ -142,9 +143,16 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
 .pi-message-speed { white-space: nowrap; }
 .pi-mobile-speed { flex-wrap: wrap; }
 .pi-mobile-speed > .pi-mobile-speed-cost { flex: 0 0 calc(100% - 32px); max-width: none; margin-left: 32px; white-space: normal; overflow: visible; font-size: .75rem; }
-.pi-composer-models #pi-thinking-select { font-size: .72rem; max-width: 100%; }
+.pi-composer-models #pi-thinking-select { appearance: none; font-size: .72rem; max-width: 100%; width: calc(var(--pi-thinking-label-width, 4em) + 34px); }
+@supports (field-sizing: content) {
+    .pi-composer-models #pi-thinking-select { field-sizing: content; width: auto; }
+}
 .pi-send-button, .pi-stop-button { border-radius: 9px; }
-.pi-composer-meta { min-height: 22px; height: auto; font-size: .64rem; line-height: 1.5; gap: 10px; }
+/* Reserve two status lines, including when the idle status is empty. */
+.pi-composer-meta { min-height: calc(3em + 5px); height: calc(3em + 5px); font-size: .64rem; line-height: 1.5; gap: 10px; }
+.pi-composer-meta #pi-composer-status { flex: 1; min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
+.pi-composer-meta #pi-composer-identity { flex: 0 1 auto; max-width: min(170px, 30%); }
+.pi-composer-meta #pi-attachment-limit { flex: 0 1 auto; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #pi-attachment-limit { display: none; }
 .pi-empty-state { max-width: 680px; min-height: 100%; margin: 0 auto; padding: clamp(28px, 7vh, 80px) 8px 28px; justify-content: center; }
 .pi-empty-state p { max-width: 100%; margin-top: 10px; font-family: inherit; font-size: .86rem; line-height: 1.75; color: var(--text-muted); overflow-wrap: anywhere; }

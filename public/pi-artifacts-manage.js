@@ -2,6 +2,14 @@
    Undo is offered as a new, user-initiated request with fresh revisions. */
 (() => {
     const ui = window.PiArtifactsUI, { tr, node, icon, button } = ui;
+    // randomUUID requires a secure context; getRandomValues also works over LAN HTTP.
+    function randomId() {
+        if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+        const bytes = crypto.getRandomValues(new Uint8Array(16));
+        bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128;
+        const hex = [...bytes].map(byte => byte.toString(16).padStart(2, '0')).join('');
+        return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    }
     // Resolves { action, values } for the chosen action, or null when dismissed.
     function dialog(options) {
         const d = node('dialog', null, 'artifacts-manage-dialog' + (options.tone === 'danger' ? ' is-danger' : ''));
@@ -202,7 +210,7 @@
             ui.toast({ tone: 'success', message, action: action2 || undefined, details: action === 'export' ? ok.map(r => r.exported?.path).filter(Boolean) : undefined });
         }
         async submit(action, list, extra, epoch, files = []) {
-            const requestId = crypto.randomUUID(); this.busy = true; this.state.mutating = true;
+            const requestId = randomId(); this.busy = true; this.state.mutating = true;
             this.hooks.busy?.(list.map(f => f.key), action);
             const progress = ['save', 'export', 'purge'].includes(action) && list.length > 1 ? ui.toast({ tone: 'pending', message: action === 'save' ? count(list.length, '正在保存 {n} 个文件…', 'Saving {n} files…') : action === 'export' ? count(list.length, '正在导出 {n} 个文件…', 'Exporting {n} files…') : count(list.length, '正在删除 {n} 个文件…', 'Deleting {n} files…') }) : null;
             document.dispatchEvent(new CustomEvent('artifacts:mutation-state'));

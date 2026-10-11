@@ -75,7 +75,8 @@ function sessionTree(manager, raw = {}, { settled = false } = {}) {
     const stages = replyStages(entries, branch, settled);
     for (const e of entries) {
         if (Date.now() - start > 1500) fail('会话树超过读取时间预算，请使用终端查看');
-        const parentId = nearest.get(e.parentId) || null, kind = kindOf(e);
+        // The tree keeps its conversational outline; extension messages stay in search and preview.
+        const parentId = nearest.get(e.parentId) || null, kind = e.type === 'custom_message' ? null : kindOf(e);
         // The outline shows conversational landmarks; tool and private metadata remain searchable separately.
         if (!kind || kind === 'tool') { nearest.set(e.id, parentId); continue; }
         const m = e.message;

@@ -4,15 +4,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const root = path.join(__dirname, '..');
-function runtime({ languages = ['en-US'], saved, blocked = false } = {}) {
+function runtime({ languages = ['en-US'], saved, blocked = false, ui = {} } = {}) {
     const storage = new Map(saved === undefined ? [] : [['pi.workspace.language', saved]]);
-    const context = { navigator: { languages }, localStorage: {
+    const context = { ...ui, navigator: { languages }, localStorage: {
         getItem(key) { if (blocked) throw Error('blocked'); return storage.get(key) ?? null; },
         setItem(key, value) { if (blocked) throw Error('blocked'); storage.set(key, value); }
     } };
     vm.createContext(context);
     for (const file of ['pi-i18n-catalog.js', 'pi-i18n.js']) vm.runInContext(fs.readFileSync(path.join(root, 'public', file), 'utf8'), context);
-    return { api: context.PiI18n, rows: context.PiI18nCatalog, storage };
+    return { api: context.PiI18n, rows: context.PiI18nCatalog, storage, context };
 }
 test('interface language negotiates browser preferences and honors explicit saved choices', () => {
     assert.equal(runtime({ languages: ['zh-TW', 'en'] }).api.locale, 'zh-CN');
@@ -58,6 +58,65 @@ test('counted UI labels use English singular only for one and preserve Chinese a
     assert.equal(api.t('{0} 工具失败', 2), '2 tools failed');
     assert.equal(api.t('预览 {0}', 1), 'Preview 1', 'ordinary translations keep their template');
     assert.equal(api.t('{0} 段思考', '{1}'), '{1} thinking blocks', 'values are not reinterpreted');
+});
+function languageCard({ languages = ['en-US'], blockers = [], restorable = 0, bridge = true, blocked = false } = {}) {
+    const elements = new Map(), events = new Map(), timers = [], frames = [], shown = [];
+    class Element {
+        constructor(id) { this.id = id; this.listeners = new Map(); this.children = []; this.attributes = new Map(); this.hidden = false; this.disabled = false; if (id) elements.set(id, this); }
+        append(...children) { this.children.push(...children); for (const child of children) if (child.id) elements.set(child.id, child); }
+        after(node) { this.afterNode = node; }
+        setAttribute(key, value) { this.attributes.set(key, value); }
+        addEventListener(name, callback) { this.listeners.set(name, callback); }
+        remove() { elements.delete(this.id); }
+        fire(name) { this.listeners.get(name)?.(); }
+    }
+    const select = new Element('workspace-language'); select.options = [{ textContent: '' }];
+    const status = new Element('workspace-language-status'); new Element('workspace-language-hint');
+    const body = new Element(); let boot;
+    const document = { documentElement: {}, body, createElement: () => new Element(), getElementById: id => elements.get(id),
+        createTreeWalker: () => ({ nextNode: () => false }), querySelectorAll: () => [], addEventListener(name, callback) { if (name === 'DOMContentLoaded') boot = callback; } };
+    const window = { PiInlineStatus: { show(node, value) { node.textContent = value.text; node.tone = value.tone; shown.push(value); } },
+        addEventListener(name, callback) { events.set(name, callback); } };
+    let prepared = 0, reloaded = 0, confirmation = '', confirmed = false;
+    if (bridge) window.PiWorkbenchReload = { assess: () => ({ blockers, restorable }), prepare: () => { prepared++; } };
+    const result = runtime({ languages, blocked, ui: { document, window, NodeFilter: { SHOW_COMMENT: 128 }, Node: { TEXT_NODE: 3 },
+        location: { reload() { reloaded++; } }, requestAnimationFrame(callback) { frames.push(callback); }, setTimeout(callback, delay) { timers.push({ callback, delay }); },
+        confirm(text) { confirmation = text; return confirmed; } } });
+    boot();
+    return { ...result, select, status, elements, events, timers, shown, change(value) { select.value = value; select.fire('change'); },
+        confirm(value) { confirmed = value; }, get confirmation() { return confirmation; }, get prepared() { return prepared; }, get reloaded() { return reloaded; },
+        paint() { while (frames.length) frames.shift()(); }, runTimer(delay) { timers.find(timer => timer.delay === delay).callback(); } };
+}
+test('language card keeps the page locale frozen and saves a same-locale selection without reload', () => {
+    const ui = languageCard(); ui.change('en');
+    assert.equal(ui.api.preference(), 'en'); assert.equal(ui.api.locale, 'en');
+    assert.equal(ui.reloaded, 0); assert.equal(ui.timers.length, 0); assert.equal(ui.status.tone, 'info');
+    assert.equal(ui.status.afterNode.hidden, true);
+});
+test('language card renders blocker reasons and restorable text safely and confirms before switching', () => {
+    const ui = languageCard({ blockers: ['Attachment <img>', 'Temporary session'], restorable: 2 }); ui.change('zh-CN');
+    assert.equal(ui.status.tone, 'warning'); assert.ok(ui.status.textContent.includes('Attachment <img>'));
+    assert.equal(ui.status.afterNode.hidden, false); assert.match(ui.status.afterNode.children[1].textContent, /2/);
+    const button = ui.status.afterNode.children[0]; button.fire('click');
+    assert.ok(ui.confirmation.includes('Temporary session') && ui.confirmation.includes('2'));
+    assert.equal(ui.prepared, 0); assert.equal(ui.reloaded, 0);
+    ui.confirm(true); button.fire('click');
+    assert.equal(ui.elements.get('workspace-language-switch-overlay').lang, 'zh-CN');
+    assert.equal(ui.elements.get('workspace-language-switch-overlay').children[0].children[1].textContent, '正在切换为简体中文…');
+    assert.equal(ui.prepared, 0, 'drafts are prepared immediately before navigation, after the overlay paints');
+    ui.paint(); ui.runTimer(150); assert.equal(ui.prepared, 1); assert.equal(ui.reloaded, 1);
+    assert.equal(ui.api.locale, 'en', 'current DOM translations remain frozen until navigation completes');
+    ui.runTimer(4000); assert.equal(ui.elements.has('workspace-language-switch-overlay'), false); assert.equal(ui.select.disabled, false);
+    assert.equal(ui.status.tone, 'warning', 'cancelled navigation returns to the saved pending warning');
+});
+test('language card reloads safely without the optional workbench bridge and retains storage/listener behavior', () => {
+    const ui = languageCard({ bridge: false, languages: ['zh-CN'] }); ui.change('en');
+    assert.equal(ui.elements.get('workspace-language-switch-overlay').children[0].children[1].textContent, 'Switching to English…');
+    ui.paint(); ui.runTimer(150); assert.equal(ui.prepared, 0); assert.equal(ui.reloaded, 1);
+    ui.runTimer(4000); assert.equal(ui.status.tone, 'info'); assert.ok(ui.status.textContent.includes('语言已保存'));
+    ui.api.save('zh-CN'); ui.events.get('storage')({ key: 'pi.workspace.language' }); assert.equal(ui.select.value, 'zh-CN');
+    ui.events.get('languagechange')(); assert.equal(ui.select.value, 'zh-CN');
+    const failed = languageCard({ blocked: true }); failed.change('zh-CN'); assert.equal(failed.status.tone, 'error'); assert.equal(failed.timers.length, 0);
 });
 test('all catalogs, numeric placeholders and static/source bindings are complete', () => {
     const { rows } = runtime();

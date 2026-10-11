@@ -203,7 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (state.loadingModels && !force) return state.loadingModels;
         elements.providerList.innerHTML = `<div class="pi-list-state"><span class="pi-spinner"></span>${translateUi("正在读取 Provider")}</div>`;
-        elements.modelList.innerHTML = `<div class="pi-list-state"><span class="pi-spinner"></span>${translateUi("正在读取模型目录")}</div>`;
+        elements.modelList.innerHTML = window.PiSkeleton?.html('list', { rows: 5, label: translateUi("正在读取模型目录") }) || `<div class="pi-list-state"><span class="pi-spinner"></span>${translateUi("正在读取模型目录")}</div>`;
         const loading = apiFetch('/api/pi/settings/models')
             .then(snapshot => {
                 if (state.loadingModels !== loading) return snapshot;
@@ -214,6 +214,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderProviders();
                 renderModels();
                 return snapshot;
+            })
+            .catch(error => {
+                if (state.loadingModels === loading) for (const target of [elements.providerList, elements.modelList]) {
+                    if (target.querySelector('.pv-skeleton')) target.innerHTML = `<div class="settings-empty error"><i class="fa-solid fa-circle-exclamation"></i><span>${escapeHtml(error.message)}</span></div>`;
+                }
+                throw error;
             })
             .finally(() => { if (state.loadingModels === loading) state.loadingModels = null; });
         state.loadingModels = loading;

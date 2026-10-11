@@ -83,6 +83,7 @@
         async function reload() { snapshot = await api('/connections'); return snapshot; }
         async function showOverview(targetModelId) {
             const view = shell(headings[kind]); message(translateUi("正在读取服务"));
+            if (window.PiSkeleton) content.innerHTML = window.PiSkeleton.html('list', { rows: 4, label: translateUi("正在读取服务") });
             try {
                 await reload(); if (!dialog.open || view !== epoch) return;
                 if (typeof targetModelId === 'string') for (const provider of snapshot.providers) {

@@ -173,6 +173,8 @@
 
 `sessionTree=true` / `historyBody=true` 标记可读会话树、受控导航和正文优先搜索。主WS新增 get_session_tree（有界分页/折叠/定位）、navigate_history（entryId/expectedLeafId/revision/summarize/customInstructions?）与 cancel_history_navigation（navigationId）；当前持久worker/空闲互斥，原生可选分支摘要，预约暂停、草稿仅调用者返回，无文件回滚或自动发送。get_state.webNavigation / gateway_navigation为无正文修订状态，取消ACK不提前解锁，错误后重读位置，超时不重放。搜索新增conversation筛选、详情新增view=body|record，助手筛选不搜索工具参数，纯工具型助手归tool。完整预算、持久化与失败语义见 [HISTORY.md](HISTORY.md)。
 
+`historyArchive=true` 标记主连接已开放只读的压缩前问答回看 `get_history_archive`（index/turns/process 三种视图），见 [3.11](#压缩前问答回看)。
+
 `historySearch=true` 标记主连接已开放原生历史搜索、分页预览和原生 label 书签。新命令 search_history/get_history_entry/set_history_bookmark 只作用于当前已打开的持久 worker，侧聊和 no-session 拒绝；不增加裸 RPC 透传或独立聊天历史。完整参数、修订和限额见 [HISTORY.md](HISTORY.md)。
 
 `composerTools=true` 标记原生模板 CRUD、内置命令 Web 映射目录、项目文件搜索和主 WS `reload_resources` 已启用。REST 包括 `GET /composer/catalog?cwd`、`GET/PUT/DELETE /composer/template` 与 `GET /composer/files?cwd&q`，复用 token/Origin，响应 no-store。模板写入使用 scope/name/content/expectedRevision，修订冲突 409；重载成功广播 `gateway_commands`。完整字段、限制、命令映射及未接入项见 [COMPOSER_TOOLS.md](COMPOSER_TOOLS.md)。
@@ -679,6 +681,16 @@ Web `/btw [问题]` 本地路由到侧聊，不进入主 prompt/steer/follow_up�
 - `gateway_history_changed`：仅 `{entryId}` 的书签更新通知，不是助手回复，不创建未读完成标记。正文响应只返回请求者；内部 pi5History notify 不透传。
 
 原生 setLabel 追加 metadata，因此 leaf ID 会推进，但原活动路径的消息顺序不变。预览不导航，标签不回滚文件。写超时不重试，查询仍可用于核对；运行中任务不被自动中断。预算与第一条 assistant 保存前的限制见完整历史文档。
+
+#### 压缩前问答回看
+
+`/api/pi/status.historyArchive=true` 时主连接开放只读的 `get_history_archive`，按 Pi `buildContextEntries` 的相同规则投影当前分支上最后一次压缩之前、不再进入模型上下文的 entries（保留原生 JSONL，不改压缩机制、不写入、不缓存）。与其他历史查询共用当前持久 worker、2 个并发名额、256 KiB 私有响应、50000 条与 1.5 秒预算；侧聊和 no-session 拒绝。
+
+- `{view:'index',offset?,revision?}`：每页 100 个回合，≤160 KiB。返回 `revision,total,offset,hasMore,pageSize,continues,compactionId,turns[]`；每项 `index,kind:'user'|'agent'|'summary',entryId,timestamp,title(≤160),images,tools,continues?,customType?,summaryType?,tokensBefore?,reply:{entryId,excerpt(≤600),stopReason?,failed?}|null`。
+- `{view:'turns',start,end,revision}`：`end-start≤24`，从末尾向前装入且 ≤192 KiB（实际返回的 `start` 可能大于请求，客户端按返回范围继续读取）。每项含 `text(≤12000),textTruncated`、`reply:{entryId,timestamp,model,stopReason,errorMessage,text(≤20000),truncated}|null` 和 `process:{steps,tools,errors,startedAt,endedAt}`；单个回合超出预算时依次截短回复、问题和错误文字并标记截断。
+- `{view:'process',index,offset?,revision}`：每页 100 步，≤160 KiB；`steps[]` 为 `{entryId,kind:'tool'|'text'|'bash',name?,label(≤200),isError,timestamp,resultEntryId?}`，不返回思考或工具结果原文。
+
+`revision` 绑定会话、压缩 entry 与切分位置，追加新消息时不变；新的压缩或导航后旧 revision 返回 `HISTORY_STALE`。参数错误为 `HISTORY_INVALID`，超出预算为 `HISTORY_LIMIT`。被压缩切开的回合标 `continues:true` 且 `reply:null`。旧 worker 需重新打开线程以加载 `history-archive-v1` 扩展 marker，未加载时拒绝。界面行为见 [HISTORY.md](HISTORY.md#压缩前问答回看2026-10-11)。
 
 ### 3.12 手动 Shell 与队列投递模式
 

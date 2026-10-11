@@ -195,6 +195,7 @@
         }
         async function loadNative(n, cwd) {
             panel.replaceChildren(node('p', translateUi("正在读取配置…")));
+            if (window.PiSkeleton) panel.innerHTML = window.PiSkeleton.html('lines', { rows: 6, label: translateUi("正在读取配置…") });
             const snapshot = await apiFetch('/api/pi/settings/native?cwd=' + encodeURIComponent(cwd)); if (!valid(n, cwd)) return;
             config = snapshot;
             const heading = node('div', undefined, { class: 'settings-panel-header' }), caption = node('div');

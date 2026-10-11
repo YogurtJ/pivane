@@ -46,6 +46,8 @@
 .pi-tree-summary-choice { display: flex; align-items: flex-start; gap: 8px; margin: 8px 0; }
 #pi-tree-summary-choice input, #pi-tree-summarize { flex: 0 0 auto; width: 16px; height: 16px; }
 #pi-history-bookmark-details { border-top: 1px solid var(--line); margin-top: 5px; }
+#pi-history .pi-history-locate { display: inline-flex; align-items: center; gap: 7px; border-color: color-mix(in srgb, var(--green) 40%, var(--line)); color: var(--green); font-weight: 600; }
+.pi-history-locate i { font-size: .85em; }
 /* View selection is a segmented control; tree actions are a lighter toolbar. */
 #pi-history .pi-history-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; padding: 3px; margin: 0 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-3); }
 #pi-history .pi-history-modes button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--text-muted); font-size: .85rem; font-weight: 600; }

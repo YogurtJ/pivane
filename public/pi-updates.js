@@ -77,7 +77,10 @@
         async function load(check) {
             const n = ++epoch;
             if (snapshot) render(snapshot, true, check);
-            else panel.replaceChildren(node('p', t('正在读取版本信息…'), { role: 'status' }));
+            else {
+                panel.replaceChildren(node('p', t('正在读取版本信息…'), { role: 'status' }));
+                if (window.PiSkeleton) panel.innerHTML = window.PiSkeleton.html('cards', { rows: 3, label: t('正在读取版本信息…') });
+            }
             try {
                 const data = await apiFetch(check ? '/api/pi/settings/updates/check' : '/api/pi/settings/updates', check ? {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'

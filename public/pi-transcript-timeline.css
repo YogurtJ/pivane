@@ -1,0 +1,220 @@
+/* Question outline on the transcript's left edge: quiet ticks, a lens on hover and a preview card. */
+.pi-transcript-shell.pi-has-outline .pi-transcript-content,
+.pi-transcript-shell.pi-has-outline .pi-composer-wrap { padding-left: max(48px, calc((100% - var(--workspace-reading-width, 800px)) / 2)); }
+
+.pi-timeline {
+    --tick: color-mix(in srgb, var(--text-muted) 32%, transparent);
+    --tick-visible: color-mix(in srgb, var(--text-main) 58%, transparent);
+    --tick-hover: var(--text-main);
+    --tick-mark: color-mix(in srgb, var(--accent) 72%, transparent);
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 8px;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+}
+.pi-timeline[hidden] { display: none; }
+
+.pi-timeline-rail {
+    --gap: 12px;
+    position: relative;
+    width: 34px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+.pi-timeline-tick {
+    --rest: 10px;
+    --lens: 0;
+    position: relative;
+    flex: 0 0 var(--gap);
+    width: 100%;
+    height: var(--gap);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: inherit;
+}
+.pi-timeline-tick::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 6px;
+    width: calc(var(--rest) + (30px - var(--rest)) * var(--lens));
+    height: 2px;
+    margin-top: -1px;
+    border-radius: 2px;
+    background: var(--tick);
+    transition: width 160ms cubic-bezier(.2, .8, .3, 1), background-color 140ms ease;
+}
+.pi-timeline-rail.is-dense .pi-timeline-tick { --rest: 8px; }
+.pi-timeline-tick.is-visible::before { background: var(--tick-visible); }
+.pi-timeline-rail .pi-timeline-tick.is-marked { --rest: 14px; }
+.pi-timeline-tick.is-marked::before { background: var(--tick-mark); }
+.pi-timeline-tick.is-marked.is-visible::before { background: var(--accent); }
+.pi-timeline-tick.is-hovered::before { background: var(--tick-hover); }
+.pi-timeline-tick.is-marked.is-hovered::before { background: var(--accent); }
+/* Context summaries: a small ring between questions, never lensed. */
+.pi-timeline-tick.is-summary::before { left: 8px; width: 6px; height: 6px; margin-top: -3px; border-radius: 50%; background: transparent; box-shadow: inset 0 0 0 1.5px var(--tick); }
+.pi-timeline-tick.is-summary.is-visible::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--tick-visible); }
+.pi-timeline-tick.is-summary.is-hovered::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--tick-hover); }
+.pi-timeline-tick:focus { outline: none; }
+.pi-timeline-tick:focus-visible::before { box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue) 50%, transparent); }
+
+.pi-timeline-card {
+    position: absolute;
+    left: 40px;
+    width: min(380px, calc(100vw - 120px));
+    box-sizing: border-box;
+    padding: 12px 14px 11px 16px;
+    border: 1px solid color-mix(in srgb, var(--line-strong) 75%, transparent);
+    border-radius: 14px;
+    background: var(--surface-2);
+    color: var(--text-main);
+    box-shadow: 0 1px 2px rgb(20 32 26 / 6%), 0 14px 36px -10px rgb(20 32 26 / 22%);
+    opacity: 0;
+    transform: translateX(-4px);
+    transition: opacity 120ms ease, transform 160ms cubic-bezier(.2, .8, .3, 1), top 110ms ease-out;
+    pointer-events: auto;
+    cursor: pointer;
+    user-select: none;
+}
+.pi-timeline-card[hidden] { display: none; }
+.pi-timeline-card.is-open { opacity: 1; transform: none; }
+html[data-theme="dark"] .pi-timeline-card { box-shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 16px 40px -10px rgb(0 0 0 / 60%); }
+
+.pi-timeline-card-head { display: flex; align-items: flex-start; gap: 10px; }
+.pi-timeline-title {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.5;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.pi-timeline-card .pi-timeline-mark {
+    flex: 0 0 28px;
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    margin: -4px -7px -4px 0;
+    padding: 0;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 14px;
+    cursor: pointer;
+    transition: color 120ms ease, background-color 120ms ease;
+}
+.pi-timeline-card .pi-timeline-mark:hover:not(:disabled) { background: var(--surface-3); color: var(--text-main); }
+.pi-timeline-card .pi-timeline-mark[aria-pressed="true"] { color: var(--accent); }
+.pi-timeline-card .pi-timeline-mark:disabled { cursor: progress; opacity: .55; }
+.pi-timeline-card .pi-timeline-mark:focus-visible { outline-offset: 0; }
+.pi-timeline-card .pi-timeline-mark[hidden] { display: none; }
+
+.pi-timeline-reply {
+    display: -webkit-box;
+    max-height: calc(1.6em * 4);
+    margin-top: 5px;
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+}
+.pi-timeline-reply p, .pi-timeline-reply ul { margin: 0; }
+.pi-timeline-reply ul { padding-left: 1.25em; list-style: disc; }
+.pi-timeline-reply li::marker { color: var(--text-soft, var(--text-muted)); }
+.pi-timeline-reply .pi-timeline-state { color: var(--text-soft, var(--text-muted)); }
+.pi-timeline-reply.is-running > :last-child::after { content: ' …'; }
+.pi-timeline-card .pi-timeline-history {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 9px;
+    padding: 4px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+    cursor: pointer;
+}
+.pi-timeline-card .pi-timeline-history[hidden] { display: none; }
+.pi-timeline-card .pi-timeline-history:hover { background: var(--surface-3); color: var(--text-main); }
+.pi-timeline-history i { font-size: 10px; }
+
+.pi-timeline-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    margin: 8px 0 0;
+    color: var(--text-soft, var(--text-muted));
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.4;
+}
+.pi-timeline-meta[hidden] { display: none; }
+.pi-timeline-meta > :last-child { margin-left: auto; white-space: nowrap; }
+.pi-timeline-meta > :only-child { margin-left: 0; }
+.pi-timeline-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--accent);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.pi-timeline-label i { font-size: 10px; }
+
+/* Bookmark toggle beside the question's copy button. */
+.pi-message-bookmark[hidden] { display: none; }
+.pi-message-bookmark[aria-pressed="true"] { color: var(--accent); }
+.pi-message-bookmark[aria-pressed="true"]:hover:not(:disabled) { color: var(--accent); }
+@media (hover: hover) and (pointer: fine) {
+    .pi-message.user .pi-message-bookmark[aria-pressed="false"] { opacity: 0; transition: opacity 120ms ease, color 120ms ease, background 120ms ease; }
+    .pi-message.user:hover .pi-message-bookmark,
+    .pi-message.user:focus-within .pi-message-bookmark { opacity: 1; }
+}
+
+.pi-message-bookmark i { font-size: .92em; }
+
+/* Brief highlight after jumping from the outline or history: a ring on a question
+   bubble, a soft tinted halo around other records (replies, cards). */
+.pi-transcript-located.pi-message.user .pi-message-body { animation: pi-transcript-located 1.6s ease-out; }
+.pi-transcript-located:not(.pi-message.user) { border-radius: 10px; animation: pi-transcript-located-halo 1.8s ease-out; }
+@keyframes pi-transcript-located {
+    0%, 30% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 34%, transparent); }
+    100% { box-shadow: 0 0 0 3px transparent; }
+}
+@keyframes pi-transcript-located-halo {
+    0%, 35% { background-color: color-mix(in srgb, var(--accent) 8%, transparent); box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 8%, transparent); }
+    100% { background-color: transparent; box-shadow: 0 0 0 10px transparent; }
+}
+
+@media (max-width: 680px), (hover: none), (pointer: coarse) {
+    .pi-timeline { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .pi-timeline-tick::before, .pi-timeline-card { transition: none; }
+    .pi-transcript-located.pi-message.user .pi-message-body, .pi-transcript-located:not(.pi-message.user) { animation: none; }
+}

@@ -9658,5 +9658,110 @@
         ['生成失败', 'Generation failed'],
         ['服务已确认生成失败或取消：{0}', 'The service confirmed generation failure or cancellation: {0}']
     );
+    rows.push(
+        ['对话目录', 'Conversation outline'],
+        ['第 {0} 个问题：{1}', 'Question {0}: {1}'],
+        ['回复生成中…', 'Generating reply…'],
+        ['回复包含代码或表格，点击查看', 'The reply contains code or a table. Click to view it.'],
+        ['暂无文字回复', 'No text reply yet'],
+        ['书签', 'Bookmark'],
+        ['添加书签', 'Add bookmark'],
+        ['移除书签：{0}', 'Remove bookmark: {0}'],
+        ['这条消息尚未保存，请稍后再添加书签', 'This message is not saved yet. Try adding the bookmark again shortly.'],
+        ['在对话中定位', 'Show in conversation'],
+        ['这条记录不在当前显示的对话中，可能已被压缩或位于其他分支', 'This record is not in the displayed conversation. It may have been compacted or be on another branch.'],
+        ['更早的对话已压缩为摘要，点击查看；压缩前的原文可在历史中搜索。', 'Earlier conversation was compacted into a summary. Click to view it; search History for the original text.'],
+        ['离开其他分支时留下的摘要，点击查看。', 'Summary left when returning from another branch. Click to view it.'],
+        ['搜索历史', 'Search history']
+    );
+    rows.push(
+        ['压缩前的对话', 'Conversation before compaction'],
+        ['压缩前的记录过多，请在历史中搜索查看', 'Too many records before compaction. Search History to view them.'],
+        ['正在读取压缩前的记录…', 'Reading records from before compaction…'],
+        ['压缩前的记录暂时无法读取', 'Records from before compaction cannot be read right now'],
+        ['压缩前的 {0} 个问题', '{0} questions before compaction'],
+        ['压缩前的记录', 'Records before compaction'],
+        ['仅供回看，模型不会再读取这些原文', 'For reading only; the model no longer reads this original text'],
+        ['重新加载', 'Reload'],
+        ['显示更早的 {0} 个问题', 'Show {0} earlier questions'],
+        ['显示更早的记录', 'Show earlier records'],
+        ['显示中间的 {0} 个问题', 'Show {0} questions in between'],
+        ['显示中间的记录', 'Show records in between'],
+        ['原问题含 {0} 张图片，此处不显示', 'The original question had {0} images, not shown here'],
+        ['这一轮后续的执行和回复在下方的当前上下文中', 'The rest of this turn and its reply continue below in the current context'],
+        ['这一轮没有文字回复', 'This turn has no text reply'],
+        ['Agent 消息', 'Agent message'],
+        ['内容较长，在历史中查看全文', 'Long content: view the full text in History'],
+        ['{0} 个执行步骤', '{0} steps'],
+        ['{0} 个错误', '{0} errors'],
+        ['正在读取执行过程…', 'Reading process steps…'],
+        ['显示更多步骤（共 {0} 步）', 'Show more steps ({0} total)'],
+        ['在历史中查看这一步', 'View this step in History'],
+        ['线程已切换', 'The thread changed'],
+        ['会话超过 50000 条原生记录', 'The session has more than 50,000 native records'],
+        ['压缩前分页位置无效', 'Invalid page position for records before compaction'],
+        ['压缩前分页位置越界', 'Page position is past the records before compaction'],
+        ['压缩前回合位置越界', 'Turn position is past the records before compaction'],
+        ['压缩前回合范围无效', 'Invalid turn range for records before compaction'],
+        ['压缩前回合范围越界', 'Turn range is past the records before compaction'],
+        ['压缩前查询参数无效', 'Invalid query for records before compaction'],
+        ['压缩前查询视图无效', 'Invalid view for records before compaction'],
+        ['压缩前记录修订无效', 'Invalid revision for records before compaction'],
+        ['压缩前记录已变化，请重新加载', 'Records before compaction changed. Reload them.'],
+        ['压缩前记录查询超过时间预算', 'Reading records before compaction took too long'],
+        ['压缩前过程分页位置越界', 'Step page position is past this turn']
+    );
+    // Feedback UX: transcript activity, deferred chip and deliberate reloads.
+    rows.push(
+        ['约 {0} → {1} tokens', 'About {0} → {1} tokens'],
+        ['无需压缩', 'Nothing to compact'],
+        ['压缩摘要将在 {0} 秒后重试（{1}/{2}）', 'Retrying the compaction summary in {0}s ({1}/{2})'],
+        ['{0}：正在把较早的对话整理成摘要，完成前暂不能发送新消息', '{0}: summarizing the earlier conversation. Sending is paused until it finishes'],
+        ['{0}：上下文接近上限，正在把较早的对话整理成摘要，完成后自动继续', '{0}: the context is nearly full. Summarizing the earlier conversation, then continuing automatically'],
+        ['正在思考', 'Thinking'],
+        ['正在准备工具调用', 'Preparing a tool call'],
+        ['正在执行：{0}', 'Running: {0}'],
+        ['正在执行工具', 'Running a tool'],
+        ['请求失败，等待第 {0} 次重试', 'Request failed, waiting for retry {0}'],
+        ['正在根据结果继续', 'Continuing from the result'],
+        ['正在等待模型响应', 'Waiting for the model'],
+        ['{0} 秒后', 'in {0}s'],
+        ['响应较慢，可继续等待或停止', 'Slow response. Keep waiting or stop'],
+        ['{0} 个未发送草稿中的附件', 'Attachments in {0} unsent drafts', 'Attachments in {0} unsent draft'],
+        ['正在读取的附件', 'Attachments still being read'],
+        ['正在发送的消息', 'A message that is being sent'],
+        ['当前临时会话（刷新后结束）', 'The current temporary session (ends on reload)'],
+        ['{0} 个侧聊（刷新后结束）', '{0} side chats (end on reload)', '{0} side chat (ends on reload)'],
+        ['{0} 条待发送', '{0} pending messages', '{0} pending message'],
+        ['需确认', 'Needs confirmation']
+    );
+    // Feedback UX: network and access inline status, instant language switch.
+    rows.push(
+        ['正在保存访问范围…', 'Saving access scope…'],
+        ['正在保存代理…', 'Saving proxy…'],
+        ['正在撤销待生效配置…', 'Discarding pending configuration…'],
+        ['正在保存访问设置…', 'Saving access settings…'],
+        ['正在退出当前登录…', 'Signing out…'],
+        ['正在撤销所有登录…', 'Revoking all sign-ins…'],
+        ['请先开启登录验证，再修改网络设置或测试代理。', 'Enable sign-in verification before changing network settings or testing the proxy.'],
+        ['语言已保存。以下内容会受刷新影响：\n{0}', 'Language saved. Reloading will affect the following:\n{0}'],
+        ['立即切换', 'Switch now'],
+        ['也可在下次刷新时应用语言。', 'You can also apply the language on the next refresh.'],
+        ['未发送的文字草稿会在刷新后恢复（{0} 份）。', 'Unsent text drafts will be restored after reload ({0}).'],
+        ['立即切换语言并刷新页面？以下内容会受影响：\n{0}', 'Switch language and reload now? The following will be affected:\n{0}'],
+        ['正在切换为简体中文…', 'Switching to Simplified Chinese…']
+    );
+    // Network proxy test: HTTP error answers are warnings, not success.
+    rows.push(
+        ['可能是目标限流。', 'The target is likely rate limiting requests. '],
+        ['目标暂时不可用。', 'The target is temporarily unavailable. '],
+        ['请稍后重试或检查目标状态。', 'Try again later or check the target status. '],
+        ['网络/代理路径已连通，但目标返回 HTTP {0}（{1} ms）。{2}未保存配置，也未调用生成模型。', 'The network/proxy path works, but the target returned HTTP {0} ({1} ms). {2}Configuration was not saved, and no generative model was called.']
+    );
+    // Composer status: short delivery hint while a run is active.
+    rows.push(
+        ['运行中 · 新消息在本轮工具后送达', 'Running · New messages arrive after this tool step'],
+        ['运行中 · 新消息在任务完成后送达', 'Running · New messages arrive when the task ends']
+    );
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

@@ -46,8 +46,14 @@ test('host compatibility exception cannot hide other missing aliases or unknown 
         manifests(...versions);
         assert.equal(resolveHostPeerAliases(host).missing.includes(obsolete), true);
     }
-    manifests('1.0.0', '1.0.0');
-    assert.equal(resolveHostPeerAliases(host).missing.includes(obsolete), false);
+    for (const version of ['1.0.0', '1.1.0']) {
+        manifests(version, version);
+        assert.equal(resolveHostPeerAliases(host).missing.includes(obsolete), false);
+    }
+    for (const versions of [['1.1.1', '1.1.1'], ['1.1.0', '1.0.2'], ['1.0.2', '1.1.0']]) {
+        manifests(...versions);
+        assert.equal(resolveHostPeerAliases(host).missing.includes(obsolete), true);
+    }
     manifests('1.0.2', '1.0.2', null);
     assert.equal(resolveHostPeerAliases(host).missing.includes(obsolete), true);
     manifests('1.0.2', '1.0.2', './missing.js');

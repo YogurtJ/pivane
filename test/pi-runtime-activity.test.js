@@ -41,6 +41,17 @@ test('manual compaction stays busy without an agent run; final errors and aborts
     assert.deepEqual(activity.snapshot(), { phase: 'error', busy: false });
 });
 
+test('Pi 1.1 aborted settlement suppresses a stale success even without a final aborted message', () => {
+    const activity = new PiRuntimeActivity();
+    activity.handle({ type: 'agent_start' });
+    activity.handle({ type: 'message_end', message: { role: 'assistant', stopReason: 'stop', content: 'Earlier reply' } });
+    assert.equal(activity.handle({ type: 'agent_settled', aborted: true }), false);
+    assert.deepEqual(activity.snapshot(), { phase: 'stopped', busy: false });
+    activity.handle({ type: 'agent_start' });
+    activity.handle({ type: 'message_end', message: { role: 'assistant', stopReason: 'stop', content: 'New reply' } });
+    assert.equal(activity.handle({ type: 'agent_settled', aborted: false }), true);
+});
+
 test('completion requires a final visible assistant reply and only emits once per settled run', () => {
     const activity = new PiRuntimeActivity();
     activity.handle({ type: 'agent_start' });

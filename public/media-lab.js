@@ -364,7 +364,9 @@
         $('lab-source-clear').addEventListener('click', () => { stopSourceRead(); currentDraft().source = {}; revision++; sourceView(); });
         $('lab-source-gallery').addEventListener('click', async () => {
             stopSourceRead(); revision++; sourceView();
-            const selectedId = modelId, generation = ++infoRevision; $('lab-info-title').textContent = translateUi("选择首帧"); $('lab-info-content').textContent = translateUi("正在读取"); info.showModal();
+            const selectedId = modelId, generation = ++infoRevision; $('lab-info-title').textContent = translateUi("选择首帧"); $('lab-info-content').textContent = translateUi("正在读取");
+            if (window.PiSkeleton) $('lab-info-content').innerHTML = window.PiSkeleton.html('cards', { rows: 4, label: translateUi("正在读取") });
+            info.showModal();
             try {
                 const items = await api('/history?kind=image');
                 if (!info.open || selectedId !== modelId || generation !== infoRevision) return;
@@ -440,12 +442,13 @@
                 finally { save.disabled = false; }
             }, 'lab-primary');
             actions.append(save);
-            const docs = element('details'), documentation = element('pre', '', translateUi("正在读取"));
+            const docs = element('details'), documentation = element(window.PiSkeleton ? 'div' : 'pre', '', translateUi("正在读取"));
+            if (window.PiSkeleton) documentation.innerHTML = window.PiSkeleton.html('lines', { rows: 6, label: translateUi("正在读取") });
             docs.append(element('summary', '', translateUi("接入协议")), documentation);
             let docsLoaded = false;
             docs.addEventListener('toggle', async () => {
                 if (!docs.open || docsLoaded) return;
-                try { documentation.textContent = await api('/docs', {}, 'text'); docsLoaded = true; }
+                try { const text = await api('/docs', {}, 'text'); if (documentation.tagName === 'PRE') documentation.textContent = text; else documentation.replaceChildren(element('pre', '', text)); docsLoaded = true; }
                 catch (error) { documentation.textContent = error.message; }
             });
             $('lab-info-content').replaceChildren(mode, docs, editor, message, actions); info.showModal();

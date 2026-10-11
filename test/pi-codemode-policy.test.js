@@ -112,7 +112,7 @@ test('official factory schema, renderers, loadout and options retain their ident
     assert.equal(f.tool.defaultActive, false);
     assert.equal(f.tool.exposure, 'model-only');
     const nested = { name: 'fixture_echo', description: 'Synthetic echo', parameters: { type: 'object', properties: {} } };
-    const loadout = { callable: [nested], declared: [nested, f.tool], getExposure: () => 'direct', getNamespace: () => undefined };
+    const loadout = { callable: [nested], declared: [nested, f.tool], getExposure: () => 'direct', getNamespace: () => undefined, getPromptGuidelines: () => [] };
     const prepared = f.tool.prepareLoadout(loadout);
     assert.deepEqual(prepared.hiddenDeclarations, ['fixture_echo']);
     assert.match(prepared.descriptions.codemode, /models/);
@@ -176,6 +176,45 @@ test('official catalog, classifiers, usage and branch store keep working after a
     assertNoImages(f.runtime);
 });
 
+test('Pi 1.1 images from read retain private temporary paths and classifier image context without opening generation', async () => {
+    const f = await fixture();
+    const block = { type: 'image', mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC' };
+    const { sdk } = await dependencies();
+    const read = sdk.createReadTool(cwd);
+    const file = path.join(cwd, 'synthetic.png'); fs.writeFileSync(file, Buffer.from(block.data, 'base64'));
+    const calls = []; f.context.tools = [read];
+    f.context.executeTool = async (name, args) => { calls.push({ name, args }); return { toolCall: { id: 'fixture-read' }, result: await read.execute('fixture-read', args), isError: false }; };
+    const files = [];
+    try {
+        const result = await f.run('const pic=await tools.read({path:"synthetic.png"}); image(pic); image(pic); text(pic.type); for(let i=0;i<300;i++)text("image-tail-"+i); console.log("console-one"); text("next-item"); return "last-item";');
+        assert.equal(result.isError, undefined, text(result));
+        assert.equal(result.content.filter(item => item.type === 'image').length, 2);
+        const paths = [...text(result).matchAll(/\[Image saved to ([^\n]+?) \(image\/png,/g)].map(match => match[1]);
+        assert.equal(paths.length, 2); assert.equal(paths[0], paths[1], 'same image is saved once'); files.push(paths[0]);
+        assert.equal(path.dirname(paths[0]), os.tmpdir());
+        assert.deepEqual(fs.readFileSync(paths[0]), Buffer.from(block.data, 'base64'));
+        if (process.platform !== 'win32') assert.equal(fs.statSync(paths[0]).mode & 0o777, 0o600);
+        assert.deepEqual(calls, [{ name: 'read', args: { path: 'synthetic.png' } }]);
+        assert.match(text(result), /==> text [0-9]+\/[0-9]+ <==/); assert.match(text(result), /image-tail-299/); assert.match(text(result), /<console_output>\nconsole-one\n<\/console_output>/);
+        const context = { ...classifierContext, images: [block] };
+        const classified = await f.run(`return await models.classify(${JSON.stringify(classifierRef)}, ${JSON.stringify(context)});`);
+        assert.equal(classified.isError, undefined); assert.deepEqual(classified.usage, usage);
+        assert.deepEqual(f.runtime.calls.find(call => call.method === 'classify').context, context);
+        const invalid = await f.run(`return await models.classify(${JSON.stringify(classifierRef)}, {...${JSON.stringify(classifierContext)},images:[{type:'image',data:12,mimeType:'image/png'}]});`);
+        assert.equal(invalid.isError, true); assert.match(text(invalid), /context.images\[0\] must be an image block/);
+        assert.equal(f.runtime.calls.filter(call => call.method === 'classify').length, 1);
+        assertNoImages(f.runtime);
+    } finally { for (const file of files) fs.rmSync(file, { force: true }); }
+});
+
+test('Pi 1.1 frozen intrinsics prevent prototype corruption and later scripts remain usable', async () => {
+    const f = await fixture();
+    const result = await f.run('try { Array.prototype.toJSON=()=>"corrupt"; } catch {} try { Object.prototype.injected=true; } catch {} return [1,2,3];');
+    assert.equal(result.isError, undefined); assert.match(text(result), /\[1,2,3\]/); assert.doesNotMatch(text(result), /corrupt/);
+    const next = await f.run('return {clean:!Object.prototype.injected,values:[4,5]};');
+    assert.equal(next.isError, undefined); assert.match(text(next), /"clean":true/); assert.match(text(next), /\[4,5\]/);
+});
+
 test('Pi 1.0.2 output limits fail scripts without replaying completed calls or committing failed store writes', { timeout: 60000 }, async () => {
     const f = await fixture();
     const { MAX_OUTPUT_CHARS, MAX_OUTPUT_ITEMS } = await import('@earendil-works/pi-codemode');
@@ -191,6 +230,50 @@ test('Pi 1.0.2 output limits fail scripts without replaying completed calls or c
     assert.deepEqual(result.usage, usage); assert.deepEqual(f.entries, []); assertNoImages(f.runtime);
     const items = await f.run(`for (let i = 0; i <= ${MAX_OUTPUT_ITEMS}; i++) text('');`);
     assert.equal(items.isError, true); assert.match(text(items), /script output exceeded the limit/);
+});
+
+test('large text integration keeps native truncation, private full output, console, usage and branch store', async () => {
+    const f = await fixture();
+    const result = await f.run(`// @options: {"max_output_tokens": 100}
+        await models.classify(${JSON.stringify(classifierRef)}, ${JSON.stringify(classifierContext)});
+        for (let i = 0; i < 300; i++) text(i % 2 ? 'line-' + i : '');
+        console.log('tail-one'); console.log('tail-two');
+        store('large-success', { ok: true }); return { last: true };
+    `);
+    const output = text(result), file = result.details.fullOutputPath;
+    assert.equal(result.isError, undefined); assert.deepEqual(result.usage, usage);
+    assert.match(output, /Warning: truncated output/); assert.ok(file);
+    try {
+        const full = fs.readFileSync(file, 'utf8');
+        const expected = Array.from({ length: 300 }, (_, i) => `==> text ${i + 1}/301 <==\n${i % 2 ? 'line-' + i : ''}`)
+            .map((value, i) => value + (i % 2 ? '\n' : '')).join('')
+            + '==> text 301/301 <==\n{"last":true}\n<console_output>\ntail-one\ntail-two\n</console_output>';
+        assert.equal(full, expected);
+        assert.equal(path.dirname(file), os.tmpdir());
+        if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+    } finally { if (file) fs.rmSync(file, { force: true }); }
+    assert.equal(f.runtime.calls.filter(call => call.method === 'classify').length, 1);
+    assert.deepEqual(f.entries[0].data, { set: { 'large-success': { ok: true } }, delete: [] });
+    assert.match(text(await f.run('return load("large-success");')), /"ok":true/); assertNoImages(f.runtime);
+});
+
+test('large partial text preserves native timeout and abort without failed store or replay', { timeout: 15000 }, async () => {
+    for (const mode of ['timeout', 'abort']) {
+        const f = await fixture(), controller = new AbortController();
+        const code = `${mode === 'timeout' ? '// @options: {"timeout_ms": 500}\n' : ''}
+            await models.classify(${JSON.stringify(classifierRef)}, ${JSON.stringify(classifierContext)});
+            store('never-commit', true); for(let i=0;i<300;i++)text('partial-'+i);
+            while(true){}
+        `;
+        const timer = mode === 'abort' ? setTimeout(() => controller.abort(new Error('fixture-abort')), 500) : undefined;
+        let result;
+        try { result = await f.tool.execute('partial-stop', { code }, controller.signal, undefined, f.context); }
+        finally { clearTimeout(timer); }
+        assert.equal(result.isError, true); assert.match(text(result), mode === 'timeout' ? /Script timed out/ : /Script aborted.*fixture-abort/);
+        assert.match(text(result), /==> text 300\/300 <==\npartial-299/);
+        assert.deepEqual(result.usage, usage); assert.deepEqual(f.entries, []);
+        assert.equal(f.runtime.calls.filter(call => call.method === 'classify').length, 1); assertNoImages(f.runtime);
+    }
 });
 
 test('registry facade hides the runtime and prototype and follows current registry on every execution', async () => {

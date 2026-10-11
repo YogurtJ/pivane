@@ -118,6 +118,7 @@
             }
             const ticket = ++epoch, key = context(); snapshot = null; runtime = null; editor.replaceChildren(); editor.hidden = true; saved.replaceChildren(); controls(); renderLive();
             feedback.textContent = t('正在读取配置…', 'Reading configuration…');
+            if (window.PiSkeleton) { feedback.textContent = ''; saved.innerHTML = window.PiSkeleton.html('list', { rows: 4, label: t('正在读取配置…', 'Reading configuration…') }); }
             try {
                 cwd = host.currentCwd() || (await host.apiFetch('/api/pi/status')).defaultProject;
                 if (!valid(ticket, key)) return;
@@ -130,7 +131,7 @@
                 snapshot = result; blocked = false;
                 setTrust(result);
                 feedback.textContent = t('已读取已保存配置；连接状态请在下方显式核对。', 'Saved configuration loaded; explicitly check connections below.'); renderSaved();
-            } catch { if (valid(ticket, key)) feedback.textContent = t('无法读取安全配置。请刷新核对。', 'Could not read safe configuration. Refresh to check.'); }
+            } catch { if (valid(ticket, key)) { saved.querySelector('.pv-skeleton') && saved.replaceChildren(); feedback.textContent = t('无法读取安全配置。请刷新核对。', 'Could not read safe configuration. Refresh to check.'); } }
             finally { if (valid(ticket, key)) { controls(); renderLive(); } }
         }
         async function save(change) {

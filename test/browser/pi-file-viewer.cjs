@@ -63,6 +63,8 @@ async function run(browser, viewport) {
             if (cmd.type === 'get_messages') return reply(ws, cmd, { messages: active === session.id ? messages : [] });
             if (cmd.type === 'get_state') return reply(ws, cmd, state);
             if (cmd.type === 'get_session_stats') return reply(ws, cmd, {});
+            // The conversation outline reads native bookmarks (read-only) when history search is enabled.
+            if (cmd.type === 'search_history' && cmd.bookmarked === true) return reply(ws, cmd, { results: [], offset: 0, hasMore: false, revision: 'file-viewer-fixture' });
             throw new Error(`Unexpected RPC ${cmd.type}`);
         });
     });
@@ -101,7 +103,7 @@ async function run(browser, viewport) {
     assert.equal(reads.length, 1);
     diskReport = '# 磁盘版本 2\n\n<a href="details.md">详细说明</a>\n' + '\n## 阅读内容\n\n需要保留充分的空间检查整份报告。\n'.repeat(40);
     emit({ type: 'agent_settled' });
-    await page.waitForFunction(() => document.querySelector('#pi-composer-status').textContent === 'Pi Agent 已就绪');
+    await page.waitForFunction(() => document.querySelector('#pi-composer-status').textContent === '' && document.querySelector('.pi-composer').dataset.running === 'false');
     assert.match(await page.locator('#pi-file-body').textContent(), /磁盘版本 1/); assert.equal(reads.length, 1, 'snapshot redraw does not reread disk');
     await page.locator('#pi-file-refresh').click();
     await page.waitForFunction(() => document.querySelector('#pi-file-body').textContent.includes('磁盘版本 2'));
@@ -225,7 +227,7 @@ async function run(browser, viewport) {
     await pending.route.fulfill({ json: { ...fileResult(pending.file), content: 'LATE_OTHER_THREAD' } }).catch(() => {});
     assert.equal(await page.locator('#pi-file-body').textContent(), ''); assert.equal(await page.locator('.pi-turn-edits').count(), 0);
     assert.deepEqual(errors, []); assert.deepEqual(writes, []); assert.deepEqual(remoteImages, []);
-    assert.ok(commands.every(c => ['open_session', 'get_state', 'get_messages', 'get_session_stats'].includes(c)));
+    assert.ok(commands.every(c => ['open_session', 'get_state', 'get_messages', 'get_session_stats', 'search_history'].includes(c)));
     console.log(`PASS ${viewport.width}: write records, historical/current distinction, explicit refresh, Markdown/source/highlight/lines/wrap/copy, links, missing file, late source/thread, reload, old backend and themes`);
     await context.close();
 }

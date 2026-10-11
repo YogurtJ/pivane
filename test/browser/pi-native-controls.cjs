@@ -143,7 +143,7 @@ async function run(browser, viewport) {
     assert.equal(commands.filter(command => command.type === 'stop_and_recover').length, stopCount, 'reconnection never repeats stop');
     pendingStop = null;
     finish();
-    await page.waitForFunction(() => document.querySelector('#pi-composer-status').textContent === 'Pi Agent 已就绪');
+    await page.waitForFunction(() => document.querySelector('#pi-composer-status').textContent === '' && document.querySelector('.pi-composer').dataset.running === 'false');
     assert.equal(await page.locator('#pi-input').inputValue(), 'Draft typed during stop');
     // Full reload restores server-side recovery and extension state, without replaying stop.
     const stops = commands.filter(command => command.type === 'stop_and_recover').length;
