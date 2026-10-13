@@ -1,89 +1,109 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
-const { pathToFileURL } = require('node:url');
-const { spawnSync } = require('node:child_process');
-const root = path.resolve(__dirname, '..');
+const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-codemode-output-')));
+process.env.PI_CODING_AGENT_DIR = root;
+process.env.PI_OFFLINE = '1';
+test.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
-function nativeLayout(result) {
-    const output = [...result.output];
-    if (result.ok && result.value !== undefined) output.push({ type: 'text', text: typeof result.value === 'string' ? result.value : JSON.stringify(result.value) ?? String(result.value) });
-    const total = output.filter(item => item.type === 'text' && !item.console).length;
-    const items = [], consoleLines = [];
-    let index = 0;
-    for (const item of output) {
-        if (item.type === 'image') items.push(item);
-        else if (item.console) consoleLines.push(item.text);
-        else { index++; items.push({ type: 'text', text: total > 1 ? `==> text ${index}/${total} <==\n${item.text}` : item.text }); }
-    }
-    if (consoleLines.length) items.push({ type: 'text', text: `<console_output>\n${consoleLines.join('\n')}\n</console_output>` });
-    const joined = [];
-    for (const item of items) {
-        const last = joined.at(-1);
-        if (item.type === 'text' && last?.type === 'text') joined[joined.length - 1] = { type: 'text', text: `${last.text}${last.text === '' || last.text.endsWith('\n') ? '' : '\n'}${item.text}` };
-        else joined.push(item);
-    }
-    return joined;
+async function tool() {
+    const sdk = await import('@earendil-works/pi-coding-agent');
+    assert.equal(sdk.VERSION, '1.2.0', 'isolated SDK metadata');
+    let registered;
+    sdk.createCodemodeExtension({ models: false })({
+        registerTool: value => { registered = value; }, getSettings: () => ({}),
+        getAllTools: () => [registered], appendEntry: () => {},
+    });
+    return registered;
 }
-const success = (output, value) => ({ ok: true, output, value, calls: [], storeWrites: { set: { preserved: true }, delete: [] } });
+// Independent byte oracle for the documented layout, including empty strings
+// and console lines grouped after the returned value.
+function expectedOutput(output, value) {
+    const items = [...output];
+    if (value !== undefined) items.push({ text: typeof value === 'string' ? value : JSON.stringify(value) });
+    const total = items.filter(item => !item.console).length;
+    const parts = [], consoleLines = [];
+    let index = 0;
+    for (const item of items) {
+        if (item.console) consoleLines.push(item.text);
+        else parts.push(total > 1 ? `==> text ${++index}/${total} <==\n${item.text}` : item.text);
+    }
+    if (consoleLines.length) parts.push(`<console_output>\n${consoleLines.join('\n')}\n</console_output>`);
+    return parts.reduce((joined, part) => joined + (joined === '' || joined.endsWith('\n') ? '' : '\n') + part, '');
+}
+function output(result) {
+    assert.match(result.content[0].text, /^Script completed\nWall time \d+\.\d seconds\nOutput:\n$/);
+    return result.content.slice(1).map(item => item.text).join('');
+}
 
-test('linear text output preserves native bytes, return placement and console grouping', async () => {
-    const { compactCodemodeTextOutput } = await import('../server/pi-codemode-output.mjs');
-    const values = [undefined, null, '', 'returned\n', false, 0, { nested: ['value', 1] }];
-    for (const count of [256, 257, 1024]) for (const value of values) for (const mode of ['text', 'console', 'mixed']) {
-        const output = Array.from({ length: count }, (_, i) => ({ type: 'text', text: ['', '\n', 'a', 'b\n', '双字😀', '\r', '\n\n'][i % 7], ...(mode === 'console' || mode === 'mixed' && i % 3 === 0 ? { console: true } : {}) }));
-        const input = success(output, value), before = JSON.stringify(input), compact = compactCodemodeTextOutput(input);
-        assert.deepEqual(nativeLayout(compact), nativeLayout(input), `${mode}/${count}/${JSON.stringify(value)}`);
-        assert.equal(compact.calls, input.calls); assert.equal(compact.storeWrites, input.storeWrites);
-        assert.equal(JSON.stringify(input), before, 'native result not mutated');
+test('official 1.2 output preserves text/empty/console/return ordering byte for byte', async () => {
+    const native = await tool();
+    const strings = ['', '\n', 'a', 'b\n', '双字😀', '\r', '\n\n'];
+    for (const count of [0, 1, 7, 255, 256, 257, 1024]) {
+        for (const mode of ['text', 'console', 'mixed']) {
+            const values = [undefined, null, '', 'returned\n', false, 0, { nested: ['value', 1] }];
+            for (const value of values) {
+                const items = Array.from({ length: count }, (_, i) => ({ text: strings[i % strings.length], console: mode === 'console' || mode === 'mixed' && i % 3 === 0 }));
+                const code = items.map(item => `${item.console ? 'console.log' : 'text'}(${JSON.stringify(item.text)});`).join('\n')
+                    + (value === undefined ? '' : `\nreturn ${JSON.stringify(value)};`);
+                const result = await native.execute('native-layout', { code: code || 'void 0;' });
+                assert.equal(result.isError, undefined);
+                assert.equal(output(result), expectedOutput(items, value), `${mode}/${count}/${JSON.stringify(value)}`);
+            }
+        }
     }
 });
 
-test('small or mixed image output remains native, and failed result retains identity fields', async () => {
-    const { compactCodemodeTextOutput } = await import('../server/pi-codemode-output.mjs');
-    const small = success(Array.from({ length: 255 }, () => ({ type: 'text', text: '' })), 1);
-    assert.equal(compactCodemodeTextOutput(small), small);
-    const mixed = success([...Array.from({ length: 256 }, () => ({ type: 'text', text: '' })), { type: 'image', data: 'fixture', mimeType: 'image/png' }]);
-    assert.equal(compactCodemodeTextOutput(mixed), mixed);
-    for (const kind of ['script', 'aborted', 'timeout', 'sandbox']) {
-        const failed = { ok: false, output: Array.from({ length: 256 }, (_, i) => ({ type: 'text', text: String(i), ...(i % 2 ? { console: true } : {}) })), calls: [{ name: 'fixture', status: 'ok', durationMs: 1 }], error: { kind, message: 'preserved' } };
-        const compact = compactCodemodeTextOutput(failed);
-        assert.equal(compact.error, failed.error); assert.equal(compact.calls, failed.calls); assert.equal(compact.ok, false);
-        assert.equal(Object.hasOwn(compact, 'storeWrites'), false); assert.deepEqual(nativeLayout(compact), nativeLayout(failed));
-    }
+test('official mixed text and images retain item ordering and group console after the return', async () => {
+    const native = await tool();
+    const block = { type: 'image', mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC' };
+    const result = await native.execute('mixed-output', { code: `text('start'); console.log('console-first'); image(${JSON.stringify(block)}); text(''); image(${JSON.stringify(block)}); text('after'); console.log('console-last'); return 'returned';` });
+    assert.equal(result.isError, undefined);
+    const files = [...result.content.filter(item => item.type === 'text').map(item => item.text).join('\n').matchAll(/\[Image saved to ([^\n]+?) \(image\/png,/g)].map(match => match[1]);
+    try {
+        assert.equal(files.length, 2);
+        assert.equal(files[0], files[1]);
+        assert.deepEqual(result.content.slice(1).map(item => item.type), ['text', 'image', 'text', 'image', 'text']);
+        assert.deepEqual(result.content.filter(item => item.type === 'image'), [block, block]);
+        assert.equal(result.content[1].text.replace(/\[Image saved to [^\n]+\]/g, 'IMAGE_PATH'), '==> text 1/4 <==\nstart\nIMAGE_PATH');
+        assert.equal(result.content[3].text.replace(/\[Image saved to [^\n]+\]/g, 'IMAGE_PATH'), '==> text 2/4 <==\nIMAGE_PATH');
+        assert.equal(result.content[5].text, '==> text 3/4 <==\nafter\n==> text 4/4 <==\nreturned\n<console_output>\nconsole-first\nconsole-last\n</console_output>');
+        assert.deepEqual(fs.readFileSync(files[0]), Buffer.from(block.data, 'base64'));
+    } finally { for (const file of new Set(files)) fs.rmSync(file, { force: true }); }
 });
 
-test('exact output import seam rejects unknown versions, changed executor bytes and wrong resolution', async () => {
-    const { verifyCodemodeOutputHost } = await import('../server/pi-codemode-output-loader.mjs');
-    const hostRoot = path.join(root, 'node_modules/@earendil-works/pi-coding-agent');
-    const host = JSON.parse(fs.readFileSync(hostRoot + '/package.json'));
-    const sandbox = JSON.parse(fs.readFileSync(path.join(root, 'node_modules/@earendil-works/pi-codemode/package.json')));
-    const source = fs.readFileSync(hostRoot + '/dist/extensions/codemode/execute.js');
-    const resolved = pathToFileURL(path.join(root, 'node_modules/@earendil-works/pi-codemode/dist/index.js')).href;
-    verifyCodemodeOutputHost(host, sandbox, source, resolved);
-    for (const args of [[{ ...host, version: '1.1.1' }, sandbox, source, resolved], [host, { ...sandbox, version: '1.0.2' }, source, resolved], [host, sandbox, Buffer.concat([source, Buffer.from(' ')]), resolved], [host, sandbox, source, resolved + '?unexpected=1']]) {
-        assert.throws(() => verifyCodemodeOutputHost(...args), /Unreviewed Pi Codemode output host/);
-    }
-});
-
-test('only exact SDK executor sandbox import is adapted; public sandbox and tool schema stay native', () => {
-    // CommonJS eval uses dynamic imports: no --input-type flag reaches native workers.
-    const code = `(async()=>{ await import('./server/pi-codemode-output-loader.mjs');
-        const upstream=await import('@earendil-works/pi-codemode');
-        const adapted=await import('./server/pi-codemode-output.mjs');
-        if(upstream.CodemodeSandbox===adapted.CodemodeSandbox)throw Error('Public import intercepted');
-        const sdk=await import('@earendil-works/pi-coding-agent');
-        const piRoot=process.cwd()+'/node_modules/@earendil-works/pi-coding-agent/';
-        const official=await import((await import('node:url')).pathToFileURL(piRoot+'dist/extensions/codemode/tool.js').href);
-        const extension=sdk.createCodemodeExtension({models:false});let tool;extension({registerTool:t=>tool=t,getSettings:()=>({}),getAllTools:()=>[tool],appendEntry:()=>{}});
-        if(!official.isCodemodeTool(tool))throw Error('Schema identity lost');
-        const result=await tool.execute('formatter-fixture',{code:'for(let i=0;i<300;i++)text(i);console.log("console-tail");return "end";'});
-        const text=result.content.filter(i=>i.type==='text').map(i=>i.text).join('');
-        if(result.isError||!text.includes('==> text 301/301 <==')||!text.includes('<console_output>\\nconsole-tail\\n</console_output>'))throw Error(text);
-        console.log(JSON.stringify({nativePublicImport:true,nativeSchema:true,adaptedExecution:true}));
-        })().catch(error=>{console.error(error);process.exitCode=1;});`;
-    const child = spawnSync(process.execPath, ['-e', code], { cwd: root, encoding: 'utf8', timeout: 30000 });
-    assert.equal(child.status, 0, child.stderr || child.stdout);
-    assert.equal(JSON.parse(child.stdout.trim()).adaptedExecution, true);
+test('official 100001-item pressure settles within the original 60 seconds without replay or failed store', { timeout: 60000 }, async () => {
+    const native = await tool();
+    const { MAX_OUTPUT_ITEMS, MAX_OUTPUT_CHARS } = await import('@earendil-works/pi-codemode');
+    assert.equal(MAX_OUTPUT_ITEMS, 100000);
+    assert.equal(MAX_OUTPUT_CHARS, 16 * 1024 * 1024);
+    const entries = [], calls = [];
+    const sdk = await import('@earendil-works/pi-coding-agent');
+    let registered;
+    sdk.createCodemodeExtension({ models: false })({ registerTool: value => { registered = value; }, getSettings: () => ({}),
+        getAllTools: () => [registered], appendEntry: (type, data) => entries.push({ type, data }) });
+    const ctx = { tools: [{ name: 'once', description: 'Synthetic side effect', parameters: { type: 'object' } }],
+        sessionManager: { getBranch: () => [] }, executeTool: async name => {
+            calls.push(name); return { toolCall: { id: 'once' }, isError: false, result: { content: [{ type: 'text', text: 'accepted' }] } };
+        } };
+    const started = performance.now();
+    const result = await registered.execute('native-pressure', { code: 'await tools.once({}); store("discard",true); for(let i=0;i<=100000;i++)text("");' }, undefined, undefined, ctx);
+    assert.ok(performance.now() - started < 60000);
+    assert.equal(result.isError, true);
+    assert.match(JSON.stringify(result.content), /script output exceeded the limit/);
+    assert.deepEqual(calls, ['once']);
+    assert.deepEqual(entries, []);
+    assert.deepEqual(result.details.calls.map(call => [call.name, call.status]), [['once', 'ok']]);
+    const file = result.details.fullOutputPath;
+    assert.ok(file, 'native pressure retains the complete partial output');
+    try {
+        const full = fs.readFileSync(file, 'utf8');
+        assert.ok(full.startsWith('==> text 1/100000 <==\n'));
+        assert.ok(full.includes('==> text 100000/100000 <==\n'));
+        assert.match(full, /Script error:[\s\S]*script output exceeded the limit[\s\S]*once \(ok\)/);
+        if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+    } finally { fs.rmSync(file, { force: true }); }
+    assert.equal((await native.execute('after-pressure', { code: 'return "still-usable";' })).isError, undefined);
 });
