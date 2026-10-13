@@ -29,12 +29,12 @@ const root = path.resolve(__dirname, '../..');
                     if (PiNestedTools.live(rows, event('tool_execution_start', 'missing/1', 'missing'))) throw Error('orphan');
                     PiNestedTools.live(rows, event('tool_execution_start', 'p/1', 'p', 'write', { args: { path: 'safe.txt', content: '<img src=x onerror=alert(1)>' } }));
                     PiNestedTools.live(rows, event('tool_execution_start', 'p/1/1', 'p/1', 'read'));
-                    PiNestedTools.live(rows, event('tool_execution_end', 'p/1/1', 'p/1', 'read', { result: { content: [{ type: 'text', text: 'LIVE-OUTPUT' }] } }));
-                    PiNestedTools.live(rows, event('tool_execution_end', 'p/1', 'p', 'write', { result: { content: [{ type: 'text', text: 'SUCCESS' }] } }));
+                    PiNestedTools.live(rows, event('tool_execution_end', 'p/1/1', 'p/1', 'read', { durationMs: 0, result: { content: [{ type: 'text', text: 'LIVE-OUTPUT' }] } }));
+                    PiNestedTools.live(rows, event('tool_execution_end', 'p/1', 'p', 'write', { durationMs: 17, result: { content: [{ type: 'text', text: 'SUCCESS' }] } }));
                 };
                 testLive();
                 window.reloadNative = () => PiNestedTools.persisted(row, { complete: false, calls: [
-                    { id: 'p/1', name: 'write', status: 'ok', arguments: { path: 'safe.txt', content: '<script>bad()</script>' } },
+                    { id: 'p/1', name: 'write', status: 'ok', durationMs: 23, arguments: { path: 'safe.txt', content: '<script>bad()</script>' } },
                     { id: 'p/1/1', name: 'read', status: 'ok', argumentsBytes: 9000 },
                     { id: 'p/2', name: 'edit', status: 'unfinished', arguments: { path: 'long'.repeat(1000) } },
                     { id: 'p/3', name: 'evil'.repeat(60), status: 'error', error: '<img onerror=bad()>' }
@@ -45,10 +45,13 @@ const root = path.resolve(__dirname, '../..');
             });
             assert.equal(await page.locator('.pi-tool-row').count(), 1);
             assert.equal(await page.locator('.pi-nested-call').count(), 2);
+            assert.match(await page.locator('.pi-nested-call > summary').first().innerText(), /17ms/);
             await page.locator('.pi-nested-call > summary').first().click();
+            assert.match(await page.locator('.pi-nested-call > summary').nth(1).innerText(), /0ms/);
             assert.match(await page.locator('.pi-nested-detail').first().innerText(), /SUCCESS/);
             await page.evaluate(() => reloadNative());
             assert.equal(await page.locator('.pi-nested-call').count(), 4);
+            assert.match(await page.locator('.pi-nested-call > summary').first().innerText(), /23ms/);
             assert.match(await page.locator('.pi-nested-detail').first().innerText(), /未保存/);
             assert.doesNotMatch(await page.locator('#content').innerText(), /SUCCESS|LIVE-OUTPUT/);
             await page.locator('.pi-nested-call > summary').nth(1).click();

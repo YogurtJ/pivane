@@ -3747,7 +3747,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (event.toolName) row.dataset.toolName = event.toolName;
         const result = event.partialResult || event.result;
-        if (result) setToolOutput(row, result);
+        if (result) setToolOutput(row, event.type === 'tool_execution_end' && event.durationMs !== undefined
+            ? { ...result, durationMs: event.durationMs } : result);
         else window.PiToolLabels?.update(row);
         transcriptView.schedule(row);
         scrollTranscript();

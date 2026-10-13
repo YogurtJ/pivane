@@ -122,6 +122,7 @@
         const output = Array.isArray(result?.content) ? result.content.filter(b => b.type === 'text').map(b => bounded(b.text)).join('\n').slice(0, TEXT) : '';
         const call = { ...previous, id: event.toolCallId, parent: event.parentToolCallId, name: event.toolName,
             arguments: event.args === undefined ? previous?.arguments : event.args,
+            durationMs: event.type === 'tool_execution_end' && Number.isSafeInteger(event.durationMs) && event.durationMs >= 0 ? event.durationMs : previous?.durationMs,
             status: event.type === 'tool_execution_end' ? event.isError ? 'error' : 'ok' : 'unfinished', output: output || previous?.output || '' };
         // Live arguments/output have an independent display budget; never retain
         // an unbounded result or the raw event object in page memory.

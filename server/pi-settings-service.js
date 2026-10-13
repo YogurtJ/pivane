@@ -65,10 +65,10 @@ function cleanUrl(value, required = true) {
 
 function numberInRange(value, fallback, min, max) {
     const number = Number(value ?? fallback);
-    if (!Number.isFinite(number) || number < min || number > max) {
-        throw new Error(`Numeric value must be between ${min} and ${max}`);
+    if (!Number.isSafeInteger(number) || number < min || number > max) {
+        throw new Error(`Numeric value must be an integer between ${min} and ${max}`);
     }
-    return Math.floor(number);
+    return number;
 }
 
 function modelSummary(model, availableSet) {
@@ -349,6 +349,17 @@ class PiSettingsService {
 
     async writeModelsFile(data) {
         const { modelsPath, agentDir } = await this.paths();
+        // Validate native token fields before backups or replacement. Keep unknown
+        // fields intact; only these limits became strictly positive in Pi 1.2.
+        for (const provider of Object.values(data.providers || {})) {
+            for (const model of [...(provider.models || []), ...Object.values(provider.modelOverrides || {})]) {
+                for (const field of ['contextWindow', 'maxTokens']) {
+                    if (Object.hasOwn(model, field) && (typeof model[field] !== 'number' || !Number.isFinite(model[field]) || model[field] <= 0)) {
+                        throw new Error(`${field} must be a positive token count`);
+                    }
+                }
+            }
+        }
         const text = `${JSON.stringify(data, null, 2)}\n`;
         if (Buffer.byteLength(text) > MAX_MODELS_FILE_BYTES) throw new Error('模型配置文件超过 32 MiB 保存预算');
         fs.mkdirSync(agentDir, { recursive: true, mode: 0o700 });
@@ -780,7 +791,7 @@ class PiSettingsService {
 }
 
 // Serialize settings mutations in this service; do not let a pending login race logout or model edits.
-for (const method of ['saveApiKey', 'logout', 'upsertCustomProvider', 'deleteCustomProvider', 'upsertCustomModel', 'deleteCustomModel', 'setModelPreferences', 'saveModelThinking', 'saveModelSpeed', 'saveModelAdvanced', 'packageAction', 'createSkill', 'deleteSkill', 'setSkillCommands']) {
+for (const method of ['saveApiKey', 'logout', 'refreshModels', 'upsertCustomProvider', 'deleteCustomProvider', 'upsertCustomModel', 'deleteCustomModel', 'setModelPreferences', 'saveModelThinking', 'saveModelSpeed', 'saveModelAdvanced', 'packageAction', 'createSkill', 'deleteSkill', 'setSkillCommands']) {
     const operation = PiSettingsService.prototype[method];
     PiSettingsService.prototype[method] = async function (...args) {
         this.loginService.assertIdle();

@@ -25,12 +25,18 @@ test('native RPC compaction: manual, automatic threshold/overflow, retries, hist
     let mode = 'normal';
     let summaryFailures = 0;
     let heldSummary;
+    let longThinking = true;
+    const historicalThinking = 'HISTORICAL_THINKING_ONLY '.repeat(12000);
     const server = http.createServer(async (req, res) => {
         let raw = '';
         for await (const chunk of req) raw += chunk;
         const body = JSON.parse(raw);
         requests.push(body);
         const summary = body.messages.some(message => JSON.stringify(message.content).includes('<conversation>'));
+        if (summary && raw.includes('HISTORICAL_THINKING_ONLY')) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ error: { message: 'Historical thinking exceeded summary context' } }));
+        }
         if (summary && mode === 'hold') {
             heldSummary = res;
             return;
@@ -53,6 +59,7 @@ test('native RPC compaction: manual, automatic threshold/overflow, retries, hist
         const input = !summary && mode === 'threshold' ? 3600 : 200;
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
         for (const chunk of [
+            ...(!summary && longThinking ? [{ choices: [{ index: 0, delta: { reasoning_content: historicalThinking }, finish_reason: null }] }] : []),
             { choices: [{ index: 0, delta: { role: 'assistant', content: text }, finish_reason: null }] },
             { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: input, completion_tokens: 10, total_tokens: input + 10 } }
         ]) res.write(`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', ...chunk })}\n\n`);
@@ -96,7 +103,11 @@ test('native RPC compaction: manual, automatic threshold/overflow, retries, hist
     };
     await prompt();
     await prompt();
+    longThinking = false;
     const before = (await worker.request('get_entries')).entries;
+    const thinkingEntries = before.filter(entry => entry.message?.content?.some?.(block => block.type === 'thinking'));
+    assert.equal(thinkingEntries.length, 2);
+    for (const entry of thinkingEntries) assert.equal(entry.message.content.find(block => block.type === 'thinking').thinking, historicalThinking);
     const measured = before.filter(entry => entry.message?.role === 'assistant').map(entry => entry.message.pivaneRequestStats);
     assert.equal(measured.length, 2);
     for (const stats of measured) {
@@ -177,6 +188,9 @@ test('native RPC compaction: manual, automatic threshold/overflow, retries, hist
     assert.deepEqual(persisted.getEntries().findLast(entry => entry.message?.role === 'assistant').message.pivaneRequestStats, recovered);
     assert.ok(persisted.getEntries().filter(entry => entry.type === 'compaction').length >= 4);
     assert.ok(requests.some(body => JSON.stringify(body.messages).includes('Keep the fixture requirement')));
+    assert.ok(requests.filter(body => body.messages.some(message => JSON.stringify(message.content).includes('<conversation>')))
+        .every(body => !JSON.stringify(body).includes('HISTORICAL_THINKING_ONLY')), 'actual RPC compaction omits long historical thinking from every summary request');
+    for (const entry of thinkingEntries) assert.deepEqual(persisted.getEntries().find(saved => saved.id === entry.id), entry, 'native history retains original thinking and request statistics');
     assert.ok(requests.filter(body => body.messages.some(message => JSON.stringify(message.content).includes('<conversation>')))
         .every(body => !body.tools && !Object.hasOwn(body, 'tool_choice')));
 });
