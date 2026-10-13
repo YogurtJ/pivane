@@ -105,10 +105,13 @@ test('main and child native factories install the image boundary', async () => {
 });
 
 test('official factory schema, renderers, loadout and options retain their identity', async () => {
-    const { isCodemodeTool } = await dependencies();
+    const { codemodeSchema } = await dependencies();
     const f = await fixture({ mode: 'only', inlineBudget: 0 });
     for (const key of Object.keys(f.original).filter(key => key !== 'execute')) assert.equal(f.tool[key], f.original[key], key);
-    assert.ok(isCodemodeTool(f.tool));
+    assert.equal(f.tool.parameters, codemodeSchema);
+    assert.equal(f.tool.reachesTools, f.original.reachesTools);
+    assert.deepEqual(f.tool.reachesTools({ code: 'await tools.mcp__fixture__echo({});' }), ['await', 'tools', 'mcp__fixture__echo']);
+    assert.equal(f.tool.reachesTools({ code: 'text(ALL_TOOLS);' }), 'all');
     assert.equal(f.tool.defaultActive, false);
     assert.equal(f.tool.exposure, 'model-only');
     const nested = { name: 'fixture_echo', description: 'Synthetic echo', parameters: { type: 'object', properties: {} } };
@@ -176,7 +179,7 @@ test('official catalog, classifiers, usage and branch store keep working after a
     assertNoImages(f.runtime);
 });
 
-test('Pi 1.1 images from read retain private temporary paths and classifier image context without opening generation', async () => {
+test('Pi 1.2 images from read retain private temporary paths and classifier image context without opening generation', async () => {
     const f = await fixture();
     const block = { type: 'image', mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC' };
     const { sdk } = await dependencies();
@@ -207,7 +210,7 @@ test('Pi 1.1 images from read retain private temporary paths and classifier imag
     } finally { for (const file of files) fs.rmSync(file, { force: true }); }
 });
 
-test('Pi 1.1 frozen intrinsics prevent prototype corruption and later scripts remain usable', async () => {
+test('Pi 1.2 frozen intrinsics prevent prototype corruption and later scripts remain usable', async () => {
     const f = await fixture();
     const result = await f.run('try { Array.prototype.toJSON=()=>"corrupt"; } catch {} try { Object.prototype.injected=true; } catch {} return [1,2,3];');
     assert.equal(result.isError, undefined); assert.match(text(result), /\[1,2,3\]/); assert.doesNotMatch(text(result), /corrupt/);
@@ -215,7 +218,7 @@ test('Pi 1.1 frozen intrinsics prevent prototype corruption and later scripts re
     assert.equal(next.isError, undefined); assert.match(text(next), /"clean":true/); assert.match(text(next), /\[4,5\]/);
 });
 
-test('Pi 1.0.2 output limits fail scripts without replaying completed calls or committing failed store writes', { timeout: 60000 }, async () => {
+test('Pi 1.2 output limits fail scripts without replaying completed calls or committing failed store writes', { timeout: 60000 }, async () => {
     const f = await fixture();
     const { MAX_OUTPUT_CHARS, MAX_OUTPUT_ITEMS } = await import('@earendil-works/pi-codemode');
     assert.equal(MAX_OUTPUT_CHARS, 16 * 1024 * 1024); assert.equal(MAX_OUTPUT_ITEMS, 100000);
@@ -229,7 +232,9 @@ test('Pi 1.0.2 output limits fail scripts without replaying completed calls or c
     assert.equal(f.runtime.calls.filter(call => call.method === 'classify').length, 1);
     assert.deepEqual(result.usage, usage); assert.deepEqual(f.entries, []); assertNoImages(f.runtime);
     const items = await f.run(`for (let i = 0; i <= ${MAX_OUTPUT_ITEMS}; i++) text('');`);
-    assert.equal(items.isError, true); assert.match(text(items), /script output exceeded the limit/);
+    try {
+        assert.equal(items.isError, true); assert.match(text(items), /script output exceeded the limit/);
+    } finally { if (items.details.fullOutputPath) fs.rmSync(items.details.fullOutputPath, { force: true }); }
 });
 
 test('large text integration keeps native truncation, private full output, console, usage and branch store', async () => {
@@ -274,6 +279,26 @@ test('large partial text preserves native timeout and abort without failed store
         assert.deepEqual(result.usage, usage); assert.deepEqual(f.entries, []);
         assert.equal(f.runtime.calls.filter(call => call.method === 'classify').length, 1); assertNoImages(f.runtime);
     }
+});
+
+test('invalid and non-first options lines fail before model or nested calls, updates and store writes', async () => {
+    const f = await fixture(), nested = [], updates = [];
+    f.context.tools = [{ name: 'once', description: 'Synthetic side effect', parameters: { type: 'object' } }];
+    f.context.executeTool = async () => { nested.push('called'); throw new Error('must not run'); };
+    for (const code of [
+        'await tools.once({});\n// @options: {"timeout_ms": 500}\nstore("never",true);',
+        '\n// @options: {"timeout_ms": 500}\nawait tools.once({});',
+        '// @options: {"timeout_ms": 0}\nawait tools.once({});',
+        '// @options: {"max_output_tokens": -1}\nawait tools.once({});',
+        '// @options: {broken}\nawait tools.once({});',
+    ]) {
+        await assert.rejects(() => f.tool.execute('invalid-source', { code }, undefined, update => updates.push(update), f.context),
+            error => error.name === 'CodemodeSourceError' && /first line|@options/.test(error.message));
+    }
+    assert.deepEqual(nested, []);
+    assert.deepEqual(f.runtime.calls, []);
+    assert.deepEqual(updates, []);
+    assert.deepEqual(f.entries, []);
 });
 
 test('registry facade hides the runtime and prototype and follows current registry on every execution', async () => {
@@ -332,7 +357,7 @@ test('real session preserves namespace discovery, nested hook allowlist and succ
         runtime[method] = synthetic[method].bind(synthetic);
     }
     const nestedRuns = [], hooks = [], events = [];
-    const namespace = { name: 'mcp__fixture-server', description: 'Synthetic namespace', instructions: 'Fixture instructions' };
+    const namespace = { name: 'mcp__fixture-server', aliases: ['fixture-server'], description: 'Synthetic namespace', instructions: 'Fixture instructions' };
     const extensionFactories = [
         { name: 'codemode', factory: wrapCodemodeExtension(sdk.createCodemodeExtension()) },
         { name: 'fixture-tools', factory: pi => {
