@@ -36,6 +36,32 @@ function withEnv(t, values) {
     t.after(() => { for (const [key, value] of Object.entries(before)) if (value === undefined) delete process.env[key]; else process.env[key] = value; });
 }
 
+test('repeated worker disposal waits for the same Shell and RPC termination', async t => {
+    const supervisor = new PiAgentSupervisor(), target = session();
+    const gate = Promise.withResolvers(); let shellStops = 0;
+    t.after(async () => { gate.resolve(); await supervisor.dispose(); });
+    const worker = await supervisor.getWorker(target), originalShellDispose = worker.shell.dispose.bind(worker.shell);
+    worker.shell.dispose = async () => { shellStops++; await gate.promise; await originalShellDispose(); };
+    const pid = worker.client.child.pid, first = worker.dispose(), second = worker.dispose();
+    assert.equal(first, second); await Promise.resolve(); assert.equal(shellStops, 1);
+    assert.equal(worker.lifecycle().activity.busy, true);
+    gate.resolve(); await Promise.all([first, second]);
+    assert.equal(alive(pid), false); assert.equal(shellStops, 1);
+});
+
+test('explicit shutdown can terminate an unresponsive uncertain runtime without asking it for another state reply', async t => {
+    const supervisor = new PiAgentSupervisor(), target = session();
+    t.after(() => supervisor.dispose());
+    const worker = await supervisor.getWorker(target);
+    worker.client.send({ type: 'fixture_freeze' });
+    worker.promptAdmissionUncertain = true; worker.controlPending = true;
+    worker.request = () => { throw new Error('shutdown must not require another native RPC'); };
+    const pid = worker.client.child.pid;
+    await worker.shutdown(() => supervisor.stopSession(target.sessionPath));
+    assert.equal(alive(pid), false); assert.equal(supervisor.retiring.size, 0);
+    assert.equal(supervisor.isIdle(), true);
+});
+
 test('startup window defaults to two minutes and configured values stay inside the browser wait', () => {
     assert.equal(startupTimeoutMs(undefined), DEFAULT_STARTUP_TIMEOUT);
     assert.equal(DEFAULT_STARTUP_TIMEOUT, 120000);

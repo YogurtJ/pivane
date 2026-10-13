@@ -263,3 +263,41 @@ test('HTTP move routes enforce access, previews and persistent request identity 
     assert.equal(records.filter(record => record.type === 'gateway_session_moving').length, 2);
     assert.equal(records.filter(record => record.type === 'gateway_session_moved' && record.session.id === live.id).length, 2);
 });
+
+test('committed move readers verify only original prefixes after 256MiB growth while moving budget and late-grant rejection stay intact', { timeout: 90000 }, async t => {
+    const f = await fixture(t), objects = new DeliverableStore(f.store);
+    fs.writeFileSync(path.join(f.source, 'growth.txt'), 'Bounded moved proof');
+    const inherited = await objects.publish({ cwd: f.source, sessionId: f.session.id }, { requestId: 'growth', title: 'Growth', files: ['growth.txt'] });
+    const hidden = await objects.publish({ cwd: f.source, sessionId: f.session.id }, { requestId: 'late-growth', title: 'Late growth', files: ['growth.txt'] });
+    f.manager.appendCustomEntry(ENTRY, inherited.reference);
+    const moved = (await f.move()).session;
+    const { document } = await f.moves.journal(), moveRecord = document.records.find(record => record.id === moved.id && record.status === 'committed');
+    const fd = fs.openSync(moved.path, 'a'), chunk = Buffer.alloc(1024 * 1024, 120), id = randomUUID();
+    try {
+        fs.writeSync(fd, JSON.stringify({ type: 'message', id, parentId: f.manager.getLeafId() }).slice(0, -1) + ',"message":{"role":"user","content":"');
+        for (let index = 0; index < 256; index++) fs.writeSync(fd, chunk);
+        fs.writeSync(fd, '","timestamp":1}}\n');
+        fs.writeSync(fd, JSON.stringify({ type: 'custom', customType: ENTRY, id: randomUUID(), parentId: id, data: hidden.reference }) + '\n');
+    } finally { fs.closeSync(fd); }
+    const read = fs.readSync; let bytes = 0;
+    const mock = t.mock.method(fs, 'readSync', function (...args) { const count = read.apply(fs, args); bytes += count; return count; });
+    await f.moves.verify(moved, moveRecord);
+    const proof = await f.moves.deliveryProof(moved);
+    mock.mock.restore();
+    assert.ok(proof.get(f.source).has(inherited.reference.id + ':' + inherited.reference.manifestRevision));
+    assert.equal(proof.get(f.source).has(hidden.reference.id + ':' + hidden.reference.manifestRevision), false);
+    assert.ok(bytes < 64 * 1024, 'does not read any large suffix while checking committed proofs');
+    // Exercise the unchanged move-operation budget directly. Native discovery
+    // is outside this proof reader and separately materializes giant records.
+    await assert.rejects(f.moves.inspect(moved, f.source), /来源会话文件或大小无效/);
+    await assert.rejects(f.moves.verify(moved, { ...moveRecord, tailLength: 64 * 1024 ** 2 + 1 }), { code: 'SESSION_MOVE_CONFLICT' });
+    const reopened = fs.openSync(moved.path, 'r+');
+    try {
+        const header = Buffer.alloc(4096), count = fs.readSync(reopened, header, 0, header.length, 0);
+        const offset = header.subarray(0, count).indexOf(10) + 1 + moveRecord.tailLength - 32;
+        fs.writeSync(reopened, Buffer.from('X'), 0, 1, offset);
+    } finally { fs.closeSync(reopened); }
+    await assert.rejects(f.moves.verify(moved, moveRecord), { code: 'SESSION_MOVE_CONFLICT' });
+    await assert.rejects(f.moves.deliveryProof(moved), { code: 'SESSION_MOVE_CONFLICT' });
+    t.diagnostic(JSON.stringify({ bytesRead: bytes, sessionBytes: fs.statSync(moved.path).size, prefixBytes: moveRecord.tailLength }));
+});

@@ -20,6 +20,7 @@ async function run(browser, base, width, language, variant = 'assistant') {
     const context = await browser.newContext({ viewport: { width, height: 900 }, locale: language, isMobile: width < 900, hasTouch: width < 900 });
     const page = await context.newPage(), errors = [], posts = [], opened = [];
     const en = language === 'en', assistant = variant !== 'ordinary', noGroups = variant === 'no-categories';
+    let holdOpen = false, gateClassification = false, releaseOpen, openEntered;
     let category = noGroups ? null : a, fail = false, hold = false, release, readHold = false, releaseRead, readEntered, revision = 'binding-1', activeSocket, forked = false, writeEntered;
     const original = () => ({ id: 'original', cwd, name: '带有完整历史与附件的学习会话 / Study conversation', messageCount: 4, modified: '2026-10-03T00:00:00Z',
         agentProfile: assistant ? { id: profileId, name: 'Study partner', available: true } : null,
@@ -41,6 +42,7 @@ async function run(browser, base, width, language, variant = 'assistant') {
         if (hold) { hold = false; await new Promise(resolve => { release = resolve; }); }
         if (fail) return res.status(409).json({ error: 'Synthetic category conflict' });
         category = input.projectId; revision = 'binding-' + posts.length;
+        if (gateClassification) { holdOpen = true; gateClassification = false; }
         activeSocket?.send(JSON.stringify({ type: 'gateway_session_classified', session: original() }));
         activeSocket?.close({ code: 1012, reason: 'Classification changed' });
         return res.json({ session: original(), changed: true });
@@ -87,7 +89,9 @@ async function run(browser, base, width, language, variant = 'assistant') {
         } else if (command.type === 'get_messages') data = { messages: history };
         else if (command.type === 'get_state') data = state;
         assert.ok(!['prompt', 'steer', 'follow_up'].includes(command.type));
-        ws.send(JSON.stringify({ type: 'response', id: command.id, command: command.type, success: true, data }));
+        const respond = () => ws.send(JSON.stringify({ type: 'response', id: command.id, command: command.type, success: true, data }));
+        if (command.type === 'open_session' && holdOpen) { holdOpen = false; releaseOpen = respond; openEntered(); }
+        else respond();
     }));
     await page.route(/https:\/\/(fonts\.googleapis\.com|fonts\.gstatic\.com)\//, route => route.abort());
     const route = assistant ? '/#/assistant?' + new URLSearchParams({ profileId, projectId: noGroups ? 'unclassified:' + cwd : a, sessionId: 'original' }) : '/#/chat';
@@ -144,8 +148,21 @@ async function run(browser, base, width, language, variant = 'assistant') {
     await page.waitForFunction(() => !document.querySelector('#pi-classification-dialog').open);
     await page.locator('#pi-input:not([disabled])').waitFor();
     assert.equal(await page.locator('[data-assistant-project-id^="unclassified:"] [data-session-id="original"]').count(), 1);
-    await open(); await page.locator('#pi-classification-target').selectOption(a); await save.click();
+    await open(); await page.locator('#pi-classification-target').selectOption(a);
+    // Classification closes the socket. Editable drafts are deliberately kept
+    // enabled during reconnect, so that flag is not a connection-ready signal.
+    gateClassification = true;
+    let openDeadline;
+    const reopened = new Promise((resolve, reject) => {
+        openEntered = resolve; openDeadline = setTimeout(() => reject(new Error('Expected classification reconnect')), 30000);
+    });
+    await save.click();
     await page.waitForFunction(() => !document.querySelector('#pi-classification-dialog').open);
+    try { await reopened; } finally { clearTimeout(openDeadline); }
+    assert.equal(await page.locator('#pi-connection-banner').getAttribute('data-state'), 'connecting');
+    assert.equal(await page.locator('#pi-input').isDisabled(), false, 'draft editing is allowed before the new snapshot arrives');
+    releaseOpen(); releaseOpen = null;
+    await page.waitForFunction(() => document.querySelector('#pi-connection-banner').dataset.state === 'connected');
     await page.locator('#pi-input:not([disabled])').waitFor();
     await menuOpen(); await menu.getByRole('menuitem', { name: en ? 'Copy to new thread' : '复制为新线程', exact: true }).click();
     await page.locator('#pi-workflow-submit:not([disabled])').waitFor(); await page.locator('#pi-workflow-submit').click();

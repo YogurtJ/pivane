@@ -14,6 +14,7 @@ async function run(browser, viewport, historyEnabled = true) {
     const errors = [], writes = [], rpc = [];
     let sessions = [original], messages = structuredClone(initial), leafId = 'leaf-original', stale = false, streaming = false;
     let jobs = [], socket, active = original;
+    const forkResults = new Map(); let forkFault = null;
     let writeGate = null, releaseWrite = null, writeStarted = null;
     const workflow = () => ({ leafId, lastUserId: leafId === 'leaf-retry' ? 'user-retry' : 'user-last', prompts: [
         { entryId: 'user-first', text: '第一条问题', timestamp: 1 },
@@ -32,8 +33,17 @@ async function run(browser, viewport, historyEnabled = true) {
             const body = req.postDataJSON(); writes.push({ endpoint, body, method: req.method() });
             if (writeGate) { writeStarted?.(); await writeGate; }
             if (endpoint.endsWith('/fork')) {
-                const session = { ...original, id: `fork-${sessions.length}`, name: '新的分叉线程' }; sessions.push(session);
-                return response({ session, draft: body.entryId ? { message: '上一条问题 <img src=x onerror=alert(1)>', images: [image] } : null }, 201);
+                assert.match(body.requestId, /^[A-Za-z0-9-]{16,80}$/);
+                if (forkFault === 'before') { forkFault = null; return route.abort('failed'); }
+                if (forkFault === 'uncertain') { forkFault = null; forkResults.set(body.requestId, { status: 'uncertain' }); return route.abort('failed'); }
+                let saved = forkResults.get(body.requestId);
+                if (!saved) {
+                    const session = { ...original, id: `fork-${sessions.length}`, name: '新的分叉线程' }; sessions.push(session);
+                    saved = { status: 'completed', result: { session, draft: body.entryId ? { message: '上一条问题 <img src=x onerror=alert(1)>', images: [image] } : null } };
+                    forkResults.set(body.requestId, saved);
+                }
+                if (forkFault === 'after') { forkFault = null; return route.abort('failed'); }
+                return response(saved.result, 201);
             }
             if (endpoint.endsWith('/retry')) {
                 if (stale) return response({ error: '会话已变化，请重新打开操作面板' }, 400);
@@ -62,10 +72,11 @@ async function run(browser, viewport, historyEnabled = true) {
             }
             throw new Error(`Unexpected write ${endpoint}`);
         }
-        if (endpoint === '/api/pi/status') return response({ ok: true, version: '0.85.0', historySearch: historyEnabled, sessionTree: historyEnabled, historyBody: historyEnabled, sessionWorkflows: true, projectRoots: ['/srv'] });
+        if (endpoint === '/api/pi/status') return response({ ok: true, version: '0.85.0', historySearch: historyEnabled, sessionTree: historyEnabled, historyBody: historyEnabled, sessionWorkflows: true, sessionForkRequests: true, projectRoots: ['/srv'] });
         if (endpoint === '/api/pi/projects') return response({ projects: [{ cwd, name: 'Workflow fixture', sessionCount: sessions.length }], roots: ['/srv'] });
         if (endpoint === '/api/pi/sessions') return response({ sessions });
         if (endpoint === '/api/pi/activity') return response({ runtimes: [], pinnedProjects: [], hiddenProjects: [], replyNotices: [] });
+        if (endpoint.includes('/forks/')) return response(forkResults.get(endpoint.split('/').at(-1)) || { status: 'not_found' });
         if (endpoint.endsWith('/workflow')) return response(workflow());
         if (endpoint.includes('/prompt/')) return response({ leafId, message: endpoint.endsWith('user-first') ? '第一条问题' : '上一条问题 <img src=x onerror=alert(1)>', images: endpoint.endsWith('user-first') ? [] : [image] });
         if (endpoint.endsWith('/deferred')) return response({ jobs: jobs.filter(job => job.sessionId === active.id).map(job => ({ ...job, preview: job.payload?.message || '', imageCount: job.payload?.images.length || 0 })) });
@@ -291,6 +302,44 @@ async function run(browser, viewport, historyEnabled = true) {
     await overflow(); await page.screenshot({ path: `/tmp/pi-workflows-${viewport.width}-history.png` });
     await page.locator('#pi-workflow-dialog').press('Escape');
     await closeInspector();
+    const openClone = async () => {
+        await page.locator('#pi-current-thread-menu').click(); await historyAction('复制为新线程');
+        await page.waitForFunction(() => document.querySelector('#pi-workflow-dialog').open && !document.querySelector('#pi-workflow-submit').disabled);
+    };
+    // Lost acknowledgement survives closing the panel and a page reload.
+    await openClone(); forkFault = 'after';
+    const countBeforeLoss = sessions.length, writesBeforeLoss = writes.filter(w => w.endpoint.endsWith('/fork')).length;
+    await page.locator('#pi-workflow-submit').click();
+    await page.locator('#pi-workflow-error:not([hidden])').waitFor();
+    assert.equal(sessions.length, countBeforeLoss + 1);
+    assert.equal(await page.locator('#pi-workflow-submit').textContent(), '查看创建结果');
+    await overflow(); await close();
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.locator('[data-message-workflow="retry"]').waitFor();
+    await openClone(); assert.equal(await page.locator('#pi-workflow-submit').textContent(), '查看创建结果');
+    await page.locator('#pi-workflow-submit').click();
+    await page.waitForFunction(() => !document.querySelector('#pi-workflow-dialog').open);
+    assert.equal(sessions.length, countBeforeLoss + 1);
+    assert.equal(writes.filter(w => w.endpoint.endsWith('/fork')).length, writesBeforeLoss + 1, 'finding a completed result performs no second write');
+    // A request that never reached the server can continue using the same ID.
+    await openClone(); forkFault = 'before';
+    await page.locator('#pi-workflow-submit').click(); await page.locator('#pi-workflow-error:not([hidden])').waitFor();
+    const missingId = writes.at(-1).body.requestId;
+    await page.locator('#pi-workflow-submit').click(); await page.waitForFunction(() => !document.querySelector('#pi-workflow-dialog').open);
+    assert.equal(writes.at(-1).body.requestId, missingId);
+    assert.equal(sessions.length, countBeforeLoss + 2);
+    // A crashed/interrupted receipt is query-only until the user acknowledges it.
+    await openClone(); forkFault = 'uncertain';
+    await page.locator('#pi-workflow-submit').click(); await page.locator('#pi-workflow-error:not([hidden])').waitFor();
+    const writesBeforeQuery = writes.length;
+    await page.locator('#pi-workflow-submit').click();
+    await page.locator('[data-workflow-action="reset-fork"]').waitFor();
+    assert.equal(writes.length, writesBeforeQuery);
+    assert.equal(sessions.length, countBeforeLoss + 2);
+    await overflow(); await page.screenshot({ path: `/tmp/pi-workflows-${viewport.width}-fork-recovery.png` });
+    await page.locator('[data-workflow-action="reset-fork"]').click();
+    await page.waitForFunction(() => !document.querySelector('#pi-workflow-dialog').open);
+    assert.equal(writes.length, writesBeforeQuery, 'acknowledgement does not create');
     await page.waitForFunction(() => document.querySelectorAll('#pi-toast-region .pi-toast').length === 0);
     await page.screenshot({ path: `/tmp/pi-workflows-${viewport.width}-main.png` });
     assert.deepEqual(errors, []);

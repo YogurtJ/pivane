@@ -26,12 +26,14 @@ function uploadInput(raw) {
     return { ...raw, format };
 }
 class DocumentUploads {
-    constructor({ store, supervisor, isSuspended = () => false, root, pool } = {}) {
+    constructor({ store, supervisor, isSuspended = () => false, root, pool, protectedDocuments, storageGuard, scanMaxBytes } = {}) {
         Object.assign(this, { store, supervisor, isSuspended, storageRoot: root });
         this.pool = pool || new DocumentParserPool(); this.operations = new Set(); this.writing = false; this.closed = false;
+        this.storage = new (require('./pi-document-storage').DocumentStorage)(this, { protectedDocuments, storageGuard, scanMaxBytes });
     }
     get active() { return this.operations.size + this.pool.jobs.size; }
     reserve() {
+        this.storage.assertAvailable();
         if (!require('./pi-file-descriptor').descriptorBackendAvailable()) throw fail('文档文件校验组件不可用', 503, 'DOCUMENT_PARSER');
         if (this.closed || this.isSuspended()) throw fail('文档服务正在维护，请稍后再试', 503, 'DOCUMENT_BUSY');
         if (this.operations.size >= 2) throw fail('文档附件正在处理，请稍后再试', 429, 'DOCUMENT_BUSY');
@@ -49,7 +51,9 @@ class DocumentUploads {
     }
     async object(id) {
         if (!idPattern.test(id)) throw invalid();
-        const root = await this.root(), folder = path.join(root, id), stat = fs.lstatSync(folder);
+        const root = await this.root();
+        this.checkDeleted(root, id);
+        const folder = path.join(root, id), stat = fs.lstatSync(folder);
         if (!stat.isDirectory() || stat.isSymbolicLink() || fs.realpathSync.native(folder) !== folder) throw fail('文档存储位置已变化', 409, 'DOCUMENT_CHANGED');
         const check = actual => { if (!withinCanonical(folder, actual)) throw fail('文档文件位置已变化', 409, 'DOCUMENT_CHANGED'); };
         const metadata = await readVerifiedFile(path.join(folder, 'manifest.json'), { check, maxBytes: 8192 });
@@ -69,7 +73,17 @@ class DocumentUploads {
         if (this.supervisor.removing.has(session.path) || this.supervisor.moving.has(session.path)) throw fail('会话正在删除或移动', 409, 'DOCUMENT_CONTEXT');
         return session;
     }
-    async upload(raw, bytes) {
+    checkDeleted(root, id) {
+        const directory = path.join(root, '.storage-deleted');
+        if (!fs.existsSync(directory)) return;
+        require('./pi-document-storage-references').prove(directory, true);
+        if (fs.existsSync(path.join(directory, id + '.json'))) throw fail('此上传已清理，请为新上传使用新的标识', 410, 'DOCUMENT_DELETED');
+    }
+    async upload(raw, bytes, { reserved = false } = {}) {
+        const leave = reserved ? null : this.reserve();
+        try { return await this.uploadChecked(raw, bytes); } finally { leave?.(); }
+    }
+    async uploadChecked(raw, bytes) {
         const input = uploadInput(raw);
         if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > MAX_BYTES) throw fail('单个文档附件须为非空文件且不超过 20 MiB', 413, 'DOCUMENT_LIMIT');
         const session = await this.session(input), id = digest(JSON.stringify([session.cwd, session.id, input.requestId]));
@@ -87,6 +101,7 @@ class DocumentUploads {
         this.writing = true;
         try {
             const root = await this.root(true);
+            this.checkDeleted(root, id);
             // Recheck after validation: two concurrent calls with the same stable
             // requestId may finish out of order. Never overwrite published bytes.
             if (fs.existsSync(path.join(root, id))) {
@@ -95,7 +110,12 @@ class DocumentUploads {
                 await this.bytes(existing); return { reference, marker: refs.marker(reference), reused: true };
             }
             let total = 0, sessionTotal = 0;
-            const names = fs.readdirSync(root);
+            const names = fs.readdirSync(root).filter(name => {
+                if (['.storage-deleted', '.storage-receipts'].includes(name)) {
+                    require('./pi-document-storage-references').prove(path.join(root, name), true); return false;
+                }
+                return true;
+            });
             if (names.length >= 10000) throw fail('文档存储项数已达上限', 413, 'DOCUMENT_STORAGE');
             for (const name of names) {
                 if (name.startsWith('.upload-')) {
@@ -112,7 +132,7 @@ class DocumentUploads {
                 total += object.manifest.reference.size;
                 if (object.manifest.cwd === session.cwd && object.manifest.sessionId === session.id) sessionTotal += object.manifest.reference.size;
             }
-            if (total + bytes.length > MAX_STORAGE || sessionTotal + bytes.length > MAX_SESSION_BYTES) throw fail('文档存储额度已满（每线程 256 MiB，实例 2 GiB），请由管理员整理', 413, 'DOCUMENT_STORAGE');
+            if (total + bytes.length > MAX_STORAGE || sessionTotal + bytes.length > MAX_SESSION_BYTES) throw fail('文档存储额度已满（每线程 256 MiB，实例 2 GiB），请通过附件管理整理', 413, 'DOCUMENT_STORAGE');
             // No await between final identity checks and private, exclusive writes.
             await this.session(input);
             if (this.closed || this.isSuspended()) throw fail('文档服务正在关闭', 503, 'DOCUMENT_BUSY');
@@ -146,20 +166,29 @@ class DocumentUploads {
         const initial = await this.branch(input), object = await this.object(input.id);
         const ref = object.manifest.reference;
         const attached = initial.references.some(item => refs.marker(item) === refs.marker(ref));
-        if (!attached && !(draft && object.manifest.cwd === initial.session.cwd && object.manifest.sessionId === initial.session.id)) throw fail('文档附件不属于当前会话分支', 403, 'DOCUMENT_SCOPE');
+        const ownUpload = draft && object.manifest.cwd === initial.session.cwd && object.manifest.sessionId === initial.session.id;
+        const access = !attached && !ownUpload && draft ? await require('./pi-session-fork-access').readForkAccess(this.store, initial.session) : null;
+        const inheritedDraft = access?.documents.some(item => refs.marker(item) === refs.marker(ref));
+        if (!attached && !ownUpload && !inheritedDraft) throw fail('文档附件不属于当前会话分支', 403, 'DOCUMENT_SCOPE');
         const bytes = await this.bytes(object);
-        return { initial, object, bytes, reference: ref, attached };
+        return { initial, object, bytes, reference: ref, attached, draftRevision: inheritedDraft ? access.revision : null };
     }
     async checkCurrent(input, authorized) {
+        if (authorized.draftRevision) {
+            const access = await require('./pi-session-fork-access').readForkAccess(this.store, authorized.initial.session);
+            if (access?.revision !== authorized.draftRevision || !access.documents.some(ref => refs.marker(ref) === refs.marker(authorized.reference)))
+                throw fail('文档草稿来源已变化，请重新读取', 409, 'DOCUMENT_CONTEXT');
+        }
         const current = await this.branch(input);
         if (current.session.path !== authorized.initial.session.path || current.worker !== authorized.initial.worker
             || authorized.attached && !current.references.some(ref => refs.marker(ref) === refs.marker(authorized.reference))) throw fail('会话分支已变化，请重新读取', 409, 'DOCUMENT_CONTEXT');
     }
-    async read(worker, raw, signal) {
+    async read(worker, raw, signal, { reserved = false } = {}) {
         if (!worker || worker.disposed || worker.restarting || worker.noSession) throw fail('需要活跃的持久线程', 403, 'DOCUMENT_CONTEXT');
+        const leave = reserved ? null : this.reserve();
         worker.documentReads = (worker.documentReads || 0) + 1;
         try { return await this.readChecked(worker, raw, signal); }
-        finally { worker.documentReads--; }
+        finally { worker.documentReads--; leave?.(); }
     }
     async readChecked(worker, raw, signal) {
         if (!raw || Object.keys(raw).some(key => !['id', 'action', 'start', 'count', 'sheet', 'column', 'columns'].includes(key)) || !idPattern.test(raw.id)) throw invalid();
@@ -174,6 +203,7 @@ class DocumentUploads {
     async dispose() { this.closed = true; await Promise.allSettled([...this.operations].map(job => job.promise)); await this.pool.dispose(); }
 }
 function mountDocumentUploads(router, service) {
+    require('./pi-document-storage').mountDocumentStorage(router, service.storage);
     const respond = action => async (req, res) => {
         let leave;
         res.set({ 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
@@ -192,14 +222,14 @@ function mountDocumentUploads(router, service) {
         uploadInput(req.query);
         if (req.is('application/octet-stream') !== 'application/octet-stream') throw fail('上传须使用 application/octet-stream', 415, 'DOCUMENT_INPUT');
         await new Promise((resolve, reject) => express.raw({ type: 'application/octet-stream', limit: MAX_BYTES, inflate: false })(req, res, error => error ? reject(error) : resolve()));
-        res.json(await service.upload(req.query, req.body));
+        res.json(await service.upload(req.query, req.body, { reserved: true }));
     }));
     router.post('/uploads/read', respond(async (req, res) => {
         const worker = req.workspaceIdentity?.kind === 'agent-thread' && req.workspaceIdentity.worker;
         const controller = new AbortController();
         const cancel = () => { if (!res.writableFinished) controller.abort(); };
         res.once('close', cancel);
-        try { res.json(await service.read(worker, req.body, controller.signal)); }
+        try { res.json(await service.read(worker, req.body, controller.signal, { reserved: true })); }
         finally { res.removeListener('close', cancel); }
     }));
     router.get('/uploads/status', respond(async (req, res) => {

@@ -1,7 +1,8 @@
 const { randomUUID } = require('node:crypto');
 const { snapshotWidget } = require('./pi-subagent-runtime');
 
-// Ephemeral presentation state only. Pi remains the owner of the live queue.
+// Presentation state; persistent send intentions are owned by PiQueueStore.
+// Pi remains the owner of the live execution queue.
 class PiRuntimeControls {
     constructor() {
         this.runtimeId = randomUUID();
@@ -27,6 +28,7 @@ class PiRuntimeControls {
     snapshot() {
         return { runtimeId: this.runtimeId, revision: this.revision, queue: this.queue,
             recoveries: this.recoveries, stopping: this.stopping,
+            durable: Boolean(this.durable), intentions: this.intentions || [], persistenceError: Boolean(this.persistenceError),
             drafts: this.drafts, draftOverflow: this.draftOverflow,
             extension: { title: this.title, statuses: [...this.statuses], widgets: [...this.widgets] }, subagents: this.subagents };
     }

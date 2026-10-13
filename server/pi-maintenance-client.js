@@ -1,4 +1,5 @@
 const { randomUUID } = require('node:crypto');
+const { AsyncLocalStorage } = require('node:async_hooks');
 const fail = (message, status = 409) => Object.assign(new Error(message), { status });
 class MaintenanceClient {
     constructor({ send, managed = Boolean(process.send && process.env.PI_MANAGED_LAUNCHER), nonce = process.env.PI_MANAGED_LAUNCHER } = {}) {
@@ -10,6 +11,8 @@ class MaintenanceClient {
             });
         });
         this.locked = managed; this.active = 0; this.tickets = new Map();
+        this.operations = new Set(); this.httpRequests = new WeakSet();
+        this.operationContext = new AsyncLocalStorage(); this.referenceLease = null;
         this.state = { supported: false, busy: false, reason: 'managed-launcher-required' };
         this.generation = randomUUID();
     }
@@ -22,25 +25,50 @@ class MaintenanceClient {
         if (message.type === 'maintenance-activate' || message.type === 'maintenance-release' && message.id === this.state.job?.id) { this.locked = false; this.pendingId = null; }
         if (message.type === 'maintenance-rejected' && message.id === this.state.job?.id) { this.locked = false; this.pendingId = null; this.state = { ...this.state, busy: false, job: { id: message.id, phase: 'failed', error: 'rejected' } }; }
     }
+    get referenceLocked() { return this.referenceLease !== null; }
+    assertReferenceWritable() {
+        if (this.referenceLocked) throw Object.assign(fail('正在核对或清理附件，请稍后再试'), { code: 'DOCUMENT_STORAGE_BUSY' });
+    }
+    // Reuse request admission while keeping cleanup ownership independent of
+    // launcher IPC. Only this exact HTTP operation may be excluded from idleness.
+    acquireReferenceLease(idle) {
+        const caller = this.operationContext.getStore();
+        const ownRequest = caller && this.operations.has(caller) ? caller : null;
+        const available = () => !this.locked && !this.state.busy
+            && this.active === (ownRequest ? 1 : 0) && this.operations.size === this.active
+            && (!ownRequest || this.operations.has(ownRequest)) && typeof idle === 'function' && idle() === true;
+        const conflict = () => Object.assign(fail('请等待消息、文件和后台操作完成后再清理附件'), { code: 'DOCUMENT_STORAGE_BUSY' });
+        if (this.referenceLocked || !available()) throw conflict();
+        const owner = {}; this.referenceLease = owner;
+        return {
+            check: () => { if (this.referenceLease !== owner || !available()) throw conflict(); },
+            release: () => { if (this.referenceLease === owner) this.referenceLease = null; }
+        };
+    }
     enter() {
         if (this.locked) throw fail('实例正在维护，请等待完成');
+        this.assertReferenceWritable();
         this.active++; let released = false;
-        return () => { if (!released) { released = true; this.active--; } };
+        const leave = () => { if (!released) { released = true; this.active--; this.operations.delete(leave); } };
+        this.operations.add(leave); return leave;
     }
     http(req, res, next) {
-        if (!req.path.startsWith('/api/') || req.path.startsWith('/api/pi/settings/updates') || req.method === 'GET' && req.path === '/api/access/status') return next();
+        const pathname = req.originalUrl?.split('?')[0] || req.path;
+        if (!pathname.startsWith('/api/') || pathname.startsWith('/api/pi/settings/updates') || req.method === 'GET' && pathname === '/api/access/status') return next();
+        if (this.httpRequests.has(req)) return next();
         let leave;
-        try { leave = this.enter(); } catch (error) { return res.status(503).json({ error: error.message }); }
+        try { leave = this.enter(); } catch (error) { return res.status(503).json({ error: error.message, errorCode: error.code }); }
+        this.httpRequests.add(req);
         const end = res.end;
         res.end = function (...args) { leave(); return end.apply(this, args); };
         // A disconnected response alone does not imply its asynchronous work stopped.
         res.once('finish', leave);
-        next();
+        this.operationContext.run(leave, next);
     }
-    status() { return { ...this.state, busy: this.locked || this.state.busy, generation: this.generation }; }
+    status() { return { ...this.state, busy: this.locked || this.referenceLocked || this.state.busy, generation: this.generation }; }
     assertAvailable(action, idle) {
         if (!this.managed || !this.state.supported) throw fail('请通过 npm start 启用独立维护启动器', 503);
-        if (this.locked || this.state.busy || this.active || !idle()) throw fail('实例仍有任务、侧聊、临时会话、配置或请求正在处理，请完成后再试');
+        if (this.locked || this.referenceLocked || this.state.busy || this.active || !idle()) throw fail('实例仍有任务、侧聊、临时会话、配置或请求正在处理，请完成后再试');
         if (action === 'application' && !this.state.appUpdateSupported) throw fail('当前启动器不支持 Pivane 应用更新，请先加载新版启动器');
         if (action === 'update' && !this.state.updateSupported) throw fail('Pi 更新需要 Node 22 或 24 和默认的本地 Pi 安装');
     }

@@ -120,11 +120,25 @@ test('deferred restart expires overdue jobs and quarantines uncertain handoff wi
     assert.equal(f.calls.length, 1);
     assert.equal(resumed.jobs[1].status, 'uncertain');
     assert.throws(() => resumed.update(f.root, 'session', future, { revision: resumed.jobs[1].revision, action: 'send' }), /重复执行/);
+    const uncertainRevision = resumed.jobs[1].revision;
+    assert.throws(() => resumed.update(f.root, 'session', future, { revision: uncertainRevision, action: 'pause' }), /暂停/);
+    assert.equal(resumed.jobs[1].status, 'uncertain', 'pause must not erase the explicit resend confirmation');
+    assert.equal(resumed.jobs[1].revision, uncertainRevision);
+    assert.throws(() => resumed.update(f.root, 'session', future, { revision: uncertainRevision, action: 'save', message: 'Edited', dueAt: 140000 }), /重复执行/);
     resumed.change(() => { resumed.jobs[1].status = 'dispatching'; });
     await resumed.dispose();
     const recovered = f.create();
     assert.equal(recovered.jobs[1].status, 'uncertain');
     await recovered.tick(); assert.equal(f.calls.length, 1);
+    recovered.update(f.root, 'session', future, { revision: recovered.jobs[1].revision, action: 'save', message: 'Confirmed replacement', dueAt: 140000, confirmUncertain: true });
+    recovered.update(f.root, 'session', future, { revision: recovered.jobs[1].revision, action: 'pause' });
+    assert.equal(recovered.jobs[1].status, 'paused', 'explicitly confirmed schedules can still be paused');
+    recovered.update(f.root, 'session', future, { revision: recovered.jobs[1].revision, action: 'send' });
+    f.setError(null);
+    await recovered.tick();
+    assert.equal(f.calls.length, 2);
+    assert.equal(recovered.jobs[1].status, 'sent');
+    assert.equal(f.calls[1].payload.message, 'Confirmed replacement');
 });
 
 test('deferred pause, cancel, validation and failed acknowledgements never generate automatically', async t => {

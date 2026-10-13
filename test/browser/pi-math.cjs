@@ -17,7 +17,11 @@ $$
 \]
 
 \`占位\`
-` .replace('\\`占位\\`', () => '`$code$`') + '\n\n```js\nconst price = "$5";\n```\n\n价格 $5 和 $10。转义 \\$literal\\$。\n\n' + '```math\n\\sum_{i=1}^n i\n```';
+` .replace('\\`占位\\`', () => '`$code$`') + '\n\n```js\nconst price = "$5";\n```\n\n价格 $5 和 $10。转义 \\$literal\\$。\n\n' + '```math\n\\sum_{i=1}^n i\n```' + '\n\n' + String.raw`常见展开：\(e^t、\cos t\)。
+
+\[
+\frac{\frac12t^2+o(t^2)}{t^2}\to\frac12，
+\]`;
 (async () => {
     const app = express();
     for (const [name, directory] of [['marked', 'marked/lib'], ['dompurify', 'dompurify/dist'], ['highlight', '@highlightjs/cdn-assets']]) app.use('/vendor/' + name, express.static(path.join(root, 'node_modules', directory)));
@@ -56,20 +60,45 @@ $$
             });
             await page.goto(base, { waitUntil: 'domcontentloaded' });
             await page.waitForSelector('#pi-transcript-content .katex');
-            assert.equal(await page.locator('#pi-transcript-content .katex').count(), 5);
+            assert.equal(await page.locator('#pi-transcript-content .katex').count(), 7);
             assert.equal(await page.locator('#pi-transcript-content code .katex').count(), 0);
             assert.ok((await page.locator('#pi-transcript-content').textContent()).includes('价格 $5 和 $10'));
             assert.equal(await page.locator('.pi-math-fallback').count(), 0);
             assert.equal(await page.evaluate(() => { const t = document.createElement('template'); t.innerHTML = PiFileViewer.markdown('<code>$x$</code>'); return t.content.querySelectorAll('.katex').length; }), 0);
+            // Only common CJK punctuation warnings are relaxed; other strict checks stay unchanged.
+            const punctuation = await page.evaluate(() => {
+                const inspect = source => { const node = document.createElement('article'); node.innerHTML = PiFileViewer.markdown(source); return { count: node.querySelectorAll('.katex').length, fallback: [...node.querySelectorAll('.pi-math-fallback')].map(e => e.textContent.trim()), annotations: [...node.querySelectorAll('annotation')].map(e => e.textContent) }; };
+                const marks = [...'，。、；：！？'];
+                const valid = marks.map(mark => { const text = `a${mark}b`; return { text, ...inspect(`\\(${text}\\)`) }; });
+                const contexts = [String.raw`$a，b$`, String.raw`$$a，b$$`, String.raw`\[a，b\]`, '```math\na，b\n```', String.raw`| 公式 | 说明 |
+|---|---|
+| \(a，|b|\) | KEEP |`, String.raw`> \(a，b\)`].map(inspect);
+                const invalid = [String.raw`\(x，中文\)`, String.raw`\(x，🙂\)`, String.raw`\(\badcommand{x}，\)`, String.raw`\(\frac{1，}{\)`].map(source => ({ source, ...inspect(source) }));
+                const code = inspect('`\\(a，b\\)`\n\n```js\nconst example = "\\(a，b\\)";\n```');
+                // Display newlines use a strict behavior check, not a fatal parse error.
+                // Capture the application's real options and compare unchanged inputs to stock strict mode.
+                const original = katex.renderToString; let options, newline;
+                katex.renderToString = (text, config) => { options = config; return original(text, config); };
+                try { newline = inspect(String.raw`\[p\\q\]`); }
+                finally { katex.renderToString = original; }
+                const strictControls = [String.raw`p\\q`, String.raw`\frac{1}{2}+x`, String.raw`\text{中文，}`].map(text => original(text, options) === original(text, { ...options, strict: 'error' }));
+                return { valid, contexts, invalid, code, newline, strictControls };
+            });
+            for (const result of punctuation.valid) { assert.equal(result.count, 1); assert.deepEqual(result.fallback, []); assert.deepEqual(result.annotations, [result.text]); }
+            for (const result of punctuation.contexts) { assert.equal(result.count, 1); assert.deepEqual(result.fallback, []); assert.ok(result.annotations[0].includes('，')); }
+            for (const result of punctuation.invalid) { assert.equal(result.count, 0); assert.deepEqual(result.fallback, [result.source]); }
+            assert.deepEqual(punctuation.code, { count: 0, fallback: [], annotations: [] });
+            assert.deepEqual(punctuation.newline, { count: 1, fallback: [], annotations: [String.raw`p\\q`] });
+            assert.deepEqual(punctuation.strictControls, [true, true, true]);
             // Shared renderer used by side chat and the actual file viewer, including preview sanitization.
             await page.evaluate(() => {
                 const source = String.raw`$$\underbrace{` + Array(120).fill('a').join('+') + String.raw`}_{n\text{ 项}}$$`;
                 const node = document.createElement('div'); node.className = 'pi-markdown math-wide';
                 node.innerHTML = PiFileViewer.markdown(source); document.querySelector('#pi-transcript-content').append(node);
                 const side = document.createElement('div'); side.className = 'pi-markdown';
-                side.innerHTML = PiFileViewer.markdown(String.raw`\(\sqrt{x}\)`); document.querySelector('#pi-side-messages').append(side);
+                side.innerHTML = PiFileViewer.markdown(String.raw`\(\sqrt{x}，\)`); document.querySelector('#pi-side-messages').append(side);
                 const preview = document.createElement('article'); preview.className = 'pi-markdown pi-file-markdown math-preview';
-                preview.innerHTML = PiFileViewer.markdown(String.raw`$x_i$ <img src="https://example.invalid/no">`, '/srv/math.md', true);
+                preview.innerHTML = PiFileViewer.markdown(String.raw`$x_i、x_j$ <img src="https://example.invalid/no">`, '/srv/math.md', true);
                 document.querySelector('#pi-transcript-content').append(preview);
             });
             assert.equal(await page.locator('#pi-side-messages .katex').count(), 1);
@@ -114,7 +143,7 @@ $$
             await page.screenshot({ path: `/tmp/pi-math-${width}.png` });
             await page.evaluate(() => document.querySelectorAll('.math-short, .math-wide-inline').forEach(e => e.remove()));
             socket.send(JSON.stringify({ type: 'message_start', message: { role: 'assistant', content: [], timestamp: 2222 } }));
-            const partial = String.raw`公式：\(\frac{1}{2}`;
+            const partial = String.raw`公式：\(\frac{1}{2}，`;
             const delta = text => socket.send(JSON.stringify({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: text } }));
             delta(partial);
             await page.waitForFunction(partial => document.querySelector('.streaming')?.textContent.includes(partial), partial);
@@ -126,7 +155,7 @@ $$
             messages = [...messages, completed];
             socket.send(JSON.stringify({ type: 'message_end', message: completed }));
             socket.send(JSON.stringify({ type: 'agent_settled' }));
-            await page.waitForFunction(() => !document.querySelector('.streaming') && document.querySelectorAll('#pi-transcript-content .katex').length === 6);
+            await page.waitForFunction(() => !document.querySelector('.streaming') && document.querySelectorAll('#pi-transcript-content .katex').length === 8);
             // Invalid, oversized, recursive, and untrusted commands preserve readable content, never run HTML/network.
             const security = await page.evaluate(() => {
                 const sources = [String.raw`$\badcommand{x}$`, String.raw`$\href{javascript:alert(1)}{x}$`, String.raw`$\includegraphics{https://example.invalid/x}$`, String.raw`$\htmlStyle{background:url(https://example.invalid/x)}{x}$`, String.raw`$\def\a{\a}\a$`, '$' + 'x'.repeat(10001) + '$'];

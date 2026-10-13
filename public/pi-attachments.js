@@ -14,6 +14,21 @@
         return { message: `${quotes}${text}${files.filter(file => ['text', 'document'].includes(file.kind)).map(textBlock).join('')}`.trim(),
             images: files.filter(file => file.kind === 'image').map(file => ({ type: 'image', mimeType: file.mimeType, data: file.data })) };
     }
+    function fromPayload({ message = '', images = [] }) {
+        // Historical/imported image blocks are data too; never interpolate
+        // arbitrary native text into the existing attachment preview URL.
+        if (!Array.isArray(images) || images.some(image => !image || typeof image.data !== 'string' || !image.data.length
+            || !/^[A-Za-z0-9+/]*={0,2}$/.test(image.data))) throw new Error(translateUi("图片内容与支持的格式不符，文件可能损坏"));
+        const parts = documents.split(message);
+        const text = parts.filter(part => !part.reference).map(part => part.text).join('').trim();
+        const files = parts.filter(part => part.reference).map(({ reference }) => ({
+            id: id(), kind: 'document', name: reference.name, size: reference.size, format: reference.format, reference
+        }));
+        files.push(...images.map((image, index) => ({ id: id(), kind: 'image', name: translateUi("图片 {0}", index + 1),
+            data: image.data, mimeType: image.mimeType, preview: `data:${image.mimeType};base64,${image.data}` })));
+        validateDraft(text, files);
+        return { text, files };
+    }
     function validatePayload({ message, images = [] }) {
         if (documents.split(message).filter(part => part.reference).length > limits.documents) throw new Error(translateUi("一次最多添加 5 个文档附件"));
         if (message.length > limits.message) throw new Error(translateUi("正文与文本附件合计不能超过 400000 字符"));
@@ -110,7 +125,7 @@
         zone.addEventListener('drop', event => { zone.classList.remove('pi-file-dragover'); consume(event); });
         document.addEventListener('dragend', () => zone.classList.remove('pi-file-dragover'));
     }
-    const api = { limits, accept, id, textBlock, payload, validatePayload, validateDraft, classify, read, hasFiles, transferFiles, bindTransfers, errorSummary };
+    const api = { limits, accept, id, textBlock, payload, fromPayload, validatePayload, validateDraft, classify, read, hasFiles, transferFiles, bindTransfers, errorSummary };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else window.PiAttachments = api;
 })();

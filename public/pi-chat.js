@@ -248,6 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
         commands: [],
         lastAssistantText: '',
         attachmentFiles: [],
+        documentStorageSupported: false,
         attachmentEpoch: 0,
         attachmentReads: 0,
         attachmentQueue: Promise.resolve(),
@@ -408,6 +409,38 @@ document.addEventListener('DOMContentLoaded', () => {
         context: () => ({ cwd: state.cwd, session: state.session, connected: state.connected, generation: state.socketGeneration }),
         api: apiFetch, toast, fetchBytes: url => (window.WorkspaceAccess?.fetch || fetch)(url, { headers: apiHeaders() })
     });
+    const documentStorageOpen = document.createElement('button');
+    documentStorageOpen.id = 'pi-document-storage-open'; documentStorageOpen.type = 'button'; documentStorageOpen.hidden = true;
+    documentStorageOpen.setAttribute('role', 'menuitem'); documentStorageOpen.tabIndex = -1;
+    const storageIcon = document.createElement('i'); storageIcon.className = 'fa-solid fa-box-archive'; storageIcon.setAttribute('aria-hidden', 'true');
+    const storageCaption = document.createElement('span'); storageCaption.textContent = translateUi('附件管理');
+    const storageHelp = document.createElement('small'); storageHelp.textContent = translateUi('查看原件占用与清理选项'); storageCaption.append(storageHelp);
+    documentStorageOpen.append(storageIcon, storageCaption); elements.attachButton.after(documentStorageOpen);
+    const documentStorageSettings = document.createElement('button');
+    documentStorageSettings.id = 'settings-document-storage'; documentStorageSettings.type = 'button'; documentStorageSettings.hidden = true;
+    documentStorageSettings.className = 'settings-secondary-button'; documentStorageSettings.textContent = translateUi('附件用量与清理');
+    $('settings-usage-panel').querySelector('.settings-panel-header').after(documentStorageSettings);
+    function currentDocumentDraftIds() {
+        const ids = new Set();
+        const collect = message => { for (const part of window.PiDocumentReferences.split(message || '')) if (part.reference) ids.add(part.reference.id); };
+        collect(attachments.payload(elements.input.value, state.attachmentFiles).message);
+        for (const [key, draft] of state.composerDrafts) if (key !== state.composerSessionKey) collect(attachments.payload(draft.text, draft.files).message);
+        if (workflows.editor) {
+            collect($('pi-workflow-message')?.value);
+            for (const reference of workflows.editor.documents || []) ids.add(reference.id);
+        }
+        return [...ids];
+    }
+    const documentStorage = window.PiDocumentStorage?.mount({
+        t: translateUi, getContext: () => ({ cwd: state.cwd }), getDraftIds: currentDocumentDraftIds,
+        request: (route, options) => apiFetch('/api/pi' + route, { ...options,
+            ...(options.body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(options.body) }) }),
+        onDeleted: () => toast(translateUi('已清理附件原件'), 'success')
+    });
+    for (const button of [documentStorageOpen, documentStorageSettings]) button.addEventListener('click', () => {
+        if (!state.documentStorageSupported) return;
+        try { documentStorage.open(); } catch (error) { toast(error.message, 'error'); }
+    });
     const workflows = new window.PiSessionWorkflows({
         getContext: () => ({ cwd: state.cwd, session: state.session, connected: state.connected, model: state.model, generation: state.socketGeneration,
             busy: state.shellBusy || state.streaming || state.compacting || state.compactRequested || state.controlRequested || state.controlsStopping || state.pendingUi.size > 0,
@@ -433,9 +466,10 @@ document.addEventListener('DOMContentLoaded', () => {
             await loadSessions(result.session.cwd);
             sessionClassified(result.session);
             await openSession(result.session);
-            if (result.draft) {
-                elements.input.value = result.draft.message;
-                state.attachmentFiles = result.draft.images.map((image, index) => ({ id: `fork-image-${index}`, kind: 'image', name: translateUi("图片 {0}", index + 1), data: image.data, mimeType: image.mimeType, preview: `data:${image.mimeType};base64,${image.data}` }));
+            if (result.draft && state.cwd === result.session.cwd && state.session?.id === result.session.id) {
+                const draft = attachments.fromPayload(result.draft);
+                elements.input.value = draft.text;
+                state.attachmentFiles = draft.files;
                 renderAttachments(); autoResizeInput(); elements.input.focus();
             }
         }
@@ -491,10 +525,24 @@ document.addEventListener('DOMContentLoaded', () => {
         changed: () => { subagentRuns.apply(nativeControls.value?.subagents); state.controlsStopping = Boolean(nativeControls.value?.stopping); editorSuggestions.apply(nativeControls.value); setStreaming(state.streaming); },
         toast, copy: copyTextToClipboard,
         take: stop => takeRuntimeQueue(stop),
-        ack: async recoveryId => {
+        readRecovery: async (recoveryId, identity) => {
+            const generation = state.socketGeneration, key = state.composerSessionKey;
+            const value = await requestRpc('get_recovery_payload', { recoveryId, ...identity }, 60000);
+            if (generation !== state.socketGeneration || key !== state.composerSessionKey) throw new Error(translateUi('会话已切换，取回内容未加入当前草稿'));
+            return value;
+        },
+        ack: async (recoveryId, identity) => {
             const generation = state.socketGeneration;
-            const value = await requestRpc('ack_recovery', { recoveryId });
+            const value = await requestRpc('ack_recovery', { recoveryId, ...identity });
             return generation === state.socketGeneration ? value : null;
+        },
+        appendRecovery: payload => {
+            if (!state.connected || state.attachmentReads || state.submittingDrafts.has(state.composerSessionKey)) throw new Error(translateUi('请等待连接、附件读取或消息投递完成'));
+            const restored = attachments.fromPayload(payload);
+            const text = elements.input.value + (elements.input.value && restored.text ? '\n\n' : '') + restored.text;
+            const files = [...state.attachmentFiles, ...restored.files];
+            attachments.validateDraft(text, files);
+            elements.input.value = text; state.attachmentFiles = files; renderAttachments(); autoResizeInput();
         },
         append: text => {
             if (!state.connected || state.attachmentReads || state.submittingDrafts.has(state.composerSessionKey)) throw new Error(translateUi("请等待连接、附件读取或消息投递完成"));
@@ -683,7 +731,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showTokenDialog();
             throw new Error(translateUi("需要 Pi Web 访问令牌"));
         }
-        if (!response.ok) throw Object.assign(new Error(translateUi(data?.error || `HTTP ${response.status}`)), { status: response.status, data });
+        if (!response.ok) throw Object.assign(new Error(translateUi(data?.error || `HTTP ${response.status}`)), { status: response.status, data, code: data?.code || data?.errorCode });
         return data;
     }
 
@@ -880,6 +928,10 @@ document.addEventListener('DOMContentLoaded', () => {
             state.composerTools = status.composerTools === true;
             voice?.setEnabled(status.transcription === true);
             documentAttachments.enabled = status.documentUploads === true;
+            state.documentStorageSupported = status.documentStorage === true && Boolean(documentStorage);
+            for (const button of [documentStorageOpen, documentStorageSettings]) {
+                button.hidden = !state.documentStorageSupported; button.disabled = !state.cwd;
+            }
             state.nativeSettings = status.nativeSettings === true;
             state.nativeResources = status.nativeResources === true;
             extensionAssistant.setEnabled(status.extensionAssistant === true);
@@ -900,7 +952,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.manualUnread = status.manualUnread === true;
             state.archiveEnabled = status.archives === true;
             conversationSearch.setArchivesEnabled(state.archiveEnabled);
-            workflows.setEnabled(status.sessionWorkflows === true);
+            workflows.setEnabled(status.sessionWorkflows === true, status.sessionForkRequests === true);
             sideChat.setEnabled(status.sideChat === true, status.sideChatContext === true, status.sideChatRetention === true, status.sideChatTools === true, status.sideChatModels === true, status.sideChatLifecycle === true);
             window.PiReplyTts.setEnabled(status.replyTts === true);
             elements.tokenDialog.classList.add('hidden');
@@ -2287,6 +2339,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 forgetDeletedSession(session, cwd);
                 dialog.querySelector('h3').textContent = translateUi('线程已删除');
                 description.textContent = result?.trashed === true ? translateUi('会话已移入回收站') : result?.trashed === false ? translateUi('会话已永久删除') : translateUi('会话已删除');
+                if (result?.queueRecoveryWarning) description.textContent += '；' + translateUi(result.queueRecoveryWarning);
                 dialog.classList.add('is-complete');
                 submit.hidden = true;
                 closeButtons[1].textContent = translateUi('完成');
@@ -4324,6 +4377,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.sendButton.querySelector('i').className = shellInput ? 'fa-solid fa-terminal' : 'fa-solid fa-arrow-up';
         elements.sendButton.disabled = Boolean(state.modelRefreshOp) || state.treeBusy || !state.connected || (state.shellBusy && elements.input.value.trim() !== '/quit') || (shellInput && (state.streaming || state.pendingUi.size > 0)) || state.resourceRequested || nativeControls.value?.stopping || state.controlRequested || state.compacting || state.compactRequested || pending || submitting || (!elements.input.value.trim() && !state.attachmentFiles.length);
         elements.attachButton.disabled = !state.connected || submitting;
+        for (const button of [documentStorageOpen, documentStorageSettings]) button.disabled = !state.documentStorageSupported || !state.cwd;
         cronAddButton.disabled = !state.connected || !state.session || Boolean(state.session.ephemeral);
         const status = $('pi-attachment-status');
         status.textContent = pending ? translateUi("正在读取附件…") : submitting ? (window.PiTranscriptActivity ? '' : translateUi("正在提交消息…")) : state.uncertainDrafts.has(state.composerSessionKey) ? translateUi("上次发送结果不确定，草稿已保留，请先核对会话") : '';
@@ -4662,6 +4716,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 ...(state.archiveEnabled ? [command(archived ? translateUi('恢复线程') : translateUi('归档线程'),
                     'fa-box-archive', () => setArchive(cwd, session, !archived),
                     { disabled: session.ephemeral || state.archiveRequests.has(activityKey(cwd, session.id)) })] : []),
+                ...(state.documentStorageSupported && !session.ephemeral && state.connected && cwd === state.cwd && session.id === state.session?.id
+                    ? [command(translateUi('退出运行实例'), 'fa-right-from-bracket', () => {
+                        if (cwd !== state.cwd || session.id !== state.session?.id || !state.connected) throw new Error(translateUi('运行实例已变化'));
+                        if ((state.streaming || state.compacting || state.shellBusy || state.controlRequested || state.controlsStopping)
+                            && !window.confirm(translateUi('退出运行实例会中断当前任务，已发生的外部操作不会撤销。仍要退出吗？'))) return;
+                        return quitRuntime();
+                    }, { disabled: state.attachmentReads > 0 || state.submittingDrafts.has(state.composerSessionKey) || state.pendingUi.size > 0
+                        || Boolean(nativeControls.value?.drafts?.length) || Boolean(nativeControls.value?.subagents?.background?.active)
+                        || Boolean(nativeControls.value && !nativeControls.value.durable && (nativeControls.value.recoveries.length
+                            || nativeControls.value.queue.steering.length || nativeControls.value.queue.followUp.length)) })] : []),
                 command(translateUi("删除线程"), 'fa-trash', () => deleteOneSession(session, cwd), { disabled: session.ephemeral, danger: true })
             ];
         } else {

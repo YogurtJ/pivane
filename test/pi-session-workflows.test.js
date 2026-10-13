@@ -70,7 +70,7 @@ test('native session workflows preserve original forks, retry context, versions,
     const { SessionManager } = await import('@earendil-works/pi-coding-agent');
     const manager = SessionManager.open(session.path);
     manager.appendModelChange('fixture', 'fixture');
-    const image = { type: 'image', mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5V8AAAAASUVORK5CYII=' };
+    const image = { type: 'image', mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC' };
     const first = manager.appendMessage({ role: 'user', content: [{ type: 'text', text: 'First question' }, image], timestamp: 1 });
     const assistant = (text, timestamp) => ({ role: 'assistant', content: [{ type: 'text', text }], api: 'openai-completions', provider: 'fixture', model: 'fixture', stopReason: 'stop', timestamp, usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } });
     const firstReply = manager.appendMessage(assistant('First reply', 2));
@@ -154,6 +154,21 @@ test('native session workflows preserve original forks, retry context, versions,
     assert.ok(!entries.some(entry => entry.type === 'branch_summary'));
     const current = (await api(`${prefix}/workflow?cwd=${encodeURIComponent(root)}`)).data;
     assert.ok(current.versions.some(version => version.entryId === oldLeafId));
+    // A copied active branch carries navigation markers, but not the abandoned branch.
+    const afterRetry = await api(`${prefix}/fork`, { expectedLeafId: current.leafId });
+    assert.equal(afterRetry.status, 201, JSON.stringify(afterRetry));
+    const copiedPrefix = `/sessions/${afterRetry.data.session.id}`;
+    const copiedView = await api(`${copiedPrefix}/workflow?cwd=${encodeURIComponent(root)}`);
+    assert.equal(copiedView.status, 200, JSON.stringify(copiedView));
+    assert.equal(copiedView.data.versions.some(version => version.entryId === oldLeafId), false);
+    assert.ok(copiedView.data.prompts.some(prompt => prompt.text === 'Replacement question'), JSON.stringify(copiedView.data));
+    const copiedPrompt = await api(`${copiedPrefix}/prompt/${copiedView.data.lastUserId}?cwd=${encodeURIComponent(root)}`);
+    assert.equal(copiedPrompt.data.message, 'Replacement question');
+    assert.deepEqual(copiedPrompt.data.images, [image]);
+    const nestedCopy = await api(`${copiedPrefix}/fork`, { expectedLeafId: copiedView.data.leafId });
+    assert.equal(nestedCopy.status, 201, JSON.stringify(nestedCopy));
+    assert.equal((await api(`/sessions/${nestedCopy.data.session.id}/workflow?cwd=${encodeURIComponent(root)}`)).status, 200);
+    assert.equal(requests.length, 1, 'copies of retried branches do not call a model');
     const restored = await api(`${prefix}/restore`, { entryId: oldLeafId, expectedLeafId: current.leafId });
     assert.equal(restored.status, 200, JSON.stringify(restored));
     const restoredMessages = JSON.stringify((await worker.request('get_messages')).messages);

@@ -18,6 +18,7 @@ import { searchHistory, previewHistory, setHistoryBookmark } from './pi-history-
 import { historyArchive } from './pi-history-archive.js';
 import { sessionTree, checkNavigation } from './pi-session-tree.js';
 import { promptFromEntry, validateMessage } from './pi-message-payload.js';
+import { navigateSession } from './pi-session-navigation.js';
 import { buildSessionContext, getAgentDir, type ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { registerAgentProfile } from './pi-profile-runtime.js';
 import { registerProfileMemory } from './profile-memory/extension.ts';
@@ -268,7 +269,7 @@ export default async function (pi: ExtensionAPI) {
                     const target = checkNavigation(ctx.sessionManager, request.input);
                     const draft = target.type === 'message' && target.message.role === 'user' ? validateMessage(promptFromEntry(target)) : null;
                     webNavigation = true;
-                    const result = await ctx.navigateTree(target.id, { summarize: request.input.summarize, customInstructions: request.input.customInstructions || undefined });
+                    const result = await navigateSession(ctx, target.id, { summarize: request.input.summarize, customInstructions: request.input.customInstructions || undefined });
                     if (!result.cancelled) {
                         pi.appendEntry('pivane-web-navigation', { fromLeafId: initialLeaf, targetId: target.id, mode: 'tree' });
                         persisted = true;
@@ -293,7 +294,7 @@ export default async function (pi: ExtensionAPI) {
                 } else throw new Error('Invalid navigation mode');
                 let result;
                 webNavigation = true;
-                try { result = await ctx.navigateTree(request.entryId, { summarize: false }); }
+                try { result = await navigateSession(ctx, request.entryId, { summarize: false, exact: request.mode === 'restore' }); }
                 finally { webNavigation = false; }
                 if (result.cancelled) throw new Error('会话回退已被扩展取消');
                 // Persist the new active leaf, including navigation before the first user message.

@@ -27,9 +27,9 @@ function activeBranch({ entries, leafId }) {
     for (let id = leafId; id; id = byId.get(id)?.parentId) {
         if (seen.has(id) || !byId.has(id)) throw new Error('会话分支无效');
         seen.add(id);
-        branch.unshift(byId.get(id));
+        branch.push(byId.get(id));
     }
-    return branch;
+    return branch.reverse();
 }
 
 function promptFromEntry(entry) {

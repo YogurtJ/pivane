@@ -342,16 +342,29 @@ class PiSessionStore {
         if (entryId !== undefined && (typeof entryId !== 'string' || !entryId)) throw new Error('分叉消息无效');
         const { SessionManager } = await getSdk();
         const { activeBranch, promptFromEntry, isReplyForkPoint } = require('./pi-message-payload');
-        const source = SessionManager.open(session.path);
+        const source = this.profileManager(session, SessionManager);
+        const sourceStamp = sessionStamp(fs.lstatSync(session.path, { bigint: true }));
         const sourceBinding = require('./pi-profile-state').readProfileBinding(source);
         const groupBinding = require('./pi-assistant-project-state').readProjectBinding(source);
         const inheritedProfileId = sourceBinding?.profileId ?? null;
         if (source.getLeafId() !== snapshot.leafId) throw new Error('会话已变化，请刷新后重试');
-        const selected = entryId ? snapshot.entries.find(entry => entry.id === entryId) : null;
+        const entries = source.getEntries();
+        const selected = entryId ? entries.find(entry => entry.id === entryId) : null;
         if (position === 'at' && !isReplyForkPoint(selected)) throw new Error('请选择已完成且没有待执行工具调用的回复');
         const draft = entryId && position === 'before' ? promptFromEntry(selected) : null;
         const targetId = selected ? position === 'at' ? selected.id : selected.parentId : snapshot.leafId;
-        const branch = targetId ? activeBranch({ entries: snapshot.entries, leafId: targetId }) : [];
+        const branch = targetId ? activeBranch({ entries, leafId: targetId }) : [];
+        let publishAccess;
+        const guard = io.openReadSync(session.path);
+        try {
+            const identity = io.identity(guard);
+            const unchanged = () => descriptorPathSync(guard) === session.path && io.sameIdentityAtPath(session.path, identity)
+                && sessionStamp(fs.fstatSync(guard, { bigint: true })) === sourceStamp
+                && sessionStamp(fs.lstatSync(session.path, { bigint: true })) === sourceStamp;
+            if (!unchanged()) throw new Error('会话已变化，请刷新后重试');
+            publishAccess = await require('./pi-session-fork-access').prepareForkAccess(this, session, branch, draft ? selected : null);
+            if (!unchanged()) throw new Error('会话已变化，请刷新后重试');
+        } finally { fs.closeSync(guard); }
         let result;
         if (branch.some(entry => entry.type === 'message' && entry.message.role === 'assistant')) {
             source.createBranchedSession(targetId);
@@ -361,6 +374,7 @@ class PiSessionStore {
             if (groupBinding) source.appendCustomEntry(require('./pi-assistant-project-state').PROJECT_ENTRY,
                 { version: 1, sessionId: source.getSessionId(), projectId: groupBinding.projectId, cwd: groupBinding.cwd });
             source.appendSessionInfo(`${session.name || '会话'} · 分叉`.slice(0, 120));
+            publishAccess(source);
             this.sessionLists.delete(session.cwd);
             result = await this.getSession(session.cwd, source.getSessionId());
         } else if (branch.length) {
@@ -387,12 +401,18 @@ class PiSessionStore {
                     fs.linkSync(output, source.getSessionFile());
                 } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
             }
+            // Exporting an empty native branch does not change the original
+            // manager's persistence state. Reopen the materialized file before
+            // appending the receipt marker through the public native API.
+            publishAccess(this.profileManager({ cwd: session.cwd, id: source.getSessionId(), path: source.getSessionFile() }, SessionManager));
             this.sessionLists.delete(session.cwd);
             result = await this.getSession(session.cwd, source.getSessionId());
         } else {
             result = await this.createSession(session.cwd, `${session.name || '会话'} · 分叉`,
                 { inheritedProfileId, assistantProjectId: groupBinding?.projectId });
-            SessionManager.open(result.path).appendCustomEntry('pivane-web-fork-origin', { sessionId: session.id, entryId: targetId });
+            const empty = this.profileManager(result, SessionManager);
+            empty.appendCustomEntry('pivane-web-fork-origin', { sessionId: session.id, entryId: targetId });
+            publishAccess(empty);
         }
         require('./pi-private-files').privateFileMode(result.path);
         return { session: result, draft };

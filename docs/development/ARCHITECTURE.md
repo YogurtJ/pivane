@@ -25,6 +25,7 @@ flowchart TD
 - `server.js` 装配访问验证、网关、媒体适配与静态资源，再监听 HTTP。旧媒体执行器仍在此入口，修改这些旧适配器时逐项迁移职责，不向入口添加新的业务存储。
 - `pi-agent-routes` 负责网关装配、项目/会话 HTTP 和连接协议。`server/routes/settings`、`server/routes/media` 只适配 HTTP；配置锁、修订、票据和持久化仍由服务拥有。
 - `PiAgentSupervisor` 拥有 worker 注册表、启动互斥、重开和回收。删除通过 `withSessionRemoval` 在 await 前预占规范会话路径，等待已有启动，在 worker 独占区停止并执行文件删除；删除未结束前禁止 `getWorker` 重建 worker，并计入全局停机等待。路由使用其生命周期接口，不复制 worker 内部字段清单。
+- 持久主线程由 `pi-queue-store` 保存尚未得到完成证明的发送意图，原稿先于 RPC 原子落盘；它不是聊天历史。`pi-queue-adapter` 在项目 SDK 边界关联公开方法的同一消息对象、物理 header 和 append 条目，以原生串行 stdout transport 发送带 nonce 的私有证明，未知／迟到私有帧也截获。清空操作的编号、代次与候选集合独立保留，不能用文字相等或空队列退休意图。变换内容超预算保留原稿并降低引用完整性；提交超时在原生开始前也留下生命周期阻挡。恢复元数据与完整图片载荷分离，实际 worker 退出不丢日志，明确会话删除成功后才清理。
 - worker 拥有 RPC、事件、导航、Shell、控制队列和私有响应槽。`pi-worker-lifecycle` 集中投影这些工作；界面活动、维护空闲、无人订阅后的回收使用明确的不同条件。后台标题生成会阻止维护，但不占用主 prompt 操作；未处理草稿、队列和不确定操作不能因 agent_settled 被遗忘。
 - 功能服务依赖已注入的 store、supervisor、preferences 或公开 Pi SDK。跨服务操作的互斥在 await 前预占，完成后再释放；接口不能把超时当成实际终止。
 
@@ -34,7 +35,15 @@ Pi SessionManager 和原生 JSONL 是唯一会话事实来源。项目先经 nat
 
 PiRpcClient 使用 StringDecoder 并严格按 LF 分帧，不能使用会拆分 Unicode 分隔符的通用行读取器。启动在同一进程中进行有界只读就绪探测；迟到探测和未知私有桥接响应均截获，不重发消息、不另开 worker。
 
-会话目录、ID、项目 cwd 和分支树各有独立含义。创建空会话先独占创建文件，再通过公开 SessionManager 写有效 header。分叉、历史、书签和导入导出复用原生 entries/branch/labels；不维护平行聊天历史。JSONL 导出通常只有当前分支，不能称为完整会话树备份。目录改名另见 [迁移约束](NAMING.md#项目目录改名)。
+`pi-session-prefix-proof` 将文件授权核验限定为已绑定前缀、原生 header／标记和所需投影；v2 初始前缀 1 GiB，兼容 v1 的 64 MiB，合法后续追加不扩张授权范围。256 KiB 分块核验保留描述符内核路径、完整身份、类型、大小及纳秒修订检查，不永久绑定 inode，允许按既有语义恢复备份。部分历史／读取消费者仍有 128 MiB 独立上限；不扩大移动创建预算，也不宣称原生 SDK 已流式加载全部历史。
+
+附件清理由 `pi-document-storage` 管理一次性预览、持久请求回执和删除标记，`pi-document-storage-references` 扫描所有分支与受管嵌套会话，`pi-document-native-scope` 判定规范根和显式自定义目录。`pi-document-storage-gateway` 同步取得独立于维护 IPC 的引用门禁，只排除本次 HTTP 请求，再查询既有 worker，并要求全部运行实例实际退出，冻结队列日志并绑定预约／配置证明；不因断开 HTTP 响应而提前释放在途写入。Supervisor 保留 retiring owner 和同一个 disposal Promise，直至 Shell／RPC 真正停止；失败不释放写入所有权，shutdown 纳入生命周期活动。定时任务引用由 `pi-document-cron-references` 在经过描述符证明的私有 SQLite 副本上读取，并与当前连接合并，防止文件替换后旧连接掩盖引用。缺失、损坏、超预算或变化使完整性失败，最终同步删除前再次核对。扫描不授予文件读取资格，不遍历任意正文路径；外部副本／进程和别处草稿仍须用户核对并确认。
+
+会话目录、ID、项目 cwd 和分支树各有独立含义。创建空会话先独占创建文件，再通过公开 SessionManager 写有效 header。分叉、历史、书签和导入导出复用原生 entries/branch/labels；不维护平行聊天历史。JSONL 导出通常只有当前分支，不能称为完整会话树备份。`pi-session-fork-access` 在来源 worker 的独占区内，从原生选中路径和已验证的移动／分叉证明提取精确文件资格；来源描述符跨异步准备保持内核身份与完整修订核对。新线程同步登记私有不可变凭据和原生引用标记，凭据只保存文件引用、目标身份与原生尾部前缀哈希，不保存聊天正文。交付仍须在当前分支内，草稿文档例外仅用于网页下载；嵌套分叉重新绑定新 ID，读取前后核对证明和原生分支，目标再次移动复用已提交移动链。不依赖父线程，也不新增 worker 工作类型或持久聊天副本。凭据目录位于身份目录的 `pivane-session-moves/forks/`，随原生会话和原件一并备份。目录改名另见 [迁移约束](NAMING.md#项目目录改名)。
+
+`pi-session-navigation` 在受管 SDK 建立时登记实际 SessionManager，以中性 custom entry 表达用户／扩展消息之后的精确位置，再调用原生 navigateTree 及其取消钩子。它区分编辑前回退与旧版本恢复，不写第二份消息，不跳过原生上下文重建。工作流快照每次请求共用节点索引和祖先结果，保留缺失／循环路径检查，不跨原生修订缓存。
+
+`pi-session-fork-requests` 保存私有创建回执（`pivane-session-moves/fork-requests/`），绑定源 cwd/ID/原生时间、请求编号与选择参数指纹；await 前占用同编号在途槽，创建前独占持久化 pending，完成后原子绑定目标原生身份。它继续使用来源 worker 的既有 exclusive 流程与 HTTP 维护占用，不引入第二个 writer 或后台派发器。中断 pending 视为 uncertain，已完成结果按现有会话／移动解析读取；回执不存正文，草稿按原生问题 ID 重读。文件继承另由实际交付清单来源核验并去重，不把同一引用在多个移动项目的资格重复计算。
 
 Pi 0.86 的原生 system message 是供应商 transcript 的提示词/工具检查点。公开聊天边界过滤这类消息，原生上下文和导出仍使用完整记录。保存配置不自动重开 worker，资源重载与配置保存是不同操作。
 

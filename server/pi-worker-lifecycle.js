@@ -3,6 +3,7 @@
 function workerLifecycle(worker) {
     const activity = worker.activity.snapshot();
     const operations = [];
+    if (worker.disposal) operations.push('shutdown');
     if (worker.navigation.busy || worker.operation) operations.push('navigation');
     if (worker.shell.busy) operations.push('shell');
     if (worker.controlPending) operations.push('control');
@@ -19,13 +20,16 @@ function workerLifecycle(worker) {
     if (worker.cronRun) operations.push('scheduled-task');
     const blockers = [...operations];
     if (activity.busy) blockers.push('agent');
-    if (worker.disposed || worker.restarting) blockers.push('lifecycle');
+    if (worker.disposed || worker.restarting || worker.exited) blockers.push('lifecycle');
     if (worker.modelChangeUncertain) blockers.push('model-uncertain');
+    if (worker.promptAdmissionUncertain) blockers.push('prompt-admission-uncertain');
     if (worker.titleGeneration) blockers.push('title-generation');
     if (worker.pendingUi.size) blockers.push('confirmation');
     if (worker.subagentResults?.size) blockers.push('subagent-control');
     if (worker.controls.recoveries.length || worker.controls.drafts.length) blockers.push('unsaved-controls');
-    if (worker.controls.queue.steering.length || worker.controls.queue.followUp.length) blockers.push('queue');
+    if (worker.controls.queue.steering.length || worker.controls.queue.followUp.length || worker.controls.intentions?.length) blockers.push('queue');
+    if (worker.controls.persistenceError) blockers.push('queue-persistence');
+    if (worker.queueClearOperations?.size) blockers.push('queue-clear-proof');
     return {
         activity: { ...activity, busy: activity.busy || operations.length > 0,
             phase: !activity.busy && operations.length ? 'running' : activity.phase },

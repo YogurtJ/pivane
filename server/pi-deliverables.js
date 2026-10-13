@@ -152,10 +152,11 @@ class DeliverableService {
                 const ref = initial.refs.find(r => r.id === input.id);
                 if (!ref) throw fail('此交付不在当前会话分支内', 403, 'DELIVERY_SCOPE');
                 const saved = await this.objects.manifest(ref.id, ref.manifestRevision);
-                const proof = this.store.sessionMoves ? await this.store.sessionMoves.deliveryProof(initial.session) : new Map([[initial.session.cwd, null]]);
+                const proof = await require('./pi-session-fork-access').deliveryProof(this.store, initial.session);
                 const allowed = proof.get(saved.manifest.cwd);
                 if (allowed !== null && !allowed?.has(ref.id + ':' + ref.manifestRevision)) throw fail('交付不属于当前项目', 403, 'DELIVERY_SCOPE');
                 const result = await this.objects.content(ref, index);
+                await require('./pi-session-fork-access').checkForkAccess(this.store, initial.session, proof.forkRevision);
                 const current = await this.branch(input);
                 if (current.session.path !== initial.session.path || !current.refs.some(r => r.id === ref.id && r.manifestRevision === ref.manifestRevision)) throw fail('会话分支已变化', 409, 'DELIVERY_CONTEXT');
                 return result;
@@ -163,7 +164,7 @@ class DeliverableService {
             const items = [];
             if (input.path !== undefined && (typeof input.path !== 'string' || input.path.length > 4096 || /[\x00-\x1f\x7f]/.test(input.path))) throw invalid();
             const target = input.path === undefined ? null : path.resolve(initial.session.cwd, input.path);
-            const proof = this.store.sessionMoves ? await this.store.sessionMoves.deliveryProof(initial.session) : new Map([[initial.session.cwd, null]]);
+            const proof = await require('./pi-session-fork-access').deliveryProof(this.store, initial.session);
             for (const ref of initial.refs) {
                 try {
                     const { manifest } = await this.objects.manifest(ref.id, ref.manifestRevision);
@@ -178,6 +179,7 @@ class DeliverableService {
                 } catch (error) { if (target) continue; items.push({ id: ref.id, unavailable: true, name: '交付文件暂不可用' }); }
                 if (target && items.length || items.length >= 200) break;
             }
+            await require('./pi-session-fork-access').checkForkAccess(this.store, initial.session, proof.forkRevision);
             const current = await this.branch(input), allowed = new Set(current.refs.map(r => `${r.id}:${r.manifestRevision}`));
             if (current.session.path !== initial.session.path || initial.refs.some(r => !allowed.has(`${r.id}:${r.manifestRevision}`))) throw fail('会话分支已变化', 409, 'DELIVERY_CONTEXT');
             return { items, partial: items.length >= 200 };

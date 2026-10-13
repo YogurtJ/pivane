@@ -71,7 +71,10 @@
             if (!window.katex || token.text.length > MAX_SOURCE) throw new Error('limit');
             const output = window.katex.renderToString(token.text, {
                 displayMode: token.display, output: 'htmlAndMathml', throwOnError: true,
-                trust: false, strict: 'error', maxExpand: 200, maxSize: 20, macros: {}
+                trust: false,
+                // Sentence punctuation is harmless here; preserve every other strict check.
+                strict: (code, _message, token) => code === 'unicodeTextInMathMode' && /^[，。、；：！？]$/u.test(token?.text || '') ? 'ignore' : 'error',
+                maxExpand: 200, maxSize: 20, macros: {}
             });
             if (output.length > 256000) throw new Error('output limit');
             // Only library-generated layout receives style/MathML/SVG privileges.

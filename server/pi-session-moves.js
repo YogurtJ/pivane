@@ -9,6 +9,7 @@ const { customTypeIs } = require('./pivane-compat');
 const io = require('./pi-file-io');
 const { descriptorPathSync } = require('./pi-file-descriptor');
 const { scanSessionReferences } = require('./pi-session-move-references');
+const { verifySessionPrefixes } = require('./pi-session-prefix-proof');
 
 const MAX_BYTES = 64 * 1024 * 1024;
 const fail = (message, code = 'SESSION_MOVE_CONFLICT') => Object.assign(new Error(message), { code, status: 409 });
@@ -68,10 +69,10 @@ class PiSessionMoves {
             throw fail('此线程有尚未完成的移动，请先核对移动记录和原始备份', 'SESSION_MOVE_RECOVERY');
     }
     async verify(session, record) {
-        const bytes = readSafe(session.path, MAX_BYTES), parsed = decodeSession(bytes);
-        if (parsed.header.id !== session.id || parsed.header.cwd !== session.cwd
-            || !Number.isSafeInteger(record.tailLength) || record.tailLength < 0 || parsed.tail.length < record.tailLength
-            || hash(parsed.tail.subarray(0, record.tailLength)) !== record.tailSha256) throw fail('移动后的原生历史已变化，无法证明旧引用归属');
+        if (!Number.isSafeInteger(record.tailLength) || record.tailLength < 0 || record.tailLength > MAX_BYTES)
+            throw fail('移动后的原生历史已变化，无法证明旧引用归属');
+        try { await verifySessionPrefixes(session, [record]); }
+        catch { throw fail('移动后的原生历史已变化，无法证明旧引用归属'); }
     }
     async resolve(cwdInput, id) {
         const { document } = await this.journal();
@@ -107,35 +108,24 @@ class PiSessionMoves {
             chain.push(record); cursor = record.source;
         }
         if (!chain.length) return grants;
-        const parsed = decodeSession(readSafe(session.path, MAX_BYTES));
-        if (parsed.header.id !== session.id || parsed.header.cwd !== session.cwd) throw fail('移动后的会话身份已变化');
+        // Past projects grant only references saved before their committed
+        // move cutoff. The current growing suffix cannot add foreign grants.
         const cutoffs = new Map();
         let budget = 0;
         for (const record of chain) {
-            if (!Number.isSafeInteger(record.tailLength) || record.tailLength < 0 || record.tailLength > parsed.tail.length
-                || (budget += record.tailLength) > 256 * 1024 * 1024
-                || hash(parsed.tail.subarray(0, record.tailLength)) !== record.tailSha256) throw fail('历史交付的移动前缀无法证明或超过预算');
+            if (!Number.isSafeInteger(record.tailLength) || record.tailLength < 0 || record.tailLength > MAX_BYTES
+                || (budget += record.tailLength) > 256 * 1024 * 1024) throw fail('历史交付的移动前缀无法证明或超过预算');
             cutoffs.set(record.source.cwd, Math.max(cutoffs.get(record.source.cwd) || 0, record.tailLength));
             if (record.source.cwd !== session.cwd) grants.set(record.source.cwd, new Set());
         }
-        // A past project only grants refs that existed before leaving that
-        // project. This also preserves valid refs inherited by native forks,
-        // without granting newly appended foreign refs after a move.
-        const limit = Math.max(...cutoffs.values());
-        for (let position = 0; position < limit;) {
-            let end = parsed.tail.indexOf(10, position);
-            if (end < 0) end = parsed.tail.length;
-            const text = parsed.tail.subarray(position, end).toString('utf8').trim();
-            const next = end < parsed.tail.length ? end + 1 : end;
-            if (text) {
-                const entry = JSON.parse(text);
+        try {
+            await verifySessionPrefixes(session, chain, { onRecord: (entry, next) => {
                 if (entry.type === 'custom' && entry.customType === 'pivane-deliverable' && entry.data?.id && entry.data.manifestRevision) {
                     for (const [cwd, cutoff] of cutoffs) if (next <= cutoff && grants.get(cwd))
                         grants.get(cwd).add(entry.data.id + ':' + entry.data.manifestRevision);
                 }
-            }
-            position = next;
-        }
+            } });
+        } catch { throw fail('历史交付的移动前缀无法证明或超过预算'); }
         return grants;
     }
     globalBlockers(session) {

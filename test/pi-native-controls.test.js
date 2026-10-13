@@ -106,9 +106,9 @@ test('native gateway: actual queue recovery, stop, patch, two clients, reconnect
     assert.ok(results.some(result => result.status === 'fulfilled'));
     const current = (await a.call('get_state')).webControls;
     assert.equal(current.stopping, false); assert.deepEqual(current.queue, { steering: [], followUp: [] });
-    assert.equal(current.recoveries.length, 1); assert.equal(current.recoveries[0].status, 'recovered');
-    assert.deepEqual(current.recoveries[0].steering, ['First queued instruction']);
-    assert.deepEqual(current.recoveries[0].followUp, ['Second queued instruction']);
+    assert.equal(current.recoveries.length, 2); assert.ok(current.recoveries.every(item => item.status === 'recovered' && item.durable));
+    assert.deepEqual(current.recoveries.flatMap(item => item.steering), ['First queued instruction']);
+    assert.deepEqual(current.recoveries.flatMap(item => item.followUp), ['Second queued instruction']);
     assert.equal(requests, beforeStopRequests, 'queued instructions must not trigger another provider call');
     const entries = (await a.call('get_entries')).entries;
     const stoppedReply = entries.filter(entry => entry.message?.role === 'assistant').at(-1).message;
@@ -120,7 +120,7 @@ test('native gateway: actual queue recovery, stop, patch, two clients, reconnect
     a.socket.close();
     const c = await connect(url, session); sockets.push(c.socket);
     assert.deepEqual(c.snapshot.controls.recoveries, current.recoveries);
-    await c.call('ack_recovery', { recoveryId: current.recoveries[0].id });
+    for (const recovery of current.recoveries) await c.call('ack_recovery', { recoveryId: recovery.id });
     await assert.rejects(b.call('ack_recovery', { recoveryId: current.recoveries[0].id }), /不存在/);
     assert.deepEqual((await b.call('get_state')).webControls.recoveries, []);
     await c.call('prompt', { message: '/clear-status' });
@@ -140,10 +140,14 @@ test('native gateway: actual queue recovery, stop, patch, two clients, reconnect
     assert.equal(after.webControls.stopping, false);
     // A timeout retains exclusion until native state confirms idle; it never retries a mutation.
     const worker = gateway.supervisor.getActiveWorker(session.path);
-    const originalRequest = worker.client.request.bind(worker.client); let clearCalls = 0, releaseOldState;
+    await worker.request('follow_up', { message: 'Timeout recovery fixture' });
+    const originalRequest = worker.client.request.bind(worker.client); let clearCalls = 0, releaseOldState, lateClearInput;
     worker.client.request = async (type, ...args) => {
         if (type === 'get_state') return new Promise(resolve => { releaseOldState = resolve; });
-        if (type === 'clear_queue') { clearCalls++; throw Object.assign(new Error('test timeout'), { code: 'RPC_TIMEOUT' }); }
+        if (type === 'prompt' && args[0]?.message?.startsWith('\u001ePIVANE_QUEUE_V1:')
+            && JSON.parse(args[0].message.slice('\u001ePIVANE_QUEUE_V1:'.length)).operation === 'clear') {
+            clearCalls++; lateClearInput = args[0]; throw Object.assign(new Error('test timeout'), { code: 'RPC_TIMEOUT' });
+        }
         return originalRequest(type, ...args);
     };
     const oldStateRequest = worker.request('get_state');
@@ -156,5 +160,8 @@ test('native gateway: actual queue recovery, stop, patch, two clients, reconnect
     await oldStateRequest;
     assert.equal(worker.controlPending, true, 'an idle snapshot requested before stopping cannot unlock an uncertain operation');
     worker.client.request = originalRequest;
+    await originalRequest('prompt', lateClearInput); // Deliver the held synthetic operation once; the gateway never replays it.
     await worker.request('get_state'); assert.equal(worker.controlPending, false); assert.equal(clearCalls, 1);
+    assert.equal(worker.queueClearOperations.size, 0);
+    assert.equal(worker.controls.recoveries.filter(item => item.legacy).length, 0, 'late correlated proof removes only its reserved fallback');
 });

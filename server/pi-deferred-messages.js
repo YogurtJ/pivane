@@ -3,7 +3,9 @@ const fs = require('fs');
 const { replaceFileSync } = require('./pi-win32-native');
 const os = require('os');
 const path = require('path');
-const { randomUUID } = require('crypto');
+const { randomUUID, createHash } = require('crypto');
+const { readSafe } = require('./pi-maintenance-files');
+const documentReferences = require('../public/pi-document-references');
 const { validateMessage, assertSendable } = require('./pi-message-payload');
 
 const ACTIVE = new Set(['scheduled', 'waiting', 'paused', 'expired', 'failed', 'uncertain', 'dispatching']);
@@ -97,6 +99,29 @@ class PiDeferredMessages {
         return { revision: this.revision, sessions: [...sessions.values()] };
     }
 
+    protectedDocuments() {
+        this.assertHealthy();
+        let bytes;
+        try { bytes = readSafe(path.resolve(this.filePath), 64 * 1024 * 1024); }
+        catch (error) {
+            if (error.code !== 'ENOENT' || this.jobs.length) throw error;
+            bytes = Buffer.from('{"version":1,"jobs":[]}');
+        }
+        const stored = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+        if (stored.version !== 1 || !Array.isArray(stored.jobs)) throw new Error('预约消息引用无法完整核对');
+        const ids = new Set();
+        // Disk and memory can diverge after an external edit or a failed save.
+        // Protect both; this is read-only and does not replace the live schedule.
+        for (const job of [...stored.jobs, ...this.jobs]) {
+            if (!job || ![...ACTIVE, 'sent', 'cancelled'].includes(job.status)
+                || ACTIVE.has(job.status) && !job.payload) throw new Error('预约消息引用无法完整核对');
+            if (!job.payload) continue;
+            const payload = validateMessage(job.payload);
+            for (const part of documentReferences.split(payload.message)) if (part.reference) ids.add(part.reference.id);
+        }
+        return { complete: true, revision: createHash('sha256').update(this.revision).update(bytes).digest('hex'), ids: [...ids].sort() };
+    }
+
     create(session, input) {
         if (this.disposed) throw new Error('服务正在关闭');
         const payload = validateMessage(input, { plain: true });
@@ -126,7 +151,10 @@ class PiDeferredMessages {
             if (job.revision !== input.revision) throw new Error('消息已在其他页面更新，请刷新');
             if (!ACTIVE.has(job.status) || job.status === 'dispatching') throw new Error('消息已提交，不能再修改或取消');
             if (input.action === 'cancel') { job.status = 'cancelled'; delete job.payload; }
-            else if (input.action === 'pause') job.status = 'paused';
+            else if (input.action === 'pause') {
+                if (!READY.has(job.status)) throw new Error('只能暂停等待发送的消息');
+                job.status = 'paused';
+            }
             else if (['save', 'send'].includes(input.action)) {
                 if (job.status === 'uncertain' && input.confirmUncertain !== true) throw new Error('请先确认会话中没有这条消息，避免重复执行');
                 if (input.action === 'save') {

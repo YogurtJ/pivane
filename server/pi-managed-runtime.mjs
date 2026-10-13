@@ -7,6 +7,8 @@ import { createAgentSessionRuntime, createAgentSessionServices, createAgentSessi
     resolveCliModel, resolveModelScopeWithDiagnostics, initTheme } from '@earendil-works/pi-coding-agent';
 import './pi-subagent-native-loader.mjs';
 import { managedLoaderOptions, reloadableLoader } from './pi-bundled-loader.mjs';
+import navigation from './pi-session-navigation.js';
+import { installQueueAdapter } from './pi-queue-adapter.mjs';
 
 let runtime;
 try {
@@ -23,8 +25,12 @@ try {
     // Preserve the CLI's proxy/idle-timeout setup when embedding its RPC SDK.
     // This small host seam is reviewed alongside the pinned Pi version.
     const http = await import(pathToFileURL(path.join(piRoot, 'dist/core/http-dispatcher.js')).href);
+    // Pi's RPC stdout takeover routes ordinary writes to stderr. Use the same
+    // pinned, serialized raw transport as runRpcMode for private queue evidence.
+    const { writeRawStdout } = await import(pathToFileURL(path.join(piRoot, 'dist/core/output-guard.js')).href);
     const sessionManager = parsed.noSession ? SessionManager.inMemory(cwd) : SessionManager.open(parsed.session, undefined, cwd);
     const createRuntime = async ({ cwd, sessionManager, sessionStartEvent }) => {
+        navigation.bindSessionNavigation(sessionManager);
         const global = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
         const trusted = parsed.projectTrustOverride ?? new ProjectTrustStore(agentDir).get(cwd) ?? (global.getDefaultProjectTrust() === 'always');
         const settings = SettingsManager.create(cwd, agentDir, { projectTrusted: trusted });
@@ -45,6 +51,9 @@ try {
         const created = await createAgentSessionFromServices({ services, sessionManager, sessionStartEvent, model,
             thinkingLevel: parsed.thinking ?? selected.thinkingLevel, scopedModels,
             tools: parsed.tools, excludeTools: parsed.excludeTools, noTools: parsed.noTools ? 'all' : parsed.noBuiltinTools ? 'builtin' : undefined });
+        installQueueAdapter(created.session, { token: process.env.PIVANE_QUEUE_TOKEN,
+            sessionPath: parsed.noSession ? null : sessionManager.getSessionFile(), sessionId: sessionManager.getSessionId(),
+            emit: record => writeRawStdout(JSON.stringify(record) + '\n') });
         if (model && (parsed.thinking !== undefined || selected.thinkingLevel !== undefined)) created.session.setThinkingLevel(created.session.thinkingLevel);
         for (const diagnostic of diagnostics) process.stderr.write(`${diagnostic.message}\n`);
         return { ...created, services, diagnostics };

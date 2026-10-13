@@ -12,8 +12,9 @@ const samples = ['docx', 'xlsx', 'pptx', 'pdf'].map((format, i) => ({ name: ['Âê
     buffer: format === 'pdf' ? pdfBytes() : zip(({ docx: docxFiles, xlsx: xlsxFiles, pptx: pptxFiles })[format]()), mimeType: 'application/octet-stream' }));
 async function run(browser, base, width, locale) {
     const context = await browser.newContext({ locale, viewport: { width, height: width < 900 ? 852 : 1000 }, isMobile: width < 900, hasTouch: width < 900, acceptDownloads: true });
-    const page = await context.newPage(), errors = [], uploads = [], prompts = [], saved = new Map();
+    const page = await context.newPage(), errors = [], uploads = [], prompts = [], saved = new Map(), threads = sessions.map(session => ({ ...session }));
     let active = 'a', reject = false, held, hold = false, loseResponse = false; const messages = { a: [], b: [] };
+    const textOf = message => typeof message.content === 'string' ? message.content : message.content.filter(block => block.type === 'text').map(block => block.text).join('');
     page.on('pageerror', e => errors.push(e.message));
     await page.route(/^https:\/\/fonts\.(?:googleapis|gstatic)\.com\//, r => r.abort());
     await page.addInitScript(({ cwd }) => { localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem('pi.web.session:' + cwd, 'a'); }, { cwd });
@@ -36,18 +37,26 @@ async function run(browser, base, width, locale) {
             return route.fulfill({ body: found.bytes, contentType: 'application/octet-stream' });
         }
         if (endpoint === '/api/pi/status') return json({ ok: true, documentUploads: true, sessionWorkflows: true, projectRoots: ['/projects'] });
-        if (endpoint === '/api/pi/projects') return json({ projects: [{ cwd, name: 'Office fixture', sessionCount: 2 }], roots: ['/projects'] });
-        if (endpoint === '/api/pi/sessions') return json({ sessions });
+        if (endpoint === '/api/pi/projects') return json({ projects: [{ cwd, name: 'Office fixture', sessionCount: threads.length }], roots: ['/projects'] });
+        if (endpoint === '/api/pi/sessions') return json({ sessions: threads });
         if (endpoint === '/api/pi/activity') return json({ runtimes: [], pinnedProjects: [], hiddenProjects: [], replyNotices: [] });
         if (endpoint.endsWith('/deferred')) return json({ jobs: [] });
-        if (endpoint.endsWith('/workflow')) return json({ leafId: 'leaf', prompts: [], versions: [] });
+        if (endpoint.endsWith('/workflow')) return json({ leafId: 'leaf', prompts: messages[active].map((message, index) => ({ entryId: `user-${index}`, timestamp: message.timestamp, text: textOf(message).slice(0, 180) })), versions: [] });
+        if (endpoint.includes('/prompt/')) return json({ leafId: 'leaf', message: textOf(messages[active][Number(endpoint.split('user-').at(-1))]), images: [] });
+        if (endpoint.endsWith('/fork') && req.method() === 'POST') {
+            const body = req.postDataJSON(), index = Number(body.entryId.split('user-').at(-1));
+            assert.equal(body.expectedLeafId, 'leaf');
+            const session = { id: `fork-${threads.length}`, cwd, name: 'Forked office draft', messageCount: index };
+            threads.push(session); messages[session.id] = messages[active].slice(0, index);
+            return json({ session, draft: { message: textOf(messages[active][index]), images: [] } });
+        }
         if (req.method() !== 'GET') throw new Error('Unexpected write: ' + endpoint);
         return json(endpoint.includes('history') ? [] : {});
     });
     await page.routeWebSocket('**/api/pi/ws', ws => ws.onMessage(raw => {
         const cmd = JSON.parse(raw), state = { model, thinkingLevel: 'off', isStreaming: false, isCompacting: false };
         const send = (data = {}, error) => ws.send(JSON.stringify({ type: 'response', id: cmd.id, command: cmd.type, success: !error, data, error }));
-        if (cmd.type === 'open_session') { active = cmd.sessionId; return send({ session: sessions.find(s => s.id === active), state, messages: { messages: messages[active] }, stats: {}, models: { models: [model] }, thinkingLevels: { levels: ['off'] }, commands: { commands: [] } }); }
+        if (cmd.type === 'open_session') { active = cmd.sessionId; return send({ session: threads.find(s => s.id === active), state, messages: { messages: messages[active] }, stats: {}, models: { models: [model] }, thinkingLevels: { levels: ['off'] }, commands: { commands: [] } }); }
         if (cmd.type === 'get_messages') return send({ messages: messages[active] });
         if (cmd.type === 'get_state') return send(state);
         if (cmd.type === 'get_session_stats') return send({});
@@ -96,10 +105,29 @@ async function run(browser, base, width, locale) {
     await page.waitForFunction(() => document.querySelector('#pi-workflow-documents .pi-document-card') && !document.querySelector('#pi-workflow-submit').disabled);
     await page.locator('#pi-workflow-close').click();
     await select([{ ...samples[0], name: 'long-name-'.repeat(16) + '.docx' }]); await count(1);
+    const beforeForkUploads = uploads.length, beforeForkPrompts = prompts.length;
+    await page.locator('#pi-current-thread-menu').click();
+    await page.locator('.pi-thread-menu [role="menuitem"]').filter({ has: page.locator('i.fa-clock-rotate-left') }).click();
+    await page.locator('.pi-thread-menu [role="menuitem"]').filter({ has: page.locator('i.fa-code-branch') }).click();
+    await page.locator('[data-workflow-action="fork"]').first().click();
+    await page.locator('#pi-workflow-submit').click();
+    await page.waitForFunction(() => document.querySelector('#pi-meta-id').textContent === 'fork-2' && !document.querySelector('#pi-workflow-dialog').open);
+    await count(5);
+    assert.equal(await input.inputValue(), 'Summarize these documents');
+    assert.equal(uploads.length, beforeForkUploads, 'fork reuses original references without uploading');
+    assert.equal(prompts.length, beforeForkPrompts, 'opening a fork never sends its draft');
+    const forkDownloadEvent = page.waitForEvent('download'); await page.locator('[data-preview-attachment]').first().click();
+    const forkDownload = await forkDownloadEvent; assert.deepEqual(fs.readFileSync(await forkDownload.path()), samples[0].buffer);
+    await page.locator('[data-remove-attachment]').last().click(); await count(4);
+    await input.press('Enter'); await count(0);
+    assert.equal((prompts.at(-1).message.match(/<pivane_document /g) || []).length, 4, 'removal changes the next message');
+    assert.equal(await page.locator('.user .pi-document-card').count(), 4);
+    await switchTo('a'); await count(1);
+    assert.equal(await input.inputValue(), 'retain old draft', 'source draft and its existing attachment survive');
     await page.screenshot({ path: `/tmp/pi-document-uploads-${width}-${locale}.png` });
     assert.equal(await page.evaluate(() => document.body.scrollWidth > document.body.clientWidth), false);
     assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('.pi-document-card, .pi-attachment-chip')].filter(n => n.clientWidth && n.scrollWidth > n.clientWidth + 1).map(n => n.className)), []);
-    assert.deepEqual(errors, []); console.log(`office attachments ${width} ${locale}: raw upload, all formats, scope, cards/download, draft races and reconciliation passed`);
+    assert.deepEqual(errors, []); console.log(`office attachments ${width} ${locale}: raw upload, formats, scope, cards/download, draft races, fork hydration/removal and no re-upload passed`);
     await context.close();
 }
 (async () => {
