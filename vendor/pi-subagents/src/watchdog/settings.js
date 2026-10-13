@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { THINKING_LEVELS } from "../shared/model-info.js";
 import { getAgentDir, getProjectConfigDir } from "../shared/utils.js";
+import { withSettingsFileLease } from "../shared/settings-file-lease.js";
 import { WATCHDOG_WARNING_SEVERITIES, } from "./types.js";
 export const DEFAULT_WATCHDOG_CONFIG = {
     enabled: false,
@@ -416,27 +417,31 @@ function writeSettingsFile(settingsPath, settings) {
 export function writeUserWatchdogEnabled(enabled) {
     const settingsPath = getUserSettingsPath();
     const meta = { scope: "user", path: settingsPath };
-    const settings = readSettingsFileStrict(settingsPath);
-    const watchdog = ensureWatchdogSettings(settings, meta);
-    watchdog.enabled = enabled;
-    targetSettingsObject(watchdog, { kind: "main" }, meta).enabled = enabled;
-    return writeSettingsFile(settingsPath, settings);
+    return withSettingsFileLease(settingsPath, () => {
+        const settings = readSettingsFileStrict(settingsPath);
+        const watchdog = ensureWatchdogSettings(settings, meta);
+        watchdog.enabled = enabled;
+        targetSettingsObject(watchdog, { kind: "main" }, meta).enabled = enabled;
+        return writeSettingsFile(settingsPath, settings);
+    });
 }
 export function writeWatchdogModelSettings(input) {
     const settingsPath = settingsPathForWrite(input.scope, input.cwd);
     const meta = { scope: input.scope, path: settingsPath };
-    const settings = readSettingsFileStrict(settingsPath);
-    const watchdog = ensureWatchdogSettings(settings, meta);
-    const target = targetSettingsObject(watchdog, input.target, meta);
-    if (input.model === null)
-        delete target.model;
-    else if (input.model !== undefined)
-        target.model = input.model;
-    if (input.thinking === null)
-        delete target.thinking;
-    else if (input.thinking !== undefined)
-        target.thinking = input.thinking;
-    return writeSettingsFile(settingsPath, settings);
+    return withSettingsFileLease(settingsPath, () => {
+        const settings = readSettingsFileStrict(settingsPath);
+        const watchdog = ensureWatchdogSettings(settings, meta);
+        const target = targetSettingsObject(watchdog, input.target, meta);
+        if (input.model === null)
+            delete target.model;
+        else if (input.model !== undefined)
+            target.model = input.model;
+        if (input.thinking === null)
+            delete target.thinking;
+        else if (input.thinking !== undefined)
+            target.thinking = input.thinking;
+        return writeSettingsFile(settingsPath, settings);
+    });
 }
 export function resolveWatchdogConfig(cwd, options = {}) {
     const sources = [];

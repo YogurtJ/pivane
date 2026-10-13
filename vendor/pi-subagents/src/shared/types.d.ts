@@ -256,7 +256,7 @@ export interface ResolvedToolBudget {
     hard: number;
     block: string[] | "*";
 }
-export type ToolBudgetOutcome = "within-budget" | "soft-reached" | "hard-blocked";
+export type ToolBudgetOutcome = "within-budget" | "soft-reached" | "hard-reached" | "hard-blocked";
 export interface ToolBudgetState extends ResolvedToolBudget {
     outcome: ToolBudgetOutcome;
     toolCount: number;
@@ -415,6 +415,8 @@ export interface ParallelHandoffLaneBinding {
     lane?: WorkflowLaneMetadata;
 }
 export interface ParallelHandoffCleanupTask {
+    /** Canonical parent recorded when the worktree was created; missing proof keeps old trees. */
+    recordedBaseDir?: string;
     index: number;
     path: string;
     branch: string;
@@ -576,7 +578,6 @@ export interface TimeoutRecoverySummary {
 export type TimeoutRecoveryProjection = Pick<TimeoutRecoverySummary, "termination" | "changedFiles" | "truncated" | "recoveryNeeded" | "reason" | "reportStatus">;
 export declare const SUBAGENT_LIFECYCLE_ARTIFACT_VERSION = 3;
 export type SubagentLifecycleArtifactVersion = typeof SUBAGENT_LIFECYCLE_ARTIFACT_VERSION;
-export type ProcessTerminalState = "pending" | "observed" | "unknown" | "not-started";
 export type ProcessTerminalReason = "observer-unavailable" | "runner-candidate-missing" | "runner-instance-mismatch" | "writer-close-unverified" | "process-tree-unverified" | "canonical-session-unavailable" | "canonical-session-lease-active" | "canonical-session-release-unverified" | "proof-write-failed" | "stale-repair";
 export interface RunnerProcessInstanceExit {
     processInstanceId: string;
@@ -748,6 +749,8 @@ export interface SteeringRecoveryDescriptor {
     sessionFile?: string;
     /** Git ref used to allocate managed worktrees for this run. */
     baseRef?: string;
+    /** Launcher name the run was wrapped with; resume re-reads its argv from current user config. Absence means unwrapped. */
+    launcher?: string;
     cwd: string;
     model?: string;
     modelProvider?: string;
@@ -817,6 +820,8 @@ export interface SubagentResultIntercomChild {
     status: SubagentResultStatus;
     /** Whether the child produced substantive output before its process ended. */
     outputState?: SubagentOutputState;
+    /** True when the output is unfinished streamed text recovered after a timeout or child error. */
+    outputPartial?: boolean;
     summary: string;
     index?: number;
     artifactPath?: string;
@@ -1129,6 +1134,8 @@ export interface SingleResult {
     index: number;
     /** Workflow child key that owns this result when returned from workflow details. */
     workflowKey?: string;
+    /** Workflow child run id that produced this result; resumed rounds share a session file but not a run id. */
+    runId?: string;
     agent: string;
     task: string;
     /** Human-readable display name for the child's own session (agent + task
@@ -1181,6 +1188,8 @@ export interface SingleResult {
     finalOutput?: string;
     /** Provenance-aware state for substantive child output, excluding synthetic lifecycle messages. */
     outputState?: SubagentOutputState;
+    /** True when the output is unfinished streamed text recovered after a timeout or child error. */
+    outputPartial?: boolean;
     outputMode?: OutputMode;
     savedOutputPath?: string;
     outputReference?: SavedOutputReference;
@@ -1235,6 +1244,8 @@ export interface WaitCompletionChild {
     sessionFile?: string;
     success?: boolean;
     outputState?: SubagentOutputState;
+    /** True when the output is unfinished streamed text recovered after a timeout or child error. */
+    outputPartial?: boolean;
     structuredOutput?: unknown;
     structuredOutputPath?: string;
     error?: string;
@@ -1317,6 +1328,7 @@ export interface AgentCapabilityRow {
     };
 }
 export interface Details {
+    commands?: import("../runs/shared/child-commands.ts").ChildCommandSnapshot[];
     mode: SubagentResultMode | "management";
     workflowReceiptPath?: string;
     runId?: string;
@@ -1343,8 +1355,8 @@ export interface Details {
             id: string;
         }>;
     } | {
-        /** Non-terminal internal auto-drain yield; tracked work remains active. */
-        reason: "supervisor_request";
+        /** Non-terminal yield for a supervisor request or a user message; tracked work remains active. */
+        reason: "supervisor_request" | "user_input";
         timedOut: false;
         activeRunIds: string[];
         activeProviderItems: Array<{
@@ -1840,6 +1852,8 @@ export interface AsyncStatus {
     /** Linux PID namespace identity used to scope liveness probes. */
     pidNamespaceScope?: string;
     cwd?: string;
+    /** User-configured launcher that wrapped the background runner (argv only, never environment). */
+    launcher?: RunnerLauncher;
     /** Parent-resolved child session root retained for trusted restored transcript lookup. */
     sessionRoot?: string;
     currentStep?: number;
@@ -1935,6 +1949,8 @@ export interface AsyncStatus {
         tokens?: TokenUsage;
         skills?: string[];
         model?: string;
+        /** Model the child was launched on, recorded when its replies reported a different `model`; revival uses it. */
+        launchModel?: string;
         thinking?: string;
         contextLimit?: number;
         thinkingCeiling?: ThinkingLevel;
@@ -2064,6 +2080,8 @@ export interface ForegroundResumeChild {
     error?: string;
     finalOutput?: string;
     outputState?: SubagentOutputState;
+    /** True when the output is unfinished streamed text recovered after a timeout or child error. */
+    outputPartial?: boolean;
     outputMode?: OutputMode;
     savedOutputPath?: string;
     outputSaveError?: string;
@@ -2190,6 +2208,8 @@ export interface ForegroundRunControl {
     interrupt?: () => boolean;
     detach?: () => boolean;
     steer?: ForegroundChildControl["steer"];
+    /** Set while a detached child runs: records it as stopped, then aborts it, when this runtime is replaced. */
+    stopForRuntimeReplacement?: () => void;
 }
 export interface WaitSubscriptionRecord {
     version: 1;
@@ -2325,6 +2345,13 @@ export declare const INTERCOM_DETACH_RESPONSE_EVENT = "pi-intercom:detach-respon
 /** pi-intercom asks each session for a fixed intercom ID at session start; `claim(id)` answers synchronously. */
 export declare const INTERCOM_SESSION_IDENTITY_EVENT = "intercom:session-identity";
 export declare const SUBAGENT_ASYNC_STARTED_EVENT = "subagent:async-started";
+/** Launcher names are plain identifiers so they survive frontmatter rewrites without quoting. */
+export declare const RUNNER_LAUNCHER_NAME_PATTERN: RegExp;
+export declare const RUNNER_LAUNCHER_NAME_RULE = "must start with a letter or digit and use only letters, digits, '.', '_' or '-' (at most 128 characters)";
+export interface RunnerLauncher {
+    name: string;
+    argv: string[];
+}
 export declare const SUBAGENT_ASYNC_COMPLETE_EVENT = "subagent:async-complete";
 export declare const SUBAGENT_PROCESS_TERMINAL_EVENT = "subagent:process-terminal";
 export declare const SUBAGENT_FOREGROUND_COMPLETE_EVENT = "subagent:foreground-complete";
@@ -2355,6 +2382,8 @@ export interface SubagentChildStatusEvent {
 export interface ForegroundChildSessionControls {
     steer: (text: string) => Promise<void>;
     followUp: (text: string) => Promise<void>;
+    /** Abort the live child and report the run as stopped with `reason`. */
+    stop: (reason: string) => void;
 }
 export interface RunSyncOptions {
     /** Exact discovery provenance for an unknown-agent error; omission uses defensive fallback discovery. */
@@ -2373,6 +2402,8 @@ export interface RunSyncOptions {
     permissions?: import("../runs/shared/permissions.ts").PermissionConfig;
     /** Session id of the direct parent session for permission-system ask forwarding. */
     parentSessionId?: string;
+    /** The parent session's file, recorded as a new child session's `parentSession` header. */
+    parentSessionFile?: string;
     /** Resolved launch context for this child. */
     context?: "fresh" | "fork";
     cwd?: string;
@@ -2512,6 +2543,7 @@ export interface ScheduledRunsConfig {
     storeRoot?: string;
 }
 export type FleetViewPlacement = "aboveEditor" | "belowEditor";
+export type AsyncWidgetLayout = "adaptive" | "rows";
 export declare const FLEET_KEYBINDING_ACTIONS: readonly ["close", "scrollUp", "scrollDown", "selectUp", "selectDown", "selectFirst", "selectLast", "pageUp", "pageDown", "refresh", "steer", "inspect", "stop", "toggleTools"];
 export type FleetKeybindingAction = typeof FLEET_KEYBINDING_ACTIONS[number];
 export type FleetKeybindingsConfig = Partial<Record<FleetKeybindingAction, string[]>>;
@@ -2551,12 +2583,24 @@ export interface ExtensionConfig {
     fleetKeybindings?: FleetKeybindingsConfig;
     /** Show the under-editor async runs widget. Defaults to true, including when FleetView is enabled. */
     asyncWidget?: boolean;
+    /** Start the under-editor async runs widget folded. Defaults to false. */
+    asyncWidgetCollapsed?: boolean;
+    /** Unfolded async runs widget layout: "adaptive" fits run details to the terminal height, "rows" shows one line per run. Defaults to "adaptive". */
+    asyncWidgetLayout?: AsyncWidgetLayout;
+    /** Report subagent run state to the terminal with OSC 7501. Defaults to true. */
+    programStatus?: boolean;
+    /** Add a short `active_subagents` system prompt section listing this session's active background runs. Defaults to false. */
+    activeRunsPrompt?: boolean;
     /** Exact provider/model candidates mapped to operator-declared equivalent response IDs. Empty arrays add no accepted IDs. */
     modelResponseAliases?: Record<string, string[]>;
+    /** Named argv prefixes for background runners; agents select one with `launcher: <name>`. User config only. */
+    runnerLaunchers?: Record<string, string[]>;
     /** Tool description variant registered for the parent-facing subagent tool. Defaults to split metadata. */
     toolDescriptionMode?: ToolDescriptionMode;
     /** How a new parent session offers the subagent tool. Defaults to auto. */
     toolActivation?: ToolActivationMode;
+    /** Keep a resumed session on the pi-subagents tool definitions and prompt text it already declared. Defaults to true. */
+    pinToolDeclarations?: boolean;
     /** Opt-in feature groups removed from the subagent tool schema and rejected at every execution boundary. */
     disabledFeatures?: SubagentFeature[];
     /** Inline chat rendering for the subagent tool. Defaults to rich. */
@@ -2651,7 +2695,6 @@ export declare function resolveTempScopeId(options?: {
     }) | undefined;
     homedir?: (() => string) | undefined;
 }): string;
-export declare const MAX_CONCURRENCY = 4;
 export declare const TEMP_ROOT_DIR: string;
 export declare const RESULTS_DIR: string;
 export declare const ASYNC_DIR: string;
@@ -2675,7 +2718,7 @@ export declare const POLL_INTERVAL_MS = 250;
 export declare const WIDGET_ANIMATION_INTERVAL_MS = 1000;
 export declare const MAX_WIDGET_JOBS = 4;
 export declare const DEFAULT_SUBAGENT_MAX_DEPTH = 2;
-export declare const SUBAGENT_ACTIONS: readonly ["list", "get", "models", "children.list", "guide", "validate", "create", "update", "delete", "eject", "disable", "enable", "reset", "mission.create", "mission.list", "mission.show", "mission.update", "mission.resolve-decision", "mission.attach-run", "mission.close", "worktree.discard", "worktree.cleanup", "lane.status", "lane.recordMerge", "lane.recordSupersession", "refine", "refine.show", "refine.rollback", "inspector.open", "inspector.command", "inspector.status", "inspector.close", "project.open", "project.status", "project.close", "status", "debug.run", "grant-spawn-budget", "interrupt", "resume", "steer", "stop", "dismiss", "doctor", "watchdog.status", "watchdog.check", "watchdog.configure", "watchdog.recommend-model", "schedule.create", "schedule.list", "schedule.show", "schedule.history", "schedule.pause", "schedule.resume", "schedule.run", "schedule.run-due", "schedule.delete"];
+export declare const SUBAGENT_ACTIONS: readonly ["list", "get", "models", "children.list", "guide", "validate", "create", "update", "delete", "eject", "disable", "enable", "reset", "mission.create", "mission.list", "mission.show", "mission.update", "mission.resolve-decision", "mission.attach-run", "mission.close", "worktree.discard", "worktree.cleanup", "lane.status", "lane.recordMerge", "lane.recordSupersession", "refine", "refine.show", "refine.rollback", "inspector.open", "inspector.command", "inspector.status", "inspector.close", "project.open", "project.status", "project.close", "status", "debug.run", "grant-spawn-budget", "interrupt", "resume", "steer", "stop", "command.status", "command.yield", "command.cancel", "dismiss", "doctor", "watchdog.status", "watchdog.check", "watchdog.configure", "watchdog.recommend-model", "schedule.create", "schedule.list", "schedule.show", "schedule.history", "schedule.pause", "schedule.resume", "schedule.run", "schedule.run-due", "schedule.delete"];
 export declare const DEFAULT_FORK_PREAMBLE: string;
 export declare function resolveTopLevelParallelMaxTasks(value: unknown): number;
 export declare function resolveTopLevelParallelConcurrency(override: unknown, configValue: unknown): number;
@@ -2687,12 +2730,8 @@ export interface SubagentDepthContext {
     depth: number;
     maxDepth?: number;
 }
-/** Operator override for the top-level parent; children inherit their limit through their runtime config. */
-export declare const SUBAGENT_MAX_DEPTH_ENV = "PI_SUBAGENT_MAX_DEPTH";
 export declare function resolveCurrentMaxSubagentDepth(configMaxDepth?: number, runtime?: SubagentDepthContext): number;
 export declare function resolveChildMaxSubagentDepth(parentMaxDepth: number, agentMaxDepth?: number): number;
-/** Depth of the executor itself: 0 for a top-level parent, its own child depth otherwise. */
-export declare function resolveCurrentSubagentDepth(runtime?: SubagentDepthContext): number;
 export declare function checkSubagentDepth(configMaxDepth?: number, runtime?: SubagentDepthContext): {
     blocked: boolean;
     depth: number;
@@ -2702,7 +2741,6 @@ export declare function checkSubagentDepth(configMaxDepth?: number, runtime?: Su
 export declare function resolveChildDepth(maxDepth?: number, runtime?: SubagentDepthContext): Required<SubagentDepthContext>;
 export declare function normalizeMaxSubagentSpawnsPerSession(value: unknown): number | undefined;
 export declare function resolveMaxSubagentSpawnsPerSession(configMaxSpawns?: number): number | undefined;
-export declare const DEFAULT_MAX_SUBAGENT_SPAWNS_PER_RUN = 64;
 export declare function normalizeMaxSubagentSpawnsPerRun(value: unknown): number | undefined;
 export declare function resolveMaxSubagentSpawnsPerRun(configMaxSpawns?: number): number;
 export declare function truncateOutput(output: string, config: Required<MaxOutputConfig>, artifactPath?: string): TruncationResult;

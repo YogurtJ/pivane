@@ -37,6 +37,8 @@ export interface WorktreeSetup {
     capturedDiffs?: WorktreeDiff[];
 }
 export interface WorktreeInfo {
+    /** Canonical parent captured at allocation; never re-resolve this evidence later. */
+    recordedBaseDir?: string;
     path: string;
     agentCwd: string;
     branch: string;
@@ -58,6 +60,7 @@ export interface WorktreeDiff {
     error?: string;
 }
 export interface WorktreeCleanupTask {
+    recordedBaseDir?: string;
     index: number;
     path: string;
     branch: string;

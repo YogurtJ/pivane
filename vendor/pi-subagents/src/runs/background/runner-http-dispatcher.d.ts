@@ -27,6 +27,9 @@ export declare function runnerHttpDispatcherOptions(timeoutMs: number): {
     proxyTunnel: true;
     headersTimeout: number;
     bodyTimeout: number;
+    connect: {
+        autoSelectFamilyAttemptTimeout: number;
+    };
 };
 /**
  * Installs the runner's proxy-aware undici dispatcher as the process global and

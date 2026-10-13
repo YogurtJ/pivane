@@ -80,20 +80,6 @@ export function resolveSingleOutputPath(output, runtimeCwd, requestedCwd, relati
         : runtimeCwd;
     return path.resolve(baseCwd, output);
 }
-function formatOutputPathInstruction(outputPath, capabilities) {
-    const delivery = !capabilities || hasOutputWriteCapability(capabilities.tools, capabilities.mcpDirectTools)
-        ? `Write your findings to exactly this path: ${outputPath}`
-        : [
-            "Return the complete artifact in your final response.",
-            `The runtime will persist it to exactly this path: ${outputPath}`,
-            "Do not call contact_supervisor merely because no write-capable tool is available.",
-        ].join("\n");
-    return [
-        delivery,
-        "This path is authoritative for this run.",
-        "Ignore any other output filename or output path mentioned elsewhere, including output destinations in the base agent prompt, system prompt, or task instructions.",
-    ].join("\n");
-}
 export function requestedOutputPathFromTask(task) {
     for (const line of task.split(/\r?\n/).reverse()) {
         const match = line.match(/^\s*(?:Write your findings to(?: exactly this path)?:|The runtime will persist it to exactly this path:)\s*(.+?)\s*$/i);
@@ -115,13 +101,19 @@ export function outputPathMappingFromTask(task, savedPath) {
 export function injectSingleOutputInstruction(task, outputPath, capabilities) {
     if (!outputPath)
         return task;
-    return `${task}\n\n---\n**Output:**\n${formatOutputPathInstruction(outputPath, capabilities)}`;
-}
-export function injectOutputPathSystemPrompt(systemPrompt, outputPath, capabilities) {
-    if (!outputPath)
-        return systemPrompt;
-    const instruction = `Runtime output path override:\n${formatOutputPathInstruction(outputPath, capabilities)}`;
-    return systemPrompt ? `${systemPrompt}\n\n${instruction}` : instruction;
+    const delivery = !capabilities || hasOutputWriteCapability(capabilities.tools, capabilities.mcpDirectTools)
+        ? `Write your findings to exactly this path: ${outputPath}`
+        : [
+            "Return the complete artifact in your final response.",
+            `The runtime will persist it to exactly this path: ${outputPath}`,
+            "Do not call contact_supervisor merely because no write-capable tool is available.",
+        ].join("\n");
+    return [
+        `${task}\n\n---\n**Output:**`,
+        delivery,
+        "This path is authoritative for this run.",
+        "Ignore any other output filename or output path mentioned elsewhere, including output destinations in the system prompt or the task instructions.",
+    ].join("\n");
 }
 function countLines(text) {
     if (!text)
@@ -151,6 +143,84 @@ export function formatSavedOutputReference(savedPath, fullOutput) {
         lines,
         message: `Output saved to: ${absolutePath} (${formatByteSize(bytes)}, ${lines} ${lines === 1 ? "line" : "lines"}). Read this file if needed.`,
     };
+}
+const INLINE_OUTPUT_HEAD_CHARS = 2_000;
+/** Larger files are not read to check a cap; the output then stays whole. */
+const MAX_FULL_OUTPUT_FILE_BYTES = 50 * 1024 * 1024;
+/** The line finalizeSingleOutput appends when inline output was also saved to an explicit output file. */
+const SAVED_OUTPUT_LINE = /\n\nOutput saved to: (.+) \([^()\n]*\)\. Read this file if needed\.$/;
+/** How many trailing `\n\n` blocks a file-backed head may be followed by, such as a timed-out child's recovery summary. */
+const MAX_UNFILED_TRAILING_BLOCKS = 8;
+function readFullOutputFile(filePath) {
+    try {
+        const stat = fs.statSync(filePath);
+        if (!stat.isFile() || stat.size > MAX_FULL_OUTPUT_FILE_BYTES)
+            return undefined;
+        return fs.readFileSync(filePath, "utf-8");
+    }
+    catch {
+        return undefined;
+    }
+}
+/** The longest prefix of output, ending before at most `maxTrailingBlocks` of its last `\n\n` blocks, that the file holds and that is worth capping. */
+function fileBackedHead(output, fullOutput, maxTrailingBlocks) {
+    if (fullOutput.includes(output))
+        return output;
+    let end = output.length;
+    for (let attempt = 0; attempt < maxTrailingBlocks; attempt++) {
+        end = output.lastIndexOf("\n\n", end - 1);
+        if (end <= INLINE_OUTPUT_HEAD_CHARS)
+            return undefined;
+        const head = output.slice(0, end);
+        if (fullOutput.includes(head))
+            return head;
+    }
+    return undefined;
+}
+/**
+ * Keeps at most INLINE_OUTPUT_HEAD_CHARS of a child's output inline and points to the file holding all of it.
+ * Files come only from run records, never from the child's text: a trailing `Output saved to:` line is kept as the
+ * pointer only when it names the run's recorded saved-output path, and that recorded path is what gets read.
+ * Trailing blocks the file does not hold, such as a timed-out child's recovery summary, stay inline after the pointer.
+ * Output stays whole when it is short or no readable file contains it, so no text is lost.
+ */
+export function capInlineOutput(output, files) {
+    const match = files.savedPath ? output.match(SAVED_OUTPUT_LINE) : null;
+    const savedLine = match && files.savedPath && match[1] === path.resolve(files.savedPath) ? match : undefined;
+    const body = savedLine ? output.slice(0, savedLine.index) : output;
+    const filePath = savedLine ? files.savedPath : files.artifactPath;
+    if (body.length <= INLINE_OUTPUT_HEAD_CHARS || !filePath)
+        return output;
+    const fullOutput = readFullOutputFile(filePath);
+    if (fullOutput === undefined)
+        return output;
+    const head = fileBackedHead(body, fullOutput, savedLine ? 0 : MAX_UNFILED_TRAILING_BLOCKS);
+    if (head === undefined)
+        return output;
+    const lineEnd = head.lastIndexOf("\n", INLINE_OUTPUT_HEAD_CHARS);
+    let end = lineEnd >= INLINE_OUTPUT_HEAD_CHARS - 200 ? lineEnd : INLINE_OUTPUT_HEAD_CHARS;
+    if (/[\uD800-\uDBFF]/.test(head[end - 1] ?? ""))
+        end -= 1;
+    if (savedLine)
+        return `${head.slice(0, end)}\n…${output.slice(body.length)}`;
+    const reference = formatSavedOutputReference(filePath, fullOutput);
+    return `${head.slice(0, end)}\n…\nFull output: ${reference.path} (${formatByteSize(reference.bytes)}, ${reference.lines} ${reference.lines === 1 ? "line" : "lines"}). Read it if needed.${body.slice(head.length)}`;
+}
+/** Applies capInlineOutput to each `agent:\noutput` section of a run summary whose child output is long. */
+export function capSummaryOutputs(summary, results) {
+    let capped = summary;
+    for (const result of results ?? []) {
+        if (typeof result.agent !== "string" || typeof result.output !== "string" || result.output.length <= INLINE_OUTPUT_HEAD_CHARS)
+            continue;
+        const artifactPath = result.artifactOutputSaveFailed === true || typeof result.artifactPaths?.outputPath !== "string" ? undefined : result.artifactPaths.outputPath;
+        const savedPath = typeof result.savedOutputPath === "string" && result.savedOutputPath ? result.savedOutputPath : undefined;
+        const section = `${result.agent}:\n${result.output}`;
+        const index = capped.indexOf(section);
+        if (index < 0)
+            continue;
+        capped = `${capped.slice(0, index)}${result.agent}:\n${capInlineOutput(result.output, { artifactPath, savedPath })}${capped.slice(index + section.length)}`;
+    }
+    return capped;
 }
 export function validateFileOnlyOutputMode(outputMode, outputPath, context) {
     if (outputMode === "file-only" && !outputPath) {
@@ -267,5 +337,14 @@ export function finalizeSingleOutput(params) {
         return { displayOutput, saveError: params.saveError };
     }
     return { displayOutput };
+}
+/**
+ * Determines whether an output resolution error represents an unrecoverable settlement failure.
+ * Returns true for fatal claim-path mismatches in any mode, or when required file-only output
+ * fails to persist without a savedPath. Inline and optional outputs remain nonfatal warnings.
+ */
+export function isSettlementFatalOutputError(resolvedOutput, outputMode) {
+    return resolvedOutput.fatalError === true
+        || (outputMode === "file-only" && !resolvedOutput.savedPath && Boolean(resolvedOutput.saveError));
 }
 //# sourceMappingURL=single-output.js.map

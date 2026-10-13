@@ -2,10 +2,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { discoverAgentSnapshot, findBlockingAgentDiagnostic, formatUnknownAgentError, resolveAgentName, unknownAgentDiagnosticContext } from "../agents/agents.js";
-import { resolveExecutionAgentScope } from "../agents/agent-scope.js";
+import { projectScopeRequiresTrustMessage, resolveExecutionAgentScope } from "../agents/agent-scope.js";
 import { normalizeSkillInput, resolveSkillsWithFallback } from "../agents/skills.js";
 import { inheritsParentModel, resolveEffectiveSubagentModel, resolveModelOrigin, resolveModelSelection } from "../runs/shared/model-resolution.js";
 import { resolveModelScopesForAgent } from "../runs/shared/model-scope.js";
+import { assertClaudeCodeModelScope, isClaudeCodeAdapterId, resolveClaudeCodeOverride } from "../runs/shared/claude-code-adapter.js";
 import { applyThinkingSuffix, resolvePiLaunchToolPlan } from "../runs/shared/child-tool-plan.js";
 import { buildEffectiveSystemPrompt } from "../runs/shared/effective-system-prompt.js";
 import { normalizeSingleOutputOverride, resolveSingleOutputPath } from "../runs/shared/single-output.js";
@@ -25,12 +26,24 @@ import { processTerminalCandidatePath, processTerminalPath } from "../runs/backg
 import { resultFilePath } from "../runs/background/result-files.js";
 import { nestedResultsPath } from "../runs/shared/nested-events.js";
 import { normalizeExtensionBindings } from "../runs/shared/extension-bindings.js";
-import { resolveRequiredChildExtensions } from "../shared/required-child-extensions.js";
+import { assertRequiredChildExtensionsAdmitted, resolveRequiredChildExtensions } from "../shared/required-child-extensions.js";
 // v3: the contract reports the resolved Intercom bridge state and binds its
 // prompt and tools into launchContractDigest, matching execution (#2127).
 export const SUBAGENT_LAUNCH_CONTRACT_VERSION = 3;
 /** Stands in for the parent session target when the host does not supply one; only custom templates that name the session read it. */
 const PREFLIGHT_ORCHESTRATOR_TARGET = "preflight";
+/**
+ * Classify a Claude Code override failure for the launch contract. The messages
+ * are owned by the adapter and the scope check, so this maps them explicitly
+ * instead of defaulting every rejection to the ceiling.
+ */
+function claudeCodeFailureCode(message) {
+    if (message.includes("subagent model scope"))
+        return "model_scope";
+    if (message.startsWith("Thinking level '"))
+        return "thinking_ceiling";
+    return "unsupported_mode";
+}
 function packageVersion() {
     const packagePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "package.json");
     const parsed = JSON.parse(fs.readFileSync(packagePath, "utf-8"));
@@ -121,8 +134,12 @@ export async function resolveSubagentLaunchContract(input) {
         return { ok: false, code: "invalid_intercom_bridge", message: "orchestratorTarget must be a non-empty string when provided.", diagnostics };
     }
     const scope = resolveExecutionAgentScope(input.agentScope);
+    if (input.projectTrusted === false && scope === "project") {
+        const message = projectScopeRequiresTrustMessage(effectiveCwd);
+        return { ok: false, code: "restricted_agent", message, diagnostics: [...diagnostics, { code: "restricted_agent", severity: "error", message }] };
+    }
     const parentProvider = input.preferredProvider ?? input.parentModel?.provider;
-    const discovery = discoverAgentSnapshot(effectiveCwd, scope, parentProvider, { includeChains: false });
+    const discovery = discoverAgentSnapshot(effectiveCwd, scope, parentProvider, { includeChains: false, projectTrusted: input.projectTrusted });
     const discovered = discovery.effective;
     const resolvedAgent = resolveAgentName(input.agent, discovered.agents);
     const ambiguousCandidates = resolvedAgent.error
@@ -188,6 +205,14 @@ export async function resolveSubagentLaunchContract(input) {
     if (resolvedSkills.missing.length > 0)
         diagnostics.push({ code: "missing_skill", severity: "error", message: `Missing skills: ${resolvedSkills.missing.join(", ")}` });
     const externalRunner = agent.runner?.type === "external-cli" || agent.runner?.type === "external-job";
+    // Machine placement has no preflight input; execution enforces it. Preview the runner-type admission here.
+    try {
+        assertRequiredChildExtensionsAdmitted([resolveRequiredChildExtensions(input.parentSessionId)], { agent: agent.name, runnerType: agent.runner?.type });
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { ok: false, code: "unsupported_mode", message, diagnostics };
+    }
     if (externalRunner && behavior.outputSchema) {
         return { ok: false, code: "unsupported_mode", message: `Agent '${agent.name}' uses runner.type='${agent.runner?.type}' and does not support: structured output.`, diagnostics };
     }
@@ -216,6 +241,28 @@ export async function resolveSubagentLaunchContract(input) {
             const message = error instanceof Error ? error.message : String(error);
             diagnostics.push({ code: "thinking_ceiling", severity: "error", message });
             return { ok: false, code: "thinking_ceiling", message, diagnostics };
+        }
+    }
+    // The Claude Code adapters accept a model and a level that never become a Pi child
+    // model, so validate has to run the same two checks the launch runs, or validate
+    // would report ok for a launch that then fails.
+    if (agent.runner?.type === "external-cli" && isClaudeCodeAdapterId(agent.runner.adapter)) {
+        try {
+            const override = resolveClaudeCodeOverride({
+                model: typeof input.model === "string" ? input.model : undefined,
+                agent,
+                thinking: typeof effectiveThinkingConfig === "string" ? effectiveThinkingConfig : undefined,
+                thinkingCeiling: intersectThinkingCeilings(discovered.maxThinking, input.thinkingCeiling, input.inheritedThinkingCeiling),
+                agentName: agent.name,
+                runId,
+            });
+            assertClaudeCodeModelScope({ scopes: modelScopes, model: override?.model, agent: agent.name, runId });
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            const code = claudeCodeFailureCode(message);
+            diagnostics.push({ code, severity: "error", message });
+            return { ok: false, code, message, diagnostics };
         }
     }
     let toolPlan;
@@ -277,7 +324,7 @@ export async function resolveSubagentLaunchContract(input) {
         model,
         ...(fast !== undefined ? { fast } : {}),
         ...(effectiveThinking ? { thinking: effectiveThinking } : {}),
-        systemPrompt: buildEffectiveSystemPrompt({ agent, resolvedSkills: resolvedSkills.resolved, cwd: effectiveCwd, ...(outputPath ? { outputPath } : {}) }),
+        systemPrompt: buildEffectiveSystemPrompt({ agent, resolvedSkills: resolvedSkills.resolved, cwd: effectiveCwd }),
         skills: requestedSkills,
         toolPlan,
         ...(outputPath ? { outputPath } : {}),

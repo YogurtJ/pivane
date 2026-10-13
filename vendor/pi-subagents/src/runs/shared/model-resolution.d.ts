@@ -6,8 +6,12 @@ export interface ModelSelectionEvidence {
     requestedModel?: string;
 }
 export { splitThinkingSuffix };
-/** Aliases apply only to the resolved launch candidate (without its thinking suffix) and the exact raw response ID. */
-export declare function formatSubagentModelVerificationError(expectedModel: string, observedModel: string, availableModels: AvailableModelInfo[] | undefined, modelResponseAliases?: Record<string, string[]>): string | undefined;
+/**
+ * Aliases apply only to the resolved launch candidate (without its thinking suffix) and the exact raw response ID.
+ * When the child's live selection is a Pi virtual model, assistant messages name the physical model it dispatched
+ * to, so the virtual selection's provider/id is compared exactly with the launch candidate instead.
+ */
+export declare function formatSubagentModelVerificationError(expectedModel: string, observedModel: string, availableModels: AvailableModelInfo[] | undefined, modelResponseAliases?: Record<string, string[]>, observedVirtualModel?: string): string | undefined;
 /** Sentinel model value requesting that a subagent inherit the parent session's model. */
 export declare const INHERIT_MODEL = "inherit";
 /** Minimal shape of the parent session's in-memory model (`ctx.model`). */

@@ -31,6 +31,48 @@ function writeJsonToExistingDir(filePath, payload) {
     }
 }
 const CONTROL_SAFETY_POLL_INTERVAL_MS = 5000;
+const REPEATED_SCAN_ERROR_SUMMARY_MS = 60_000;
+function validCommandRequest(raw) {
+    if (!raw || typeof raw !== "object")
+        return false;
+    const value = raw;
+    return value.type === "command" && typeof value.id === "string" && /^[a-f0-9-]{36}$/.test(value.id)
+        && typeof value.ownerId === "string" && /^[a-f0-9-]{36}$/.test(value.ownerId)
+        && (value.operation === "status" || value.operation === "yield" || value.operation === "cancel")
+        && Number.isSafeInteger(value.deadlineAt) && value.deadlineAt > 0
+        && (value.toolCallId === undefined ? value.operation === "status" : typeof value.toolCallId === "string" && value.toolCallId.length > 0 && value.toolCallId.length <= 256);
+}
+function commandRequestsDir(dir) { return path.join(controlInboxDir(dir), "command-requests"); }
+export function requestAsyncCommand(dir, request) {
+    if (!validCommandRequest(request))
+        throw new Error("Malformed command request.");
+    writeAtomicJson(path.join(commandRequestsDir(dir), `${request.id}.json`), request);
+}
+function consumeCommandRequests(dir, fsImpl) {
+    const requests = [];
+    for (const name of fsImpl.readdirSync(commandRequestsDir(dir)).filter((entry) => entry.endsWith(".json")).sort()) {
+        const file = path.join(commandRequestsDir(dir), name);
+        let value;
+        try {
+            value = JSON.parse(fsImpl.readFileSync(file, "utf8"));
+        }
+        catch (error) {
+            if (error.code === "ENOENT")
+                continue;
+        }
+        try {
+            fsImpl.rmSync(file);
+        }
+        catch (error) {
+            if (error.code === "ENOENT")
+                continue;
+            throw error;
+        }
+        if (validCommandRequest(value))
+            requests.push(value);
+    }
+    return requests;
+}
 const STEER_REQUESTS_DIR = "steer-requests";
 const STOP_REQUESTS_DIR = "stop-requests";
 const REVIVAL_BRIEFS_DIR = "revival-briefs";
@@ -423,10 +465,31 @@ export function watchAsyncControlInbox(asyncDir, opts) {
             console.error("Control inbox error reporter failed:", reportError);
         }
     };
+    // A scan failing the same way (a Windows EPERM wrote gigabytes of identical traces) is reported once, then one count per interval, until a clean scan.
+    const repeatedScanErrors = new Map();
+    let scanFailed = false;
+    const reportScan = (error) => {
+        scanFailed = true;
+        const text = error instanceof Error ? error.message : String(error);
+        const now = (opts.now ?? Date.now)();
+        const repeated = repeatedScanErrors.get(text);
+        if (!repeated) {
+            repeatedScanErrors.set(text, { suppressed: 0, since: now });
+            report(error, "scan");
+            return;
+        }
+        repeated.suppressed++;
+        if (now - repeated.since < REPEATED_SCAN_ERROR_SUMMARY_MS)
+            return;
+        report(`${repeated.suppressed} more identical failures in the last ${Math.round((now - repeated.since) / 1000)}s: ${text}`, "scan");
+        repeated.suppressed = 0;
+        repeated.since = now;
+    };
     const dirs = [
         ...(opts.onInterrupt || opts.onTimeout || opts.onStop ? [dir] : []),
         ...(opts.onStop ? [stopRequestsDir(asyncDir)] : []),
         ...(opts.onSteer ? [steerRequestsDir(asyncDir)] : []),
+        ...(opts.onCommand ? [commandRequestsDir(asyncDir)] : []),
     ];
     if (dirs.length === 0)
         return () => { };
@@ -441,9 +504,19 @@ export function watchAsyncControlInbox(asyncDir, opts) {
     const check = () => {
         if (disposed)
             return;
+        scanFailed = false;
         try {
+            if (opts.onCommand)
+                for (const request of consumeCommandRequests(asyncDir, fsImpl)) {
+                    try {
+                        opts.onCommand(request);
+                    }
+                    catch (error) {
+                        report(error, "callback");
+                    }
+                }
             if (opts.onStop)
-                for (const request of consumeStopRequestPayloads(asyncDir, fsImpl, (error) => report(error, "scan"))) {
+                for (const request of consumeStopRequestPayloads(asyncDir, fsImpl, reportScan)) {
                     try {
                         opts.onStop(request);
                     }
@@ -468,7 +541,7 @@ export function watchAsyncControlInbox(asyncDir, opts) {
                 }
             }
             if (opts.onSteer)
-                for (const request of consumeSteerRequestsFromDir(steerRequestsDir(asyncDir), fsImpl, (error) => report(error, "scan"))) {
+                for (const request of consumeSteerRequestsFromDir(steerRequestsDir(asyncDir), fsImpl, reportScan)) {
                     try {
                         opts.onSteer(request);
                     }
@@ -478,8 +551,10 @@ export function watchAsyncControlInbox(asyncDir, opts) {
                 }
         }
         catch (error) {
-            report(error, "scan");
+            reportScan(error);
         }
+        if (!scanFailed)
+            repeatedScanErrors.clear();
     };
     // Handle a request that may have arrived before the watcher started.
     check();

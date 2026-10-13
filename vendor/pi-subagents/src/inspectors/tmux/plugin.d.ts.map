@@ -1,0 +1,1 @@
+{"version":3,"file":"plugin.d.ts","sourceRoot":"","sources":["../../../../src/inspectors/tmux/plugin.ts"],"names":[],"mappings":"AACA,OAAO,EAAoB,KAAK,UAAU,EAAE,MAAM,aAAa,CAAC;AAChE,OAAO,KAAK,EAAE,eAAe,EAAE,MAAM,aAAa,CAAC;AAEnD,MAAM,WAAW,cAAc;IAC9B,QAAQ,CAAC,EAAE,MAAM,CAAC,QAAQ,CAAC;IAC3B,MAAM,CAAC,EAAE,UAAU,CAAC;CACpB;AAED,wBAAgB,yBAAyB,CAAC,IAAI,GAAE,cAAmB,GAAG,eAAe,CAWpF"}

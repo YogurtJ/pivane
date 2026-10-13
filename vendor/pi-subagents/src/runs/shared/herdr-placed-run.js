@@ -418,13 +418,16 @@ export class BridgeChannel {
     failure;
     #rejectFailure;
     #failed = false;
+    #adopted = false;
     constructor(socketPath, runId) { this.runId = runId; this.failure = new Promise((_resolve, reject) => { this.#rejectFailure = reject; }); this.failure.catch(() => { }); this.socket = net.createConnection(socketPath); this.socket.on("data", (chunk) => { try {
         for (const frame of this.decoder.push(chunk)) {
             if (frame.runId !== runId)
                 throw new Error("Bridge run identity mismatch.");
-            this.frames.push(frame);
-            if (this.frames.length > 1024)
-                throw new Error("Bridge replay queue exceeded its bound.");
+            if (!this.#adopted) {
+                this.frames.push(frame);
+                if (this.frames.length > 1024)
+                    throw new Error("Bridge replay queue exceeded its bound.");
+            }
             const key = typeof frame.requestId === "string" ? `${frame.type}:${frame.requestId}` : "";
             const waiter = this.waiters.get(key);
             if (waiter) {
@@ -443,6 +446,7 @@ export class BridgeChannel {
         return; this.#failed = true; this.#rejectFailure(error); for (const waiter of this.waiters.values())
         waiter.reject(error); this.waiters.clear(); }
     get failed() { return this.#failed; }
+    adopt(listener) { this.#adopted = true; this.listeners.add(listener); return this.frames.splice(0); }
     wait(type, requestId) { return new Promise((resolve, reject) => this.waiters.set(`${type}:${requestId}`, { resolve, reject })); }
     configure(resources) { const requestId = `cfg_${randomBytes(6).toString("hex")}`; const waiting = this.wait("configured", requestId); this.socket.write(encodeHerdrPiFrame({ protocol: HERDR_PI_PROTOCOL, runId: this.runId, type: "configure", requestId, resources })); return waiting; }
     supervisorDelivered(requestId) { this.socket.write(encodeHerdrPiFrame({ protocol: HERDR_PI_PROTOCOL, runId: this.runId, type: "supervisor-delivered", requestId })); }
@@ -484,7 +488,7 @@ export class HerdrPiSession {
     supervisorDir;
     runtime;
     owner;
-    constructor(owner, bridgeForward, bridge, requestedTools, model, runtime, initialGit) { this.owner = owner; this.bridgeForward = bridgeForward; this.bridge = bridge; this.requestedTools = requestedTools; this.model = model; this.runtime = runtime; this.supervisorDir = runtime.supervisorChannelDir; this.#snapshot = { connection: "connected", state: "ready", identity: owner.identity, revision: 0 }; this.#initialGit = initialGit; bridge.listeners.add((frame) => this.#frame(frame)); if (this.supervisorDir) {
+    constructor(owner, bridgeForward, bridge, requestedTools, model, runtime, initialGit) { this.owner = owner; this.bridgeForward = bridgeForward; this.bridge = bridge; this.requestedTools = requestedTools; this.model = model; this.runtime = runtime; this.supervisorDir = runtime.supervisorChannelDir; this.#snapshot = { connection: "connected", state: "ready", identity: owner.identity, revision: 0 }; this.#initialGit = initialGit; bridge.adopt((frame) => this.#frame(frame)); if (this.supervisorDir) {
         this.#replyTimer = setInterval(() => { const replies = path.join(this.supervisorDir, "replies"); for (const name of fs.existsSync(replies) ? fs.readdirSync(replies) : []) {
             const file = path.join(replies, name);
             try {
@@ -515,9 +519,9 @@ export class HerdrPiSession {
         await input.bridgeForward.close();
         await input.connection.close();
         return;
-    } const old = { bridgeForward: this.bridgeForward, bridge: this.bridge }; this.bridgeForward = input.bridgeForward; this.bridge = input.bridge; this.identity = { ...this.identity, paneId: input.paneId }; this.#reconnectFailure = undefined; for (const frame of input.bridge.frames)
+    } const old = { bridgeForward: this.bridgeForward, bridge: this.bridge }; this.bridgeForward = input.bridgeForward; this.bridge = input.bridge; this.identity = { ...this.identity, paneId: input.paneId }; this.#reconnectFailure = undefined; for (const frame of input.bridge.adopt((frame) => this.#frame(frame)))
         if (typeof frame.cursor === "number" && frame.cursor > this.#evidenceCursor)
-            this.#frame(frame); input.bridge.listeners.add((frame) => this.#frame(frame)); for (const operation of this.#operations.values())
+            this.#frame(frame); for (const operation of this.#operations.values())
         if (!operation.accepted && !operation.settled) {
             operation.settled = true;
             operation.reject(new Error("Remote operation was not accepted before transport loss; task state is unknown."));

@@ -7,7 +7,7 @@ import type { McpRuntimeSnapshotHost, ResolvedMcpDirectToolSelection } from "../
 import { AGENT_DEFINITION_PROJECTION_VERSION } from "../shared/launch-contract.ts";
 import { type ExtensionBindings } from "../runs/shared/extension-bindings.ts";
 export declare const SUBAGENT_LAUNCH_CONTRACT_VERSION: 3;
-export type SubagentLaunchContractReasonCode = "missing_agent" | "ambiguous_agent" | "missing_skill" | "denied_required_tool" | "invalid_artifact_dir" | "invalid_cwd" | "unsupported_mode" | "restricted_agent" | "thinking_ceiling" | "invalid_extension_bindings" | "invalid_intercom_bridge";
+export type SubagentLaunchContractReasonCode = "missing_agent" | "ambiguous_agent" | "missing_skill" | "denied_required_tool" | "invalid_artifact_dir" | "invalid_cwd" | "unsupported_mode" | "restricted_agent" | "thinking_ceiling" | "model_scope" | "invalid_extension_bindings" | "invalid_intercom_bridge";
 export type SubagentLaunchContractDiagnosticCode = SubagentLaunchContractReasonCode | "host_required" | "snapshot_warning" | "workspace_scope_authority";
 export interface SubagentLaunchContractDiagnostic {
     code: SubagentLaunchContractDiagnosticCode;
@@ -19,6 +19,8 @@ export interface SubagentLaunchContractInput {
     cwd: string;
     task?: string;
     agentScope?: AgentScope;
+    /** False when the parent session declined project trust; project agents and project subagent settings are then ignored. Defaults to true. */
+    projectTrusted?: boolean;
     context?: "fresh" | "fork";
     model?: string;
     fast?: boolean;

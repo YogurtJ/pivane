@@ -100,6 +100,8 @@ export interface RunChildSessionResult {
     error?: string;
     finalOutput: string;
     outputState: SubagentOutputState;
+    /** Unfinished streamed text recovered after a timeout or child error. */
+    outputPartial?: boolean;
     interrupted?: boolean;
     timedOut?: boolean;
     stopped?: boolean;

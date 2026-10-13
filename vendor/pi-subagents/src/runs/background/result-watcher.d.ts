@@ -12,7 +12,7 @@ type ResultWatcherTimers = {
 type ResultWatcherDeps = {
     fs?: ResultWatcherFs;
     timers?: ResultWatcherTimers;
-    notifier?: Pick<CompletionNotifier, "deliver">;
+    notifier?: Pick<CompletionNotifier, "deliver"> & Partial<Pick<CompletionNotifier, "flush">>;
     /** Receives persisted completions before active-session delivery filtering. */
     observeCompletion?: (result: CompletionNotification & {
         runId: string;
@@ -32,6 +32,8 @@ type ResultWatcherDeps = {
     platform?: NodeJS.Platform;
     /** Shared current/predecessor session ownership used by the notifier. */
     ownership?: Pick<ResultDeliveryOwnership, "owns" | "claimedSessionIds">;
+    /** Called once the parent has this run's result: the notifier accepted it, or an earlier delivery already did. */
+    onResultDelivered?: (runId: string) => void;
 };
 type ResultFileChild = {
     agent?: string;
@@ -40,6 +42,7 @@ type ResultFileChild = {
     structuredOutput?: unknown;
     structuredOutputPath?: string;
     outputState?: SubagentOutputState;
+    outputPartial?: boolean;
     error?: string;
     success?: boolean;
     state?: string;
@@ -80,6 +83,7 @@ export declare function createResultWatcher(pi: {
     primeExistingResults: (options?: {
         triggerTurn?: boolean;
     }) => void;
+    deliverPendingResults: () => Promise<void>;
     refreshResultDelivery: () => void;
     stopResultWatcher: () => void;
 };

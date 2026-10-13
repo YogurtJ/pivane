@@ -3,14 +3,14 @@
   "packages": [
     {
       "name": "pi-subagents",
-      "version": "0.74.0",
-      "source": "https://registry.npmjs.org/pi-subagents/-/pi-subagents-0.74.0.tgz",
-      "sha256": "e0d926db564b9363cc9ee4c907e8fa1aa2dcb8a6a5cfa7f517308a53cfbf83c9",
+      "version": "0.78.0",
+      "source": "https://registry.npmjs.org/pi-subagents/-/pi-subagents-0.78.0.tgz",
+      "sha256": "9c4562f66c595d9878c04aae31d76727087db6e025b19eeba92d3bab1ac812cc",
       "license": "MIT",
       "files": [
         {
           "path": "vendor/pi-subagents/CHANGELOG.md",
-          "sha256": "f428df87d1d1bc643b47dffd8201e2cdb6830818f06c4f927bdacd8d2ff46fc4"
+          "sha256": "ae0a771ef57727088a44ec54476ee1716eae64063514499262bdce1f6a449cd5"
         },
         {
           "path": "vendor/pi-subagents/LICENSE",
@@ -18,7 +18,7 @@
         },
         {
           "path": "vendor/pi-subagents/README.md",
-          "sha256": "edf5a46c29f09577316d8e1c78918f1c251647d420d0019947ae264ef1792662"
+          "sha256": "61d791fefdebd71aa396f7ae839d80f6f29fa9972e7b8526a6fc38fa0772a097"
         },
         {
           "path": "vendor/pi-subagents/agents/claude-code-writer.md",
@@ -50,27 +50,27 @@
         },
         {
           "path": "vendor/pi-subagents/agents/evidence-auditor.md",
-          "sha256": "b4468b8f42f8acd9d0708ed8720adba292d9e120aaaea0ee83fa05fc4ab4c152"
+          "sha256": "a57db5a6132ee006444b8baa6a06cbb4b0e2613a89f98550213fe4ae5c4a7c5c"
         },
         {
           "path": "vendor/pi-subagents/agents/oracle.md",
-          "sha256": "67562b7d8921e36a2a4b2f692863e20ee6d451c9611d511528ebe2486863ab92"
+          "sha256": "3cd267c91f73e47f107d93d3fada29969b0140041d62a41f997b0854a126e09c"
         },
         {
           "path": "vendor/pi-subagents/agents/researcher.md",
-          "sha256": "12c9361ee208656a7e035cc1e31f1146e21ae4d46cb435adf8d100bd796ea2ac"
+          "sha256": "ff9492cf9ee60d9e7e96a34a525d64c7198ba95f6d3fcf480bc71501069cbc96"
         },
         {
           "path": "vendor/pi-subagents/agents/reviewer.md",
-          "sha256": "d295f133b85abda791ae31c39ffa4317ba0608f670a5d6e19843646deee4e83b"
+          "sha256": "6cc1e874eebfb97d2273d9432aa84e8ecf10295d6002853c3a404e4c8959fd63"
         },
         {
           "path": "vendor/pi-subagents/agents/scout.md",
-          "sha256": "5f760ca722d943128c98988bb0392e839984f41a6f23bea03d1cba341136013b"
+          "sha256": "99c4d4b81b428c1a8fdd7c93ee23d5aab7cebe198837a9ebb2669a11a86f46ba"
         },
         {
           "path": "vendor/pi-subagents/agents/worker.md",
-          "sha256": "85d86e14882c10eaa1638da533373c6ac084835625b8a9e93030efd20884a927"
+          "sha256": "2c3dcbebd084e744c70515ddad0a87d8d4795f477967e5fe9fdefbcb3de7f26a"
         },
         {
           "path": "vendor/pi-subagents/async-retention-discovery-worker.mjs",
@@ -78,27 +78,27 @@
         },
         {
           "path": "vendor/pi-subagents/docs/agents.md",
-          "sha256": "0ffc39f5e6579908faa38b176882a3506df9b1ecf6aaf125f4c3a89df6c0577c"
+          "sha256": "e976c77a1db00456d7b08de5ff4ba20252f5381e6698ae4613a5d7c3be11490d"
         },
         {
           "path": "vendor/pi-subagents/docs/configuration.md",
-          "sha256": "8ed127713d692870868a7e395a1ea2b5e3cc2e4ffde46fc2e3ae52e0f10433ca"
+          "sha256": "d88be9e82f1c7eb5d4ad15064c092fc151175a70568841f27f1e6b664dcbc696"
         },
         {
           "path": "vendor/pi-subagents/docs/extension-api.md",
-          "sha256": "46f69ac12c2d0732d1e699e7755c988f3a1694de42a787a6fa149c35959c6359"
+          "sha256": "18ce35f36f6a5c5e6cb345046e8a5e4c76718dec2d1dc23af1f7ecfcc01cda67"
         },
         {
           "path": "vendor/pi-subagents/docs/missions.md",
-          "sha256": "c668a406d9125d066a43ec9fb8cccd9d18db00ffec385413bcbb79cf8c918718"
+          "sha256": "ccdc321de66bfd4b71b8c6884ee6d2813db7cdb67403aade70461b824a736225"
         },
         {
           "path": "vendor/pi-subagents/docs/models.md",
-          "sha256": "2f65b46c85a870c698e150a94d4fd58c805cdc222afc63c6a9ab35cded5a6911"
+          "sha256": "182b918e222fd1f8e1a66b66427042820f230059f07e9e0bc6ce84fcc53f0ca9"
         },
         {
           "path": "vendor/pi-subagents/docs/observability.md",
-          "sha256": "f390d0c33839e080b72732b6672ba5b01d4fe0456dd7a5a9347d4fcdb7317c24"
+          "sha256": "d21fca0e3a2283b1c307a873166aa54cc45ac6775ffb295447025904f7599676"
         },
         {
           "path": "vendor/pi-subagents/docs/standalone-background.md",
@@ -106,15 +106,15 @@
         },
         {
           "path": "vendor/pi-subagents/docs/tool-reference.md",
-          "sha256": "dc0ba55e73ad8da8b79416e82f69a6274ac3704765b77758d54064dce3d8a28e"
+          "sha256": "535f3840836fd00415a587fcac772f4668ad64eb530555f0c933f563652e8bef"
         },
         {
           "path": "vendor/pi-subagents/docs/watchdog.md",
-          "sha256": "9bcb4d7bc091a2ab3368e4bd06a65e911300a16da9638beb112fe8289583c4c7"
+          "sha256": "be9705fbc0eab5f09e67dbb77b12a8d5983f577d161807df54d09eaaa6700059"
         },
         {
           "path": "vendor/pi-subagents/docs/workflows.md",
-          "sha256": "d7db1b8a4ba064528ef5c360983ac85ddf6ff4fd8b3099450eecd6ccf87eefe4"
+          "sha256": "77bdb1250056b8a787b367e7e097f672b10a2752fe59e1452de99fe5ef7cff74"
         },
         {
           "path": "vendor/pi-subagents/index.d.ts",
@@ -122,15 +122,15 @@
         },
         {
           "path": "vendor/pi-subagents/index.d.ts.map",
-          "sha256": "8c4a846ee6af1dfa38b73cd1f893bf6c1c44658f81902846d495d5348ccf7c00"
+          "sha256": "e8b3d43f1380dd41e8c48eb389479c7cb34f2cf45bf5cf16acbaf0c17143312a"
         },
         {
           "path": "vendor/pi-subagents/index.js",
-          "sha256": "0e0e30713cb733fa4fbc3c3d4e88c2645c2995ca7abc10d0cddb2fc07667eb0f"
+          "sha256": "3b6bd20de05a9c4aa92ba79c6a69bdbfccc3254362a75ecb0bed668e9cb27007"
         },
         {
           "path": "vendor/pi-subagents/index.js.map",
-          "sha256": "9b5c27fd159e2d780ea37947027a7da7440369b971b27598b7dd57edb76d14ba"
+          "sha256": "10efc3e8ad242974a17ee0990e07a13b834dd773ba1e7f83b964f7389cb367bb"
         },
         {
           "path": "vendor/pi-subagents/inspector-runner.mjs",
@@ -142,11 +142,11 @@
         },
         {
           "path": "vendor/pi-subagents/package.json",
-          "sha256": "7edd6b3125bfbadc0bb5bfcace28a3da158ac74c8ab20d550fa24a5aa06fd598"
+          "sha256": "51f45f9dc332010927c81f826ef38ae294633acd464832d010b5f96881dabf7c"
         },
         {
           "path": "vendor/pi-subagents/prompts/council.md",
-          "sha256": "f530f269f17453839f9303363fedfeb22bd6e1d985a6b65cbff516650d48b8c4"
+          "sha256": "7a51294e4740179cc6c6874b8991fdfa8c6816b22ddf76e2afed97146b8e14bb"
         },
         {
           "path": "vendor/pi-subagents/prompts/gather-context-and-clarify.md",
@@ -186,27 +186,27 @@
         },
         {
           "path": "vendor/pi-subagents/skills/pi-subagents/SKILL.md",
-          "sha256": "41afc1f9e42006dad5188876f5af3fc5ae667d982e8d9ec88c720cbcedc35a4a"
+          "sha256": "a0709573a1bfff1e2aa594cc4ec55a73bba6727073e791d4dea586c129bcf2cc"
         },
         {
           "path": "vendor/pi-subagents/skills/pi-subagents/references/constraints-and-recipes.md",
-          "sha256": "3d29b0afb85a3de811a35e9f3c02a497197cf7f06d17a2509902363819ecdee4"
+          "sha256": "300e0457bd01e7c694c965bdac6fae775ed1e1d9678c33ae5e5fce114bd8d632"
         },
         {
           "path": "vendor/pi-subagents/skills/pi-subagents/references/execution-controls.md",
-          "sha256": "2bc254cd2752ca151f54123c0e712d8fe57955cee28adb2181291b3cccc8611b"
+          "sha256": "039f5a262d170512bf489e00a0bda1b7e332b4b834fc0a7740afab86b0113256"
         },
         {
           "path": "vendor/pi-subagents/skills/pi-subagents/references/management-authoring-rpc.md",
-          "sha256": "84040fea75995ffd1f31948ffc71fc029bae7ebc7c1d80a9bd4d3d73e73cad93"
+          "sha256": "8676ad36e20e9d3f66cda1bcdab7ec7f4741c41912da2e2f0bcd0b6bc2da232a"
         },
         {
           "path": "vendor/pi-subagents/skills/pi-subagents/references/multi-lane-orchestration.md",
-          "sha256": "5c992895600e9db57f3f305ef956af15a5c6979b1589b622a8e4375ec1bce4a6"
+          "sha256": "20c5158038df0f55a7b3218cd21ec12d598af9175f1afab84ccf4740022ef01f"
         },
         {
           "path": "vendor/pi-subagents/skills/pi-subagents/references/prompting-and-roles.md",
-          "sha256": "7f80966b80bd424f66749eb4139842ad7d1e51700a99136acef68d819273e4df"
+          "sha256": "82b85adbe1543acb23e05769246fe45edfa7a9d16ff104c16cfc1b6c9c05b42c"
         },
         {
           "path": "vendor/pi-subagents/skills/pi-subagents/references/review-and-validation.md",
@@ -214,19 +214,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/agents/advertised-agent-prompt.d.ts",
-          "sha256": "bcc1a175dc69959addb80fccff987b6846d8450d4359c56c79a747cdb6767faa"
+          "sha256": "8673f731689f0ed059e98d1b8ca4d282031f71f9bcb4539141c5920094d0603b"
         },
         {
           "path": "vendor/pi-subagents/src/agents/advertised-agent-prompt.d.ts.map",
-          "sha256": "1c83a6993012e28a05bf4e0b42617660123175e7ed3c8a6a8d8b47bbf9e4abb4"
+          "sha256": "ac92a212fa50ed3715d8bdb340ed81a2b2b12e1efb30fe2ac27069fd69fa5e4b"
         },
         {
           "path": "vendor/pi-subagents/src/agents/advertised-agent-prompt.js",
-          "sha256": "10f1124b179acd04b3992bd0302c0aa84ce976b18696577b7de20c97a029ce34"
+          "sha256": "0363fe6096b679d23141f11c52d3d761f23a787e2c0e5efb12744f29a0cdd9a6"
         },
         {
           "path": "vendor/pi-subagents/src/agents/advertised-agent-prompt.js.map",
-          "sha256": "36c057823098ca14c12a367aa94b71e0646909a029a9ae4e328506a54938edf1"
+          "sha256": "06ffcedf7a977f7a6f710b63a841650773a468cdfe3c4cbc9cfdb35db3382ecc"
         },
         {
           "path": "vendor/pi-subagents/src/agents/agent-management.d.ts",
@@ -234,15 +234,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/agents/agent-management.d.ts.map",
-          "sha256": "5a55b06679388e8170ad2c84f0c73c408a5c6170906a011f8663f0e8623c17ac"
+          "sha256": "8ea982b8e55f6447bc878377e9a5b12600bfebd1015dae0ef196772e08a39ea6"
         },
         {
           "path": "vendor/pi-subagents/src/agents/agent-management.js",
-          "sha256": "37a52a7922265013bcffd5fe86007ee3576ffcda1f6f0cf582350021762110a4"
+          "sha256": "455d08ff48af8707b606e376af4d87ffb02daf51c12e758dc5a686d9ce3f021d"
         },
         {
           "path": "vendor/pi-subagents/src/agents/agent-management.js.map",
-          "sha256": "83f012929ef8688600944076c04775f75a5ba56f0a6454f08f45fd71e558e997"
+          "sha256": "935438f86bed87c8767e0156ba9b54387d8428f43c388fb17f5c7ed28ab74b26"
         },
         {
           "path": "vendor/pi-subagents/src/agents/agent-memory.d.ts",
@@ -254,11 +254,11 @@
         },
         {
           "path": "vendor/pi-subagents/src/agents/agent-memory.js",
-          "sha256": "eb5980f285f31d577d418a062163dc918051ae98f5d60b7d41b93217fdeea282"
+          "sha256": "bd335a6717ef5dc05b229c3a49ae1d0ffe936e1fc30b65b3966de5eabf5626fc"
         },
         {
           "path": "vendor/pi-subagents/src/agents/agent-memory.js.map",
-          "sha256": "1a4d982182661e20b28202d3b1583c5df72fd5be08d65c97d7c8e856c23a73d0"
+          "sha256": "97b398fdab2b1d9eeb64fc2091ff020943453117d2586d3f83ea175703be3843"
         },
         {
           "path": "vendor/pi-subagents/src/agents/agent-refinements.d.ts",
@@ -278,19 +278,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/agents/agent-scope.d.ts",
-          "sha256": "253be7060a275edf6c2d12c5a1d28f21180c0f3372702a533c8f924a4f8459c1"
+          "sha256": "c68053e0bcc18ea1e0a7c8308aaae822082b8fa2459936351ccdda4f49789377"
         },
         {
           "path": "vendor/pi-subagents/src/agents/agent-scope.d.ts.map",
-          "sha256": "f541c8ebf3d6fd3c0c794c0b6880db9a32a3bc23e3f6c2f33272078ccf4add2f"
+          "sha256": "6dc817073abf4d8b8fe256dda32537501ec29fd86c076e72c79bc94382c7f9e1"
         },
         {
           "path": "vendor/pi-subagents/src/agents/agent-scope.js",
-          "sha256": "ade4ce16fe1f4851b04537d04e5c44a6a7e15987c94217f94b0fef6ecafb6cbc"
+          "sha256": "62b968635fc3f6ebb7a78bf871191c982c2bc268d3c43f2123d6705c77aa75c0"
         },
         {
           "path": "vendor/pi-subagents/src/agents/agent-scope.js.map",
-          "sha256": "b49a4afdc537cd7adaea53a07af323003251ffbc7538fc96603cdd680694e922"
+          "sha256": "c6a8e83a1428b5ce9dc3e611e2af817c043f32e67f71241b86887180055e8932"
         },
         {
           "path": "vendor/pi-subagents/src/agents/agent-selection.d.ts",
@@ -314,31 +314,31 @@
         },
         {
           "path": "vendor/pi-subagents/src/agents/agent-serializer.d.ts.map",
-          "sha256": "1aef10b6ebf99def87c2ee1c1dd88abf5d3c30ebff9c94244eb7a372308dbe07"
+          "sha256": "4c0627bb1d3765a060c315e8d0d328b1d77bfa3a93125fee7d4225d5cb38d3a8"
         },
         {
           "path": "vendor/pi-subagents/src/agents/agent-serializer.js",
-          "sha256": "206151332bd7a5c63a84b55b8c6e1ca3dcb14237494895e05a89d8ba9ff3968b"
+          "sha256": "102bba9e66c0adb789161643a45f005975003be5d4da7b0a039d09d55dc782c1"
         },
         {
           "path": "vendor/pi-subagents/src/agents/agent-serializer.js.map",
-          "sha256": "06e99ae46d395f5ee2b009e64097c72d03f98967ea486133e54bcf0b3ce2cac1"
+          "sha256": "4a834eafc4a30ff6e91e8c0d5d64034b34db52027ee9f1db5cba55bab68e3d75"
         },
         {
           "path": "vendor/pi-subagents/src/agents/agents.d.ts",
-          "sha256": "1f7dc026bda98e73d92f8ef6c6e9fe04a9e50d0268e67c8a9745fe00dd2177f7"
+          "sha256": "b022d9f856caa7fcab87f1b7279360d59bc1f82e21bc3716ebb0d45f3e9cc105"
         },
         {
           "path": "vendor/pi-subagents/src/agents/agents.d.ts.map",
-          "sha256": "c5c723e606fc1eb88f1c3b4de296dabd8218f22a849a378aad22b5b6fc0d321b"
+          "sha256": "a79260d17edd747a4e5cf133d373e8e0836af3f3f063428a92526b7e84921b45"
         },
         {
           "path": "vendor/pi-subagents/src/agents/agents.js",
-          "sha256": "064427925d9ef53f985f00452d4e6dfb02ff3906950ee4752f5380489c41e895"
+          "sha256": "52937ad5950c7bf536101791607d3e48fbe36277515cdbb749605374170cb0d8"
         },
         {
           "path": "vendor/pi-subagents/src/agents/agents.js.map",
-          "sha256": "a1cfae37dac7d68f7c0f3c1dd13a6b13348706a0828e7e813061207d0f1fbe85"
+          "sha256": "637367fccd6510bac5608eac42ce5f1a68fadf4c1d24a2a7abacda6491550493"
         },
         {
           "path": "vendor/pi-subagents/src/agents/builtin-names.d.ts",
@@ -602,15 +602,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/api/external-runs.d.ts.map",
-          "sha256": "977305e9be8240f583de8471997f0b7f006722f4a81f8b980a751d8ae9d87274"
+          "sha256": "d6fed733f1ce0f584182ece9e588858482e0fe07d8ebc9ce63cc26581571a368"
         },
         {
           "path": "vendor/pi-subagents/src/api/external-runs.js",
-          "sha256": "ce7e95eac7608c2e8419af43af469e2f1b3407426dd889f4abf9c2876259ce74"
+          "sha256": "a3a7c9fdbacb32a15a764d3f3cc2d7173518633e4233545cd70fb8e50458cb68"
         },
         {
           "path": "vendor/pi-subagents/src/api/external-runs.js.map",
-          "sha256": "0bb5ee5e02f22fc28890427b2f3d0d658d2e57a351b286193a5b20fec537bd8d"
+          "sha256": "455b4ab687bc5670282d174f0605befea64e11db6e929c28cc6978722e30e246"
         },
         {
           "path": "vendor/pi-subagents/src/api/inspectors.d.ts",
@@ -646,19 +646,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/api/preflight.d.ts",
-          "sha256": "e7a0da1d2aedca65f328f71b1e7f26125c7e409bd6c3f413938cf44021354798"
+          "sha256": "b2319975818fb31fa8df33c08cf6a1851b86a4e6c1544bbf686dd250f23a3a48"
         },
         {
           "path": "vendor/pi-subagents/src/api/preflight.d.ts.map",
-          "sha256": "e1e41109547a38ae16d76e58b73933611f0a0ceffe1cafe3ae1f39a75096604b"
+          "sha256": "9678babb7da70a0831b88e4731a9cdc313c3f3d4f55b698c096d522547def6c0"
         },
         {
           "path": "vendor/pi-subagents/src/api/preflight.js",
-          "sha256": "c6636bf4bfd738c07878be92b16e1dd885363ad1061761fc4b310cc83c4b3502"
+          "sha256": "9ea10eabde93ac238db0714267a4dbbd1f5cc312e499cde33d286d191d1cd162"
         },
         {
           "path": "vendor/pi-subagents/src/api/preflight.js.map",
-          "sha256": "918698a2269e3f196017902b5413c9917e7564ffc8d17f9ded17c710cf61ef63"
+          "sha256": "4e0891ebdf7859b3903bcd95c9040ccf51bf201acee0021f9ae5a666a9d740a5"
         },
         {
           "path": "vendor/pi-subagents/src/api/project-panes.d.ts",
@@ -725,52 +725,84 @@
           "sha256": "969b44acb8dee1e1fde06fb9fc87b9d3ab0c64f98ffa34de09100ea369d9bf7c"
         },
         {
+          "path": "vendor/pi-subagents/src/extension/active-runs-prompt.d.ts",
+          "sha256": "8d6b5a8c0bba6ecdc7c944533ac6b74976d6108d6bd2364eaf67ce9332993fb5"
+        },
+        {
+          "path": "vendor/pi-subagents/src/extension/active-runs-prompt.d.ts.map",
+          "sha256": "4ab09f2380651deaeffc814a2279aa56ffd6dfc11c1375a879f1c5fa29626f62"
+        },
+        {
+          "path": "vendor/pi-subagents/src/extension/active-runs-prompt.js",
+          "sha256": "3b8aa7aa76a71a7d0b7453aaf0600d66f2c79f3e62fee2a9af692837549ee7c0"
+        },
+        {
+          "path": "vendor/pi-subagents/src/extension/active-runs-prompt.js.map",
+          "sha256": "4e14ab76baac75c03069b35d8f044f2160248ad887ee089a329d245d547cf0f3"
+        },
+        {
           "path": "vendor/pi-subagents/src/extension/config.d.ts",
           "sha256": "8700af12beeb1e5ada6f17f4a4b01ca49fe09fdd4892410623b69d1ab996a273"
         },
         {
           "path": "vendor/pi-subagents/src/extension/config.d.ts.map",
-          "sha256": "d858c3fa8673c3159de0cca47a5d2385a0b7c800ca1fffc1ba04c8d263a20071"
+          "sha256": "f85a337918d4e24f9d1b86167d31aa9ab75fec7d24d0749a1ba929fe75c45830"
         },
         {
           "path": "vendor/pi-subagents/src/extension/config.js",
-          "sha256": "65659c1b43527a7ead3b3349789a654d43c4339f94eeff52d718f20bd5a0966d"
+          "sha256": "b5e2aafe96c879bbea8e49ecb787a43d599ca1d32685041212867a961eb98742"
         },
         {
           "path": "vendor/pi-subagents/src/extension/config.js.map",
-          "sha256": "11e7d77f3d419edbe3910706012a0186f373ba7ff913d8b4ebacb846d783154b"
+          "sha256": "fa4955cc8ac7889aa6ee40047386a5f0c7b9e3b5ecd252c2a52b1b06a9c5d411"
         },
         {
           "path": "vendor/pi-subagents/src/extension/control-notices.d.ts",
-          "sha256": "12b5cae364afe0780b1074f62df04d0331b34efe43d3bc0d361eb4aef8bc364c"
+          "sha256": "28e6812752bc33dd94e57f7aea316405aa70292e16ac8154b9dfab4f3ebb9d3d"
         },
         {
           "path": "vendor/pi-subagents/src/extension/control-notices.d.ts.map",
-          "sha256": "ebd07f9f886d012cba1b98f33d847005836c028ec7f03d09e836552513ece9e3"
+          "sha256": "7c19f83dd888c13b6590c608ce9a8008985d4a6a899d58a5dfeb8586d3cac4e0"
         },
         {
           "path": "vendor/pi-subagents/src/extension/control-notices.js",
-          "sha256": "c1ae88f8acc2a7bdc0ce0f485e3f49c6f65d7325632ea52b9d15b4d58cf4416c"
+          "sha256": "8b0c82aace745f8c840ec8026462e7f57064c552f7b37bf13943e5c42ce22c13"
         },
         {
           "path": "vendor/pi-subagents/src/extension/control-notices.js.map",
-          "sha256": "dbb236d66dc26d3370a4850852c12e3e52481e7233bc3b89e755cae9477c0385"
+          "sha256": "fc8e202143bc0702301c8d4c2f0c411232f1efc62ca515d020b180083fe9678e"
+        },
+        {
+          "path": "vendor/pi-subagents/src/extension/declaration-pinning.d.ts",
+          "sha256": "ea4894be1440a1d28aa0b4306da5e4e54adb97452c147aa1ffaa4eef77487fb2"
+        },
+        {
+          "path": "vendor/pi-subagents/src/extension/declaration-pinning.d.ts.map",
+          "sha256": "9b55ff3ed4d6f56c46ca16726e2a52a08e9ec8f5b7ec8072a22ddbb8baf9cbcb"
+        },
+        {
+          "path": "vendor/pi-subagents/src/extension/declaration-pinning.js",
+          "sha256": "7c7b6701c321eef7e557277c67251420f222c2ffbdf3ec42e63a6832edfdb884"
+        },
+        {
+          "path": "vendor/pi-subagents/src/extension/declaration-pinning.js.map",
+          "sha256": "2d96fb7d700fae3acc0565d16a1cc8eae306e9fc1f110c1a2e82918807e2ea56"
         },
         {
           "path": "vendor/pi-subagents/src/extension/doctor.d.ts",
-          "sha256": "47309a630bd74c4ab6b7462b7d39a67de57f6ec09fe89d8dc3c60f3c82397556"
+          "sha256": "05c016bb703cd2f5069dcfafa3205352968efd46b1341639d2e7166710c7e72b"
         },
         {
           "path": "vendor/pi-subagents/src/extension/doctor.d.ts.map",
-          "sha256": "d9743fe80249cef7ac2f597c0f5ec0a841df08041b3eaf7888b67eb4714c983a"
+          "sha256": "344d529471f6d45538147d0b28e2255e30a8cf07f14dcb635cbf766e1d0473b4"
         },
         {
           "path": "vendor/pi-subagents/src/extension/doctor.js",
-          "sha256": "cd75a728146fe34ba5278e12137d8839ea9dee2fb2256b57c1bbe121831e5be7"
+          "sha256": "a62ff6cda913d7aa251b3f1c19c4c56667b5b9cc1f234356c1d042f280554d0c"
         },
         {
           "path": "vendor/pi-subagents/src/extension/doctor.js.map",
-          "sha256": "77d0b1fe1ae3dcb7395f26992fa3a58871498c1139937109f6708c2c509e122c"
+          "sha256": "b5ed3142389d2847ae0a3e6446a5adaaeef2c0e03552312a9fc6ded7b836b29f"
         },
         {
           "path": "vendor/pi-subagents/src/extension/fanout-child.d.ts",
@@ -778,15 +810,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/extension/fanout-child.d.ts.map",
-          "sha256": "b7349d0c7f3a4c3145af2bdf743d6f4d9e017811234d02db46264b8c6ae55269"
+          "sha256": "f256277647272f3fedd090500ed6772643dc62e39f5fd50cd7d48e566b991512"
         },
         {
           "path": "vendor/pi-subagents/src/extension/fanout-child.js",
-          "sha256": "472c3ec354a7e40dd2773fb3e1df4b455a3a0113f88d745d934e425b37425171"
+          "sha256": "0a8e8cfb6fc40150a715995c142e60f2d6bd1dc99f3d2f31ec24bedfc8a516ad"
         },
         {
           "path": "vendor/pi-subagents/src/extension/fanout-child.js.map",
-          "sha256": "9da5ab44048b5bef7f160be471b785bf42b70e1589f7439c3d21a6227d4b4d43"
+          "sha256": "4ff4322947903c727a7562b04ab52100c17ac53b5f2a4f293148b7b8c73661af"
         },
         {
           "path": "vendor/pi-subagents/src/extension/herdr-pi-bridge.d.ts",
@@ -806,19 +838,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/extension/index.d.ts",
-          "sha256": "a9b5fd2db88e90c657986da34c1ad7624b534c798570e2696169ff3ab8aac39b"
+          "sha256": "e5cdd16a5f4085d6c54bebdcc3cd8fdd8a2cdb86035c7b1c91191c13efbf5634"
         },
         {
           "path": "vendor/pi-subagents/src/extension/index.d.ts.map",
-          "sha256": "22dcb84c4c20789b019aca8fc3ce799d9993771551bd18cc28d932ad7be16317"
+          "sha256": "5418f650a9a8f97867ea183528faa35ffaa5860d2160f636b20e562181c0a6a9"
         },
         {
           "path": "vendor/pi-subagents/src/extension/index.js",
-          "sha256": "5734febf926c7d589d51a2b390d073a592aa588b43df0e6a07bba51ce6d05388"
+          "sha256": "340f3baaa1ceec4085b934114dfac6259cb8905d2fb94fb99be922f98ef90237"
         },
         {
           "path": "vendor/pi-subagents/src/extension/index.js.map",
-          "sha256": "3ba87dac2e9dc92aa04d47cb07c06e417569fab5245d15ad9a0856223d2ce27d"
+          "sha256": "b0547ec6092c6dad3810bac83918d9e183c09c9e325c9367c223a9782f4ffb34"
         },
         {
           "path": "vendor/pi-subagents/src/extension/public-execution.d.ts",
@@ -826,15 +858,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/extension/public-execution.d.ts.map",
-          "sha256": "9c2fe8211bf9e791a9e74b5eab5bc24e0727f0fdc82a3ebcacd37c8eb94d6885"
+          "sha256": "fc6b2a7268fe4b143cb669af0ba26f89d2dc37f58b8a061f97790f0b61212918"
         },
         {
           "path": "vendor/pi-subagents/src/extension/public-execution.js",
-          "sha256": "cd7da1a0705b3b91220313a230de388b20a1cb09fa46d67f8f48ced463421a03"
+          "sha256": "58fd6c10d86d645d0679f631db57f7fe4e3f71b27465aea0390257a791679a3b"
         },
         {
           "path": "vendor/pi-subagents/src/extension/public-execution.js.map",
-          "sha256": "cd9e508bf55f81196727b4137071cbb4e1a5131595e2bb14f47f6e493ce468a0"
+          "sha256": "d447e4436f9322f72a3b39ef9fb1e98ff7f1bbb5444a9d6e19f2d6b27d27780c"
         },
         {
           "path": "vendor/pi-subagents/src/extension/reply-workflow-script.d.ts",
@@ -842,15 +874,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/extension/reply-workflow-script.d.ts.map",
-          "sha256": "990ecdcbe5b5c484b2e192219823617d4d82f8de0cc4581cf60af2da3fb8581b"
+          "sha256": "a72c758f5301dd28175d6ef5862343702e7ef76f774231e4f0f0924ec7e3858d"
         },
         {
           "path": "vendor/pi-subagents/src/extension/reply-workflow-script.js",
-          "sha256": "42c0e0646483f233747ae6833116e11738d9981b7ff376435ead0dec19c4021b"
+          "sha256": "5b29d1dd8e31e866ad1489c8e98cd73348b38ccecd259d98070956ef268262c3"
         },
         {
           "path": "vendor/pi-subagents/src/extension/reply-workflow-script.js.map",
-          "sha256": "c58971165088062ea8e0c1323a128cc6545bc930b508ce5992b84341bfcef058"
+          "sha256": "3b9d4e9d1f99563e3668210e626e5bd33ca6683cdd5c48c9e43629c82d1d783c"
         },
         {
           "path": "vendor/pi-subagents/src/extension/rpc.d.ts",
@@ -858,31 +890,31 @@
         },
         {
           "path": "vendor/pi-subagents/src/extension/rpc.d.ts.map",
-          "sha256": "fd4fdd55c0b69436ea2e0bc1eeddc74c41bd8b4b589facb523758d125dd385f9"
+          "sha256": "80ea843427e10bc1bceb15e4ca69fa4a06550d4102e4193c4424b4709975ed02"
         },
         {
           "path": "vendor/pi-subagents/src/extension/rpc.js",
-          "sha256": "ed3b72be13eaadbcb111924242b066e0deaadf1ee2ed4c514869103b4bbcdf4d"
+          "sha256": "c5627d08138f55b493c5755ccd91334a0b273a2ba93b09777994cf2b55537d37"
         },
         {
           "path": "vendor/pi-subagents/src/extension/rpc.js.map",
-          "sha256": "bd0cf625108d9d912efa591958cd766d2defdbcc4f6b5d6a354b0ec3b370ddb5"
+          "sha256": "b0ab73fc0fa0923662452482b585f536189d0239b39d535919c26ea33e9ca260"
         },
         {
           "path": "vendor/pi-subagents/src/extension/schemas.d.ts",
-          "sha256": "1719f4e768c27c587b3f021adbe72420bdbacd026045bede4416449f8f057db2"
+          "sha256": "5f4640c4eb928d468987b4f5a461a6ab4170580d554c5ad82ae4f7d9ed23d952"
         },
         {
           "path": "vendor/pi-subagents/src/extension/schemas.d.ts.map",
-          "sha256": "329671c1b2e6b1fa33b4d82b1600dfc55c4c1c43a33c56e45cb6fa5112034946"
+          "sha256": "1f2c1f0d5fdcb2eea8263bf6902f1797ff630ae79809662dafad0dae807b7c79"
         },
         {
           "path": "vendor/pi-subagents/src/extension/schemas.js",
-          "sha256": "ad2e2a7708fc2f5fcf06b94358f87c894c34dac8388c79f6f8931dfa7766f81e"
+          "sha256": "e6dc37989c435184edf034fdcef04c8ecc6a06ebbf39082ae6d4e25aae320d03"
         },
         {
           "path": "vendor/pi-subagents/src/extension/schemas.js.map",
-          "sha256": "f3d96026e585d7add9be321ee11769eeef088903aba5d69130d55924ed311a3c"
+          "sha256": "09758d1a4d67c5af62b343078b04896cf70bb3dbd8ac8fe05ee7212e75b3490c"
         },
         {
           "path": "vendor/pi-subagents/src/extension/steering-notices.d.ts",
@@ -902,19 +934,35 @@
         },
         {
           "path": "vendor/pi-subagents/src/extension/subagent-guide.d.ts",
-          "sha256": "e208880ae3dafa7446001bfcf5e1c4ac4546060fbe78e0de14cda3236ece5c64"
+          "sha256": "b268eb3fb0c6e975394961e0ec94695e550494bab4975ec1acfa8d5ddb305155"
         },
         {
           "path": "vendor/pi-subagents/src/extension/subagent-guide.d.ts.map",
-          "sha256": "0e85f3f3e36f1dd6046e05b92c8c962973e4552f19ad9f6ab64e386b59cb5364"
+          "sha256": "b79b699a5385e0f690ace77add05bbf53cfff676aa6dd4353fbe51832ccb637a"
         },
         {
           "path": "vendor/pi-subagents/src/extension/subagent-guide.js",
-          "sha256": "a274d1da4c2bb021233accb1016b8da2749fbe27e6ccd81818774f458795ebfc"
+          "sha256": "dd79f95ecc116588cea4cfca4bccda55ce098a32d15092095d9ffbc0b30ebae6"
         },
         {
           "path": "vendor/pi-subagents/src/extension/subagent-guide.js.map",
-          "sha256": "8bbe2ebcfecba8bb1ca36e1bca994eb4e44aadc6b2fc8ee28fb877baefb9b1d1"
+          "sha256": "0f1aa4f2465276e76f7742f90ab0265d62401d1a43bd29942414e1d7b99f7d17"
+        },
+        {
+          "path": "vendor/pi-subagents/src/extension/subagent-options.d.ts",
+          "sha256": "a64154836f052bf13072bf7b43a9cd187d80fd28f3a2d406f54f725d577db4e3"
+        },
+        {
+          "path": "vendor/pi-subagents/src/extension/subagent-options.d.ts.map",
+          "sha256": "5e64c777b98aad3ef7a02ec4bb8cc44d7eab7597f4efa632e791b043291e9851"
+        },
+        {
+          "path": "vendor/pi-subagents/src/extension/subagent-options.js",
+          "sha256": "fa06f75c39977fbb1887dd05bbb0789c1132f043562da65b18a23c98701a79e6"
+        },
+        {
+          "path": "vendor/pi-subagents/src/extension/subagent-options.js.map",
+          "sha256": "0d36c613437f6938d9098fe83523fb442839ff9ed53afc4da298191285482f2c"
         },
         {
           "path": "vendor/pi-subagents/src/extension/tool-activation.d.ts",
@@ -922,31 +970,31 @@
         },
         {
           "path": "vendor/pi-subagents/src/extension/tool-activation.d.ts.map",
-          "sha256": "d0c3ac54f77de41ab1b83abe2ee4c9555a14daefba52b1b9141770bb7f461285"
+          "sha256": "9a30b1e5f25406835ad4e77f5a24f5ca77a5268a90e0ccc9cb38188c72e0d0b4"
         },
         {
           "path": "vendor/pi-subagents/src/extension/tool-activation.js",
-          "sha256": "eb2cec029b57cd521e8712ba1b6b48db9f320d558ef207d1a9d3c601cb477136"
+          "sha256": "85ad042849a466a4d70aa7505dfd9e5cd5a147064955fb56952065cb18824ffd"
         },
         {
           "path": "vendor/pi-subagents/src/extension/tool-activation.js.map",
-          "sha256": "8f9e7a6140e26a30ee86714c0ef6cc1c2f6e89c8b662fc2642e70d2de68dd5c0"
+          "sha256": "cf197d32ae5f9a1761eb0240fff0d6ce274800cdee956b8fc63e95b9884a75bc"
         },
         {
           "path": "vendor/pi-subagents/src/extension/tool-description.d.ts",
-          "sha256": "43d81e9253be61d341ce2bb18bf3778aaa8b1c9eaa7720f09717c5dfb35c9b53"
+          "sha256": "e74266212d683392e20fba1ad71c40bf8f98d8699a8e9e8b9a9cb93b7bae7ae7"
         },
         {
           "path": "vendor/pi-subagents/src/extension/tool-description.d.ts.map",
-          "sha256": "1b8a7e61424e08544da30957c71d820739a1f967b5ddf300b905c8ae88e46ab7"
+          "sha256": "7231ff944ae066de833d022a5ae1b412008d0f79babd29ff321decceaeee81d4"
         },
         {
           "path": "vendor/pi-subagents/src/extension/tool-description.js",
-          "sha256": "fea507fbac61e72b6170a74e2d195ed76998c5bf4b66932bc7e379d349235e7e"
+          "sha256": "17ae3c209374f3781f18309bf88968f484818c663612a604d2d53fb32c65ab26"
         },
         {
           "path": "vendor/pi-subagents/src/extension/tool-description.js.map",
-          "sha256": "3b39fa4fe957a683be603dc0f6a4307e4cd376845932416b842dea213a9819cb"
+          "sha256": "b07eedb1a4584f7c28dcb2b894b00635f6277bb52aac4dfe7b210f302bb8022e"
         },
         {
           "path": "vendor/pi-subagents/src/extension/tool-result.d.ts",
@@ -982,19 +1030,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/inspectors/actions.d.ts",
-          "sha256": "4327df92403f32076ef3c4aa45564f0b08841dec04188cbb21b3b8277bd9e59c"
+          "sha256": "037ffe6265b51b626cbe4f23d7c0fb00d4a127a1efeb100655e0c2275d2df71d"
         },
         {
           "path": "vendor/pi-subagents/src/inspectors/actions.d.ts.map",
-          "sha256": "f6abaddcdc9838548d432a2c06da96c1ece9338220ff1c5653558aef979d5b9c"
+          "sha256": "e0079005cdc6d5e550dd988d60fb8f21ec31777188afda04f63196defa7d1691"
         },
         {
           "path": "vendor/pi-subagents/src/inspectors/actions.js",
-          "sha256": "0311451387adf9f401faa2567f26b4d4185f8a99d34c7d2f3b8e090fbedbbe10"
+          "sha256": "6a340b85cd462cf52e43f532dffd087ed4d970f0c7cfc007aa03d8e6b0f74a71"
         },
         {
           "path": "vendor/pi-subagents/src/inspectors/actions.js.map",
-          "sha256": "68ba0650dd4bca23d04f00f4d6404b8e7235b08b1b1729c2fade3e35d8deb285"
+          "sha256": "e06812eb7466bf02028e94b9927ba7f8d926935aa58df5202968e1c04391b382"
         },
         {
           "path": "vendor/pi-subagents/src/inspectors/ghostty/actions.d.ts",
@@ -1130,15 +1178,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/inspectors/plugins.d.ts.map",
-          "sha256": "efbef88118b3518d5ad3b4082f63f4c5369506c9cdbd374ae1f963094dd28838"
+          "sha256": "da1b4f91ad4ec21b3953228a3ded74ccea92a0a769d4d0dc382fd5650062aa56"
         },
         {
           "path": "vendor/pi-subagents/src/inspectors/plugins.js",
-          "sha256": "ff340505c3e77a8a4d4fcf399177b20a20db4619c5a863ba505a33646be862f1"
+          "sha256": "5c130957318ba4ad251cff0bacb52941916bebd65b2057b0884527eb515a8386"
         },
         {
           "path": "vendor/pi-subagents/src/inspectors/plugins.js.map",
-          "sha256": "c7139b4720605e8706e1429c3bab75ada1f7d333989200dbffcffa085c23c3c1"
+          "sha256": "4cf2982a2c55590f8009487b94040dee2b066911894108c0cdca7fb54efa6cd2"
         },
         {
           "path": "vendor/pi-subagents/src/inspectors/session-roots-codec.d.ts",
@@ -1173,6 +1221,54 @@
           "sha256": "321964a5a513efbfdb18b95b5bf237eaf4039beabe93ea9660f659b41d6b214d"
         },
         {
+          "path": "vendor/pi-subagents/src/inspectors/tmux/actions.d.ts",
+          "sha256": "6dc7ef6cb90451b0ae884007fc9117e652dcb2448e0d9556afd5f204979e539f"
+        },
+        {
+          "path": "vendor/pi-subagents/src/inspectors/tmux/actions.d.ts.map",
+          "sha256": "9d55c49d7619752a280f48ac3d224c680350fefadae391bb5d61937059f80d3b"
+        },
+        {
+          "path": "vendor/pi-subagents/src/inspectors/tmux/actions.js",
+          "sha256": "0afa11dc28fb8a6762463ab8c9e0623ab08715d7e145e6fed080de9098e47de5"
+        },
+        {
+          "path": "vendor/pi-subagents/src/inspectors/tmux/actions.js.map",
+          "sha256": "ae4472867791d00a86ad477ddd1a7b5f864f7d1abfac8170fe8839e145fcb723"
+        },
+        {
+          "path": "vendor/pi-subagents/src/inspectors/tmux/client.d.ts",
+          "sha256": "f6f93b87626e4214e30cc1bb645ac277be6fe8c371bda5642b8b45e63cb8fdc0"
+        },
+        {
+          "path": "vendor/pi-subagents/src/inspectors/tmux/client.d.ts.map",
+          "sha256": "97d176cf329620dbc94ddb0f5c9d6275ead4e17f3906cceba41d68e2aa94afd2"
+        },
+        {
+          "path": "vendor/pi-subagents/src/inspectors/tmux/client.js",
+          "sha256": "74085ce3050a971f761e008e099177c22a90f97076ee8d018179021b87da25d5"
+        },
+        {
+          "path": "vendor/pi-subagents/src/inspectors/tmux/client.js.map",
+          "sha256": "000aa930071369e1b1ad8c38499124cf25883beb2306dea9256e550ae30e286e"
+        },
+        {
+          "path": "vendor/pi-subagents/src/inspectors/tmux/plugin.d.ts",
+          "sha256": "2b0a703fb9981dd846bd0e40c3b106c7dc8950690170b61835a21acb6e53c636"
+        },
+        {
+          "path": "vendor/pi-subagents/src/inspectors/tmux/plugin.d.ts.map",
+          "sha256": "357ef8cb6b65ff3f73f171358a3a6b59bc395b8bbbf1da2f2db699a87ac45b14"
+        },
+        {
+          "path": "vendor/pi-subagents/src/inspectors/tmux/plugin.js",
+          "sha256": "b65fae6d949f0da21a17ed170701f30dae8d2f872be5c5280c143041483087cb"
+        },
+        {
+          "path": "vendor/pi-subagents/src/inspectors/tmux/plugin.js.map",
+          "sha256": "01828f059d0347572e779db517372140b69b4e7d28c925b3944801a82094786a"
+        },
+        {
           "path": "vendor/pi-subagents/src/inspectors/types.d.ts",
           "sha256": "c42fee5736a03081b8633f42bde4daad0307c2cb1c8b0c3094bacdab5d25744c"
         },
@@ -1190,19 +1286,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/integrations/herdr-status.d.ts",
-          "sha256": "9e88f8d7c37f1c925075af3cb728da1a231f1bf39086832943ae008e9c1f356d"
+          "sha256": "6fc3d0ab6c8547897cbe12928754c4b10d291db4568c0566c7909293585cda71"
         },
         {
           "path": "vendor/pi-subagents/src/integrations/herdr-status.d.ts.map",
-          "sha256": "8b5e2b6596214d99a36fb3048ae50d070d039f2a34a8fe9afc68f879355a2530"
+          "sha256": "6a4c73bb0eda2496b6c7a6bc98ba2cd617bfe087ab47d305d50d866959c9f752"
         },
         {
           "path": "vendor/pi-subagents/src/integrations/herdr-status.js",
-          "sha256": "10178bf9754c5824df097c2ab04858b4889b65d36f463464cb1afcaf30a4193f"
+          "sha256": "37dc6d9739e28e0528ac011ebe45ff716052002b0cb0b4656504f850e5e6587b"
         },
         {
           "path": "vendor/pi-subagents/src/integrations/herdr-status.js.map",
-          "sha256": "5646bef3006c04021c5865a28627d05478a2aa724eea1cf068e01700ff9f194b"
+          "sha256": "ff3f81089fa9a1298722dfcaae90bf8a8cae023f195aed2cf5e30cd55c6c3f0c"
         },
         {
           "path": "vendor/pi-subagents/src/integrations/pi-web-session-liveness.d.ts",
@@ -1219,6 +1315,22 @@
         {
           "path": "vendor/pi-subagents/src/integrations/pi-web-session-liveness.js.map",
           "sha256": "c5ad2d3a3cb961c82e4ee4aca9b6d0ffaefcebe2a0473d0e3971317e858cfa4a"
+        },
+        {
+          "path": "vendor/pi-subagents/src/integrations/program-status.d.ts",
+          "sha256": "2ca777c4a1bdac1cc80add3b57663f82386fa5a27a771bcf3433bf859e0a0fe0"
+        },
+        {
+          "path": "vendor/pi-subagents/src/integrations/program-status.d.ts.map",
+          "sha256": "24723de1916be970d865e8bc58ff603905c9a932b1934f96769c2a8a1487e29b"
+        },
+        {
+          "path": "vendor/pi-subagents/src/integrations/program-status.js",
+          "sha256": "3ad43f04e5b3ae3a3f912be9daa1d0cdfba4eb2c53d5c6f891f07ef4f2c9199d"
+        },
+        {
+          "path": "vendor/pi-subagents/src/integrations/program-status.js.map",
+          "sha256": "b3d9537bc7394960ea8054850a884a7aa79487b917a5dcc249e795608bffd17b"
         },
         {
           "path": "vendor/pi-subagents/src/intercom/intercom-bridge.d.ts",
@@ -1238,19 +1350,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/intercom/native-supervisor-channel.d.ts",
-          "sha256": "5f69cbe288a002bab188854d007ad4f9aacec92323c04e55c2314d0ebbe22779"
+          "sha256": "e04e26111efb0c33a94ab7e9b9cccc357cb376190eca6c3afd62188927a490c4"
         },
         {
           "path": "vendor/pi-subagents/src/intercom/native-supervisor-channel.d.ts.map",
-          "sha256": "a21290ae919821c0304eb8dea3ddc0b8196db8a71c4a181ee96d4b2be8cd6500"
+          "sha256": "f781464deac88412662582f49974ce5e0e5eb327f87cc28fc75615972c9b40e7"
         },
         {
           "path": "vendor/pi-subagents/src/intercom/native-supervisor-channel.js",
-          "sha256": "e1acc475e45f0d81814a5b6774830c9d0d1a46dfd9de727efe2110cf2e192033"
+          "sha256": "c7f187d9569eb2267496ae26af7d88911cf75780d8340183071e95370c327215"
         },
         {
           "path": "vendor/pi-subagents/src/intercom/native-supervisor-channel.js.map",
-          "sha256": "a5f5f3c18c0c1db8c733a83bc9e64fce3d15d469cf81ce12f9e2a4222657f5b7"
+          "sha256": "1adce90dc6c0f976eb7685c05539dd112cb03bce5a30de095bdf997ae2ff560c"
         },
         {
           "path": "vendor/pi-subagents/src/intercom/result-intercom.d.ts",
@@ -1258,31 +1370,31 @@
         },
         {
           "path": "vendor/pi-subagents/src/intercom/result-intercom.d.ts.map",
-          "sha256": "c70802fdac3f54345237b90c31f28f67cda2ed1a84873f155988b7fbb8abf354"
+          "sha256": "1e5a635dfb9d147b428bf450125b0fa6bdb3050119b913434ad00bbcb8b06d4a"
         },
         {
           "path": "vendor/pi-subagents/src/intercom/result-intercom.js",
-          "sha256": "42fb9f6230961f605774b577fab749d4851f511030963da3c66025568346a15f"
+          "sha256": "a7c6811ded0a2675236aa8670b9107d3dd1feeb548d13fb3d2f771fa3211eb1b"
         },
         {
           "path": "vendor/pi-subagents/src/intercom/result-intercom.js.map",
-          "sha256": "82f2c1baf92dcc581dfca4c7b4b45f0d0bcf8bb910cb5d6f91feef01cbc86f38"
+          "sha256": "43174ebe085de09bb0a17229b69c14587e755937820746595248f4b226b06c87"
         },
         {
           "path": "vendor/pi-subagents/src/intercom/supervisor-ui.d.ts",
-          "sha256": "99d74ff4fdc971628d96afc11759d7436094db508bfb115bea420e93f681f093"
+          "sha256": "9cbae1e34684d215ccf9908ba3b4978eaab31e61d2b25c428c26ce62f83bdeb9"
         },
         {
           "path": "vendor/pi-subagents/src/intercom/supervisor-ui.d.ts.map",
-          "sha256": "5724b82437a8a3394e777182cb914276aa02b26c83df5da865e8da07a91539de"
+          "sha256": "1103f7d2febd9caf67b502b6c3cdb0e979795d2e173dbd8e0a2102e6af030a59"
         },
         {
           "path": "vendor/pi-subagents/src/intercom/supervisor-ui.js",
-          "sha256": "1e91898e3f82c05b2700d950afc4cc12d063a71cb21b5af06b0fa6cc2e73a9c4"
+          "sha256": "886e78baf7781011248c3a104c7660834869614e0be0f0a74732e90e25cafee9"
         },
         {
           "path": "vendor/pi-subagents/src/intercom/supervisor-ui.js.map",
-          "sha256": "db61d410522e174b8c90ae98be3c17552c50da61021b4b097eb04edce2ed1bbf"
+          "sha256": "609e9050c948171be74a540f4dc3e1340624ecc44f5d647cd2fa0e7f6cd03d58"
         },
         {
           "path": "vendor/pi-subagents/src/missions/actions.d.ts",
@@ -1302,19 +1414,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/missions/goal-driver.d.ts",
-          "sha256": "9703c2d3c7a5d9932e1dc163e5c4106e0cddc0cc0c57e136025fd5b81e3de866"
+          "sha256": "d46131c3c9f8ef225fc984f90ea35bbf11da4caa23d37bcb34fad00e77ad7d95"
         },
         {
           "path": "vendor/pi-subagents/src/missions/goal-driver.d.ts.map",
-          "sha256": "f8970119a9e62b879014008c638137bb5cb324098fa8c53b118ab04f9dc6e6d2"
+          "sha256": "69d521228efad8394a72fe820f61d7104c2ab50cea0a82c1288a966a43466a6f"
         },
         {
           "path": "vendor/pi-subagents/src/missions/goal-driver.js",
-          "sha256": "17698e651ff18ca81b61c7d8a66f2938e863e800352b396ae0bd487cfd7ea45d"
+          "sha256": "4f31e38653dc160dc1da430fb807c604a7e6af75bd0a19c721b64e7e31af77fd"
         },
         {
           "path": "vendor/pi-subagents/src/missions/goal-driver.js.map",
-          "sha256": "671ec0d84590f4cd4df055cfeda5e87a2cc7b7676e118c6338cc8e1ef15d7518"
+          "sha256": "2f374319c4f2511b170c31c59b5fdd91b0371013359f6da066dc475cab723620"
         },
         {
           "path": "vendor/pi-subagents/src/missions/lifecycle.d.ts",
@@ -1338,15 +1450,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/missions/store.d.ts.map",
-          "sha256": "d2e44a37dbc96eeffa46a86cee554235771f430c08b695541ef41a207463d266"
+          "sha256": "af9aa6c2da69b0b6e44b4afd9e3cccdb92cbf4429fc82284f9b4bc3d514dc565"
         },
         {
           "path": "vendor/pi-subagents/src/missions/store.js",
-          "sha256": "79f145929f69c6af04df971626d70ac4dabbc5b93241d12ee6b79a3ca02da3ec"
+          "sha256": "b5857607397af88fabd64c315c73e710ab0c639dd9eacb58f7a4c2780adf3df0"
         },
         {
           "path": "vendor/pi-subagents/src/missions/store.js.map",
-          "sha256": "a9599e479f0e422309d763aa8a85c12bbb32cb7d3e36a6fab2088b33fedada92"
+          "sha256": "f614218acdef10355699ec8aee6cc0aac7f0ee9e6448db2c246d67caef6347f6"
         },
         {
           "path": "vendor/pi-subagents/src/missions/types.d.ts",
@@ -1398,35 +1510,35 @@
         },
         {
           "path": "vendor/pi-subagents/src/profiles/profiles.d.ts",
-          "sha256": "a83fab7b46bea348e6f6ae378d55ff2c27b32d860e5bd8ebdf90c3e41e16869b"
+          "sha256": "a49e86bc2fcec1a2550b576ceb76e86b38ff83608d3222b803a728447d03abb1"
         },
         {
           "path": "vendor/pi-subagents/src/profiles/profiles.d.ts.map",
-          "sha256": "429d3183a65a2ef9d9c33189d19f55c4e1553c430f0b99bd0a5f00368976df56"
+          "sha256": "b061f541fcdf2f64781dab3e17600b3718bfb7dbbb5fc7426fe492326694de5b"
         },
         {
           "path": "vendor/pi-subagents/src/profiles/profiles.js",
-          "sha256": "d8a7d3b4f5cf4b1f0efe02838a53791e1df85748469b0830b0c15a51f2394a31"
+          "sha256": "6b286d103fd3dddeb215b40bae0a4af524477937b55f784bdda4a5de512c1e0d"
         },
         {
           "path": "vendor/pi-subagents/src/profiles/profiles.js.map",
-          "sha256": "5ab0c95cd0d5ed353de94a37ce15e7a62db4c0e79f54daf26e0d1cb382ac02fe"
+          "sha256": "66d82a6d68251ae125fae9caec8a63a19b17f5d48f59fd1d74605d3618f362e2"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/active-async-capacity.d.ts",
-          "sha256": "27a4cf12b1160c89b6b51722087294ab0f3483eb33250824170cdfa59b511e48"
+          "sha256": "52cd9637c2db8e21e438717215a8570eaeb898e5bef6c33a37a05cddf6503a99"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/active-async-capacity.d.ts.map",
-          "sha256": "873200a87b025cc639a76a29917fd2a97ef25f5f5150b6a09b76f6d46253d9ae"
+          "sha256": "9bfcdf18de90d948e18db020e485ac150073a9968ba337c57900908fa55979d9"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/active-async-capacity.js",
-          "sha256": "483972b59ac50b53640fedf22cd995e18e5507c444b4d3b98b05e672a32e6728"
+          "sha256": "b91c5bbd21ea3d7c1606ddfa62a2b944943ee36f0fb6a1e5c6b6c78db9a70a6d"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/active-async-capacity.js.map",
-          "sha256": "731e2e8f2e4d8c56968d2a94b742eb96b274c772db4d819996d9059e6964e80c"
+          "sha256": "294d8f3025e389a7dfa07c3727064e735ac35027818e238ae7a5219a17d64a79"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/active-run-index.d.ts",
@@ -1446,35 +1558,35 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/async-execution.d.ts",
-          "sha256": "80bb44b00224b6f3b6a5eec07f9e74ee1ef41c034ba483c19e29f96367a0b01b"
+          "sha256": "c53bd6f2349a3df67fd162d1c8218f016ff99220d99437d79604cc6a3b84d1c4"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/async-execution.d.ts.map",
-          "sha256": "91e422b90b214d90936d7613f3bacd21834f918c274f07700f2d822fa90131c0"
+          "sha256": "e3fbeb611169f1be88e1bd8bd90371efb0e30bb05fff62f938cdbad4d0723a9c"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/async-execution.js",
-          "sha256": "52d54705ffce04e8714c615c89409b56b913f09e3efa1a13891f33c29478cb03"
+          "sha256": "4549930c65150f6cd86e067783504e002b9a85d79342b162864dafd310a7536d"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/async-execution.js.map",
-          "sha256": "7e1e0a2ba6070a082457bb5839a89387e24063668e9d5702204794ca89fec6c4"
+          "sha256": "5baedd3a399c25152dfe61ed99766aef07a558dd1fc8636ab69eae23b3179a97"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/async-job-tracker.d.ts",
-          "sha256": "d49fa20652b529d73f33a6c7541c739fb2ef998c897a9b58906903e4189fe0c8"
+          "sha256": "6c9df4f5ffaa12df88cdb3f648c7d6bac0174c818848eda10f082d986358f696"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/async-job-tracker.d.ts.map",
-          "sha256": "fa124cedd683e5a10cbc88c44ae15332bcf69d0ce52aa5e8e6d6e0fa529ef874"
+          "sha256": "56780767df28a3eae4449100673002a4c6c5e240efb5e37f654bafd4cfc71478"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/async-job-tracker.js",
-          "sha256": "f48870a589981f8361d224bc6d3b43226ccdcd91de0fd2e55960e85dcd2b4b6c"
+          "sha256": "aa7a57e791b1cbd23ca30e1b94200e1421d202cb7ae8e9915da96d79f3e045be"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/async-job-tracker.js.map",
-          "sha256": "b968024d56850b38796c4310129902697c25fd0fc3d9af2db31403ad112f91fc"
+          "sha256": "210d3ba3d94a4188059cec30c936ad382bf825cfb7226da5ba6e51b147cd16c8"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/async-resume.d.ts",
@@ -1482,15 +1594,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/async-resume.d.ts.map",
-          "sha256": "110aeabbb91700a76b987f44dbae1cda75831951acffa7ef50851a1bae8ead95"
+          "sha256": "45ea25b4fbaddd39e9ae1d505d85558061b375d9baa85fa76f6f1cdb1e98cf9b"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/async-resume.js",
-          "sha256": "a98ba637ccde89260d089a8c304dff2576d8f7aa905fade696dc42959c3a8fb2"
+          "sha256": "d01bf804982c6111ab9c769a9eaa3e9922418024c0751b01133329d45dd058cd"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/async-resume.js.map",
-          "sha256": "62cab1c3da1de84a095b51936fb3d8e92aa112e5d26a507fb1b6de7ab3a81f07"
+          "sha256": "3187114464dc110741222d41d65bea40ae8b4af613135b5a75a3d33edc4391cf"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/async-retention.d.ts",
@@ -1558,19 +1670,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/await-async-run.d.ts",
-          "sha256": "dc22d5a0acb54c5176cdde67d301bfcf86a6e6aac8c21c5f925198a3787a4d2a"
+          "sha256": "4b78f2911cb9332f4cce4770e2323787273c67cf820b0f09ac976fd7b8d3fa34"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/await-async-run.d.ts.map",
-          "sha256": "3dfc8c60affc1e15110f723358c634db5be5e6377ebf1dbda453302da5152abe"
+          "sha256": "f1bd56a9724ac250e4552939b455d985d90cbf57bb97cdce2d877de82bc1995a"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/await-async-run.js",
-          "sha256": "d3fb88b75791e701741d47cd04e0748f2a850063512416c13397bcd3ca255806"
+          "sha256": "8207250e96bd0d1cc34751a09dce505f13347b550c5061270ffc94a3659072b3"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/await-async-run.js.map",
-          "sha256": "e92a1042075c2a77918454e9ba3209dcbe741dfe7bbf71a39f736218f55c59b1"
+          "sha256": "3f577e2afe4e2e608f160e249752a365c355c43088ea65f193a590769b77eeb1"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/binary-bootstrap.d.ts",
@@ -1578,15 +1690,31 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/binary-bootstrap.d.ts.map",
-          "sha256": "c19e5cd7fc614287a4f6b518f5748bba7d5e5541bde4b7f7a41f4546a30bdb27"
+          "sha256": "bee78f86db14a6622b8e766d8c5b28d692eaad166ea591e12171db5b66b2c5c9"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/binary-bootstrap.js",
-          "sha256": "77dff17cc779d198fea0812154add91c04cca0c02f11fbed258054da429876cb"
+          "sha256": "e599d7012c98f470b1e3f579e4c2ac5477beab6b4856e772134a63df810e8130"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/binary-bootstrap.js.map",
-          "sha256": "3d0088b8f2037cc1e26298219ec1b6c087be9357bc8cd4482a3fb813c753ba09"
+          "sha256": "940045205ea3cec34fa11123cd1fc2f28d05974697d74d2b3f8e948a7b33cf71"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/background/calendar-schedule.d.ts",
+          "sha256": "597e7d9ad8f721d6a4705a294109b079aff02b4bb1c5f3b0b9de792cb3ecfd2a"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/background/calendar-schedule.d.ts.map",
+          "sha256": "65dd978eee3a35f62c39fcbff485e430d0ea1173c9083b39efa835492651a17b"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/background/calendar-schedule.js",
+          "sha256": "24b730ca81a4a8cf1120ecd78b39286654263a5929b7209020768c2e07004ed9"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/background/calendar-schedule.js.map",
+          "sha256": "ce8987149e36b7dddd457f0c6642d13ec27a52454e6d039f5180584069f219c8"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/chain-append.d.ts",
@@ -1606,19 +1734,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/chain-root-attachment.d.ts",
-          "sha256": "4799f9398b5abafb6a49922446a561af51e5631b749709aaf4aa59ad209d665d"
+          "sha256": "1efb6748a795dfab40e4a265d2a662b7efe9499b8055b5ad3b73cc5eb2aba09d"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/chain-root-attachment.d.ts.map",
-          "sha256": "b71e82093698db931e7424e8f3ddaa1b968febabf2f1b8c7797129eaffbbe1e9"
+          "sha256": "8f81f265d06cb449d23713c96e20a1812df5af195351140b0f00c6f5502899f6"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/chain-root-attachment.js",
-          "sha256": "09f909fd8dfae339c28c453dfe874b02ea24127a921227fba870024f24b2b856"
+          "sha256": "fe859514dfcd2c9ebd6a5ae5d05aa7ae55937846e2ca3dca0810637e47fe0e60"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/chain-root-attachment.js.map",
-          "sha256": "bb7ead3c1a10c999a98f5dc276e564e3fa26f0ccd142456396e6bcb884e2c4dd"
+          "sha256": "4e96488c0f76f7f84af6b3765b58e92550f93c06ebc11ceac7aa293b256586ef"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/completion-batcher.d.ts",
@@ -1670,19 +1798,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/control-channel.d.ts",
-          "sha256": "00d80b329d63db371e38d284ee6cc39f3764ef87872ea38b75a7abf064f390af"
+          "sha256": "b83b1fe1dd7a7b2ad26d52b815d42cc5e3983559f0814da170a9aeb7546e16d8"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/control-channel.d.ts.map",
-          "sha256": "ce99af6a33b13cf6ced22256fc6d837a6b8ddcd501ac2637b5f3c724f2bd7c58"
+          "sha256": "8b86415f18c67ca3b1ee9532ccd10f5c2b03f420d5e628cce358fd902cfcc16f"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/control-channel.js",
-          "sha256": "a1467d35047f89fcaab195417aa123f5c4ee62feb706eb180f81f4d0c9deac1b"
+          "sha256": "8067147585b415c56e2206c678e6a90bd86fa56a2e79c5d70f24d7e45cc6f069"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/control-channel.js.map",
-          "sha256": "72d4763cddddc0e2880644b575c790a0d469fe3028b7b45cb76885c05a5bb3fb"
+          "sha256": "929c5a143486b83b97e7652b5eb1bd33d6ec6546612fd39323cb5ad4dcde4a13"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/fleet-view.d.ts",
@@ -1694,11 +1822,11 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/fleet-view.js",
-          "sha256": "553635d9efb2234774f535c160607bc5a1fbcd3e8ddce08beef30deee82744d6"
+          "sha256": "79515de360fc5cf18042f98e59c07247f4a0c613daeb2e69e1651455f324f106"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/fleet-view.js.map",
-          "sha256": "99f7cd8168f1df84f7b161460dd6dd82149a73202385fdeaac5fb100bfbe1baf"
+          "sha256": "f05b3f64e7bc2080c61f9268096170a54d18b8420a7a70644cb98e7bfd7f996b"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/index-segment.d.ts",
@@ -1734,19 +1862,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/notify.d.ts",
-          "sha256": "dcd0620fe1d03e527424035465943265c85299887ebde16699258c5b9bffdcf0"
+          "sha256": "20329e93354e7db901cc7756d010935245ab0ad939eca1ed7cd109cbf092cbfe"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/notify.d.ts.map",
-          "sha256": "e2ad073c7b99e962feb4236d51bed3defb3c816d09a69066cdac056eb43af5fb"
+          "sha256": "0c12f237b0d1a7181a9c0e1465bf2db99b3236e32aa4db4549b63083da4074ae"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/notify.js",
-          "sha256": "9fa4ec50da0d41b4256349befe86c5d8e8eaaba122817a4c9a71c303fa45089f"
+          "sha256": "798d14b49e1c3feb94cef81585f7e41b8618e2cfab56eb69aec36c4704710df1"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/notify.js.map",
-          "sha256": "da41339743994e8e2557b978c479557d6d3c2a05ab011e17e884fc6e7dc22b36"
+          "sha256": "879ecf9029160c52290af10598451c4c5fc8dc92c3162f6312234ac829dba1b6"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/owned-process-tree.d.ts",
@@ -1846,35 +1974,35 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/result-files.d.ts",
-          "sha256": "cdde5e7019164d019af92b44d64a8a39843c643daebd6814788427787a72d7c0"
+          "sha256": "ee18b0aee90c8213b0cc1f57c76399af10a74a84f3f88feab41d7861069c4003"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/result-files.d.ts.map",
-          "sha256": "aa14a618387c206b6c5551dbc38a4144ea7f2db1d4817daf90abca19d9649a3b"
+          "sha256": "c739c875bb8bd9e097e832f0926305ad9405ba9faae6217c1e82840099d2d3bb"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/result-files.js",
-          "sha256": "49f450509fe4f1e277206aabbf61ecde6526eda1248da2f6d06e2328780e7b02"
+          "sha256": "9ce9421e2e4bb0dfa34932bbf13f2dfc3a1c7f8e1077a79206cfe229ac810857"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/result-files.js.map",
-          "sha256": "66972e5cb25080f28c746bae92d27ef10fb7c98c2bda5e3d7893e7c9f56d1960"
+          "sha256": "6d843b8cbd3f5de2c4ec383194d6d776e4f9c39758c499c4ac42865e0b6af95f"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/result-watcher.d.ts",
-          "sha256": "ba5e00f08b32ad4dc4ab8efd668da4741993216d95df55c6a902a9a3d60b7106"
+          "sha256": "9810eb778fd6422ac7b88985d10ca91e32247a124c9021bebcdb64e7a4980d45"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/result-watcher.d.ts.map",
-          "sha256": "3c1dd513506ffc1477cec149d39a6d5d304769f76a93bfea1a0e425eb248069b"
+          "sha256": "f8bd1e316c80fdd87d8da52d386764e476bb4f02bce8f97cd84f8fd5b8884194"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/result-watcher.js",
-          "sha256": "667ddcc95906b332a6eaffcddb78da28e2d1e9f86d72ed2eb58f998f18ebb0fb"
+          "sha256": "85071f26d0408b314c9bd64a3d9f604f8b82a367b1641584bd245daddd2894f6"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/result-watcher.js.map",
-          "sha256": "8408e236217da6b1b1408295c97d4f63cea5c4458ef2c25de70cb8910ca53bb0"
+          "sha256": "998e38acefe7508ae180603b72565e6527547b9de71f815bcdca68b5f6061359"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/resume-guidance.d.ts",
@@ -1886,11 +2014,11 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/resume-guidance.js",
-          "sha256": "79048bc545b77e8110abb95849c06f088a6aeecdbc998fcbae4995392837ed1e"
+          "sha256": "ad69fa331a59485000a3397958c67bb70f2ff21f6d4d5d1bf77f4a462e88f9ab"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/resume-guidance.js.map",
-          "sha256": "e6cab55f8527fa12fe734c92496e1387a4fc708936d704590f50622493c8702d"
+          "sha256": "9c0b8223df33bc464f394ebc90457357791eb50f631eae7c914343239833fd83"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/retained-children.d.ts",
@@ -1926,19 +2054,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/run-child-session.d.ts",
-          "sha256": "8a4ff71d4b8ccfa61089c16c577d38f39011052af3972d7ef233315e2f855d56"
+          "sha256": "03098518bcaee04a3792ab38ddf57cd4384ca448efabe63d472b5a1c66a249d2"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/run-child-session.d.ts.map",
-          "sha256": "4c6df86c3f3afbc9ec865ee89eec998e833aaf945370400e260f0dfbdd0f8643"
+          "sha256": "d9de2eb67ce4e92ed46aaea392f4e93e02eca16386066b3a6085098132e137f4"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/run-child-session.js",
-          "sha256": "b40aac3419975f096996e73488378bb05c4ac20692b6cdf85355b3ba2de4ad0d"
+          "sha256": "1af88b56ef5dbb287abc428f28f8a1bc28af6e0db1225620cc396e93b3230341"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/run-child-session.js.map",
-          "sha256": "2d6dbebf85124df4e147239227bda5f2b6423959d4425a034961511a17c47e5c"
+          "sha256": "7b2ca3353d091f2c387f9b0d522c70a5e2c1ed0c6ff7279b5cef960ec5423835"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/run-id-query.d.ts",
@@ -1962,15 +2090,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/run-id-resolver.d.ts.map",
-          "sha256": "90b78b3f9c126790c4777119e5e6a8c7a7f74daba1f5214ffe8968226e9cf0ff"
+          "sha256": "289918e1595ff52c3544cb12176ce45d31b279f826c40c6ed7b0e270352b6d20"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/run-id-resolver.js",
-          "sha256": "368fcff095b5fc57dbe24e18ac77d592c02b9972d2c544690efc23674324b8ff"
+          "sha256": "6707b81743e089f4db08acc7ffa348593f0f2847d5ae73239be9daef27fa3ca2"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/run-id-resolver.js.map",
-          "sha256": "9f689db05e2d9ccb007a5c099687acfd3ac2400d345da9a7444a966adb1f8cb9"
+          "sha256": "8534eb266229ae841c545cfe5a7a3d7f93e0e169f55f78ade64f79972e9c6c96"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/run-status.d.ts",
@@ -1978,31 +2106,31 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/run-status.d.ts.map",
-          "sha256": "a314caa2a35d2b5bff711e0fc4c24cf83bbb454ff4a71852f898371befe714d3"
+          "sha256": "8394ef347a58e6cf39c4b76e1f445817af457faf7e838767ddb0782046a76927"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/run-status.js",
-          "sha256": "9a3f184fe6d0b97d64cfc1c933429c67eac5e407c6e1a6d85b87572abf213d4e"
+          "sha256": "d37ff0c08f34d374354ebd46118fe43d6e601d6c11f992209028bae2ec901ec1"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/run-status.js.map",
-          "sha256": "64a43337691d75ab944565af74f5a5d3748266cd9fa141a59d715c897d9d92ea"
+          "sha256": "45ec2f7e3ac29d4282aba3d801fcefa43ba7ff47fcfb87e978ca03bca9803e6d"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/runner-aliases.d.ts",
-          "sha256": "eb0de31d9641f74f88f7764855fc500a3778aba761c78bc50006bc971f6415f3"
+          "sha256": "7ce81a452942289845142acfb170864adf6f08e7c84eb36c4daecf02f6ea49fc"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/runner-aliases.d.ts.map",
-          "sha256": "2f55b7e97ac91ce1ef5cdc88196ea6977d490a44c3c3f8473eb40d4520947954"
+          "sha256": "efb4f256ad42ad363e5aa3ad7857c0de451acd1667076b688d9146aa406583e6"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/runner-aliases.js",
-          "sha256": "7d259ec64a8e8189fa54b96105c337656b42b9ed989ab6aeb09edf0835871f1c"
+          "sha256": "6db44c98b00fedc1b1411e69da47b6c16b4d2bcd31c2d4e4958b666dc3ccd002"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/runner-aliases.js.map",
-          "sha256": "b20f2b6dcdcf57d7e9f83f5d5638cc4c1578e5a4064e6de6256427d7a15c338b"
+          "sha256": "0f05744be021eeea92c7bd3ff3489cc6dd89113860620d4deb376ffe21a407de"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/runner-child-launch.d.ts",
@@ -2010,15 +2138,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/runner-child-launch.d.ts.map",
-          "sha256": "11430bdbdaa010fecbb8ec3cfbb9ce18646e233bfb0bc7e2d823f420453a73ff"
+          "sha256": "4a84392d9f3c8b1aea7acdb2f965413ba86dac9ab41c7cfa6a89abd0cfed7012"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/runner-child-launch.js",
-          "sha256": "935a2abf792047875d93305fb78009ce431b2c52b07e9f6232b6bfe3d5c4fada"
+          "sha256": "3eb3e151f1cc76838aff6a614c3353751a3e8da3e7c165a88c900cebde8fe8e8"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/runner-child-launch.js.map",
-          "sha256": "0adabd469f7206f46c6d13fd021e8816d6acbc74333fca386c0a191b734ef11a"
+          "sha256": "2ccad7318acac2b42b5d7ac3a25f806d5ca08c4cebce8945b5ecd2e0890ba278"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/runner-child-sessions.d.ts",
@@ -2038,19 +2166,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/runner-http-dispatcher.d.ts",
-          "sha256": "655e9f87da82e81436103028a7989108be585eb1f44798478ffc4c383c0c37d9"
+          "sha256": "565dfc3de0b50066c64e51b536cb7bd1965faab530fd1c93a701d6388a95afe0"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/runner-http-dispatcher.d.ts.map",
-          "sha256": "ac3221dea49367cf82a96c0ffcc12f27f899dd5ec322d3f60051018e172200bf"
+          "sha256": "d5690f86b704fc94fb2fc0574503e788e343d740faec2bb4c5e5d5d8167c1b22"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/runner-http-dispatcher.js",
-          "sha256": "1210dae21a53cb87c7d8356335bd932d1a26f8e6ba4d691124fc3dc641d325e6"
+          "sha256": "4a80367b1be3d261ad46f09e4ff447c5c4b7158d18af35c0c21d66dbee904b96"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/runner-http-dispatcher.js.map",
-          "sha256": "a60aff3ef83d4e9b60abc9bcade9ca05aa290897c32254639e4919fda8f9931a"
+          "sha256": "5ce127feb1bcf813d46df31a4cb3eec44099101227d10eb1627194808909a82f"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/runner-startup-failure.d.ts",
@@ -2070,35 +2198,35 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/scheduled-runs.d.ts",
-          "sha256": "7fb7ff0bdf972fcb93b981f706daa7a7520857ea66df1951e02a0e635c1b1340"
+          "sha256": "5b927b1e8e5bce754d71325304edb9639679006def4327825528511754ddcb85"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/scheduled-runs.d.ts.map",
-          "sha256": "b20456c157b96bd1ca54ac8482a821b730992e9300ca2642fcc3a83c8e936a12"
+          "sha256": "0b0ade186b74fa14bba20ce5ffa852d82fab91f720ad02213c865503fc737988"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/scheduled-runs.js",
-          "sha256": "315ee9adf5612b786f05c126f2012d79a28b3fca52458734fb5cf92f55dbfbab"
+          "sha256": "63a3bfaca55da58a9b5a87b7be3a623218ae9b0ea73febeb7118495221493215"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/scheduled-runs.js.map",
-          "sha256": "b873b07817ba6a2bf58d00d401e68a2a035022f96a5497cfb0291ae7b3a7720d"
+          "sha256": "7248fd8ad56990dcef31c09d074dffab5c45efbcc75ad8a930c9616f3ecf2a3e"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/stale-run-reconciler.d.ts",
-          "sha256": "4cc008688134346cc17e663e75cb8e01518c586c2e388d00a027d8362f4e83f2"
+          "sha256": "cda939e5cee62805dfc219da2a04e42135dcc224c1c29997c62dabc23072570f"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/stale-run-reconciler.d.ts.map",
-          "sha256": "f80094f484681a5eb4d8faaa274a073f0f7b7b77215e103c75af858575344be1"
+          "sha256": "127bd1c92c7de645cf442a5e7d2f6ac88d6a0a2522cc7ee807281d511bfebab3"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/stale-run-reconciler.js",
-          "sha256": "a725449135fdd6ee2603de8e9b6336128a8e3a557c0043686b9997f64c1614e8"
+          "sha256": "a7a203bde860a3ea8266516df407c2e54728383d3c0df22697cc4efe03fd31d3"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/stale-run-reconciler.js.map",
-          "sha256": "fc7ce1191675ed40f69c14d8b4cdd3e21c7f261fbdb70b2846096cc301285105"
+          "sha256": "2eeb809c5577313041b625d8718af4b1cd175c1618683ce571455d28d92488af"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/steering.d.ts",
@@ -2122,63 +2250,63 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/subagent-runner-bootstrap.d.ts.map",
-          "sha256": "32b2100d4a7ed760c5adcc28575865fb4dad01b4b4f32bce03d9c5056b7d1aad"
+          "sha256": "e4e08fa9a244eef4cd21a6067af0d5ac7d7c90c2815b98e9c773cb35ec1d0b58"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/subagent-runner-bootstrap.js",
-          "sha256": "369d62d5a81076eff75dc191260f240a0924afba9c046fcc2c283fad66a96f87"
+          "sha256": "f5edd476cd8fec4d514a645d0efb66a52659f081dc52d0948376ce4af09a7e3c"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/subagent-runner-bootstrap.js.map",
-          "sha256": "0580fab892d91ae963dd162b73413d173176a140b0a2a2a4709761fa649469c0"
+          "sha256": "5caa115adfd798974539c99c020db244ec00eb5ef9da42ffb6efecf617fac3fe"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/subagent-runner.d.ts",
-          "sha256": "dcb8b1d21d6b496dc8cc98efda75d41f440d5e61f1ba6a5bb2f560862a29ee60"
+          "sha256": "e55f67c7bf9aa620fef0077153018f7eebac26f8c29d2697495dd1c081f2cf63"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/subagent-runner.d.ts.map",
-          "sha256": "b24748f738addb55288debacafb4898c2c25b132e14a8d35159828fc49359010"
+          "sha256": "6b3da7af57c12fd4af3dfd2d9559d31b301ea10a54599b426a237a9dce38ec46"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/subagent-runner.js",
-          "sha256": "f75630bf4ed416b4e749731db90044be305c21c7235a47153c03a7588bc41f8a"
+          "sha256": "1c48ce709eceb1306d6e5476ee1e2c2dec870ca97a8a1acd41ccf708f39176df"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/subagent-runner.js.map",
-          "sha256": "8f1e134efd1ecd53a89215919341c6c42ec4ccdeba55d165404085327d7b2ae2"
+          "sha256": "b7a55d02bf0348276880900a451a32a808040ecd2963cd705294c8db91d37712"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/subagent-wait.d.ts",
-          "sha256": "8e24c162e548f3bc2f036665724bf14d89ffbaf7fc0740e67bf3489a7e5d606d"
+          "sha256": "6d3b26faaba3b29421217a8040b4f2b9211f13db15e0a416108acc861c846805"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/subagent-wait.d.ts.map",
-          "sha256": "0f6252351120718d23d0a10055612cd437dc28c3f63d2b59764f5ab050ccf334"
+          "sha256": "a9da4afd2578c82bcb6b347d612576d4f51700fb0111e10731b57eeae4071ebc"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/subagent-wait.js",
-          "sha256": "36e07ffaee8042b8abe58522574f5bca4f2d86ad5ccb1da541a98855db9de71e"
+          "sha256": "ff1d3ee7b9877958eb788ae2a15744c6c66c32dc0e72a4e031228ad759f41355"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/subagent-wait.js.map",
-          "sha256": "320070570673938554435ea70d4e5e3e6a39dbe1a4e04dd313fd1c24a7e82407"
+          "sha256": "cc7974022903b9e2bf3901461796258e321e934e8cf81cc8d6c7e1a4806b6f51"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/terminal-run-index.d.ts",
-          "sha256": "4f367b9c5fb8d116cb7c878ce74f0b9369ccdbc85466da5ae6f5cbe87e266cfa"
+          "sha256": "154b3a4d35a0537a12e3fac0f4fc180915297b09b69d9e58690a7b57f3bdcfc7"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/terminal-run-index.d.ts.map",
-          "sha256": "668e3870c9e0a69b017ede8cdcd7deaa98fac8067ab8c48f0b976eef044d1a9d"
+          "sha256": "1f3cf9545c4e7ffa821aef6404cc477b06a4c54c6bc2312c8d598fdaa0c4d6f4"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/terminal-run-index.js",
-          "sha256": "9c9fed5950bcf86ee0de348737ad932745f0b904b0bc58772a62e4882a776ad4"
+          "sha256": "497e79735185a78e396c8ff63f00bf7f8e41cb1df99b3be71774d983833f1c71"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/terminal-run-index.js.map",
-          "sha256": "3ea90050ba874e368400f537cb5ac2754ffad909d0a6d0050ea978a873087e4c"
+          "sha256": "f10ba993552024675586b2b151515cc7dee3d04945f0e86a5e2ec77653d696a2"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/top-level-async.d.ts",
@@ -2202,15 +2330,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/wait-completions.d.ts.map",
-          "sha256": "47c858edd3f7815ef20fff7ae0f11d68eb83958d4ba38d933d6f3d29996cddb7"
+          "sha256": "b5a8fcd26f1fecb1ba68606142072bf787e9c19aa12fcdb60a9b841e96116869"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/wait-completions.js",
-          "sha256": "6aede48d08e908cddea86338e0a485ca4608b0135c25f29631db4afc71dd74c1"
+          "sha256": "89991f4be71968e347c8ceb2f950129c0d6e9367bfce2cbb452a54812d89c012"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/wait-completions.js.map",
-          "sha256": "6c9d3333da9f788fadcd25e331d90985d98fe2c45f01ea81272ba4dd191d5f87"
+          "sha256": "9ed4c4580fc3e1e8153d5badf5b597e1d45391d5145da0c0616a85090b05c786"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/wait-config.d.ts",
@@ -2250,31 +2378,31 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/wait-tool.d.ts.map",
-          "sha256": "b9676ae26f0b838a26e8eb36a84960d472ff79a409501d0cfe34a78a69eb4791"
+          "sha256": "8a8aedc4761eb69fe0ad925ef0c89c1bc5fd4435065c9009e45775b81a53aac7"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/wait-tool.js",
-          "sha256": "c25232e78360def8e6700a7f3e266a4f6c3d8e8e0fb89d754e0ac3317eb63247"
+          "sha256": "e29050ec5be8c548401573ba580d500005e41d2ddbc79b302fe885430119a811"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/wait-tool.js.map",
-          "sha256": "acbd64098bbc486d1d20e4d6d56ffbc7764bd7c8e28354d18158dbfce218109f"
+          "sha256": "3bf0411c12f8413b7ec9df9ab2be822286edaa578433dee05b8a8de3a9ec50a7"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/workflow-terminal-proof.d.ts",
-          "sha256": "6df6a34f2a00c1ee80b8bf78c1310dfc6bf8b2075e30e612f65bd03f3073370e"
+          "sha256": "0651d81ce1fbed37d54fb7bd570a6fc633507ab2403a488fba94f1d8dddc8f2d"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/workflow-terminal-proof.d.ts.map",
-          "sha256": "24151d5362fb5bfe82f2438b32a8b1496d3b44e2308983dba9ec44b18bba108d"
+          "sha256": "e83ac383f3aa8d15b6387ae8c5d87335695a38efb7940090915d8c9eb3a44515"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/workflow-terminal-proof.js",
-          "sha256": "1e03bbbb81607b1830c96e8eed1b18884010356a10e6066a06cf808f7fc1624c"
+          "sha256": "9baf150a172c77ff3a9f34c2e495204e52d8471dc3f6d3fc0801a5b13b4b7c38"
         },
         {
           "path": "vendor/pi-subagents/src/runs/background/workflow-terminal-proof.js.map",
-          "sha256": "989c7e3415b4efa403b650d079aeabdd613fe01922ad4d00c216f715a3953b27"
+          "sha256": "bc3e925c9830c6520bd7659532177bc807fa6235cdda566c72f1a5cbddc4ffe9"
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/async-dismiss-action.d.ts",
@@ -2310,19 +2438,35 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/async-stop-action.d.ts",
-          "sha256": "61d9c9522a592de00e7b8341a867bc54122d675e9bc7131481c65caea2a4aace"
+          "sha256": "fb14f6b1fba47c6569b55a1c37b2c08a01ba491e44cecf1fee035b2d5be33548"
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/async-stop-action.d.ts.map",
-          "sha256": "7109c21e8a6f34be6b228b41465362a7e3486eefe722aed3d6edfd3d9446e563"
+          "sha256": "957c897691755a2f1a6e9f8a1368f2dabca67e70d0ee90364244092822c645a4"
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/async-stop-action.js",
-          "sha256": "df7272edae0cc96b6e819d6998b980a6b5e784ad983686524343e7ae0c67c3a1"
+          "sha256": "17d709f947e6b7de5387ba6ced68c705babc4b043ddefe60433185243129ad1e"
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/async-stop-action.js.map",
-          "sha256": "b21565c4e9e338522818273f453dc140be7748b58168aa57be17b653003ca9b6"
+          "sha256": "b809437abcbd958bd63ca765af0b62d17096f28e91cc9628669c80ded6172188"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/foreground/command-action.d.ts",
+          "sha256": "e13e2024e0d2f048dc1ff1ef3127c7dd58684e2ff795f975ebcf7eaaf3a4c717"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/foreground/command-action.d.ts.map",
+          "sha256": "fd3852a1e1278ae59095b621d67dfbbd8514999ce9f54e61acb7cf7d2dea6bd2"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/foreground/command-action.js",
+          "sha256": "2f9eac7aa4e20bbe71f78ee8c69744c9ee611372706b7ea3d6d935dce965ae68"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/foreground/command-action.js.map",
+          "sha256": "c4546728eb772477e05630fb3685508349a90c61d18cc06f804bd63c46678bb8"
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/execution.d.ts",
@@ -2330,15 +2474,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/execution.d.ts.map",
-          "sha256": "5aeebdfc718e8aad571d0a9eecaf266929f52442c7a711724f786a0aa4bbc207"
+          "sha256": "364520ce7b1000e54d53e81290b1a770a89ca8bd2c1e36e02cc9e9c63f400b61"
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/execution.js",
-          "sha256": "c9faafe98657767293d1a595901c7430645b92ef45377651f6784a5fefb17604"
+          "sha256": "7b74bb75f5d155779b37c3b01dc8909e9bc45837289d033110b0709e2bd52036"
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/execution.js.map",
-          "sha256": "c7a9ab785f276242fe0b056d02499af1fc533c2e274c1f057b5a93fe19a24073"
+          "sha256": "bb83d5d7d52e68f36d654614fec4317d93932a5f1c0e4a945da468a35907932a"
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/foreground-control.d.ts",
@@ -2362,15 +2506,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/foreground-history.d.ts.map",
-          "sha256": "a374e2628a572f9df628ea8e224f85c53df14116f78a84edc813788faf196e23"
+          "sha256": "7564f82d8b12db918a466aa308f9669a8bf54d12837ec4c862a672a0b91c3841"
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/foreground-history.js",
-          "sha256": "e21c108333130b5ef97ee98de12f84cd60f231c0edd47f0d60ce88fd5378558e"
+          "sha256": "33bb9513f86ef4997a35dad867c1187d7678b30e84827d3b38e8392a73e5028c"
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/foreground-history.js.map",
-          "sha256": "a30f4e70bb92749010dce78a02f8a648e61213d80fa041bc02e95814112faf8c"
+          "sha256": "a90a1a8042ec2a4c826b3b2a972fdf6fbb81a3e046e33dad3973aa821ace4feb"
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/prompt-audit.d.ts",
@@ -2390,19 +2534,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/subagent-executor.d.ts",
-          "sha256": "e982eb8ab686998c015b210aee2e3c7b5ff2a07fc51433ccdc4d21a1cf41b010"
+          "sha256": "dd931c4b09a6790df6ae29724f7ad5b22b65406f1355e184181fd6e3d107cd4b"
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/subagent-executor.d.ts.map",
-          "sha256": "c9922dee22ccb3ae8fdf9489baf3021db21ff6bf57d3eedcdddc26a36aaea2da"
+          "sha256": "e9c123c9a6b69821d7df1220902033da423d81e19b6d2ba69a8bd101cf453bc2"
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/subagent-executor.js",
-          "sha256": "a75dfc6215c909c905f9cbc54773db92c493e3425beea42a932c79cf1d44d035"
+          "sha256": "f699828ced6e9a7dc0e84a7f3e2a36b42a8ecec1e09852cfdabb3f26ec658676"
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/subagent-executor.js.map",
-          "sha256": "36296556560642886ab9082da3854f071f78be631b300e4327bd87bcddfe30f5"
+          "sha256": "6513588ac84ecef282673cf7c55df5543ded0e52a6578413d7a8d59efce2e638"
         },
         {
           "path": "vendor/pi-subagents/src/runs/foreground/workflow-detach-reconcile.d.ts",
@@ -2549,6 +2693,22 @@
           "sha256": "b22d7274ad8ad8ddbca3b7bf2697cb2e06f362fe79832a6016ed9a164ce320df"
         },
         {
+          "path": "vendor/pi-subagents/src/runs/shared/child-commands.d.ts",
+          "sha256": "bf20d0edd0c6f78c23a1de13b4c4074d495576c9fcae89cd3faf37ccf2c9692e"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/shared/child-commands.d.ts.map",
+          "sha256": "800e8428e9cb9040c06bdb40764216353136ed0e6ca63c21bbbff1f421f89436"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/shared/child-commands.js",
+          "sha256": "cfaafc08a15037d0e629d7e583574f3c63670bacd10dee47c501660ccc6d7878"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/shared/child-commands.js.map",
+          "sha256": "cc23d711d24e7296093b8335f90bdf69bfdf03ea64cc5f376152c33eeb4c723f"
+        },
+        {
           "path": "vendor/pi-subagents/src/runs/shared/child-hooks.d.ts",
           "sha256": "631dbdcb25558c563ce5a2594650c77efa7d8d3715ec97c220d078c95183c587"
         },
@@ -2558,11 +2718,11 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/child-hooks.js",
-          "sha256": "f038863a2fcaa2b3be7c8d564d291022e85c61d15346a14ada4b26a7822ba5ba"
+          "sha256": "825a143032c6edd18cf14c1d4a97ca70324ed8499f2bcd1981cdcc745e9c0ebd"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/child-hooks.js.map",
-          "sha256": "252a7ce3d87bc37020a43d696ef7a370c5845d9233e22ae11d7f4a9d3128acf3"
+          "sha256": "0389cd307b3c0ce5a68365028bd08100f6eb4b78f01f3567e2e73ac0aa18c0f9"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/child-identity.d.ts",
@@ -2598,19 +2758,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/child-launch.d.ts",
-          "sha256": "d7329e53a66fc37bf193766035e1bd08a8340730c984051c2624069569f09f2f"
+          "sha256": "357f7e66d35e1b89de7b82e8af432821f25e45b310de75793715b791564b9fbd"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/child-launch.d.ts.map",
-          "sha256": "fe1303ff3cf1007000f64cac896e2f6b09446cdf78dbfcf3815a421449479085"
+          "sha256": "8e7b6fcfa228628fa253093d37efd49e054640202a7cdf63d6546b83d1077cfa"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/child-launch.js",
-          "sha256": "abc7eb756e18a5d5e4b9cd2fcbcd655a6dd03a9e0c8953d0a6eb66caa0c287e0"
+          "sha256": "04140f8f11d51fbeb6c6d01c803d8f5ca1304e73aa9d35909874f4ef253f8d68"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/child-launch.js.map",
-          "sha256": "62f6cbfaf582d8095bda0b3823a7505356f09c6cd167068e40a65c2d1198099c"
+          "sha256": "d1d1068296dd0f6a822888fe19450675ff63fd2069ebe5db1a024312731ed1da"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/child-lifecycle.d.ts",
@@ -2646,19 +2806,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/child-session.d.ts",
-          "sha256": "3a52e955a477bc2ad7cdadd18424e3e4db8aae80909505291f1c4b8feb6e38dd"
+          "sha256": "547b2d87482f35cb30f86ebc565d12027ed0add1ba5051566896e869f5a0d839"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/child-session.d.ts.map",
-          "sha256": "2045d28f0efbaa4f33a9089bebc16e8139ad779c5bacab1582cdddbb9efc04cd"
+          "sha256": "80a05785d710b58684d2ef93afda8ffd1ca739d08f0edd263d26461a9456430c"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/child-session.js",
-          "sha256": "8ce401b4dd5a1a48dc539c263d536a211014889352febf1c7b4882eb2a495932"
+          "sha256": "9546e40713954c4b21fd98f154cc13c1789e2d598ed4d19e517d2d20b1b2778a"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/child-session.js.map",
-          "sha256": "1295285d198c6720ba43b3ba1f3f727ff0b100aa3d4f03bc81b112f0e494a917"
+          "sha256": "2decc7d218728cc58bd9c3cc792c055676beda6f3206482ad172a1d9b3ea42de"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/child-tool-plan.d.ts",
@@ -2666,31 +2826,31 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/child-tool-plan.d.ts.map",
-          "sha256": "82d5cd57e0a0f116e97d02e0632fdbb643841b848f94448d8dd048ff521df47b"
+          "sha256": "b84976550a8ff056482594765cf7576ecc636dc72466b82a500973a8b817392e"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/child-tool-plan.js",
-          "sha256": "a484c79c12c845e9934178b8f3c83efb991527fd7eb3fb6f97a902a8a0ef0c82"
+          "sha256": "576556c0c22f9fe3cb1dd171cc652c221b9af088c19e8f8848a62a8bda002408"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/child-tool-plan.js.map",
-          "sha256": "b0956e6781a6dbbdd5c62d2dde68de33dc816b7d0740624645be4242825c6514"
+          "sha256": "2766dd40cacfe895ade1d96cdb86f33c1ecd48562fa693bb051d2bcc0fae53c4"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/claude-code-adapter.d.ts",
-          "sha256": "86ca82bfc6ce66eabc6325b35899571a97c68d9fd9f346f3a6b2ffcefbf96e6b"
+          "sha256": "c3141e9783effe395d188117f55edf1a9a363fc7efef2a96fe30cc110b2f1a52"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/claude-code-adapter.d.ts.map",
-          "sha256": "2a977b8f39e76db527215f72035abd1e3cfea90ff8875f8c37d7476fdcd5603e"
+          "sha256": "3aa0753d44280d72445f73cbb67f7484b41ae3e2f9d90388b3e7d36c9d92344b"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/claude-code-adapter.js",
-          "sha256": "e752db5320b04112b52d60c277a78cd1fa40c852841778e5cdc65fd8b326ac84"
+          "sha256": "a490bc1d0194f12583a9e5cf3cadd4ffca1fd75b875d9adda5c4ca491109fa04"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/claude-code-adapter.js.map",
-          "sha256": "881d12fd49edaf3f0d0b8a58bddeaf9f328084189bef22006f1922442258044e"
+          "sha256": "7b7dcaee62fb6ec52d73a3a2523d3eb8eaed8cb7001e0f98a015488b9ca3812d"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/codex-exec-adapter.d.ts",
@@ -2750,27 +2910,27 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/dynamic-fanout.js",
-          "sha256": "0691100af27573698ffa2d91e55bb19766c974c867ddecf6ab93d66fea5f20f9"
+          "sha256": "880210286e0560476b33f3567b1f4584d2c860d05b38764b74fafc17ccdb830d"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/dynamic-fanout.js.map",
-          "sha256": "5f139c984fdfee286c705cc533c6f4f71158c7406519459c7b05a80ed3f4dc2a"
+          "sha256": "63b573142b8ffc45ba5cab4d47b9daa562145e69696476fa5c23e879b3be95a7"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/effective-system-prompt.d.ts",
-          "sha256": "af8432b86ed996cbcaf0c9c8405936cc580ed3d87db5a13e0fb4279c03cd7312"
+          "sha256": "bad81ad5fe42500db8265c4f2d167a46e84517bf25763c7dfe2d9c05b6da6e35"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/effective-system-prompt.d.ts.map",
-          "sha256": "64da7908fb6ad864fa74c1c97c5fa13970c5159026dfde0bb2c3fa09a5594a14"
+          "sha256": "a043596e2bf205a617711d994c75b6feb54f41aa766c4d182def7c50e5d5342f"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/effective-system-prompt.js",
-          "sha256": "1e787a99adf407b5a605665924630d1d33743bef46f56eeb3deaf2228af0b1a1"
+          "sha256": "8c9227e83e9078be49ce263fd4c8d8f27d4046dcddc0e87a0691d766796f79a9"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/effective-system-prompt.js.map",
-          "sha256": "a595a311bb401e6142cb0aaec846cf9555c356310b6ccc810f25dc810b9f1889"
+          "sha256": "3963abce422ff51b74a361771a8283fc8003b45192aa33dd5cd8a20581a31bd1"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/extension-bindings.d.ts",
@@ -2806,19 +2966,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/external-cli-preflight.d.ts",
-          "sha256": "4cad886130db5e11286ec642ff04ba097a38e16cc9c1c464b88236344298b067"
+          "sha256": "01f13d569d9b57e90d32f10077eecacdc98e348cfe23dd7a28fc3623e5ed908a"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/external-cli-preflight.d.ts.map",
-          "sha256": "dcb2759c2711403d3cad5105a054e99e23389a79910a77f4ae7a067286f16685"
+          "sha256": "b0c3e9463129857c69d74c5e6795da93642ff28f7aa81b42cec93385e18362f2"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/external-cli-preflight.js",
-          "sha256": "6638346d9d3e4220deaab7dd419d3c1b7a62fa699af309e7b718b0ffeb4e94cb"
+          "sha256": "8d7df8a04ad3d1ff3c8241230535a32a8fc5a550cad5e4f231c53b85c7a2c446"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/external-cli-preflight.js.map",
-          "sha256": "e3cac19c677d9cdc37209930ce0d5d365076bcd0129bb6bfa341977d61e6b842"
+          "sha256": "cb092eb3d85859b33c1c9c5f545f66143e2b40bed5d5c2bc6aea17a342335e23"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/external-cli-runner.d.ts",
@@ -2826,15 +2986,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/external-cli-runner.d.ts.map",
-          "sha256": "b205bfd3b08a10e0a177168439a2103810ad0ceb471d7dae5eb3bf4865d400af"
+          "sha256": "7da1243331152fd7ee9f27404de0bffceeb85793947200fc5c6157d86374c9b1"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/external-cli-runner.js",
-          "sha256": "ca165b8884be8bff57bfd5660092a4cf6290fcfe9a98bc41ef56f5a8a5e57a2d"
+          "sha256": "5d9311ad815210d3bb602932da8e6555332acf171f96157cbd3d3db8600a1a50"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/external-cli-runner.js.map",
-          "sha256": "8ccebd1c83d81ac4e552ce3621a09e87355432e987637056f405f33cef56253c"
+          "sha256": "381890c5ebad00a1250eaacd3d5b66aad4b52f2bcaa0e4f9fb84d9d715114bc9"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/external-job-bridge.d.ts",
@@ -2966,19 +3126,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/herdr-placed-run.d.ts",
-          "sha256": "8eaef995208f028e34a9092cfa6b38cad7e5eaa12a8ea82a16af8383391b66f8"
+          "sha256": "1b996f290a44791e7011817682217f4a648da5d8f7ed89c7d99935a3b2e9d253"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/herdr-placed-run.d.ts.map",
-          "sha256": "4319df2af7c980ceeab3dfdd0eb0d7a3ded2825f8e39e70234a2e0ed671ebf30"
+          "sha256": "48f3fba709a32f9a9b1a4cb1ec2c577c0e175d97a232696e7c2769699c4e0fef"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/herdr-placed-run.js",
-          "sha256": "f8ae9f8e836e644d8ff601339c1865814808af49b4f742435cd18fe004b6edc5"
+          "sha256": "501ac1cbb8100de5937816d4ca4a0444ab9a7ec625365cbf9a7af0f437c39fe1"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/herdr-placed-run.js.map",
-          "sha256": "e9b621204e3ce3dafe3312cb607fbec1ec540d66c9180869adbf2a0263c05f1a"
+          "sha256": "64888f6bad904cf7bced33c153d9effb1ac0c19d466b5ba6409af33cabe4eeb4"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/host-step-status.d.ts",
@@ -3066,15 +3226,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/mcp-direct-tool-allowlist.d.ts.map",
-          "sha256": "a22e539d4661cdbe8a37517461c62faea610b456d4bd73c21fa35d1674eb4330"
+          "sha256": "e192c2e71387d4caa9ea708bd4520b86f37c70b0ae9defa17c3eba9afb1709ff"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/mcp-direct-tool-allowlist.js",
-          "sha256": "3e9bab9091a7852e84ced41b78af525c4988252db70e6d79d77ab44fd9162d0a"
+          "sha256": "b582cc18f9da75dd6c751a0b46cd795b4f81c32086c1527883a23bef20319486"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/mcp-direct-tool-allowlist.js.map",
-          "sha256": "dab871eb9aa94bc56c3cead1076e90ee3b606890c34de84c2a231fb8d17440bd"
+          "sha256": "3559430ec8ac2af5e4f5ed393d4eb4e70c705c6c4691c8b93f6ee3e660f865c5"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/mcp-direct-tool-grant.d.ts",
@@ -3094,35 +3254,35 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/model-resolution-diagnostic.d.ts",
-          "sha256": "6708d78b026703e60c298965f9606ed04f505da639d457e80ff1f7ede135d67a"
+          "sha256": "6818c1b0893da5d445f59b1b8b1b8ab213bbd3b18b5e27a0621b5a355fb4f1c8"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/model-resolution-diagnostic.d.ts.map",
-          "sha256": "ba35b2035c78286aadbe7e0f882e47cc58971677d30bca82f0cb913e8504b2d2"
+          "sha256": "95077f53a91c2928e95001c851c3f1a7eba10b822b20b1deea4c44175fd503d2"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/model-resolution-diagnostic.js",
-          "sha256": "86aae47771f0cdbb8a12b648d7f2c360eaa15420c456e7b938971f92bdd395e9"
+          "sha256": "c381af139ec9999072711f2da4f5d6ad3cf5286c64e0d467a30008ebcb245b01"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/model-resolution-diagnostic.js.map",
-          "sha256": "8a1a0dc99086ad633d9cc5521564b127933d5ffce5cee7467d1822e025d0b15e"
+          "sha256": "bf4037f6e8b485ccc88c30cadd0264954dd7953c2c5196a3b8d156696921d3bf"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/model-resolution.d.ts",
-          "sha256": "3b895c1e15e0b0357a094076172d67e13d4214ecf50f8325a3c4563467048949"
+          "sha256": "d73ce478459603030f1a7083d5d468472937e67cca5c9f0e0d94f5b5bd72736f"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/model-resolution.d.ts.map",
-          "sha256": "fd27e9032e0107546720fe79f26baa9e0ca26f8908bba6048c079f8a344401c9"
+          "sha256": "752cbc60fcadd3dd3d51619e62afd77716ca990b6ca134f92657d7e1849aef50"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/model-resolution.js",
-          "sha256": "9a662c4c15cd08becb4509ad7bb12191c9bad33d8cee4eb96f0c077f4366ca95"
+          "sha256": "7de137f2c32a2229e0706dd907902d06cd46a9b16b535510112d0f910caaf373"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/model-resolution.js.map",
-          "sha256": "3c4754cb7ec4c85c47942cd5bec4800ae73ec3c534a92cbd7f5adf342054cd84"
+          "sha256": "626106c3ff7b73051f66687b5bcb1282752a98f8481c3ea1929476d7cef3f9ca"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/model-scope.d.ts",
@@ -3158,19 +3318,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/nested-events.d.ts",
-          "sha256": "25dc45103f9b7b4af68d71debf95744949768e6ee1531b968289fbb6d5f93e6a"
+          "sha256": "f2655cc7981b166dcff156f2541dc4046390b441c59d9e7d0a54fb171f4122c5"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/nested-events.d.ts.map",
-          "sha256": "989df8a8e9f667fa4ad24da02208ad72c22961ae63706b8e4a3e35ab0910a4ad"
+          "sha256": "6d901b9363b0f6c6b7659fb9b1bb7e0dc3c668a1b1f65ad9a79792872d31a8d9"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/nested-events.js",
-          "sha256": "8f2f2fd0b1ed458d2baaf212e97151235958a3d12f2035f55e8b878d5205534b"
+          "sha256": "21198455126005ab66b0f1372f5d46d48ee461af1137538f375d98500b9a18df"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/nested-events.js.map",
-          "sha256": "d93d22136b6f5ac75eff9ca936f4c74944ba2e60074b9ac140fbfe2c3d7c7f00"
+          "sha256": "f66a3df63b9b59474087aad80062281cb3bc8f9ba65b36670141feed8e8d30b7"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/nested-path.d.ts",
@@ -3214,35 +3374,35 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/orca-progress-tabs.js",
-          "sha256": "6947153f8513eb3bfa288983b5fa1b026e49ccab02684da3055dfc1963d6b0f4"
+          "sha256": "87e76ec2e33ae06cf91a258e3ad5388298b434abd8339267993f0579fe43a699"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/orca-progress-tabs.js.map",
-          "sha256": "04e6cc04de77fa5e804bc1ef6aa20371c2ebf23abf9afdf2589a26240b9d93fe"
+          "sha256": "3d96a83cf4a1866d03ca509cc37534c9e7a37cd3f499b083b448005660c3d799"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/parallel-handoff.d.ts",
-          "sha256": "b896541a509d960b1843b842ba3a3d3f8ae8adb542cfff658c61450d021337ba"
+          "sha256": "dc89ac61db2b5cdaac72e223838c41bd59a91479cf9b5728eb6df2207995b74e"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/parallel-handoff.d.ts.map",
-          "sha256": "b7cfcef10b6417706354f20dc8545613caf37add8249b0e007083648f970e3f8"
+          "sha256": "62d2fcf709f8ea4b7addf6c019b0c5922baf293d9d1024dda1bbc9c83cb5dd35"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/parallel-handoff.js",
-          "sha256": "53fa45d6e68a3e483db4abe92d9e2a77b84338291797072bac9d8888ada2aab0"
+          "sha256": "1368f471b1aed15606c2227a8e37691e777ab5434f26e3b564e57527aebbe9ec"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/parallel-handoff.js.map",
-          "sha256": "0b4006a8f88f67b0f76e1b40531cea618dc699b068c84978c3c7d638defe518d"
+          "sha256": "f5a89db34ce49067e6984dce9a1a4bfc2ba42b56c08158ee2144612f2edcb920"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/parallel-utils.d.ts",
-          "sha256": "84fdb408dc7f215c16ec4460eeb12bb02d97537adf202f5f51da5dda76d62799"
+          "sha256": "d0a097a27fbaf73e54134f532b71621ced1afd3361f17a63b2858f0341ad6ffe"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/parallel-utils.d.ts.map",
-          "sha256": "32e0b3107a78019156078ef838aad9c964311c76028ad96a6f16bdc675ed6adf"
+          "sha256": "2d73acc247c53f116b6717d8c29d52d6764a0eeb60f642166fd0547577475e43"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/parallel-utils.js",
@@ -3250,7 +3410,23 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/parallel-utils.js.map",
-          "sha256": "c83f83a6071226f15729acb47d1180a2c6c4cc6e2ccd99731d50c39c7a1edc16"
+          "sha256": "d421f750dcc7b4cb9d2c4ee6266b42eca17d6ef638c612b1009af22bb26f5261"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/shared/partial-output.d.ts",
+          "sha256": "2ca7c1b7a7e207a9ef88264032ad91b50695b78979244d0bf438cac7d6cb60e2"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/shared/partial-output.d.ts.map",
+          "sha256": "5e5e881008349d1889526db01e77a5a50f0582afc58c78ae7965a6752eeccff0"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/shared/partial-output.js",
+          "sha256": "2857f7b94df1f133e1aaa8ea1391d40b0b556f238e178e27233a2749af51230b"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/shared/partial-output.js.map",
+          "sha256": "a25f1b4b10f0adb75dff30c51cf28e1fc75d10446ca6905dc6d8cf2822c1ccee"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/permissions.d.ts",
@@ -3333,20 +3509,20 @@
           "sha256": "1da91d9f8b903ab970f16ae46a36a45256d4e10fc0d6fbf623d6715e204d1210"
         },
         {
-          "path": "vendor/pi-subagents/src/runs/shared/run-history.d.ts",
-          "sha256": "9ce1a8509d756b69340fe0fefb63987a715a7683dd46466d785d1c6986f40857"
+          "path": "vendor/pi-subagents/src/runs/shared/runner-launcher.d.ts",
+          "sha256": "f17ed904efdd0f1a871a031cb261edc31e1ed5a465333c2f064bc14d156dcf43"
         },
         {
-          "path": "vendor/pi-subagents/src/runs/shared/run-history.d.ts.map",
-          "sha256": "841dcd84f5bd2b48c6f42e657a05cf12ad118c16bd6297ce1318742b5886f560"
+          "path": "vendor/pi-subagents/src/runs/shared/runner-launcher.d.ts.map",
+          "sha256": "77223e4767a6d1e8e180181cfec34277e85ec3198631be8c4436c670763a052f"
         },
         {
-          "path": "vendor/pi-subagents/src/runs/shared/run-history.js",
-          "sha256": "e1ad7dd02844549cc86267a869d77ef76be9c11d2d71cd35e97211ea71e88421"
+          "path": "vendor/pi-subagents/src/runs/shared/runner-launcher.js",
+          "sha256": "98e82cb5b3b5783e8ed807ed9675967a2656d36866a43743c1e54612898e39a0"
         },
         {
-          "path": "vendor/pi-subagents/src/runs/shared/run-history.js.map",
-          "sha256": "0cbd90180661d5db7e7cd61216276f15a55631cb29062a6f430fad0039046407"
+          "path": "vendor/pi-subagents/src/runs/shared/runner-launcher.js.map",
+          "sha256": "7564b9899e6265c5675cc9f319a4248fcdba9c494bb057b61d86b654c4b1a313"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/runtime-acknowledged-extensions.d.ts",
@@ -3382,19 +3558,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/single-output.d.ts",
-          "sha256": "f079c88c5c8b681c8b26b79d1350e9b08e434fe61f89f04d7ad7c24ffa67fa82"
+          "sha256": "03395aee4319d2495a67e40e1ed7617058ee8025c72ab014c389cc59c6eaa695"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/single-output.d.ts.map",
-          "sha256": "5ebc2e5e412618918229e29f84eb45ca502c279cf8f03941acf2c7c274d4748c"
+          "sha256": "e2a799525f7afd3965db63d12879876097cf369df56640c27a3803cce4a0dfbf"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/single-output.js",
-          "sha256": "76ae3b9488acf8fe1bd4a49ba126a369323bf06b16956f99ac0d524d9b6b361a"
+          "sha256": "9a8fdbfb6335f69bbfb61773be105c3a0ad0e8c138503ee97b917baec6a52d80"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/single-output.js.map",
-          "sha256": "b60752f762bc32673a8f1eb5c0e4c8412dfd1dd784a0684c2cad987796d6a01f"
+          "sha256": "d3964d20f752d5e4a08c805e716d146c53dc645f09acbc076555d7dd5af44766"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/spawn-budget.d.ts",
@@ -3414,19 +3590,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/structured-output.d.ts",
-          "sha256": "6147e3975865fea33c9894bcb0fa7a1649f7a83cc10ff53e51c937acce0e141b"
+          "sha256": "81eeb566bf55fa28efc7222da2eb9a3a7d7a7b9d1ed9c1574d6375184f45e053"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/structured-output.d.ts.map",
-          "sha256": "85da77f79ea4eee65aa62bf3aa55a373f37bbdf65920453a2dacc996352b4833"
+          "sha256": "923662910848757ef5ecf61c8d2aaa8836f42b61e5869a8efe984bc059dd4e0e"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/structured-output.js",
-          "sha256": "9ac98cb88313790bbce042c4c311cb2c1f9946fb23d6d3ed5208512419957bb2"
+          "sha256": "7c8888007528d5b6c112c25f8b2d36e99b77441a42af4e257324b442f1756e83"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/structured-output.js.map",
-          "sha256": "6c0466f9ab930b1360b5426922ae933d777b23c396b264bc569d53fca754af4e"
+          "sha256": "cfa2fca19193356937e98748711fb6e810b7a786d9c3476b09ee1b6874626770"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/subagent-control.d.ts",
@@ -3434,31 +3610,31 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/subagent-control.d.ts.map",
-          "sha256": "ac5a32114c287da6255173abd438b8d365eeb3aa6ca5dfd631c0fce267757c0c"
+          "sha256": "89e3f01f86d3719d33135a5f38754ceb5c3260ecba4666727eedd70924228f87"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/subagent-control.js",
-          "sha256": "14f18f1cf0846f3a79b8bb9905d6457d537c6ca40a132cc82c23baaea50b8fa4"
+          "sha256": "06fee74ec560a80e53650607584834c35c35b107cf954dc5dd71c86795d7f689"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/subagent-control.js.map",
-          "sha256": "3b6f5eac426c671f8986f7d6cd795e84281a93ad415f3d5773cabd0462f4dfc0"
+          "sha256": "310d2b1e5b89b4b61faf484e227056f798cd69ce680c15eb00a38c063efcc805"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/subagent-prompt-runtime.d.ts",
-          "sha256": "ab759438165f5e87fc88df0fef33e095943ff4ed39ff2aeeb1ca1e7ad39f28b1"
+          "sha256": "20464a99e1b4a5e5e46d64ff548c146dafb30753161a6620c8b5696863e4cd65"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/subagent-prompt-runtime.d.ts.map",
-          "sha256": "e8410a4779d738ef71964b5583663120fb18ba30a41293f594436f232d113361"
+          "sha256": "7287878b713e64ddfbfbe71836ce9cfb5424833cdca67ad41e2753bd85420c74"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/subagent-prompt-runtime.js",
-          "sha256": "cb20768f7c3f1f842ce941b5e351a15de273a5791778a0a44b7d1a1ff63f2888"
+          "sha256": "e561afbfa924d97f55f43f48dd7aa2cc88d0e625c654fbaa2f34eac5b4bc4201"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/subagent-prompt-runtime.js.map",
-          "sha256": "a6d0066da4805819df41acbd1172ab9bd747d476254e1f9751dd2dd657abf918"
+          "sha256": "fde78f9358cd7b3ba880900fc9bf5df7df95ba94a8f0c5d800fa072088aad1bc"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/tool-availability.d.ts",
@@ -3486,11 +3662,11 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/tool-budget.js",
-          "sha256": "c761a06dc63d179b9c35e576e382c05f5af2555ab0d6bf2c8576398b0e2b8cb8"
+          "sha256": "77b2cc14f1b8fd63ef9e14e8b5bc6e592d09178276548a8ecc26ac4e4bbfcde9"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/tool-budget.js.map",
-          "sha256": "d1ca9b14893eb73ecc4dbe8a151ede3fe7378621e3eec7edef72f396cb266e18"
+          "sha256": "68b2074949c112e9fb3feccd3beced90ba2b6cd8d9b5a3e8f2cfaa7c577a41cd"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/tool-timeout.d.ts",
@@ -3550,11 +3726,11 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/workflow-async-child-guidance.js",
-          "sha256": "a2e605722b1f983aec10a47cead5c4da9a18301925b6c69ff4f1c70e3a6ef84d"
+          "sha256": "bfbb242df3172220c6e886eeea88ed877ee028aaf812a04600d36adf417b233f"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/workflow-async-child-guidance.js.map",
-          "sha256": "8b61eb5b4c16287ab5b77197e975674cc2108a097039b9ad6dccc4654dc6cd9f"
+          "sha256": "a5574ccab66e8ec93dd0e0881bf0b2164b62ad07252fea5391161c5799d2445c"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/workflow-graph.d.ts",
@@ -3573,20 +3749,52 @@
           "sha256": "cb9a468e9b9d60e49f859f5656113e33bf31603e9b60099992239eccdcde2f47"
         },
         {
+          "path": "vendor/pi-subagents/src/runs/shared/worktree-cleanup-apply.d.ts",
+          "sha256": "0ec76d81a36e67e3bb46d63c6806e0406be4664d44f471c85817b8c5d48f1eb9"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/shared/worktree-cleanup-apply.d.ts.map",
+          "sha256": "f24b60056552e0e8babea0683aa80a6f9ec633398f6dae9bb27061a554467ba8"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/shared/worktree-cleanup-apply.js",
+          "sha256": "fa58cdf4485e032ef2f5011473db2972c2e47e1eb3edf5f17961e3919b55a942"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/shared/worktree-cleanup-apply.js.map",
+          "sha256": "2d1820dc05dff0cfdfe28652e91a75e269193f42bf89fbcf7a318f164a2c3cfa"
+        },
+        {
           "path": "vendor/pi-subagents/src/runs/shared/worktree-cleanup-plan.d.ts",
-          "sha256": "db1c0a26d41c09fdc0be400645218a4619cc228854467933a141259f242349e9"
+          "sha256": "25cf108c9100e4293d048a6f696b196ccdf1c2f975a9414cd1d6549819dc0530"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/worktree-cleanup-plan.d.ts.map",
-          "sha256": "afb5822716f59adecb9cda481d72cbdfce915df6be4967ee8d3b4789531dd9bc"
+          "sha256": "662d19e87fb645f066997bbdf5a8fa2ed4a9d7094d635a1993e4f404c0167cb7"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/worktree-cleanup-plan.js",
-          "sha256": "8613ea192a146845fb4e031440443985d4a6decd328ba769240e968ac35820a1"
+          "sha256": "f554df74b9e054eca62936714027b940f79459d006cdc28a61b8fd3eb0708f3e"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/worktree-cleanup-plan.js.map",
-          "sha256": "f675ad9689273863490af1e3749baed45c58e44f0dc52103a2b3f30172ebd0c6"
+          "sha256": "57a0c965f9c36da0cada12afffa24236f74546b45f4f15333e37463d7838ac4d"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/shared/worktree-lock.d.ts",
+          "sha256": "25e514b1bd2124c565d608ed2668e066a7f5adabed004d628b090e2223fe694a"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/shared/worktree-lock.d.ts.map",
+          "sha256": "329930f499f295ac5f4a029b600872b1502f551e5659d174fd8be8203d63fb15"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/shared/worktree-lock.js",
+          "sha256": "45d8f49ead30ab34e1d199b5332cf5fce98f7142eeefb8a7bad04d874b947a63"
+        },
+        {
+          "path": "vendor/pi-subagents/src/runs/shared/worktree-lock.js.map",
+          "sha256": "5f2bbb5999664384b3db3cbd3d4322e06d1ea0f0285f8b0c29db0b2d9357462f"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/worktree-setup-command.d.ts",
@@ -3606,19 +3814,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/worktree.d.ts",
-          "sha256": "bc16317dcbd072351491f0190708d1844ab948815da7d7e878ae8cc527479179"
+          "sha256": "4081d241b837d3dd90737636f825e259dd080e3380967c6f0c63105e81b02429"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/worktree.d.ts.map",
-          "sha256": "9bf74ced26b3cfda08b37e9b23b4c29f90d0b7bd5a9007728beeb801d985f6e0"
+          "sha256": "ea815d22ccea0f2f52beed818fa8a9e9807c9459e2213b32cbc3e3f7576e8480"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/worktree.js",
-          "sha256": "c345bf58d037e03596f2944c0e7303fa33dd8c9323038ba40cb7f0a73776998b"
+          "sha256": "33df9c6aa84f461ff179d4f105692305cebafd39b74753c621a07d4f90a5ad57"
         },
         {
           "path": "vendor/pi-subagents/src/runs/shared/worktree.js.map",
-          "sha256": "9126f3b6692b7b0b56520838338760eb7e12edd68ab6b6a06f5cfa334fefbce5"
+          "sha256": "0c3ec224696337fb5f2159cd8174378de4e4fcdc57ef3eed03fc31e5fdf19b20"
         },
         {
           "path": "vendor/pi-subagents/src/shared/accessible-dir.d.ts",
@@ -3670,19 +3878,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/shared/atomic-json.d.ts",
-          "sha256": "e237ad77e3639639325371ffe792d2ab2b3417d64c9b9d6b6f08910f8621b924"
+          "sha256": "f3f210c66c73deb0ea14e1ed83c1af377cac6f92d2dbfb0d528ec9bda412c7c4"
         },
         {
           "path": "vendor/pi-subagents/src/shared/atomic-json.d.ts.map",
-          "sha256": "66207271e30ab3b1336abe4121dd5620a53f210f64c275b39573e111c6dbb022"
+          "sha256": "f322c6778fbfd42103c296609f3c0f16ef47f7c40ebafa2aaa00eb7b73c15a05"
         },
         {
           "path": "vendor/pi-subagents/src/shared/atomic-json.js",
-          "sha256": "6b31c284c11e3239c2e93d8b07af273b6eb54b96069861136570c34da5bf619b"
+          "sha256": "052846993aa1b0c16855a56b6e37f2ac473f8f6338d8cff608f9cd953db256c7"
         },
         {
           "path": "vendor/pi-subagents/src/shared/atomic-json.js.map",
-          "sha256": "e045985270c6835ae802a34ae1fee6bcc6c830cdf1b169f88f3c80bc74297671"
+          "sha256": "337ef30fa8654ee3db1707c2e10c7e66fd6b33a57db32e407416417ea2d1d719"
         },
         {
           "path": "vendor/pi-subagents/src/shared/capacity-resilient-json.d.ts",
@@ -3742,11 +3950,11 @@
         },
         {
           "path": "vendor/pi-subagents/src/shared/child-transcript.js",
-          "sha256": "bef1f6d6b87bfd1d8a47c1a8e153b36f1db54334c8655a7d7c7a63f51d476876"
+          "sha256": "465a5c580721ce260d8f2604f900281cae8bcdbb51489b2bfe138f25b1ce0d0a"
         },
         {
           "path": "vendor/pi-subagents/src/shared/child-transcript.js.map",
-          "sha256": "b62e0f79f5ce559f593293c66dd675b8ec6a6e9492585bce6f73696c06c7642b"
+          "sha256": "056ea3321ab6a73ac0d1ec7430afca664c151f87166bcad537f0d99037522a2c"
         },
         {
           "path": "vendor/pi-subagents/src/shared/completion-owner.d.ts",
@@ -3797,20 +4005,36 @@
           "sha256": "b07e46bbb854787f8536f45820807d88eed79d96c77d80180b3b39f26fb4757c"
         },
         {
+          "path": "vendor/pi-subagents/src/shared/edit-distance.d.ts",
+          "sha256": "b9d3662fafdc9dc6df2413f3c1d02e013741336ad4ab8a205a88965ad7dccbd9"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/edit-distance.d.ts.map",
+          "sha256": "859d2935f68d4e5928e0808fd991a5f11b5e4a93ff12367b80933a6ad4ef8342"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/edit-distance.js",
+          "sha256": "aa2dee52c82eca5c622655a4d51e58511e7f412c0d35b5ba2305f61a71a82629"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/edit-distance.js.map",
+          "sha256": "719320fbd824a453863a4a0e9aea98e6acde3043ae4188b1cf02b7680697a4d5"
+        },
+        {
           "path": "vendor/pi-subagents/src/shared/extension-context.d.ts",
-          "sha256": "710d496a4feca853fadd8e82e9514028ee8f968caecc72ec0a83d607bc56e691"
+          "sha256": "b75539ad5fc16b3446f0744d23bf455ba3abd573bafcf4e680c050a47f50e2b5"
         },
         {
           "path": "vendor/pi-subagents/src/shared/extension-context.d.ts.map",
-          "sha256": "5b040d0aaf418941b47b3c2936b535182efb45e9f0907ba68e2578410b790025"
+          "sha256": "72c0e79ef282b344aac0126696a26c4cbdf76ae8f45c04b5a171997d894305f8"
         },
         {
           "path": "vendor/pi-subagents/src/shared/extension-context.js",
-          "sha256": "780df72b4ee72c0bfa5e5ea468df0b5220fa7e1cb9f118416fa530359e1350fc"
+          "sha256": "8419cec332b85e685550b4c92bc4e87d63f8dcce68b2374abaad4c2cbc0f6a35"
         },
         {
           "path": "vendor/pi-subagents/src/shared/extension-context.js.map",
-          "sha256": "93c3b24eaf959a30b70d559ea280f9e909b622e4aff1f8398b02af9f1ddbb42f"
+          "sha256": "cd674d8d4eda56f424620d41aa1ad9898e77f8f44120f7ea4d7eb9292b3ba02d"
         },
         {
           "path": "vendor/pi-subagents/src/shared/file-coalescer.d.ts",
@@ -3827,6 +4051,22 @@
         {
           "path": "vendor/pi-subagents/src/shared/file-coalescer.js.map",
           "sha256": "bf99da8ce6d54a120a2194f13e903c4d793ec26f276631d1aaec497a6fe64637"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/file-lease.d.ts",
+          "sha256": "d2a1b3cbdad3b691babde7438a085586c422f919046668db6c62162997f54367"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/file-lease.d.ts.map",
+          "sha256": "6fd74ba359d2cc4b8394c9f0398e5ea6c7b39e6c457686de48caeef2e71b5d45"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/file-lease.js",
+          "sha256": "0c668c533f71d1424b310f7481f57a38f8771c58090fb2eafbcb913f7d326b5a"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/file-lease.js.map",
+          "sha256": "bc2ca8655ab88b1335285998179ba01b59cfd4787b3c47252dac76ee65188122"
         },
         {
           "path": "vendor/pi-subagents/src/shared/file-system-retry.d.ts",
@@ -3882,15 +4122,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/shared/formatters.d.ts.map",
-          "sha256": "2a70334ad498f858c4b50a99250b0a015b7378ea2635b6cb49c5c110b30edd11"
+          "sha256": "4d35a34535220a022ab8c6c54b3f7518d55002357871bd6b8f994b3157c52ea6"
         },
         {
           "path": "vendor/pi-subagents/src/shared/formatters.js",
-          "sha256": "4575b170760df8c982cd76e715a2a29be70e024b054c260394a7856b07d5cbe1"
+          "sha256": "553e977e3d7223667e8c1efd6cc50441d4d5d4e7b655eebef140b229652c2dd7"
         },
         {
           "path": "vendor/pi-subagents/src/shared/formatters.js.map",
-          "sha256": "c746bd92ce09f88a74d8e50dea51b5ee6e0115e4ba112dd3bf0dd57798b5c3cd"
+          "sha256": "8d66269192d2bbd1d472fe831518612b710d90e5af82228043d80976eb3d5881"
         },
         {
           "path": "vendor/pi-subagents/src/shared/jsonl-writer.d.ts",
@@ -3926,19 +4166,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/shared/model-info.d.ts",
-          "sha256": "6c6cc712bab48d1bf62ba32573e7d48afa59b317a846c2ff9e7e6207f7f66b49"
+          "sha256": "09a5bd4876932a21cd8e36e40239556e37315b2d6bcb750e84654be1243230be"
         },
         {
           "path": "vendor/pi-subagents/src/shared/model-info.d.ts.map",
-          "sha256": "6f73b3395830589e452134ff264c864f35bc05d0fd5324222d3fa0c120c2c736"
+          "sha256": "b57c7b3c120b32e239d481fd01b3acd0abe6afd8615daa1fa5a5feb9d6b46afa"
         },
         {
           "path": "vendor/pi-subagents/src/shared/model-info.js",
-          "sha256": "2760cb27918212d2c517b9086ab6a7b3f045538f8f60e29c3500352bb1e91780"
+          "sha256": "49859fde234e7ded971d496980a83ccca1346d09a192cc8383deb22d414a3ffe"
         },
         {
           "path": "vendor/pi-subagents/src/shared/model-info.js.map",
-          "sha256": "cdfd5804eaf4a4006ba4b3a1f427ea7f7cc084474aaa7043ded9b08ec762cf8c"
+          "sha256": "ba7496f65def0ca45cbdcf4303f8e02a3a9ce89056ddd040afbb116027dd9a02"
         },
         {
           "path": "vendor/pi-subagents/src/shared/model-response-aliases.d.ts",
@@ -3989,6 +4229,38 @@
           "sha256": "5b9f254cbd451bf102aa1ea5fbd53bcac0f3862fadd8ab20e5242de4a8c0c789"
         },
         {
+          "path": "vendor/pi-subagents/src/shared/package-version.d.ts",
+          "sha256": "b8bdd71490db89329037c1a5c95fdf52cb068ebbe7825001f0a9eb98c9736f1d"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/package-version.d.ts.map",
+          "sha256": "ffd501c3c0bbe9b5119cb66b1ad2080eebdb38dc9df76242a096c9b3ea1f48cc"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/package-version.js",
+          "sha256": "383f00ab3a5b4841e75067a332f33a7899a92465bdaf705287fda27d986ce513"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/package-version.js.map",
+          "sha256": "b597f2a8b904e0dff35a05458d7dd49974c73cf76c988d31f38a77f4119ac4f1"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/parent-wake.d.ts",
+          "sha256": "041db1e62e78f6c4a9d94dfd5d532f4c479194a25f301ad260f998f4736091b8"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/parent-wake.d.ts.map",
+          "sha256": "056de07b535f57b75209aa37b1ec1e39fa85bb0bb0e7529a8d38842a62e3a8b1"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/parent-wake.js",
+          "sha256": "1b99dac67491dae813cfd6f7b7f883dee3ba10073935d51027f4537cf283651a"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/parent-wake.js.map",
+          "sha256": "37bc175a20af7662bdb42498570fcf2bb92a9a29a642518004a643609a84743b"
+        },
+        {
           "path": "vendor/pi-subagents/src/shared/prompt-resources.d.ts",
           "sha256": "83a0b7865e486fbd3a59084315bb8507c440e459f37a0689c5905ba17c40150c"
         },
@@ -4006,35 +4278,51 @@
         },
         {
           "path": "vendor/pi-subagents/src/shared/pruned-fork.d.ts",
-          "sha256": "2bf4976f7cbcda849d8f024defb596f07fa3fec859fec9b9b4764e3a68629434"
+          "sha256": "d7fb311430d7ba7838eb21abfac95b6708bf78e1a48ed302da57ef41fec7f632"
         },
         {
           "path": "vendor/pi-subagents/src/shared/pruned-fork.d.ts.map",
-          "sha256": "80f9103f77b129fa48cbd50928d6dca6331a6ebf025c0b485150128964bd2627"
+          "sha256": "be0ea3e6287e7e491a5fc30f401337182572662665ea68196920143cba87ef7d"
         },
         {
           "path": "vendor/pi-subagents/src/shared/pruned-fork.js",
-          "sha256": "b315774c3dc8e6e72662aa309a6c80820e3fc20b4bce33f10d45c549cc8fe5f6"
+          "sha256": "89059d4b0b2835bf671d6d4e66a22bd10f67881915c2cc8f47a24f5689a5f626"
         },
         {
           "path": "vendor/pi-subagents/src/shared/pruned-fork.js.map",
-          "sha256": "13d5c3bb256d0c4906841549de987cd6de064d8a9ea1838a5212084036aace13"
+          "sha256": "9fee2059b3af205be420a66c06fb69c946002f941a392c51cc8eafbd67eecf37"
         },
         {
           "path": "vendor/pi-subagents/src/shared/required-child-extensions.d.ts",
-          "sha256": "9c22eaaf281e261d3ead99a208ce9b841f98d7169da19c4d319b08fe3ee7125e"
+          "sha256": "a50095854650c3a5a07d988d6baa17bbc728ee75f3aa30d10c86dec4fac4d52b"
         },
         {
           "path": "vendor/pi-subagents/src/shared/required-child-extensions.d.ts.map",
-          "sha256": "f3709f69b30869eff95df9df3d6d9374b989c755a9413bfcee8f33d6e9fb5b99"
+          "sha256": "f1141c14d6d4ebfa1f2511bbe55f0d13f317e936e2164174c409a2977376ca6b"
         },
         {
           "path": "vendor/pi-subagents/src/shared/required-child-extensions.js",
-          "sha256": "0bedfd3913e95da35aa96ef3998096167e3c74fad2273630a9b0f8438914ffeb"
+          "sha256": "5273a136abfb3b04605b1eb1d3970954a18bdbac855a48306e7866f2cf4be1c0"
         },
         {
           "path": "vendor/pi-subagents/src/shared/required-child-extensions.js.map",
-          "sha256": "abe7b3c1dbfe21053fa244b39fed7cd0222d84fa00111a02fa2fb45ed7b5a60a"
+          "sha256": "e8b913c8de41ff95128632b98fc2602097fb084204f049082fd67e9a1083ba4e"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/runtime-module-path.d.ts",
+          "sha256": "6769aaeb51e16781a51ac01027b5e5050721294fd67da37d58289c2183856416"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/runtime-module-path.d.ts.map",
+          "sha256": "bddc9a95a7ddbe854e8f436f127e3d3bfb8acddc41a5257e4afaeeac31aebff9"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/runtime-module-path.js",
+          "sha256": "3b2471044fc3837f9c817fcb5cf50ed1635da27a453aaf5710c142c7d39bf274"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/runtime-module-path.js.map",
+          "sha256": "d46d9cdeca1659a142ec803a4c362073ea5df6e25f69c77f9c2a8da301cc0bee"
         },
         {
           "path": "vendor/pi-subagents/src/shared/session-file-trust.d.ts",
@@ -4083,6 +4371,22 @@
         {
           "path": "vendor/pi-subagents/src/shared/session-tokens.js.map",
           "sha256": "8dfaaa03c5f9c3cc1c39cd5e75c1d80cd3df1bcba6e159a709c4f86725269e6b"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/settings-file-lease.d.ts",
+          "sha256": "3e1797d03ff8aef7d1e6466692d0d88f8ee869cd31ba31d115948ff63b676f27"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/settings-file-lease.d.ts.map",
+          "sha256": "f7028d43e837a4e3f082fedb929f0513fc545acb269fd984fd6c85036f3878f4"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/settings-file-lease.js",
+          "sha256": "381f1234dfe398c4ef3e628a24649056d083d81172e24d3b8d520a00f3949211"
+        },
+        {
+          "path": "vendor/pi-subagents/src/shared/settings-file-lease.js.map",
+          "sha256": "46f54395a02e7ca3dca79f162d96a7bfea55b636e4e7f9cc693ad615b7e7ec66"
         },
         {
           "path": "vendor/pi-subagents/src/shared/settings.d.ts",
@@ -4150,19 +4454,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/shared/types.d.ts",
-          "sha256": "a44b33088968d0b135229ca8bd643611bcf803ee8473b97df461f592ff08407d"
+          "sha256": "a565edb2f0234803841f9d9b81d1384a32985edf99111f085f0fb3ec84fc740f"
         },
         {
           "path": "vendor/pi-subagents/src/shared/types.d.ts.map",
-          "sha256": "59ed48db23f9ca3347fe39df2cf165651898f0b5a4381f08e7193ec9b34ce609"
+          "sha256": "02f0594449b687deb4c5d9bca290f21c1fa833c091d296a095af144a047fb497"
         },
         {
           "path": "vendor/pi-subagents/src/shared/types.js",
-          "sha256": "5261c3d285635fa5ac7b57db69157e4b1cb4b2ed381992a94cd5b966e98bf7aa"
+          "sha256": "ad843c43de3a0c56cca720d0e6e15cebefbc12b3e6e3bf787d168bb089cf6f8f"
         },
         {
           "path": "vendor/pi-subagents/src/shared/types.js.map",
-          "sha256": "45d940fb3da1ca819b025e9d68cd9e4973da93af8021fbefe3040cd526ac70cf"
+          "sha256": "e640d15d21c8cb0f9ea3cbbc993f5ba1f0aac93242de188584d1952bf2c5caec"
         },
         {
           "path": "vendor/pi-subagents/src/shared/utf8.d.ts",
@@ -4182,19 +4486,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/shared/utils.d.ts",
-          "sha256": "c1cf4d6ef65bf7555950caa7d308d378d4e44ef17d15014a0af682784460d378"
+          "sha256": "d141ea3294e338a1926b1a2c9381edf30d8cfcce236f0a08e4d9fa1f071cedbe"
         },
         {
           "path": "vendor/pi-subagents/src/shared/utils.d.ts.map",
-          "sha256": "8ca59c2efb08e3d26b2db3bb4689ad1978b40bf1ab7b180c909f1e0194627c8b"
+          "sha256": "ed6dd56f8e213516b4111fe58183da8be94e583bebbd2e048ff2d6e0cc0e5d28"
         },
         {
           "path": "vendor/pi-subagents/src/shared/utils.js",
-          "sha256": "c798899899e38b3543d6e1bd20f70409f6f644af98e43b8ca6e4c8ed81b5aec4"
+          "sha256": "34c7a64b283e56debc7c5d44a9f9bdb5f141928940c53c83b182f90c934ec889"
         },
         {
           "path": "vendor/pi-subagents/src/shared/utils.js.map",
-          "sha256": "ba3b83e870ceceeb82a9600f8ab4defc43f6dec12e9fc99dec51b0ed5cf2a719"
+          "sha256": "2078ee036d7742f18f1b8ae1040e549ebf81039bd452ed68832d1c4745817a5f"
         },
         {
           "path": "vendor/pi-subagents/src/shared/watch-strategy.d.ts",
@@ -4346,15 +4650,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/slash/slash-commands.d.ts.map",
-          "sha256": "8ec17e7d0245872163e305eda621d5a0e7eaeb418f47308d46e970bedc30156c"
+          "sha256": "cc51560b08b94846371c25f1eac802117b492cc6f4565603aa4970f3fd705ac0"
         },
         {
           "path": "vendor/pi-subagents/src/slash/slash-commands.js",
-          "sha256": "e59ede477476a39babe88cb90ed758a09f04804bae553e5f7dcd8494ed1bb929"
+          "sha256": "3a61c8e16f4ab7fee9bf03bdac3d9e8c99e66462ef96aa29e0b671d00b4cca9e"
         },
         {
           "path": "vendor/pi-subagents/src/slash/slash-commands.js.map",
-          "sha256": "461a2cfef7797b025b566cf4ca6306174300e48bd16ad0977ca07d1927783e7f"
+          "sha256": "4dd7f54752af2bcf76161dde7b2b5a70fe961af8b1775d55b1b109036645f3a6"
         },
         {
           "path": "vendor/pi-subagents/src/slash/slash-live-state.d.ts",
@@ -4378,15 +4682,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/slash/subagent-cost.d.ts.map",
-          "sha256": "2e1aeccd4ba598afa19733d5068d71bc0cec565e5e788671483773d68200ea47"
+          "sha256": "354b8ac7e42d3550d8ce27476b7e73de98c07fa28c988072e835c2e9b236c2d4"
         },
         {
           "path": "vendor/pi-subagents/src/slash/subagent-cost.js",
-          "sha256": "b0696f8c7ceca189f1214f647571a2c5b9023cba6ac0c3d9c171f2919e97f330"
+          "sha256": "b03f4e21d4ffd8de600478c201823c788d3df94acb2b2bf43d393ea88e3cae7b"
         },
         {
           "path": "vendor/pi-subagents/src/slash/subagent-cost.js.map",
-          "sha256": "3c82a4432462979dd157ea09fa57deb06bfee69ce12a133f5b6805135e418e75"
+          "sha256": "93ff392d0c5ccfc153dd085818b9cc8ac29da52f4e53e07f2d2b68ee99d7a296"
         },
         {
           "path": "vendor/pi-subagents/src/slash/subagents-admin.d.ts",
@@ -4394,47 +4698,47 @@
         },
         {
           "path": "vendor/pi-subagents/src/slash/subagents-admin.d.ts.map",
-          "sha256": "965bb68a8fa96271f1bff074d61a7d96c5279481b4a4e34fc0bd160ec12e3b49"
+          "sha256": "ef1bdcab9e4d5f59d6d2806b8a9aec328a379046c533d107ac82c265d9872e00"
         },
         {
           "path": "vendor/pi-subagents/src/slash/subagents-admin.js",
-          "sha256": "4bfd47c84392a6590c517752948fc5e5fd41bd88f71b820c3ec4daff647efed7"
+          "sha256": "5fe07e3d3bb4b16a953ecf569a0ceb5195a0601eed9cafc1271aa46180f78435"
         },
         {
           "path": "vendor/pi-subagents/src/slash/subagents-admin.js.map",
-          "sha256": "dba2a9df21ae8c380e43c810aaf8770b9a1e33fd28e49da7c7bbecbd34d5489e"
+          "sha256": "61e26a8af53faf286a02f289a187d12a206d22d04bb040c7cb37a15358089f84"
         },
         {
           "path": "vendor/pi-subagents/src/tui/fleet-status.d.ts",
-          "sha256": "1a28268ef1c0705cf12ba3e9885fe8d4eaed5cac173701cce9987fff5bcef539"
+          "sha256": "dafe33eb12a4fa186ebd46c8dbc1d4461d5039e49b81869c8a5780fcf0f832c2"
         },
         {
           "path": "vendor/pi-subagents/src/tui/fleet-status.d.ts.map",
-          "sha256": "3745ee5122d6600876cee30d8a17f10fb2d739e0ff30fb04744e2a9e6daebed1"
+          "sha256": "947d7226383fe82fa84d1b9cb8727191130280787075686409db8ec9ce401d12"
         },
         {
           "path": "vendor/pi-subagents/src/tui/fleet-status.js",
-          "sha256": "d20406fc2fc762f9ba1031d21b7a65f2f6f7c2dfe1598efb6bf3c97204d1961e"
+          "sha256": "dc801ffd149e14c76bd989a52419319a7f086d8ca8e2375f4b4bd67beb99cd3a"
         },
         {
           "path": "vendor/pi-subagents/src/tui/fleet-status.js.map",
-          "sha256": "679de6b95fee490c19693e14df90bb168555d55f43eb1ea3d4db8b7d8fecd1a0"
+          "sha256": "10e466ba90c9613f16a39b618e3582642e229ef7745020730fe8ab06e974b9fa"
         },
         {
           "path": "vendor/pi-subagents/src/tui/fleet-transcript.d.ts",
-          "sha256": "3ab9b070916596909dc66ab8d342f24b4b62bba2993030c3eb69cb187e721bec"
+          "sha256": "d7ea77ca34c0ef1828bab66d951f0103cda0481338839bd8368c9f723c1b5518"
         },
         {
           "path": "vendor/pi-subagents/src/tui/fleet-transcript.d.ts.map",
-          "sha256": "be06b1de13a09b4f01027bdd4b7698b6e54d93b3fdac83c2b2c7e99359cfe5be"
+          "sha256": "a3bfd14fb0a4cf6350797716c3e7743e776651cfa56029f373983302a4683dba"
         },
         {
           "path": "vendor/pi-subagents/src/tui/fleet-transcript.js",
-          "sha256": "fa1e94f937336df70147e817484ca6917ce15f9a7fc3cf78f907cc61d9c37a4d"
+          "sha256": "d63b3369cccf1581463020439fb66bda5caa34a28b5ec3afd170a6cf0dabc3aa"
         },
         {
           "path": "vendor/pi-subagents/src/tui/fleet-transcript.js.map",
-          "sha256": "080bb14e9e132d7ebd93104cd18159e2b6024fd38c69c652fa83dd98de82f4bd"
+          "sha256": "5fc6abd073ba7eebc4a4c5681ed29c546956f52c407ba31cf6831607caa037c7"
         },
         {
           "path": "vendor/pi-subagents/src/tui/fleet.d.ts",
@@ -4442,15 +4746,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/tui/fleet.d.ts.map",
-          "sha256": "6f8d1e435c40dc450a6c7d4b9ee60c8cdec9056cb4b288010cc842052a56bde0"
+          "sha256": "b52de3c7390cf1738c0c288a81f54dc2d17b0bf0352532a68d53fcee48fd6b8c"
         },
         {
           "path": "vendor/pi-subagents/src/tui/fleet.js",
-          "sha256": "3ebcc942e510d92058f7156069ff3bf3851b4d6e3fd72ec2cc8938e68dfb9b50"
+          "sha256": "82b8257c27db2ac2c18663f1eb80208a78f93fda5410b212aa4deab064b65dbf"
         },
         {
           "path": "vendor/pi-subagents/src/tui/fleet.js.map",
-          "sha256": "8a311a64fd09a992fe00f9fa602f2565d246c7afe39bbec0d2a736cb71f22e13"
+          "sha256": "38ecbf016d3b40b333057fca91c0d2d270019341709a29b29248e77840cbc785"
         },
         {
           "path": "vendor/pi-subagents/src/tui/render-helpers.d.ts",
@@ -4470,19 +4774,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/tui/render.d.ts",
-          "sha256": "b0369ad73a0e87ba993c50502dc7b95d9fb78c5a70659399e2f5fbae8637be4e"
+          "sha256": "c1c97600d8601c431abd2236a6963ae5d55c31fc69e009f29e80b4f9c6a04f2b"
         },
         {
           "path": "vendor/pi-subagents/src/tui/render.d.ts.map",
-          "sha256": "0707807b5e5636236158788c155c8def4612a339c4593145e0cc2a27646d12a8"
+          "sha256": "e2c6117bca679569605835167b2bac736b5dde6e9553537248cc0aeb7e84cc8c"
         },
         {
           "path": "vendor/pi-subagents/src/tui/render.js",
-          "sha256": "14caac7ee45ceb55a98c2a8caaf67fd9157cb88e0a907ee3377a87004416140e"
+          "sha256": "cdd12797ab095afcf0da9b192a0063607309ce1c0837137881f7b5426c05daa4"
         },
         {
           "path": "vendor/pi-subagents/src/tui/render.js.map",
-          "sha256": "d236dfb63df2063667595bc83e6cf25bea5d8de64f62d09757099ca9480fab5d"
+          "sha256": "f6d3fcf43cd7e9b78e765bb886b0f8c0f1e8714d3503249dc2334a5b075b9da2"
         },
         {
           "path": "vendor/pi-subagents/src/tui/running-tone.d.ts",
@@ -4501,20 +4805,36 @@
           "sha256": "0df92f6bf145b220bb8896f84462d87626d1f5c968d9bdb88956e961a8c2c3cc"
         },
         {
+          "path": "vendor/pi-subagents/src/tui/subagent-messages.d.ts",
+          "sha256": "c7de7d3584e93622a633dcad9a0cf56fe7db58e4cbbe8ba392b9293d58639358"
+        },
+        {
+          "path": "vendor/pi-subagents/src/tui/subagent-messages.d.ts.map",
+          "sha256": "cf7d9c50e12eeb1b08e59f4a926b6dbf26f4be0b8d7a53c72210a2187cdfa666"
+        },
+        {
+          "path": "vendor/pi-subagents/src/tui/subagent-messages.js",
+          "sha256": "3805d4383659ca807b15e30912396117448ff377f725ddf9ca599f3017da209e"
+        },
+        {
+          "path": "vendor/pi-subagents/src/tui/subagent-messages.js.map",
+          "sha256": "558b21c3583b617af7d721b709f12e2b56a4aa796f6cba296ca485e1fb602e90"
+        },
+        {
           "path": "vendor/pi-subagents/src/watchdog/change-signature.d.ts",
           "sha256": "0d19c33bffc5f5e535fe5532ef64c673291d39fc63c4b8d9cc0cfd09316748d7"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/change-signature.d.ts.map",
-          "sha256": "3df4f78623f8cfd76a2224d6153dbbc9af79e23cc93293dc78ca7e20ad5e9eb6"
+          "sha256": "ce660594f32993de5169b66151464cf31aa5d2211dff90c678e99fc6ecc877b5"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/change-signature.js",
-          "sha256": "91b22cbb9ef46561c97ebc696b852566c3e1aef611902d8082a831600c66ba04"
+          "sha256": "e38764e35c789ce00f832b6276b7056b7dca0a436c16bb574ec0fcf0f3045781"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/change-signature.js.map",
-          "sha256": "c41f666ae29355b25b8ea3bdee850ca5cb69fc7c74c2a623916429c13ac18846"
+          "sha256": "6e29eb271a21ddb76ecdf5c6f062470da22bfd9ffad89c28b431f41cac458937"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/child-status.d.ts",
@@ -4542,11 +4862,11 @@
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/diff-tool.js",
-          "sha256": "e5d64b9748f2603ca44fafa6faa081ff66609579cc0d950d76a35f48ea348a70"
+          "sha256": "9b4f7bcf212d98367abcc922be58957a0bfb52922c2c2cccb60fc76f59530752"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/diff-tool.js.map",
-          "sha256": "d3a8aca04e9adf6059e32e8d5d2b2d9cce3cd159f6198fec4d61b30b558dff68"
+          "sha256": "1e6b1b2f48f2d6af9cc47264b9102f6404bbec38a67d97c2c83972022f84fbef"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/emission-guard.d.ts",
@@ -4650,31 +4970,31 @@
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/register-main.d.ts.map",
-          "sha256": "6b63b25b79d602ea160c1cc93089cddca5c8bb2e8172f7aed8d6c861c1126413"
+          "sha256": "d81f82553177dea646e8847372baac5ce325eb451938dc58d3a2a7df1cf524d5"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/register-main.js",
-          "sha256": "f793d900d9780c76fc86dbc519dd6de85f19027b7e782b84956a2ad8750a78d0"
+          "sha256": "bcfd511d9f32805936b1a8468ad7b67aa802583cca0fe621657beef8e56028ee"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/register-main.js.map",
-          "sha256": "b6d8b05d4125fe21212985eaa176d6386b6569669cd84c5661d95fc5559bc17d"
+          "sha256": "2345e36d629c9b87f236a010ad2511da26a2480f1b469e030d5e9bc6afa724d2"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/render.d.ts",
-          "sha256": "0966e81ec9e687f753e39bdecfc0e65ebab120ad549273744ca719c37e20b378"
+          "sha256": "b4efe10564a2bdedcaf7131177ec8f74d3974fe2f8bdb8f7d201790f4eac7124"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/render.d.ts.map",
-          "sha256": "dfa0e55fd869475cb872967c8d1b3acf1bcb07ee692f35f8d6d6b2ab34e8aa7c"
+          "sha256": "6b22fbf3fe5688f332739ea693adc6ac8c4044332b826eb4fe869915dc798195"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/render.js",
-          "sha256": "b5a939f1eaf48d8fcaefb26830f81795292da93d8ae88737d5d05423f4fb7ebf"
+          "sha256": "978af2021ba1d323782120097f40d9d2f694cc29279d3c71ff9612ff8962a6ab"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/render.js.map",
-          "sha256": "e5956581a740d5e02dc751bbfedcc92ec3edf26bbedfec592021f9b4a3335afa"
+          "sha256": "8c6632a1466db5f2d2d29ee136b8ce0767877b65492c4163f04a78af86c5a91d"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/review.d.ts",
@@ -4710,19 +5030,19 @@
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/runtime.d.ts",
-          "sha256": "d1f4e07d3e45987586b5667d36fbaa24aeda8eed5771bc0d545dfd86bf0a14c5"
+          "sha256": "5ffe4938ce1bd923f040cc3abd4186c7b26ae7f1efca989bd0382b32124b9c82"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/runtime.d.ts.map",
-          "sha256": "3042c38cce4e42d517867d7d46b42b1ed6e3836afc4ecbb57ac04e29a04f9906"
+          "sha256": "3640a9d094420221704256346e22c9dc7c34bcf12ad62c4fa909803a128ebf94"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/runtime.js",
-          "sha256": "7678cd0a8285cd0801961cfb07b2f39cab9ae84c01fb5160b18596aa87b3cd14"
+          "sha256": "67827b5735621d552ab8c9b08d0e694b4ee37e94317cd43c9b92b1aeefd2d6a7"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/runtime.js.map",
-          "sha256": "698cd02c6e2e1084da85528cade2e3c68e770838741791bc0a207caf908f5104"
+          "sha256": "06a0330445753f4039f8c1f96c3fd4a1455c80de8ecd831061881bef2268ffe6"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/scope.d.ts",
@@ -4746,15 +5066,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/settings.d.ts.map",
-          "sha256": "f5cf7402ad29b51c90b11eabfa3258a3178e7bb84f876e023735b7c1cc5fdbf6"
+          "sha256": "1026ee787395256cafb80242d3d723d026e516ab0c155a56e024be3005ef319b"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/settings.js",
-          "sha256": "28341f53d5e6b9b7cc88921af677ac82bfb243930261708fab1474eef6bba3e5"
+          "sha256": "f78c769836b1d717f45318a8ebe2e0283e39b2cb182ae4322eb50a2a26611911"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/settings.js.map",
-          "sha256": "5e0ae35cd9413bcb2672a4ab6f16c3cffb4b0f075c0bdcb0e25a8f4afe5d759a"
+          "sha256": "00e58c98b9b0a2acf59cee0c0795320008be05ec975abcfff7405e7fe2544be9"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/tool-actions.d.ts",
@@ -4766,11 +5086,11 @@
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/tool-actions.js",
-          "sha256": "a252660f4db59e68305d1dbf06d6d2249e1452cdc43476c0b6ef5cccfd72ba30"
+          "sha256": "33d88c6ded0baf6c2b03fbce5acb54aa319a05925332bf578e831fd12fc595ef"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/tool-actions.js.map",
-          "sha256": "c9f0688c7d5b390fb5fe6a46168578b5f17f81be2d96fba466e24f97bc403fc7"
+          "sha256": "a463cdaedd3255e35b93200b77cd314d4147b4ed478115dc2ca64afefd0b8bb3"
         },
         {
           "path": "vendor/pi-subagents/src/watchdog/turn-delta.d.ts",
@@ -4858,15 +5178,15 @@
         },
         {
           "path": "vendor/pi-subagents/src/workflows/scripted-workflow.d.ts.map",
-          "sha256": "b91818cc4e62d0ce93373947b59464345d736abba74720645bf5cb27f59106f4"
+          "sha256": "448cf9790b4f9c7486d9b7957b6c54f591fd6db9aae0f48633fd87d9e6fe3f62"
         },
         {
           "path": "vendor/pi-subagents/src/workflows/scripted-workflow.js",
-          "sha256": "b5af8f3dc0b3d6f630d7d1e04120c209c268f2de9b1cb61bd1fa486540b6c480"
+          "sha256": "0c3d96a4344f7c2b314e180ec9a229a9d481acdd26f0adb48d4768319366cdf5"
         },
         {
           "path": "vendor/pi-subagents/src/workflows/scripted-workflow.js.map",
-          "sha256": "b6ef20821d51014a100e9c7eeebdb44c0eaf9b018ea16c18f69eddb61ba974f5"
+          "sha256": "0810a585b98bc47a371a6e5260dfc37c26c39de2995cc47eacb05e66f0a7ce4b"
         },
         {
           "path": "vendor/pi-subagents/src/workflows/structured-workflow-scripts.d.ts",
@@ -4942,27 +5262,27 @@
         },
         {
           "path": "vendor/pi-subagents/src/workflows/workflow-receipt.js",
-          "sha256": "b684892e75e4edb7c533c3479c85c31373d6526107ab8e00b37f9bd9568ee555"
+          "sha256": "8adb0a8bc7438d22df494320c3012cd3a907c11625eb9c5700318580200a8abc"
         },
         {
           "path": "vendor/pi-subagents/src/workflows/workflow-receipt.js.map",
-          "sha256": "b0874eb7cd55b622fc6439ed0e5286e41d12304ff65fe6d19065817471ad2de5"
+          "sha256": "71d0a11e34528e4965a4275857501acb15730e5702332b8ba159f70a0debacbc"
         },
         {
           "path": "vendor/pi-subagents/src/workflows/workflow-resources.d.ts",
-          "sha256": "89c08f662ec6078a21dcdb47e2d5ce791a46390889292f9590873f905059f148"
+          "sha256": "ed320ad1649839e3404f5ce6368bc25dee607fdb67cba6ccc82a75c9d83de12a"
         },
         {
           "path": "vendor/pi-subagents/src/workflows/workflow-resources.d.ts.map",
-          "sha256": "157248570675441aa01bb0e7ad4944ab25524d3fbe63a432b576d20f8c66b251"
+          "sha256": "a863ed70062897c6fa111ce0a0771ea641b6bd7aa87fa0b66cffd44c4c20aae4"
         },
         {
           "path": "vendor/pi-subagents/src/workflows/workflow-resources.js",
-          "sha256": "4c3e48bdb74558ade1b50fbd84af69b48572fdff3cccc23f5ab737bb74ba7a7b"
+          "sha256": "7b55cb4f12f402396d922ae1fad8048f08f638d6733893367e31222284142a6c"
         },
         {
           "path": "vendor/pi-subagents/src/workflows/workflow-resources.js.map",
-          "sha256": "344cefceaa0e827cc8d1f8fe31f8ee606eb4fbef6984faad7a5917c5d3011df2"
+          "sha256": "bf48a58f56f597377f257fb528a6881ba0aad75c161bfe3682e73a81cd85a2a9"
         },
         {
           "path": "vendor/pi-subagents/src/workflows/workflow-reuse.d.ts",

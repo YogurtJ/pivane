@@ -11,17 +11,17 @@ import { formatUnresolvedBuiltinMcpSelectors, formatUnresolvedMcpDirectToolSelec
 import { TEMP_ROOT_DIR, } from "../../shared/types.js";
 import { THINKING_LEVELS } from "../../shared/model-info.js";
 import { getAgentDir } from "../../shared/utils.js";
+import { resolveRuntimeModulePath, RUNTIME_MODULE_EXTENSIONS } from "../../shared/runtime-module-path.js";
 import { snapshotRequiredChildExtensions } from "../../shared/required-child-extensions.js";
 import { capabilityCeilingAgentRestrictionSources, intersectSubagentCapabilityCeilings, isAgentAllowedByCapabilityCeiling, } from "./capability-ceiling.js";
 const MAX_LAUNCH_RESOLVED_EXTENSION_IDS = 32;
-const PROMPT_RUNTIME_EXTENSION_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), `subagent-prompt-runtime${path.extname(fileURLToPath(import.meta.url))}`);
-const FANOUT_CHILD_EXTENSION_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "extension", `fanout-child${path.extname(fileURLToPath(import.meta.url))}`);
-const FAST_MODE_EXTENSION_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), `fast-mode-extension${path.extname(fileURLToPath(import.meta.url))}`);
+const RUNTIME_EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
+const FANOUT_CHILD_EXTENSION_DIR = path.join(RUNTIME_EXTENSION_DIR, "..", "..", "extension");
 const SUBAGENT_RUNTIME_EXTENSION_PATHS = new Set([
-    PROMPT_RUNTIME_EXTENSION_PATH,
-    FANOUT_CHILD_EXTENSION_PATH,
-    FAST_MODE_EXTENSION_PATH,
-].map((extensionPath) => path.normalize(extensionPath)));
+    path.join(RUNTIME_EXTENSION_DIR, "subagent-prompt-runtime"),
+    path.join(RUNTIME_EXTENSION_DIR, "fast-mode-extension"),
+    path.join(FANOUT_CHILD_EXTENSION_DIR, "fanout-child"),
+].flatMap((base) => RUNTIME_MODULE_EXTENSIONS.map((extension) => path.normalize(`${base}${extension}`))));
 /** True for the extension files pi-subagents itself installs in child sessions. */
 export function isSubagentRuntimeExtensionPath(extensionPath) {
     return SUBAGENT_RUNTIME_EXTENSION_PATHS.has(path.normalize(extensionPath));
@@ -75,7 +75,7 @@ function resolveFastModeExtension(input) {
     if (unsupported.length > 0) {
         throw new Error(`fast mode supports only native ${FAST_MODE_PROVIDER_PREFIX}* models; unsupported model${unsupported.length === 1 ? "" : "s"}: ${unsupported.join(", ")}.`);
     }
-    return [FAST_MODE_EXTENSION_PATH];
+    return [resolveRuntimeModulePath(RUNTIME_EXTENSION_DIR, "fast-mode-extension")];
 }
 function extensionIdentifier(value) {
     return `sha256:${createHash("sha256").update(path.normalize(value.trim())).digest("hex").slice(0, 16)}`;
@@ -184,7 +184,7 @@ export function resolvePiLaunchToolPlan(input) {
     }
     const ceilingFilteredBuiltinTools = input.tools === undefined
         ? allowedToolSet
-            ? [...allowedToolSet]
+            ? [...allowedToolSet].filter((tool) => tool !== "subagent_command")
             : []
         : (input.requireReadTool &&
             requestedBuiltinTools.length > 0 &&
@@ -263,10 +263,11 @@ export function resolvePiLaunchToolPlan(input) {
     if (input.fast && capabilityCeiling?.denyExtensions)
         throw new Error("fast mode requires a child runtime extension, but this launch denies extensions.");
     const fastModeExtensions = resolveFastModeExtension({ fast: input.fast, model: input.model, agentName: input.agentName });
+    // Resolved per launch: an in-place package update can swap a sibling's .ts for .js.
     const runtimeExtensions = [
-        PROMPT_RUNTIME_EXTENSION_PATH,
+        resolveRuntimeModulePath(RUNTIME_EXTENSION_DIR, "subagent-prompt-runtime"),
         ...fastModeExtensions,
-        ...(fanoutAuthorized ? [FANOUT_CHILD_EXTENSION_PATH] : []),
+        ...(fanoutAuthorized ? [resolveRuntimeModulePath(FANOUT_CHILD_EXTENSION_DIR, "fanout-child")] : []),
         ...(permSystemExt ? [permSystemExt] : []),
     ];
     const disableAmbientExtensions = capabilityCeiling?.denyExtensions === true ||

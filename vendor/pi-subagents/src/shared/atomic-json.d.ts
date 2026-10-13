@@ -12,8 +12,9 @@ type AtomicJsonWriterOptions = {
     retryDelaysMs?: readonly number[];
     wait?: (delayMs: number) => void;
 };
-export declare function createAtomicJsonWriter(options?: AtomicJsonWriterOptions): (filePath: string, payload: object) => void;
-export declare const writeAtomicJson: (filePath: string, payload: object) => void;
-export declare const writePrivateAtomicJson: (filePath: string, payload: object) => void;
+/** `beforeRename` runs after the payload is written to its temporary file and before it appears at `filePath`. */
+export declare function createAtomicJsonWriter(options?: AtomicJsonWriterOptions): (filePath: string, payload: object, beforeRename?: () => void) => void;
+export declare const writeAtomicJson: (filePath: string, payload: object, beforeRename?: () => void) => void;
+export declare const writePrivateAtomicJson: (filePath: string, payload: object, beforeRename?: () => void) => void;
 export {};
 //# sourceMappingURL=atomic-json.d.ts.map

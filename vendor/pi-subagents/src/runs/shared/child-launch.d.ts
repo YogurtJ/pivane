@@ -27,6 +27,8 @@ export interface BuildInProcessChildLaunchInput {
     remoteSkillNames?: string[];
     remoteReads?: string[] | false;
     parentSessionId?: string;
+    /** The launching session's file; a new child session records it as its parent. */
+    parentSessionFile?: string;
     forkCacheKey?: string;
     sessionEnabled: boolean;
     sessionDir?: string;

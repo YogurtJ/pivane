@@ -47,6 +47,28 @@ export function splitKnownThinkingSuffix(model) {
         thinkingSuffix: `:${suffix}`,
     };
 }
+/**
+ * Combine an observed model id with the provider that served it into `provider/id`.
+ * When the registry is available a known id resolves to its canonical `fullId`, so a
+ * provider-local id that repeats its provider (OpenRouter's `openrouter/auto-beta`,
+ * full id `openrouter/openrouter/auto-beta`) keeps that full form. Without the
+ * registry, an id already qualified for this provider is returned unchanged.
+ */
+export function qualifyModelWithProvider(model, provider, availableModels) {
+    if (!model)
+        return undefined;
+    if (!provider)
+        return model;
+    const exactFullId = availableModels?.find((entry) => entry.provider === provider && entry.fullId === model);
+    if (exactFullId)
+        return exactFullId.fullId;
+    const idMatch = availableModels?.find((entry) => entry.provider === provider && entry.id === model);
+    if (idMatch)
+        return idMatch.fullId;
+    if (model.startsWith(`${provider}/`))
+        return model;
+    return `${provider}/${model}`;
+}
 export function findModelInfo(model, availableModels, preferredProvider) {
     if (!model || !availableModels || availableModels.length === 0)
         return undefined;

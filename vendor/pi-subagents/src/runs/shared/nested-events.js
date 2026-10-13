@@ -102,6 +102,10 @@ export function inheritedNestedParentAddressOf(runtime) {
         path: parent.path.length ? parent.path : [{ runId: parent.parentRunId, ...(parent.parentChildIndex !== undefined ? { stepIndex: parent.parentChildIndex } : {}) }],
     };
 }
+/** The owner's reply when its foreground map has no route for a nested run; interrupt matches it exactly. */
+export function nestedRunNotActiveMessage(runId) {
+    return `Nested run ${runId} is not active in this fanout child.`;
+}
 export function resolveNestedAsyncDir(rootRunId, run) {
     if (!run.asyncDir)
         return undefined;

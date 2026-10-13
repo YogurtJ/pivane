@@ -60,9 +60,10 @@ export function createAsyncJobTracker(pi, state, asyncDirRoot, options = {}) {
         }, run);
     };
     const rerenderWidget = (ctx, jobs = Array.from(state.asyncJobs.values())) => {
+        options.onJobsChanged?.();
         if (state.widgetsSuspended)
             return;
-        renderWidget(ctx, options.widgetEnabled === false ? [] : jobs);
+        renderWidget(ctx, options.widgetEnabled === false ? [] : jobs, options.widgetCollapsed, options.widgetLayout);
         ctx.ui.requestRender?.();
     };
     const rerenderLastWidget = (jobs = Array.from(state.asyncJobs.values())) => {
@@ -87,7 +88,7 @@ export function createAsyncJobTracker(pi, state, asyncDirRoot, options = {}) {
             if (requestRender)
                 requestRender.call(ctx.ui);
             else
-                renderWidget(ctx, Array.from(state.asyncJobs.values()));
+                renderWidget(ctx, Array.from(state.asyncJobs.values()), options.widgetCollapsed, options.widgetLayout);
         });
     };
     const refreshWidget = (ctx) => rerenderWidget(ctx);
@@ -186,6 +187,7 @@ export function createAsyncJobTracker(pi, state, asyncDirRoot, options = {}) {
             const job = state.asyncJobs.get(asyncId);
             retainNestedLookupRoute(state, job?.nestedRoute, job?.sessionId);
             state.asyncJobs.delete(asyncId);
+            options.onJobCleanup?.(asyncId);
             rerenderLastWidget();
         }, completionRetentionMs);
         state.cleanupTimers.set(asyncId, timer);
@@ -572,7 +574,7 @@ export function createAsyncJobTracker(pi, state, asyncDirRoot, options = {}) {
                     }
                     // Scan on close too: publication may have raced the payload check.
                     if (!isTerminalJobStatus(previousStatus) || (wasPending && !publication?.pending))
-                        options.onJobTerminal?.();
+                        options.onJobTerminal?.(job);
                     rememberFleetJob(state, job);
                     if (!publication?.pending && !nestedRefreshFailed && !hasLiveNestedDescendants(job.nestedChildren) && (previousStatus !== job.status || !state.cleanupTimers.has(job.asyncId))) {
                         scheduleCleanup(job.asyncId);

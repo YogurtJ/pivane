@@ -14,7 +14,7 @@ import { steerAsyncRun } from "../runs/foreground/async-steering-action.js";
 import { stopAsyncRun } from "../runs/foreground/async-stop-action.js";
 import { resolveWorkflowForegroundSteeringTarget, steerWorkflowForegroundTarget } from "../runs/foreground/workflow-foreground-steering.js";
 import { contextModeBadge, contextModeLabel } from "../runs/shared/context-mode.js";
-import { FLEET_STATUS_WIDGET_KEY } from "./fleet-status.js";
+import { FLEET_STATUS_WIDGET_KEY, reportFleetWarning } from "./fleet-status.js";
 import { readFleetTranscript, renderFleetTranscript } from "./fleet-transcript.js";
 import { runningTone } from "./running-tone.js";
 import { childThinkingLevel } from "../shared/model-info.js";
@@ -229,7 +229,7 @@ export function collectFleetSnapshot(state, options = {}) {
     }
     if (state.currentSessionId) {
         try {
-            for (const run of snapshotExternalRuns(state.currentSessionId, { ignoreMalformed: true, onMalformedRecord: (message) => console.warn(`[pi-subagents] Removed ${message}`) })) {
+            for (const run of snapshotExternalRuns(state.currentSessionId, { ignoreMalformed: true, onMalformedRecord: (message) => reportFleetWarning(state, `Removed ${message}`) })) {
                 items.push({
                     key: `external:${run.id}`,
                     kind: "external",
@@ -733,8 +733,10 @@ function rightAligned(left, right, width) {
 }
 function transcriptFingerprint(filePath) {
     try {
-        const stat = fs.statSync(filePath);
-        return `${stat.size}:${stat.mtimeMs}`;
+        // ino and ctime catch a same-size, same-mtime replacement. Bigint keeps
+        // Windows file ids, which exceed 2^53, exact.
+        const stat = fs.statSync(filePath, { bigint: true });
+        return `${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
     }
     catch {
         return "missing";
@@ -790,7 +792,7 @@ export class SubagentFleetComponent {
             if (this.disposed)
                 return;
             try {
-                this.invalidate();
+                this.refresh();
                 this.tui.requestRender();
             }
             finally {
@@ -1225,7 +1227,10 @@ export class SubagentFleetComponent {
         const body = transcript.events.length > 0
             ? renderFleetTranscript(transcript, width, this.theme, this.markdownTheme, { expandedTools: this.expandedTools })
             : [];
-        this.transcriptCache = { path: target.path, fingerprint, width, expandedTools: this.expandedTools, transcript, body };
+        // A failed read (refused path, read error) may recover without a metadata change, so retry it.
+        this.transcriptCache = transcript.readFailed
+            ? undefined
+            : { path: target.path, fingerprint, width, expandedTools: this.expandedTools, transcript, body };
         return { transcript, body: [...body] };
     }
     promptAuditDetail(width) {

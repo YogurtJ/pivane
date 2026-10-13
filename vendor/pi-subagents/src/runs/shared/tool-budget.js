@@ -43,7 +43,7 @@ export function toolBudgetState(budget, toolCount, blockedTool) {
     return {
         ...budget,
         toolCount,
-        outcome: overHard ? "hard-blocked" : overSoft ? "soft-reached" : "within-budget",
+        outcome: overHard ? (blockedTool ? "hard-blocked" : "hard-reached") : overSoft ? "soft-reached" : "within-budget",
         ...(overSoft ? { softReachedAt: budget.soft } : {}),
         ...(overHard ? { hardReachedAt: budget.hard, blockedTool } : {}),
     };

@@ -3,6 +3,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Details, ExtensionConfig } from "../../shared/types.ts";
 import type { SubagentParamsLike } from "../foreground/subagent-executor.ts";
 import type { ResolvedSubagentCapabilityCeiling } from "../shared/capability-ceiling.ts";
+import { type CalendarTrigger } from "./calendar-schedule.ts";
 export declare const SCHEDULED_RUN_ACTIONS: readonly ["schedule.create", "schedule.list", "schedule.show", "schedule.history", "schedule.pause", "schedule.resume", "schedule.run", "schedule.run-due", "schedule.delete"];
 type ScheduledRunTimers = Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
 export type ScheduledRunAction = typeof SCHEDULED_RUN_ACTIONS[number];
@@ -17,14 +18,15 @@ export type ScheduleTrigger = {
     everyMs: number;
     anchorAt: string;
     nextRunAt: string;
-};
+} | CalendarTrigger;
 export type ScheduleTarget = {
     workflowScript: string;
     args: Record<string, unknown>;
     baseRef?: string;
+    missionId?: string;
 };
 export interface ScheduleRecord {
-    schemaVersion: 1;
+    schemaVersion: 1 | 2;
     id: string;
     name: string;
     cwd: string;
@@ -63,6 +65,7 @@ type ScheduledRunManagerDeps = {
     randomId?: () => string;
     resolveCapabilityCeiling?: (sessionId: string) => ResolvedSubagentCapabilityCeiling | undefined;
     timers?: ScheduledRunTimers;
+    kill?: (pid: number, signal?: NodeJS.Signals | 0) => boolean;
 };
 export declare function isScheduledRunAction(action: unknown): action is ScheduledRunAction;
 export declare function scheduledRunsEnabled(config: ExtensionConfig): boolean;
@@ -101,12 +104,21 @@ export declare class ScheduledRunManager {
     private restoreAfterFireError;
     private fire;
     private launch;
+    /**
+     * `releaseOnly` releases a dead run's claim and leaves the pending occurrence to the caller: it neither skips nor re-arms it.
+     * It acts only while the schedule on disk still names that run, and returns the record it wrote, or undefined when another
+     * session already released or re-claimed it.
+     */
     private finishRun;
+    private skipLostClaim;
     private recordMissed;
     private selectProject;
     private resolve;
     private requireStore;
     private requireContext;
+    private activeRun;
+    /** Reconciles an attached running run (a dead runner PID becomes failed) and returns its outcome once terminal. */
+    private terminalAsyncOutcome;
     private timerKey;
     private clearTimer;
     private stopTimers;

@@ -3,7 +3,8 @@
  */
 import { Type } from "typebox";
 import type { DisabledFeatureSurface } from "../shared/disabled-features.ts";
-export declare const SubagentParams: Type.TObject<{
+/** Full flat parameter shape accepted by RPC, slash, scheduled and workflow callers. */
+export declare const SubagentFlatParams: Type.TObject<{
     agent: Type.TOptional<Type.TString>;
     task: Type.TOptional<Type.TString>;
     extensionBindings: Type.TOptional<Type.TUnsafe<unknown>>;
@@ -21,6 +22,7 @@ export declare const SubagentParams: Type.TObject<{
     supersession: Type.TOptional<Type.TUnsafe<unknown>>;
     index: Type.TOptional<Type.TInteger>;
     childId: Type.TOptional<Type.TString>;
+    toolCallId: Type.TOptional<Type.TString>;
     view: Type.TOptional<Type.TString>;
     lines: Type.TOptional<Type.TInteger>;
     topic: Type.TOptional<Type.TString>;
@@ -36,7 +38,7 @@ export declare const SubagentParams: Type.TObject<{
     every: Type.TOptional<Type.TString>;
     sessionOnly: Type.TOptional<Type.TBoolean>;
     quiet: Type.TOptional<Type.TBoolean>;
-    on: Type.TOptional<Type.TUnsafe<unknown>>;
+    on: Type.TOptional<Type.TArray<Type.TString>>;
     timezone: Type.TOptional<Type.TString>;
     overlap: Type.TOptional<Type.TString>;
     catchUp: Type.TOptional<Type.TString>;
@@ -117,6 +119,10 @@ export declare const SubagentParams: Type.TObject<{
     }>>;
     output: Type.TOptional<Type.TUnsafe<unknown>>;
     outputMode: Type.TOptional<Type.TString>;
+    maxOutput: Type.TOptional<Type.TObject<{
+        bytes: Type.TOptional<Type.TInteger>;
+        lines: Type.TOptional<Type.TInteger>;
+    }>>;
     skill: Type.TOptional<Type.TUnsafe<unknown>>;
     model: Type.TOptional<Type.TString>;
     fast: Type.TOptional<Type.TBoolean>;
@@ -126,6 +132,137 @@ export declare const SubagentParams: Type.TObject<{
     }>>;
     acceptance: Type.TOptional<Type.TUnsafe<unknown>>;
     gate: Type.TOptional<Type.TUnsafe<unknown>>;
+}>;
+export declare const SUBAGENT_OPTION_KEYS: readonly string[];
+/** Values the model passes in `options`, checked with the same property schemas as flat callers. */
+export declare const SubagentOptionParams: Type.TObject<{
+    extensionBindings: Type.TOptional<Type.TUnsafe<unknown>>;
+    capabilities: Type.TOptional<Type.TBoolean>;
+    name: Type.TOptional<Type.TString>;
+    dir: Type.TOptional<Type.TString>;
+    handoffPath: Type.TOptional<Type.TString>;
+    repo: Type.TOptional<Type.TString>;
+    planId: Type.TOptional<Type.TString>;
+    laneId: Type.TOptional<Type.TString>;
+    merge: Type.TOptional<Type.TUnsafe<unknown>>;
+    supersession: Type.TOptional<Type.TUnsafe<unknown>>;
+    index: Type.TOptional<Type.TInteger>;
+    childId: Type.TOptional<Type.TString>;
+    toolCallId: Type.TOptional<Type.TString>;
+    view: Type.TOptional<Type.TString>;
+    lines: Type.TOptional<Type.TInteger>;
+    topic: Type.TOptional<Type.TString>;
+    mode: Type.TOptional<Type.TString>;
+    steeringRecovery: Type.TOptional<Type.TBoolean>;
+    additional: Type.TOptional<Type.TInteger>;
+    scope: Type.TOptional<Type.TString>;
+    target: Type.TOptional<Type.TString>;
+    focus: Type.TOptional<Type.TBoolean>;
+    thinking: Type.TOptional<Type.TUnsafe<unknown>>;
+    at: Type.TOptional<Type.TString>;
+    every: Type.TOptional<Type.TString>;
+    sessionOnly: Type.TOptional<Type.TBoolean>;
+    quiet: Type.TOptional<Type.TBoolean>;
+    on: Type.TOptional<Type.TArray<Type.TString>>;
+    timezone: Type.TOptional<Type.TString>;
+    overlap: Type.TOptional<Type.TString>;
+    catchUp: Type.TOptional<Type.TString>;
+    missionId: Type.TOptional<Type.TString>;
+    mission: Type.TOptional<Type.TUnsafe<unknown>>;
+    missionUpdate: Type.TOptional<Type.TUnsafe<unknown>>;
+    missionStatus: Type.TOptional<Type.TString>;
+    missionScope: Type.TOptional<Type.TString>;
+    runMode: Type.TOptional<Type.TString>;
+    runStatus: Type.TOptional<Type.TString>;
+    summary: Type.TOptional<Type.TString>;
+    config: Type.TOptional<Type.TUnsafe<unknown>>;
+    globalConcurrencyLimit: Type.TOptional<Type.TInteger>;
+    maxSubagentSpawnsPerRun: Type.TOptional<Type.TInteger>;
+    preflight: Type.TOptional<Type.TObject<{
+        version: Type.TInteger;
+        coverage: Type.TOptional<Type.TString>;
+        lanes: Type.TArray<Type.TObject<{
+            key: Type.TString;
+            mode: Type.TOptional<Type.TString>;
+            decision: Type.TOptional<Type.TString>;
+            claims: Type.TOptional<Type.TArray<Type.TString>>;
+            expectedOutput: Type.TOptional<Type.TString>;
+            independence: Type.TOptional<Type.TString>;
+        }>>;
+    }>>;
+    chatProgress: Type.TOptional<Type.TString>;
+    baseRef: Type.TOptional<Type.TString>;
+    lane: Type.TOptional<Type.TObject<{
+        version: Type.TInteger;
+        key: Type.TString;
+        mode: Type.TOptional<Type.TString>;
+        sourceRef: Type.TOptional<Type.TString>;
+        claims: Type.TOptional<Type.TArray<Type.TString>>;
+        outputPaths: Type.TOptional<Type.TArray<Type.TString>>;
+    }>>;
+    context: Type.TOptional<Type.TString>;
+    timeoutMs: Type.TOptional<Type.TInteger>;
+    checkpointBeforeDeadlineMs: Type.TOptional<Type.TInteger>;
+    toolTimeoutMs: Type.TOptional<Type.TInteger>;
+    toolBudget: Type.TOptional<Type.TObject<{
+        soft: Type.TOptional<Type.TInteger>;
+        hard: Type.TInteger;
+        block: Type.TOptional<Type.TUnsafe<unknown>>;
+    }>>;
+    usageBudget: Type.TOptional<Type.TObject<{
+        tokens: Type.TOptional<Type.TObject<{
+            soft: Type.TOptional<Type.TNumber>;
+            hard: Type.TNumber;
+        }>>;
+        costUsd: Type.TOptional<Type.TObject<{
+            soft: Type.TOptional<Type.TNumber>;
+            hard: Type.TNumber;
+        }>>;
+    }>>;
+    agentScope: Type.TOptional<Type.TString>;
+    machine: Type.TOptional<Type.TString>;
+    artifacts: Type.TOptional<Type.TBoolean>;
+    includeProgress: Type.TOptional<Type.TBoolean>;
+    share: Type.TOptional<Type.TBoolean>;
+    sessionDir: Type.TOptional<Type.TString>;
+    control: Type.TOptional<Type.TObject<{
+        enabled: Type.TOptional<Type.TBoolean>;
+        needsAttentionAfterMs: Type.TOptional<Type.TInteger>;
+        activeNoticeAfterMs: Type.TOptional<Type.TInteger>;
+        activeNoticeAfterTurns: Type.TOptional<Type.TInteger>;
+        activeNoticeAfterTokens: Type.TOptional<Type.TInteger>;
+        failedToolAttemptsBeforeAttention: Type.TOptional<Type.TInteger>;
+        notifyOn: Type.TOptional<Type.TArray<Type.TString>>;
+        notifyChannels: Type.TOptional<Type.TArray<Type.TString>>;
+    }>>;
+    outputMode: Type.TOptional<Type.TString>;
+    maxOutput: Type.TOptional<Type.TObject<{
+        bytes: Type.TOptional<Type.TInteger>;
+        lines: Type.TOptional<Type.TInteger>;
+    }>>;
+    skill: Type.TOptional<Type.TUnsafe<unknown>>;
+    fast: Type.TOptional<Type.TBoolean>;
+    outputSchema: Type.TOptional<Type.TUnsafe<unknown>>;
+    agentContract: Type.TOptional<Type.TObject<{
+        version: Type.TInteger;
+    }>>;
+    acceptance: Type.TOptional<Type.TUnsafe<unknown>>;
+    gate: Type.TOptional<Type.TUnsafe<unknown>>;
+}>;
+export declare const SubagentParams: Type.TObject<{
+    agent: Type.TOptional<Type.TString>;
+    task: Type.TOptional<Type.TString>;
+    workflow: Type.TOptional<Type.TUnsafe<string | true>>;
+    args: Type.TOptional<Type.TUnsafe<unknown>>;
+    async: Type.TOptional<Type.TBoolean>;
+    model: Type.TOptional<Type.TString>;
+    cwd: Type.TOptional<Type.TString>;
+    worktree: Type.TOptional<Type.TBoolean>;
+    output: Type.TOptional<Type.TUnsafe<unknown>>;
+    action: Type.TOptional<Type.TString>;
+    id: Type.TOptional<Type.TString>;
+    message: Type.TOptional<Type.TString>;
+    options: Type.TOptional<Type.TUnsafe<Record<string, unknown>>>;
 }>;
 export declare function createSubagentParamsSchema(disabled?: DisabledFeatureSurface): typeof SubagentParams;
 export declare const SubagentWaitParams: Type.TObject<{

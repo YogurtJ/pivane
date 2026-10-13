@@ -3,7 +3,7 @@ import { readStatus } from "../../shared/utils.js";
 import { workflowAwaitedAsyncResultPath } from "./async-execution.js";
 import { waitForImportedAsyncRoot } from "./chain-root-attachment.js";
 import { currentPidNamespaceScope } from "./pid-namespace.js";
-import { resultPayloadPathForSessionRun } from "./result-files.js";
+import { resultPayloadPathForSessionRun, resultSnapshotReplaced, withResultRunLease } from "./result-files.js";
 import { checkPidLiveness } from "./stale-run-reconciler.js";
 function errorMessage(error) {
     return error instanceof Error ? error.message : String(error);
@@ -13,9 +13,11 @@ function runnerExitedWithoutResult(asyncDir, runId, resultPath) {
     const status = readStatus(asyncDir);
     if (!status || (status.state !== "running" && status.state !== "queued") || typeof status.pid !== "number")
         return false;
-    if (status.pidNamespaceScope !== undefined && status.pidNamespaceScope !== currentPidNamespaceScope())
+    const observedScope = currentPidNamespaceScope();
+    if (status.pidNamespaceScope !== undefined && status.pidNamespaceScope !== observedScope)
         return false;
-    if (checkPidLiveness(status.pid) !== "dead")
+    const pidScopeVerified = status.pidNamespaceScope !== undefined && status.pidNamespaceScope === observedScope;
+    if (checkPidLiveness(status.pid, undefined, pidScopeVerified) !== "dead")
         return false;
     return !fs.existsSync(resultPath) && !(status.sessionId && resultPayloadPathForSessionRun(asyncDir, status.sessionId, runId));
 }
@@ -61,17 +63,23 @@ export async function awaitExistingAsyncRun(asyncDir, runId, signal) {
     // Only a parsed result file carries importedPublication; status-derived fallbacks do not.
     if (!completed.importedPublication)
         return { status: "unavailable", reason: `Async run '${runId}' ended without a result file at ${resultPath}.` };
-    return { status: "settled", result: completed };
+    return { status: "settled", result: { ...completed, importedPublication: completed.importedPublication } };
 }
 /**
- * Renames the published result to a file owned by `claimant`. Only one of several
- * concurrent importers can win the rename; the others get undefined and launch fresh.
+ * Renames the published result to a file owned by `claimant`, if it is still the payload the
+ * claimant read. Only one of several concurrent importers can win the rename; the others, and a
+ * claimant whose payload a newer one replaced, get undefined and launch fresh.
  */
-export function claimWorkflowAwaitedResult(asyncDir, claimant) {
-    const claimedPath = `${workflowAwaitedAsyncResultPath(asyncDir)}.${claimant}.claimed`;
+export function claimWorkflowAwaitedResult(asyncDir, claimant, read) {
+    const resultPath = workflowAwaitedAsyncResultPath(asyncDir);
+    const claimedPath = `${resultPath}.${claimant}.claimed`;
     try {
-        fs.renameSync(workflowAwaitedAsyncResultPath(asyncDir), claimedPath);
-        return claimedPath;
+        return withResultRunLease(asyncDir, read.runId, () => {
+            if (resultSnapshotReplaced(resultPath, read))
+                return undefined;
+            fs.renameSync(resultPath, claimedPath);
+            return claimedPath;
+        });
     }
     catch {
         return undefined;

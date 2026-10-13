@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { resolveModelCandidate } from "../runs/shared/model-resolution.js";
 import { splitKnownThinkingSuffix, toModelInfo } from "./model-info.js";
+import { opencodeSessionHeaders } from "./opencode-session-headers.js";
 const MAX_INHERITED_SESSION_BYTES = 64 * 1024;
 const MIN_USEFUL_SPILL_BYTES = 320;
 const MAX_ITEM_SUMMARY_CHARS = 160;
@@ -401,6 +402,9 @@ export async function createPrunedForkSessionWriter(ctx, config, signal) {
     const model = ctx.modelRegistry.find(named.provider, named.id);
     if (!model)
         throw new Error(`Pruned fork model '${config.model}' was not found as '${baseModel}'.`);
+    // OpenCode rejects requests without its session header (400 MissingSessionID).
+    const sessionId = ctx.sessionManager.getSessionId();
+    const sessionHeaders = opencodeSessionHeaders(model, sessionId);
     let sharedSummary;
     const summarize = async (payload) => {
         sharedSummary ??= (async () => {
@@ -410,6 +414,8 @@ export async function createPrunedForkSessionWriter(ctx, config, signal) {
             }, {
                 maxTokens: Math.min(MAX_SUMMARY_TOKENS, typeof model.maxTokens === "number" && model.maxTokens > 0 ? model.maxTokens : MAX_SUMMARY_TOKENS),
                 signal,
+                sessionId,
+                ...(sessionHeaders ? { headers: sessionHeaders } : {}),
             }).result();
             if (response.stopReason === "error" || response.stopReason === "aborted") {
                 throw new Error(`Pruned fork summarization stopped with ${response.stopReason}${response.errorMessage ? `: ${response.errorMessage}` : ""}`);

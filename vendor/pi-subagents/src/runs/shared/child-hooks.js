@@ -2,7 +2,7 @@ import { listBackgroundWorkProviders } from "../../api/background-work.js";
 import { ReadonlyDrainObservation } from "./readonly-drain-observation.js";
 import registerFanoutChildSubagentExtension, { createChildSafeState } from "../../extension/fanout-child.js";
 import registerSubagentFastModeExtension from "./fast-mode-extension.js";
-import registerSubagentPromptRuntime from "./subagent-prompt-runtime.js";
+import registerSubagentPromptRuntime, { registerSubagentPromptBoundary } from "./subagent-prompt-runtime.js";
 import { projectRuntimeAcknowledgedExtensions } from "./runtime-acknowledged-extensions.js";
 const promptProofs = new WeakMap();
 function ownedProof(hooks) {
@@ -160,14 +160,15 @@ function childHooks(config, capture, holdFinalDrain) {
                 registerSubagentPromptRuntime(pi, runtime, proof.observation);
             } },
     ];
-    if (proof) {
-        proof.factories = hooks.map((hook) => hook.factory);
-        promptProofs.set(hooks[0].factory, proof);
-    }
     if (config.fast)
         hooks.push({ name: "pi-subagents:fast-mode", factory: (pi) => registerSubagentFastModeExtension(pi) });
     if (config.fanoutChild)
         hooks.push({ name: "pi-subagents:fanout-child", factory: (pi) => registerFanoutChildSubagentExtension(pi, runtime) });
+    hooks.push({ name: "pi-subagents:prompt-boundary", factory: (pi) => registerSubagentPromptBoundary(pi, runtime) });
+    if (proof) {
+        proof.factories = hooks.map((hook) => hook.factory);
+        promptProofs.set(hooks[0].factory, proof);
+    }
     return hooks;
 }
 //# sourceMappingURL=child-hooks.js.map

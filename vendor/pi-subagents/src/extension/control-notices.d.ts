@@ -10,8 +10,6 @@ export interface SubagentControlMessageDetails {
     /** Status-only copy of a supervisor request; the tracker sends the notice later if the request is still unanswered. */
     noticeDeferred?: boolean;
 }
-export declare function controlNoticeTarget(details: SubagentControlMessageDetails): string | undefined;
-export declare function formatSubagentControlNotice(details: SubagentControlMessageDetails, content?: string): string;
 export declare function handleSubagentControlNotice(input: {
     pi: Pick<ExtensionAPI, "sendMessage">;
     state: SubagentState;

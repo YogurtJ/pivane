@@ -1,5 +1,3 @@
-import type { EntryRenderOptions, MessageRenderOptions, Theme } from "@earendil-works/pi-coding-agent";
-import { type Component } from "@earendil-works/pi-tui";
 export declare const SUPERVISOR_REQUEST_MESSAGE_TYPE = "subagent_supervisor_request";
 export declare const SUPERVISOR_REPLY_ENTRY_TYPE = "subagent_supervisor_reply";
 export type SupervisorReason = "need_decision" | "interview_request" | "progress_update";
@@ -26,15 +24,7 @@ export interface SupervisorReplyEntryData {
     message: string;
     createdAt: number;
 }
-interface SupervisorMessageLike {
-    content: unknown;
-    details?: unknown;
-}
-interface SupervisorEntryLike {
-    data?: unknown;
-}
 export declare function supervisorReplyHint(requestId: string): string;
-export declare function renderSupervisorRequest(message: SupervisorMessageLike, options: MessageRenderOptions, theme: Theme): Component | undefined;
-export declare function renderSupervisorReply(entry: SupervisorEntryLike, options: EntryRenderOptions, theme: Theme): Component | undefined;
-export {};
+export declare function parseSupervisorRequestDetails(value: unknown): SupervisorRequestMessageDetails | undefined;
+export declare function parseSupervisorReplyData(value: unknown): SupervisorReplyEntryData | undefined;
 //# sourceMappingURL=supervisor-ui.d.ts.map

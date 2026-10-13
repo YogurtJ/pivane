@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { DIRS } from "../../shared/types.js";
+import { DIRS, RUNNER_LAUNCHER_NAME_PATTERN } from "../../shared/types.js";
 import { normalizeExtensionBindings } from "../shared/extension-bindings.js";
 import { snapshotRequiredChildExtensions } from "../../shared/required-child-extensions.js";
 import { normalizeWorkflowLaneMetadata } from "../shared/lane-metadata.js";
@@ -231,6 +231,8 @@ function validateStatusForResume(status, source) {
                 throw new Error(`Invalid async status '${source}': steps[${index}].sessionName must be a string.`);
             if (stepRecord.model !== undefined && typeof stepRecord.model !== "string")
                 throw new Error(`Invalid async status '${source}': steps[${index}].model must be a string.`);
+            if (stepRecord.launchModel !== undefined && typeof stepRecord.launchModel !== "string")
+                throw new Error(`Invalid async status '${source}': steps[${index}].launchModel must be a string.`);
             if (stepRecord.thinking !== undefined && typeof stepRecord.thinking !== "string")
                 throw new Error(`Invalid async status '${source}': steps[${index}].thinking must be a string.`);
             if (stepRecord.thinkingCeiling !== undefined)
@@ -281,7 +283,7 @@ export function readAsyncRecoveryDescriptor(asyncDir) {
         "subagentOnlyExtensions", "mcpDirectTools", "excludeTools", "mutationTools", "systemPrompt", "systemPromptMode", "inheritProjectContext", "inheritGlobalContext", "inheritSkills", "skills",
         "skillPath", "agentFilePath", "memory", "outputPath", "outputMode", "structuredOutputSchema", "acceptance", "sessionDir", "artifactConfig",
         "artifactsDir", "maxOutput", "controlConfig", "context", "intercomBridge", "absoluteDeadlineAt", "initialTurnBudget", "initialToolBudget", "maxSubagentDepth", "share", "capabilityCeiling",
-        "launchResolvedExtensions", "runFanoutBudget", "lane", "baseRef",
+        "launchResolvedExtensions", "runFanoutBudget", "lane", "baseRef", "launcher",
         "extensionBindings",
         "requiredExtensions",
     ]);
@@ -296,6 +298,8 @@ export function readAsyncRecoveryDescriptor(asyncDir) {
     }
     if (parsed.version !== 1)
         throw new Error(`Invalid async recovery descriptor '${descriptorPath}': version must be 1.`);
+    if (parsed.launcher !== undefined && (typeof parsed.launcher !== "string" || !RUNNER_LAUNCHER_NAME_PATTERN.test(parsed.launcher)))
+        throw new Error(`Invalid async recovery descriptor '${descriptorPath}': launcher must be a launcher name.`);
     try {
         parsed.runFanoutBudget = validateRunFanoutBudgetDescriptor(parsed.runFanoutBudget);
     }
@@ -594,7 +598,7 @@ export function resolveAsyncResumeTarget(params, deps = {}, options = {}) {
     if (!sessionFile && requireSessionFile)
         throw new Error(`Async run '${runId}' child ${index} does not have a persisted session file to resume from.`);
     const resolvedSessionFile = sessionFile ? validateResumeSessionFile(runId, sessionFile) : undefined;
-    const stepModel = statusSteps[index]?.model ?? resultSteps[index]?.model ?? (stepCount === 1 ? result?.model : undefined);
+    const stepModel = statusSteps[index]?.launchModel ?? statusSteps[index]?.model ?? resultSteps[index]?.model ?? (stepCount === 1 ? result?.model : undefined);
     const stepThinking = statusSteps[index]?.thinking ?? resultSteps[index]?.thinking ?? (stepCount === 1 ? result?.thinking : undefined);
     const thinkingCeiling = statusSteps[index]?.thinkingCeiling ?? (stepCount === 1 ? recoveryDescriptor?.thinkingCeiling : undefined);
     const capabilityCeiling = mode === "workflow"
@@ -653,6 +657,8 @@ export function applySteeringRecoveryAgentConfig(agentConfig, descriptor) {
         output: descriptor.outputPath,
         toolBudget: descriptor.initialToolBudget,
         maxSubagentDepth: descriptor.maxSubagentDepth,
+        // The recorded launcher wins over the current agent file, including recorded absence.
+        launcher: descriptor.launcher,
     };
 }
 export function buildRevivedAsyncTask(target, message) {

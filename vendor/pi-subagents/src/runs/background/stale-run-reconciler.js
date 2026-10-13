@@ -309,9 +309,20 @@ export function reconcileNestedAsyncDescendants(route, options = {}) {
         });
     }
 }
-export function checkPidLiveness(pid, kill = process.kill) {
+export function checkPidLiveness(pid, kill = process.kill, probeZombie = false) {
     try {
         kill(pid, 0);
+        if (probeZombie && process.platform === "linux") {
+            try {
+                const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf-8");
+                const closeParen = stat.lastIndexOf(") ");
+                if (closeParen >= 0 && stat[closeParen + 2] === "Z")
+                    return "dead";
+            }
+            catch {
+                // Fall back to kill(pid, 0) when procfs is unavailable or unreadable.
+            }
+        }
         return "alive";
     }
     catch (error) {
@@ -392,7 +403,9 @@ export function reconcileAsyncRun(asyncDir, options = {}, observeStatus) {
     const observedScope = options.pidNamespaceScope ? options.pidNamespaceScope() : currentPidNamespaceScope();
     // An observer without a scope (macOS/Windows host sharing a container's temp root) cannot match a recorded one.
     const pidScopeMismatch = effectiveStatus.pidNamespaceScope !== undefined && effectiveStatus.pidNamespaceScope !== observedScope;
-    const observedLiveness = checkPidLiveness(effectiveStatus.pid, options.kill);
+    // A local zombie is evidence about this runner only when its namespace is known to match.
+    const pidScopeVerified = effectiveStatus.pidNamespaceScope !== undefined && effectiveStatus.pidNamespaceScope === observedScope;
+    const observedLiveness = checkPidLiveness(effectiveStatus.pid, options.kill, pidScopeVerified);
     const liveness = observedLiveness === "dead" && pidScopeMismatch ? "unknown" : observedLiveness;
     if (liveness !== "dead") {
         const staleAfterMs = options.staleAlivePidMs ?? 24 * 60 * 60 * 1000;

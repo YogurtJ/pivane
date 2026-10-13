@@ -2,8 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { discoverAgentsAll } from "../agents/agents.js";
 import { isAsyncAvailable } from "../runs/background/async-execution.js";
-import { formatSpawnBudgetSummary, getSpawnBudgetSnapshot } from "../runs/shared/spawn-budget.js";
-import { getActiveAsyncCapacitySnapshot, resolveAbandonedSlotReleaseAfterMs, resolveMaxActiveAsyncRunsPerSession } from "../runs/background/active-async-capacity.js";
+import { formatSpawnBudgetSummary } from "../runs/shared/spawn-budget.js";
 import { diagnoseIntercomBridge } from "../intercom/intercom-bridge.js";
 import { discoverAvailableSkills } from "../agents/skills.js";
 import { DIRS, CHAIN_RUNS_DIR, TEMP_ROOT_DIR, normalizeMaxSubagentSpawnsPerRun, resolveMaxSubagentSpawnsPerRun, } from "../shared/types.js";
@@ -123,7 +122,7 @@ function formatIntercomDiagnostic(diagnostic, context) {
     return lines;
 }
 function formatSpawnBudgetSection(input) {
-    const snapshot = getSpawnBudgetSnapshot(input.state, input.config, input.currentSessionId ?? input.state.currentSessionId);
+    const snapshot = input.spawnBudget;
     return [
         `- usage: ${formatSpawnBudgetSummary(snapshot)}`,
         `- recent grants: ${snapshot.grantHistory.length === 0
@@ -140,12 +139,7 @@ function formatRunFanoutSection(input) {
     return [`- configured limit: ${configured} (${source})`, "- usage: available after a run starts", "- reset boundary: cumulative claims are never released; a new top-level run creates a new budget"];
 }
 function formatActiveAsyncCapacitySection(input) {
-    const limit = resolveMaxActiveAsyncRunsPerSession(input.config.maxActiveAsyncRunsPerSession);
-    const sessionId = input.currentSessionId ?? input.state.currentSessionId;
-    const snapshot = sessionId
-        ? getActiveAsyncCapacitySnapshot(sessionId, limit, { liveWorkflowRunIds: new Set(input.state.workflowControllers?.keys() ?? []), abandonedSlotReleaseAfterMs: resolveAbandonedSlotReleaseAfterMs(input.config.capacity?.abandonedSlotReleaseAfterMs) })
-        : { used: 0, limit: limit ?? 0 };
-    input.state.activeAsyncCapacity = snapshot;
+    const snapshot = input.activeAsyncCapacity;
     return [
         `- usage: ${snapshot.used}/${snapshot.limit || "unlimited"} used`,
         "- scope: top-level async runs in the current parent session; foreground and nested workflow children are not charged again",

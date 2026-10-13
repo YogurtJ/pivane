@@ -1,4 +1,5 @@
-import { extractTextFromContent, extractToolArgsPreview, getFinalOutput, hasEmptyTerminalAssistantResponse } from "../../shared/utils.js";
+import { SUBAGENT_STOPPED_MESSAGE, SUBAGENT_TIMED_OUT_MESSAGE, extractTextFromContent, extractToolArgsPreview, getFinalOutput, hasEmptyTerminalAssistantResponse } from "../../shared/utils.js";
+import { qualifyModelWithProvider } from "../../shared/model-info.js";
 import { acceptChildWatchdogEvent, applyChildWatchdogMessage, childWatchdogIsActive, isChildWatchdogStatusEvent, } from "../../watchdog/child-status.js";
 import { projectChildLifecycle } from "../shared/child-lifecycle.js";
 import { formatSubagentModelVerificationError } from "../shared/model-resolution.js";
@@ -6,6 +7,7 @@ import { formatChildModelResolutionDiagnostic, isChildModelResolutionFailure } f
 import { isMutatingTool, resolveCurrentPath } from "../shared/long-running-guard.js";
 import { effectiveToolTimeoutMs, formatToolTimeoutMessage, toolTimeoutCallKey } from "../shared/tool-timeout.js";
 import { createReportedChildSessionInput } from "../shared/child-launch.js";
+import { createPartialOutputTracker, formatPartialOutput } from "../shared/partial-output.js";
 import { childSessionHasQueuedMessages, projectChildSessionEventForJson } from "../shared/child-session.js";
 import { reconcileAttemptUsage } from "../shared/usage-reconciliation.js";
 import { formatSteerMessage } from "../shared/subagent-prompt-runtime.js";
@@ -44,6 +46,7 @@ export function runChildSession(input) {
         let assistantError;
         let interrupted = false;
         let timedOut = false;
+        const partialOutput = createPartialOutputTracker();
         let stopped = false;
         let observedMutationAttempt = false;
         let structuredOutputToolInvoked = false;
@@ -70,8 +73,8 @@ export function runChildSession(input) {
         let abortSettleTimer;
         let childWatchdogState;
         const childLifecycleState = { compactionRetryActive: false };
-        const timeoutMessage = () => input.timeoutMessage ?? "Subagent timed out.";
-        const stopMessage = () => input.stopMessage ?? "Subagent stopped by user.";
+        const timeoutMessage = () => input.timeoutMessage ?? SUBAGENT_TIMED_OUT_MESSAGE;
+        const stopMessage = () => input.stopMessage ?? SUBAGENT_STOPPED_MESSAGE;
         let activeToolSequence = 0;
         const activeToolCalls = new Map();
         const activeToolKeysByName = new Map();
@@ -299,6 +302,7 @@ export function runChildSession(input) {
         const processEvent = (raw) => {
             if (settled)
                 return;
+            partialOutput.observe(raw);
             const event = raw;
             appendChildEvent(projectChildSessionEventForJson(raw));
             input.transcriptWriter?.writeChildEvent(projectChildSessionEventForJson(raw));
@@ -371,19 +375,12 @@ export function runChildSession(input) {
                 input.writeOutputLine(preview ? `${event.toolName}: ${preview}` : event.toolName);
                 return;
             }
-            if ((event.type === "message_end" || event.type === "tool_result_end") && event.message) {
-                if (event.type === "tool_result_end") {
-                    clearActiveToolTimeout(event);
-                    removeActiveToolCall({
-                        toolCallId: event.message.toolCallId ?? event.toolCallId,
-                        toolName: event.message.toolName ?? event.toolName,
-                    });
-                }
+            if (event.type === "message_end" && event.message) {
                 messages.push(event.message);
                 const text = extractTextFromContent(event.message.content);
                 if (text)
                     writeOutputText(text);
-                if (event.type === "message_end" && event.message.role === "user" && text) {
+                if (event.message.role === "user" && text) {
                     const matched = takeMatchingAcceptedSteer(acceptedSteers, text);
                     if (matched) {
                         input.onSteerOutcome?.(matched.request, {
@@ -393,18 +390,18 @@ export function runChildSession(input) {
                         });
                     }
                 }
-                if (input.childWatchdog && event.type === "message_end") {
+                if (input.childWatchdog) {
                     const next = applyChildWatchdogMessage(childWatchdogState, event.message);
                     if (next)
                         childWatchdogState = next;
                 }
-                if (event.type !== "message_end" || event.message.role !== "assistant")
+                if (event.message.role !== "assistant")
                     return;
                 const hasToolCall = assistantStartsToolCall(event.message);
                 if (event.message.model) {
-                    model = event.message.model;
+                    model = qualifyModelWithProvider(event.message.model, event.message.provider, input.modelVerificationRegistry) ?? event.message.model;
                     if (input.expectedModelForVerification && !hasToolCall) {
-                        const modelVerificationError = formatSubagentModelVerificationError(input.expectedModelForVerification, event.message.model, input.modelVerificationRegistry, input.modelResponseAliases);
+                        const modelVerificationError = formatSubagentModelVerificationError(input.expectedModelForVerification, event.message.model, input.modelVerificationRegistry, input.modelResponseAliases, session?.virtualModelId);
                         if (modelVerificationError && !error)
                             error = modelVerificationError;
                     }
@@ -437,7 +434,7 @@ export function runChildSession(input) {
             }
         };
         /** Stops observing the child and returns when its extensions have shut down. */
-        const finish = () => {
+        const finish = async () => {
             clearFinalDrainTimers();
             clearWatchdogTailTimer();
             clearAllToolTimeouts();
@@ -451,7 +448,17 @@ export function runChildSession(input) {
             input.registerSteer?.(undefined);
             input.registerWatchdogStatus?.(undefined);
             unsubscribe?.();
-            return Promise.resolve().then(() => session?.dispose()).catch(() => undefined);
+            let commandError;
+            if (!interrupted && !timedOut && !stopped) {
+                try {
+                    await session?.finishCommands?.();
+                }
+                catch (error) {
+                    commandError = error instanceof Error ? error.message : String(error);
+                }
+            }
+            await Promise.resolve().then(() => session?.dispose()).catch(() => undefined);
+            return commandError;
         };
         /** The child run ended (or was forced to end); fold in the outcome once the child's shutdown work is done. */
         const failUnconsumedSteers = () => {
@@ -468,7 +475,14 @@ export function runChildSession(input) {
                 ? reconcileAttemptUsage(usage, session.messages, messageBaseline)
                 : usage;
             const closed = finish();
-            const finalOutput = getFinalOutput(messages);
+            const completedOutput = getFinalOutput(messages);
+            // Text still streaming at a timeout or thrown session error never reached a
+            // completed message; keep it, labeled. The run still fails.
+            const partialCause = timedOut
+                ? "timeout"
+                : promptError !== undefined && !stopped && !interrupted ? "child error" : undefined;
+            const streamedPartial = partialCause ? partialOutput.text() : undefined;
+            const finalOutput = partialCause && streamedPartial ? formatPartialOutput(streamedPartial, partialCause) : completedOutput;
             let finalError = error ?? assistantError;
             const promptErrorMessage = promptError === undefined ? undefined : promptError instanceof Error ? promptError.message : String(promptError);
             if (!finalError && promptErrorMessage !== undefined) {
@@ -491,12 +505,16 @@ export function runChildSession(input) {
             if (!finalError && forced && !forcedDrainAfterFinalSuccess && !interrupted && !timedOut && !stopped) {
                 finalError = "Subagent session did not settle after it was aborted.";
             }
-            const exitCode = timedOut || stopped
+            let exitCode = timedOut || stopped
                 ? 1
                 : interrupted || (forcedDrainAfterFinalSuccess && !forcedDrainAfterEmptyTerminal)
                     ? 0
                     : finalError || promptError !== undefined ? 1 : 0;
-            void closed.then(() => {
+            void closed.then((commandError) => {
+                if (commandError) {
+                    finalError ??= commandError;
+                    exitCode = 1;
+                }
                 const result = omitUndefined({
                     exitCode,
                     messages,
@@ -505,9 +523,10 @@ export function runChildSession(input) {
                     durationMs: Date.now() - startedAt,
                     model,
                     nativeMachine: session?.machineEvidence ? { provider: "herdr", machineId: session.machineEvidence.machineId, ...(session.machineEvidence.initial ? { initialGit: session.machineEvidence.initial } : {}), ...(session.machineEvidence.final ? { finalGit: session.machineEvidence.final } : {}) } : undefined,
-                    error: stopped ? stopMessage() : timedOut ? (error ?? timeoutMessage()) : interrupted || (forcedDrainAfterFinalSuccess && !forcedDrainAfterEmptyTerminal) ? undefined : finalError,
+                    error: stopped ? stopMessage() : timedOut ? (error ?? timeoutMessage()) : interrupted || (forcedDrainAfterFinalSuccess && !forcedDrainAfterEmptyTerminal && !commandError) ? undefined : finalError,
                     finalOutput: (timedOut || stopped) && !finalOutput.trim() ? (stopped ? stopMessage() : error ?? timeoutMessage()) : finalOutput,
                     outputState: finalOutput.trim() ? "present" : "absent",
+                    outputPartial: partialCause && streamedPartial ? true : undefined,
                     interrupted: interrupted || undefined,
                     timedOut: timedOut || undefined,
                     stopped: stopped || undefined,

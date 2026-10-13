@@ -7,7 +7,7 @@ import { writeAtomicJson } from "../../shared/atomic-json.js";
 import { PROJECT_SUBAGENTS_RELATIVE_DIR } from "../../shared/artifacts.js";
 import { DEFAULT_STALE_TERMINAL_ACTIVE_MARKER_MS, activeRunMarkerAgeMs } from "../background/active-run-index.js";
 import { getAgentDir } from "../../shared/utils.js";
-import { isTerminalParallelHandoffChildStatus } from "./parallel-handoff.js";
+import { isTerminalParallelHandoffChildStatus, readParallelHandoffManifest } from "./parallel-handoff.js";
 import { MACHINE_DIFF_OPTIONS, validateWorktreePatchRepresentsCurrentWorktree } from "./worktree.js";
 export const WORKTREE_CLEANUP_PLAN_VERSION = 1;
 export const WORKTREE_CLEANUP_PLAN_TTL_MS = 30 * 60 * 1000;
@@ -72,7 +72,7 @@ function comparablePath(candidate) {
     const normalized = path.normalize(canonical);
     return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
-function samePath(left, right) {
+export function samePath(left, right) {
     if (comparablePath(left) === comparablePath(right))
         return true;
     if (process.platform !== "win32")
@@ -81,9 +81,9 @@ function samePath(left, right) {
     // drive/short-name aliases. The directory identity is the final bounded
     // fallback; never accept aliases when the filesystem cannot prove identity.
     try {
-        const leftStat = fs.statSync(left);
-        const rightStat = fs.statSync(right);
-        return leftStat.dev !== 0 && leftStat.ino !== 0 && leftStat.dev === rightStat.dev && leftStat.ino === rightStat.ino;
+        const leftStat = fs.statSync(left, { bigint: true });
+        const rightStat = fs.statSync(right, { bigint: true });
+        return leftStat.dev !== 0n && leftStat.ino !== 0n && leftStat.dev === rightStat.dev && leftStat.ino === rightStat.ino;
     }
     catch {
         return false;
@@ -117,7 +117,7 @@ function validatePlanId(planId) {
     }
     return planId;
 }
-function resolveRepoRoot(repo) {
+export function resolveCleanupRepoRoot(repo) {
     const requested = path.resolve(repo);
     const toplevel = runGitChecked(requested, ["rev-parse", "--show-toplevel"]);
     return realpathExisting(toplevel);
@@ -169,6 +169,8 @@ export function parseGitWorktreeList(raw) {
             current.branch = line.slice("branch refs/heads/".length).trim();
         else if (line === "detached")
             delete current.branch;
+        else if (line === "locked" || line.startsWith("locked "))
+            current.locked = true;
         else if (line.startsWith("prunable "))
             current.prunable = line.slice("prunable ".length).trim();
     }
@@ -180,6 +182,9 @@ function listGitWorktrees(repoRoot) {
     if (result.status !== 0)
         throw new Error(gitFailure(result, `git -C ${repoRoot} worktree list --porcelain`));
     return parseGitWorktreeList(result.stdout);
+}
+export function isRegisteredCleanupWorktree(repoRoot, candidate) {
+    return listGitWorktrees(repoRoot).some((tree) => samePath(tree.path, candidate));
 }
 function readJsonFile(filePath) {
     return JSON.parse(fs.readFileSync(filePath, "utf-8"));
@@ -194,8 +199,8 @@ function readManifest(manifestPath) {
             return { error: `parallel handoff manifest is not a regular file: ${manifestPath}` };
         if (stat.size > MAX_METADATA_FILE_BYTES)
             return { error: `parallel handoff manifest exceeds the ${MAX_METADATA_FILE_BYTES}-byte limit: ${manifestPath}` };
-        const parsed = readJsonFile(manifestPath);
-        if (!isRecord(parsed) || parsed.version !== 1 || !Array.isArray(parsed.groups)) {
+        const parsed = readParallelHandoffManifest(manifestPath);
+        if (!parsed) {
             return { error: `invalid parallel handoff manifest version or groups: ${manifestPath}` };
         }
         return { manifest: parsed };
@@ -314,12 +319,10 @@ function loadMetadata(input, repoRoot) {
     const discovered = discoverHandoffPaths(repoRoot, input);
     const records = [];
     const warnings = [...discovered.warnings];
-    const explicitPath = input.handoffPath ? path.isAbsolute(input.handoffPath) ? path.resolve(input.handoffPath) : path.resolve(repoRoot, input.handoffPath) : undefined;
     for (const manifestPath of discovered.paths) {
         const result = readManifest(manifestPath);
         if (!result.manifest) {
-            if (explicitPath && comparablePath(manifestPath) === comparablePath(explicitPath))
-                warnings.push(result.error);
+            warnings.push(result.error);
             continue;
         }
         const manifestRoot = resolveExistingPath(manifestPath);
@@ -413,7 +416,7 @@ function inspectRunState(record, now, foregroundRunOwnership) {
     return { kind: "terminal" };
 }
 function buildEntryBase(input) {
-    const recordedBaseDir = path.dirname(input.path);
+    const recordedBaseDir = input.metadata?.task.recordedBaseDir;
     const patchPath = input.metadata ? metadataPatchPath(input.metadata) : undefined;
     return {
         path: input.path,
@@ -431,7 +434,7 @@ function buildEntryBase(input) {
             branch: input.branch,
             ...(input.git?.head ? { worktreeHead: input.git.head } : {}),
             ...(input.metadata?.group.baseCommit ? { baseCommit: input.metadata.group.baseCommit } : {}),
-            recordedBaseDir,
+            ...(recordedBaseDir ? { recordedBaseDir } : {}),
             targetRef: input.targetHead,
         },
     };
@@ -520,8 +523,17 @@ function buildManagedEntry(input) {
         return blockedEntry(entry, "ineligible", "keep", `worktree real path is inside Pi extensions directory '${extensionsDir}'`);
     if (input.containmentInvalid || !pathInside(baseDir, pathInspection.realpath, true))
         return blockedEntry(entry, "ineligible", "keep", `worktree real path is outside configured base directory '${baseDir}'`);
+    const recordedBaseDir = record.task.recordedBaseDir;
+    if (typeof recordedBaseDir !== "string" || !path.isAbsolute(recordedBaseDir))
+        return blockedEntry(entry, "unknown", "keep", "handoff metadata has no creation-time base directory proof");
+    // Compare the saved canonical string, without following a newly replaced ancestor.
+    const creationRelative = path.relative(recordedBaseDir, pathInspection.realpath);
+    if (!creationRelative || creationRelative === ".." || creationRelative.startsWith(`..${path.sep}`) || path.isAbsolute(creationRelative))
+        return blockedEntry(entry, "ineligible", "keep", `worktree real path is outside its creation-time recorded base directory '${recordedBaseDir}'`);
     if (rootPath === comparablePath(pathInspection.realpath))
         return blockedEntry(entry, "ineligible", "keep", "worktree is the repository root");
+    if (git.locked)
+        return blockedEntry(entry, "ineligible", "keep", "Git worktree is locked");
     if (!git.branch)
         return blockedEntry(entry, "unknown", "unknown", "detached worktrees have no metadata-recorded branch");
     if (record.task.branch !== git.branch)
@@ -546,6 +558,9 @@ function buildManagedEntry(input) {
     if (git.branch === input.otherGitRecords.find((candidate) => comparablePath(candidate.path) === rootPath)?.branch) {
         return blockedEntry(entry, "ineligible", "keep", "metadata-recorded branch is checked out at the repository root");
     }
+    const retainedSession = record.child.sessionPath ?? record.status?.steps?.[record.child.index]?.sessionFile ?? record.status?.sessionFile;
+    if (typeof retainedSession === "string" && retainedSession.trim())
+        return blockedEntry(entry, "ineligible", "keep", "retained child resume still has a recorded session dependency");
     const runState = inspectRunState(record, input.now, foregroundRunOwnership);
     if (runState.kind === "unknown")
         return blockedEntry(entry, "unknown", "unknown", runState.reason ?? "owning run state is unknown");
@@ -574,6 +589,11 @@ function buildManagedEntry(input) {
     entry.preconditions.statusDigest = status.digest;
     if (status.output && status.output.trim())
         return blockedEntry(entry, "dirty", "keep", "worktree has uncommitted or untracked changes");
+    const ignored = runGit(worktreePath, ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"]);
+    if (ignored.status !== 0)
+        return blockedEntry(entry, "unknown", "unknown", `ignored-file inspection failed: ${gitFailure(ignored, "git ls-files")}`);
+    if (ignored.stdout)
+        return blockedEntry(entry, "ineligible", "keep", "worktree contains ignored files; cleanup preserves them");
     const diff = runGit(worktreePath, ["diff", "--quiet", ...MACHINE_DIFF_OPTIONS, resolvedBase.value, "--"]);
     if (diff.status !== 0 && diff.status !== 1)
         return blockedEntry(entry, "unknown", "unknown", `git diff safety check failed: ${gitFailure(diff, "git diff")}`);
@@ -619,7 +639,7 @@ function buildManagedEntry(input) {
     }
     entry.state = "safe";
     entry.decision = "remove";
-    entry.willDeleteBranch = branchTipIsAncestor;
+    entry.willDeleteBranch = false;
     entry.reasons.push("extension-owned metadata, terminal run, contained clean worktree, and local divergence checks passed");
     if (!branchTipIsAncestor)
         entry.reasons.push("local branch tip is not an ancestor of target HEAD; future apply must retain the branch");
@@ -637,7 +657,7 @@ function buildMissingMetadataEntry(input) {
     const entry = buildEntryBase({ path: pathValue, branch: input.record.task.branch, source: "metadata", metadata: input.record, targetHead: input.targetHead });
     return blockedEntry(entry, "stale", "unknown", "handoff metadata records a worktree that is not present in Git worktree state");
 }
-function contentPayload(plan) {
+export function worktreeCleanupContentPayload(plan) {
     return {
         version: plan.version,
         repoRoot: plan.repoRoot,
@@ -654,7 +674,7 @@ function stableEntrySort(left, right) {
 export function buildWorktreeCleanupPlan(input) {
     if (typeof input.repo !== "string" || !input.repo.trim())
         throw new Error("worktree cleanup plan requires a repository path");
-    const repoRoot = resolveRepoRoot(input.repo);
+    const repoRoot = resolveCleanupRepoRoot(input.repo);
     const now = input.now ?? Date.now();
     if (!Number.isFinite(now))
         throw new Error("worktree cleanup plan timestamp must be finite");
@@ -675,6 +695,8 @@ export function buildWorktreeCleanupPlan(input) {
     const entries = [];
     const matchedMetadataRecords = new Set();
     for (const git of linkedGit) {
+        if (input.candidatePaths && !input.candidatePaths.some((candidate) => samePath(candidate, git.path)))
+            continue;
         const records = metadataByPath.get(comparablePath(git.path)) ?? (git.branch
             ? metadata.records.filter((record) => record.task.branch === git.branch && samePath(metadataRecordPath(record), git.path))
             : []);
@@ -723,7 +745,7 @@ export function buildWorktreeCleanupPlan(input) {
         pruneCandidates,
         ...(warnings.length ? { warnings: [...new Set(warnings)].sort() } : {}),
     };
-    const contentHash = sha256(JSON.stringify(contentPayload(basePlan)));
+    const contentHash = sha256(JSON.stringify(worktreeCleanupContentPayload(basePlan)));
     const planId = validatePlanId(input.planId ?? randomUUID());
     return {
         ...basePlan,
@@ -749,7 +771,6 @@ function formatPlanEntry(entry) {
 export function formatWorktreeCleanupPlan(created) {
     const { plan, planPath } = created;
     const removable = plan.entries.filter((entry) => entry.decision === "remove");
-    const branches = removable.filter((entry) => entry.willDeleteBranch === true);
     const kept = plan.entries.filter((entry) => entry.decision === "keep");
     const unknown = plan.entries.filter((entry) => entry.decision === "unknown");
     const section = (title, entries, empty) => [
@@ -764,7 +785,7 @@ export function formatWorktreeCleanupPlan(created) {
         "",
         ...section("Will remove", removable, "none"),
         "",
-        ...section("Will delete local branches", branches, "none (plan-only mode; no branch will be deleted)"),
+        "Local branches: all retained, including after apply.",
         "",
         ...section("Will keep, with reasons", kept, "none"),
         "",
@@ -776,6 +797,7 @@ export function formatWorktreeCleanupPlan(created) {
         "",
         `Plan saved: ${planPath}`,
         "Plan-only mode: no worktrees or branches were removed.",
+        `Apply this reviewed plan: subagent({ action: "worktree.cleanup", options: { mode: "apply", repo: ${JSON.stringify(plan.repoRoot)}, planId: ${JSON.stringify(plan.planId)} } })`,
     ];
     return lines.join("\n");
 }

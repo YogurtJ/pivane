@@ -9,6 +9,9 @@ export const INTERCOM_DETACH_RESPONSE_EVENT = "pi-intercom:detach-response";
 /** pi-intercom asks each session for a fixed intercom ID at session start; `claim(id)` answers synchronously. */
 export const INTERCOM_SESSION_IDENTITY_EVENT = "intercom:session-identity";
 export const SUBAGENT_ASYNC_STARTED_EVENT = "subagent:async-started";
+/** Launcher names are plain identifiers so they survive frontmatter rewrites without quoting. */
+export const RUNNER_LAUNCHER_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+export const RUNNER_LAUNCHER_NAME_RULE = "must start with a letter or digit and use only letters, digits, '.', '_' or '-' (at most 128 characters)";
 export const SUBAGENT_ASYNC_COMPLETE_EVENT = "subagent:async-complete";
 export const SUBAGENT_PROCESS_TERMINAL_EVENT = "subagent:process-terminal";
 export const SUBAGENT_FOREGROUND_COMPLETE_EVENT = "subagent:foreground-complete";
@@ -99,7 +102,7 @@ export function resolveTempScopeId(options) {
     return "shared";
 }
 const MAX_PARALLEL = 8;
-export const MAX_CONCURRENCY = 4;
+const MAX_CONCURRENCY = 4;
 const configuredTempRoot = process.env.PI_SUBAGENTS_TEMP_ROOT?.trim();
 export const TEMP_ROOT_DIR = configuredTempRoot
     ? path.resolve(configuredTempRoot)
@@ -126,7 +129,7 @@ export const POLL_INTERVAL_MS = 250;
 export const WIDGET_ANIMATION_INTERVAL_MS = 1000;
 export const MAX_WIDGET_JOBS = 4;
 export const DEFAULT_SUBAGENT_MAX_DEPTH = 2;
-export const SUBAGENT_ACTIONS = ["list", "get", "models", "children.list", "guide", "validate", "create", "update", "delete", "eject", "disable", "enable", "reset", "mission.create", "mission.list", "mission.show", "mission.update", "mission.resolve-decision", "mission.attach-run", "mission.close", "worktree.discard", "worktree.cleanup", "lane.status", "lane.recordMerge", "lane.recordSupersession", "refine", "refine.show", "refine.rollback", "inspector.open", "inspector.command", "inspector.status", "inspector.close", "project.open", "project.status", "project.close", "status", "debug.run", "grant-spawn-budget", "interrupt", "resume", "steer", "stop", "dismiss", "doctor", "watchdog.status", "watchdog.check", "watchdog.configure", "watchdog.recommend-model", "schedule.create", "schedule.list", "schedule.show", "schedule.history", "schedule.pause", "schedule.resume", "schedule.run", "schedule.run-due", "schedule.delete"];
+export const SUBAGENT_ACTIONS = ["list", "get", "models", "children.list", "guide", "validate", "create", "update", "delete", "eject", "disable", "enable", "reset", "mission.create", "mission.list", "mission.show", "mission.update", "mission.resolve-decision", "mission.attach-run", "mission.close", "worktree.discard", "worktree.cleanup", "lane.status", "lane.recordMerge", "lane.recordSupersession", "refine", "refine.show", "refine.rollback", "inspector.open", "inspector.command", "inspector.status", "inspector.close", "project.open", "project.status", "project.close", "status", "debug.run", "grant-spawn-budget", "interrupt", "resume", "steer", "stop", "command.status", "command.yield", "command.cancel", "dismiss", "doctor", "watchdog.status", "watchdog.check", "watchdog.configure", "watchdog.recommend-model", "schedule.create", "schedule.list", "schedule.show", "schedule.history", "schedule.pause", "schedule.resume", "schedule.run", "schedule.run-due", "schedule.delete"];
 export const DEFAULT_FORK_PREAMBLE = "You are a delegated subagent running from a fork of the parent session. " +
     "Treat the inherited conversation as reference-only context, not a live thread to continue. " +
     "Do not continue or answer prior messages as if they are waiting for a reply. " +
@@ -170,7 +173,7 @@ export function normalizeMaxSubagentDepth(value) {
     return normalizeNonNegativeInteger(value);
 }
 /** Operator override for the top-level parent; children inherit their limit through their runtime config. */
-export const SUBAGENT_MAX_DEPTH_ENV = "PI_SUBAGENT_MAX_DEPTH";
+const SUBAGENT_MAX_DEPTH_ENV = "PI_SUBAGENT_MAX_DEPTH";
 export function resolveCurrentMaxSubagentDepth(configMaxDepth, runtime) {
     return normalizeMaxSubagentDepth(runtime ? runtime.maxDepth : process.env[SUBAGENT_MAX_DEPTH_ENV])
         ?? normalizeMaxSubagentDepth(configMaxDepth)
@@ -182,7 +185,7 @@ export function resolveChildMaxSubagentDepth(parentMaxDepth, agentMaxDepth) {
     return normalizedAgent === undefined ? normalizedParent : Math.min(normalizedParent, normalizedAgent);
 }
 /** Depth of the executor itself: 0 for a top-level parent, its own child depth otherwise. */
-export function resolveCurrentSubagentDepth(runtime) {
+function resolveCurrentSubagentDepth(runtime) {
     const depth = runtime ? runtime.depth : 0;
     return Number.isFinite(depth) ? depth : 0;
 }
@@ -209,7 +212,7 @@ export function resolveMaxSubagentSpawnsPerSession(configMaxSpawns) {
     const configuredMaxSpawns = normalizeMaxSubagentSpawnsPerSession(configMaxSpawns);
     return configuredMaxSpawns === 0 ? undefined : configuredMaxSpawns;
 }
-export const DEFAULT_MAX_SUBAGENT_SPAWNS_PER_RUN = 64;
+const DEFAULT_MAX_SUBAGENT_SPAWNS_PER_RUN = 64;
 export function normalizeMaxSubagentSpawnsPerRun(value) {
     const normalized = normalizeNonNegativeInteger(value);
     return normalized !== undefined && normalized > 0 ? normalized : undefined;

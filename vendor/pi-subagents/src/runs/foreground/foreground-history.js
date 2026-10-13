@@ -38,6 +38,7 @@ function compactChild(child) {
         ...(child.error ? { error: child.error } : {}),
         ...(!outputPath && child.finalOutput ? { finalOutput: boundedTail(child.finalOutput) } : {}),
         ...(child.outputState ? { outputState: child.outputState } : {}),
+        ...(child.outputPartial ? { outputPartial: true } : {}),
         ...(child.outputMode ? { outputMode: child.outputMode } : {}),
         ...(child.savedOutputPath ? { savedOutputPath: child.savedOutputPath } : {}),
         ...(child.outputSaveError ? { outputSaveError: child.outputSaveError } : {}),

@@ -4,7 +4,7 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type Component } from "@earendil-works/pi-tui";
-import { type AsyncJobState, type AsyncJobStep, type Details, type MainWindowRendererConfig } from "../shared/types.ts";
+import { type AsyncJobState, type AsyncJobStep, type AsyncWidgetLayout, type Details, type MainWindowRendererConfig } from "../shared/types.ts";
 type Theme = ExtensionContext["ui"]["theme"];
 export declare function liveDetailHintText(): string;
 /**
@@ -47,7 +47,7 @@ export declare function buildWidgetLines(jobs: AsyncJobState[], theme: Theme, wi
 /**
  * Render the async jobs widget
  */
-export declare function renderWidget(ctx: ExtensionContext, jobs: AsyncJobState[]): void;
+export declare function renderWidget(ctx: ExtensionContext, jobs: AsyncJobState[], initiallyCollapsed?: boolean, layout?: AsyncWidgetLayout): void;
 export declare function renderSubagentSummary(result: AgentToolResult<Details>, options: {
     isPartial?: boolean;
 }, theme: Theme): Component;

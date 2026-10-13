@@ -1,12 +1,13 @@
 import { INSPECTOR_REGISTER_EVENT } from "../api/inspectors.js";
 import { createHerdrInspectorPlugin } from "./herdr/plugin.js";
 import { createGhosttyInspectorPlugin } from "./ghostty/plugin.js";
+import { createTmuxInspectorPlugin } from "./tmux/plugin.js";
 // Keyed by event bus: a runtime that claims a registration can be replaced by a duplicate
 // pi-subagents runtime on the same bus, and the registration must survive that takeover.
 const registries = new WeakMap();
 /** Built-ins retain host preference; external providers follow registration order. */
 export function getInspectorPlugins(pi) {
-    return [createHerdrInspectorPlugin(), createGhosttyInspectorPlugin(), ...(registries.get(pi.events)?.plugins.values() ?? [])];
+    return [createHerdrInspectorPlugin(), createGhosttyInspectorPlugin(), createTmuxInspectorPlugin(), ...(registries.get(pi.events)?.plugins.values() ?? [])];
 }
 /** Registrations live while any owner runtime listens on this bus; child runtimes use their own bus. */
 export function registerInspectorEventListener(pi) {
@@ -17,7 +18,7 @@ export function registerInspectorEventListener(pi) {
     }
     registry.owners += 1;
     const { plugins } = registry;
-    const builtinNames = new Set([createHerdrInspectorPlugin().name, createGhosttyInspectorPlugin().name]);
+    const builtinNames = new Set([createHerdrInspectorPlugin().name, createGhosttyInspectorPlugin().name, createTmuxInspectorPlugin().name]);
     /* oxlint-disable anti-slop/no-runtime-typeof -- This listener validates the untyped event-bus boundary, including callable provider methods. */
     const unsubscribe = pi.events.on(INSPECTOR_REGISTER_EVENT, (rawRequest) => {
         if (!rawRequest || typeof rawRequest !== "object" || Array.isArray(rawRequest))

@@ -1,6 +1,8 @@
 const WORKFLOW_FENCE = /^```(?:js|javascript) workflow[ \t]*$/;
+const PLAIN_JS_FENCE = /^```(?:js|javascript)[ \t]*$/;
 const OPEN_FENCE = /^(`{3,}|~{3,})/;
 const CLOSE_FENCE = /^(`{3,}|~{3,})[ \t]*$/;
+const FILE_FALLBACK = "Or write the script to a file and pass its path, such as workflow: \"./script.js\".";
 /**
  * Pi persists the whole assistant message before running its tool calls, so the
  * message that issued this subagent call is on the branch and carries the script.
@@ -22,40 +24,47 @@ export function readReplyWorkflowScript(sessionManager, toolCallId) {
 }
 function scriptFromReply(content) {
     const replyCalls = content.filter((block) => block.type === "toolCall" && block.name === "subagent"
-        && block.arguments?.workflow === true).length;
+        && (block.arguments?.workflow === true || block.arguments?.workflow === "true")).length;
     if (replyCalls > 1)
         return { error: `This reply has ${replyCalls} subagent calls with workflow: true; a reply can carry only one. Pass other scripts as workflow file paths.` };
+    if (!content.some((block) => block.type === "text"))
+        return { error: "The assistant message that issued this call has no text in the session, so the reply's visible text, including any ```js workflow block, never reached it. Write the script to a file and pass its path, such as workflow: \"./script.js\"." };
     const text = content.flatMap((block) => block.type === "text" && typeof block.text === "string" ? [block.text] : []).join("\n");
-    const { blocks, unclosed } = workflowBlocks(text);
+    const { tagged, plain, unclosed } = workflowBlocks(text);
     if (unclosed)
-        return { error: "The ```js workflow block in this reply is not closed." };
-    if (blocks.length !== 1)
-        return { error: `workflow: true requires exactly one \`\`\`js workflow fenced block in the same reply as the tool call; found ${blocks.length}.` };
+        return { error: "The script's fenced block in this reply is not closed." };
+    // Models often drop the workflow tag, so a lone plain js block is unambiguous enough to run.
+    const blocks = tagged.length > 0 ? tagged : plain.length === 1 ? plain : [];
+    if (blocks.length !== 1) {
+        const untagged = tagged.length === 0 && plain.length > 1 ? ` This reply has ${plain.length} untagged js blocks; open the script's block with the line "\`\`\`js workflow".` : "";
+        return { error: `workflow: true needs one fenced block in the same reply as the tool call, opened with the exact line "\`\`\`js workflow" and closed with "\`\`\`"; found ${tagged.length}.${untagged} ${FILE_FALLBACK}` };
+    }
     const script = blocks[0];
     if (!script.trim())
-        return { error: "The ```js workflow block in this reply is empty." };
+        return { error: "The script's fenced block in this reply is empty." };
     return { script };
 }
-/** Collects ```js workflow / ```javascript workflow fenced blocks, skipping the bodies of other fences. */
+/** Collects tagged (```js workflow) and plain (```js) fenced blocks, skipping the bodies of other fences. */
 function workflowBlocks(text) {
     const lines = text.split("\n");
-    const blocks = [];
+    const tagged = [];
+    const plain = [];
     let fence;
     for (let index = 0; index < lines.length; index++) {
         const line = lines[index].replace(/\r$/, "");
         if (!fence) {
             const open = OPEN_FENCE.exec(line);
             if (open)
-                fence = { marker: open[1], tagged: WORKFLOW_FENCE.test(line), start: index + 1 };
+                fence = { marker: open[1], kind: WORKFLOW_FENCE.test(line) ? "tagged" : PLAIN_JS_FENCE.test(line) ? "plain" : undefined, start: index + 1 };
             continue;
         }
         const close = CLOSE_FENCE.exec(line);
         if (!close || close[1][0] !== fence.marker[0] || close[1].length < fence.marker.length)
             continue;
-        if (fence.tagged)
-            blocks.push(lines.slice(fence.start, index).join("\n"));
+        if (fence.kind)
+            (fence.kind === "tagged" ? tagged : plain).push(lines.slice(fence.start, index).join("\n"));
         fence = undefined;
     }
-    return { blocks, unclosed: fence?.tagged === true };
+    return { tagged, plain, unclosed: fence?.kind === "tagged" || (fence?.kind === "plain" && tagged.length === 0) };
 }
 //# sourceMappingURL=reply-workflow-script.js.map

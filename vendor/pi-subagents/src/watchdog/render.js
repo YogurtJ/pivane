@@ -1,8 +1,7 @@
-import { Container, Spacer, Text } from "@earendil-works/pi-tui";
 function titleCase(value) {
     return value.split("-").map((part) => part ? `${part[0]?.toUpperCase()}${part.slice(1)}` : part).join(" ");
 }
-function stateLabels(warning) {
+export function stateLabels(warning) {
     const labels = [];
     if (warning.state === "displayed")
         labels.push("displayed");
@@ -31,22 +30,5 @@ export function formatWatchdogWarningRenderText(warning) {
     if (warning.stale || warning.state === "stale")
         lines.push("This warning arrived after the watchdog catch-up timeout.");
     return lines.join("\n");
-}
-export function renderWatchdogWarning(warning, options, theme) {
-    const text = formatWatchdogWarningRenderText(warning);
-    const lines = text.split("\n");
-    const container = new Container();
-    const color = warning.severity === "blocker" ? "error" : "warning";
-    const bold = theme.bold ?? ((value) => value);
-    container.addChild(new Text(theme.fg(color, bold(lines[0] ?? "Subagent watchdog warning")), 0, 0));
-    if (options.expanded) {
-        container.addChild(new Spacer(1));
-        for (const line of lines.slice(1))
-            container.addChild(new Text(theme.fg("dim", line), 0, 0));
-    }
-    else if (lines[1]) {
-        container.addChild(new Text(theme.fg("dim", `  ⎿  ${lines[1]}`), 0, 0));
-    }
-    return container;
 }
 //# sourceMappingURL=render.js.map

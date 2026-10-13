@@ -45,6 +45,8 @@ export interface WorktreeCleanupPlan {
 }
 export interface BuildWorktreeCleanupPlanInput {
     repo: string;
+    /** Internal maintenance seam: inspect only these paths with the same safety predicates. */
+    candidatePaths?: string[];
     handoffPath?: string;
     /** Internal test and migration seam for explicitly supplied handoff records. */
     handoffPaths?: string[];
@@ -63,13 +65,18 @@ interface GitWorktreeRecord {
     head: string;
     branch?: string;
     prunable?: string;
+    locked?: boolean;
 }
 declare function realpathExisting(candidate: string, nativeRealpath?: (filePath: string) => string, fallbackRealpath?: (filePath: string) => string): string;
 /** Internal test seam; this is not part of the public subagent tool API. */
 export declare const __testables: {
     realpathExisting: typeof realpathExisting;
 };
+export declare function samePath(left: string, right: string): boolean;
+export declare function resolveCleanupRepoRoot(repo: string): string;
 export declare function parseGitWorktreeList(raw: string): GitWorktreeRecord[];
+export declare function isRegisteredCleanupWorktree(repoRoot: string, candidate: string): boolean;
+export declare function worktreeCleanupContentPayload(plan: Omit<WorktreeCleanupPlan, "contentHash" | "planId" | "createdAt" | "expiresAt">): unknown;
 export declare function buildWorktreeCleanupPlan(input: BuildWorktreeCleanupPlanInput): WorktreeCleanupPlan;
 export declare function worktreeCleanupPlanPath(repoRoot: string, planId: string): string;
 export declare function createWorktreeCleanupPlan(input: BuildWorktreeCleanupPlanInput): CreatedWorktreeCleanupPlan;

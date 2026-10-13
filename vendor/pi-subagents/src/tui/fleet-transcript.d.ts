@@ -34,6 +34,8 @@ export interface FleetTranscript {
     events: FleetTranscriptEvent[];
     truncated: boolean;
     warning?: string;
+    /** The path was refused or the file could not be read, as opposed to a read that only skipped records. */
+    readFailed?: true;
 }
 interface FleetTranscriptReadOptions {
     trustedRoots: string[];

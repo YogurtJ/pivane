@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { writeAtomicJson } from "../../shared/atomic-json.js";
+import { withFileLease } from "../../shared/file-lease.js";
 import { MISSION_BINDING_FILE } from "../../missions/lifecycle.js";
 import { encodeIndexSegment, indexSegmentAliases, MAX_INDEX_SEGMENT_BYTES } from "./index-segment.js";
 const RESULT_INDEX_VERSION = 1;
@@ -10,6 +12,7 @@ const RUN_INDEX_DIR = "runs";
 const OBSERVER_INDEX_DIR = "observers";
 const TOOL_CALL_INDEX_DIR = "tool-calls";
 const RESULT_PENDING_DIR = "result-pending";
+const RESULT_LEASE_DIR = "result-leases";
 const MISSION_OBSERVER = "mission";
 const JSON_EXTENSION = ".json";
 const MAX_JSON_FILE_STEM_BYTES = MAX_INDEX_SEGMENT_BYTES - Buffer.byteLength(JSON_EXTENSION, "utf-8");
@@ -142,8 +145,20 @@ function writeIndexedPendingResultFile(resultPath, data) {
     if (!sessionId)
         throw new Error(`Cannot write async result '${resultPath}' without a sessionId.`);
     const resultsDir = path.dirname(resultPath);
-    writeAtomicJson(resultPendingPath(resultsDir, sessionId, runId), data);
-    writeResultIndexForData(resultPath, data);
+    // A consumer can take the payload and remove its indexes as soon as the payload appears,
+    // so every index must exist before then. A failed index write still publishes the
+    // payload, unindexed but recoverable, before the error is rethrown.
+    let indexFailure;
+    writeAtomicJson(resultPendingPath(resultsDir, sessionId, runId), data, () => {
+        try {
+            writeResultIndexForData(resultPath, data);
+        }
+        catch (error) {
+            indexFailure = { error };
+        }
+    });
+    if (indexFailure)
+        throw indexFailure.error;
     return { runId, sessionId, resultsDir };
 }
 export function writePendingAsyncResultFile(resultPath, data) {
@@ -206,6 +221,86 @@ export function removeMissionObserverIndex(resultsDir, runId) {
     catch {
         // Observer index cleanup must not affect result delivery.
     }
+}
+/** Serializes one run's result publication and retirement across processes. Lookups never take it. */
+export function withResultRunLease(resultsDir, runId, action) {
+    const leaseDir = path.join(resultsDir, RESULT_LEASE_DIR);
+    fs.mkdirSync(leaseDir, { recursive: true });
+    return withFileLease(path.join(leaseDir, createHash("sha256").update(runId).digest("hex")), action);
+}
+export function readResultPayload(filePath) {
+    try {
+        return fs.readFileSync(filePath, "utf-8");
+    }
+    catch (error) {
+        const code = error.code;
+        // A directory at the public path blocks promotion; it holds no payload.
+        if (code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR" || isUnaddressableResultCandidate(error))
+            return undefined;
+        throw error;
+    }
+}
+// Pending paths come first so a reader promoting pending to public between two reads is still seen.
+function resultPayloadCandidates(publicPath, read) {
+    return [...(read.sessionId ? resultPendingPaths(path.dirname(publicPath), read.sessionId, read.runId) : []), publicPath];
+}
+/** A payload is one the consumer already read (or an older one it saw beside it), so not newer. */
+function readByConsumer(publicPath, read, candidate, current) {
+    return current === read.snapshot || (candidate === publicPath && current === read.stalePublic);
+}
+/** Call under the run's lease: whether a payload written after the consumer read now exists for the run. */
+export function resultSnapshotReplaced(publicPath, read) {
+    return resultPayloadCandidates(publicPath, read).some((candidate) => {
+        const current = readResultPayload(candidate);
+        return current !== undefined && !readByConsumer(publicPath, read, candidate, current);
+    });
+}
+/**
+ * Removes the payload a consumer read, the older public payload it saw beside it, and the run's
+ * indexes. When a newer payload replaced it, the shared payload paths and indexes stay and only
+ * the consumer's own claimed copy goes. A payload that cannot be removed is reported after the
+ * indexes are gone.
+ */
+export function retireResultSnapshot(publicPath, read, payloadPath = publicPath) {
+    const resultsDir = path.dirname(publicPath);
+    return withResultRunLease(resultsDir, read.runId, () => {
+        // Check every shared path before deleting any: unleased reader promotion can move a newer
+        // pending payload onto the public path between two deletions.
+        if (resultSnapshotReplaced(publicPath, read)) {
+            if (payloadPath !== publicPath && readResultPayload(payloadPath) === read.snapshot)
+                fs.rmSync(payloadPath, { force: true });
+            return "replaced";
+        }
+        let removalFailure;
+        for (const candidate of new Set([...resultPayloadCandidates(publicPath, read), payloadPath])) {
+            const current = readResultPayload(candidate);
+            if (current === undefined || !readByConsumer(publicPath, read, candidate, current))
+                continue;
+            try {
+                fs.rmSync(candidate, { force: true });
+            }
+            catch (error) {
+                removalFailure ??= { error };
+            }
+        }
+        removeResultIndex(resultsDir, read.sessionId, read.runId, read.toolCallId);
+        if (removalFailure)
+            throw removalFailure.error;
+        return "retired";
+    });
+}
+/** Removes the mission observer index for the payload an observer handled, unless a newer payload replaced it. */
+export function acknowledgeMissionObserverSnapshot(publicPath, read) {
+    const resultsDir = path.dirname(publicPath);
+    // With no index there is nothing to remove; skipping keeps the lease off runs without a mission.
+    if (!fs.existsSync(observerIndexPath(resultsDir, MISSION_OBSERVER, read.runId)))
+        return "acknowledged";
+    return withResultRunLease(resultsDir, read.runId, () => {
+        if (resultSnapshotReplaced(publicPath, read))
+            return "replaced";
+        removeMissionObserverIndex(resultsDir, read.runId);
+        return "acknowledged";
+    });
 }
 function existingResultFile(resultPath) {
     try {
@@ -287,6 +382,10 @@ export function fallbackResultPayloadPathForSessionRun(resultsDir, sessionId, ru
         return undefined;
     return pendingPath;
 }
+/** Any pending or public result file for the run, without validating its contents. */
+export function resultPayloadFileForSessionRun(resultsDir, sessionId, runId) {
+    return firstExistingResultFile([...resultPendingPaths(resultsDir, sessionId, runId), resultFilePath(resultsDir, runId)]);
+}
 function resultPayloadLocationFromIndex(resultsDir, entry) {
     if (entry.file !== path.basename(entry.file) || !entry.file.endsWith(".json"))
         return undefined;
@@ -345,10 +444,9 @@ export function resultPayloadPathForIndexedRun(resultsDir, runId) {
             fs.rmSync(entryPath, { force: true });
             return undefined;
         }
-        const location = resultPayloadLocationFromIndex(resultsDir, entry);
-        if (location)
-            return location.path;
-        fs.rmSync(entryPath, { force: true });
+        // A valid index can precede its payload while the writer is publishing it, so a lookup
+        // must not delete it. Payload-less indexes are swept by age in cleanupResultIndexes.
+        return resultPayloadLocationFromIndex(resultsDir, entry)?.path;
     }
     catch (error) {
         const code = error.code;

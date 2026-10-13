@@ -3,7 +3,10 @@ import { stableJsonDigest } from "../shared/launch-contract.js";
 import { createWorkflowResourcePermit, } from "../shared/workflow-child-permit.js";
 import { buildStructuredWorkflowScript, isPlainRecord } from "./structured-workflow-scripts.js";
 const RESOURCE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-const MAX_ARGS_BYTES = 16 * 1024;
+export const MAX_ARGS_BYTES = 16 * 1024;
+export const MAX_ARGS_FIELDS = 16;
+export const MAX_ARGS_ITEMS = 64;
+export const MAX_ARGS_DEPTH = 8;
 const MAX_STRING_BYTES = 16 * 1024;
 function registry() {
     const key = Symbol.for("pi-subagents.workflow-resources.v1");
@@ -70,7 +73,7 @@ function jsonByteLength(value) {
     }
 }
 function validatePlainJson(value, path, depth = 0) {
-    if (depth > 8)
+    if (depth > MAX_ARGS_DEPTH)
         throw new Error(`${path} is too deeply nested.`);
     if (value === null || typeof value === "boolean")
         return;
@@ -87,7 +90,7 @@ function validatePlainJson(value, path, depth = 0) {
         return;
     }
     if (Array.isArray(value)) {
-        if (value.length > 64)
+        if (value.length > MAX_ARGS_ITEMS)
             throw new Error(`${path} contains too many items.`);
         for (const [index, entry] of value.entries())
             validatePlainJson(entry, `${path}[${index}]`, depth + 1);
@@ -95,7 +98,7 @@ function validatePlainJson(value, path, depth = 0) {
     }
     if (!isPlainRecord(value))
         throw new Error(`${path} must contain plain JSON data.`);
-    if (Object.keys(value).length > 16)
+    if (Object.keys(value).length > MAX_ARGS_FIELDS)
         throw new Error(`${path} contains too many fields.`);
     for (const [key, entry] of Object.entries(value)) {
         if (!key.trim())
@@ -146,6 +149,17 @@ function resolveRunCi(args) {
         hostCommands: [{ key: "ci", command }],
     };
 }
+function resolveParallel(args) {
+    const unsupported = Object.keys(args).filter((key) => key !== "tasks");
+    if (unsupported.length > 0)
+        return { error: `workflow 'parallel' args contain unsupported fields: ${unsupported.join(", ")}. Pass args.tasks: [{ agent, task }, ...].` };
+    try {
+        return { script: buildStructuredWorkflowScript("tasks", args.tasks, undefined) };
+    }
+    catch (error) {
+        return { error: `workflow 'parallel' args.${error instanceof Error ? error.message : String(error)}` };
+    }
+}
 function resolveReview(args) {
     const unsupported = Object.keys(args).filter((key) => key !== "task");
     if (unsupported.length > 0)
@@ -160,6 +174,7 @@ function resolveReview(args) {
 const WORKFLOW_RESOURCES = [
     { name: "review", version: 1, resolve: resolveReview },
     { name: "run-ci", version: 1, resolve: resolveRunCi },
+    { name: "parallel", version: 1, resolve: resolveParallel },
 ];
 function findWorkflowResource(name) {
     return WORKFLOW_RESOURCES.find((resource) => resource.name === name);

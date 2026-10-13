@@ -26,6 +26,16 @@ export type ExternalCliBinaryAvailability = {
 };
 /** Resolve only the configured command; unlike preflight, this never starts a child process. */
 export declare function resolveExternalCliBinaryAvailability(command: string, env: NodeJS.ProcessEnv): ExternalCliBinaryAvailability;
+export interface ExternalCliSpawn {
+    command: string;
+    args: readonly string[];
+}
+/**
+ * Node refuses to spawn `.cmd`/`.bat` files without a shell (CVE-2024-27980), and a shell would expand
+ * `%` and `!` inside operator- and project-controlled arguments. On Windows, an npm Node shim is launched
+ * by running Node on its script directly; every other batch wrapper is rejected.
+ */
+export declare function resolveExternalCliSpawn(command: string, args: readonly string[], env: NodeJS.ProcessEnv, platform?: NodeJS.Platform): ExternalCliSpawn;
 export declare function preflightExternalCli(command: string, spec: ExternalCliPreflightSpec, env: NodeJS.ProcessEnv, cwd?: string): ExternalCliPreflightResult;
 export declare function invalidateExternalCliPreflight(command: string, spec: ExternalCliPreflightSpec, _reason: ExternalCliPreflightInvalidationReason): void;
 export declare function clearExternalCliPreflightCacheForTests(): void;

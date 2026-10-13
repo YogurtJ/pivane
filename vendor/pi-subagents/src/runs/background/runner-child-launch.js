@@ -15,6 +15,7 @@ export function buildRunnerChildLaunch(step, ctx, attempt) {
         remoteSkillNames: step.skills,
         remoteReads: step.remoteReads,
         parentSessionId: step.parentSessionId,
+        parentSessionFile: step.parentSessionFile,
         forkCacheKey: step.context === "fork" ? deriveForkPromptCacheKey(step.parentSessionId) : undefined,
         sessionEnabled: attempt.sessionEnabled,
         sessionDir: attempt.sessionDir,

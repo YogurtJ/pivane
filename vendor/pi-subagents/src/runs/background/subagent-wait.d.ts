@@ -86,6 +86,8 @@ export interface SubagentWaitDeps {
     failOnAttention?: boolean;
     /** Durable owned supervisor-request barrier used by headless auto-drain. */
     hasPendingSupervisorRequest?: () => boolean;
+    /** Aborted when the user sends a message; the wait then yields without an error. */
+    userInputSignal?: AbortSignal;
     /** Arm a durable exact-target wait subscription in a long-lived interactive runtime. */
     subscribe?: (input: {
         targetKind: "async" | "foreground";

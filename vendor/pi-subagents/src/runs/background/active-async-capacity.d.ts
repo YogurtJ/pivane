@@ -1,4 +1,4 @@
-import { type ActiveAsyncCapacitySnapshot } from "../../shared/types.ts";
+import { type ActiveAsyncCapacitySnapshot, type AsyncStatus } from "../../shared/types.ts";
 import { type PidLiveness } from "./stale-run-reconciler.ts";
 export declare const ACTIVE_ASYNC_CAPACITY_DIR: string;
 export declare const DEFAULT_ABANDONED_SLOT_RELEASE_AFTER_MS: number;
@@ -33,16 +33,31 @@ interface CapacityOptions {
     token?: () => string;
     abandonedSlotReleaseAfterMs?: number | false;
     pidLiveness?: (pid: number) => PidLiveness;
+    pidNamespaceScope?: () => string | undefined;
     afterSlotRename?: (releasedDir: string) => void;
     writeOwner?: (filePath: string, owner: ActiveAsyncCapacityOwner) => void;
 }
-export interface ActiveAsyncCapacityReleaseEvidence {
+interface AbandonedRunnerEvidence {
     releasedBy: "abandoned-timeout";
     processProof: "unknown";
     runnerPid: "gone";
     lastActivityAgeMs: number;
     abandonedSlotReleaseAfterMs: number;
 }
+/** A workflow's own status PID is the parent Pi host, so workflow evidence names its dead child runners instead. */
+interface AbandonedWorkflowEvidence {
+    releasedBy: "abandoned-timeout";
+    processProof: "unknown";
+    controller: "unregistered";
+    workflowEndedAgeMs: number;
+    abandonedChildren: Array<{
+        runId: string;
+        state: AsyncStatus["state"];
+        lastActivityAgeMs: number;
+    }>;
+    abandonedSlotReleaseAfterMs: number;
+}
+export type ActiveAsyncCapacityReleaseEvidence = AbandonedRunnerEvidence | AbandonedWorkflowEvidence;
 export type ActiveAsyncCapacityReleaseVerdict = {
     state: "releasable";
     reason: string;

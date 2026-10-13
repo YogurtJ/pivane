@@ -12,7 +12,7 @@ export function workflowAsyncChildSteeringGuidance(status, state) {
         return [];
     return [
         "Async children recorded as running; direct steering rechecks controls. Choose an exact child ID (queued does not mean consumed):",
-        ...[...ids].map((id) => `  subagent({ action: "steer", id: "${id}", mode: "follow_up", message: "..." })`),
+        ...[...ids].map((id) => `  subagent({ action: "steer", id: "${id}", message: "...", options: { mode: "follow_up" } })`),
     ];
 }
 //# sourceMappingURL=workflow-async-child-guidance.js.map

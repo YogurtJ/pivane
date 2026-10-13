@@ -4,6 +4,7 @@ export declare const HOST_PEER_ALIASES: ReadonlyArray<{
     specifier: string;
     pkg: string;
     subpath: string;
+    optional?: boolean;
 }>;
 /** Resolve `subpath` of the package at `packageDir` through its `exports` map (with `*` patterns) or `main`. */
 export declare function resolvePackageSubpath(packageDir: string, subpath: string): string | undefined;

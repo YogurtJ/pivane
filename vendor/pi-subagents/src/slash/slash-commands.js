@@ -9,6 +9,7 @@ import { resolveExistingReadPaths } from "../shared/settings.js";
 import { DEFAULT_PROVIDER_MODELS_MAX_AGE_DAYS, applySubagentProfile, checkSubagentProfile, generateProfilesForProvider, listSubagentProfiles, readSubagentProfile, refreshProviderModelCatalog, } from "../profiles/profiles.js";
 import { findModelInfo, toModelInfo } from "../shared/model-info.js";
 import { shortenPath } from "../shared/formatters.js";
+import { canRenderComponents } from "../shared/extension-context.js";
 import { listAsyncRuns, formatAsyncRunProgressLabel } from "../runs/background/async-status.js";
 import { encodeInspectReply, handleInspectRpcArgs, INSPECT_WIDGET_KEY } from "../runs/background/inspect-rpc.js";
 import { listScheduledRunSummaries } from "../runs/background/scheduled-runs.js";
@@ -186,6 +187,12 @@ function stopFallbackText(targets) {
     }
     return lines.join("\n");
 }
+function stopPickerTargets(targets) {
+    const ids = targets.filter((target) => target.kind === "async").map((target) => target.id);
+    if (ids.length < 2)
+        return targets;
+    return [{ kind: "all", ids, label: `${ids.length} async runs`, detail: ids.join(", "), actionLabel: "stop all" }, ...targets];
+}
 function selectForegroundDetachControl(state, requested) {
     const controls = [...state.foregroundControls.values()];
     if (requested) {
@@ -257,9 +264,8 @@ class SubagentsStopSelector {
             const target = this.targets[index];
             const selected = index === this.selected;
             const marker = selected ? "›" : " ";
-            const actionLabel = target.actionLabel;
-            const action = target.kind === "scheduled" ? this.theme.fg("warning", actionLabel) : this.theme.fg("accent", actionLabel);
-            const labelWidth = Math.max(0, contentWidth - marker.length - actionLabel.length - 2);
+            const action = target.kind === "scheduled" ? this.theme.fg("warning", target.actionLabel) : this.theme.fg("accent", target.actionLabel);
+            const labelWidth = Math.max(0, contentWidth - marker.length - target.actionLabel.length - 2);
             lines.push(`${marker} ${action} ${target.label.slice(0, labelWidth)}`);
             if (selected)
                 lines.push(this.theme.fg("dim", `  ${target.detail}`.slice(0, contentWidth)));
@@ -269,9 +275,9 @@ class SubagentsStopSelector {
         lines.push("");
         if (this.confirming) {
             const target = this.targets[this.selected];
-            lines.push(this.theme.fg("warning", `Confirm: ${target.actionLabel} ${target.id}?`));
-            if (target.kind === "async")
-                lines.push(this.theme.fg("dim", "Stop ends this run; use interrupt for a resumable pause."));
+            lines.push(this.theme.fg("warning", `Confirm: ${target.actionLabel} ${target.kind === "all" ? target.label : target.id}?`));
+            if (target.kind !== "scheduled")
+                lines.push(this.theme.fg("dim", target.kind === "all" ? "Stop ends these runs; scheduled runs are not paused." : "Stop ends this run; use interrupt for a resumable pause."));
             lines.push(this.theme.fg("dim", "Enter/Y confirms · N returns · Esc cancels"));
         }
         else {
@@ -572,7 +578,7 @@ export function registerSlashCommands(pi, state, options = {}) {
     };
     const showFleet = async (ctx) => {
         state.lastUiContext = ctx;
-        if (!ctx.hasUI) {
+        if (!canRenderComponents(ctx)) {
             await runCommand(ctx, { action: "status", view: "fleet" });
             return;
         }
@@ -658,7 +664,7 @@ export function registerSlashCommands(pi, state, options = {}) {
         description: "Host integration bridge: answer an async child inspection request with a correlated widget payload (no model turn)",
         handler: async (args, ctx) => {
             if (ctx.mode === "tui") {
-                ctx.ui.notify("Inspection replies are emitted only on RPC surfaces. Use /subagents or subagent({ action: \"status\", view: \"transcript\" }) interactively.", "info");
+                ctx.ui.notify("Inspection replies are emitted only on RPC surfaces. Use /subagents or subagent({ action: \"status\", options: { view: \"transcript\" } }) interactively.", "info");
                 return;
             }
             if (!ctx.hasUI)
@@ -756,7 +762,7 @@ export function registerSlashCommands(pi, state, options = {}) {
                 ctx.ui.notify(message, "error");
                 return;
             }
-            if (!ctx.hasUI) {
+            if (!canRenderComponents(ctx)) {
                 sendSlashText(pi, stopFallbackText(targets));
                 return;
             }
@@ -764,9 +770,14 @@ export function registerSlashCommands(pi, state, options = {}) {
                 ctx.ui.notify("No active current-session async runs or scheduled subagent runs to stop.", "info");
                 return;
             }
-            const result = await ctx.ui.custom((tui, theme, _kb, done) => new SubagentsStopSelector(tui, theme, targets, done), { overlay: true, overlayOptions: { anchor: "center", width: 88, maxHeight: "80%" } });
+            const result = await ctx.ui.custom((tui, theme, _kb, done) => new SubagentsStopSelector(tui, theme, stopPickerTargets(targets), done), { overlay: true, overlayOptions: { anchor: "center", width: 88, maxHeight: "80%" } });
             if (!result?.confirmed || !result.target)
                 return;
+            if (result.target.kind === "all") {
+                for (const id of result.target.ids)
+                    await runCommand(ctx, { action: "stop", id });
+                return;
+            }
             if (result.target.kind === "scheduled") {
                 await runCommand(ctx, { action: "schedule.pause", id: result.target.id });
                 return;

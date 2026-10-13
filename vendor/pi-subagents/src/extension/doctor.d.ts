@@ -1,7 +1,7 @@
 import { discoverAgentsAll } from "../agents/agents.ts";
 import { diagnoseIntercomBridge } from "../intercom/intercom-bridge.ts";
 import { discoverAvailableSkills } from "../agents/skills.ts";
-import { type ExtensionConfig, type SubagentState } from "../shared/types.ts";
+import { type ActiveAsyncCapacitySnapshot, type ExtensionConfig, type SpawnBudgetSnapshot, type SubagentState } from "../shared/types.ts";
 interface DoctorPaths {
     tempRootDir: string;
     asyncDir: string;
@@ -22,6 +22,8 @@ interface DoctorReportInput {
     requestedSessionDir?: string;
     currentSessionFile?: string | null;
     currentSessionId?: string | null;
+    spawnBudget: SpawnBudgetSnapshot;
+    activeAsyncCapacity: ActiveAsyncCapacitySnapshot;
     orchestratorTarget?: string;
     sessionError?: string;
     expandTilde?: (value: string) => string;

@@ -1,7 +1,10 @@
 import { type ImportedAsyncRootResult } from "./chain-root-attachment.ts";
+import { type ResultSnapshot } from "./result-files.ts";
 type ExistingAsyncRunOutcome = {
     status: "settled";
-    result: ImportedAsyncRootResult;
+    result: ImportedAsyncRootResult & {
+        importedPublication: NonNullable<ImportedAsyncRootResult["importedPublication"]>;
+    };
 } | {
     status: "unavailable";
     reason: string;
@@ -15,9 +18,10 @@ type ExistingAsyncRunOutcome = {
  */
 export declare function awaitExistingAsyncRun(asyncDir: string, runId: string, signal: AbortSignal): Promise<ExistingAsyncRunOutcome>;
 /**
- * Renames the published result to a file owned by `claimant`. Only one of several
- * concurrent importers can win the rename; the others get undefined and launch fresh.
+ * Renames the published result to a file owned by `claimant`, if it is still the payload the
+ * claimant read. Only one of several concurrent importers can win the rename; the others, and a
+ * claimant whose payload a newer one replaced, get undefined and launch fresh.
  */
-export declare function claimWorkflowAwaitedResult(asyncDir: string, claimant: string): string | undefined;
+export declare function claimWorkflowAwaitedResult(asyncDir: string, claimant: string, read: ResultSnapshot): string | undefined;
 export {};
 //# sourceMappingURL=await-async-run.d.ts.map

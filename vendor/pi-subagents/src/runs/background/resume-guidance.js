@@ -24,8 +24,8 @@ export function formatAsyncReviveCommand(run) {
     catch {
         return undefined;
     }
-    const index = run.steps.length === 1 ? "" : `, index: ${step.index}`;
-    return `subagent({ action: "resume", id: "${run.id}"${index}, message: "Continue from the persisted child session and report the result." })`;
+    const index = run.steps.length === 1 ? "" : `, options: { index: ${step.index} }`;
+    return `subagent({ action: "resume", id: "${run.id}", message: "Continue from the persisted child session and report the result."${index} })`;
 }
 export function formatResumeFirstFailedRunDetail(run) {
     if (run.state !== "failed")

@@ -64,6 +64,8 @@ export declare function inheritedNestedParentAddressOf(runtime: {
         path: NestedPathEntry[];
     };
 } | undefined): NestedParentAddress | undefined;
+/** The owner's reply when its foreground map has no route for a nested run; interrupt matches it exactly. */
+export declare function nestedRunNotActiveMessage(runId: string): string;
 export declare function resolveNestedAsyncDir(rootRunId: string, run: NestedRunSummary): string | undefined;
 export declare function sanitizeSummary(input: unknown, depth?: number): NestedRunSummary | undefined;
 export declare function parseNestedEventRecords(content: string, route: NestedRoute): NestedEventRecord[];

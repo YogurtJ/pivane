@@ -177,7 +177,7 @@ export function createChildTranscriptWriter(input) {
             });
         },
         writeChildEvent(event) {
-            if ((event.type === "message_end" || event.type === "tool_result_end") && event.message) {
+            if (event.type === "message_end" && event.message) {
                 writeMessage(event.type, event.message);
                 return;
             }

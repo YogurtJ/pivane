@@ -10,6 +10,7 @@ import * as typebox from "typebox";
 import * as typeboxCompile from "typebox/compile";
 import * as typeboxValue from "typebox/value";
 import { installRunnerHttpDispatcher } from "./runner-http-dispatcher.js";
+import { resolveRuntimeModuleExtension } from "../../shared/runtime-module-path.js";
 import { runConfiguredSubagent, validateSubagentRunConfig } from "./subagent-runner-bootstrap.js";
 import { getAgentDir } from "../../shared/utils.js";
 /**
@@ -55,7 +56,7 @@ export default async function runBinaryBootstrap() {
                         "typebox/value": typeboxValue,
                     },
                 });
-                const runner = `./subagent-runner${path.extname(fileURLToPath(import.meta.url))}`;
+                const runner = `./subagent-runner${resolveRuntimeModuleExtension(path.dirname(fileURLToPath(import.meta.url)), "subagent-runner")}`;
                 return jiti.import(runner);
             },
         });

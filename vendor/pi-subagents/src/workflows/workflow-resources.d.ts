@@ -1,5 +1,9 @@
 import { type WorkflowResourceHostAuthority, type WorkflowResourcePermit } from "../shared/workflow-child-permit.ts";
 import type { WorkflowResourceProvenance } from "../shared/types.ts";
+export declare const MAX_ARGS_BYTES: number;
+export declare const MAX_ARGS_FIELDS = 16;
+export declare const MAX_ARGS_ITEMS = 64;
+export declare const MAX_ARGS_DEPTH = 8;
 export interface ResolvedWorkflowResource {
     script: string;
     permit: WorkflowResourcePermit;

@@ -34,6 +34,11 @@ export interface FleetStatusOptions {
 export declare function resolveFleetViewPlacement(value: unknown): FleetViewPlacement;
 export declare function formatFleetElapsed(ms: number): string;
 export declare function formatFleetTokens(count: number, window?: number, windowCount?: number): string;
+/**
+ * Reports a Fleet problem once per process. Fleet refreshes on a timer, and console output while the TUI owns
+ * the terminal is drawn over the editor, so an interactive session gets one TUI warning instead.
+ */
+export declare function reportFleetWarning(state: SubagentState, message: string): void;
 export declare function collectFleetStatusEntries(state: SubagentState): FleetStatusEntry[];
 export declare class SubagentFleetStatus {
     private ctx;

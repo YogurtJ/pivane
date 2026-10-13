@@ -18,6 +18,8 @@ export interface InspectorDispatcherDeps {
     runnerPath?: string;
     env?: NodeJS.ProcessEnv;
     plugins?: readonly InspectorPlugin[];
+    /** How long open and close wait for another open or close of the same target. */
+    leaseWaitMs?: number;
 }
 export declare function handleInspectorAction(action: InspectorAction, params: InspectorParams, deps: InspectorDispatcherDeps): Promise<AgentToolResult<Details>>;
 //# sourceMappingURL=actions.d.ts.map

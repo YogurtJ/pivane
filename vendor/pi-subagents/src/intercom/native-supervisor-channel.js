@@ -173,18 +173,37 @@ function hasTool(pi, name) {
     }
 }
 /**
+ * What the model sees of `contact_supervisor`, shared by a child's working tool and the
+ * top-level session's refusing one: a forked child's tool list then equals its parent's, so its
+ * first request can reuse the parent's prompt cache.
+ */
+export const CONTACT_SUPERVISOR_TOOL_NAME = "contact_supervisor";
+const CONTACT_SUPERVISOR_DECLARATION = {
+    name: CONTACT_SUPERVISOR_TOOL_NAME,
+    ...MODEL_ONLY_TOOL,
+    label: "Contact Supervisor",
+    description: "Contact the parent/supervisor session for a blocking decision, structured interview, or progress update.",
+    parameters: ContactSupervisorParamsSchema,
+};
+export const TOP_LEVEL_SUPERVISOR_REFUSAL = "contact_supervisor works only inside a subagent; this session has no supervisor.";
+/** `contact_supervisor` for a session that is not a subagent: every call is an error. */
+export function topLevelSupervisorTool() {
+    return {
+        ...CONTACT_SUPERVISOR_DECLARATION,
+        async execute() {
+            return { isError: true, content: [{ type: "text", text: TOP_LEVEL_SUPERVISOR_REFUSAL }], details: {} };
+        },
+    };
+}
+/**
  * Register the child-side `contact_supervisor` tool. The host passes the
  * channel metadata in the child runtime config.
  */
 export function registerNativeSupervisorClient(pi, metadata) {
-    if (!metadata || hasTool(pi, "contact_supervisor"))
+    if (!metadata || hasTool(pi, CONTACT_SUPERVISOR_TOOL_NAME))
         return;
     const tool = {
-        name: "contact_supervisor",
-        ...MODEL_ONLY_TOOL,
-        label: "Contact Supervisor",
-        description: "Contact the parent/supervisor session for a blocking decision, structured interview, or progress update.",
-        parameters: ContactSupervisorParamsSchema,
+        ...CONTACT_SUPERVISOR_DECLARATION,
         execute(id, params, signal) {
             return sendSupervisorRequest(params, metadata, signal, id);
         },
@@ -442,7 +461,7 @@ function requestVisibleText(request) {
     }
     if (request.expectsReply)
         lines.push("", `Reply with: ${supervisorReplyHint(request.id)}`);
-    lines.push("", `Live guidance: subagent({ action: "steer", id: ${JSON.stringify(request.runId)}, index: ${request.childIndex}, message: "..." })${request.expectsReply ? " (Reply to the pending request first.)" : ""}`);
+    lines.push("", `Live guidance: subagent({ action: "steer", id: ${JSON.stringify(request.runId)}, message: "...", options: { index: ${request.childIndex} } })${request.expectsReply ? " (Reply to the pending request first.)" : ""}`);
     return lines.join("\n").trimEnd();
 }
 function writeReply(request, message) {
@@ -537,8 +556,8 @@ function buildParentSupervisorTool(pi, pending, state, onLifecycle, discover, ru
                 const request = resolvePendingRequest(pending, input);
                 const reply = writeReply(request, input.message ?? "");
                 appendSupervisorReplyEntry(pi, request, reply);
-                onLifecycle(request, "resolved");
                 pending.delete(request.id);
+                onLifecycle(request, "resolved");
                 clearForegroundSupervisorAttention(request, pending, state);
                 return { content: [{ type: "text", text: `Replied to supervisor request ${request.id}.` }], details: { replyTo: request.id, runId: request.runId, agent: request.agent } };
             }
@@ -557,6 +576,9 @@ export function createNativeSupervisorChannel(pi, state, deps = {}) {
         return state;
     };
     const pending = new Map();
+    // One continuation and one warning per request; never auto-answer or loop.
+    const settleNotices = new Map();
+    let unsubscribeSettle;
     const requestCorrelations = new Map();
     const correlationKey = (request) => {
         if (!request.toolCallId)
@@ -590,8 +612,10 @@ export function createNativeSupervisorChannel(pi, state, deps = {}) {
         pruneRequestCorrelations();
     };
     const observeRequestLifecycle = (request, lifecycle) => {
+        settleNotices.delete(request.id);
         if (lifecycle !== "wrong-session")
             rememberResolvedRequest(request);
+        updateSettleSubscription();
     };
     const getSupervisorRequestState = (event) => {
         if (event.currentTool === "intercom" || event.index === undefined)
@@ -691,11 +715,12 @@ export function createNativeSupervisorChannel(pi, state, deps = {}) {
             }
             rememberPendingRequest(request);
             pending.set(request.id, request);
+            updateSettleSubscription();
             markForegroundSupervisorAttention(request, state);
             // The ask is already queued above. A sendMessage failure (no UI, stale context) must not
             // lose it, and must not abort the loop before the remaining asks register.
             try {
-                pi.sendMessage({
+                (deps.parentWake ?? pi).sendMessage({
                     customType: SUPERVISOR_REQUEST_MESSAGE_TYPE,
                     content: requestVisibleText(request),
                     display: true,
@@ -727,6 +752,72 @@ export function createNativeSupervisorChannel(pi, state, deps = {}) {
                 markForegroundSupervisorAttention(request, state);
         }
         channels?.retire?.();
+        updateSettleSubscription();
+    };
+    const handleBeforeSettle = (event) => {
+        if (!started || event.outcome !== "completed")
+            return;
+        refreshPendingRequests(pending, state, observeRequestLifecycle, runState);
+        if (event.continue || event.context.pendingMessages.length)
+            return;
+        const messages = event.context.contextMessages;
+        const requests = [...pending.values()].filter(request => {
+            if (!request.expectsReply || settleNotices.get(request.id) === "warned" || settleNotices.get(request.id) === "handled")
+                return false;
+            const index = messages.findLastIndex(message => message.role === "custom"
+                && message.customType === SUPERVISOR_REQUEST_MESSAGE_TYPE
+                && message.details?.requestId === request.id);
+            const acted = index !== -1 && messages.slice(index + 1).some(message => message.role === "assistant"
+                && message.content.some(part => part.type === "toolCall" || (part.type === "text" && part.text.trim())));
+            if (index === -1 || acted) {
+                settleNotices.set(request.id, "handled");
+                return false;
+            }
+            return true;
+        });
+        updateSettleSubscription();
+        if (!requests.length)
+            return;
+        const unanswered = requests.filter(request => !settleNotices.has(request.id));
+        if (unanswered.length) {
+            for (const request of unanswered)
+                settleNotices.set(request.id, "reminded");
+            return {
+                entries: [...event.entries, {
+                        type: "custom_message",
+                        customType: "subagent-supervisor-unanswered",
+                        content: "Silent supervisor wake. Pending request IDs: " + requests.map(request => request.id).join(", ") + ". Check subagent_supervisor({ action: \"pending\" }) and reply within existing authority, or explicitly ask the user for approval. Do not auto-approve.",
+                        display: true,
+                        details: { requestIds: requests.map(request => request.id) },
+                    }],
+                continue: true,
+            };
+        }
+        const unflagged = requests.filter(request => settleNotices.get(request.id) !== "warned");
+        if (!unflagged.length)
+            return;
+        for (const request of unflagged)
+            settleNotices.set(request.id, "warned");
+        updateSettleSubscription();
+        return {
+            entries: [...event.entries, {
+                    type: "custom_message",
+                    customType: "subagent-supervisor-blocked",
+                    content: "BLOCKED: unanswered supervisor request IDs: " + unflagged.map(request => request.id).join(", ") + ". Reminder budget exhausted; no reply or approval sent. Inspect subagent_supervisor({ action: \"pending\" }).",
+                    display: true,
+                    details: { blocked: true, requestIds: unflagged.map(request => request.id) },
+                }],
+        };
+    };
+    const updateSettleSubscription = () => {
+        const needed = started && [...pending.values()].some(request => request.expectsReply
+            && settleNotices.get(request.id) !== "warned" && settleNotices.get(request.id) !== "handled");
+        if (needed && !unsubscribeSettle)
+            unsubscribeSettle = pi.on?.("agent_before_settle", handleBeforeSettle);
+        if (!needed) {
+            unsubscribeSettle?.();
+            unsubscribeSettle = undefined;
+        }
     };
     const startPolling = () => {
         if (poller)
@@ -865,6 +956,7 @@ export function createNativeSupervisorChannel(pi, state, deps = {}) {
         },
         dispose: () => {
             started = false;
+            updateSettleSubscription();
             try {
                 rootWatcher?.close();
             }
@@ -889,6 +981,7 @@ export function createNativeSupervisorChannel(pi, state, deps = {}) {
                 timers.clearImmediate(deferredWatcherRefresh);
             deferredWatcherRefresh = undefined;
             pending.clear();
+            settleNotices.clear();
             requestCorrelations.clear();
             seenFiles.clear();
         },

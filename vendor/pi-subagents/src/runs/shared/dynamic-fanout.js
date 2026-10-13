@@ -13,9 +13,9 @@ const DYNAMIC_EXPAND_FROM_KEYS = new Set(["output", "path"]);
 const DYNAMIC_PARALLEL_KEYS = new Set(["agent", "task", "phase", "label", "outputSchema", "cwd", "machine", "output", "outputMode", "reads", "progress", "skill", "model", "fast", "toolBudget", "acceptance", "agentContract", "gateOn"]);
 const RUNNER_DYNAMIC_PARALLEL_KEYS = new Set([
     ...DYNAMIC_PARALLEL_KEYS,
-    "outputName", "structured", "inheritProjectContext", "inheritGlobalContext", "inheritSkills", "skills", "outputPath", "namespaceOutputPath", "maxSubagentDepth", "timeoutMs", "waitToolEnabled", "waitToolDefaultTimeoutMs",
+    "runner", "outputName", "structured", "inheritProjectContext", "inheritGlobalContext", "inheritSkills", "skills", "outputPath", "namespaceOutputPath", "maxSubagentDepth", "timeoutMs", "waitToolEnabled", "waitToolDefaultTimeoutMs",
     "structuredOutput", "structuredOutputSchema", "tools", "excludeTools", "allowNestedSubagents", "extensions", "subagentOnlyExtensions", "mcpDirectTools", "builtinMcpTools", "mutationTools", "capabilityCeiling", "systemPrompt",
-    "systemPromptMode", "thinking", "requestedModel", "sessionFile", "effectiveAcceptance", "acceptanceInput", "acceptanceRole", "parentSessionId", "requiredExtensions", "launchResolvedExtensions", "requestedCwd", "machineEnv",
+    "systemPromptMode", "thinking", "requestedModel", "sessionFile", "effectiveAcceptance", "acceptanceInput", "acceptanceRole", "parentSessionId", "parentSessionFile", "requiredExtensions", "launchResolvedExtensions", "requestedCwd", "machineEnv",
 ]);
 const DYNAMIC_COLLECT_KEYS = new Set(["as", "outputSchema"]);
 export function isSafeOutputName(name) {

@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, InputEvent } from "@earendil-works/pi-coding-agent";
 import { computeWatchdogRepoChangeSignature } from "./change-signature.ts";
 import { type WatchdogLspDiagnosticsFunction } from "./lsp-diagnostics.ts";
 import { type WatchdogRuleViolation } from "./rules.ts";
@@ -156,8 +156,8 @@ export declare class MainWatchdogRuntime {
     displayRuleWarning(violation: WatchdogRuleViolation): void;
     displayRecordedWarning(warning: WatchdogWarning): void;
     getSnapshot(cwd?: string): WatchdogRuntimeSnapshot;
-    /** A real mid-stream user input can steer without emitting before_agent_start. */
-    handleUserInput(): void;
+    /** A real user input sent while the agent streams reaches the loop without before_agent_start, so record it in scope here. */
+    handleUserInput(event: Pick<InputEvent, "text" | "source" | "streamingBehavior">): void;
     handleModelChange(): void;
     waitForIdle(timeoutMs?: number): Promise<boolean>;
     private isEnabled;

@@ -2,6 +2,8 @@ export type ResolvedRunnerConfig = import("../../shared/types.ts").AgentRunnerCo
 export interface RunnerSubagentStep {
     /** Session id of the direct parent session for permission-system ask forwarding. */
     parentSessionId?: string;
+    /** Parent session file, recorded as the new child session's `parentSession` header. */
+    parentSessionFile?: string;
     /** Resolved opt-in rules for native Pi child tool calls. */
     permissionRules?: import("./permissions.ts").PermissionRules;
     agent: string;
@@ -39,6 +41,8 @@ export interface RunnerSubagentStep {
     contextLimit?: number;
     fast?: boolean;
     thinking?: string;
+    /** Trailing Claude Code argv for an explicit model/thinking request. */
+    claudeCodeOverrideArgs?: string[];
     thinkingCeiling?: import("../../shared/model-info.ts").ThinkingLevel;
     requestedModel?: string;
     /** The primary model is inherited from the parent session and should not be verified against the child-reported active registry model. */

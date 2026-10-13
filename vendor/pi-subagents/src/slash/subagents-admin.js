@@ -6,6 +6,7 @@ import { mergeRuntimeAgents } from "../agents/runtime-agent-registry.js";
 import { editableAgentConfig, preservedAgentFrontmatterFields } from "../agents/agent-management.js";
 import { findModelInfo, getSupportedThinkingLevels, toModelInfo } from "../shared/model-info.js";
 import { SelectorComponent } from "./selector.js";
+import { canRenderComponents } from "../shared/extension-context.js";
 const ADMIN_MESSAGE_TYPE = "subagents-admin";
 const INHERIT_MODEL_CHOICE = "Default / inherit session model";
 const INHERIT_THINKING_CHOICE = "Default / inherit session thinking";
@@ -203,7 +204,8 @@ function metadataFor(agent) {
     return lines.join("\n");
 }
 async function selectFromList(ctx, title, subtitle, items) {
-    if (typeof ctx.ui.custom === "function") {
+    // Hosts that expose only the RPC no-op stub cannot show the component; they use `ui.select` below.
+    if (canRenderComponents(ctx)) {
         const result = await ctx.ui.custom((tui, theme, kb, done) => new SelectorComponent(tui, theme, kb, { title, subtitle, items, done }), { overlay: false });
         return result?.confirmed ? result.value : undefined;
     }

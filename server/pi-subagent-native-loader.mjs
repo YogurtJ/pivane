@@ -4,7 +4,6 @@
 import { registerHooks } from 'node:module';
 const redirects = new Map([
     ['../vendor/pi-subagents/src/runs/shared/mcp-direct-tool-allowlist.js', './pi-subagent-mcp-resolution.mjs'],
-    ['../vendor/pi-subagents/src/runs/background/runner-aliases.js', './pi-subagent-host-aliases.mjs'],
 ].map(([from, to]) => [new URL(from, import.meta.url).href, new URL(to, import.meta.url).href]));
 registerHooks({ resolve(specifier, context, nextResolve) {
     const resolved = nextResolve(specifier, context);

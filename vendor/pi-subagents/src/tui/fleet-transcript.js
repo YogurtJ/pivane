@@ -286,9 +286,13 @@ function parseTranscriptLines(lines, conversationStarted = false) {
         }
         if (role === "assistant") {
             assistantSeen = true;
+            // The transcript writer records the assistant message's provider-local id, which can itself contain a slash.
+            const rawModel = stringValue(record.model) ?? stringValue(message?.model);
+            const provider = stringValue(message?.provider);
+            const model = rawModel && provider ? `${provider}/${rawModel}` : rawModel;
             if (text)
                 appendTextEvent(events, "assistant", text, {
-                    ...(stringValue(record.model) ? { model: stringValue(record.model) } : {}),
+                    ...(model ? { model } : {}),
                     ...(timestamp !== undefined ? { timestamp } : {}),
                 });
             continue;
@@ -306,7 +310,7 @@ function parseTranscriptLines(lines, conversationStarted = false) {
 export function readFleetTranscript(filePath, options) {
     const validated = validateTranscriptPath(filePath, options.trustedRoots, options.trustedFiles, options.trustedFileRoot);
     if (!validated.resolvedPath) {
-        return { path: filePath, events: [], truncated: false, ...(validated.warning ? { warning: safeDisplayText(validated.warning) } : {}) };
+        return { path: filePath, events: [], truncated: false, readFailed: true, ...(validated.warning ? { warning: safeDisplayText(validated.warning) } : {}) };
     }
     const maxRecords = Math.max(1, options.maxRecords ?? DEFAULT_MAX_RECORDS);
     const tail = readTailLines(validated.resolvedPath, Math.max(1024, options.maxBytes ?? DEFAULT_MAX_BYTES));
@@ -321,6 +325,7 @@ export function readFleetTranscript(filePath, options) {
         path: filePath,
         events: parsed.events,
         truncated: tail.truncated || tail.lines.length > maxRecords || parsed.explicitTruncation,
+        ...(tail.warning ? { readFailed: true } : {}),
         ...(warnings.length ? { warning: safeDisplayText(warnings.join(" ")) } : {}),
     };
 }

@@ -45,6 +45,8 @@ export interface ChildSessionLaunch {
         reads?: string[] | false;
     };
     storage: ChildSessionStorage;
+    /** The launching session's file, recorded as the new child session's `parentSession` header like Pi's forks. */
+    parentSessionFile?: string;
     /** Model reference as the agent config names it (`provider/id`, optionally `:thinking`). */
     model?: string;
     /** Explicit tool allowlist; undefined keeps pi's defaults. */
@@ -89,12 +91,18 @@ export interface ChildSession {
     abort(): Promise<void>;
     /** Emits `session_shutdown` to the child's extensions and disposes the session; resolves once that shutdown work is done. */
     dispose(): Promise<void>;
+    /** Final settlement check for commands owned by this child; unfinished commands are cancelled and reject completion. */
+    finishCommands?(): Promise<void>;
     /** True while Pi still has steering or follow-up input that has not started a turn. */
     hasQueuedMessages?(): boolean;
     readonly messages: readonly AgentMessage[];
     readonly sessionFile: string | undefined;
     readonly sessionId: string;
     readonly modelId: string | undefined;
+    /** Provider id of the selected model when this child inherited that provider from the parent's registry instead of loading its extension. */
+    readonly inheritedProvider?: string;
+    /** Live provider/id of the selected model when Pi marks it virtual (`api === "pi-virtual"`); assistant messages then name the dispatched physical model. */
+    readonly virtualModelId?: string;
     readonly contextWindow?: number;
     readonly machineEvidence?: {
         machineId: string;

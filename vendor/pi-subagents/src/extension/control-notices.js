@@ -1,13 +1,7 @@
 import { controlNotificationKey, formatControlNoticeMessage } from "../runs/shared/subagent-control.js";
 export const SUBAGENT_CONTROL_MESSAGE_TYPE = "subagent_control_notice";
-export function controlNoticeTarget(details) {
-    return details.childIntercomTarget;
-}
-export function formatSubagentControlNotice(details, content) {
-    return details.noticeText ?? content ?? formatControlNoticeMessage(details.event, controlNoticeTarget(details));
-}
 function deliverControlNotice(input) {
-    const childIntercomTarget = controlNoticeTarget(input.details);
+    const childIntercomTarget = input.details.childIntercomTarget;
     const key = controlNotificationKey(input.details.event, childIntercomTarget);
     if (input.visibleControlNotices.has(key))
         return;

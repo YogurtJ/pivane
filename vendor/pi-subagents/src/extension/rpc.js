@@ -1,13 +1,13 @@
 import * as path from "node:path";
 import { Compile } from "typebox/compile";
 import { resolveAsyncRunLocation } from "../runs/background/async-resume.js";
-import { deliverStopRequest } from "../runs/background/control-channel.js";
+import { deliverAsyncRunStop } from "../runs/foreground/async-stop-action.js";
 import { reconcileAsyncRun } from "../runs/background/stale-run-reconciler.js";
 import { resolveCurrentSessionId } from "../shared/session-identity.js";
 import { DIRS, SUBAGENT_ASYNC_COMPLETE_EVENT, SUBAGENT_CHILD_STATUS_EVENT, SUBAGENT_PROCESS_TERMINAL_EVENT, SUBAGENT_LIFECYCLE_ARTIFACT_VERSION, } from "../shared/types.js";
 import { sanitizeDisplayText, truncateDisplayText } from "../shared/display-text.js";
 import { readStatus } from "../shared/utils.js";
-import { SubagentParams } from "./schemas.js";
+import { SubagentFlatParams } from "./schemas.js";
 import { disabledFeatureUseError } from "../shared/disabled-features.js";
 import { normalizePublicSubagentExecution } from "./public-execution.js";
 import { collectSubagentCost, SUBAGENT_COST_REPORT_VERSION } from "../slash/subagent-cost.js";
@@ -209,7 +209,7 @@ class SubagentRpcError extends Error {
         this.code = code;
     }
 }
-const subagentParamsValidator = Compile(SubagentParams);
+const subagentParamsValidator = Compile(SubagentFlatParams);
 export function subagentRpcReplyEvent(requestId) {
     return `${SUBAGENT_RPC_REPLY_EVENT_PREFIX}${requestId}`;
 }
@@ -378,7 +378,7 @@ function spawnParams(params, options) {
         throw new SubagentRpcError("invalid_params", "RPC spawn workflowScript was removed; pass inline script text as script.");
     if (Object.hasOwn(input, "workflowScriptPath"))
         throw new SubagentRpcError("invalid_params", "RPC spawn workflowScriptPath was removed; pass the file as workflow: \"./path/to/script.js\".");
-    if (input.workflow === true)
+    if (input.workflow === true || input.workflow === "true")
         throw new SubagentRpcError("invalid_params", "RPC spawn has no reply block for workflow: true; pass inline script text as script or a file as workflow: \"./path/to/script.js\".");
     if (script !== undefined) {
         if (typeof script !== "string" || !script.trim())
@@ -543,8 +543,9 @@ function stopAsyncRun(params, options, ctx) {
     if (status.sessionId !== currentSessionId) {
         throw new SubagentRpcError("not_found", `Async run '${runId}' was not found in the active session.`);
     }
-    if (status.state !== "running") {
-        throw new SubagentRpcError("invalid_state", `Async run ${runId} is ${status.state}; stop only supports running async runs.`);
+    const pausedWholeRun = status.state === "paused" && childId === undefined;
+    if (status.state !== "running" && status.state !== "queued" && !pausedWholeRun) {
+        throw new SubagentRpcError("invalid_state", `Async run ${runId} is ${status.state}; stop only supports running or queued async runs, or a paused whole run.`);
     }
     if (childId !== undefined) {
         const resolution = resolveAsyncStatusChild(status, childId);
@@ -556,20 +557,25 @@ function stopAsyncRun(params, options, ctx) {
         }
     }
     try {
-        deliverStopRequest({
+        const failure = deliverAsyncRunStop({
             asyncDir: location.asyncDir,
+            status,
+            resultsDir,
             pid: status.pid,
             kill: options.kill,
             now: options.now,
             source: "rpc-stop",
             ...(child ? { targetIndex: child.index, childId: child.id } : {}),
         });
+        if (failure)
+            throw new Error(`Stop request persisted for paused async run ${runId}, but terminal proof is not ready (${failure}). Retry stop after runner shutdown is observed.`);
     }
     catch (error) {
         throw new SubagentRpcError("execution_failed", error instanceof Error ? error.message : String(error));
     }
     if (child)
         emitChildStopping(runId, location.asyncDir, child);
+    // This is an acceptance receipt, not terminal proof, even when a proven paused run was sealed.
     return {
         runId,
         asyncDir: location.asyncDir,

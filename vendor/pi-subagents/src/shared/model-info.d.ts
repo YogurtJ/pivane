@@ -42,6 +42,14 @@ export declare function splitKnownThinkingSuffix(model: string): {
     baseModel: string;
     thinkingSuffix: string;
 };
+/**
+ * Combine an observed model id with the provider that served it into `provider/id`.
+ * When the registry is available a known id resolves to its canonical `fullId`, so a
+ * provider-local id that repeats its provider (OpenRouter's `openrouter/auto-beta`,
+ * full id `openrouter/openrouter/auto-beta`) keeps that full form. Without the
+ * registry, an id already qualified for this provider is returned unchanged.
+ */
+export declare function qualifyModelWithProvider(model: string | undefined, provider: string | undefined, availableModels?: ReadonlyArray<Pick<ModelInfo, "provider" | "id" | "fullId">>): string | undefined;
 export declare function findModelInfo(model: string | undefined, availableModels: ModelInfo[] | undefined, preferredProvider?: string): ModelInfo | undefined;
 export declare function getSupportedThinkingLevels(model: ModelInfo | undefined): ThinkingLevel[];
 export {};

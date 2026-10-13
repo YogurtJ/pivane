@@ -74,17 +74,12 @@ function completedRunId(data) {
     const id = typeof data.runId === "string" ? data.runId : data.id;
     return typeof id === "string" && id.length > 0 ? id : undefined;
 }
-function attentionNotice(data) {
+function attentionRunId(data) {
     if (!isRecord(data) || data.source !== "async" || !isRecord(data.event))
         return undefined;
     if (data.event.type !== "needs_attention" || typeof data.event.runId !== "string" || !data.event.runId)
         return undefined;
-    const label = typeof data.noticeText === "string" && data.noticeText
-        ? data.noticeText
-        : typeof data.event.message === "string" && data.event.message
-            ? data.event.message
-            : "subagent needs attention";
-    return { runId: data.event.runId, label };
+    return data.event.runId;
 }
 export function registerHerdrStatusBridge(options) {
     const env = options.env ?? process.env;
@@ -95,15 +90,15 @@ export function registerHerdrStatusBridge(options) {
     const refreshMs = options.refreshMs ?? DEFAULT_REFRESH_MS;
     const timers = options.timers ?? { setInterval, clearInterval };
     const runs = new Map();
-    const attentionLabels = new Map();
+    // Child attention is addressed to the parent agent, so it only adds ⚠ to the
+    // metadata label and never raises Herdr's human-blocked state.
+    const attentionRuns = new Set();
     const acknowledgedAttention = new Set();
     const subscriptions = [];
     let rootSession = false;
     let published = false;
     let busyRaised = false;
     let busyLabel;
-    let blockedRaised = false;
-    let blockedLabel;
     let disposed = false;
     let pendingReport;
     let draining = false;
@@ -124,7 +119,7 @@ export function registerHerdrStatusBridge(options) {
         const paneText = panes > 0 ? ` · ${panes} pane${panes === 1 ? "" : "s"}` : "";
         const task = activeTaskLabel();
         const taskText = task ? ` · ${task}` : "";
-        const attention = includeAttention && attentionLabels.size > 0 ? " ⚠" : "";
+        const attention = includeAttention && attentionRuns.size > 0 ? " ⚠" : "";
         return `⏳ ${activeCount} subagent${activeCount === 1 ? "" : "s"}${who}${paneText}${taskText}${attention}`;
     };
     const titleSuffix = () => {
@@ -134,7 +129,7 @@ export function registerHerdrStatusBridge(options) {
         const activeCount = activeSubagentCount();
         const task = boundedTaskLabel(activeTaskLabel(), MAX_TITLE_TASK_CHARS);
         const target = task ?? (activeCount === 1 && agentNames.length === 1 ? agentNames[0] : String(activeCount));
-        return `⏳${target}${attentionLabels.size > 0 ? "⚠" : ""}`;
+        return `⏳${target}${attentionRuns.size > 0 ? "⚠" : ""}`;
     };
     const enqueue = (args) => {
         pendingReport = args;
@@ -224,45 +219,21 @@ export function registerHerdrStatusBridge(options) {
             options.events.emit("herdr:busy", { active: false });
         }
     };
-    const syncBlocked = () => {
-        if (!enabled || !rootSession || disposed)
-            return;
-        const nextLabel = [...attentionLabels.values()].at(-1);
-        if (nextLabel !== undefined) {
-            if (blockedRaised && blockedLabel === nextLabel)
-                return;
-            // Herdr's sibling overlay contract is counted. Lower before changing
-            // the active label so this bridge continues to own exactly one count.
-            if (blockedRaised)
-                options.events.emit("herdr:blocked", { active: false });
-            blockedRaised = true;
-            blockedLabel = nextLabel;
-            options.events.emit("herdr:blocked", { active: true, label: nextLabel });
-            return;
-        }
-        if (blockedRaised) {
-            blockedRaised = false;
-            blockedLabel = undefined;
-            options.events.emit("herdr:blocked", { active: false });
-        }
-    };
     const clearAttention = () => {
-        attentionLabels.clear();
-        syncBlocked();
+        attentionRuns.clear();
         publish();
     };
-    const raiseAttention = (runId, labelText) => {
-        if (!rootSession || attentionLabels.has(runId))
+    const raiseAttention = (runId) => {
+        if (!rootSession || attentionRuns.has(runId))
             return;
         acknowledgedAttention.delete(runId);
-        attentionLabels.set(runId, labelText);
-        syncBlocked();
+        attentionRuns.add(runId);
         publish();
     };
     const replaceRuns = (nextRuns) => {
-        const nextAttention = new Map();
         const activeIds = new Set();
         runs.clear();
+        attentionRuns.clear();
         for (const run of nextRuns) {
             if (!run || typeof run.id !== "string" || !run.id)
                 continue;
@@ -274,19 +245,15 @@ export function registerHerdrStatusBridge(options) {
                 acknowledgedAttention.delete(run.id);
             }
             else if (!acknowledgedAttention.has(run.id)) {
-                nextAttention.set(run.id, run.attentionLabel || attentionLabels.get(run.id) || "subagent needs attention");
+                attentionRuns.add(run.id);
             }
         }
         for (const id of acknowledgedAttention) {
             if (!activeIds.has(id))
                 acknowledgedAttention.delete(id);
         }
-        attentionLabels.clear();
-        for (const [id, labelText] of nextAttention)
-            attentionLabels.set(id, labelText);
         syncBusy();
         syncRefreshTimer();
-        syncBlocked();
         publish();
     };
     const refresh = () => {
@@ -331,8 +298,7 @@ export function registerHerdrStatusBridge(options) {
             if (!id || !runs.delete(id))
                 return;
             acknowledgedAttention.delete(id);
-            if (attentionLabels.delete(id))
-                syncBlocked();
+            attentionRuns.delete(id);
             syncBusy();
             syncRefreshTimer();
             publish();
@@ -340,15 +306,15 @@ export function registerHerdrStatusBridge(options) {
         subscribe(SUBAGENT_CONTROL_EVENT, (data) => {
             if (!rootSession)
                 return;
-            const notice = attentionNotice(data);
-            if (!notice || !runs.has(notice.runId))
+            const runId = attentionRunId(data);
+            if (!runId || !runs.has(runId))
                 return;
-            raiseAttention(notice.runId, notice.label);
+            raiseAttention(runId);
         });
     }
     return {
         agentStarted() {
-            for (const id of attentionLabels.keys())
+            for (const id of attentionRuns)
                 acknowledgedAttention.add(id);
             clearAttention();
         },

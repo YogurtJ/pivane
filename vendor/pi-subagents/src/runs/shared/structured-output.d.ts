@@ -30,6 +30,8 @@ interface JsonSchemaValidationError {
     params?: {
         failingKeyword?: string;
         requiredProperties?: string[];
+        allowedValues?: unknown[];
+        allowedValue?: unknown;
     };
     message?: string;
 }

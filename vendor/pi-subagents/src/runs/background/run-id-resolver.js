@@ -5,6 +5,7 @@ import { readStatus } from "../../shared/utils.js";
 import { findAsyncRunPrefixMatches } from "./async-resume.js";
 import { resultCandidateFilesForToolCall, resultFilePath, resultPayloadPathForIndexedRun } from "./result-files.js";
 import { readActiveRunToolCallIndex } from "./active-run-index.js";
+import { readTerminalRunToolCallIndex } from "./terminal-run-index.js";
 import { assertSafeNestedId, findNestedRunMatchesById } from "../shared/nested-events.js";
 function exactAsyncLocation(id, asyncDirRoot, resultsDir) {
     const asyncDir = path.join(asyncDirRoot, id);
@@ -44,7 +45,7 @@ function toolCallIdMatches(value, query) {
 }
 function indexedToolCallIdAsyncLocations(toolCallId, asyncDirRoot, resultsDir) {
     const byId = new Map();
-    for (const entry of readActiveRunToolCallIndex(asyncDirRoot, toolCallId)) {
+    for (const entry of [...readActiveRunToolCallIndex(asyncDirRoot, toolCallId), ...readTerminalRunToolCallIndex(asyncDirRoot, toolCallId)]) {
         const asyncDir = path.join(asyncDirRoot, entry);
         const status = readStatus(asyncDir);
         if (!status || !toolCallIdMatches(status.toolCallId, toolCallId))
@@ -136,14 +137,16 @@ export function resolveSubagentRunId(id, deps = {}) {
     const exactAsync = exactAsyncLocation(id, asyncDirRoot, resultsDir);
     if (exactAsync)
         return { kind: "async", id, location: exactAsync };
+    // A live run and a delivered run can share one alias; count both before deciding it is unique.
+    const toolCallMatches = new Map(indexedToolCallIdAsyncLocations(id, asyncDirRoot, resultsDir).map((match) => [match.id, match]));
     const exactLiveToolCallMatch = exactLiveAsyncToolCallMatch(deps.state, id, asyncDirRoot, resultsDir);
     if (exactLiveToolCallMatch)
-        return { kind: "async", id: exactLiveToolCallMatch.id, location: exactLiveToolCallMatch.location };
-    const exactToolCallIdMatches = indexedToolCallIdAsyncLocations(id, asyncDirRoot, resultsDir);
-    if (exactToolCallIdMatches.length > 1)
+        toolCallMatches.set(exactLiveToolCallMatch.id, exactLiveToolCallMatch);
+    if (toolCallMatches.size > 1)
         throw new Error(`Subagent tool-call id '${id}' is ambiguous across async runs. Use the returned asyncId instead.`);
-    if (exactToolCallIdMatches[0])
-        return { kind: "async", id: exactToolCallIdMatches[0].id, location: exactToolCallIdMatches[0].location };
+    const [toolCallMatch] = toolCallMatches.values();
+    if (toolCallMatch)
+        return { kind: "async", id: toolCallMatch.id, location: toolCallMatch.location };
     const nestedScope = deps.nested ?? nestedScopeFromState(deps.state);
     const exactNested = findNestedRunMatchesById(id, nestedScope ? { scope: nestedScope } : {});
     if (exactNested.length > 1)

@@ -260,14 +260,36 @@ export function validateMissionStoreConfig(value, label = "config.missions") {
         ...(input.retainTerminal !== undefined ? { retainTerminal: input.retainTerminal } : {}),
     };
 }
+// Resolve the existing prefix and keep the missing components in the store key.
+function canonicalProjectRoot(root) {
+    const missing = [];
+    let current = root;
+    for (;;) {
+        try {
+            return path.join(fs.realpathSync.native(current), ...missing.reverse());
+        }
+        catch (error) {
+            // Only a missing component walks upward; EACCES, ELOOP and the rest must surface.
+            if (error.code !== "ENOENT")
+                throw error;
+            const parent = path.dirname(current);
+            if (parent === current)
+                return root;
+            missing.push(path.basename(current));
+            current = parent;
+        }
+    }
+}
 export function resolveMissionStoreLocation(input) {
-    const projectRoot = path.resolve(input.projectRoot);
+    const givenRoot = path.resolve(input.projectRoot);
+    const configuredDir = input.config?.directory;
+    // The default store is keyed by a hash of the root, so two paths to one directory
+    // must hash the same. Configured paths keep expanding against the root as given.
+    const projectRoot = configuredDir ? givenRoot : canonicalProjectRoot(givenRoot);
     const agentDir = input.agentDir ?? getAgentDir();
-    const missionDir = input.config?.directory
-        ? expandConfiguredPath(input.config.directory, projectRoot)
-        : projectMissionDirectory(agentDir, projectRoot);
+    const missionDir = configuredDir ? expandConfiguredPath(configuredDir, givenRoot) : projectMissionDirectory(agentDir, projectRoot);
     const globalIndexDir = input.config?.globalIndexDir
-        ? expandConfiguredPath(input.config.globalIndexDir, projectRoot)
+        ? expandConfiguredPath(input.config.globalIndexDir, givenRoot)
         : path.join(agentDir, "missions", "index");
     return {
         projectRoot,
@@ -547,7 +569,17 @@ export function listGlobalMissions(globalIndexDir) {
                 const record = parseMissionRecord(JSON.parse(fs.readFileSync(entry.recordPath, "utf-8")), entry.recordPath);
                 if (record.id !== entry.missionId)
                     throw new Error(`record id '${record.id}' does not match index id '${entry.missionId}'`);
-                entries.push({ ...entry, stale: false });
+                const projection = {
+                    ...entry,
+                    title: record.title,
+                    status: record.status,
+                    updatedAt: record.updatedAt,
+                };
+                delete projection.lastRunId;
+                const lastRunId = record.runs.at(-1)?.runId;
+                if (lastRunId)
+                    projection.lastRunId = lastRunId;
+                entries.push({ ...projection, stale: false });
             }
             catch (error) {
                 if (error.code === "ENOENT") {

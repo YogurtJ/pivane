@@ -12,10 +12,12 @@ clarify → scout → worker → fresh reviewers → worker
 
 Packaged `worker` defaults to fresh context so implementation starts from its assigned brief instead of the parent's unfinished conversation. Packaged `oracle` and `advisor` default to forked context; if the parent has no persisted session file or current leaf yet, that implicit default falls back to `fresh`. Explicit `context`, `context: "profile"`, and global `defaultSubagentContext` still override these profile defaults.
 
+Launch children in the background (`async` follows `asyncByDefault`, normally true) and consume each result at the point a later step depends on it. Native completion wakes the parent session, so the parent returns control instead of sleeping or polling. Use `async: false` only when the parent must block, not for final reviews or gates. When an oracle or advisor reaches an unknown that needs a decision, it asks through supervisor dialogue; use a one-shot oracle call only when one was requested.
+
 Child-safety boundaries are enforced at runtime:
 
 - Child sessions do not receive the bundled `pi-subagents` skill.
-- Forked child context filtering removes parent-only subagent artifacts (including old hidden orchestration-instruction messages, slash/status/control messages, and prior parent `subagent` tool-call/tool-result history) while preserving ordinary prose and unrelated tool calls/results.
+- Child context filtering removes parent-only subagent artifacts (hidden orchestration-instruction messages, slash/status/control messages, and `subagent` tool-call/tool-result history) while preserving ordinary prose and unrelated tool calls/results. A forked child sends the history it inherited exactly as the parent sent it, so its first request can reuse the parent's prompt cache; it still cannot run `subagent`.
 - By default, children do not register the `subagent` tool and receive boundary instructions that they are not the parent orchestrator and must not propose or run subagents.
 - The explicit exception is an agent whose resolved builtin `tools` includes `subagent`; that child gets a child-safe `subagent` tool for the fanout work the parent assigned, still bounded by `maxSubagentDepth`.
 
@@ -27,7 +29,7 @@ Stop and report the exact failure, run/status, and repository/cwd/worktree/branc
 
 Failed workflow details and async `status.json` include `workflow.failureKind` as `validation`, `script`, `child`, `return-serialization`, `timeout`, `detached-child`, or `runtime`. `validation` means the host rejected the script before it ran (syntax or portability) or at completion (unawaited calls); errors thrown into a running script, including rejected `runs.run` parameters and runtime `SyntaxError`s, are `script` because the script could catch them, and failed children are `child`. `runtime` covers host setup and infrastructure failures, such as an unavailable cwd or a crashed worker. A workflow that is stopped or reloaded is not a failure and has no `failureKind`.
 
-When `/reload`, a session resume, or a pi-web project switch replaces the extension runtime, a running async workflow stops with `workflow.stopCause: "runtime-replaced"` in `status.json`, and its awaited async children keep running. When the same workflow script is launched again with the same `args` in that session, a `runs.run` with the same key and params returns a child that already finished successfully without launching it, and waits for a child that is still running instead of starting another. Those results carry `reused: true`, their step and trace entry are marked `reused`, and the new run records `workflow.reusedFrom`. Failed and stopped children, and children that ran in-process, launch again. Reuse applies only when the newest run of that script and args in the session was stopped this way; a user stop or a completed run ends it.
+When `/reload`, a session resume, or a pi-web project switch replaces the extension runtime, a running async workflow stops with `workflow.stopCause: "runtime-replaced"` in `status.json`, and its awaited async children keep running. Its in-process foreground children are stopped, including ones that detached to ask their supervisor. When the same workflow script is launched again with the same `args` in that session, a `runs.run` with the same key and params returns a child that already finished successfully without launching it, and waits for a child that is still running instead of starting another. Those results carry `reused: true`, their step and trace entry are marked `reused`, and the new run records `workflow.reusedFrom`. Failed and stopped children, and children that ran in-process, launch again. Reuse applies only when the newest run of that script and args in the session was stopped this way; a user stop or a completed run ends it.
 
 Pi core may print a generic `pi -ne` extension-load hint; that out-of-repo hint is not protocol-approved fallback. A verified compaction abort may continue the retained child once on its already resolved model; it does not authorize an execution-mode or model switch.
 
@@ -49,11 +51,13 @@ Add `autofix` to `/parallel-review` or `/parallel-cleanup` to apply only the syn
 
 Use direct `{ agent, task }` for one bounded child. Use a workflow script when the parent needs a stable keyed child, sequence, fanout, steering, retry, or aggregation. For ordinary parallel fanout, use `await runs.all([{ key, agent, task }, ...])`. It resolves to an ordered array, not a key map, so use indexes, destructuring, or `.map(...)`, not `results.<key>`. Do not read `.output` from unawaited `runs.run` launches. Store a `runs.run` promise only when the script later observes it with `await`, `Promise.race`, or `Promise.all`, such as steering a live child before awaiting its result. Scripts are ordinary JavaScript statement bodies. Use an explicit `return` for a useful result.
 
+Use top-level `await`, plain helper functions, or Promise chains; nested async functions, async arrows, and async methods are rejected (see [opt-in bounded workflows](#opt-in-bounded-workflows)).
+
 The `workflow` field selects the script source:
 
-- `workflow: true` runs the one ```` ```js workflow ```` fenced block written in the same assistant reply as the `subagent` call. The script is plain text in the reply, so it needs no JSON string escaping. A reply can carry exactly one such block and one `workflow: true` call; zero or several blocks fail. A line containing only ```` ``` ```` (three or more backticks, optionally followed by spaces or tabs) ends the block, so keep Markdown fences inside quoted strings.
+- `workflow: true` runs the one ```` ```js workflow ```` fenced block written in the same assistant reply as the `subagent` call. The script is plain text in the reply, so it needs no JSON string escaping. A reply can carry exactly one such block and one `workflow: true` call; zero or several blocks fail. A reply with no tagged block may instead carry exactly one plain ```` ```js ```` block, which then runs. A line containing only ```` ``` ```` (three or more backticks, optionally followed by spaces or tabs) ends the block, so keep Markdown fences inside quoted strings.
 - A string containing `/` (or `\` in a Windows path), such as `workflow: "./workflows/review.js"`, is a script file.
-- Any other string, such as `workflow: "review"`, is a [named workflow resource](#named-workflow-resources-for-permission-extensions).
+- Any other string, such as `workflow: "review"`, is a [named workflow resource](#named-workflow-resources-for-permission-extensions). The string `"true"` is read as `workflow: true`, because some MCP clients send the boolean as a string.
 
 `workflow: true` works only from a model tool call. Slash commands, RPC, and schedules pass scripts through their own inputs. Examples below that show only a ```` ```js workflow ```` block run with `subagent({ workflow: true })` in the same reply.
 
@@ -104,9 +108,12 @@ Use a named workflow resource when a permission or policy extension needs to dis
 ```js
 subagent({ workflow: "review", args: { task: "Review the change" } });
 subagent({ workflow: "run-ci", args: { command: "npm test" } });
+subagent({ workflow: "parallel", args: { tasks: [{ agent: "reviewer", task: "Review src/api" }, { agent: "scout", task: "Map the tests" }] } });
 ```
 
-The host resolves the name and validates bounded plain-JSON `args` before starting the workflow. Resource provenance is recorded in workflow details and receipts for downstream permission/policy checks. Resource authority is not caller-supplied: `runs.host` is available only when the resolved resource explicitly grants the requested host key and command. Reply-block (`workflow: true`) and file-path scripts remain raw, unknown-provenance inputs, so their `runs.host` calls are unavailable through the public execution boundary. Named resources cannot be combined with `agent` or `task`; this first slice ships only the package-owned `review` and `run-ci` resources, not a user/project resource registry.
+The host resolves the name and validates bounded plain-JSON `args` before starting the workflow. Resource provenance is recorded in workflow details and receipts for downstream permission/policy checks. Resource authority is not caller-supplied: `runs.host` is available only when the resolved resource explicitly grants the requested host key and command. Reply-block (`workflow: true`) and file-path scripts remain raw, unknown-provenance inputs, so their `runs.host` calls are unavailable through the public execution boundary. Named resources cannot be combined with `agent` or `task`; the package ships the `review`, `run-ci` and `parallel` resources, not a user/project resource registry.
+
+`parallel` runs independent children together without writing a script: `args.tasks` is a list of `{ agent, task }` items, the children run in one `runs.all` batch, and the result lists each child's output in order. A failed child fails the workflow. Use a workflow script when steps depend on each other.
 
 ### Opt-in bounded workflows
 
@@ -120,9 +127,11 @@ return runs.run("review", { agent: "reviewer", task: "Review:\n" + scan.output }
 ```js
 subagent({
   workflow: true,
-  timeoutMs: 900000,
-  toolBudget: { soft: 40, hard: 60 },
-  usageBudget: { tokens: { soft: 100000, hard: 150000 } }
+  options: {
+    timeoutMs: 900000,
+    toolBudget: { soft: 40, hard: 60 },
+    usageBudget: { tokens: { soft: 100000, hard: 150000 } }
+  }
 });
 ```
 
@@ -395,7 +404,7 @@ A plain workflow creates one enclosing mission by default. Its children do not c
 
 ### Repeatable workflows
 
-Use stable child keys and keep process logic in ordinary JavaScript. `runs.run` launches one child, `runs.all` launches independent children together, and later steps can use each completed child's `output`. Put long task text in arrays joined with `"\n"` so Markdown fences do not conflict with the script string.
+Use stable child keys and keep process logic in ordinary JavaScript. `runs.run` launches one child, `runs.all` launches independent children together, and later steps can use each completed child's `output`. Put long task text in arrays joined with `"\n"` so Markdown fences do not conflict with the script string. Pass long child briefs as files and put only their paths in task text, not the briefs themselves in `args`, which is limited to 16 KiB.
 
 For a process you run often, save the task as a prompt template under `.pi/prompts/` or `~/.pi/agent/prompts/` and launch it with `/prompt-workflow`. The adapter compiles prompt steps into a workflow script, so templates describe the work instead of embedding raw `subagent` tool calls. You can ask the parent agent to create or update these prompt files from a process described in natural language.
 
@@ -485,7 +494,7 @@ Inspect the handoff before reconciliation; cleanup still requires fresh checks.
 
 ## Supervisor coordination (child asks parent)
 
-Child agents can talk back to the parent Pi session without installing `pi-intercom`. `pi-subagents` provides the child-facing `contact_supervisor` tool and the parent-facing `subagent_supervisor({ action: "reply" })` path natively. Generic `intercom` remains available only when an explicitly loaded external provider supplies it.
+Child agents can talk back to the parent Pi session without installing `pi-intercom`. `pi-subagents` provides the child-facing `contact_supervisor` tool and the parent-facing `subagent_supervisor({ action: "reply" })` path natively. A session that has `subagent` also declares `contact_supervisor`, so a forked child's tools match its parent's; there it only returns an error saying the session has no supervisor. Generic `intercom` remains available only when an explicitly loaded external provider supplies it.
 
 Use it for work where the child might need a decision instead of guessing:
 
@@ -517,7 +526,7 @@ For A → B → C, C's request belongs to B, not A. B can escalate a separate qu
 
 Child-side routine completion handoffs are not expected. If a child appears stalled, needs-attention notices show up in the parent session with useful next actions, such as checking `subagent({ action: "status" })`, interrupting the run, or nudging the child.
 
-If a workflow script child detaches through `contact_supervisor`, the enclosing async workflow stays `paused` until that child exits. Then the extension reconciles it to `complete` or `failed`. Wait on the child until that happens.
+If a workflow script child detaches through `contact_supervisor`, the enclosing async workflow stays `paused` until that child exits. Then the extension reconciles it to `complete` or `failed`. Wait on the child until that happens. A detached child that runs in-process (not as an async child) is stopped if the extension runtime is replaced before it finishes; `status` on its run id then shows it as stopped with the reason.
 
 If messages do not show up, run `/subagents-doctor`. Advanced users can tune the bridge with `intercomBridge` in [configuration.md](configuration.md).
 

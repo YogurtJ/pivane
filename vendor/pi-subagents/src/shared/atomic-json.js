@@ -15,6 +15,7 @@ function tempBaseName(filePath, pid, nowMs, randomId) {
         return preferred;
     return `.${createHash("sha256").update(path.basename(filePath)).digest("hex")}${suffix}`;
 }
+/** `beforeRename` runs after the payload is written to its temporary file and before it appears at `filePath`. */
 export function createAtomicJsonWriter(options = {}) {
     const fsImpl = options.fs ?? fs;
     const now = options.now ?? Date.now;
@@ -28,7 +29,7 @@ export function createAtomicJsonWriter(options = {}) {
     const renameRetryDelaysMs = retryRenameErrors ? retryDelaysMs : [];
     const directoryRetryDelaysMs = retryDirectoryErrors ? retryDelaysMs : [];
     const wait = options.wait ?? waitForFileSystemRetry;
-    return (filePath, payload) => {
+    return (filePath, payload, beforeRename) => {
         runFileSystemOperationWithRetry(() => {
             fsImpl.mkdirSync(path.dirname(filePath), { recursive: true });
         }, { retryDelaysMs: directoryRetryDelaysMs, wait });
@@ -36,6 +37,7 @@ export function createAtomicJsonWriter(options = {}) {
         let writeError;
         try {
             fsImpl.writeFileSync(tempPath, JSON.stringify(payload, null, 2), mode === undefined ? "utf-8" : { encoding: "utf-8", mode });
+            beforeRename?.();
             renameWithRetry(fsImpl, tempPath, filePath, renameRetryDelaysMs, wait);
         }
         catch (error) {

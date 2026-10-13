@@ -13,6 +13,8 @@ Builtin agents inherit your current Pi default model. This keeps new installs fr
 
 Precedence, strongest first: per-run override → provider-scoped role override → `agentOverrides.<name>.model` → agent frontmatter `model` → `subagents.defaultModel` → the parent session model. A provider preference does not replace this order; it only resolves bare model ids when the active registry has more than one match. Fully qualified `provider/model` strings still win exactly.
 
+On the two Claude Code adapters a model is Claude Code's own alias or id rather than a Pi child model, so a value set for one of them resolves nothing against the registry. `subagents.defaultModel` is ignored there, because it is a default for Pi children. An explicit `agentOverrides.<name>.model` or agent frontmatter `model` is passed on as given, and Claude Code reports it when it does not recognize the value. See [agents](agents.md).
+
 Each launch resolves one model. Provider errors, including HTTP 429 responses, are returned from that model rather than selecting another one. Separately, a verified compaction abort after useful progress may continue the retained child session once on the same resolved model; this lifecycle recovery preserves work and is not model fallback.
 
 Use `model: "inherit"` in agent frontmatter or `agentOverrides.<name>.model` to select the current parent session model explicitly.
@@ -122,7 +124,7 @@ If your provider rejects model IDs with thinking suffixes, set `subagents.disabl
 
 ### Thinking ceiling
 
-Set `subagents.maxThinking` to enforce a hard maximum for every native Pi child. The supported levels, from least to most thinking, are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`:
+Set `subagents.maxThinking` to enforce a hard maximum for every child that can ask for a thinking level: native Pi children and the two Claude Code adapters. The supported levels, from least to most thinking, are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`:
 
 ```json
 {
@@ -133,7 +135,7 @@ Set `subagents.maxThinking` to enforce a hard maximum for every native Pi child.
 }
 ```
 
-Requests above the ceiling fail before child startup; the setting covers frontmatter, `agentOverrides`, per-run overrides, parallel/chain children, nested launches, and resumed children. Project settings take precedence over user settings. External runners retain their existing behavior.
+Requests above the ceiling fail before child startup; the setting covers frontmatter, `agentOverrides`, per-run overrides, parallel/chain children, nested launches, and resumed children. Project settings take precedence over user settings. External runners keep their existing behavior, except the two Claude Code adapters, which translate the requested level into `--effort` and enforce the same ceiling. An enforced `subagents.modelScope` also covers them: the model id that will reach the CLI is checked, and a launch that pins no model fails closed.
 
 ## Extension defaults
 
@@ -218,7 +220,7 @@ Model scope is policy only. It rejects or warns; it does not select a cheaper mo
 
 `inherit` and `scoped` expand in the parent process at each launch. They are never sent to the child as model ids. A nested child therefore inherits its immediate parent's current model, not the original top-level model. `scoped` uses the scoped-model set at launch, so a mid-session `/scoped-models` change applies to the next child; background runs keep the set captured when the run started. Pi reports an empty set when the session is unscoped, either because nothing is configured or because no configured pattern matches an available model, and then lets the parent use every model. In that case `scoped` behaves exactly as `inherit`, which is narrower. If no parent model is available, an enforced `inherit` or `scoped` entry does not match and fails closed.
 
-Project `modelScope` settings replace the complete user `modelScope`, as with the existing project-over-user settings precedence. Project settings are trusted and can therefore replace user restrictions.
+Project `modelScope` settings replace the complete user `modelScope`, as with the existing project-over-user settings precedence. This applies only when the session trusts the project: when project trust is declined, project subagent settings are ignored and the user `modelScope` applies.
 
 ## Profiles and provider model catalogs
 
@@ -247,3 +249,5 @@ The workflow:
 - `/subagents-refresh-provider-models` writes a serialized provider model catalog with observed registry data, simple role-oriented classification, and live probe results from tiny one-shot `pi -p --model ... --no-tools` checks. The cache refreshes when missing or stale; use `--force` to ignore freshness and probe again immediately.
 - `/subagents-generate-profiles` uses the provider catalog to produce quota and quality profiles.
 - `/subagents-check-profile` re-checks each assigned model in a saved profile against the current registry and a live probe, so you can detect model removals, auth problems, or stale assignments.
+
+Hand-authored profile entries can also set `machine` to a non-empty string or `false`. Loading and checking validate the whole saved profile, including machine syntax; malformed values are rejected before loading writes settings or checking probes models. Valid machine strings are trimmed and use the same limits as agent settings. `false` clears a machine pin, while an omitted field preserves an existing string pin when loading. Validation does not query the live machine catalog.

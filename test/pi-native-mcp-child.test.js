@@ -47,9 +47,10 @@ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`)
     fs.writeFileSync(path.join(agentDir, 'models.json'), JSON.stringify({ providers: { fixture: { baseUrl: `http://127.0.0.1:${provider.address().port}/v1`,
         api: 'openai-completions', apiKey: 'synthetic', models: [{ id: 'fixture', input: ['text'], contextWindow: 32000, maxTokens: 1000 }] } } }));
     fs.writeFileSync(path.join(agentDir, 'agents/fixture.md'), '---\nname: fixture\ndescription: Native MCP child\nmodel: fixture/fixture\ntools: read, mcp:fixture/echo\n---\nUse the echo tool.\n');
+    const originalReport = path.join(root, 'report.md');
     fs.writeFileSync(path.join(agentDir, 'extensions/spawn.ts'), `export default function(pi) { pi.registerCommand('fixture-launch', { description:'fixture', handler:async (_args,ctx)=>{
 await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('launch timeout')),30000);const off=pi.events.on('subagents:rpc:v1:reply:native-child',r=>{clearTimeout(timer);off();ctx.ui.notify('NATIVE_LAUNCH:'+JSON.stringify(r));resolve();});
-pi.events.emit('subagents:rpc:v1:request',{version:1,requestId:'native-child',method:'spawn',source:{extension:'fixture'},params:{agent:'fixture',task:'Call the echo tool',async:true}});}); }});
+pi.events.emit('subagents:rpc:v1:request',{version:1,requestId:'native-child',method:'spawn',source:{extension:'fixture'},params:{agent:'fixture',task:'Call the echo tool',async:true,output:${JSON.stringify(originalReport)},outputMode:'file-only'}});}); }});
 pi.registerCommand('fixture-native-foreground',{description:'fixture',handler:async(_args,ctx)=>{
 await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('foreground timeout')),30000);const off=pi.events.on('prompt-template:subagent:response',reply=>{if(reply.requestId!=='native-foreground')return;clearTimeout(timer);off();ctx.ui.notify('NATIVE_FOREGROUND:'+JSON.stringify(reply));resolve();});
 pi.events.emit('prompt-template:subagent:request',{requestId:'native-foreground',ownerRunId:'fixture-owner',nodeId:'fixture-node',cwd:ctx.cwd,agent:'fixture',task:'Call the echo tool',context:'fresh',result:{kind:'text'}});});}}); }`);
@@ -86,6 +87,30 @@ pi.events.emit('prompt-template:subagent:request',{requestId:'native-foreground'
     for (let i = 0; i < 300 && !foreground; i++) await new Promise(resolve => setTimeout(resolve, 100));
     offForeground(); assert.match(JSON.stringify(foreground), /CHILD_FINISHED/);
     assert.equal(childRequests, 4, 'both foreground and detached children use the granted MCP tool');
-    assert.equal(fs.readFileSync(connections, 'utf8').trim().split('\n').length, 3, 'one MCP transport for the parent and each child using the merged project partial override');
+    const originalBytes = fs.readFileSync(originalReport, 'utf8');
+    assert.match(originalBytes, /CHILD_FINISHED/);
+    const originalRun = status.snapshot.runs.find(run => run.state === 'complete');
+    const cost = await worker.subagentRequest({ method: 'cost' });
+    // RPC launch/foreground bridge replies are not persisted subagent tool results;
+    // upstream cost walks tool-result details, rather than all child session headers.
+    assert.deepEqual(cost.cost.childTotal, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, turns: 0, cost: 0 });
+    assert.equal(cost.cost.total.turns, cost.cost.parent.turns);
+    assert.equal(JSON.stringify(cost).includes(agentDir), false, 'cost projection omits child session paths');
+    await assert.rejects(worker.subagentRequest({ method: 'stop', params: { id: 'foreign-run' } }), /not found|not.*active session/i);
+    await assert.rejects(worker.subagentRequest({ method: 'interrupt', params: { id: 'foreign-run' } }), /No interrupt-capable run found in this session\./);
+    const resumed = await worker.subagentRequest({ method: 'resume', params: { id: originalRun.id, message: 'Produce a new saved report.' } });
+    assert.notEqual(resumed.isError, true, JSON.stringify(resumed));
+    let resumedStatus;
+    for (let i = 0; i < 150; i++) {
+        resumedStatus = await worker.subagentRequest({ method: 'status', params: {} });
+        if (resumedStatus.snapshot?.runs.some(run => run.id !== originalRun.id && run.state === 'complete')) break;
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    assert.ok(resumedStatus.snapshot?.runs.some(run => run.id !== originalRun.id && run.state === 'complete'), JSON.stringify(resumedStatus));
+    assert.equal(fs.readFileSync(originalReport, 'utf8'), originalBytes, 'resume preserves the prior report bytes');
+    const reports = fs.readdirSync(root).filter(file => /^report\.[a-f0-9]{8}\.md$/.test(file));
+    assert.equal(reports.length, 1, JSON.stringify({ reports, resumed }));
+    assert.match(fs.readFileSync(path.join(root, reports[0]), 'utf8'), /CHILD_FINISHED/);
+    assert.equal(fs.readFileSync(connections, 'utf8').trim().split('\n').length, 4, 'one MCP transport for the parent and each foreground, detached and resumed child');
     assert.equal(fs.existsSync(path.join(agentDir, 'mcp-cache.json')), false);
 });

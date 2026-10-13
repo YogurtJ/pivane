@@ -13,6 +13,7 @@ import { writeAtomicJson } from "../../shared/atomic-json.js";
 import { acquireSessionLease } from "../shared/session-lease.js";
 import { readProcessTerminalCandidate, writeProcessTerminalCandidate, markProcessTerminalCandidateLeaseRelease } from "./process-terminal-candidate.js";
 import { persistRunnerStartupFailure } from "./runner-startup-failure.js";
+import { currentPidNamespaceScope } from "./pid-namespace.js";
 function isRecord(value) {
     return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -120,6 +121,9 @@ export async function runConfiguredSubagent(rawConfig, options = {}) {
     process.once("exit", releaseOnExit);
     try {
         if (config.launchBarrierToken) {
+            // Behind a launcher the parent only knows the wrapper's pid; report this runner's own identity first.
+            if (config.launcher)
+                writeAtomicJson(startupPath, { state: "identified", token: config.launchBarrierToken, pid: process.pid, pidNamespaceScope: currentPidNamespaceScope() });
             await waitForStartupControl(startupProceedPath, config.launchBarrierToken, "proceed");
             startupCommitted = true;
             try {
@@ -132,7 +136,7 @@ export async function runConfiguredSubagent(rawConfig, options = {}) {
         else if (config.revivalLease) {
             lease = acquireSessionLease(config.revivalLease);
             config.revivalLeaseToken = lease.owner.token;
-            writeAtomicJson(startupPath, { state: "ready", token: lease.owner.token, pid: process.pid, owner: lease.owner });
+            writeAtomicJson(startupPath, { state: "ready", token: lease.owner.token, pid: process.pid, owner: lease.owner, ...(config.launcher ? { pidNamespaceScope: currentPidNamespaceScope() } : {}) });
             await waitForStartupControl(startupAckPath, lease.owner.token, "ack");
             writeAtomicJson(startupPath, { state: "acknowledged", token: lease.owner.token, pid: process.pid });
             await waitForStartupControl(startupConfirmPath, lease.owner.token, "confirm");

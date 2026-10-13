@@ -1,11 +1,19 @@
 import { splitKnownThinkingSuffix as splitThinkingSuffix } from "../../shared/model-info.js";
 import { checkModelScope, SCOPED_PATTERN } from "./model-scope.js";
+import { editDistance } from "../../shared/edit-distance.js";
 export { splitThinkingSuffix };
-/** Aliases apply only to the resolved launch candidate (without its thinking suffix) and the exact raw response ID. */
-export function formatSubagentModelVerificationError(expectedModel, observedModel, availableModels, modelResponseAliases) {
+/**
+ * Aliases apply only to the resolved launch candidate (without its thinking suffix) and the exact raw response ID.
+ * When the child's live selection is a Pi virtual model, assistant messages name the physical model it dispatched
+ * to, so the virtual selection's provider/id is compared exactly with the launch candidate instead.
+ */
+export function formatSubagentModelVerificationError(expectedModel, observedModel, availableModels, modelResponseAliases, observedVirtualModel) {
     if (!availableModels || availableModels.length === 0)
         return undefined;
     const expectedBase = splitThinkingSuffix(expectedModel).baseModel;
+    if (observedVirtualModel !== undefined) {
+        return observedVirtualModel === expectedBase ? undefined : `model_verification_failed: native Pi child selected virtual model '${observedVirtualModel}', but the launch candidate was '${expectedModel}'. modelResponseAliases does not apply to a virtual-model selection.`;
+    }
     if (modelResponseAliases && Object.hasOwn(modelResponseAliases, expectedBase)
         && modelResponseAliases[expectedBase]?.includes(observedModel))
         return undefined;
@@ -223,12 +231,39 @@ function suggestAlternateProviderModel(model, availableModels) {
         return undefined;
     return `${suggestion}${thinkingSuffix}`;
 }
+const MAX_MODEL_CANDIDATES = 5;
+/** Exact registry ids for an unresolved request: the same id under any provider first, then near spellings. */
+function closestModelCandidates(model, availableModels) {
+    if (!availableModels || availableModels.length === 0)
+        return [];
+    const { baseModel, thinkingSuffix } = splitThinkingSuffix(model);
+    const { queryProvider, queryIdRaw } = splitQualifiedModelQuery(baseModel, availableModels);
+    const queryId = normalizeModelSegment(queryIdRaw);
+    const queryIdNoDate = stripTrailingDateStamp(queryId);
+    return availableModels
+        .map((entry) => {
+        const id = normalizeModelSegment(entry.id);
+        const distance = editDistance(queryId, id);
+        return {
+            fullId: entry.fullId,
+            sameId: id === queryId || stripTrailingDateStamp(id) === queryIdNoDate,
+            sameProvider: normalizeModelSegment(entry.provider) === queryProvider,
+            distance,
+            close: distance <= Math.max(2, Math.floor(id.length / 3)),
+        };
+    })
+        .filter((entry) => entry.sameId || entry.close)
+        .sort((left, right) => Number(right.sameId) - Number(left.sameId) || left.distance - right.distance || Number(right.sameProvider) - Number(left.sameProvider) || left.fullId.localeCompare(right.fullId))
+        .slice(0, MAX_MODEL_CANDIDATES)
+        .map((entry) => `${entry.fullId}${thinkingSuffix}`);
+}
 function resolveRequiredSubagentModelCandidate(model, availableModels, preferredProvider) {
     const resolved = resolveSubagentModelCandidate(model, availableModels, preferredProvider);
     if (resolved)
         return resolved;
     const suggestion = suggestAlternateProviderModel(model, availableModels);
-    throw new Error(`Unknown subagent model '${model}' in the active Pi model registry.${suggestion ? ` Did you mean '${suggestion}'?` : ""}`);
+    const candidates = closestModelCandidates(model, availableModels).filter((candidate) => candidate !== suggestion);
+    throw new Error(`Unknown subagent model '${model}' in the active Pi model registry.${suggestion ? ` Did you mean '${suggestion}'?` : ""}${candidates.length ? ` Closest registry models: ${candidates.join(", ")}.` : ""}`);
 }
 function defaultScopeWarn(violation) {
     console.warn(`[pi-subagents] ${violation.message}`);

@@ -3,10 +3,11 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { finished } from "node:stream/promises";
+import { SUBAGENT_STOPPED_MESSAGE, SUBAGENT_TIMED_OUT_MESSAGE } from "../../shared/utils.js";
 import { createOwnedProcessTreeController } from "../background/owned-process-tree.js";
 import { omitExtensionBindingsEnv } from "./extension-bindings.js";
 import { omitGitRoutingEnv } from "./git-environment.js";
-import { invalidateExternalCliPreflight, preflightExternalCli, } from "./external-cli-preflight.js";
+import { invalidateExternalCliPreflight, preflightExternalCli, resolveExternalCliSpawn, } from "./external-cli-preflight.js";
 const MAX_OUTPUT_TAIL_BYTES = 64 * 1024;
 const MAX_ERROR_TAIL_BYTES = 64 * 1024;
 const MAX_RAW_LOG_BYTES = 8 * 1024 * 1024;
@@ -136,6 +137,7 @@ export function runExternalCli(input) {
         };
         const env = externalEnvironment(input.environment?.allowlist, input.environment?.values);
         let preflight;
+        let launch;
         try {
             for (const directory of input.temporaryDirectories ?? []) {
                 fs.mkdirSync(directory, { mode: 0o700 });
@@ -153,6 +155,7 @@ export function runExternalCli(input) {
             }
             if (input.preflight)
                 preflight = preflightExternalCli(input.command, input.preflight, env, input.cwd);
+            launch = resolveExternalCliSpawn(preflight?.binaryPath ?? input.command, input.args ?? [], env);
         }
         catch (error) {
             const endedAt = Date.now();
@@ -301,7 +304,7 @@ export function runExternalCli(input) {
             }
             appendPendingLine(chunk.subarray(start));
         };
-        const child = spawn(preflight?.binaryPath ?? input.command, input.args ?? [], {
+        const child = spawn(launch.command, launch.args, {
             cwd: input.cwd,
             env,
             stdio: ["pipe", "pipe", "pipe"],
@@ -384,9 +387,9 @@ export function runExternalCli(input) {
                     ? `Process-tree cleanup failed: ${treeProof.reason}.`
                     : undefined;
                 const error = stopped
-                    ? input.stopMessage ?? "Subagent stopped by user."
+                    ? input.stopMessage ?? SUBAGENT_STOPPED_MESSAGE
                     : timedOut
-                        ? input.timeoutMessage ?? "Subagent timed out."
+                        ? input.timeoutMessage ?? SUBAGENT_TIMED_OUT_MESSAGE
                         : spawnError?.message ?? parserFailure ?? treeFailure ?? (exitCode === 0 ? undefined : stderr || `External CLI exited with code ${exitCode}.`);
                 if (error && input.preflight && !parserError)
                     invalidateExternalCliPreflight(input.command, input.preflight, classifyInvalidation(error));

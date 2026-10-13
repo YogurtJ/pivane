@@ -1,5 +1,5 @@
 import { type SteerRequest } from "./control-channel.ts";
-import { type ArtifactConfig, type ExternalCliRunnerStatus, type ExternalJobRunnerStatus, type ExternalJobStatus, type ExternalProcessStatus, type ArtifactPaths, type ChainOutputMap, type CostSummary, type LaunchResolvedChildExtensions, type RuntimeAcknowledgedChildExtensions, type NestedRouteInfo, type ResolvedControlConfig, type ResolvedToolBudget, type RunFanoutBudgetDescriptor, type SubagentRunMode, type SubagentOutputState, type UsageBudgetConfig, type ToolBudgetState, type Usage, type WorkflowGraphSnapshot, type WorkflowLaneMetadata, type MaxOutputConfig } from "../../shared/types.ts";
+import { type ArtifactConfig, type ExternalCliRunnerStatus, type ExternalJobRunnerStatus, type ExternalJobStatus, type ExternalProcessStatus, type ArtifactPaths, type ChainOutputMap, type CostSummary, type LaunchResolvedChildExtensions, type RuntimeAcknowledgedChildExtensions, type NestedRouteInfo, type ResolvedControlConfig, type ResolvedToolBudget, type RunFanoutBudgetDescriptor, type SubagentRunMode, type SubagentOutputState, type UsageBudgetConfig, type ToolBudgetState, type Usage, type WorkflowGraphSnapshot, type WorkflowLaneMetadata, type RunnerLauncher, type MaxOutputConfig } from "../../shared/types.ts";
 import { type RunnerSubagentStep as SubagentStep, type RunnerStep } from "../shared/parallel-utils.ts";
 import type { InheritedChildRuntime } from "../shared/child-launch.ts";
 import type { ChildSessionFactory, DefaultChildSessionFactoryOptions } from "../shared/child-session.ts";
@@ -10,6 +10,7 @@ import { type OrcaProgressTab } from "../shared/orca-progress-tabs.ts";
 import type { ResolvedSubagentCapabilityCeiling } from "../shared/capability-ceiling.ts";
 export interface SubagentRunConfig {
     id: string;
+    toolCallId?: string;
     steps: RunnerStep[];
     resultPath: string;
     cwd: string;
@@ -78,6 +79,7 @@ export interface SubagentRunConfig {
     parentWorkflowRunId?: string;
     workflowKey?: string;
     lane?: WorkflowLaneMetadata;
+    launcher?: RunnerLauncher;
 }
 interface StepResult {
     agent: string;
@@ -90,6 +92,7 @@ interface StepResult {
     runtimeAcknowledgedExtensions?: RuntimeAcknowledgedChildExtensions;
     output: string;
     outputState?: SubagentOutputState;
+    outputPartial?: boolean;
     error?: string;
     success?: boolean;
     exitCode: number | null;

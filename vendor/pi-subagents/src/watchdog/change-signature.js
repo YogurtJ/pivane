@@ -239,8 +239,6 @@ export function eventIndicatesRepoEdit(event) {
     }
     if (input.type === "tool_result" || input.event === "tool_result")
         return messageIndicatesRepoEdit({ role: "toolResult", ...input });
-    if (input.type !== "tool_result_end" && input.event !== "tool_result_end")
-        return false;
-    return messageIndicatesRepoEdit(input.message);
+    return false;
 }
 //# sourceMappingURL=change-signature.js.map

@@ -7,9 +7,11 @@ export interface ImportedAsyncRoot {
 }
 export interface ImportedAsyncRootResult {
     agent: string;
+    /** `snapshot` is the payload text this result was built from, so cleanup can tell it from a newer one. */
     importedPublication?: {
         sessionId?: string;
         toolCallId?: string;
+        snapshot: string;
     };
     /** Human-readable display name for the child session, when derived at launch. */
     sessionName?: string;

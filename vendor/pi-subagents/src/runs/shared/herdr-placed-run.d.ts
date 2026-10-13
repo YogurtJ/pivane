@@ -196,6 +196,7 @@ export declare class BridgeChannel {
     constructor(socketPath: string, runId: string);
     fail(error: Error): void;
     get failed(): boolean;
+    adopt(listener: (frame: HerdrPiFrame) => void): HerdrPiFrame[];
     wait(type: string, requestId: string): Promise<HerdrPiFrame>;
     configure(resources: {
         agent: string;

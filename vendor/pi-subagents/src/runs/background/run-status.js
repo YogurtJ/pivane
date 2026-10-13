@@ -34,6 +34,9 @@ import { formatWorkflowChecklistText, projectWorkflowChecklist } from "../../wor
 import { validHostStepNodes } from "../shared/host-step-status.js";
 import { workflowAsyncChildSteeringGuidance } from "../shared/workflow-async-child-guidance.js";
 import { formatWorkflowKeyRevival, projectWorkflowKeyRevival } from "../../workflows/workflow-revival.js";
+import { capSummaryOutputs } from "../shared/single-output.js";
+/** A step whose structured output has a path line needs only a short inline preview. */
+const STRUCTURED_PREVIEW_WITH_PATH_CHARS = 500;
 function formatProcessTerminal(value) {
     if (!value)
         return "missing";
@@ -121,7 +124,7 @@ function formatResumeGuidance(runId, children, fallbackSessionFile, options = {}
     }
     const childWithSession = knownChildren.find(({ child }) => hasExistingSessionFile(child.sessionFile));
     if (childWithSession) {
-        return `Revive child: subagent({ action: "resume", id: "${runId}", index: ${childWithSession.index}, message: "..." })`;
+        return `Revive child: subagent({ action: "resume", id: "${runId}", message: "...", options: { index: ${childWithSession.index} } })`;
     }
     return "Resume: unavailable; no child session file was persisted.";
 }
@@ -216,9 +219,9 @@ function formatRememberedForegroundStatus(run) {
     }
     lines.push("", `Status: subagent({ action: "status", id: "${run.runId}" })`);
     if (run.children.length === 1)
-        lines.push(`Transcript: subagent({ action: "status", id: "${run.runId}", view: "transcript" })`);
+        lines.push(`Transcript: subagent({ action: "status", id: "${run.runId}", options: { view: "transcript" } })`);
     else
-        lines.push(`Transcript: subagent({ action: "status", id: "${run.runId}", index: 0, view: "transcript" })`);
+        lines.push(`Transcript: subagent({ action: "status", id: "${run.runId}", options: { index: 0, view: "transcript" } })`);
     const detached = run.children.some((child) => child.status === "detached");
     const resumable = run.children.find((child) => hasExistingSessionFile(child.sessionFile));
     if (detached) {
@@ -227,7 +230,7 @@ function formatRememberedForegroundStatus(run) {
     else if (resumable) {
         lines.push(run.children.length === 1
             ? `Revive: subagent({ action: "resume", id: "${run.runId}", message: "..." })`
-            : `Revive child: subagent({ action: "resume", id: "${run.runId}", index: ${resumable.index}, message: "..." })`);
+            : `Revive child: subagent({ action: "resume", id: "${run.runId}", message: "...", options: { index: ${resumable.index} } })`);
     }
     else {
         lines.push("Resume: unavailable; no child session file was persisted.");
@@ -383,7 +386,7 @@ export function inspectSubagentStatus(params, deps = {}) {
                 if (runs.length === 1)
                     return inspectSubagentStatus({ ...params, id: runs[0].id }, deps);
                 return {
-                    content: [{ type: "text", text: runs.length === 0 ? "No active async run transcript is available." : `Transcript view requires an id when ${runs.length} active async runs exist. Use subagent({ action: "status", view: "fleet" }) to choose one.` }],
+                    content: [{ type: "text", text: runs.length === 0 ? "No active async run transcript is available." : `Transcript view requires an id when ${runs.length} active async runs exist. Use subagent({ action: "status", options: { view: "fleet" } }) to choose one.` }],
                     isError: true,
                     details: { mode: "single", results: [] },
                 };
@@ -650,7 +653,7 @@ export function inspectSubagentStatus(params, deps = {}) {
                     if (revival)
                         lines.push(`  ${formatWorkflowKeyRevival(revival)}`);
                 }
-                const structuredOutputPreview = step.structuredOutput === undefined ? undefined : formatWorkflowJsonPreview(step.structuredOutput, 4_000);
+                const structuredOutputPreview = step.structuredOutput === undefined ? undefined : formatWorkflowJsonPreview(step.structuredOutput, step.structuredOutputPath ? STRUCTURED_PREVIEW_WITH_PATH_CHARS : 4_000);
                 if (structuredOutputPreview !== undefined)
                     lines.push(`  Structured output: ${structuredOutputPreview}`);
                 if (step.structuredOutputPath)
@@ -700,7 +703,7 @@ export function inspectSubagentStatus(params, deps = {}) {
                         lines.push(`  Result artifact: ${step.externalJob.resultArtifactPath}`);
                     if ((step.status === "complete" || step.status === "completed") && step.externalJob?.state === "completed" && step.externalJob.providerJobId && externalJobFollowUpSupported(step.runner.provider)) {
                         hasExternalJobFollowUpHint = true;
-                        lines.push(`  Follow-up: subagent({ action: "resume", id: "${status.runId}", index: ${index}, message: "..." })`);
+                        lines.push(`  Follow-up: subagent({ action: "resume", id: "${status.runId}", message: "...", options: { index: ${index} } })`);
                     }
                 }
                 lines.push(...formatNestedRunStatusLines(step.children, { indent: "  ", commandHints: true, maxLines: 20 }));
@@ -709,7 +712,7 @@ export function inspectSubagentStatus(params, deps = {}) {
                     lines.push(`  Output: ${stepOutputPath}`);
                 if (step.status === "running" && step.runner?.type !== "external-cli" && step.runner?.type !== "external-job" && status.mode !== "workflow") {
                     lines.push(`  Intercom target: ${resolveSubagentIntercomTarget(status.runId, step.agent, index)} (if registered)`);
-                    lines.push(`  Steer: subagent({ action: "steer", id: "${status.runId}", index: ${index}, message: "..." })`);
+                    lines.push(`  Steer: subagent({ action: "steer", id: "${status.runId}", message: "...", options: { index: ${index} } })`);
                 }
                 else if (step.status === "running" && (step.runner?.type === "external-cli" || step.runner?.type === "external-job")) {
                     lines.push("  Steer: unavailable; external runners do not accept live messages.");
@@ -730,7 +733,7 @@ export function inspectSubagentStatus(params, deps = {}) {
                 else
                     for (const control of liveWorkflowControls) {
                         for (const index of [...control.activeChildren.keys()].sort((left, right) => left - right)) {
-                            lines.push(`Steer live foreground child: subagent({ action: "steer", id: "${control.runId}", index: ${index}, message: "..." })`);
+                            lines.push(`Steer live foreground child: subagent({ action: "steer", id: "${control.runId}", message: "...", options: { index: ${index} } })`);
                         }
                     }
                 lines.push(...workflowAsyncChildSteeringGuidance(status, deps.state));
@@ -753,7 +756,7 @@ export function inspectSubagentStatus(params, deps = {}) {
                 lines.push(`Log: ${logPath}`);
             if (fs.existsSync(eventsPath))
                 lines.push(`Events: ${eventsPath}`);
-            return { content: [{ type: "text", text: lines.join("\n") }], details: { mode: "single", results: [], ...(status.workflowReceiptPath ? { workflowReceiptPath: status.workflowReceiptPath } : {}), ...(status.preflight ? { preflight: status.preflight } : {}), ...(status.workflow?.preflightWarnings?.length ? { preflightWarnings: status.workflow.preflightWarnings } : {}), ...(workflowChildren ? { workflowChildren } : {}), ...(workflowTerminalProof ? { workflowTerminalProof } : {}), ...(runFanoutBudget ? { runFanoutBudget } : {}), ...(processTerminal ? { lifecycleStatus: { processTerminal } } : {}) } };
+            return { content: [{ type: "text", text: lines.join("\n") }], details: { mode: "single", runId: status.runId, ...(status.toolCallId ? { toolCallId: status.toolCallId } : {}), results: [], ...(status.workflowReceiptPath ? { workflowReceiptPath: status.workflowReceiptPath } : {}), ...(status.preflight ? { preflight: status.preflight } : {}), ...(status.workflow?.preflightWarnings?.length ? { preflightWarnings: status.workflow.preflightWarnings } : {}), ...(workflowChildren ? { workflowChildren } : {}), ...(workflowTerminalProof ? { workflowTerminalProof } : {}), ...(runFanoutBudget ? { runFanoutBudget } : {}), ...(processTerminal ? { lifecycleStatus: { processTerminal } } : {}) } };
         }
     }
     if (resultPath) {
@@ -805,21 +808,22 @@ export function inspectSubagentStatus(params, deps = {}) {
             lines.push(...formatTimeoutRecoveryLines(data.timeoutRecovery, "  "));
             for (const [index, child] of children.entries()) {
                 const structuredOutput = child.structuredOutput;
-                const structuredOutputPreview = structuredOutput === undefined ? undefined : formatWorkflowJsonPreview(structuredOutput, 4_000);
+                const structuredOutputPath = child.structuredOutputPath;
+                const hasStructuredOutputPath = typeof structuredOutputPath === "string" && structuredOutputPath.trim() !== "";
+                const structuredOutputPreview = structuredOutput === undefined ? undefined : formatWorkflowJsonPreview(structuredOutput, hasStructuredOutputPath ? STRUCTURED_PREVIEW_WITH_PATH_CHARS : 4_000);
                 if (structuredOutputPreview !== undefined)
                     lines.push(`  Structured output${children.length > 1 ? ` (${index + 1})` : ""}: ${structuredOutputPreview}`);
-                const structuredOutputPath = child.structuredOutputPath;
-                if (typeof structuredOutputPath === "string" && structuredOutputPath.trim())
+                if (hasStructuredOutputPath)
                     lines.push(`  Structured output path${children.length > 1 ? ` (${index + 1})` : ""}: ${structuredOutputPath}`);
                 lines.push(...formatTimeoutRecoveryLines(child.timeoutRecovery, "  "));
             }
             lines.push(formatResumeGuidance(runId, children, data.sessionFile, { stopped: status === "stopped" }));
             if (data.summary)
-                lines.push("", data.summary);
+                lines.push("", capSummaryOutputs(data.summary, data.results));
             const workflowChildren = parseWorkflowChildSummary(data.workflowChildren);
             if (workflowChildren && workflowChildren.workflowRunId !== runId)
                 throw new Error("workflowChildren.workflowRunId does not match the result run id.");
-            return { content: [{ type: "text", text: lines.join("\n") }], details: { mode: "single", results: [], ...(workflowReceiptPath ? { workflowReceiptPath } : {}), ...(workflowChildren ? { workflowChildren } : {}) } };
+            return { content: [{ type: "text", text: lines.join("\n") }], details: { mode: "single", ...(runId ? { runId } : {}), ...(data.toolCallId ? { toolCallId: data.toolCallId } : {}), results: [], ...(workflowReceiptPath ? { workflowReceiptPath } : {}), ...(workflowChildren ? { workflowChildren } : {}) } };
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);

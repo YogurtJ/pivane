@@ -1,8 +1,10 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { validateOptionalMachine } from "../agents/agents.js";
 import { getPiSpawnCommand } from "../runs/shared/pi-spawn.js";
 import { findModelInfo, getSupportedThinkingLevels, splitKnownThinkingSuffix, toModelInfo } from "../shared/model-info.js";
+import { withSettingsFileLease } from "../shared/settings-file-lease.js";
 import { getAgentDir } from "../shared/utils.js";
 export const DEFAULT_PROVIDER_MODELS_MAX_AGE_DAYS = 7;
 function readJsonObjectFile(filePath) {
@@ -56,6 +58,9 @@ function validateSubagentProfile(filePath, parsed) {
         const thinking = override.thinking;
         if (thinking !== undefined && thinking !== false && typeof thinking !== "string") {
             throw new Error(`Profile '${filePath}' has invalid thinking for '${name}'; expected a string or false.`);
+        }
+        if (override.machine !== undefined && override.machine !== false) {
+            override.machine = validateOptionalMachine(override.machine, `Profile '${filePath}' has invalid machine for '${name}'`);
         }
         if (override.fallbackModels !== undefined)
             throw new Error(`Profile '${filePath}' uses removed field fallbackModels for '${name}'; configure one model instead.`);
@@ -354,28 +359,30 @@ export function readSubagentProfile(name) {
 export function applySubagentProfile(name) {
     const { filePath, profile } = readSubagentProfile(name);
     const settingsPath = getUserSettingsPath();
-    const settings = readSettingsFile(settingsPath);
-    const existing = settings.subagents && typeof settings.subagents === "object" && !Array.isArray(settings.subagents)
-        ? settings.subagents
-        : {};
-    // A profile owns the complete agent mapping, but unrelated subagent settings
-    // (notably disableBuiltins, modelScope, watchdog, etc.) survive profile switches.
-    // Machine placement is not a model choice, so an existing pin survives a profile switch too.
-    const agentOverrides = { ...profile.subagents.agentOverrides };
-    const existingOverrides = existing.agentOverrides && typeof existing.agentOverrides === "object" && !Array.isArray(existing.agentOverrides)
-        ? existing.agentOverrides
-        : {};
-    for (const [name, value] of Object.entries(existingOverrides)) {
-        const machine = value && typeof value === "object" && !Array.isArray(value) ? value.machine : undefined;
-        if (typeof machine === "string" && agentOverrides[name]?.machine === undefined)
-            agentOverrides[name] = { ...agentOverrides[name], machine };
-    }
-    settings.subagents = {
-        ...existing,
-        ...profile.subagents,
-        agentOverrides,
-    };
-    writeJsonFile(settingsPath, settings);
+    withSettingsFileLease(settingsPath, () => {
+        const settings = readSettingsFile(settingsPath);
+        const existing = settings.subagents && typeof settings.subagents === "object" && !Array.isArray(settings.subagents)
+            ? settings.subagents
+            : {};
+        // A profile owns the complete agent mapping, but unrelated subagent settings
+        // (notably disableBuiltins, modelScope, watchdog, etc.) survive profile switches.
+        // Machine placement is not a model choice, so an existing pin survives a profile switch too.
+        const agentOverrides = { ...profile.subagents.agentOverrides };
+        const existingOverrides = existing.agentOverrides && typeof existing.agentOverrides === "object" && !Array.isArray(existing.agentOverrides)
+            ? existing.agentOverrides
+            : {};
+        for (const [name, value] of Object.entries(existingOverrides)) {
+            const machine = value && typeof value === "object" && !Array.isArray(value) ? value.machine : undefined;
+            if (typeof machine === "string" && agentOverrides[name]?.machine === undefined)
+                agentOverrides[name] = { ...agentOverrides[name], machine };
+        }
+        settings.subagents = {
+            ...existing,
+            ...profile.subagents,
+            agentOverrides,
+        };
+        writeJsonFile(settingsPath, settings);
+    });
     return { filePath, settingsPath };
 }
 export function readProviderModelCatalog(provider) {

@@ -76,9 +76,11 @@ For a native Pi `model_verification_failed` where your proxy accepts `claude-hai
 
 Replace `YOUR_PROVIDER` with the resolved Pi provider ID. Keep the outgoing model alias unchanged. This native remedy already exists in v0.65.1; it does not infer equivalence from provider prefixes or dates. The built-in external `claude-code` adapter does not invoke this verifier or use this setting. If an external run shows this diagnostic, identify the installed version, resolved runner kind/adapter, and error location before applying a native remedy. Thanks to [sixtus](https://github.com/sixtus) for the concrete request-ID/response-ID example in [#1922](https://github.com/nicobailon/pi-subagents/issues/1922).
 
+A local Pi child whose selected model is a virtual model (`pi.registerVirtualModel()`, such as a router) needs no alias. Its assistant messages name whichever physical model the router picked, so verification compares the child's selected virtual `provider/id` with the launch model instead, exactly. A different virtual selection fails, and `modelResponseAliases` does not override it.
+
 ## Tool activation lifecycle
 
-On Pi 0.86.1 or newer, when the model can take a new tool mid-conversation (see [`toolActivation`](#toolactivation)), a fresh unrestricted parent starts with `subagents_enable`, `bg_wait`, and `subagent_supervisor` active while `subagent` stays registered but inactive. Calling `subagents_enable({})` preserves unrelated active tools and exposes `subagent` on the next model request. It does not launch a child or infer authority from prompt keywords. With other models, a fresh parent starts with `subagent`, `bg_wait`, and `subagent_supervisor` active and no `subagents_enable`.
+On Pi 0.86.1 or newer, when the model can take a new tool mid-conversation (see [`toolActivation`](#toolactivation)), a fresh unrestricted parent starts with `subagents_enable`, `bg_wait`, and `subagent_supervisor` active while `subagent` stays registered but inactive. Calling `subagents_enable({})` preserves unrelated active tools and exposes `subagent` on the next model request. It does not launch a child or infer authority from prompt keywords. With other models, a fresh parent starts with `subagent`, `bg_wait`, and `subagent_supervisor` active and no `subagents_enable`. `contact_supervisor` is active whenever `subagent` is, with the definition children use, so a forked child declares the same tools as its parent and can reuse its prompt cache; called in a session that is not a subagent, it returns an error.
 
 The recorded native `subagent` selection is restored on resume, reload, and tree navigation, so an activated session stays activated and a cold session stays cold. With the default `toolActivation`, the recorded `subagents_enable` selection is restored too, so a session that started without the loader never gets it later. Older history without tool-selection records keeps eager `subagent` availability. If Pi's allowlist or exclusions remove the loader, the extension does not hide `subagent`; if they remove `subagent`, the loader reports it unavailable. Hosts whose extension API lacks `getAllTools`, `getActiveTools`, or `setActiveTools` keep eager behavior and log one compatibility warning. The host version is not read from disk, so in-process hosts such as pi-web activate the same way as the Pi CLI.
 
@@ -104,9 +106,17 @@ The choice is made at session start or tree navigation, and only for a session w
 { "toolDescriptionMode": "compact" }
 ```
 
-Controls the parent-facing `subagent` tool description registered at startup. The default registers the compact execution/safety description plus separate `promptSnippet` and `promptGuidelines`. That metadata explains use after operator-authorized delegation; it does not route ordinary work to children or independently authorize delegation. Explicit `"compact"` uses the same description without that extra metadata; `"full"` adds workflow and management detail, also without split metadata. All modes retain the same flat parameter schema. Extended examples and recipes are available on demand through `action:"guide"` and the bundled pi-subagents skill; full mode is not an exhaustive manual. Count the separate default metadata as well as the tool definition when comparing prompt footprints.
+Controls the parent-facing `subagent` tool description registered at startup. The default registers the short execution/safety description, which states the delegation authorization rule, plus a one-line `promptSnippet`. Explicit `"compact"` uses the same description without the snippet; `"full"` adds workflow and management detail, also without the snippet. All modes retain the same flat parameter schema. Extended examples and recipes are available on demand through `action:"guide"` and the bundled pi-subagents skill; full mode is not an exhaustive manual. Count the default snippet as well as the tool definition when comparing prompt footprints.
 
-`custom` reads `subagent-tool-description.md` from the project config directory, then from `~/.pi/agent/subagent-tool-description.md`. Missing, empty, unreadable, or oversized custom files fall back to the full description. Custom templates may use `{{fullDescription}}`, `{{compactDescription}}`, `{{safetyGuidance}}`, `{{agentDir}}`, and `{{projectConfigDir}}`; the safety guidance is always present so custom prose cannot remove the runtime guardrails. Restart Pi after changing the mode or custom file.
+`custom` reads `subagent-tool-description.md` from the project config directory, then from `~/.pi/agent/subagent-tool-description.md`. Missing, empty, unreadable, or oversized custom files fall back to the full description. Custom templates may use `{{fullDescription}}`, `{{compactDescription}}`, `{{safetyGuidance}}`, `{{agentDir}}`, and `{{projectConfigDir}}`; the safety guidance is always present so custom prose cannot remove the runtime guardrails. Restart Pi after changing the mode or custom file. The change applies to new sessions; a resumed session keeps the tool definition and prompt text it already declared, so its prompt cache stays valid. To apply it to resumed sessions too, set [`pinToolDeclarations`](#pintooldeclarations) to `false`.
+
+## `pinToolDeclarations`
+
+```json
+{ "pinToolDeclarations": false }
+```
+
+Pi records each tool definition and prompt section a session declares, and declares any difference again before the next request; a changed definition makes the provider read the whole conversation again without its prompt cache. So by default (`true`) a resumed or reloaded session keeps the `subagent`, `bg_wait`, and `subagents_enable` definitions and the pi-subagents prompt text it already declared, and only a session that never declared a tool gets its current definition. With `false`, every parent session gets the current definitions (subagent children stay pinned): a long-lived session picks up an upgrade, a changed `toolDescriptionMode`, `disabledFeatures`, or an edited custom description on the next restart, and pays one cache miss on its next request. Restart Pi after changing it.
 
 ## `disabledFeatures`
 
@@ -114,7 +124,7 @@ Controls the parent-facing `subagent` tool description registered at startup. Th
 { "disabledFeatures": ["watchdog", "panes", "preflight", "lane-metadata", "gates"] }
 ```
 
-Removes feature groups you do not use from the `subagent` tool. Each listed feature loses its parameters from the model-facing schema, and any request that still uses one of its parameters or actions fails with an error naming this setting. The check covers the parent tool, fanout-child tools, RPC, slash commands, prompt templates, scheduled launches, delegated launches, and workflow `runs.run`/`runs.all`/`runs.lanes` children, which are rejected before they launch. The built-in tool descriptions, the unknown-action list, the fanout-child tool description, and RPC `ping` no longer mention disabled features, and `{ action: "guide", topic: "tool-reference" }` starts with a notice listing what is disabled. Custom tool descriptions are not changed. Nothing is disabled by default, and the default schema and description are unchanged. An unknown or duplicate feature name fails config loading rather than silently re-enabling every feature.
+Removes feature groups you do not use from the `subagent` tool. Each listed feature loses its top-level parameters from the model-facing schema and its `options` keys are rejected, and any request that still uses one of its parameters or actions fails with an error naming this setting. The check covers the parent tool, fanout-child tools, RPC, slash commands, prompt templates, scheduled launches, delegated launches, and workflow `runs.run`/`runs.all`/`runs.lanes` children, which are rejected before they launch. The built-in tool descriptions, the unknown-action list, the fanout-child tool description, and RPC `ping` no longer mention disabled features, and `{ action: "guide", options: { topic: "tool-reference" } }` starts with a notice listing what is disabled. Custom tool descriptions are not changed. Nothing is disabled by default, and the default schema and description are unchanged. An unknown or duplicate feature name fails config loading rather than silently re-enabling every feature.
 
 | Feature | Parameters removed | Actions rejected |
 |---|---|---|
@@ -134,7 +144,7 @@ Removes feature groups you do not use from the `subagent` tool. Each listed feat
 | `external-machines` | `machine` | |
 | `workflow-scripts` | `workflow`, `args`, `preflight`, `globalConcurrencyLimit`, `maxSubagentSpawnsPerRun` | `validate` |
 
-Disabling a per-call option removes only the per-call override. Configured defaults such as `toolBudget`, `usageBudget`, and `control` in this file still apply, the watchdog still follows its own settings, missions still attach automatically when [`missions`](#missions) enables them, and agents with a `machine` in their definition still run there. Operator screens that do not go through the `subagent` executor, such as `/subagents-admin`, are unchanged. With every feature and [`scheduledRuns.enabled`](#scheduledruns) disabled, the default `subagent` tool declaration (name, description, and parameter schema as JSON) shrinks from 18,239 to 10,263 characters (80 to 41 parameters). Restart Pi after changing this setting.
+Disabling a per-call option removes only the per-call override. Configured defaults such as `toolBudget`, `usageBudget`, and `control` in this file still apply, the watchdog still follows its own settings, missions still attach automatically when [`missions`](#missions) enables them, and agents with a `machine` in their definition still run there. Operator screens that do not go through the `subagent` executor, such as `/subagents-admin`, are unchanged. With every feature and [`scheduledRuns.enabled`](#scheduledruns) disabled, the default `subagent` tool declaration (name, description, and parameter schema as JSON) shrinks from 18,239 to 10,263 characters (80 to 41 parameters). Restart Pi after changing this setting. The smaller declaration applies to new sessions; a resumed session keeps the tool declaration it already sent, so its prompt cache stays valid. Disabled options and actions are still rejected in every session.
 
 ### Chain and tasks without workflow scripts
 
@@ -224,6 +234,25 @@ Set `enabled` to `false` (or remove the block) as a kill switch. In that state, 
 
 Workflow script calls use background execution when the request omits `async`. Set `asyncByDefault` to `false` to restore foreground-by-default behavior for tool launches that still use the internal single-run primitive. Callers can still force foreground with `async: false` unless `forceTopLevelAsync` is enabled.
 
+## `runnerLaunchers`
+
+```json
+{
+  "runnerLaunchers": {
+    "net": ["nono", "run", "--profile", "net", "--"]
+  }
+}
+```
+
+Named command prefixes that wrap a background runner, for example to run some agents in a different sandbox from the parent. An agent selects one by name with `launcher: net` in its frontmatter; the runner then starts as `<launcher argv> <resolved runner command>`. Agents without `launcher` are unaffected.
+
+- This key is read only from this user config file. Project settings, agent files, and tool calls cannot define a launcher command; an agent file can only name one defined here.
+- Names must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`.
+- Each value is a non-empty array of non-blank strings without NUL characters. It is passed to the operating system as an argument list, never through a shell, so quoting and whitespace inside an entry are kept as written.
+- An invalid entry makes config loading fail with an error instead of falling back to defaults. If the file is not valid JSON at all, no launchers are defined, so every agent that names a launcher fails to launch.
+
+See [Sandboxing background children with a launcher](agents.md#sandboxing-background-children-with-a-launcher) for the agent field, the requirements a wrapper must meet, and its limits.
+
 ## `defaultSubagentContext`
 
 ```json
@@ -294,6 +323,52 @@ Prompt modes keep their fixed keys. For example, `Esc` still cancels steer text 
 
 Controls the under-editor widget for active background runs. It defaults to `true`, including when FleetView is enabled, so active work remains visible after reload. Set it to `false` to hide this widget while keeping FleetView available.
 
+## `asyncWidgetCollapsed`
+
+```json
+{ "asyncWidgetCollapsed": true }
+```
+
+Starts each newly mounted under-editor async widget in its one-line folded state. It defaults to `false`. A header click still toggles the widget, and the folded state still resets when the widget is removed or Pi reloads.
+
+## `asyncWidgetLayout`
+
+```json
+{ "asyncWidgetLayout": "rows" }
+```
+
+Sets the layout of the unfolded under-editor async widget. Defaults to `"adaptive"`; valid values are `"adaptive"` and `"rows"`.
+
+`"adaptive"` gives each run its own detail rows while the terminal has room, and switches to one line per run on a short terminal. `"rows"` shows a header line and one line per run even when the terminal has room for detail rows. It uses no more rows than the adaptive layout may: runs that do not fit are counted on a `+N more` line, and a workflow's lanes fill any rows left over. In both layouts, a header click and `asyncWidgetCollapsed` fold the widget to its count line, and Pi's expand key shows the detailed layout.
+
+## `programStatus`
+
+```json
+{ "programStatus": false }
+```
+
+Reports each background run's state to the terminal with [OSC 7501, the Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status), so a terminal that supports it (Ghostty and Rex, for example) can show which runs are working, waiting on you, finished, or failed. It defaults to `true`; set it to `false` to send nothing. Terminals that don't support OSC 7501 ignore it, so turn it off only if your terminal prints unknown escape sequences.
+
+Reports are sent only from an interactive TUI session whose standard output is a terminal and whose `TERM` is not `dumb`, and only when a record changes. `PI_PROGRAM_STATUS=0`, Pi's own switch for its OSC 7501 reports, turns these off too. Each run gets its own record under `subagents/`: `subagents/<run>` for a run, where `<run>` is the first 12 characters of its run id, and `subagents/<workflow-run>.<key>` for a background workflow child. A key made only of letters, digits, `_`, `+` and `-`, and at most 19 characters long, is used as is; any other key becomes its first 12 characters (other characters replaced by `-`) plus a short hash of the full key, so different keys never share an id. Workflow children are siblings of their workflow's record, not nested under it, so clearing a finished workflow never removes a running child. The root record belongs to Pi itself, so this extension never writes it.
+
+| Run | Reported state |
+|---|---|
+| queued or running | `working` |
+| running, with a `contact_supervisor` question the parent left unanswered when it finished its turn | `blocked` (`kind=question`) |
+| complete | `done` |
+| failed, partial, or rejected | `error` |
+| stopped or paused | `idle` |
+
+Each record's `title` is the agent names or workflow key, and its `msg` is the current tool while working, or the outcome. Neither includes the task text. Finished runs keep their `done`, `error`, or `idle` record after they leave the async widget, for as long as they are in Fleet's recent history (the last 20 finished runs). Records of runs this session no longer tracks, for example after switching sessions, are cleared. At most 64 records are shown: running and waiting runs first, then finished ones, most recently updated first; older finished records are cleared to make room. When the extension is reloaded or the session is replaced, it clears every record it sent and the new session reports the runs it still tracks. Pi 1.1 and later reports its own state on the root record and clears every record, these included, when it quits, suspends with Ctrl+Z, or opens an external editor. After a suspend, this extension sends its records again; after an external editor, each record comes back the next time it changes. Foreground runs are not reported, and tmux drops these sequences unless you configure passthrough.
+
+## `activeRunsPrompt`
+
+```json
+{ "activeRunsPrompt": true }
+```
+
+Adds a short `active_subagents` section to the parent's system prompt while this session has queued or running background runs, so the model remembers work it launched earlier instead of starting it again. Off by default. Each run gets one line, for example `- <run id> researcher (chain, step 2/3)`, built from in-memory run state with no file reads; at most 10 runs are listed, then a `+N more` line. The line holds only the run id, agents, mode, and chain step (task text is redacted at launch), so the section changes only when a run starts, finishes, or moves to another chain step. Pi sends such a change as a mid-conversation system update where the provider supports it; on other providers it rebuilds the system prompt, so the prompt cache starts over on those turns. Nothing is added when no run is active.
+
 ## `waitTool`
 
 ```json
@@ -302,7 +377,7 @@ Controls the under-editor widget for active background runs. It defaults to `tru
 
 `defaultTimeoutMs` sets the blocking window used when a `bg_wait` call omits `timeoutMs`; explicit call values win, followed by this setting, then the 30-minute fallback. `bg_wait` is the only registered wait tool. When the window elapses, the tool returns a non-error `window_elapsed` result with the still-active work identities, and that work keeps running. Set `enabled` to `false` to make direct calls return immediately instead of blocking. The default is enabled. You can also set `"waitTool": false`; set `PI_SUBAGENT_WAIT_TOOL_ENABLED=false` (or `0`, `off`, `disabled`) to override config for one process. The effective enabled and default-timeout values are passed explicitly to child runtimes. Headless `agent_end` auto-drain retains its own strict deadline and fails if required work remains unresolved. Invalid config or environment values fail instead of being coerced.
 
-Blocking `bg_wait({ id: "..." })` keeps the current tool call open until that run changes. By default it returns when a run needs attention. Use `bg_wait({ stopOnAttention: false })` only for run-to-completion flows that should wait through idle or long-thinking attention; supervisor/contact requests still stop the wait. In a long-lived interactive parent session, `bg_wait({ id: "...", nonBlocking: true })` instead resolves the prefix once, persists the exact run identity, returns a subscription token immediately, and wakes that session on completion, failure, attention, reconciliation failure, or timeout. Use it for provider, detached, or other background work without a native completion notification; ordinary async subagent runs notify the parent natively and do not need a wait subscription. Armed subscriptions appear in ordinary `subagent({ action: "status" })` output and are not counted as active child work.
+Blocking `bg_wait({ id: "..." })` keeps the current tool call open until that run changes. By default it returns when a run needs attention. Use `bg_wait({ stopOnAttention: false })` only for run-to-completion flows that should wait through idle or long-thinking attention; supervisor/contact requests still stop the wait. A steer or follow-up the operator sends while a blocking wait is open also ends it, with a non-error `user_input` result listing the still-active work, so the message reaches the model without waiting out the window. In a long-lived interactive parent session, `bg_wait({ id: "...", nonBlocking: true })` instead resolves the prefix once, persists the exact run identity, returns a subscription token immediately, and wakes that session on completion, failure, attention, reconciliation failure, or timeout. Use it for provider, detached, or other background work without a native completion notification; ordinary async subagent runs notify the parent natively and do not need a wait subscription. Armed subscriptions appear in ordinary `subagent({ action: "status" })` output and are not counted as active child work. Native completion notifications wake the session through the Pi process that launched the run, while that process is still running; a session reopened in a new process does not get that wake and should read the result with `subagent({ action: "status" })`. `nonBlocking` subscriptions need a host with a UI context, such as interactive or RPC mode; plain SDK embedding without a UI context rejects them.
 
 This is different from `waitTool.enabled=false`, which returns immediately without registering any future wake. Provider items remain available only to blocking fleet-wide waits; non-blocking subscriptions require one async or remembered detached foreground run id.
 
@@ -378,7 +453,7 @@ Inline or file-backed top-level workflow calls may set a positive safe-integer `
 
 Optionally caps the total number of child subagent launches during one parent session, including completed and failed children, parallel task counts, static chain steps, and bounded dynamic fanout children. Sessions are unlimited by default. Set this value to `0` to disable a configured cap. `PI_SUBAGENT_MAX_SPAWNS_PER_SESSION` overrides the config for a process and follows the same positive-cap/zero-unlimited semantics.
 
-`subagent({ action: "status" })`, fleet status, and `subagent({ action: "doctor" })` expose used, effective limit, remaining capacity, grants, and the remaining grant allowance for this budget. A user may explicitly call `subagent({ action: "grant-spawn-budget", additional: 10 })` from the root interactive parent after all children settle and confirm the native prompt. Grants are additive: they never erase cumulative usage, are rejected for unlimited sessions and child/headless callers, and total granted capacity cannot exceed the original configured cap. Compaction remains part of the same logical parent session and does not reset usage or grants; starting a new parent session does.
+`subagent({ action: "status" })`, fleet status, and `subagent({ action: "doctor" })` expose used, effective limit, remaining capacity, grants, and the remaining grant allowance for this budget. A user may explicitly call `subagent({ action: "grant-spawn-budget", options: { additional: 10 } })` from the root interactive parent after all children settle and confirm the native prompt. Grants are additive: they never erase cumulative usage, are rejected for unlimited sessions and child/headless callers, and total granted capacity cannot exceed the original configured cap. Compaction remains part of the same logical parent session and does not reset usage or grants; starting a new parent session does.
 
 ## `maxSubagentSpawnsPerRun`
 
@@ -400,7 +475,7 @@ The budget counts single launches, expanded `tasks`/`count`, static chain steps 
 
 Optionally caps concurrently active top-level async runs owned by one parent session. Unset or `0` keeps the existing unlimited behavior. A positive integer reserves one slot before an async single, parallel, chain, or workflow creates run artifacts or starts children. Foreground runs and nested/workflow children do not reserve another slot.
 
-Queued, running, paused, and needs-attention runs retain capacity. Runner-backed slots release only after terminal logical state and matching observed process-terminal proof from #1030. Missing, malformed, or unknown cleanup proof retains the slot. A terminal async workflow releases after its controller is gone and every launched child is accounted for: awaited foreground children are covered by workflow settlement, while actual background children still require observed process-terminal proof. Resume transfers the source slot without a second charge. Dismissal and history cleanup do not release capacity.
+Queued, running, paused, and needs-attention runs retain capacity. Runner-backed slots release only after terminal logical state and matching observed process-terminal proof from #1030. Missing, malformed, or unknown cleanup proof retains the slot. A terminal async workflow releases after its controller is gone and every launched child is accounted for: awaited foreground children are covered by workflow settlement, while actual background children still require observed process-terminal proof. Three cases release without that proof: a run whose runner failed before child startup, recorded as `not-started` with an error; an async workflow child whose launch failed before any runner existed, recorded as a failed roster step with an error and no status or runner files in its run directory; and the abandoned-slot policy below. Resume transfers the source slot without a second charge. Dismissal and history cleanup do not release capacity.
 
 When the runner is gone but process cleanup proof remains unknown, configure a bounded policy reclaim under `capacity.abandonedSlotReleaseAfterMs`:
 
@@ -408,7 +483,9 @@ When the runner is gone but process cleanup proof remains unknown, configure a b
 { "maxActiveAsyncRunsPerSession": 4, "capacity": { "abandonedSlotReleaseAfterMs": 1200000 } }
 ```
 
-The default is `1200000` milliseconds (20 minutes). The policy releases only a failed terminal run whose runner PID is dead and whose last activity is older than the threshold. A live or unknown PID, a non-failed terminal state, a recent run, or missing activity timestamp retains the slot. Set the value to `false` to keep strict retention. Valid configured durations range from 5 minutes through 24 hours. Policy release is reported as `abandoned-timeout` with `processProof: unknown`; it is not observed process-terminal proof and may reclaim capacity while an orphan child still exists.
+The default is `1200000` milliseconds (20 minutes). For a top-level run, the policy releases only a failed terminal run whose runner PID is dead and whose last activity is older than the threshold (workflow children follow the rule below). A live or unknown PID, a top-level run in a non-failed terminal state, a recent run, or missing activity timestamp retains the slot. Set the value to `false` to keep strict retention. Valid configured durations range from 5 minutes through 24 hours. Policy release is reported as `abandoned-timeout` with `processProof: unknown`; it is not observed process-terminal proof and may reclaim capacity while an orphan child still exists.
+
+A terminal workflow whose controller is gone uses the same policy when async children lack proof: the workflow must have ended longer ago than the threshold, and every async child without proof must be a terminal run (failed, stopped, complete, partial or rejected, but not paused) with a dead runner PID in this PID namespace and old activity. A stopped or completed child counts too, because a child whose launching Pi process is gone never gets observed proof however it ended. Any other child without proof keeps the slot. The release event lists those children and their states under `abandonedChildren`.
 
 This limit bounds current top-level async load. It is separate from cumulative `maxSubagentSpawnsPerSession`, `maxSubagentSpawnsPerRun`, and `globalConcurrencyLimit`.
 

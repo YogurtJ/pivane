@@ -12,7 +12,6 @@ export interface HerdrStatusRun {
     /** Explicit launch/workflow label only; raw prompts never enter pane metadata. */
     taskLabel?: string;
     needsAttention?: boolean;
-    attentionLabel?: string;
 }
 export interface HerdrStatusBridgeOptions {
     events: HerdrStatusBridgeEvents;

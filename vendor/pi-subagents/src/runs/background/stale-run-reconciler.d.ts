@@ -32,7 +32,7 @@ interface ReconcileAsyncRunResult {
     message?: string;
 }
 export declare function reconcileNestedAsyncDescendants(route: NestedRoute, options?: ReconcileAsyncRunOptions): void;
-export declare function checkPidLiveness(pid: number, kill?: KillFn): PidLiveness;
+export declare function checkPidLiveness(pid: number, kill?: KillFn, probeZombie?: boolean): PidLiveness;
 export declare function reconcileAsyncRun(asyncDir: string, options?: ReconcileAsyncRunOptions, observeStatus?: RawDrainStatusObserver): ReconcileAsyncRunResult;
 export {};
 //# sourceMappingURL=stale-run-reconciler.d.ts.map

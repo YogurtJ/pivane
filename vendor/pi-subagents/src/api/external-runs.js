@@ -1,4 +1,4 @@
-import { sanitizeDisplayText, truncateDisplayText } from "../shared/display-text.js";
+import { previewDisplayText, safeTerminalText, sanitizeDisplayText, truncateDisplayText } from "../shared/display-text.js";
 export const EXTERNAL_RUN_REGISTRY_VERSION = 2;
 export const EXTERNAL_RUN_REGISTRY_KEY = "pi-subagents.external-runs.v2";
 export const EXTERNAL_RUN_LIMITS = {
@@ -70,8 +70,8 @@ function identity(value, field, maxLength = EXTERNAL_RUN_LIMITS.maxIdentityLengt
         throw new Error(`${field} must be a non-empty trimmed string without NUL characters.`);
     if (value.length > maxLength)
         throw new Error(`${field} must be at most ${maxLength} characters.`);
-    const safe = sanitizeDisplayText(value);
-    if (!safe || safe !== value)
+    // Identities are often session-file paths, so Unicode spaces such as U+00A0 are valid; only terminal controls and line breaks are not.
+    if (/[\t\n\p{Zl}\p{Zp}]/u.test(value) || safeTerminalText(value) !== value)
         throw new Error(`${field} must contain only display-safe text.`);
     return value;
 }
@@ -220,7 +220,8 @@ export function snapshotExternalRuns(sessionId, options = {}) {
                 runs.push(run);
         }
         catch (error) {
-            const message = `Malformed cached external run '${cacheKey}': ${getErrorMessage(error)}`;
+            // The cache key joins session and run id with NUL, and a malformed record's id is unvalidated.
+            const message = `Malformed cached external run '${previewDisplayText(cacheKey.slice(sessionPrefix.length), EXTERNAL_RUN_LIMITS.maxIdentityLength)}': ${getErrorMessage(error)}`;
             if (!options.ignoreMalformed)
                 throw new Error(message, { cause: error instanceof Error ? error : undefined });
             current.runs.delete(cacheKey);

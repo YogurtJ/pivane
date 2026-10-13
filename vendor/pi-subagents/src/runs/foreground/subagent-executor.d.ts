@@ -45,6 +45,7 @@ export interface SubagentParamsLike {
     merge?: unknown;
     supersession?: unknown;
     index?: number;
+    toolCallId?: string;
     childId?: string;
     view?: "fleet" | "transcript";
     lines?: number;
@@ -148,7 +149,7 @@ export interface SubagentParamsLike {
     every?: string;
     sessionOnly?: boolean;
     quiet?: boolean;
-    on?: string | number;
+    on?: string[];
     timezone?: string;
     overlap?: "skip";
     catchUp?: "none" | "latest";
@@ -164,6 +165,7 @@ export interface SubagentParamsLike {
 }
 interface ExecutorDeps {
     pi: ExtensionAPI;
+    parentWake?: Pick<ExtensionAPI, "sendMessage">;
     state: SubagentState;
     config: ExtensionConfig;
     asyncByDefault: boolean;
@@ -174,8 +176,11 @@ interface ExecutorDeps {
     tempArtifactsDir: string;
     getSubagentSessionRoot: (parentSessionFile: string | null) => string;
     expandTilde: (p: string) => string;
-    discoverAgents: (cwd: string, scope: AgentScope, preferredModelProvider?: string) => {
+    discoverAgents: (cwd: string, scope: AgentScope, preferredModelProvider?: string, options?: {
+        projectTrusted?: boolean;
+    }) => {
         agents: AgentConfig[];
+        disabledAgents?: string[];
         agentDiagnostics?: AgentDiscoveryDiagnostic[];
         modelScope?: ModelScopeConfig;
         maxThinking?: AgentConfig["maxThinking"];

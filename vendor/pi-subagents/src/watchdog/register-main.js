@@ -1,9 +1,7 @@
-import { Text } from "@earendil-works/pi-tui";
 import { resolveEffectiveThinking, splitKnownThinkingSuffix, THINKING_LEVELS } from "../shared/model-info.js";
 import { SLASH_TEXT_RESULT_TYPE } from "../shared/types.js";
 import { startWatchdogDiffBaselineCapture } from "./diff-tool.js";
 import { formatWatchdogRecommendation, recommendWatchdogModel, resolveWatchdogModelInput, parseWatchdogThinkingInput } from "./model-selection.js";
-import { renderWatchdogWarning } from "./render.js";
 import { createMainWatchdogReview } from "./review.js";
 import { MainWatchdogRuntime } from "./runtime.js";
 import { getWatchdogUserSettingsPath, writeUserWatchdogEnabled, writeWatchdogModelSettings } from "./settings.js";
@@ -128,7 +126,7 @@ export function buildWatchdogStatus(snapshot, ctx) {
     else {
         lines.push("", "Config: ok");
     }
-    lines.push("Sources:", ...snapshot.sources.map(sourceLine), "", "Model commands:", "- /subagents-watchdog recommend-model", "- /subagents-watchdog model recommended (saves to user settings, not project settings)", "- /subagents-watchdog model <provider/model[:thinking]>", "- /subagents-watchdog model inherit", "- /subagents-watchdog session model recommended", "Agent action: subagent({ action: \"watchdog.configure\", model: \"recommended\", scope: \"session\" })");
+    lines.push("Sources:", ...snapshot.sources.map(sourceLine), "", "Model commands:", "- /subagents-watchdog recommend-model", "- /subagents-watchdog model recommended (saves to user settings, not project settings)", "- /subagents-watchdog model <provider/model[:thinking]>", "- /subagents-watchdog model inherit", "- /subagents-watchdog session model recommended", "Agent action: subagent({ action: \"watchdog.configure\", model: \"recommended\", options: { scope: \"session\" } })");
     return lines.join("\n");
 }
 function parseTestCommand(input) {
@@ -360,22 +358,6 @@ export function registerMainWatchdog(pi, options = {}) {
         displayUserWarning: (details) => pi.appendEntry(SUBAGENT_WATCHDOG_WARNING_TYPE, details),
         displayClarification: (content) => pi.sendMessage({ customType: "subagent_watchdog_clarification", content, display: true }, { deliverAs: "steer", triggerTurn: true }),
     });
-    pi.registerMessageRenderer(SUBAGENT_WATCHDOG_WARNING_TYPE, (message, renderOptions, theme) => {
-        const details = message.details;
-        if (!details?.summary || !details.evidence || !details.recommendedAction) {
-            const content = typeof message.content === "string"
-                ? message.content
-                : message.content.filter((entry) => entry.type === "text").map((entry) => entry.text).join("\n");
-            return new Text(content, 0, 0);
-        }
-        return renderWatchdogWarning(details, renderOptions, theme);
-    });
-    pi.registerEntryRenderer(SUBAGENT_WATCHDOG_WARNING_TYPE, (entry, renderOptions, theme) => {
-        const details = entry.data;
-        return details?.summary && details.evidence && details.recommendedAction
-            ? renderWatchdogWarning(details, renderOptions, theme)
-            : undefined;
-    });
     pi.registerCommand("subagents-watchdog", {
         description: "Show or toggle the default-off subagent watchdog",
         handler: (args, ctx) => {
@@ -396,8 +378,7 @@ export function registerMainWatchdog(pi, options = {}) {
         rememberContext(ctx);
         runtime.handleTurnEnd(event, ctx);
     });
-    pi.on("input", (event) => { if (event.source !== "extension")
-        runtime.handleUserInput(); });
+    pi.on("input", (event) => runtime.handleUserInput(event));
     pi.on("model_select", () => runtime.handleModelChange());
     pi.on("tool_result", (_event, ctx) => {
         rememberContext(ctx);

@@ -5,6 +5,8 @@ const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
 const { once } = require('node:events');
+// This fixture hosts a parent session even when the test runner was delegated.
+for (const key of Object.keys(process.env).filter(key => /^PI_SUBAGENT(?:_|S_)/.test(key))) delete process.env[key];
 const { catalog, packagePath, memoryBundle } = require('../server/pi-bundled-capabilities');
 const { ProfileMemoryConfiguration } = require('../server/profile-memory/config');
 const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-bundled-')));
@@ -17,7 +19,12 @@ test.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
 test('vendor inventory is byte-identical upstream and excludes dependency trees', () => {
     const files = require('../scripts/vendor-files.cjs').vendorFiles(path.resolve(__dirname, '..'));
-    assert.equal(files.length, 1344);
+    const manifest = require('../vendor/manifest.json');
+    assert.deepEqual(manifest.packages.map(entry => [entry.name, entry.version, entry.files.length]), [
+        ['pi-subagents', '0.78.0', 1331], ['pi-hermes-memory', '0.9.9', 92],
+    ]);
+    assert.equal(files.length, 1424); // manifest plus the verified official package inventories
+    for (const entry of catalog) assert.equal(entry.version, manifest.packages.find(pkg => pkg.name === entry.name).version);
     assert.equal(files.some(file => file.includes('/node_modules/')), false);
     for (const entry of catalog) assert.ok(files.includes(`${entry.directory}/LICENSE`));
 });
@@ -137,7 +144,7 @@ test('bundled subagent runs against a synthetic provider, with native host contr
     const session = await store.createSession(cwd, 'Bundled fixture');
     const worker = await supervisor.getWorker({ cwd, sessionPath: session.path, sessionId: session.id });
     const resources = await worker.getNativeResources();
-    assert.equal(resources.tools.filter(item => item.name === 'subagents_enable').length, 1);
+    assert.equal(resources.tools.filter(item => item.name === 'subagent').length, 1);
     assert.ok(resources.skills.some(item => item.name === 'pi-subagents'));
     assert.equal(resources.tools.some(item => item.name === 'memory_add'), false);
     assert.equal(fs.existsSync(marker), false);
@@ -203,10 +210,10 @@ test('bundled subagent runs against a synthetic provider, with native host contr
     settings.pivaneBuiltins = { subagents: { extensions: [] } };
     fs.writeFileSync(settingsFile, JSON.stringify(settings));
     await worker.reloadResources();
-    assert.equal((await worker.getNativeResources()).tools.some(item => item.name === 'subagents_enable'), false);
+    assert.equal((await worker.getNativeResources()).tools.some(item => item.name === 'subagent'), false);
     settings.pivaneBuiltins.subagents.extensions = ['+index.js'];
     fs.writeFileSync(settingsFile, JSON.stringify(settings));
     await worker.reloadResources();
-    assert.equal((await worker.getNativeResources()).tools.filter(item => item.name === 'subagents_enable').length, 1);
+    assert.equal((await worker.getNativeResources()).tools.filter(item => item.name === 'subagent').length, 1);
     assert.equal(fs.existsSync(marker), false);
 });

@@ -5,9 +5,11 @@
  * `sendMessage()` accepts the notification. The event bus remains an
  * observation channel, not a delivery acknowledgement.
  */
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type CompletionBatchConfig } from "./completion-batcher.ts";
 import { type ChildWatchdogProgress, type ChildWatchdogWarningSummary, type ParallelHandoffReference, type ScheduleOrigin, type SubagentState } from "../../shared/types.ts";
+import type { ParentWake } from "../../shared/parent-wake.ts";
 import type { ResultDeliveryOwnership } from "./result-delivery-ownership.ts";
 export interface SubagentNotifyChildOutput {
     workflowKey?: string;
@@ -21,6 +23,7 @@ export interface SubagentNotifyChildOutput {
     structuredOutputPath?: string;
     outputArtifactError?: RetainedPathError;
     structuredOutputError?: RetainedPathError;
+    error?: string;
     preview: string;
     previewTruncated?: boolean;
     previewUnavailableReason?: string;
@@ -37,6 +40,8 @@ export interface SubagentNotifyDetails {
     taskInfo?: string;
     resultPreview: string;
     durationMs?: number;
+    /** The finished run's id; for a workflow it equals workflowRunId. */
+    runId?: string;
     workflowRunId?: string;
     childRuns?: Array<{
         runId: string;
@@ -88,12 +93,14 @@ export interface CompletionNotification {
         revival?: string;
         success?: boolean;
         output?: string;
+        error?: string;
         structuredOutput?: unknown;
         structuredOutputPath?: string;
         outputState?: "present" | "absent" | "unknown";
         outputReference?: string | {
             path?: string;
         };
+        savedOutputPath?: string;
         artifactPaths?: {
             outputPath?: string;
         };
@@ -140,7 +147,16 @@ export interface RegisterSubagentNotifyOptions {
 }
 export interface CompletionNotifier {
     deliver(result: CompletionNotification): Promise<boolean>;
+    /** True while a completion is batched, being sent, or accepted as a wake that Pi has not started yet. */
     hasPendingDelivery(): boolean;
+    /** Releases a completion wake once Pi starts it (native message_start). */
+    messageStarted(message: AgentMessage): void;
+    /** Adopts wakes a reloaded notifier left queued for the same session manager and session UUID. */
+    bindSession(sessionManager: Pick<ExtensionContext["sessionManager"], "getSessionId">): void;
+    /** Drops queued wakes unless the session is only reloading extensions. */
+    sessionShutdown(reason: string | undefined): void;
+    /** Send every batched completion now instead of waiting for its batch timer. */
+    flush(): void;
     dispose(): void;
 }
 interface RetainedPathError {
@@ -171,6 +187,6 @@ export interface CompletionSendRegistry {
 /** A fresh registry is injectable so tests and separately scoped runtimes stay isolated. */
 export declare function createCompletionSendRegistry(ttlMs?: number, cap?: number): CompletionSendRegistry;
 export declare function buildCompletionDetails(result: CompletionNotification): SubagentNotifyDetails;
-export default function registerSubagentNotify(pi: ExtensionAPI, state: Pick<SubagentState, "currentSessionId" | "completionOwnerId">, options?: RegisterSubagentNotifyOptions): CompletionNotifier;
+export default function registerSubagentNotify(pi: Pick<ExtensionAPI, "events"> & Partial<Pick<ExtensionAPI, "on">> & Pick<ParentWake, "sendMessage" | "isHeld">, state: Pick<SubagentState, "currentSessionId" | "completionOwnerId">, options?: RegisterSubagentNotifyOptions): CompletionNotifier;
 export {};
 //# sourceMappingURL=notify.d.ts.map

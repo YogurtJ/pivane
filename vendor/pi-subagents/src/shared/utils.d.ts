@@ -2,6 +2,8 @@ import type { Message, Usage as PiUsage } from "@earendil-works/pi-ai";
 import type { AgentProgress, AsyncStatus, Details, DisplayItem, ErrorInfo, SingleResult, ToolCallSummary, Usage } from "./types.ts";
 export declare const PI_CODING_AGENT_PACKAGE_ROOT_ENV = "PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT";
 export declare const PROMPT_REDACTED = "[prompt redacted]";
+export declare const SUBAGENT_STOPPED_MESSAGE = "Subagent stopped.";
+export declare const SUBAGENT_TIMED_OUT_MESSAGE = "Subagent timed out.";
 export declare function resolveWatchPath(watchPath: string, nativeRealpath?: (filePath: string) => string): string;
 export declare function resolveConfigDirName(codingAgentModule?: unknown, entryPoint?: string, packageRoot?: string): string;
 export declare function getConfigDirName(): string;

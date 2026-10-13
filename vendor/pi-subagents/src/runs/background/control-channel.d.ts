@@ -53,6 +53,15 @@ export interface SteerRequest {
     targetIndexes?: number[];
     source?: string;
 }
+export interface CommandRequest {
+    type: "command";
+    id: string;
+    ownerId: string;
+    operation: "status" | "yield" | "cancel";
+    toolCallId?: string;
+    deadlineAt: number;
+}
+export declare function requestAsyncCommand(dir: string, request: CommandRequest): void;
 export declare const MAX_STEER_QUEUE_SIZE = 20;
 /** Control inbox directory inside an async run dir. */
 export declare function controlInboxDir(asyncDir: string): string;
@@ -149,12 +158,14 @@ export declare function watchAsyncControlInbox(asyncDir: string, opts: {
     onTimeout?: () => void;
     onStop?: (request: StopRequest) => void;
     onSteer?: (request: SteerRequest) => void;
+    onCommand?: (request: CommandRequest) => void;
     onError?: (error: unknown, phase: "install" | "scan" | "callback", request?: SteerRequest) => void;
     pollIntervalMs?: number;
     safetyPollIntervalMs?: number;
     platform?: NodeJS.Platform;
     fs?: ControlChannelFs;
     timers?: ControlChannelTimers;
+    now?: () => number;
 }): () => void;
 export {};
 //# sourceMappingURL=control-channel.d.ts.map

@@ -135,6 +135,12 @@ function waitForWake(ms, signal, deps) {
         void sleep(ms, wakeController.signal).then(done);
     });
 }
+/** Signal that wakes the poll sleep on turn abort or a user message. */
+function wakeSignal(signal, deps) {
+    if (!deps.userInputSignal)
+        return signal;
+    return signal ? AbortSignal.any([signal, deps.userInputSignal]) : deps.userInputSignal;
+}
 function matchesId(run, id) {
     return run.id === id || run.id.startsWith(id);
 }
@@ -299,14 +305,18 @@ function windowElapsedResult(text, activeRunIds, activeProviderItems = []) {
         },
     };
 }
-function supervisorYieldResult(activeRunIds, activeProviderItems = []) {
+const WAIT_YIELD_TEXT = {
+    supervisor_request: "Wait yielded for a pending supervisor request. Background work remains active and will continue after the supervisor reply.",
+    user_input: "Wait yielded because the user sent a message. Background work remains active; read the message before waiting again.",
+};
+function yieldResult(reason, activeRunIds, activeProviderItems = []) {
     return {
-        content: [{ type: "text", text: "Wait yielded for a pending supervisor request. Background work remains active and will continue after the supervisor reply." }],
+        content: [{ type: "text", text: WAIT_YIELD_TEXT[reason] }],
         details: {
             mode: "management",
             results: [],
             wait: {
-                reason: "supervisor_request",
+                reason,
                 timedOut: false,
                 activeRunIds,
                 activeProviderItems: activeProviderItems.map(({ provider, id }) => ({ provider, id })),
@@ -314,7 +324,7 @@ function supervisorYieldResult(activeRunIds, activeProviderItems = []) {
         },
     };
 }
-function supervisorYieldForScope(scope, params, deps, nowMs) {
+function yieldForScope(reason, scope, params, deps, nowMs) {
     try {
         const activeAsyncIds = new Set(activeRunsForSession(params.id ? { id: params.id } : {}, deps).map((run) => run.id));
         const activeRunIds = new Set([...scope.asyncRunIds].filter((id) => activeAsyncIds.has(id)));
@@ -328,7 +338,7 @@ function supervisorYieldForScope(scope, params, deps, nowMs) {
         const activeProviderItems = scope.providerIds.size > 0
             ? backgroundWorkForSession(deps, nowMs).items.filter((item) => scope.providerIds.has(backgroundWorkIdentity(item)))
             : [];
-        return supervisorYieldResult([...activeRunIds], activeProviderItems);
+        return yieldResult(reason, [...activeRunIds], activeProviderItems);
     }
     catch (error) {
         return result(error instanceof Error ? error.message : String(error), true);
@@ -455,7 +465,8 @@ function detachedForegroundWaitUpdate(run, pendingIndices, nowMs, elapsedMs) {
     }
     return result(lines.join("\n"));
 }
-async function waitForDetachedForegroundRun(run, signal, deps, startedAt, now, pollIntervalMs, timeoutMs, supervisorYield) {
+async function waitForDetachedForegroundRun(run, signal, deps, startedAt, now, pollIntervalMs, timeoutMs, yieldWait) {
+    const wake = wakeSignal(signal, deps);
     const initialDetachedIndices = new Set(run.children.filter((child) => child.status === "detached").map((child) => child.index));
     while (true) {
         if (deps.state.currentSessionId !== run.sessionId) {
@@ -466,7 +477,9 @@ async function waitForDetachedForegroundRun(run, signal, deps, startedAt, now, p
             return result(`Remembered foreground run "${run.runId}" disappeared before a terminal child result was recorded. Completion cannot be confirmed; do not launch a replacement without checking the originating child session.`, true);
         }
         if (deps.hasPendingSupervisorRequest?.())
-            return supervisorYield();
+            return yieldWait("supervisor_request");
+        if (deps.userInputSignal?.aborted)
+            return yieldWait("user_input");
         const pending = current.children.filter((child) => initialDetachedIndices.has(child.index) && child.status === "detached");
         const attention = foregroundChildrenNeedingAttention(current, initialDetachedIndices);
         if (attention.length > 0)
@@ -483,16 +496,16 @@ async function waitForDetachedForegroundRun(run, signal, deps, startedAt, now, p
         if (now() - startedAt >= timeoutMs) {
             return windowElapsedResult(`Wait window elapsed after ${formatDuration(timeoutMs)} with remembered foreground run "${run.runId}" still detached. Reply to any pending supervisor request, then call bg_wait({ id: "${run.runId}" }) again or inspect status; do not resume or launch a replacement while it remains detached.`, [run.runId]);
         }
-        await waitForWake(pollIntervalMs, signal, deps);
+        await waitForWake(pollIntervalMs, wake, deps);
     }
 }
-async function waitForSessionDetachedForegroundRuns(runs, signal, deps, startedAt, now, pollIntervalMs, timeoutMs, supervisorYield) {
+async function waitForSessionDetachedForegroundRuns(runs, signal, deps, startedAt, now, pollIntervalMs, timeoutMs, yieldWait) {
     const texts = [];
     for (const run of runs) {
-        const one = await waitForDetachedForegroundRun(run, signal, deps, startedAt, now, pollIntervalMs, timeoutMs, supervisorYield);
+        const one = await waitForDetachedForegroundRun(run, signal, deps, startedAt, now, pollIntervalMs, timeoutMs, yieldWait);
         if (one.isError)
             return one;
-        if (one.details.wait?.reason === "supervisor_request")
+        if (one.details.wait && one.details.wait.reason !== "window_elapsed")
             return one;
         if (one.details.wait?.reason === "window_elapsed") {
             const activeRunIds = runs.filter((initial) => {
@@ -598,13 +611,14 @@ export async function waitForSubagents(params, signal, deps) {
         })),
         providerIds: initialProviderIds,
     };
-    const supervisorYield = () => supervisorYieldForScope(initialScope, params, deps, now());
+    const yieldWait = (reason) => yieldForScope(reason, initialScope, params, deps, now());
+    const wake = wakeSignal(signal, deps);
     if (selectedForeground) {
-        return waitForDetachedForegroundRun(selectedForeground, signal, deps, startedAt, now, pollIntervalMs, timeoutMs, supervisorYield);
+        return waitForDetachedForegroundRun(selectedForeground, signal, deps, startedAt, now, pollIntervalMs, timeoutMs, yieldWait);
     }
     if (active.length === 0 && providerActive.length === 0) {
         if (waitForAll && !params.id && foreground.length > 0) {
-            return waitForSessionDetachedForegroundRuns(foreground, signal, deps, startedAt, now, pollIntervalMs, timeoutMs, supervisorYield);
+            return waitForSessionDetachedForegroundRuns(foreground, signal, deps, startedAt, now, pollIntervalMs, timeoutMs, yieldWait);
         }
         return result(params.id
             ? `No active run matched "${params.id}". Nothing to wait for.`
@@ -640,6 +654,8 @@ export async function waitForSubagents(params, signal, deps) {
             ...activeInitialProviderItems.map((item) => `${item.provider}/${item.id}`),
         ].join(", ");
         deps.onUpdate?.(asyncWaitUpdate(activeInitialRuns, activeInitialProviderItems.length, now() - startedAt));
+        if (deps.userInputSignal?.aborted)
+            return yieldWait("user_input");
         if (signal?.aborted) {
             return result(`Wait aborted after ${formatDuration(now() - startedAt)}. Still active: ${stillActive}.`, true);
         }
@@ -647,7 +663,7 @@ export async function waitForSubagents(params, signal, deps) {
             return windowElapsedResult(`Wait window elapsed after ${formatDuration(timeoutMs)} with ${activeInitialRuns.length} async run(s) and ${activeInitialProviderItems.length} provider item(s) still active: ${stillActive}. The work keeps going; call bg_wait again or inspect subagent status.`, activeInitialRuns.map((run) => run.id), activeInitialProviderItems);
         }
         try {
-            await waitForWake(pollIntervalMs, signal, deps);
+            await waitForWake(pollIntervalMs, wake, deps);
             if (deps.state.currentSessionId !== sessionId)
                 return result("Wait stopped because the active session changed.", true);
             active = activeRunsForSession(waitParams, deps);
@@ -665,7 +681,7 @@ export async function waitForSubagents(params, signal, deps) {
         }
     }
     if (supervisorBarrier) {
-        return supervisorYield();
+        return yieldWait("supervisor_request");
     }
     let terminalSummary;
     let finishedAsyncCount;
@@ -701,13 +717,11 @@ export async function waitForSubagents(params, signal, deps) {
     const recoveryNote = formatCompletionRecovery(completions) + (references.length ? `\n${references.join("\n")}\n` : "");
     if (waitForAll) {
         const foregroundResult = !params.id && foreground.length > 0 && relevantAttention.length === 0
-            ? await waitForSessionDetachedForegroundRuns(foreground, signal, deps, startedAt, now, pollIntervalMs, timeoutMs, supervisorYield)
+            ? await waitForSessionDetachedForegroundRuns(foreground, signal, deps, startedAt, now, pollIntervalMs, timeoutMs, yieldWait)
             : undefined;
         if (foregroundResult?.isError)
             return foregroundResult;
-        if (foregroundResult?.details.wait?.reason === "supervisor_request")
-            return foregroundResult;
-        if (foregroundResult?.details.wait?.reason === "window_elapsed")
+        if (foregroundResult?.details.wait)
             return foregroundResult;
         const foregroundNote = foregroundResult
             ? `\n${foregroundResult.content.map((part) => part.type === "text" ? part.text : "").join("\n")}`

@@ -11,7 +11,7 @@ export type RecommendedRoleTier = "cheap" | "medium" | "strong";
 interface ProfileAgentOverride {
     model?: string;
     thinking?: string | false;
-    machine?: string;
+    machine?: string | false;
 }
 export interface SubagentProfileFile {
     subagents: {

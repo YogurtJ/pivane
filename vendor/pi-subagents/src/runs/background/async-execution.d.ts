@@ -3,6 +3,7 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type AgentConfig, type UnknownAgentDiagnosticContext } from "../../agents/agents.ts";
+import { type ClaudeCodeOverride } from "../shared/claude-code-adapter.ts";
 import { type ChainStep } from "../../shared/settings.ts";
 import { type RunnerStep } from "../shared/parallel-utils.ts";
 import type { ContextMode } from "../shared/context-mode.ts";
@@ -26,6 +27,8 @@ interface AsyncExecutionContext {
     completionOwnerId?: string;
     /** Parent session id used by permission-system ask forwarding. */
     parentSessionId?: string;
+    /** Parent session file, recorded as each new child session's `parentSession` header. */
+    parentSessionFile?: string;
     permissions?: PermissionConfig;
     currentModelProvider?: string;
     currentModel?: ParentModel;
@@ -35,6 +38,8 @@ interface AsyncExecutionContext {
     modelResponseAliases?: Record<string, string[]>;
     /** Whether the parent session has an interactive UI. */
     interactive?: boolean;
+    /** User-configured runner launchers; an agent's `launcher` must name one of them. */
+    runnerLaunchers?: Record<string, string[]>;
     /** The executor's own child runtime when the launch comes from an in-process child. */
     childRuntime?: ChildRuntimeConfig;
     /** The launching session's project trust; undefined when the host has no trust concept. */
@@ -101,6 +106,7 @@ interface AsyncChainParams {
     /** Global cap on simultaneously-running subagent tasks within the async run. */
     globalConcurrencyLimit?: number;
     capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
+    requiredExtensions?: RequiredChildExtensionSnapshot;
     thinkingCeiling?: ThinkingLevel;
     runFanoutBudget?: RunFanoutBudgetDescriptor;
     parentWorkflowRunId?: string;
@@ -109,6 +115,8 @@ interface AsyncChainParams {
     activeAsyncCapacity?: ActiveAsyncCapacityHandle;
 }
 interface AsyncSingleParams {
+    /** Originating executor invocation, distinct from the async run id. */
+    toolCallId?: string;
     agent: string;
     task?: string;
     /** Raw caller-facing goal used only by the started event. */
@@ -244,6 +252,8 @@ export interface AsyncRunnerStepBuildParams {
     /** PI_SUBAGENT_TOOL_TIMEOUT_MS override (lowest precedence). */
     toolTimeoutMsEnv?: string | undefined;
     capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
+    /** Retained snapshot from the launch being continued; takes precedence over the live registry, as in single launches. */
+    requiredExtensions?: RequiredChildExtensionSnapshot;
     thinkingCeiling?: ThinkingLevel;
 }
 export type AsyncRunnerStepBuildResult = {
@@ -252,6 +262,8 @@ export type AsyncRunnerStepBuildResult = {
     workflowGraph: ReturnType<typeof buildWorkflowGraphSnapshot>;
     eventChain: ChainStep[];
     originalTask?: string;
+    /** Launcher name shared by every new step; absent when they run unwrapped. */
+    launcher?: string;
 } | {
     error: string;
 };
@@ -263,11 +275,20 @@ export declare function resolveAsyncRunnerLogPaths(cfg: object): {
     stderrPath: string;
 } | undefined;
 export declare function emitProcessTerminalEvent(ctx: AsyncExecutionContext, proof: unknown): void;
+/**
+ * An explicit `thinking: false` clears the level, so only `undefined` falls
+ * through to the agent's own value. Treating `false` as absent would silently
+ * apply the agent default the caller just cleared.
+ */
+export declare function resolveClaudeCodeThinking(source: string | false | undefined, fallback: string | false | undefined): string | undefined;
+/** A pinned Claude Code model cannot survive pane-native saved-machine placement, which
+ * owns the remote model registry, so the combination fails instead of losing both flags. */
+export declare function assertClaudeCodeOverrideIsLocal(agent: string, machine: string | undefined, override: ClaudeCodeOverride | undefined): void;
 export declare function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildParams): AsyncRunnerStepBuildResult;
 /**
  * Execute a chain asynchronously
  */
-export declare function executeAsyncChain(id: string, params: AsyncChainParams): AsyncExecutionResult;
+export declare function executeAsyncChain(id: string, params: AsyncChainParams): AsyncExecutionResult | Promise<AsyncExecutionResult>;
 /**
  * Execute a single agent asynchronously
  */

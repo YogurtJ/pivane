@@ -5,15 +5,16 @@ import { discoverAgents } from "../agents/agents.js";
 import { getArtifactsDir } from "../shared/artifacts.js";
 import { createSubagentExecutor } from "../runs/foreground/subagent-executor.js";
 import { resolveWaitToolConfig } from "../runs/background/wait-config.js";
-import { readNestedControlRequests, resolveInheritedNestedRoute, writeNestedControlResult } from "../runs/shared/nested-events.js";
+import { nestedRunNotActiveMessage, readNestedControlRequests, resolveInheritedNestedRoute, writeNestedControlResult } from "../runs/shared/nested-events.js";
 import { deliverSubagentIntercomMessageEvent } from "../intercom/result-intercom.js";
 import { createNativeSupervisorChannel, NATIVE_SUPERVISOR_TOOL_NAME, resolveSupervisorChannelDir } from "../intercom/native-supervisor-channel.js";
 import { readStatus } from "../shared/utils.js";
 import { resolveSubagentIntercomTarget } from "../intercom/intercom-bridge.js";
 import { createSubagentParamsSchema } from "./schemas.js";
+import { registerPinnedTool } from "./declaration-pinning.js";
 import { resolveDisabledFeatureSurface } from "../shared/disabled-features.js";
 import { finalizeToolResult } from "./tool-result.js";
-import { removedModelWorkflowFieldError } from "./public-execution.js";
+import { flattenSubagentToolOptions } from "./subagent-options.js";
 import { loadConfig, resolveAsyncByDefault } from "./config.js";
 import { SUBAGENT_ASYNC_STARTED_EVENT } from "../shared/types.js";
 import { createChildExternalJobBridgeSweeper } from "../runs/shared/external-job-bridge.js";
@@ -76,7 +77,7 @@ function startNestedControlInboxListener(pi, state, route, inboxState) {
                             try {
                                 const control = state.foregroundControls.get(request.targetRunId);
                                 if (!control) {
-                                    message = `Nested run ${request.targetRunId} is not active in this fanout child.`;
+                                    message = nestedRunNotActiveMessage(request.targetRunId);
                                 }
                                 else if (request.action === "interrupt") {
                                     ok = control.interrupt?.() === true;
@@ -220,13 +221,10 @@ export default function registerFanoutChildSubagentExtension(pi, childConfig) {
         ].join("\n"),
         parameters: params,
         async execute(id, params, signal, onUpdate, ctx) {
-            const removedField = removedModelWorkflowFieldError(params);
-            if (removedField)
-                throw new Error(removedField);
-            return finalizeToolResult(await executor.executePublic(id, params, signal ?? new AbortController().signal, onUpdate, ctx));
+            return finalizeToolResult(await executor.executePublic(id, flattenSubagentToolOptions(params, disabledFeatures), signal ?? new AbortController().signal, onUpdate, ctx));
         },
     };
-    pi.registerTool(tool);
+    registerPinnedTool(pi, tool);
     const bridgeSweeper = createChildExternalJobBridgeSweeper();
     const unsubscribeBridgeStarted = pi.events.on(SUBAGENT_ASYNC_STARTED_EVENT, (payload) => {
         const info = payload;

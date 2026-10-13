@@ -31,6 +31,7 @@ export const KNOWN_FIELDS = new Set([
     "subagentOnlyExtensions",
     "mutationTools",
     "machine",
+    "launcher",
     "output",
     "outputMode",
     "outputSchema",
@@ -57,7 +58,14 @@ export function serializeAgent(config, options = {}) {
     lines.push(`name: ${frontmatterNameForConfig(config)}`);
     if (config.packageName)
         lines.push(`package: ${config.packageName}`);
-    lines.push(`description: ${config.description}`);
+    if (config.description.includes("\n")) {
+        lines.push("description: |-");
+        for (const line of config.description.split("\n"))
+            lines.push(`  ${line}`);
+    }
+    else {
+        lines.push(`description: ${config.description}`);
+    }
     if (config.advertise === true || preserve("advertise"))
         lines.push(`advertise: ${config.advertise === true ? "true" : "false"}`);
     const aliasesValue = joinComma(config.aliases);
@@ -140,6 +148,8 @@ export function serializeAgent(config, options = {}) {
         lines.push(`mutationTools: ${mutationToolsValue ?? ""}`);
     if (config.machine || preserve("machine"))
         lines.push(`machine: ${config.machine ?? ""}`);
+    if (config.launcher)
+        lines.push(`launcher: ${config.launcher}`);
     if (config.output || preserve("output"))
         lines.push(`output: ${config.output ?? ""}`);
     if (config.outputMode || preserve("outputMode"))

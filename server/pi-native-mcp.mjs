@@ -1,4 +1,4 @@
-// Pi 1.1.0 SDK boundary: the official extensions own transports, OAuth,
+// Pi 1.2.0 SDK boundary: the official extensions own transports, OAuth,
 // discovery, tool execution and shutdown. No adapter protocol is reimplemented.
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';

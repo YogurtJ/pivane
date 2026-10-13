@@ -78,7 +78,7 @@ export function resolveMcpDirectToolResolution(selectors = [], cwd = process.cwd
 }
 export function resolveMcpDirectToolSelections(...args) { return resolveMcpDirectToolResolution(...args).selections; }
 export function resolveMcpDirectToolNames(...args) { return resolveMcpDirectToolSelections(...args).map(item => item.name); }
-// pi-subagents 0.74.0 imports these helpers for the native launch plan.
+// pi-subagents 0.78.0 imports these helpers for the native launch plan.
 export function extensionOnlyMcpServers(selections, host, cwd, projectTrusted) {
     const registered = new Set((host.getMcpServers?.() || []).map(entry => entry.name));
     const configured = new Set(loadNativeMcpConfig({ cwd, agentDir: getAgentDir(), projectTrusted }).servers.map(entry => entry.name));

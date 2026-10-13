@@ -12,12 +12,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { PI_CODING_AGENT_PACKAGE_ROOT_ENV } from "../../shared/utils.js";
+import { resolveInstalledPiPackageRoot, resolvePiPackageRoot } from "./pi-spawn.js";
 export const MISSING_STRUCTURED_OUTPUT_CALL_ERROR = "Missing structured_output call; this step has outputSchema and must finish by calling structured_output.";
 export const MISSING_STRUCTURED_ACCEPTANCE_REPORT_ERROR = "Missing acceptanceReport in structured_output call; acceptance.report is \"on\".";
 export const STRUCTURED_OUTPUT_REJECTION_ERROR = "structured_output was invoked but no valid output was captured.";
 export const INVALID_STRUCTURED_OUTPUT_SCHEMA_ERROR = "Structured output invocation was rejected: invalid outputSchema.";
 export const STRUCTURED_OUTPUT_VALIDATOR_UNAVAILABLE_ERROR = "Structured output invocation was rejected: validator unavailable.";
 export const MAX_STRUCTURED_OUTPUT_REJECTION_ERROR_BYTES = 4096;
+const MAX_LISTED_ALLOWED_VALUES = 20;
 function utf8Prefix(value, maxBytes) {
     if (Buffer.byteLength(value, "utf8") <= maxBytes)
         return value;
@@ -166,20 +168,28 @@ async function importCompile() {
     catch (error) {
         failures.push(`direct import failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-    const packageRoot = process.env[PI_CODING_AGENT_PACKAGE_ROOT_ENV];
-    if (packageRoot) {
+    // Pi's extension loader imports this compiled file natively, so the lazy import above misses
+    // Pi's host-package aliases when TypeBox is installed only in Pi's own tree.
+    const envRoot = process.env[PI_CODING_AGENT_PACKAGE_ROOT_ENV]?.trim() || undefined;
+    if (!envRoot)
+        failures.push(`${PI_CODING_AGENT_PACKAGE_ROOT_ENV} is not set`);
+    const roots = new Map();
+    for (const [label, root] of [[PI_CODING_AGENT_PACKAGE_ROOT_ENV, envRoot], ["running Pi package root", resolvePiPackageRoot()], ["installed Pi package root", resolveInstalledPiPackageRoot()]]) {
+        if (root && !roots.has(root))
+            roots.set(root, label);
+    }
+    if (roots.size === 0)
+        failures.push("no Pi package root found");
+    for (const [root, label] of roots) {
         try {
-            const compile = await resolveCompileFromPackageRoot(packageRoot);
+            const compile = await resolveCompileFromPackageRoot(root);
             if (compile)
                 return compile;
-            failures.push("Pi package root typebox/compile did not export a Compile function");
+            failures.push(`${label} ${root}: typebox/compile did not export a Compile function`);
         }
         catch (error) {
-            failures.push(`Pi package root import failed: ${error instanceof Error ? error.message : String(error)}`);
+            failures.push(`${label} ${root}: ${error instanceof Error ? error.message : String(error)}`);
         }
-    }
-    else {
-        failures.push(`${PI_CODING_AGENT_PACKAGE_ROOT_ENV} is not set`);
     }
     throw new Error(`Cannot load typebox/compile for structured output validation (${failures.join("; ")})`);
 }
@@ -316,6 +326,14 @@ function formatValidationError(error) {
     const pathText = error.instancePath ? error.instancePath.replace(/^\//, "").replace(/\//g, ".") : "root";
     if (error.keyword === "required" && error.params?.requiredProperties?.length) {
         return error.params.requiredProperties.map((property) => `${pathText === "root" ? property : `${pathText}.${property}`}: is required`);
+    }
+    if (error.keyword === "enum" && error.params?.allowedValues?.length) {
+        const values = error.params.allowedValues;
+        const extra = values.length - MAX_LISTED_ALLOWED_VALUES;
+        return [`${pathText}: must be one of ${values.slice(0, MAX_LISTED_ALLOWED_VALUES).map((value) => JSON.stringify(value)).join(", ")}${extra > 0 ? `, and ${extra} more` : ""}`];
+    }
+    if (error.keyword === "const" && error.params && "allowedValue" in error.params) {
+        return [`${pathText}: must be ${JSON.stringify(error.params.allowedValue)}`];
     }
     return [`${pathText}: ${error.message}`];
 }

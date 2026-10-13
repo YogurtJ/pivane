@@ -1,12 +1,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { resultFilePath, resultPayloadPathForSessionRun } from "./result-files.js";
-import { readStatus } from "../../shared/utils.js";
+import { SUBAGENT_STOPPED_MESSAGE, SUBAGENT_TIMED_OUT_MESSAGE, readStatus } from "../../shared/utils.js";
 const TERMINAL_STATES = new Set(["complete", "failed", "partial", "paused", "stopped"]);
 const TERMINAL_STEP_STATUSES = new Set(["complete", "completed", "failed", "partial", "paused", "stopped"]);
 function readResultFile(resultPath) {
+    let raw;
     try {
-        return JSON.parse(fs.readFileSync(resultPath, "utf-8"));
+        raw = fs.readFileSync(resultPath, "utf-8");
     }
     catch (error) {
         if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
@@ -14,6 +15,7 @@ function readResultFile(resultPath) {
         }
         throw error;
     }
+    return { data: JSON.parse(raw), raw };
 }
 function readImportedResultFile(root, status) {
     const direct = readResultFile(root.resultPath);
@@ -60,7 +62,7 @@ function outputFromTerminalStatus(root, status, step) {
     const agent = step?.agent ?? status.steps?.[root.index]?.agent ?? "subagent";
     const timedOut = step?.timedOut === true || status.timedOut === true;
     const stopped = step?.stopped === true || status.stopped === true || status.state === "stopped";
-    const message = step?.error ?? status.error ?? (stopped ? "Subagent stopped by user." : `Attached async root ${root.runId} ended without a result file at ${root.resultPath}.`);
+    const message = step?.error ?? status.error ?? (stopped ? SUBAGENT_STOPPED_MESSAGE : `Attached async root ${root.runId} ended without a result file at ${root.resultPath}.`);
     const partialStatus = status.state === "partial" || step?.status === "partial";
     const execution = step?.execution ?? (partialStatus
         ? { status: "partial", success: false, exitCode: 1, error: message }
@@ -106,7 +108,7 @@ function outputFromTimeout(root, status, message, stopped = false) {
         ...(step?.transcriptPath ? { transcriptPath: step.transcriptPath } : {}),
     };
 }
-function buildImportedResult(root, status, result) {
+function buildImportedResult(root, status, { data: result, raw }) {
     const child = result.results?.[root.index];
     const step = selectedStatusStep(status, root.index);
     const state = resultState(result, child);
@@ -115,7 +117,7 @@ function buildImportedResult(root, status, result) {
     const timedOut = child?.timedOut === true || step?.timedOut === true || result.timedOut === true || status?.timedOut === true;
     const stopped = child?.stopped === true || step?.stopped === true || result.stopped === true || status?.stopped === true || state === "stopped";
     const success = state === "complete" && !timedOut && !stopped;
-    const error = child?.error ?? (success ? undefined : stopped ? "Subagent stopped by user." : result.error ?? result.summary ?? status?.error ?? `Attached async root ${root.runId} did not complete successfully.`);
+    const error = child?.error ?? (success ? undefined : stopped ? SUBAGENT_STOPPED_MESSAGE : result.error ?? result.summary ?? status?.error ?? `Attached async root ${root.runId} did not complete successfully.`);
     const execution = state ? { status: state === "complete" ? "completed" : state, success, exitCode: success ? 0 : 1, ...(error ? { error } : {}) } : undefined;
     const usage = child?.usage;
     return {
@@ -123,6 +125,7 @@ function buildImportedResult(root, status, result) {
         importedPublication: {
             ...(typeof result.sessionId === "string" ? { sessionId: result.sessionId } : {}),
             ...(typeof result.toolCallId === "string" ? { toolCallId: result.toolCallId } : {}),
+            snapshot: raw,
         },
         output: success ? output : (output || error || ""),
         success,
@@ -159,7 +162,7 @@ export async function waitForImportedAsyncRoot(root, options = {}) {
     for (;;) {
         const status = readStatus(root.asyncDir);
         if (options.shouldAbort?.())
-            return outputFromTimeout(root, status, options.timeoutMessage ?? "Subagent timed out.", options.abortedAsStopped === true);
+            return outputFromTimeout(root, status, options.timeoutMessage ?? SUBAGENT_TIMED_OUT_MESSAGE, options.abortedAsStopped === true);
         const result = readImportedResultFile(root, status);
         if (result)
             return buildImportedResult(root, status, result);

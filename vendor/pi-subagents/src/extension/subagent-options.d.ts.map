@@ -1,0 +1,1 @@
+{"version":3,"file":"subagent-options.d.ts","sourceRoot":"","sources":["../../../src/extension/subagent-options.ts"],"names":[],"mappings":"AAEA,OAAO,KAAK,EAAE,kBAAkB,EAAE,MAAM,yCAAyC,CAAC;AAClF,OAAO,KAAK,EAAE,sBAAsB,EAAE,MAAM,gCAAgC,CAAC;AAS7E;;;GAGG;AACH,wBAAgB,0BAA0B,CAAC,MAAM,EAAE,MAAM,CAAC,MAAM,EAAE,OAAO,CAAC,EAAE,QAAQ,CAAC,EAAE,sBAAsB,GAAG,kBAAkB,CA8BjI"}

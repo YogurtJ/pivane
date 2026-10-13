@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "pi-subagents",
-  "version": "0.74.0",
+  "version": "0.78.0",
   "description": "Pi extension for single-agent delegation and scripted multi-agent workflows",
   "author": "Nico Bailon",
   "license": "MIT",
@@ -17,6 +17,7 @@
     "pi-subagents": "install.mjs"
   },
   "dependencies": {
+    "@js-temporal/polyfill": "0.5.1",
     "acorn": "8.18.0",
     "jiti": "2.7.0",
     "undici": "8.10.2",
@@ -50,6 +51,7 @@
     "pi-package",
     "pi",
     "pi-coding-agent",
+    "extension",
     "subagents",
     "ai",
     "agents",

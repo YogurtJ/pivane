@@ -2,7 +2,7 @@
  * Agent discovery and configuration
  */
 import * as fs from "node:fs";
-import type { AcceptanceInput, AcceptanceRole, AgentRunnerConfig, JsonSchemaObject, OutputMode, ToolBudgetConfig } from "../shared/types.ts";
+import { type AcceptanceInput, type AcceptanceRole, type AgentRunnerConfig, type JsonSchemaObject, type OutputMode, type ToolBudgetConfig } from "../shared/types.ts";
 import { type ModelScopeConfig } from "../runs/shared/model-scope.ts";
 export { BUILTIN_AGENT_NAMES } from "./builtin-names.ts";
 export { buildRuntimeName, frontmatterNameForConfig, parsePackageName } from "./identity.ts";
@@ -144,6 +144,8 @@ export interface AgentConfig {
     permissions?: PermissionRules;
     memory?: AgentMemoryConfig;
     machine?: string;
+    /** Name of a user-configured `runnerLaunchers` entry that wraps this agent's background runner. */
+    launcher?: string;
     disabled?: boolean;
     extraFields?: Record<string, string>;
     override?: BuiltinAgentOverrideInfo;
@@ -219,9 +221,12 @@ export interface UnknownAgentDiagnosticContext {
     scope: AgentScope;
     directories: readonly AgentDefinitionDirectoryReport[];
     agents: readonly AgentConfig[];
+    disabledAgents?: readonly string[];
 }
 export interface AgentDiscoveryResult {
     agents: AgentConfig[];
+    /** Names that resolved to a disabled definition, which discovery leaves out of `agents`. */
+    disabledAgents?: string[];
     agentDiagnostics?: AgentDiscoveryDiagnostic[];
     projectAgentsDir: string | null;
     cwd: string;
@@ -231,7 +236,11 @@ export interface AgentDiscoveryResult {
     maxThinking?: ThinkingLevel;
 }
 /** Create formatter input from the exact discovery operation used for resolution. */
-export declare function unknownAgentDiagnosticContext(discovered: Pick<AgentDiscoveryResult, "cwd" | "scope" | "directories" | "agents">): UnknownAgentDiagnosticContext;
+export declare function unknownAgentDiagnosticContext(discovered: Pick<AgentDiscoveryResult, "cwd" | "scope" | "directories" | "agents" | "disabledAgents">): UnknownAgentDiagnosticContext;
+/** One line per agent the caller can launch instead, so a wrong name needs no separate list call. */
+export declare function formatAvailableAgentLines(agents: readonly AgentConfig[]): string[];
+/** The closest agent name or alias when `name` looks like a typo of one. */
+export declare function suggestAgentName(name: string, agents: readonly AgentConfig[]): string | undefined;
 /** Render local discovery evidence without exposing filesystem error details. */
 export declare function formatUnknownAgentError(name: string, context: UnknownAgentDiagnosticContext, prefix?: string): string;
 export declare function resolveAgentName(name: string, agents: AgentConfig[]): {
@@ -241,10 +250,12 @@ export declare function resolveAgentName(name: string, agents: AgentConfig[]): {
 export declare function findNearestGitRoot(cwd: string): string | null;
 export declare function findNearestProjectRoot(cwd: string): string | null;
 export declare function findConfiguredProjectRoot(cwd: string): string | null;
+export declare function validateOptionalMachine(value: unknown, label: string): string | undefined;
 export interface RuntimeAgentSettingsContext {
     cwd: string;
     scope: AgentScope;
     preferredModelProvider?: string;
+    projectTrusted?: boolean;
 }
 /**
  * Runtime-registered agents keep their extension-owned definition (prompt,
@@ -320,6 +331,8 @@ export interface AgentDiscoverySnapshot {
 /** Undefined uses synchronous npm lookup; null skips global npm discovery. */
 export interface AgentDiscoveryOptions {
     globalNpmRoot?: string | null;
+    /** False when the session declined project trust: project settings, agents, chains and packages are ignored. Defaults to true. */
+    projectTrusted?: boolean;
 }
 /** Clear process-local discovery snapshots, primarily for hosts that reload settings in place. */
 export declare function clearAgentDiscoveryCache(): void;

@@ -12,5 +12,6 @@ export declare function collectGoalContinuationNotices(input: {
     retainedChildren: RetainedChild[];
     turnId: number;
     now?: number;
+    onError?: (missionId: string, error: unknown) => void;
 }): GoalContinuationNotice[];
 //# sourceMappingURL=goal-driver.d.ts.map
