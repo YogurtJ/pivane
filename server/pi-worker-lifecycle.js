@@ -8,6 +8,7 @@ function workerLifecycle(worker) {
     if (worker.shell.busy) operations.push('shell');
     if (worker.controlPending) operations.push('control');
     if (worker.promptPending) operations.push('prompt');
+    if (worker.runStartupCalls?.size) operations.push('native-run');
     if (worker.compactPending) operations.push('compaction');
     if (worker.modelChangesPending || worker.modelCatalog.inflight) operations.push('model');
     if (worker.modelSpeed?.pending.size) operations.push('model-speed');

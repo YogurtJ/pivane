@@ -38,6 +38,20 @@ test('a reserved request remains busy before native agent_start; background titl
     assert.deepEqual(workerLifecycle(value).blockers, []);
 });
 
+test('native SDK calls retain lifecycle ownership after agent_settled and until matching completion', () => {
+    const value = worker(); value.runStartupCalls = new Set(['synthetic-call']);
+    assert.deepEqual(workerLifecycle(value).activity, { busy: true, phase: 'running' });
+    assert.ok(workerLifecycle(value).blockers.includes('native-run'));
+    value.activity.handle({ type: 'agent_start' });
+    value.activity.handle({ type: 'agent_settled' });
+    assert.ok(workerLifecycle(value).blockers.includes('native-run'), 'native settlement cannot release a pending SDK call/deferred wake');
+    value.promptAdmissionUncertain = true;
+    value.runStartupCalls.clear();
+    assert.deepEqual(workerLifecycle(value).blockers, ['prompt-admission-uncertain'], 'SDK completion never clears uncertain admission');
+    value.promptAdmissionUncertain = false;
+    assert.deepEqual(workerLifecycle(value).blockers, []);
+});
+
 test('supervisor idle includes starting and temporary workers without exposing their internals to routes', async t => {
     const supervisor = new PiAgentSupervisor();
     t.after(() => supervisor.dispose());

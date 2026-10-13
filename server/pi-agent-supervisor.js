@@ -35,6 +35,8 @@ class AgentWorker extends EventEmitter {
         this.compactPending = false;
         this.promptPending = 0;
         this.promptAdmissionUncertain = false;
+        this.runStartupCalls = new Set();
+        this.runStartupSequence = 0;
         this.modelChangesPending = 0;
         this.modelChangeUncertain = false;
         this.compaction = null;
@@ -98,6 +100,7 @@ class AgentWorker extends EventEmitter {
         }));
         this.client.on('exit', error => {
             this.exited = true;
+            this.runStartupCalls.clear();
             for (const id of this.pendingUi.keys()) this.resolveUi(id);
             this._broadcast({ type: 'gateway_error', error: error.message });
             this.emit('exit', error);
@@ -696,6 +699,19 @@ class AgentWorker extends EventEmitter {
     _handleEvent(event) {
         if (event.type === 'response' && this.queueClearResponseIds.delete(event.id)) return;
         if (event.type === 'pivane_queue') { this.handleQueueEvent(event); return; }
+        if (event.type === 'pivane_run_startup') {
+            // Intercept even malformed, foreign and late private frames. Only a
+            // matching SDK call completion (or real child exit) releases its slot.
+            if (!this.exited && event.token === this.navigationToken && event.sessionId === this.sessionId
+                && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(event.id)
+                && Number.isSafeInteger(event.sequence) && event.sequence > this.runStartupSequence
+                && ['started', 'finished'].includes(event.phase)) {
+                this.runStartupSequence = event.sequence;
+                if (event.phase === 'started') this.runStartupCalls.add(event.id);
+                else this.runStartupCalls.delete(event.id);
+            }
+            return;
+        }
         if (this.shell.handle(event)) return;
         if (event.type === 'extension_ui_request' && event.method === 'notify') {
             try {
@@ -894,6 +910,7 @@ class AgentWorker extends EventEmitter {
             this.subscribers.clear();
             await this.shell.dispose();
             await this.client.dispose();
+            this.runStartupCalls.clear();
             this.historyResults.clear(); this.historyWriting = null;
             this.emit('disposed');
         });

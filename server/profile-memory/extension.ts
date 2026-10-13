@@ -1,3 +1,4 @@
+import { setPromptSection } from '../pi-hook-prompt.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -174,7 +175,7 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
                 version: 1, profileId: context.profileId, generation: loaded.generation, loadedAt,
                 scope: 'profile-and-physical-cwd', provided: Boolean(loaded.block),
                 chars: loaded.block.length, entries: loaded.entries });
-            if (loaded.block) return { systemPrompt: event.systemPrompt + '\n\n' + loaded.block };
+            if (loaded.block) setPromptSection(event, 'pivane_profile_memory', loaded.block);
         });
     }
     pi.on('session_start', async (_event: any, ctx: any) => {

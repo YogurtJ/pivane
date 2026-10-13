@@ -79,10 +79,11 @@ test('revisioned HTTP, native immutable bindings, fork/import, and verified runt
         handlers.get('session_start')({}, { mode: 'rpc', sessionManager: bound, cwd: first, ui });
         assert.deepEqual(notices[0], { pivaneAgentProfileLoaded: id,
             profileRevision: profileRevision(saved.data.profile), sessionId: selected.data.id });
-        const appended = handlers.get('before_agent_start')({ systemPrompt: 'Pi base prompt and project instructions' },
-            { mode: 'rpc', sessionManager: bound, cwd: first });
-        assert.match(appended.systemPrompt, /Pi base prompt and project instructions/);
-        assert.match(appended.systemPrompt, /Synthetic study guidance/);
+        const event = { messageType: 'custom', message: { customType: 'fixture', content: 'wake' },
+            systemPromptOptions: { sections: {} } };
+        handlers.get('before_agent_start')(event, { mode: 'rpc', sessionManager: bound, cwd: first });
+        assert.equal(event.systemPromptOptions.sections.assistant_profile_soul, 'Synthetic study guidance');
+        assert.equal(event.systemPromptOptions.forceSystemPrompt, undefined);
         handlers.get('session_start')({}, { mode: 'rpc', sessionManager: SessionManager.open(old.path), cwd: first, ui });
         assert.equal(handlers.get('before_agent_start')({ systemPrompt: 'Base' },
             { mode: 'rpc', sessionManager: SessionManager.open(old.path), cwd: first }), undefined);

@@ -1,3 +1,4 @@
+import { setPromptSection } from './pi-hook-prompt.js';
 import { getAgentDir, type ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 import { StringEnum } from '@earendil-works/pi-ai';
@@ -28,8 +29,8 @@ export function registerExtensionAssistant(pi: ExtensionAPI) {
     pi.on('before_agent_start', (event, ctx) => {
         const profile = profileFor(ctx);
         if (!profile) return;
-        return { systemPrompt: event.systemPrompt + '\n\n' + assistantInstructions({ profile, cwd: ctx.cwd,
-            agentDir: getAgentDir(), cli: resolvePiCli(), tools: pi.getActiveTools(), trusted: ctx.isProjectTrusted() }) };
+        setPromptSection(event, 'pivane_extension_assistant', assistantInstructions({ profile, cwd: ctx.cwd,
+            agentDir: getAgentDir(), cli: resolvePiCli(), tools: pi.getActiveTools(), trusted: ctx.isProjectTrusted() }));
     });
     pi.on('session_start', (_event, ctx) => {
         if (!profileFor(ctx)) return;
