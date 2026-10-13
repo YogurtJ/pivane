@@ -59,6 +59,11 @@
             info = t('调用时注册的来源：{0}', source.source) + '\n' + source.path;
         }
         const heading = row.querySelector('summary > strong'); if (!heading) return;
+        let duration = row.querySelector('.pi-tool-duration');
+        if (name === 'codemode' && Number.isSafeInteger(result?.durationMs) && result.durationMs >= 0) {
+            if (!duration) { duration = document.createElement('span'); duration.className = 'pi-tool-duration'; row.querySelector('.pi-tool-status')?.after(duration); }
+            duration.textContent = `${result.durationMs}ms`;
+        } else duration?.remove();
         heading.textContent = title; heading.title = title;
         let badge = row.querySelector('.pi-tool-source');
         if (origin) {

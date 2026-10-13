@@ -12,6 +12,8 @@ const calls = [
     { id: 'package', name: 'render_slides', arguments: {} },
     { id: 'inventory', name: 'extensions_inventory', arguments: {} },
     { id: 'cancel', name: 'extensions_package', arguments: { action: 'install', source: 'npm:fixture' } },
+    { id: 'codemode', name: 'codemode', arguments: { code: 'return 1' } },
+    { id: 'invalid-duration', name: 'codemode', arguments: {} },
     { id: 'unknown', name: 'unknown_tool', arguments: {} }
 ];
 const result = (id, name, details = {}, isError = false) => ({ role: 'toolResult', toolCallId: id, toolName: name, details, isError, content: [{ type: 'text', text: 'Synthetic tool output' }] });
@@ -24,6 +26,8 @@ const messages = [
     result('package', 'render_slides', provenance('package', 'render_slides', { source: { origin: 'package', source: 'npm:slide-kit-with-a-long-package-name', path: '/packages/slide-kit/index.ts' } }, true)),
     result('inventory', 'extensions_inventory'),
     result('cancel', 'extensions_package', { pivanePackageOperation: { status: 'cancelled' } }),
+    { ...result('codemode', 'codemode'), durationMs: 125 },
+    { ...result('invalid-duration', 'codemode'), durationMs: -1 },
     result('unknown', 'unknown_tool', provenance('wrong-id', 'unknown_tool', { source: { source: 'false-owner', path: '/x' } }))
 ];
 async function run(browser, base, width, locale) {
@@ -58,9 +62,19 @@ async function run(browser, base, width, locale) {
     assert.match(await row('package').locator('.pi-tool-source').textContent(), /slide-kit/);
     assert.equal(await row('unknown').locator('.pi-tool-source').count(), 0);
     assert.equal(await row('cancel').getAttribute('data-state'), 'cancelled');
+    assert.equal(await row('codemode').locator('.pi-tool-duration').textContent(), '125ms');
+    assert.equal(await row('invalid-duration').locator('.pi-tool-duration').count(), 0);
     await row('skill').locator('summary').click();
     assert.match(await row('skill').locator('.pi-tool-provenance').textContent(), /SKILL.md/);
     const send = event => socket.send(JSON.stringify(event));
+    send({ type: 'tool_execution_start', toolCallId: 'live-codemode', toolName: 'codemode', args: { code: 'return 1' } });
+    send({ type: 'tool_execution_end', toolCallId: 'live-codemode', toolName: 'codemode', isError: false, durationMs: 0,
+        result: { content: [{ type: 'text', text: 'Native timed output' }] } });
+    await row('live-codemode').locator('.pi-tool-duration').waitFor();
+    assert.equal(await row('live-codemode').locator('.pi-tool-duration').textContent(), '0ms');
+    send({ type: 'message_end', message: { ...result('live-codemode', 'codemode'), durationMs: 12 } });
+    await page.waitForFunction(() => document.querySelector('[data-tool-id="live-codemode"] .pi-tool-duration')?.textContent === '12ms');
+    assert.equal(await row('live-codemode').count(), 1, 'native message updates the live row instead of duplicating duration');
     send({ type: 'tool_execution_start', toolCallId: 'live', toolName: 'extensions_package', args: { action: 'remove', source: 'npm:fixture' } });
     await row('live').waitFor();
     assert.match(await row('live').locator('summary > strong').textContent(), locale === 'en' ? /Remove package/ : /移除扩展包/);
@@ -78,6 +92,7 @@ async function run(browser, base, width, locale) {
     await row('skill').locator('summary').click();
     await row('skill').locator('.pi-tool-provenance').waitFor();
     assert.equal(await row('package').locator('.pi-tool-source').count(), 1);
+    assert.equal(await row('codemode').locator('.pi-tool-duration').textContent(), '125ms', 'reload uses native recorded duration');
     assert.deepEqual(errors, []); await context.close(); console.log(`PASS tool labels ${width} ${locale}`);
 }
 (async () => {

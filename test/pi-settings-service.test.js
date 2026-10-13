@@ -190,3 +190,65 @@ test('model replacement rejects a foreign file identity even when every byte is 
     assert.deepEqual(fs.readFileSync(modelsPath), previous);
     assert.equal(fs.readdirSync(agentDir).some(name => name.startsWith('models.json.tmp-')), false);
 });
+
+test('model edits preflight positive token fields and preserve schema, tiers, speed and unknown native fields', async () => {
+    const { modelsPath } = await service.paths();
+    const tiers = [{ inputTokensAbove: 10000, input: 2, output: 4, cacheRead: 0.2, cacheWrite: 0.4 }];
+    const speed = { defaultLevel: 'fast', modes: { fast: { serviceTier: 'priority', costMultiplier: 2 } }, futureSpeedField: true };
+    const data = { $schema: 'https://example.invalid/models.schema.json', futureRoot: { keep: true }, providers: {
+        preservation: { baseUrl: 'http://127.0.0.1:65530/v1', api: 'openai-completions', apiKey: 'synthetic', futureProvider: 'keep', models: [
+            { id: 'model', contextWindow: 32000, maxTokens: 4096, pivaneSpeed: speed, futureModel: { keep: true },
+                samplingParams: { temperature: 0.7, futureSampling: 42 }, samplingParamsByThinkingLevel: { high: { top_p: 0.9 } },
+                cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.2, tiers } }
+        ], modelOverrides: { model: { maxTokens: 2048, futureOverride: 'keep' } } }
+    } };
+    await service.writeModelsFile(data);
+    for (const field of ['contextWindow', 'maxTokens']) {
+        for (const invalid of [0, -1, null, '4096', NaN, Infinity]) {
+            for (const section of ['models', 'modelOverrides']) {
+                const candidate = structuredClone(data);
+                (section === 'models' ? candidate.providers.preservation.models[0] : candidate.providers.preservation.modelOverrides.model)[field] = invalid;
+                const previous = fs.readFileSync(modelsPath);
+                const backups = fs.readdirSync(agentDir).filter(name => name.startsWith('models.json.bak-web-')).length;
+                await assert.rejects(service.writeModelsFile(candidate), /positive token count/);
+                assert.deepEqual(fs.readFileSync(modelsPath), previous);
+                assert.equal(fs.readdirSync(agentDir).filter(name => name.startsWith('models.json.bak-web-')).length, backups);
+            }
+        }
+    }
+    await assert.rejects(service.upsertCustomModel('preservation', { id: 'model', maxTokens: 1.5 }), /integer/);
+    await service.upsertCustomModel('preservation', { id: 'model', name: 'Edited', contextWindow: 64000, maxTokens: 8192 });
+    const info = await service.getModelAdvanced({ provider: 'preservation', modelId: 'model' });
+    await service.saveModelAdvanced({ provider: 'preservation', modelId: 'model', expectedRevision: info.revision,
+        samplingParams: { temperature: 0.3 }, cost: { input: 3 } });
+    const saved = service.readModelsFile(modelsPath);
+    assert.equal(saved.$schema, data.$schema);
+    assert.deepEqual(saved.futureRoot, data.futureRoot);
+    assert.equal(saved.providers.preservation.futureProvider, 'keep');
+    const model = saved.providers.preservation.models[0];
+    assert.deepEqual(model.futureModel, data.providers.preservation.models[0].futureModel);
+    assert.deepEqual(model.pivaneSpeed, speed);
+    assert.deepEqual(model.cost.tiers, tiers);
+    assert.deepEqual(model.samplingParamsByThinkingLevel, { high: { top_p: 0.9 } });
+    assert.deepEqual(model.samplingParams, { temperature: 0.3, futureSampling: 42 });
+    assert.equal(saved.providers.preservation.modelOverrides.model.futureOverride, 'keep');
+    const settingsPath = path.join(agentDir, 'settings.json');
+    const settings = { $schema: 'https://example.invalid/settings.schema.json', futureSetting: { keep: true }, pivaneSpeed: { keep: true } };
+    fs.writeFileSync(settingsPath, JSON.stringify(settings));
+    await service.setModelPreferences({ defaultProvider: 'preservation', defaultModel: 'model' });
+    const settingsSaved = JSON.parse(fs.readFileSync(settingsPath));
+    for (const key of Object.keys(settings)) assert.deepEqual(settingsSaved[key], settings[key]);
+});
+
+test('explicit catalog refresh reserves the settings mutation boundary before awaiting', async () => {
+    const isolated = new PiSettingsService({ cwd: projectDir });
+    let release;
+    isolated.createModelRuntime = () => new Promise(resolve => { release = () => resolve({ refresh: async () => ({ errors: new Map() }) }); });
+    const refresh = isolated.refreshModels();
+    assert.equal(isolated.mutating, true);
+    await assert.rejects(isolated.logout('openrouter'), error => error.statusCode === 409);
+    await assert.rejects(isolated.refreshModels(), error => error.statusCode === 409);
+    release();
+    assert.deepEqual(await refresh, { ok: true, aborted: false, errors: [], requiresRuntimeRestart: true });
+    assert.equal(isolated.mutating, false);
+});
