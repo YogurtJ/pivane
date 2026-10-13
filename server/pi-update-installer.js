@@ -3,8 +3,53 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { privateDir, readSafe, copySafe, atomicJson, hash } = require('./pi-maintenance-files');
 const { outputRedactor, outputLines } = require('./pi-update-output');
-const PI_PACKAGES = ['@earendil-works/pi-coding-agent', '@earendil-works/pi-ai', '@earendil-works/pi-server'];
+const PI_PACKAGES = ['pi-coding-agent', 'pi-ai', 'pi-agent-core', 'pi-tui', 'pi-codemode', 'pi-mcp', 'pi-telemetry'].map(name => '@earendil-works/' + name);
+// Retired packages are accepted only when declared by an older archive.
+const LEGACY_PI_PACKAGES = ['chord', 'pi-protocol', 'pi-server'].map(name => '@earendil-works/' + name);
 const exactVersion = value => typeof value === 'string' && /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value) && value.length < 40;
+function piPackageNames(manifest) {
+    const names = new Set();
+    const add = name => {
+        if (![...PI_PACKAGES, ...LEGACY_PI_PACKAGES].includes(name)) throw new Error('Unknown Pi dependency layout');
+        names.add(name);
+    };
+    for (const [name, value] of Object.entries(manifest.dependencies || {})) if (name.startsWith('@earendil-works/')) {
+        add(name);
+        if (!exactVersion(value)) throw new Error('Unknown Pi dependency version');
+    }
+    for (const [name, value] of Object.entries(manifest.overrides || {})) if (name.startsWith('@earendil-works/')) {
+        add(name);
+        if (name === '@earendil-works/pi-server' && value && typeof value === 'object' && !Array.isArray(value)) {
+            if (!manifest.dependencies?.[name]) throw new Error('Unknown Pi dependency layout');
+            for (const [nestedName, nestedValue] of Object.entries(value)) {
+                add(nestedName);
+                if (!exactVersion(nestedValue)) throw new Error('Unknown Pi override');
+            }
+        } else if (!exactVersion(value) && !(value === '$' + name && exactVersion(manifest.dependencies?.[name]))) {
+            throw new Error('Unknown Pi override');
+        }
+    }
+    if (!manifest.dependencies?.[PI_PACKAGES[0]] || !manifest.dependencies?.[PI_PACKAGES[1]]) throw new Error('Unknown Pi dependency layout');
+    return [...names];
+}
+function verifyPiPackages(directory, manifest, lock, version) {
+    const packages = piPackageNames(manifest);
+    for (const name of packages) {
+        const actual = JSON.parse(readSafe(path.join(directory, 'node_modules', name, 'package.json'))).version;
+        if (actual !== version || lock.packages?.['node_modules/' + name]?.version !== version
+            || (manifest.dependencies?.[name] && (manifest.dependencies[name] !== version || lock.packages?.['']?.dependencies?.[name] !== version)))
+            throw new Error('Installed Pi version does not match the selected version');
+    }
+    // Reject stale or undeclared official copies, including nested ones.
+    for (const [location, metadata] of Object.entries(lock.packages || {})) {
+        const name = location.slice(location.lastIndexOf('node_modules/') + 'node_modules/'.length);
+        if (location.includes('node_modules/@earendil-works/') && (PI_PACKAGES.includes(name) || LEGACY_PI_PACKAGES.includes(name))
+            && (metadata.version !== version || !packages.includes(name))) throw new Error('Unexpected installed Pi dependency');
+        if (location.includes('node_modules/@earendil-works/') && packages.includes(name)
+            && JSON.parse(readSafe(path.join(directory, location, 'package.json'))).version !== version)
+            throw new Error('Installed Pi version does not match the selected version');
+    }
+}
 function installEnvironment(env, directory) {
     const result = {};
     for (const key of ['PATH', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'SystemRoot', 'SYSTEMROOT', 'ComSpec', 'TEMP', 'TMP', 'LANG',
@@ -73,26 +118,22 @@ async function stagePi({ root, directory, version, env = process.env, signal, ru
     const manifestPath = path.join(directory, 'package.json');
     const manifest = JSON.parse(readSafe(manifestPath));
     if (manifest.pivaneCompatibility?.piVersion && manifest.pivaneCompatibility.piVersion !== version) throw new Error('This Pivane release is bound to its reviewed Pi version; update Pivane and its adapter together');
+    const packages = piPackageNames(manifest);
     const baselinePi = manifest.pivaneManaged?.baselinePi || manifest.dependencies[PI_PACKAGES[0]];
-    for (const name of Object.keys(manifest.dependencies)) if (name.startsWith('@earendil-works/')) manifest.dependencies[name] = version;
-    const overrides = manifest.overrides?.['@earendil-works/pi-server'];
-    if (!overrides || typeof overrides !== 'object') throw new Error('Unknown Pi dependency layout');
-    for (const name of Object.keys(overrides)) {
-        if (!name.startsWith('@earendil-works/')) throw new Error('Unknown Pi override');
-        overrides[name] = version;
+    for (const name of packages) {
+        if (manifest.dependencies[name]) manifest.dependencies[name] = version;
+        const override = manifest.overrides?.[name];
+        if (override && typeof override === 'object') {
+            for (const nestedName of Object.keys(override)) override[nestedName] = version;
+        } else if (typeof override === 'string' && !override.startsWith('$')) manifest.overrides[name] = version;
     }
-    for (const name of Object.keys(manifest.overrides || {})) if (name.startsWith('@earendil-works/') && typeof manifest.overrides[name] === 'string'
-        && !manifest.overrides[name].startsWith('$')) manifest.overrides[name] = version;
     manifest.pivaneManaged = { baselinePi, piVersion: version, validation: 'isolated-sdk-rpc' };
     atomicJson(manifestPath, manifest);
     const installEnv = installEnvironment(env, directory);
     await run([npmCli(env), 'install', '--ignore-scripts', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org'], { cwd: directory, env: installEnv, signal, onOutput, secretEnv: env });
     await prepareBundled({ directory, env: { ...installEnv, PI_NPM_CLI: npmCli(env) }, signal, run, onOutput, secretEnv: env });
     const lock = JSON.parse(readSafe(path.join(directory, 'package-lock.json'), 16 * 1024 * 1024));
-    for (const name of PI_PACKAGES) {
-        const actual = JSON.parse(readSafe(path.join(directory, 'node_modules', name, 'package.json'))).version;
-        if (actual !== version || lock.packages?.['node_modules/' + name]?.version !== version || lock.packages?.['']?.dependencies?.[name] !== version) throw new Error('Installed Pi version does not match the selected version');
-    }
+    verifyPiPackages(directory, manifest, lock, version);
     progress('verifying');
     // Every runtime test runs with a newly allocated identity and no provider credentials.
     const probe = privateDir(path.join(directory, 'probe-data'));
@@ -104,4 +145,4 @@ async function stagePi({ root, directory, version, env = process.env, signal, ru
     atomicJson(path.join(directory, 'PI_INSTALL_COMPLETE.json'), { version, completedAt: new Date().toISOString(), lockSha256: hash(readSafe(path.join(directory, 'package-lock.json'), 16 * 1024 * 1024)) });
     return directory;
 }
-module.exports = { stagePi, prepareBundled, runNode, copyCode, npmCli, installEnvironment, exactVersion, PI_PACKAGES };
+module.exports = { stagePi, prepareBundled, runNode, copyCode, npmCli, installEnvironment, exactVersion, PI_PACKAGES, piPackageNames, verifyPiPackages };

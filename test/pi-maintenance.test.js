@@ -136,7 +136,11 @@ test('staged install pins the entire Pi family, uses no model credentials and ve
             if (calls.length === 1) {
                 assert.ok(args.includes('--ignore-scripts')); assert.ok(args.includes('--registry=https://registry.npmjs.org'));
                 const manifest = JSON.parse(readSafe(path.join(dir, 'package.json')));
-                assert.ok(Object.values(manifest.overrides['@earendil-works/pi-server']).every(v => v === '0.85.1'));
+                assert.equal(manifest.overrides['@earendil-works/pi-server'], undefined);
+                for (const name of PI_PACKAGES) assert.equal(manifest.dependencies[name] || manifest.overrides[name],
+                    manifest.overrides[name]?.startsWith('$') ? manifest.dependencies[name] : '0.85.1');
+                assert.equal(manifest.overrides.undici, '8.11.2');
+                assert.equal(manifest.overrides['brace-expansion'], '5.0.12');
                 const packages = { '': { dependencies: manifest.dependencies } };
                 for (const name of PI_PACKAGES) { const p = privateDir(path.join(dir, 'node_modules', name)); atomicJson(path.join(p, 'package.json'), { version: '0.85.1' }); packages['node_modules/' + name] = { version: '0.85.1' }; }
                 atomicJson(path.join(dir, 'package-lock.json'), { packages });

@@ -9,9 +9,12 @@ require('./pi-process-shutdown').registerProcessShutdown(cleanup);
     const directory = process.env.PI_UPDATE_PROBE;
     assert.ok(directory && path.isAbsolute(directory) && process.env.PI_CODING_AGENT_DIR === path.join(directory, 'agent'));
     fs.mkdirSync(process.env.PI_CODING_AGENT_DIR, { recursive: true, mode: 0o700 });
+    const manifest = require('../package.json');
+    require('./pi-update-installer').verifyPiPackages(path.resolve(__dirname, '..'), manifest,
+        JSON.parse(fs.readFileSync(path.join(__dirname, '../package-lock.json'), 'utf8')), manifest.dependencies['@earendil-works/pi-coding-agent']);
     const sdk = await import('@earendil-works/pi-coding-agent');
     const ai = await import('@earendil-works/pi-ai');
-    assert.equal(sdk.VERSION, require('../package.json').dependencies['@earendil-works/pi-coding-agent']);
+    assert.equal(sdk.VERSION, manifest.dependencies['@earendil-works/pi-coding-agent']);
     assert.equal(typeof sdk.ModelRuntime.create, 'function');
     assert.equal(typeof sdk.SettingsManager.create, 'function');
     assert.equal(typeof ai.getSupportedThinkingLevels, 'function');
