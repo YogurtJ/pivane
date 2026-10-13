@@ -56,6 +56,34 @@ test('targeted and full execution share credential filtering without mutating ca
     assert.deepEqual(input, original);
 });
 
+test('runner removes inherited package and child metadata before native SDK import while fixtures can create child settings', t => {
+    const directory = fixture(t);
+    fs.writeFileSync(path.join(directory, 'package.json'), JSON.stringify({ name: '@earendil-works/pi-coding-agent', version: '0.0.0-ambient' }));
+    const input = { ...process.env, PI_PACKAGE_DIR: directory, PI_SUBAGENT_CHILD: '1',
+        PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT: directory, PI_SUBAGENT_SYNTHETIC: 'ambient',
+        OPENAI_API_KEY: 'synthetic-secret' };
+    const env = testEnvironment(input);
+    delete env.NODE_OPTIONS;
+    env.PI_CODING_AGENT_DIR = path.join(directory, 'agent');
+    env.PI_OFFLINE = '1';
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+        import assert from 'node:assert/strict';
+        import { VERSION, getPackageDir } from '@earendil-works/pi-coding-agent';
+        import fs from 'node:fs';
+        assert.equal(VERSION, JSON.parse(fs.readFileSync('package.json')).dependencies['@earendil-works/pi-coding-agent']);
+        assert.equal(getPackageDir(), process.cwd() + '/node_modules/@earendil-works/pi-coding-agent');
+        assert.equal(process.env.OPENAI_API_KEY, undefined);
+        assert.equal(Object.keys(process.env).some(key => /^PI_SUBAGENT(?:_|S_)/.test(key)), false);
+        process.env.PI_SUBAGENT_CHILD = '1';
+        assert.equal(process.env.PI_SUBAGENT_CHILD, '1');
+        console.log(VERSION);
+    `], { cwd: root, env, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), require('../package.json').pivaneCompatibility.piVersion);
+    assert.equal(input.PI_PACKAGE_DIR, directory, 'caller metadata remains intact');
+    assert.equal(input.PI_SUBAGENT_CHILD, '1');
+});
+
 test('CLI lists selected files without preparing a runtime and rejects partial typos', () => {
     const env = { ...testEnvironment(process.env), PIVANE_TEST_HERMES_BUNDLE: 'deliberately-missing-fixture' };
     const cli = path.join(root, 'scripts/run-tests.cjs');

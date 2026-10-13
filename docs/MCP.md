@@ -1,6 +1,6 @@
 # Pi 原生 MCP 与 Codemode
 
-当前源码绑定 Pi 1.1.0；已公开的 Pivane 1.6.2／Pi 1.0.2 范围见[版本说明](releases/1.6.2.md)。源码新增行为和实际运行实例分别核对，旧归档不改写。
+当前源码绑定 Pi 1.2.0；已公开的 Pivane 1.6.2／Pi 1.0.2 范围见[版本说明](releases/1.6.2.md)。源码新增行为和实际运行实例分别核对，旧归档不改写。
 
 ## 配置与使用
 
@@ -46,7 +46,7 @@
 
 默认工具列表与 `codemode.mode/inlineBudget` 见[原生设置](NATIVE_SETTINGS.md#默认工具与全局信任策略2026-09-10)。它们控制工具选择与呈现，不是完整权限沙箱；声明预算不是执行超时，脚本超时使用 `@options.timeout_ms`。
 
-Pi 1.1.0 保留单个 Codemode 脚本输出限制： 16 Mi 个字符或 100000 次 text/image/console 调用。超过任一上限会令脚本失败；此前已完成的工具操作不回滚，不自动重试脚本。成功脚本的 store 写入仍沿用原生分支语义。受管 Codemode 对已经结算的较多纯文本条目做线性输出合并，避免逐条重建累计字符串；文本分隔、console、返回值、截断和私有完整输出文件保持，图片混合输出走原生路径。这不是放宽输出限制或给失败脚本重新执行权限。
+Pi 1.2.0 的官方 Codemode executor／sandbox 保留单个脚本输出限制：16 Mi 个字符或 100000 次 text/image/console 调用。超过任一上限会令脚本失败；此前已完成的工具操作不回滚，不自动重试脚本。成功脚本的 store 写入沿用原生分支语义。文本分隔、console、返回值、截断、图片顺序与私有完整输出文件由原生实现处理，Pivane 已移除旧的输出合并适配。
 
 `autoEnableCodemode` 写在 `mcp.json`，不是 `settings.json`；是否实际启用仍以该 worker 的工具目录为准。关闭扩展、侧聊隔离和子任务授权边界保持不变。
 
@@ -62,7 +62,7 @@ Pi 1.1.0 保留单个 Codemode 脚本输出限制： 16 Mi 个字符或 100000 �
 
 Pivane 保留 pi-subagents 的任务生命周期，用适配边界把 `mcp:server/tool` 选择器解析到 **父会话已连接、由 Pi 注册的原生工具名**。不读取旧 `mcp-cache.json`。父会话先连接服务器，再启动需要该工具的子任务；配置或项目变化、未连接、隐藏工具、缺失名字均失败关闭。仅运行时注册且未持久配置的服务器暂不能交给子任务。当前父会话工具授权快照为 16 KiB／至多 1024 项，超过预算的 MCP 选择器失败关闭，不降级到旧缓存；工具连接前有 10 秒就绪窗口，超时不发送模型请求。
 
-pi-subagents 0.74.0 的原生 MCP launch plan 使用同一经过校验的工具快照；子会话仅加载一份 Pivane 过滤后的 MCP／Codemode 工厂，并保留父会话传入的项目信任；未受信项目的上下文指令不进入子会话，身份级全局指令仍保留。严格子任务 `tools` 和 capability ceiling 同时限制直接调用与 Codemode 嵌套调用，授权列表只接受已解析的精确工具名，不把 `*` 或 `+/-` 当作新增授权。Pivane 主线程显式 `--tools` 白名单也隐藏未授权的 MCP 工具；普通列表可使用原生 `*` 匹配，但不会像上游 CLI 默认行为那样保留名单外的间接 MCP 工具。`+/-` 仅修改默认选择，不是授权。仅准许 `codemode` 不等于准许它调用所有服务器。拒绝扩展的子任务不获得 MCP。后台子任务的连接由自身会话管理，并在结束时关闭；前台子任务默认仍不加载父会话环境扩展。
+pi-subagents 0.78.0 的原生 MCP launch plan 使用同一经过校验的工具快照；子会话仅加载一份 Pivane 过滤后的 MCP／Codemode 工厂，并保留父会话传入的项目信任；未受信项目的上下文指令不进入子会话，身份级全局指令仍保留。严格子任务 `tools` 和 capability ceiling 同时限制直接调用与 Codemode 嵌套调用，授权列表只接受已解析的精确工具名，不把 `*` 或 `+/-` 当作新增授权。Pivane 主线程显式 `--tools` 白名单也隐藏未授权的 MCP 工具；普通列表可使用原生 `*` 匹配，但不会像上游 CLI 默认行为那样保留名单外的间接 MCP 工具。`+/-` 仅修改默认选择，不是授权。仅准许 `codemode` 不等于准许它调用所有服务器。拒绝扩展的子任务不获得 MCP。后台子任务的连接由自身会话管理，并在结束时关闭；前台子任务默认仍不加载父会话环境扩展。
 
 ## 从 pi-mcp-adapter 迁移
 
@@ -88,11 +88,13 @@ node scripts/migrate-native-mcp.cjs --agent-dir /absolute/agent-dir \
 
 ## 其他原生能力
 
-Pi 1.1.0 的 `tools.read()` 在图片文件上返回可传给 `image()` 的图片块；`image()` 同时以私有权限保存随机临时文件，后续可通过明确路径复用。临时文件不是永久成果，系统清理后可能失效。分类接口可接受支持图片输入的模型与 `images` 上下文，模型可用性及凭据取自原生目录；OpenAI Decisions 分类器需要 API Key，不自动把 ChatGPT 订阅转成该授权。多个 text 输出有分隔标记，console 输出集中展示，脚本内置对象冻结防止原型破坏。
+Pi 1.2.0 的 `tools.read()` 在图片文件上返回可传给 `image()` 的图片块；`image()` 同时以私有权限保存随机临时文件，后续可通过明确路径复用。临时文件不是永久成果，系统清理后可能失效。分类接口可接受支持图片输入的模型与 `images` 上下文，模型可用性及凭据取自原生目录；OpenAI Decisions 分类器需要 API Key，不自动把 ChatGPT 订阅转成该授权。多个 text 输出有分隔标记，console 输出集中展示，脚本内置对象冻结防止原型破坏。
 
 
 支持官方虚拟模型与分类模型 SDK，是否提供 Auto 路由由用户加载的扩展决定；Pivane 不自动改用其他模型。OpenAI 新 ChatGPT 登录沿用原生安装 deviceId 和认证接口，旧 Codex 身份不自动转换。Pi 1.0 Codemode 增加 `models.generateImages()`；Pivane 主线程与子任务的官方 Codemode 工厂在模型注册表边界拒绝该直接生成入口，并提示使用已有媒体规划、确认与一次性执行票据。模型目录与分类接口保留原生行为。聊天供应商凭据不会因此成为媒体执行授权。
 
 新配置能力仅使用原生文件与验证器：`oauth.clientRegistration:"cimd"` 与自定义模型 `samplingParamsByThinkingLevel` 可按官方文档手工配置，无关网页编辑保留这些字段；本批不新增专门配置界面。CIMD 不适用于所有服务器，其 clientId/clientName 与回调限制由原生校验。
 
-上游参考：[MCP](https://github.com/earendil-works/pi/blob/v1.1.0/packages/coding-agent/docs/mcp.md)、[Codemode](https://github.com/earendil-works/pi/blob/v1.1.0/packages/coding-agent/docs/codemode.md)、[虚拟模型](https://github.com/earendil-works/pi/blob/v1.1.0/packages/coding-agent/docs/virtual-models.md)。
+结构化 MCP 结果使用原生 any-JSON 语义：对象、数组、标量和 null 均可保留，是否声明 output schema、是否为错误结果不改变该值；协议元数据不混入工具内容。取消涵盖等待 OAuth token 和 401 恢复阶段，不派发或重放已取消的工具请求。原生握手支持到 2025-11-25，不宣称支持后续协议版本。
+
+上游参考：[MCP](https://github.com/earendil-works/pi/blob/v1.2.0/packages/coding-agent/docs/mcp.md)、[Codemode](https://github.com/earendil-works/pi/blob/v1.2.0/packages/coding-agent/docs/codemode.md)、[虚拟模型](https://github.com/earendil-works/pi/blob/v1.2.0/packages/coding-agent/docs/virtual-models.md)。

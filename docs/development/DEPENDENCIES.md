@@ -2,7 +2,7 @@
 
 ## 版本来源
 
-应用版本和默认 Pi 依赖取自 package.json，与 package-lock 根版本及锁定条目一致。Pi Coding Agent、pi-ai、pi-server 及已有官方 overrides 成组使用精确版本。不要在另一份通用文档长期重复一组“当前版本”；发布说明记录当时的版本，运行状态报告实际加载的版本。
+应用版本和默认 Pi 依赖取自 package.json，与 package-lock 根版本及锁定条目一致。Pi Coding Agent、pi-ai、pi-agent-core、pi-tui、pi-codemode、pi-mcp、pi-telemetry 成组使用精确版本；当前绑定不依赖已退役的 pi-server、pi-protocol 或 Chord。历史归档只按其明确声明的受限布局验证。不要在另一份通用文档长期重复一组“当前版本”；发布说明记录当时的版本，运行状态报告实际加载的版本。
 
 历史受管 Pi 更新可能与发布包原配不同；当前绑定版拒绝独立切换 Pi，必须随应用与适配层验证。源码工作区、运行 release 和下载归档分别核对，不能通过一个版本字符串推断所有文件一致。普通安装使用锁定依赖；详细升级和失败语义见 [版本与更新](../UPDATES.md)。
 
@@ -27,15 +27,19 @@
 
 Pivane 使用未打包的 Pi SDK／RPC 入口；Pi 自带 `dist/bundle` 中的内联代码不受依赖目录修正覆盖，不把本机运行修复宣称为所有上游分发产物已修复。
 
-## Pi 1.1 接入约束
+## Pi 1.2 接入约束
 
 版本审查包含 `agent_settled.aborted`、原生耗时字段、工具模式/默认修饰语、`disabledBuiltinExtensions`、MCP 取消与关停，以及 Codemode 的 `getPromptGuidelines()`、图片结构化输出/私有临时文件和模型注册表隔离。自定义流必须返回原生 `AssistantMessageEventStream`，不伪造已移除导出；原生 provider 与自定义扩展分别核对。Azure provider 标识改为 `azure`，API 标识 `azure-openai-responses` 与环境变量保持；真实旧配置须另行有界迁移审查，不改写会话正文或凭据，也不凭全局无引用推断全部项目/历史兼容。
 
-## Codemode 输出适配
+## 原生 Codemode 与 SDK 启动适配
 
-`pi-codemode-output-loader.mjs` 仅重定向经过版本及执行器 SHA256 审查的 SDK executor 对沙箱的精确 import；其他模块、未知版本、改变的执行器字节或不同解析失败关闭，不修改 node_modules／Pi 实现。`pi-codemode-output.mjs` 继承公开 `CodemodeSandbox`，执行结算后只对至少 256 条且全为文本的结果做一次线性合并，保留原文本分隔、console 分组、返回值位置和失败字段。256 是格式化阈值，不是执行上限；含图片或较小结果不改变。
+Codemode 输出直接使用 Pi 1.2 官方 executor／sandbox，已移除旧的输出合并子类与精确 import 重定向。原生沙箱拥有 16 Mi 字符／100000 条输出限制、取消、worker 关闭及 store；官方 executor 拥有目录／嵌套权限、用量、截断与私有完整输出文件。Pivane 工厂继续约束模型注册表与媒体确认权限。验证覆盖 100001 条压力、文本／console／返回值及图片顺序、完整输出文件、失败 store、取消与不重放。
 
-原生沙箱继续拥有输出限制、worker 关闭、取消、调用及 store；官方 executor 继续拥有目录／嵌套权限、用量、截断与私有文件。适配从主／子 Codemode 工厂的 policy 入口安装，不扩大能力。验证包括原 60 秒真实 100001 条压力场景、文本语义逐字节对照、完整输出文件、成功／失败 store、usage／不重放及取消。新 Pi 版本须重新审查 seam，不能仅改版本白名单。
+受管主会话在资源发现前初始化原生主题 schema validator；这一内部模块导出路径绑定已审查的 Pi 版本，不复制 schema。模型选择预检在保存的模型或新线程默认不可用时保留原生未选模型状态，完整目录和显式 set_model 仍可恢复；仅在 SDK 初始选择期间隐藏可用候选，真实目录与认证不变。
+
+公开 prompt/sendCustomMessage 适配在原生调用前保留带 UUID、会话身份与导航 nonce 的启动所有权，通过原生串行 stdout 发送私有开始／完成帧。真实 Promise 完成或进程退出释放；原生 settled、读取快照及超时不能提前释放。命名 prompt section 保留普通用户／custom wake 的组合顺序和更早的 forceSystemPrompt。Pi 升级须重新验证这些公开方法的完成语义及内部 transport／theme seam。
+
+pi-subagents 使用官方 child factory 与原生包解析；已移除旧 host alias 兼容层，Pivane 精确 MCP selector／授权仍保留。官方 calendar 模块需要根锁定的 Temporal polyfill；不安装 vendor 的开发依赖。记忆仍绑定 0.9.9。
 
 ## 验证与交付
 

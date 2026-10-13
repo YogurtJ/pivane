@@ -160,6 +160,8 @@ GET 快照只投影允许字段，分别返回 global、project、配置有效�
 
 显式 `defaultTools=[]` 表示无默认内置工具，不当作未配置；受信项目修饰符叠加全局空列表不会恢复 Pi 默认。它不是完整 allowlist：已启用扩展仍可能注册并激活默认工具，Codemode 间接调用另受权限规则约束。此设置不放宽子任务 gate，也不控制手动 Shell；实际工具从当前会话资源清单核对。
 
+主题发现使用已初始化的原生 schema validator；无效元数据、未知颜色键或未定义颜色变量产生原生 warning 并排除主题，不自动修复 authored JSON。此行为在首次加载和资源重载时一致。
+
 同组提供 codemode.mode=on|only（默认 on）和 codemode.inlineBudget=0–1000000 安全整数（默认 3000）：控制工具呈现与估算内联声明 Token，不控制脚本执行超时。仅提交改变字段，保留未知原生设置及工具条目顺序；保存与实际线程加载分开。MCP autoEnableCodemode 属于 mcp.json，网页入口和 DTO 见[原生 MCP](MCP.md)。
 
 设置 → Pi 配置 → 项目信任提供 defaultProjectTrust=ask/always/never，globalOnly；项目范围提交该字段（包括 null）拒绝。null 恢复 Pi 默认 ask。策略仅作兜底，不覆盖已有项目或父目录的允许/拒绝；启动覆盖和 project_trust hooks 仍由原生 runtime 处理。RPC 的 ask 不弹启动询问，未决项目受信资源暂不加载，用户可从项目菜单或 /trust 授权。项目独立信任窗口展示默认策略并链接到全局设置，入口不切换所选项目或启动会话。

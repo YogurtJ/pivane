@@ -705,7 +705,8 @@ class AgentWorker extends EventEmitter {
             if (!this.exited && event.token === this.navigationToken && event.sessionId === this.sessionId
                 && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(event.id)
                 && Number.isSafeInteger(event.sequence) && event.sequence > this.runStartupSequence
-                && ['started', 'finished'].includes(event.phase)) {
+                && ['started', 'finished'].includes(event.phase)
+                && (event.phase === 'started' ? !this.runStartupCalls.has(event.id) : this.runStartupCalls.has(event.id))) {
                 this.runStartupSequence = event.sequence;
                 if (event.phase === 'started') this.runStartupCalls.add(event.id);
                 else this.runStartupCalls.delete(event.id);

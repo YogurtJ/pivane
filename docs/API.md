@@ -165,6 +165,8 @@
 
 当前绑定 Pi 的应用对 `POST /settings/updates/review {action:'update'}` 返回 409，需同时更新 Pivane 与已验证适配；备份、重启和应用票据保留原语义。
 
+保存的线程模型／新线程默认不在当前可用目录或缺少认证时，受管启动保持可连接的原生 unknown 模型状态；`get_available_models` 仍返回真实目录，使用既有 `set_model` 明确恢复。不会写入替代默认／model_change 或自动发请求。本次显式 CLI／用户选择、合法扩展／虚拟模型与从未选择过的原生发现保持原生语义，详见 [模型选择](PROVIDER_SETTINGS.md#会话模型快速选择)。
+
 原生资源清单包含 `builtin:mcp`、`builtin:codemode`、`builtin:tool-search`、`builtin:llama.cpp`，沿用 `path/enabled/override` 开关语义；它们不是可独立安装的 npm 包。新增或更新可识别的旧 `pi-mcp-adapter` 包返回 400 管理说明，移除旧声明仍可执行。原生 MCP/Codemode 不新增 Pivane MCP HTTP 网关；嵌套工具事件沿用原生 `parentToolCallId`，当前工具调用仍受权限钩子。旧配置的显式停机迁移见 [MCP.md](MCP.md)。
 
 `nativeMcpManagement=true` 标记 MCP 网页接口：
@@ -745,7 +747,7 @@ Shell仅空闲单项执行，期间消息/压缩/导航/重载及预约投递互
 | GET | `/models` | Provider auth 状态、脱敏模型目录、默认值、自定义配置摘要 |
 | POST | `/providers/:id/api-key` | 通过 `ModelRuntime.login(..., "api_key")` 持久保存新 Key |
 | DELETE | `/providers/:id/credential` | 通过 `ModelRuntime.logout()` 删除 stored credential |
-| POST | `/models/refresh` | 强制刷新已配置动态 Provider catalog |
+| POST | `/models/refresh` | 通过原生 ModelRuntime 显式刷新已配置动态 Provider catalog；与凭据／配置写入互斥，不切换会话模型 |
 | POST | `/models/preferences` | 设置完整 Pi Agent 的全局默认 Provider/模型和可选 enabledModels |
 | PATCH | `/media-agent` | 设置模块 Agent 的 Provider/模型；下一次 plan 立即生效 |
 | POST | `/models/test` | 发起真实最小模型请求，返回 latency/text/usage |

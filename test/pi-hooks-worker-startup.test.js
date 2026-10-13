@@ -172,9 +172,12 @@ test('managed custom wake remains busy throughout a slow before_agent_start hook
     projection._handleEvent({ type: 'pivane_run_startup' });
     projection._handleEvent(frame);
     assert.equal(projection.runStartupCalls.size, 1);
-    projection._handleEvent({ ...frame, phase: 'finished', id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', sequence: 2 });
+    projection._handleEvent({ ...frame, phase: 'finished', id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', sequence: 999 });
     assert.equal(projection.runStartupCalls.size, 1, 'unknown completion cannot release a known call');
-    projection._handleEvent({ ...frame, phase: 'finished', sequence: 3 });
+    assert.equal(projection.runStartupSequence, 1, 'unknown completion cannot poison accepted sequence');
+    projection._handleEvent({ ...frame, sequence: 998 });
+    assert.equal(projection.runStartupSequence, 1, 'duplicate start cannot poison accepted sequence');
+    projection._handleEvent({ ...frame, phase: 'finished', sequence: 2 });
     assert.equal(projection.runStartupCalls.size, 0);
     projection._handleEvent(frame);
     assert.equal(projection.runStartupCalls.size, 0, 'late startup frame cannot resurrect a completed call');

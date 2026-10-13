@@ -1,6 +1,6 @@
 # Pivane 内置能力包
 
-当前源码锁定 Pi 1.0.2，随应用交付 pi-subagents 0.74.0 和 pi-hermes-memory 0.9.9，由 Pivane 验证后统一更新。正式归档的依赖与验收见[版本说明](releases/1.6.1.md)，旧归档不改写。
+当前源码锁定 Pi 1.2.0，随应用交付 pi-subagents 0.78.0 和 pi-hermes-memory 0.9.9，由 Pivane 验证后统一更新。源码候选不代表已部署或公开发布；正式归档的依赖与验收见其版本说明，旧归档不改写。
 
 ## 安装与配置
 
@@ -35,7 +35,7 @@ node scripts/install-bundled-capabilities.cjs
 
 `server/pi-bundled-capabilities.js` 是 Pivane 的接入清单；`pi-bundled-resources.js` 在内存中生成受管资源视图；`pi-managed-runtime.mjs` 使用 Pi 的公开 SDK 与原生 RPC，保留 Supervisor 的唯一 worker 和原生身份。资源重载复用同一个原生 ResourceLoader 及其缓存清理生命周期。RPC 的会话和工具接口使用公开 SDK；代理与 HTTP 空闲超时初始化复用当前 Pi 的 `dist/core/http-dispatcher.js`，这一 CLI 初始化接口也需随 Pi 升级复核。
 
-子会话适配通过上游 child-session factory 和精确 import 映射接入已连接的 Pi 原生 MCP 目录，保留信任、资源过滤和嵌套权限 gate；上游拥有任务生命周期与存储。内部接口绑定 Pi 1.0.2 和 pi-subagents 0.74.0，升级须重新复核，不修改上游文件。实现入口见[模块导航](development/MODULES.md)，授权与兼容见[原生 MCP](MCP.md)。
+子会话适配通过上游 child-session factory 和精确 import 映射接入已连接的 Pi 原生 MCP 目录，保留信任、资源过滤和嵌套权限 gate；上游拥有任务生命周期与存储。内部接口绑定 Pi 1.2.0 和 pi-subagents 0.78.0，升级须重新复核，不修改上游文件。实现入口见[模块导航](development/MODULES.md)，授权与兼容见[原生 MCP](MCP.md)。
 
 记忆适配继续只导出选定的存储、检索和工具组件，禁止调用上游默认 factory；生成 bundle 必须匹配已审查 SHA256，所有上游许可证随包保留。
 

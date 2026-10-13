@@ -60,6 +60,7 @@ async function main(args) {
     const failed = [];
     try {
         for (const file of files) {
+            // Use the Node runner's package/child-metadata and credential isolation.
             const env = { ...testEnvironment(process.env), PIVANE_TEST_HERMES_BUNDLE: require('../server/pi-bundled-capabilities').memoryBundle() };
             env.PIVANE_TEST_SCREENSHOT_DIR = path.join(os.tmpdir(), 'pivane-browser', path.basename(file, '.cjs'));
             const source = fs.readFileSync(path.join(root, file), 'utf8');

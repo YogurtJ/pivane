@@ -38,7 +38,8 @@ function testEnvironment(environment) {
     const ambientProviderEnv = /^(?:OPENAI|OPENROUTER|ANTHROPIC|GOOGLE|GEMINI|AZURE|MISTRAL|XAI|DEEPSEEK|MOONSHOT|GROQ|TOGETHER|FIREWORKS|PERPLEXITY|CEREBRAS|COHERE|VERTEX)_(?:API_KEY|API_TOKEN|TOKEN|KEY|CREDENTIALS|PROFILE|BASE_URL)$/;
     const memoryFixtureEnv = new Set(['PIVANE_TEST_HERMES_BUNDLE', 'PIVANE_TEST_PI_JITI']);
     for (const key of Object.keys(env)) {
-        if (key.startsWith('PIVANE_') && !memoryFixtureEnv.has(key) || ambientProviderEnv.test(key) || /^(?:AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|AWS_PROFILE|GOOGLE_APPLICATION_CREDENTIALS|MINIMAX_API_KEY)$/.test(key)) delete env[key];
+        if (key === 'PI_PACKAGE_DIR' || /^PI_SUBAGENT(?:_|S_)/.test(key)
+            || key.startsWith('PIVANE_') && !memoryFixtureEnv.has(key) || ambientProviderEnv.test(key) || /^(?:AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|AWS_PROFILE|GOOGLE_APPLICATION_CREDENTIALS|MINIMAX_API_KEY)$/.test(key)) delete env[key];
     }
     return env;
 }

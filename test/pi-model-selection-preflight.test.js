@@ -139,8 +139,7 @@ test('a saved model with missing provider authentication remains unselected whil
     assert.equal(input.settingsManager.getDefaultModel(), 'A');
 });
 
-// The fixture uses the real managed entry and Supervisor, with only the approved
-// integration seam replaced in a disposable file within this worktree.
+// Exercise the assembled managed entry through its normal Supervisor startup.
 test('managed Key A/B bootstrap and restart stay connectable without paid fallback until explicit set_model', { timeout: 60000 }, async t => {
     const requests = [];
     const server = http.createServer(async (req, res) => {
@@ -161,10 +160,9 @@ test('managed Key A/B bootstrap and restart stay connectable without paid fallba
     });
     server.listen(0, '127.0.0.1'); await once(server, 'listening');
     let supervisor;
-    const fixtureFile = path.join(__dirname, '../server/.model-selection-fixture.mjs');
     const previousCli = process.env.PI_WEB_CLI;
     t.after(async () => { await supervisor?.dispose(); if (previousCli === undefined) delete process.env.PI_WEB_CLI; else process.env.PI_WEB_CLI = previousCli;
-        fs.rmSync(fixtureFile, { force: true }); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+        server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
     const base = `http://127.0.0.1:${server.address().port}`;
     const agentDir = process.env.PI_CODING_AGENT_DIR;
     fs.mkdirSync(agentDir, { recursive: true });
@@ -202,13 +200,7 @@ test('managed Key A/B bootstrap and restart stay connectable without paid fallba
     await login('synthetic-B');
     await runtime.refresh({ providers: ['openrouter'], allowNetwork: true, force: true });
     assert.equal(runtime.getModel('openrouter', 'A'), undefined); assert.ok(runtime.getModel('openrouter', 'B'));
-    const source = fs.readFileSync(path.join(__dirname, '../server/pi-managed-runtime.mjs'), 'utf8');
-    const prepared = source.includes('await createAgentSessionWithSelectionPreflight(') ? source :
-        `import { createAgentSessionWithSelectionPreflight } from './pi-model-selection-preflight.mjs';\n` + source
-            .replace('await createAgentSessionFromServices(', 'await createAgentSessionWithSelectionPreflight(')
-            .replace('const model = selected.model || (!sessionManager.buildSessionContext().messages.length ? scopedModels[0]?.model : undefined);', 'const model = selected.model;');
-    fs.writeFileSync(fixtureFile, prepared);
-    process.env.PI_WEB_CLI = fixtureFile;
+    delete process.env.PI_WEB_CLI;
     supervisor = new PiAgentSupervisor();
     const target = { cwd: root, sessionPath: manager.getSessionFile(), sessionId: manager.getSessionId() };
     const paid = () => requests.filter(request => request.url === '/v1/chat/completions');
