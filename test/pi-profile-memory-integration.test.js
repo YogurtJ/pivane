@@ -174,14 +174,17 @@ test('isolated pinned Pi upstream components enforce profile index, recall, skil
         () => same.pi.tools.get('memory_add').execute('call', { target: 'memory', content: 'parallel-beta' }, undefined, undefined, same.ctx),
     ]);
     assert.ok(parallel.every(result => result.details.success), JSON.stringify(parallel.map(result => result.details)));
-    const beforePrompt = await Promise.all((same.pi.events.get('before_agent_start') || [])
-        .map(fn => fn({ systemPrompt: 'synthetic system' }, same.ctx)));
-    assert.ok(beforePrompt[0]?.systemPrompt.includes('parallel-beta'));
+    const promptEvent = { messageType: 'custom', message: { customType: 'fixture', content: 'wake' },
+        systemPromptOptions: { sections: {} } };
+    await Promise.all((same.pi.events.get('before_agent_start') || []).map(fn => fn(promptEvent, same.ctx)));
+    const memoryBlock = promptEvent.systemPromptOptions.sections.pivane_profile_memory;
+    assert.ok(memoryBlock.includes('parallel-beta'));
+    assert.equal(promptEvent.systemPromptOptions.forceSystemPrompt, undefined);
     const provided = same.pi.records.findLast(item => item.type === 'pivane-profile-memory-read');
     assert.equal(provided.data.provided, true);
     assert.equal(provided.data.scope, 'profile-and-physical-cwd');
     // The read entry records the injected block size and its rendered entry count.
-    assert.equal(provided.data.chars, beforePrompt[0].systemPrompt.length - 'synthetic system\n\n'.length);
+    assert.equal(provided.data.chars, memoryBlock.length);
     assert.ok(Number.isSafeInteger(provided.data.entries) && provided.data.entries >= 2, JSON.stringify(provided.data));
     assert.equal((same.pi.events.get('agent_before_settle') || []).length, 0,
         'background learning is owned by the gateway, not the active worker boundary');

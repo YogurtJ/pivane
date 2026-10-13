@@ -108,8 +108,11 @@ test('logical projects: CAS, native binding, filtered sessions, runtime and life
         const notices = [];
         handlers.get('session_start')({}, { mode: 'rpc', sessionManager: source, cwd, ui: { notify: message => notices.push(JSON.parse(message)) } });
         assert.equal(notices[0].pivaneAssistantProjectLoaded, one.data.project.id);
-        const prompt = handlers.get('before_agent_start')({ systemPrompt: 'Native base' }, { mode: 'rpc', sessionManager: source, cwd });
-        assert.match(prompt.systemPrompt, /Native base/); assert.match(prompt.systemPrompt, /Synthetic group instruction/);
+        const event = { messageType: 'custom', message: { customType: 'fixture', content: 'wake' },
+            systemPromptOptions: { sections: {} } };
+        handlers.get('before_agent_start')(event, { mode: 'rpc', sessionManager: source, cwd });
+        assert.equal(event.systemPromptOptions.sections.assistant_project_instructions, 'Synthetic group instruction');
+        assert.equal(event.systemPromptOptions.forceSystemPrompt, undefined);
     } finally { delete process.env.PIVANE_ASSISTANT_PROJECT_CONTEXT; delete process.env.PI_WEB_NAVIGATION_TOKEN; }
     source.appendMessage({ role: 'user', content: 'Question', timestamp: 1 });
     const point = source.getEntries().at(-1).id;

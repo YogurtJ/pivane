@@ -1,3 +1,4 @@
+const { setPromptSection } = require('./pi-hook-prompt');
 const fs = require('node:fs');
 const path = require('node:path');
 const { safeFile } = require('./pi-native-service');
@@ -42,7 +43,7 @@ function registerAgentProfile(pi, getAgentDir) {
         if (!loaded || ctx.mode !== 'rpc' || readProfileBinding(ctx.sessionManager)?.profileId !== loaded.context.profileId
             || ctx.sessionManager.getSessionId() !== loaded.context.sessionId || ctx.cwd !== loaded.context.cwd
             || !loaded.soul.trim()) return;
-        return { systemPrompt: `${event.systemPrompt}\n\n<assistant_profile_soul>\n${loaded.soul}\n</assistant_profile_soul>` };
+        setPromptSection(event, 'assistant_profile_soul', loaded.soul, { wrapForced: true });
     });
 }
 

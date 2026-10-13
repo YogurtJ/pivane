@@ -1,3 +1,4 @@
+import { setPromptSection } from './pi-hook-prompt.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -25,7 +26,7 @@ export function registerProfileAuthoring(pi: ExtensionAPI, getAgentDir: () => st
     };
     pi.on('before_agent_start', (event: any, ctx: any) => {
         if (!eligible(ctx)) return;
-        return { systemPrompt: event.systemPrompt + '\n\nYou are drafting an assistant profile, not editing it. Ask for missing facts, do not invent user identity or memories. Use profile_draft only to submit a bounded proposal after discussion. No profile files, settings or credentials may be changed as part of drafting. The user decides whether to import the proposal in the editor and explicitly save it.' };
+        setPromptSection(event, 'pivane_profile_authoring', 'You are drafting an assistant profile, not editing it. Ask for missing facts, do not invent user identity or memories. Use profile_draft only to submit a bounded proposal after discussion. No profile files, settings or credentials may be changed as part of drafting. The user decides whether to import the proposal in the editor and explicitly save it.');
     });
     pi.on('session_start', (_event: any, ctx: any) => {
         if (!process.env.PI_WEB_NAVIGATION_TOKEN || ctx.mode !== 'rpc' || input?.version !== 1

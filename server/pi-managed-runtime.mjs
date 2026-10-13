@@ -9,6 +9,7 @@ import './pi-subagent-native-loader.mjs';
 import { managedLoaderOptions, reloadableLoader } from './pi-bundled-loader.mjs';
 import navigation from './pi-session-navigation.js';
 import { installQueueAdapter } from './pi-queue-adapter.mjs';
+import { installRunStartupAdapter } from './pi-run-startup-adapter.mjs';
 
 let runtime;
 try {
@@ -54,6 +55,8 @@ try {
         installQueueAdapter(created.session, { token: process.env.PIVANE_QUEUE_TOKEN,
             sessionPath: parsed.noSession ? null : sessionManager.getSessionFile(), sessionId: sessionManager.getSessionId(),
             emit: record => writeRawStdout(JSON.stringify(record) + '\n') });
+        installRunStartupAdapter(created.session, { token: process.env.PI_WEB_NAVIGATION_TOKEN,
+            sessionId: sessionManager.getSessionId(), emit: record => writeRawStdout(JSON.stringify(record) + '\n') });
         if (model && (parsed.thinking !== undefined || selected.thinkingLevel !== undefined)) created.session.setThinkingLevel(created.session.thinkingLevel);
         for (const diagnostic of diagnostics) process.stderr.write(`${diagnostic.message}\n`);
         return { ...created, services, diagnostics };

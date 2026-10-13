@@ -1,3 +1,4 @@
+const { setPromptSection } = require('./pi-hook-prompt');
 const { Type } = require('typebox');
 const { localParts, dayKey } = require('./pi-cron-schedule');
 const STATE = 'pivane-cron-run';
@@ -53,9 +54,9 @@ function registerCron(pi) {
     });
     pi.on('before_agent_start', (event) => {
         if (!active || active.status !== 'running') return;
-        return { systemPrompt: event.systemPrompt + '\n\nThis turn is a user-configured scheduled task. Perform only its saved instructions within existing permissions. '
+        setPromptSection(event, 'pivane_scheduled_task', 'This turn is a user-configured scheduled task. Perform only its saved instructions within existing permissions. '
             + 'Its scheduled timestamp is context, not the current clock. Do not create other tasks, delegate, send messages to other threads, or generate media. '
-            + 'If no message is appropriate, use cron_silent and finish. Do not send acknowledgements for a silent run.' };
+            + 'If no message is appropriate, use cron_silent and finish. Do not send acknowledgements for a silent run.');
     });
     pi.on('tool_call', event => {
         if (!active || active.status !== 'running') return;

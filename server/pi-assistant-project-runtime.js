@@ -1,3 +1,4 @@
+const { setPromptSection } = require('./pi-hook-prompt');
 const fs = require('node:fs');
 const { safeFile } = require('./pi-native-service');
 const { readProjectRegistry, projectRevision } = require('./pi-assistant-project-registry');
@@ -41,7 +42,7 @@ function registerAssistantProject(pi, getAgentDir) {
         if (!loaded || ctx.mode !== 'rpc' || readProjectBinding(ctx.sessionManager)?.projectId !== loaded.context.projectId
             || ctx.sessionManager.getSessionId() !== loaded.context.sessionId || ctx.cwd !== loaded.context.cwd
             || !loaded.instructions.trim()) return;
-        return { systemPrompt: `${event.systemPrompt}\n\n<assistant_project_instructions>\n${loaded.instructions}\n</assistant_project_instructions>` };
+        setPromptSection(event, 'assistant_project_instructions', loaded.instructions, { wrapForced: true });
     });
 }
 
