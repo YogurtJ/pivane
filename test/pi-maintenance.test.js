@@ -294,3 +294,69 @@ test('a successful maintenance backup applies retention after the new backup com
     assert.deepEqual(new Set(fs.readdirSync(path.join(runtime, 'backups'))), new Set([...old.slice(2), id]));
     assert.match(launcher.state.job.output, /Retention: kept/);
 });
+
+test('shared native verification budget bounds actual bytes read across multiple grown backup objects and preserves valid restore controls', t => {
+    const { inspectBackupContents } = require('../server/pi-maintenance-backup');
+    const { inspectBackup } = require('../server/pi-maintenance-restore');
+    const { recordInstallation } = require('../server/pi-maintenance-files');
+    const { descriptorPathSync } = require('../server/pi-file-descriptor');
+    const root = fixture(t); packageFixture(root);
+    const data = path.join(root, 'one-byte'); fs.writeFileSync(data, 'x');
+    const objects = new Set(), directories = [];
+    for (let i = 0; i < 4; i++) {
+        const id = randomUUID(), dir = path.join(root, '.pivane-runtime/backups', id);
+        backupRoots([data], dir);
+        recordInstallation(dir, { release: null, package: JSON.parse(readSafe(path.join(root, 'package.json'))), lock: {} });
+        directories.push({ id, dir }); objects.add(path.join(dir, 'files/00000000'));
+    }
+    const originalRead = fs.readSync; let actualBytes = 0;
+    t.mock.method(fs, 'readSync', function(fd, ...args) {
+        const isObject = objects.has(descriptorPathSync(fd));
+        const count = originalRead(fd, ...args); if (isObject) actualBytes += count; return count;
+    });
+    const controlBudget = { bytes: 3, entries: 20 };
+    for (const { dir, id } of directories.slice(0, 2)) {
+        assert.equal(inspectBackupContents(dir, controlBudget).bytes, 1);
+        assert.equal(inspectBackup(root, id).files, 1);
+    }
+    assert.equal(actualBytes, 4, 'two valid bounded proofs and two native restore inspections read one byte each');
+    actualBytes = 0;
+    const sharedBudget = { bytes: 3, entries: 20 };
+    for (const { dir } of directories.slice(2)) {
+        fs.appendFileSync(path.join(dir, 'files/00000000'), 'abc');
+        assert.throws(() => inspectBackupContents(dir, sharedBudget), /Unsafe backup object|checksum|changed/);
+        assert.equal(fs.statSync(path.join(dir, 'files/00000000')).size, 4, 'corrupt backup is preserved');
+    }
+    assert.equal(sharedBudget.bytes, 1, 'both failed proofs charge their declared byte before attempting data reads');
+    t.diagnostic(JSON.stringify({ sharedBudget: 3, chargedDeclaredBytes: 2, actualGrownObjectBytesRead: actualBytes, attemptedProofs: 2 }));
+    assert.ok(actualBytes <= 2, 'actual object reads cannot exceed the declared bytes charged to the shared budget');
+});
+
+test('backup hash limits actual read requests after descriptor fstat growth and rejects short reads without weakening identity checks', t => {
+    const { hashFileSafe } = require('../server/pi-maintenance-files');
+    const { descriptorPathSync } = require('../server/pi-file-descriptor');
+    const root = fixture(t), file = path.join(root, 'object'); fs.writeFileSync(file, 'x');
+    const originalStat = fs.fstatSync, originalRead = fs.readSync; let changed = false, actualBytes = 0, requestedBytes = 0;
+    t.mock.method(fs, 'fstatSync', function(fd, ...args) {
+        const stat = originalStat(fd, ...args);
+        if (!changed && descriptorPathSync(fd) === file) { changed = true; fs.appendFileSync(file, 'abc'); }
+        return stat;
+    });
+    t.mock.method(fs, 'readSync', function(fd, buffer, offset, length, position) {
+        const isObject = descriptorPathSync(fd) === file;
+        if (isObject) requestedBytes += length;
+        const count = originalRead(fd, buffer, offset, length, position); if (isObject) actualBytes += count; return count;
+    });
+    assert.throws(() => hashFileSafe(file, 1), /changed/);
+    t.diagnostic(JSON.stringify({ approvedDescriptorBytes: 1, grownPhysicalBytes: 4, actualBytesRead: actualBytes, requestedBytes }));
+    assert.equal(actualBytes, 1); assert.equal(requestedBytes, 1);
+    fs.writeFileSync(file, 'abcd'); changed = false; actualBytes = 0;
+    fs.fstatSync.mock.restore();
+    t.mock.method(fs, 'fstatSync', function(fd, ...args) {
+        const stat = originalStat(fd, ...args);
+        if (!changed && descriptorPathSync(fd) === file) { changed = true; fs.truncateSync(file, 1); }
+        return stat;
+    });
+    assert.throws(() => hashFileSafe(file, 4), /changed/);
+    assert.equal(actualBytes, 1);
+});

@@ -298,3 +298,53 @@ linuxTest('a reused source identity prevents purging the previously quarantined 
     await assert.rejects(retention.purgeTrash(f.runtime, f.limits), /source identity was reused/);
     assert.ok(fs.existsSync(path.join(slot, 'item')));
 });
+
+for (const exitCode of [0, 7]) {
+    test(`close promptly stops a never-ready child once and waits for its actual exit ${exitCode}`, async t => {
+        const { EventEmitter } = require('node:events');
+        const f = fixture(t); f.state();
+        const child = new EventEmitter(), messages = []; let forks = 0;
+        Object.assign(child, { connected: true, exitCode: null, signalCode: null, send: message => messages.push(message) });
+        const launcher = new ManagedLauncher({ root: f.root, env: { PIVANE_RETAIN_RELEASES: 'off', PIVANE_RETAIN_BACKUPS: 'off' }, forkServer: () => { forks++; return child; } });
+        const starting = launcher.start(); const startFailure = assert.rejects(starting, /before becoming ready/);
+        for (let i = 0; i < 20 && !forks; i++) await new Promise(resolve => setImmediate(resolve));
+        assert.equal(forks, 1);
+        let settled = false; const closing = launcher.close(); const observedClose = closing.then(() => { settled = true; }, error => { settled = true; return error; });
+        assert.equal(launcher.close(), closing);
+        try {
+            await new Promise(resolve => setImmediate(resolve));
+            assert.equal(messages.filter(m => m.type === 'maintenance-shutdown').length, 1, 'shutdown request must precede readiness or its timer');
+            assert.equal(launcher.stopChild(), launcher.stopChild(), 'same existing child shares one stopping promise');
+            assert.equal(settled, false); assert.equal(launcher.guard.listening, true);
+        } finally {
+            child.exitCode = exitCode; child.emit('exit', exitCode); await startFailure; await observedClose;
+        }
+        await assert.rejects(closing, error => {
+            assert.match(error.message, exitCode === 0 ? /before becoming ready/ : /shutdown did not complete cleanly/);
+            if (exitCode !== 0) assert.equal(error.exitCode, exitCode);
+            return true;
+        });
+        assert.equal(messages.filter(m => m.type === 'maintenance-shutdown').length, 1);
+        assert.equal(forks, 1); assert.equal(launcher.guard.listening, false);
+        assert.equal(messages.some(m => m.type === 'maintenance-activate'), false);
+    });
+}
+
+test('close observes concurrent failed work and a shared failed child stop while other work is still pending', async t => {
+    const { EventEmitter } = require('node:events');
+    const f = fixture(t), launcher = new ManagedLauncher({ root: f.root, env: {} });
+    const child = new EventEmitter(); let sends = 0, finish, failStart;
+    Object.assign(child, { connected: true, exitCode: null, signalCode: null, send: () => { sends++; } }); launcher.child = child;
+    launcher.operation = new Promise(resolve => { finish = resolve; });
+    launcher.starting = new Promise((_resolve, reject) => { failStart = reject; });
+    const stopping = launcher.stopChild();
+    let closed = false; const closing = launcher.close();
+    const closeFailure = assert.rejects(closing, error => { closed = true; assert.match(error.message, /shutdown did not complete cleanly/); assert.equal(error.exitCode, 7); return true; });
+    assert.equal(launcher.stopChild(), stopping); assert.equal(launcher.close(), closing);
+    failStart(new Error('synthetic startup error'));
+    child.emit('error', new Error('synthetic child error')); child.exitCode = 7; child.emit('exit', 7);
+    await new Promise(resolve => setImmediate(resolve)); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(closed, false, 'all work is awaited even after another observed promise rejects');
+    assert.equal(sends, 1); finish(); await closeFailure;
+    await assert.rejects(stopping, /shutdown did not complete cleanly/);
+});

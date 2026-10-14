@@ -26,7 +26,7 @@ function inspectBackupContents(directory, budget = { bytes: 50 * 1024 ** 3, entr
         if (entry.type === 'symlink') { if (typeof entry.link !== 'string') throw new Error('Invalid backup link'); continue; }
         if (entry.type !== 'file' || !/^\d{8}$/.test(entry.object) || !Number.isSafeInteger(entry.mode) || entry.mode < 0 || entry.mode > 0o777) throw new Error('Invalid backup object');
         if (objects.has(entry.object)) throw new Error('Duplicated backup object'); objects.add(entry.object);
-        const actual = hashFileSafe(path.join(directory, 'files', entry.object)); total += actual.bytes;
+        const actual = hashFileSafe(path.join(directory, 'files', entry.object), entry.bytes); total += actual.bytes;
         if (actual.bytes !== entry.bytes || actual.sha256 !== entry.sha256 || total > 50 * 1024 ** 3) throw new Error('Backup object checksum or budget mismatch');
     }
     if (!installation || typeof installation !== 'object' || !installation.package || !installation.lock) throw new Error('Invalid installation backup');

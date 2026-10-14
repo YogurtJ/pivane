@@ -66,8 +66,12 @@ function hashFileSafe(file, limit = 50 * 1024 ** 3) {
         const before = fs.fstatSync(fd, { bigint: true }), identity = io.identity(fd);
         if (!before.isFile() || before.size > BigInt(limit) || descriptorPathSync(fd) !== path.resolve(file)) throw new Error('Unsafe backup object');
         const digest = createHash('sha256'), buffer = Buffer.alloc(256 * 1024); let length = 0, read;
-        while ((read = fs.readSync(fd, buffer, 0, buffer.length, null))) {
-            length += read; if (length > Number(before.size)) throw new Error('Backup object changed'); digest.update(buffer.subarray(0, read));
+        while (length < Number(before.size)) {
+            // Bound the actual read request even if this object grows after
+            // fstat. No EOF probe may read beyond the approved descriptor size.
+            read = fs.readSync(fd, buffer, 0, Math.min(buffer.length, Number(before.size) - length), null);
+            if (!read) throw new Error('Backup object changed');
+            length += read; digest.update(buffer.subarray(0, read));
         }
         if (!same(before, fs.fstatSync(fd, { bigint: true })) || !same(before, fs.lstatSync(file, { bigint: true })) || !io.sameIdentityAtPath(file, identity)) throw new Error('Backup object changed');
         return { bytes: length, sha256: digest.digest('hex') };

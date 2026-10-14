@@ -21,6 +21,7 @@ class ManagedLauncher {
         this.stage = stage; this.stageApp = stageApp; this.backup = backup; this.forkServer = forkServer;
         this.retention = retention.retentionLimits(this.env); this.cleaning = null; this.lastRetention = null;
         this.child = null; this.operation = null; this.closed = false;
+        this.stoppingChildren = new WeakMap();
         this.nonce = randomUUID();
         this.state = { version: 1, active: null, previous: null, job: null };
     }
@@ -118,7 +119,7 @@ class ManagedLauncher {
             });
             this.child = child; let ready = false;
             const timer = setTimeout(() => {
-                if (!ready) { this.send({ type: 'maintenance-shutdown' }); reject(new Error('Service startup timed out')); }
+                if (!ready) { void this.stopChild().catch(() => {}); reject(new Error('Service startup timed out')); }
             }, 45000);
             child.on('message', message => {
                 if (message?.nonce !== this.nonce || this.child !== child) return;
@@ -140,13 +141,27 @@ class ManagedLauncher {
             });
         });
     }
-    async stopChild() {
+    stopChild() {
         const child = this.child;
-        if (!child || child.exitCode !== null || child.signalCode !== null) return;
-        const exited = new Promise((resolve, reject) => child.once('exit', code => code === 0 ? resolve() : reject(new Error('Service shutdown did not complete cleanly'))));
-        this.send({ type: 'maintenance-shutdown' });
-        // No timeout is treated as cancellation. Never start another identity owner before exit.
-        await exited;
+        if (!child) return Promise.resolve();
+        const pending = this.stoppingChildren.get(child);
+        if (pending) return pending;
+        if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+        let failure;
+        const onError = () => { failure = new Error('Service shutdown did not complete cleanly'); };
+        const exited = new Promise((resolve, reject) => child.once('exit', code => {
+            child.removeListener('error', onError);
+            if (!failure && code === 0) resolve();
+            else reject(Object.assign(failure || new Error('Service shutdown did not complete cleanly'), { exitCode: code }));
+        }));
+        child.once('error', onError);
+        this.stoppingChildren.set(child, exited);
+        // Observe now, including when another operation is still awaiting work.
+        // The original promise still rejects for every actual waiter.
+        void exited.catch(() => {});
+        try { this.send({ type: 'maintenance-shutdown' }); } catch { onError(); }
+        // No timeout is cancellation; all callers share the actual exit wait.
+        return exited;
     }
     execute(message) {
         if (this.operation || this.cleaning || this.starting || this.closed) { this.send({ type: 'maintenance-rejected', id: message.id }); return Promise.resolve(); }
@@ -227,12 +242,20 @@ class ManagedLauncher {
     close() {
         if (this.closing) return this.closing;
         this.closed = true; this.controller?.abort(); this.cleanupController?.abort();
+        // Observe all work immediately, before waiting for any single promise.
+        const work = Promise.allSettled([this.starting, this.operation, this.cleaning]);
+        const stopping = this.child ? this.stopChild() : null;
+        const stopped = Promise.resolve(stopping).then(() => null, error => error);
         this.closing = Promise.resolve().then(async () => {
             let failure;
-            try { await this.starting; } catch (error) { failure = error; }
-            try { await this.operation; await this.cleaning; await this.stopChild(); }
-            catch (error) { failure ||= error; }
-            finally { if (this.guard?.listening) await new Promise(resolve => this.guard.close(resolve)); }
+            try {
+                const results = await work;
+                failure = await stopped;
+                if (!stopping) {
+                    try { await this.stopChild(); } catch (error) { failure ||= error; }
+                }
+                failure ||= results.find(result => result.status === 'rejected')?.reason;
+            } finally { if (this.guard?.listening) await new Promise(resolve => this.guard.close(resolve)); }
             if (failure) throw failure;
         });
         return this.closing;
