@@ -8,6 +8,7 @@ const { privateDir, atomicJson, readSafe, backupRoots, recordInstallation, insid
 const { stagePi, exactVersion } = require('./pi-update-installer');
 const { stageApplication, validRelease } = require('./pi-application-installer');
 const { outputRedactor, appendOutput } = require('./pi-update-output');
+const retention = require('./pi-managed-retention');
 
 class ManagedLauncher {
     constructor({ root, env = process.env, networkEnvironment = env, stage = stagePi, stageApp = stageApplication, backup = backupRoots, forkServer = fork } = {}) {
@@ -18,6 +19,7 @@ class ManagedLauncher {
         this.networkEnvironment = { ...networkEnvironment };
         this.redact = outputRedactor(this.networkEnvironment);
         this.stage = stage; this.stageApp = stageApp; this.backup = backup; this.forkServer = forkServer;
+        this.retention = retention.retentionLimits(this.env); this.cleaning = null; this.lastRetention = null;
         this.child = null; this.operation = null; this.closed = false;
         this.nonce = randomUUID();
         this.state = { version: 1, active: null, previous: null, job: null };
@@ -50,18 +52,58 @@ class ManagedLauncher {
     status() {
         return { supported: true, updateSupported: ['22', '24'].includes(process.versions.node.split('.')[0]) && !this.env.PI_WEB_CLI && !this.env.PI_PACKAGE_DIR,
             appUpdateSupported: ['22', '24'].includes(process.versions.node.split('.')[0]) && !this.env.PI_WEB_CLI && !this.env.PI_PACKAGE_DIR,
-            activeRelease: this.state.active, previousRelease: this.state.previous, busy: Boolean(this.operation), job: this.state.job,
-            storage: this.directory, backupScope: 'agent-sessions-media-config-history', nodeVersion: process.versions.node };
+            activeRelease: this.state.active, previousRelease: this.state.previous, busy: Boolean(this.operation || this.cleaning || this.starting), job: this.state.job,
+            storage: this.directory, backupScope: 'agent-sessions-media-config-history', nodeVersion: process.versions.node,
+            retention: { releases: this.retention.releases, backups: this.retention.backups, last: this.lastRetention } };
+    }
+    // Cleanup owns admission until actual completion. Failure is reported in its
+    // own status; it does not roll back a service that has already started.
+    cleanup(job = null) {
+        if (this.cleaning) return this.cleaning;
+        if (this.closed) return Promise.resolve();
+        const controller = new AbortController(); this.cleanupController = controller;
+        this.lastRetention = { at: new Date().toISOString(), phase: 'running' };
+        this.cleaning = Promise.resolve().then(async () => {
+            if (controller.signal.aborted) throw new Error('Retention cancelled');
+            if (this.retention.releases === null && this.retention.backups === null) { this.lastRetention = { at: new Date().toISOString(), phase: 'disabled' }; return; }
+            const expected = { active: this.state.active, previous: this.state.previous };
+            const plan = retention.planRetention(this.directory, this.state, this.retention, { completedJobId: job?.phase === 'retaining' ? job.id : undefined });
+            if (plan.skipped) {
+                this.lastRetention = { at: new Date().toISOString(), phase: 'skipped', reason: plan.skipped }; return;
+            }
+            const moved = retention.moveToTrash(this.directory, plan, expected);
+            const purged = await retention.purgeTrash(this.directory, this.retention, { signal: controller.signal, completedJobId: job?.phase === 'retaining' ? job.id : undefined });
+            this.lastRetention = { at: new Date().toISOString(), phase: 'succeeded', quarantinedReleases: moved.releases.length, quarantinedBackups: moved.backups.length, purged,
+                keptReleases: plan.keepReleases.length, keptBackups: plan.keepBackups.length, incomplete: plan.incompleteReleases.length + plan.incompleteBackups.length };
+            if (job) this.log(job, 'system', `Retention: kept ${plan.keepReleases.length} releases and ${plan.keepBackups.length} backups; quarantined ${moved.releases.length} releases and ${moved.backups.length} backups; purged ${purged} items.`);
+        }).catch(() => {
+            this.lastRetention = { at: new Date().toISOString(), phase: controller.signal.aborted ? 'cancelled' : 'failed', error: 'cleanup-incomplete' };
+            if (job) this.log(job, 'system', 'Retention did not complete; preserved remaining items.');
+            else console.error('Pivane retention did not complete; preserved remaining items.');
+        }).finally(() => {
+            this.cleaning = null; this.cleanupController = null;
+            this.send({ type: 'maintenance-status', status: this.status() });
+        });
+        return this.cleaning;
     }
     send(message) { if (this.child?.connected) this.child.send({ ...message, nonce: this.nonce }, () => {}); }
-    async start() {
-        // The kernel owns this process lock. It disappears on crash and needs no stale PID deletion.
-        const port = 40000 + createHash('sha256').update(this.root).digest().readUInt32BE(0) % 20000;
-        this.guard = net.createServer(socket => socket.destroy());
-        await new Promise((resolve, reject) => { this.guard.once('error', reject); this.guard.listen(port, '127.0.0.1', resolve); });
-        this.loadState();
-        await this.boot(this.state.active);
-        this.send({ type: 'maintenance-activate' });
+    start() {
+        if (this.starting) return this.starting;
+        if (this.closed) return Promise.reject(new Error('Launcher is stopping'));
+        this.starting = Promise.resolve().then(async () => {
+            // The kernel owns this process lock; no stale PID deletion.
+            const port = 40000 + createHash('sha256').update(this.root).digest().readUInt32BE(0) % 20000;
+            this.guard = net.createServer(socket => socket.destroy());
+            await new Promise((resolve, reject) => { this.guard.once('error', reject); this.guard.listen(port, '127.0.0.1', resolve); });
+            if (this.closed) throw new Error('Launcher is stopping');
+            this.loadState();
+            await this.cleanup();
+            if (this.closed) throw new Error('Launcher is stopping');
+            await this.boot(this.state.active);
+            if (this.closed) throw new Error('Launcher is stopping');
+            this.send({ type: 'maintenance-activate' });
+        }).finally(() => { this.starting = null; this.send({ type: 'maintenance-status', status: this.status() }); });
+        return this.starting;
     }
     boot(release) {
         if (this.closed) throw new Error('Launcher is stopping');
@@ -107,7 +149,7 @@ class ManagedLauncher {
         await exited;
     }
     execute(message) {
-        if (this.operation || this.closed) { this.send({ type: 'maintenance-rejected', id: message.id }); return Promise.resolve(); }
+        if (this.operation || this.cleaning || this.starting || this.closed) { this.send({ type: 'maintenance-rejected', id: message.id }); return Promise.resolve(); }
         if (!['update', 'application', 'backup', 'restart'].includes(message.action) || message.action === 'application' && (!validRelease(message.release) || !this.status().appUpdateSupported) || !/^[a-f0-9-]{36}$/.test(message.id || '') || message.action === 'update' && (!exactVersion(message.version) || !this.status().updateSupported)) {
             this.send({ type: 'maintenance-rejected', id: message.id }); return Promise.resolve();
         }
@@ -151,11 +193,16 @@ class ManagedLauncher {
             await this.boot(next);
             this.state.previous = next === previous ? this.state.previous : previous;
             this.state.active = next;
+            // Retaining is a nonterminal phase: admission remains owned until
+            // cleanup finishes and the ready child still exists.
+            job.phase = 'retaining'; this.save();
+            await this.cleanup(job);
+            if (!this.child || this.closed) throw Object.assign(new Error('Service stopped before maintenance completed'), { maintenancePhase: 'starting' });
             job.phase = 'succeeded'; job.finishedAt = new Date().toISOString(); job.exitCode = 0;
             job.installedVersion = message.action === 'application' ? message.release.version : message.action === 'update' ? message.version : job.fromVersion;
             this.log(job, 'system', `Completed. Running ${message.action === 'application' ? 'Pivane' : 'Pi'} ${job.installedVersion}.`); this.save();
         }).catch(async error => {
-            const failedPhase = job.phase;
+            const failedPhase = error?.maintenancePhase || job.phase;
             job.exitCode = Number.isInteger(error?.exitCode) ? error.exitCode : null;
             this.log(job, 'stderr', `Failed during ${failedPhase}: ${error?.message || 'Unknown error'}`);
             job.phase = 'failed'; job.error = failedPhase; job.finishedAt = new Date().toISOString();
@@ -177,11 +224,19 @@ class ManagedLauncher {
         });
         return this.operation;
     }
-    async close() {
-        this.closed = true; this.controller?.abort();
-        await this.operation;
-        await this.stopChild();
-        if (this.guard?.listening) await new Promise(resolve => this.guard.close(resolve));
+    close() {
+        if (this.closing) return this.closing;
+        this.closed = true; this.controller?.abort(); this.cleanupController?.abort();
+        this.closing = Promise.resolve().then(async () => {
+            let failure;
+            try { await this.starting; } catch (error) { failure = error; }
+            try { await this.operation; await this.cleaning; await this.stopChild(); }
+            catch (error) { failure ||= error; }
+            finally { if (this.guard?.listening) await new Promise(resolve => this.guard.close(resolve)); }
+            if (failure) throw failure;
+        });
+        return this.closing;
     }
+
 }
 module.exports = { ManagedLauncher };

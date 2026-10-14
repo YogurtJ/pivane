@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
 const { randomUUID, createHash } = require('node:crypto');
-const { privateDir, readSafe, copySafe, backupRoots, hashFileSafe, recordInstallation, atomicJson, hash, inside } = require('./pi-maintenance-files');
+const { privateDir, readSafe, copySafe, backupRoots, recordInstallation, atomicJson } = require('./pi-maintenance-files');
 const { replaceFileSync } = require('./pi-win32-native');
 const { ManagedLauncher } = require('./pi-managed-launcher');
 const { PI_PACKAGES } = require('./pi-update-installer');
@@ -11,29 +11,13 @@ function inspectBackup(root, id) {
     root = fs.realpathSync.native(root);
     const directory = path.join(root, '.pivane-runtime/backups', id);
     if (fs.realpathSync.native(directory) !== directory) throw new Error('Backup directory must not be an alias');
-    const bytes = readSafe(path.join(directory, 'manifest.json'), 128 * 1024 * 1024);
-    const complete = JSON.parse(readSafe(path.join(directory, 'complete.json')));
-    if (hash(bytes) !== complete.sha256) throw new Error('Backup manifest checksum mismatch');
-    const installationBytes = readSafe(path.join(directory, 'installation.json'), 32 * 1024 * 1024);
-    if (hash(installationBytes) !== complete.installationSha256) throw new Error('Installation backup checksum mismatch');
-    const manifest = JSON.parse(bytes), installation = JSON.parse(installationBytes);
-    if (manifest.version !== 1 || !Array.isArray(manifest.roots) || !Array.isArray(manifest.entries) || !Array.isArray(manifest.directories)
-        || manifest.entries.length + manifest.directories.length > 100000 || manifest.roots.some(p => typeof p !== 'string' || !path.isAbsolute(p) || inside(p, directory) || inside(directory, p))) throw new Error('Invalid backup scope');
-    const permitted = file => typeof file === 'string' && path.isAbsolute(file) && path.normalize(file) === file && manifest.roots.some(r => inside(r, file));
-    if (manifest.directories.some(file => !permitted(file))) throw new Error('Invalid backup directory');
-    const seen = new Set(); let total = 0;
-    for (const entry of manifest.entries) {
-        if (!permitted(entry.path) || seen.has(entry.path)) throw new Error('Invalid or duplicated backup entry'); seen.add(entry.path);
-        if (entry.type === 'symlink') { if (typeof entry.link !== 'string') throw new Error('Invalid backup link'); continue; }
-        if (entry.type !== 'file' || !/^\d{8}$/.test(entry.object) || !Number.isSafeInteger(entry.mode) || entry.mode < 0 || entry.mode > 0o777) throw new Error('Invalid backup object');
-        const actual = hashFileSafe(path.join(directory, 'files', entry.object)); total += actual.bytes;
-        if (actual.bytes !== entry.bytes || actual.sha256 !== entry.sha256 || total > 50 * 1024 ** 3) throw new Error('Backup object checksum or budget mismatch');
-    }
+    const proof = require('./pi-maintenance-backup').inspectBackupContents(directory);
+    const { installation } = proof;
     const launcher = new ManagedLauncher({ root });
     const release = launcher.releasePath(installation.release);
     const installed = JSON.parse(readSafe(path.join(release, 'package.json')));
     if (installed.version !== installation.package?.version || PI_PACKAGES.some(name => installed.dependencies?.[name] !== installation.package?.dependencies?.[name])) throw new Error('The matching retained installation is unavailable');
-    return { root, directory, manifest, installation, files: seen.size, bytes: total };
+    return { root, ...proof };
 }
 async function restoreBackup(root, id) {
     root = fs.realpathSync.native(root);

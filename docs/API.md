@@ -216,6 +216,8 @@
 
 以下维护接口暂保留供既有集成兼容及受控恢复，**当前设置页不调用也不显示执行入口**。`GET /settings/updates/maintenance`返回启动器能力、generation、busy、版本指针和最近维护结果；`POST /settings/updates/review`只接受 `{action:"update"或"backup"或"restart"}`，返回绑定服务端目标版本和进程代次的 10 分钟票据。`POST /settings/updates/execute`只接受 `{ticket,confirmed:true,draftsSaved:true,externalWritersStopped:true}`，再次检查空闲并暂停预约，接受返回 202。票据一次有效，不接受命令、URL、路径或版本覆盖；忙碌/过期/重复为 409，格式错误 400，不支持或交接失败 503。交接不确定不自动解锁或重试。
 
+`maintenance.retention` 是只读摘要：`releases`、`backups` 为配置的保留数，`null` 表示对应类型关闭（包含已排队回收区）。`last` 初始为 `null`，随后含 `at` 和 `phase`：`running`、`disabled`、`skipped`、`succeeded`、`failed` 或 `cancelled`。成功含 `quarantinedReleases`、`quarantinedBackups`（移入隔离的数量）、`purged`（实际删除的槽位数）、`keptReleases`、`keptBackups`、`incomplete`；跳过含 `reason`，失败／取消含 `error:"cleanup-incomplete"`，不把部分删除计为成功。数值上限不覆盖恢复保护。自动删除仅支持 Linux 描述符边界，权限、原生完整性或能力不足时保留。`busy` 包含启动／清理的完整生命周期；维护任务的 `retaining` 是非终态，清理结束且已就绪子进程仍存在后才记主要任务成功。主要维护与随后保留清理各自记录结果，清理失败不自动回退已启动的服务。安全范围、预算和不确定删除保留规则见[版本与更新](UPDATES.md)。
+
 所有接口复用身份/Origin、响应 no-store。`maintenance.job`增加脱敏 `output`、`outputTruncated`、`exitCode`、`fromVersion`与`installedVersion`；输出按行回传并保留有界尾部，只有实际退出后才返回退出码，成功后刷新版本卡片。普通`node server.js`与`npm start`自动支持，无需改服务启动命令；`--direct`为不含自动维护的开发入口。维护期间拒绝普通 API/WS 新工作；关闭页面不取消已接受操作。Pi 精确依赖在独立快照中安装并验证，然后停机备份和启动；Pivane 应用更新使用 `action:"application"`、可选 `channel` 复用 review/execute，票据绑定服务器选择的版本和 SHA256；能力以 `maintenance.appUpdateSupported` 为准。兼容字段 `installMode:"manual"`不表示受管维护不可用。字段、文件权限、预算、失败处理及恢复边界见[版本与更新](UPDATES.md)。
 
 ### `GET /projects`
