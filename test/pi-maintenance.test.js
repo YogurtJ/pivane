@@ -223,3 +223,91 @@ test('launcher restart marks interrupted work without replay and does not mutate
     assert.deepEqual(JSON.parse(readSafe(launcher.stateFile)), saved);
     another.loadState(); assert.equal(another.state.job.phase, 'interrupted'); assert.equal(another.operation, null);
 });
+
+const retention = require('../server/pi-managed-retention');
+function retentionFixture(t) {
+    const root = fixture(t); packageFixture(root);
+    const runtime = privateDir(path.join(root, '.pivane-runtime'));
+    privateDir(path.join(runtime, 'releases')); privateDir(path.join(runtime, 'backups'));
+    let clock = Date.now() / 1000 - 100000;
+    const tick = () => (clock += 60);
+    const release = (complete = true) => {
+        const id = randomUUID(), dir = privateDir(path.join(runtime, 'releases', id));
+        const lock = JSON.stringify({ packages: {} }); fs.writeFileSync(path.join(dir, 'package-lock.json'), lock);
+        if (complete) { const marker = path.join(dir, 'PI_INSTALL_COMPLETE.json'); fs.writeFileSync(marker, JSON.stringify({ version: '0.85.1', lockSha256: hash(Buffer.from(lock)) })); const at = tick(); fs.utimesSync(marker, at, at); }
+        const at = tick(); fs.utimesSync(dir, at, at); return id;
+    };
+    const backup = (releaseId, complete = true) => {
+        const id = randomUUID(), dir = privateDir(path.join(runtime, 'backups', id));
+        fs.writeFileSync(path.join(dir, 'manifest.json'), '{}');
+        if (complete) {
+            fs.writeFileSync(path.join(dir, 'installation.json'), JSON.stringify({ release: releaseId }));
+            const file = path.join(dir, 'complete.json'); fs.writeFileSync(file, JSON.stringify({ sha256: 'x', installationSha256: 'y' }));
+            const at = tick(); fs.utimesSync(file, at, at);
+        }
+        const at = tick(); fs.utimesSync(dir, at, at); return id;
+    };
+    return { root, runtime, release, backup };
+}
+
+test('retention limits default to five releases and three backups, accept off and reject unsafe values', () => {
+    assert.deepEqual(retention.retentionLimits({}), { releases: 5, backups: 3 });
+    assert.deepEqual(retention.retentionLimits({ PIVANE_RETAIN_RELEASES: '8', PIVANE_RETAIN_BACKUPS: 'off' }), { releases: 8, backups: null });
+    assert.deepEqual(retention.retentionLimits({ PIVANE_RETAIN_RELEASES: '1', PIVANE_RETAIN_BACKUPS: '0' }), { releases: 5, backups: 3 });
+    assert.deepEqual(retention.retentionLimits({ PIVANE_RETAIN_RELEASES: '-3', PIVANE_RETAIN_BACKUPS: '2.5' }), { releases: 5, backups: 3 });
+});
+
+test('retention keeps newest releases, active, previous and every release a retained backup needs', t => {
+    const { runtime, release, backup } = retentionFixture(t);
+    const ids = Array.from({ length: 9 }, () => release());
+    const staging = release(false);
+    const oldBackup = backup(ids[0]);
+    const kept = [backup(ids[1]), backup(null), backup(ids[2])];
+    const interrupted = backup(null, false); kept.push(backup(ids[3]));
+    const state = { version: 1, active: ids[4], previous: ids[0], job: null };
+    const plan = retention.planRetention(runtime, state);
+    assert.deepEqual(new Set(plan.keepBackups), new Set(kept.slice(1)));
+    assert.deepEqual(new Set(plan.removeBackups), new Set([oldBackup, kept[0], interrupted]));
+    // Newest five (4..8) plus previous (0) and backup dependencies (2, 3); 1 is only needed by a removed backup.
+    assert.deepEqual(new Set(plan.keepReleases), new Set([ids[0], ids[2], ids[3], ...ids.slice(4)]));
+    assert.deepEqual(plan.removeReleases, [ids[1]]);
+    assert.deepEqual(plan.incompleteReleases, [staging]);
+    // A partial backup newer than every complete backup may still be in progress and is not removed.
+    const newest = backup(null, false);
+    assert.ok(retention.planRetention(runtime, state).incompleteBackups.includes(newest));
+    assert.throws(() => retention.planRetention(runtime, { ...state, needsRecovery: true }), /settled/);
+});
+
+test('launcher retention moves old items to trash, purges them and stops when state changes', async t => {
+    const { root, runtime, release, backup } = retentionFixture(t);
+    const ids = Array.from({ length: 7 }, () => release());
+    const backups = ids.map(id => backup(id));
+    const launcher = new ManagedLauncher({ root, env: {} });
+    launcher.state = { version: 1, active: ids[6], previous: ids[0], job: null }; atomicJson(launcher.stateFile, launcher.state);
+    const changed = { ...launcher.state, previous: ids[1] }; atomicJson(launcher.stateFile, changed);
+    launcher.retain();
+    assert.equal(fs.readdirSync(path.join(runtime, 'backups')).length, 7, 'a changed state stops retention before removal');
+    assert.ok(launcher.lastRetention.error);
+    atomicJson(launcher.stateFile, launcher.state);
+    launcher.retain(); await launcher.purge();
+    assert.deepEqual(new Set(fs.readdirSync(path.join(runtime, 'backups'))), new Set(backups.slice(4)));
+    // Newest five (2..6) plus previous (0); 4..6 also back retained backups.
+    assert.deepEqual(new Set(fs.readdirSync(path.join(runtime, 'releases'))), new Set([ids[0], ...ids.slice(2)]));
+    assert.deepEqual(fs.readdirSync(path.join(runtime, retention.TRASH)), []);
+    assert.equal(launcher.lastRetention.removedReleases, 1); assert.equal(launcher.lastRetention.removedBackups, 4);
+    assert.equal(launcher.releasePath(ids[6]), path.join(runtime, 'releases', ids[6]));
+});
+
+test('a successful maintenance backup applies retention after the new backup completes', async t => {
+    const { root, runtime, backup } = retentionFixture(t);
+    const old = [backup(null), backup(null), backup(null), backup(null)];
+    const data = privateDir(path.join(root, 'data')); fs.writeFileSync(path.join(data, 'native.jsonl'), 'fixture');
+    const launcher = new ManagedLauncher({ root, env: {} });
+    launcher.send = () => {}; launcher.backupInputs = [data]; launcher.child = {};
+    launcher.stopChild = async () => { launcher.child = null; };
+    launcher.boot = async () => { launcher.child = {}; };
+    const id = randomUUID(); await launcher.execute({ id, action: 'backup' }); await launcher.purge();
+    assert.equal(launcher.state.job.phase, 'succeeded');
+    assert.deepEqual(new Set(fs.readdirSync(path.join(runtime, 'backups'))), new Set([...old.slice(2), id]));
+    assert.match(launcher.state.job.output, /Retention: kept/);
+});
