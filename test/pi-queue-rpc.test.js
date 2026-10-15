@@ -118,6 +118,10 @@ test('managed synthetic RPC: image/document/template queue recovery, durable ack
     const templateRecovery = full.find(item => item.original.message === '/queued original');
     assert.ok(templateRecovery, JSON.stringify({ items: full.map(item => ({ original: item.original.message, legacy: item.legacy, state: item.state })), events: privateQueueEvents }));
     assert.deepEqual(templateRecovery.payload.images, [image]);
+    // abort's RPC acknowledgement can precede the matching SDK-call completion
+    // frame. Recovered drafts remain, but actual execution must have ended.
+    await waitFor(() => !worker.lifecycle().activity.busy);
+    assert.equal(worker.runStartupCalls.size, 0);
     const documents = await supervisor.protectedDocuments(); assert.equal(documents.complete, true); assert.deepEqual(documents.ids, [document.id]);
     const release = await supervisor.acquireQueueReferenceLease();
     await assert.rejects(worker.request('prompt', { message: 'blocked by queue reference lease' }), /核验/);

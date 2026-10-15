@@ -186,12 +186,16 @@ test('managed RPC abort keeps the parent stopped when its detached child finishe
     assert.notEqual(steered.isError, true, JSON.stringify(steered));
     const interrupted = await worker.subagentRequest({ method: 'interrupt', params: { id: active.id } });
     assert.notEqual(interrupted.isError, true, JSON.stringify(interrupted));
+    // Paused is a logical state; stop requires the detached runner's actual
+    // terminal proof. Observe that proof before the one stop request.
     for (let i = 0; i < 150; i++) {
-        status = await worker.subagentRequest({ method: 'status', params: {} });
-        if (status.snapshot?.runs.find(run => run.id === active.id)?.state === 'paused') break;
+        status = await worker.subagentRequest({ method: 'status', params: { id: active.id } });
+        if (status.snapshot?.runs.find(run => run.id === active.id)?.state === 'paused'
+            && /^Process terminal: observed(?:\s|$)/m.test(status.text)) break;
         await new Promise(resolve => setTimeout(resolve, 50));
     }
     assert.equal(status.snapshot?.runs.find(run => run.id === active.id)?.state, 'paused', JSON.stringify(status));
+    assert.match(status.text, /^Process terminal: observed(?:\s|$)/m);
     const stopped = await worker.subagentRequest({ method: 'stop', params: { id: active.id } });
     assert.equal(stopped.state, 'stopping', JSON.stringify(stopped));
     for (let i = 0; i < 150; i++) {
