@@ -33,7 +33,7 @@ test('application prereleases retain current and previous restore points and rem
     for (let i = 0; i < 3; i++) f.backup(active);
     const state = f.state(active, previous), limits = { releases: 2, backups: 1 };
     const plan = retention.planRetention(f.runtime, state, limits);
-    assert.equal(plan.skipped, undefined);
+    assert.equal(plan.skipped, process.platform === 'linux' ? undefined : 'Retention deletion requires Linux directory descriptors');
     assert.ok(plan.keepReleases.includes(active)); assert.ok(plan.keepReleases.includes(previous));
     assert.ok(plan.keepBackups.includes(previousBackup));
     assert.ok(plan.removeBackups.includes(activeBackup));
@@ -43,6 +43,11 @@ test('application prereleases retain current and previous restore points and rem
         assert.equal(await retention.purgeTrash(f.runtime, limits), 3);
         assert.ok(fs.existsSync(path.join(f.runtime, 'backups', previousBackup)));
         assert.equal(fs.readdirSync(path.join(f.runtime, 'backups')).length, 2);
+    } else {
+        const before = fs.readdirSync(path.join(f.runtime, 'backups')).sort();
+        assert.deepEqual(retention.moveToTrash(f.runtime, plan, state), { releases: [], backups: [] });
+        await assert.rejects(retention.purgeTrash(f.runtime, limits), /requires Linux directory descriptors/);
+        assert.deepEqual(fs.readdirSync(path.join(f.runtime, 'backups')).sort(), before);
     }
 });
 
@@ -135,7 +140,13 @@ test('partial, unknown, linked and in-progress items are preserved even with new
     const plan = retention.planRetention(f.runtime, f.currentState, f.limits);
     assert.ok(plan.incompleteBackups.includes(partial)); assert.ok(!plan.removeBackups.includes(linked));
     assert.throws(() => retention.planRetention(f.runtime, { ...f.currentState, job: { phase: 'backing-up' } }, f.limits), /settled/);
-    assert.throws(() => retention.moveToTrash(f.runtime, { ...plan }, f.currentState), /verified plan/);
+    if (process.platform === 'linux') assert.throws(() => retention.moveToTrash(f.runtime, { ...plan }, f.currentState), /verified plan/);
+    else {
+        assert.match(plan.skipped, /requires Linux directory descriptors/);
+        assert.deepEqual(retention.moveToTrash(f.runtime, { ...plan }, f.currentState), { releases: [], backups: [] });
+        assert.equal(fs.readFileSync(path.join(outside, 'sentinel'), 'utf8'), 'keep');
+        assert.ok(fs.existsSync(path.join(f.runtime, 'backups', partial)));
+    }
 });
 
 for (const replacement of ['state', 'runtime', 'parent', 'source']) {
@@ -242,7 +253,16 @@ linuxTest('purge cancellation and real filesystem error report partial completio
 });
 
 const { ManagedLauncher } = require('../server/pi-managed-launcher');
+function syntheticCleanupPlan(t) {
+    // Lifecycle tests isolate the planner so every platform reaches the injected
+    // asynchronous purge. Real planning/deletion boundaries are asserted above.
+    t.mock.method(retention, 'planRetention', () => ({
+        keepReleases: [], removeReleases: [], incompleteReleases: [],
+        keepBackups: [], removeBackups: [], incompleteBackups: [],
+    }));
+}
 test('async cleanup reserves admission before awaits, is shared, waits for actual completion and shutdown does not replay', async t => {
+    syntheticCleanupPlan(t);
     const f = fixture(t); f.backup(null); const state = f.state();
     const launcher = new ManagedLauncher({ root: f.root, env: {} }); launcher.state = state;
     const messages = []; launcher.send = m => messages.push(m); let finish, calls = 0, stopping = 0;
@@ -259,6 +279,7 @@ test('async cleanup reserves admission before awaits, is shared, waits for actua
 });
 
 test('cleanup error is observable, releases admission only on completion and preserves the successful main operation', async t => {
+    syntheticCleanupPlan(t);
     const f = fixture(t); f.backup(null); const launcher = new ManagedLauncher({ root: f.root, env: {} }); launcher.state = f.state();
     t.mock.method(retention, 'purgeTrash', async () => { throw new Error('synthetic purge error'); });
     await launcher.cleanup(); assert.equal(launcher.lastRetention.phase, 'failed'); assert.equal(launcher.status().busy, false);
@@ -266,6 +287,7 @@ test('cleanup error is observable, releases admission only on completion and pre
 });
 
 test('maintenance remains nonterminal during cleanup and unexpected child exit is recorded as failure', async t => {
+    syntheticCleanupPlan(t);
     const f = fixture(t), launcher = new ManagedLauncher({ root: f.root, env: {} }); launcher.state = f.state();
     launcher.backupInputs = [f.data]; launcher.child = {}; launcher.send = () => {};
     launcher.stopChild = async () => { launcher.child = null; };
@@ -282,6 +304,7 @@ test('maintenance remains nonterminal during cleanup and unexpected child exit i
 });
 
 test('startup shutdown during async cleanup waits once and never boots or activates a child', async t => {
+    syntheticCleanupPlan(t);
     const f = fixture(t); f.backup(null); f.state();
     const launcher = new ManagedLauncher({ root: f.root, env: {} }), messages = [];
     launcher.send = message => messages.push(message); let finish, boots = 0;
