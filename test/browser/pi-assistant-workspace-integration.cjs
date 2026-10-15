@@ -252,17 +252,42 @@ async function main() {
         await page.locator('#pi-input').fill('Draft retained through navigation');
         await page.locator('#pi-file-input').setInputFiles({ name: 'fixture.txt', mimeType: 'text/plain', buffer: Buffer.from('Synthetic attachment') });
         await page.locator('#pi-attachments .pi-attachment-chip').waitFor();
-        await page.locator('#pi-refresh-sessions').click();
-        await page.locator('#workspace-profiles-toggle').click();
-        await page.goBack();
-        await page.waitForFunction(() => location.hash.startsWith('#/assistant'));
-        assert.equal(await page.locator('#pi-input').inputValue(), 'Draft retained through navigation');
-        assert.equal(await page.locator('#pi-attachments .pi-attachment-chip').count(), 1);
-        await page.goForward();
-        await page.goBack();
-        assert.equal(await page.locator('#pi-attachments .pi-attachment-chip').count(), 1);
-        await page.waitForFunction(() => document.querySelectorAll('.pi-assistant-group').length === 2
-            && !document.querySelector('#pi-assistant-profile-status')?.textContent.trim());
+        // Hold one discovery response after the group rows render, then leave before it settles.
+        // Returning to the same identity/project must start a fresh read, including via browser history.
+        let projectResponseObserved = false, discoveryHeld = false, releaseDiscovery;
+        const discoveryGate = new Promise(resolve => { releaseDiscovery = resolve; });
+        const observeProjects = response => { if (response.url().startsWith(`${base()}/api/pi/assistant-projects?`)) projectResponseObserved = true; };
+        const holdDiscovery = async route => {
+            const shouldHold = projectResponseObserved && !discoveryHeld;
+            if (shouldHold) discoveryHeld = true;
+            const response = await route.fetch();
+            if (shouldHold) {
+                await page.evaluate(() => { window.__assistantDiscoveryHeld = true; });
+                await discoveryGate;
+            }
+            await route.fulfill({ response });
+        };
+        page.on('response', observeProjects);
+        await page.route(`${base()}/api/pi/sessions?cwd=*`, holdDiscovery);
+        try {
+            await page.locator('#pi-refresh-sessions').click();
+            await page.waitForFunction(() => window.__assistantDiscoveryHeld === true);
+            await page.locator('#workspace-profiles-toggle').click();
+            await page.goBack();
+            releaseDiscovery();
+            await page.waitForFunction(() => location.hash.startsWith('#/assistant'));
+            assert.equal(await page.locator('#pi-input').inputValue(), 'Draft retained through navigation');
+            assert.equal(await page.locator('#pi-attachments .pi-attachment-chip').count(), 1);
+            await page.goForward();
+            await page.goBack();
+            assert.equal(await page.locator('#pi-attachments .pi-attachment-chip').count(), 1);
+            await page.waitForFunction(() => document.querySelectorAll('.pi-assistant-group').length === 2
+                && !document.querySelector('#pi-assistant-profile-status')?.textContent.trim());
+        } finally {
+            releaseDiscovery();
+            await page.unroute(`${base()}/api/pi/sessions?cwd=*`, holdDiscovery);
+            page.off('response', observeProjects);
+        }
         await screenshot(page, 'assistant-1440-en-dark');
 
         await page.locator('.nav-btn[data-tab=chat]').click();

@@ -119,5 +119,11 @@ async function run(browser, base, width, locale) {
     const server = await new Promise(resolve => { const server = app.listen(0, '127.0.0.1', () => resolve(server)); });
     const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
     try { for (const [width, locale] of [[1440, 'zh-CN'], [393, 'en-US'], [320, 'zh-CN'], [320, 'en-US']]) await run(browser, `http://127.0.0.1:${server.address().port}`, width, locale); }
-    finally { await browser.close(); server.close(); }
+    finally {
+        console.log('selection fixture: closing browser');
+        await browser.close();
+        console.log('selection fixture: closing server');
+        await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
+        console.log('selection fixture: closed');
+    }
 })().catch(error => { console.error(error); process.exitCode = 1; });

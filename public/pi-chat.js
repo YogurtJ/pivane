@@ -4946,6 +4946,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('workspace:tabchanged', event => {
         const { tab, params } = event.detail;
         const routeKey = location.hash || '#/chat';
+        const previousTab = /^#\/([^?]+)/.exec(state.routeKey || '')?.[1];
         if (routeKey !== state.routeKey) { state.routeKey = routeKey; state.navigationEpoch++; }
         if (tab !== 'chat' && tab !== 'assistant') { state.assistantEpoch++; return; }
         const wasAssistant = state.assistantMode;
@@ -4962,7 +4963,7 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.sessionFilters.querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.filter === 'all')));
         }
         if (state.assistantMode) {
-            if (!wasAssistant || params.get('profileId') !== state.assistantProfileId || params.get('projectId') && params.get('projectId') !== state.assistantProjectId) {
+            if (!wasAssistant || previousTab !== 'assistant' || params.get('profileId') !== state.assistantProfileId || params.get('projectId') && params.get('projectId') !== state.assistantProjectId) {
                 refreshAssistant({ profileId: params.get('profileId'), projectId: params.get('projectId'), sessionId: params.get('sessionId') });
             } else if (params.get('sessionId') && state.session?.id !== params.get('sessionId')) {
                 const session = state.assistantSessions.get(state.assistantProjectId)?.find(item => item.id === params.get('sessionId'));

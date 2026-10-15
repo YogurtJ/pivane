@@ -21,7 +21,7 @@ If Pi CLI has models but the browser does not, check its identity directory and 
 - Text search retains its query, results page and reading position within the current page. **Locate current thread** adjusts the list and focus without changing archive state or restarting the session.
 - Details, Files, History and Side chat share the right panel. Desktop panels dock and resize; narrow desktops temporarily hide the thread list. Phones use a drawer with Close and Esc support. Closing a panel does not stop its task.
 
-Opening management pages does not end the session. When switching between Pi Agent and Assistant chat, select the thread again to continue. Drafts and loaded attachments are retained per thread within the page; **preserve unsent content before refreshing or closing it**.
+Opening management pages does not end the session. Returning to Assistant chat reloads its projects and threads while retaining drafts and attachments within the page. When switching between Pi Agent and Assistant chat, select the thread again to continue. Drafts and loaded attachments are retained per thread within the page; **preserve unsent content before refreshing or closing it**.
 
 ## Models and capabilities
 

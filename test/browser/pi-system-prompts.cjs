@@ -90,6 +90,8 @@ async function run(browser, base, width, locale) {
     await page.waitForFunction(() => document.activeElement.id === 'pi-system-prompt-view');
     await page.locator('#pi-close-inspector').click();
     await page.locator('#workspace-settings-toggle').click();
+    // Capability discovery reveals navigation entries asynchronously; compare the same ready layout.
+    await page.locator('#system-prompts-nav').waitFor();
     const settingsNavigation = () => page.locator('.workspace-settings-nav').evaluate(e => {
         const s = getComputedStyle(e);
         return { display: s.display, columns: s.gridTemplateColumns, height: e.clientHeight, overflow: s.overflowX };
