@@ -70,8 +70,9 @@ test('runner removes inherited package and child metadata before native SDK impo
         import assert from 'node:assert/strict';
         import { VERSION, getPackageDir } from '@earendil-works/pi-coding-agent';
         import fs from 'node:fs';
+        import path from 'node:path';
         assert.equal(VERSION, JSON.parse(fs.readFileSync('package.json')).dependencies['@earendil-works/pi-coding-agent']);
-        assert.equal(getPackageDir(), process.cwd() + '/node_modules/@earendil-works/pi-coding-agent');
+        assert.equal(getPackageDir(), fs.realpathSync.native(path.join(process.cwd(), 'node_modules/@earendil-works/pi-coding-agent')));
         assert.equal(process.env.OPENAI_API_KEY, undefined);
         assert.equal(Object.keys(process.env).some(key => /^PI_SUBAGENT(?:_|S_)/.test(key)), false);
         process.env.PI_SUBAGENT_CHILD = '1';
