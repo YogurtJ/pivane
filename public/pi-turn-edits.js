@@ -165,7 +165,10 @@
                 });
                 // Only an explicit disclosure action moves focus; restored snapshots keep their reading position.
                 summary.addEventListener('click', () => requestAnimationFrame(() => {
-                    if (more.isConnected && more.open) more.querySelector('.pi-edit-file').focus({ preventScroll: true });
+                    // A later user focus choice takes precedence over this queued frame.
+                    if (more.isConnected && more.open && [summary, document.body].includes(document.activeElement)) {
+                        more.querySelector('.pi-edit-file').focus({ preventScroll: true });
+                    }
                 }));
                 more.append(collapse); card.append(more);
             }

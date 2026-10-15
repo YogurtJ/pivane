@@ -91,6 +91,15 @@ async function run(browser, viewport) {
     assert.match(await cards.first().locator('.pi-edit-file').first().textContent(), /2 次 · \+2 −2/);
     assert.equal(await page.locator('#pi-inspector').evaluate(n => n.classList.contains('open')), false, 'completion does not open the panel');
     assert.equal(await cards.last().evaluate(n => n.previousElementSibling.textContent.includes('回复已停止')), true);
+    // Release the disclosure's queued frame after an explicit new focus choice.
+    await cards.first().locator('.pi-edits-more > summary').evaluate(summary => {
+        const nativeFrame = window.requestAnimationFrame;
+        window.__disclosureFrames = [];
+        summary.addEventListener('click', () => {
+            window.requestAnimationFrame = callback => { window.__disclosureFrames.push(callback); return 0; };
+        }, { capture: true, once: true });
+        summary.addEventListener('click', () => { window.requestAnimationFrame = nativeFrame; }, { once: true });
+    });
     await cards.first().locator('.pi-edits-more > summary').click();
     const more = cards.first().locator('.pi-edits-more'), collapse = more.locator('.pi-edits-collapse');
     await collapse.waitFor({ state: 'visible' });
@@ -99,7 +108,13 @@ async function run(browser, viewport) {
         const footer = n.querySelector('.pi-edits-collapse').getBoundingClientRect();
         return [...n.querySelectorAll('.pi-edit-file')].every(file => file.getBoundingClientRect().bottom <= footer.top + 1);
     }), true, 'collapse control is below every file');
-    await collapse.focus(); await page.keyboard.press('Space');
+    await collapse.focus();
+    await page.evaluate(() => {
+        window.__disclosureFrames.forEach(callback => callback(performance.now()));
+        delete window.__disclosureFrames;
+    });
+    assert.equal(await collapse.evaluate(node => node === document.activeElement), true, 'queued disclosure focus must preserve the subsequent explicit choice');
+    await page.keyboard.press('Space');
     assert.equal(await more.evaluate(n => n.open), false);
     assert.equal(await cards.first().locator('.pi-edit-file:visible').count(), 3);
     assert.equal(await more.locator('summary').evaluate(n => n === document.activeElement), true);
