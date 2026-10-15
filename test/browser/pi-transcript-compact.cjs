@@ -34,6 +34,8 @@ function fixture() {
 async function run(browser, size) {
     const context = await browser.newContext({ locale: 'zh-CN', viewport: size, isMobile: size.width < 900, hasTouch: size.width < 900 });
     const page = await context.newPage();
+    // Keep surrounding text geometry stable while comparing view-mode anchors.
+    await page.route(/https:\/\/(fonts\.googleapis\.com|fonts\.gstatic\.com)\//, route => route.abort());
     const errors = [];
     const writes = [];
     let socket;

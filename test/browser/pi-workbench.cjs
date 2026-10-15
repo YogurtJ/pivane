@@ -87,7 +87,11 @@ async function run(browser, base, viewport, preferences = {}) {
         const card = await page.locator('#pi-session-hover').evaluate(node => { const r = node.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, font: parseFloat(getComputedStyle(node).fontSize), text: node.textContent, rows: node.querySelectorAll('li').length }; });
         assert.ok(card.font >= 13 && card.rows >= 4 && card.left >= 0 && card.right <= viewport.width && card.bottom <= viewport.height, JSON.stringify(card));
         assert.match(card.text, /42 messages/);
+        await page.locator('#pi-transcript').evaluate(node => node.dispatchEvent(new Event('scroll')));
+        assert.equal(await page.locator('#pi-session-hover').isVisible(), true, 'unrelated transcript scrolling keeps the hovered sidebar card');
         assert.equal(await row.getAttribute('aria-describedby'), 'pi-session-hover');
+        await page.locator('#pi-session-list').evaluate(node => node.dispatchEvent(new Event('scroll')));
+        assert.equal(await page.locator('#pi-session-hover').isVisible(), false, 'scrolling an ancestor of the hovered row hides its card');
         await page.mouse.move(viewport.width - 5, viewport.height / 2);
         await page.locator('#pi-session-hover').waitFor({ state: 'hidden' });
         if (evidence) { await row.hover(); await page.waitForTimeout(900); await page.screenshot({ path: path.join(evidence, `hover-${viewport.width}.png`) }); await page.mouse.move(viewport.width - 5, viewport.height / 2); }

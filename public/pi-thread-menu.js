@@ -19,7 +19,9 @@
                     else this.close(true);
                 } else if (event.key === 'Tab') this.close(true);
             });
-            window.addEventListener('resize', () => this.close(false));
+            window.addEventListener('resize', () => {
+                if (!this.element.classList.contains('hidden') && this.layoutGeometry() !== this.openGeometry) this.close(false);
+            });
             document.addEventListener('scroll', event => {
                 // A focus scroll queued before opening can arrive after the menu appears.
                 if (event.target === document && this.viewportScroll?.x === scrollX && this.viewportScroll?.y === scrollY) return;
@@ -48,6 +50,12 @@
                 }
                 if (next !== undefined) { event.preventDefault(); buttons[next]?.focus(); }
             });
+        }
+
+        layoutGeometry() {
+            const anchor = this.anchor?.getBoundingClientRect();
+            const menu = this.element.getBoundingClientRect();
+            return [innerWidth, innerHeight, anchor?.x, anchor?.y, anchor?.width, anchor?.height, menu.width, menu.height].join(',');
         }
 
         open(anchor, items, point) {
@@ -115,6 +123,7 @@
             const buttons = this.element.querySelectorAll('button');
             const focused = buttons[frame.focusIndex];
             (focused && !focused.disabled ? focused : this.element.querySelector('button:not(:disabled)'))?.focus({ preventScroll: true });
+            this.openGeometry = this.layoutGeometry();
         }
 
         close(restoreFocus = false) {
@@ -123,6 +132,7 @@
             this.anchor?.setAttribute('aria-expanded', 'false');
             if (restoreFocus && this.anchor?.isConnected) this.anchor.focus({ preventScroll: true });
             this.anchor = null;
+            this.openGeometry = null;
             this.ancestorScroll = null;
             this.frames = [];
         }

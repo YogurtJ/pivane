@@ -43,13 +43,20 @@ async function run(browser, base, width, locale) {
     await page.locator('.mcp-settings [data-mcp-write]').first().waitFor();
     assert.equal(actions.length, 0, 'opening saved configuration does not connect or request runtime');
     const read = page.locator('.mcp-settings button').filter({ hasText: locale === 'en' ? /^Read runtime snapshot$/ : /^读取运行快照$/ });
-    await read.click(); assert.equal(actions[0].runtimeId, 'runtime');
+    const readSnapshot = async () => {
+        await read.click();
+        await page.waitForFunction(() => {
+            const button = [...document.querySelectorAll('.mcp-settings button')].find(n => /^(Read runtime snapshot|读取运行快照)$/.test(n.textContent));
+            return button && !button.disabled;
+        });
+    };
+    await readSnapshot(); assert.equal(actions[0].runtimeId, 'runtime');
     for (const state of ['failed', 'cancelled', 'unknown']) {
-        outcome = state; await read.click();
+        outcome = state; await readSnapshot();
         const status = await page.locator('.mcp-status').textContent();
         assert.ok(!status.includes('Runtime action completed') && !status.includes('运行操作完成'), status);
     }
-    outcome = 'completed'; await read.click();
+    outcome = 'completed'; await readSnapshot();
     await page.locator('.mcp-settings button').filter({ hasText: locale === 'en' ? /^Return to chat$/ : /^返回聊天$/ }).click();
     await page.locator('.mcp-settings.active').waitFor({ state: 'hidden' });
     socket.send(JSON.stringify({ type: 'gateway_mcp_authorization', authorization: auth }));

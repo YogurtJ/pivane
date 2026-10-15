@@ -103,6 +103,7 @@ async function check(browser, base, width, language) {
     assert.equal(await panel.locator('.sa-runs-count').evaluate(node => node.scrollWidth <= node.clientWidth + 1), true, 'subagent count is not truncated');
     await progress.locator('summary').click();
     await panel.locator('summary').click();
+    await page.waitForFunction(() => document.querySelector('#pi-subagent-runs').open && !document.querySelector('#pi-task-progress').open);
     assert.deepEqual([await panel.evaluate(node => node.open), await progress.evaluate(node => node.open)], [true, false], 'opening one closes the other');
     await page.screenshot({ path: `/tmp/pivane-composer-status-open-${width}-${language}.png` });
     assert.equal(await panel.locator('.sa-runs-count').textContent(), en ? '1 running' : '1 个运行中');

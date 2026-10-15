@@ -113,7 +113,7 @@ Pausing a schedule and stopping its current run are separate actions. The server
 
 ## Thread list display
 
-The list shows thread titles and status; hover reveals the full title and available statistics. Idle does not mean the runtime has been released. Use `/quit` in the relevant thread to exit it explicitly; switching threads does not immediately stop its worker.
+The list shows thread titles and status; hover reveals the full title and available statistics. The card stays visible while the conversation streams or scrolls, and closes when its row is left or the thread list scrolls. Activity refreshes preserve the list's reading position and expanded sections. Thread menus stay open during refreshes that leave the layout unchanged, and close when the viewport or anchor position changes. Idle does not mean the runtime has been released. Use `/quit` in the relevant thread to exit it explicitly; switching threads does not immediately stop its worker.
 
 ## Archive projects and threads
 

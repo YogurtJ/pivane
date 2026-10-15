@@ -98,6 +98,7 @@ async function run(browser, base, width, locale) {
     await page.locator('#pi-transcript-content a').filter({ hasText: '外部报告' }).evaluate(n => n.click());
     await dialog.getByRole('button', { name: text('关联目录并打开', 'Link folder and open'), exact: true }).click(); await page.locator('#pi-file-body h1').filter({ hasText: '任务报告' }).waitFor();
     assert.ok(roots.includes(external));
+    await page.locator('#pi-file-locate').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#pi-file-locate').isVisible(), true, 'promoting a single file restores folder navigation');
     assert.equal(await page.locator('.pi-file-breadcrumb button:disabled').count(), 0);
     // Persisted related folders are reloaded; current browsing defaults to the primary root.

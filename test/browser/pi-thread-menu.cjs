@@ -215,6 +215,11 @@ async function run(browser, viewport) {
     await drawer();
     await menuButton('thread-1').click();
     assert.equal(await menu.getByRole('menuitem', { name: '标记为未读' }).count(), 0, 'old backend must not expose unsupported unread action');
+    await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+    assert.equal(await menu.isVisible(), true, 'a layout notification without geometry change preserves the open menu');
+    await page.setViewportSize({ width: viewport.width, height: viewport.height - 1 });
+    await menu.waitFor({ state: 'hidden' });
+    await page.setViewportSize(viewport);
     assert.equal(await page.evaluate(() => document.body.scrollWidth > document.body.clientWidth), false);
     assert.deepEqual(errors, []);
     assert.equal(rpc.some(command => ['prompt', 'steer', 'follow_up'].includes(command)), false);

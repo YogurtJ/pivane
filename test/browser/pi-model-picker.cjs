@@ -154,6 +154,7 @@ async function check(browser, base, width, language, theme) {
     assert.ok(!(await page.evaluate(() => localStorage.getItem('pivane.models.recent'))).includes('model/15'));
     fail = false;
     await openPicker(); await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('#pi-model-dialog').open && document.querySelector('#pi-model-select').getAttribute('aria-expanded') === 'false');
     assert.equal(await button.getAttribute('aria-expanded'), 'false');
     assert.equal(await page.locator(width <= 680 ? '#pi-mobile-context-trigger' : '#pi-model-select').evaluate(node => node === document.activeElement), true);
     await openPicker(); running = true; socket.send(JSON.stringify({ type: 'agent_start' }));

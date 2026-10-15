@@ -31,7 +31,14 @@ async function run(browser, viewport) {
         event({ type: 'agent_settled' });
     };
     page.on('pageerror', error => errors.push(error.message));
-    await page.addInitScript(({ cwd, id }) => { localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem(`pi.web.session:${cwd}`, id); localStorage.setItem('pi.web.transcriptMode', 'full'); }, { cwd, id: session.id });
+    await page.addInitScript(({ cwd, id }) => {
+        localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem(`pi.web.session:${cwd}`, id); localStorage.setItem('pi.web.transcriptMode', 'full');
+        const writeText = navigator.clipboard.writeText.bind(navigator.clipboard);
+        navigator.clipboard.writeText = async text => {
+            await writeText(text);
+            window.__nativePatchCopy = text;
+        };
+    }, { cwd, id: session.id });
     await page.route('**/api/**', route => {
         const request = route.request(), pathname = new URL(request.url()).pathname;
         if (request.method() !== 'GET') { writes.push(pathname); return route.fulfill({ json: {} }); }
@@ -80,7 +87,10 @@ async function run(browser, viewport) {
     assert.equal(await tool.locator('.pi-edit-diff img').count(), 0);
     assert.equal(await tool.locator('.pi-tool-raw').getAttribute('open'), null);
     await tool.getByRole('button', { name: '复制 patch' }).click();
-    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), patch);
+    await page.waitForFunction(expected => window.__nativePatchCopy === expected, patch);
+    // The native Windows clipboard converts LF to CRLF; the submitted patch above stays exact.
+    const clipboardPatch = process.platform === 'win32' ? patch.replace(/\n/g, '\r\n') : patch;
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), clipboardPatch);
     await selectMessageView(page, 'reading');
     await page.locator('.pi-process-group > summary').click();
     await tool.locator('.pi-edit-diff').waitFor({ state: 'visible' });

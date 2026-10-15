@@ -1896,7 +1896,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         document.addEventListener('pointerdown', hide, true);
         document.addEventListener('keydown', event => { if (event.key === 'Escape') hide(); }, true);
-        document.addEventListener('scroll', hide, true);
+        document.addEventListener('scroll', event => {
+            const anchor = target || pending;
+            if (anchor && (event.target === document || event.target?.contains?.(anchor))) hide();
+        }, true);
         window.addEventListener('blur', hide);
     })();
 

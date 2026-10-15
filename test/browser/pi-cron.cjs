@@ -28,7 +28,8 @@ async function check(browser, base, width, language, scenario = 'normal') {
         if (url.pathname === '/api/pi/status') return send({ ok: true, scheduledTasks: true, projectRoots: ['/synthetic'] });
         if (url.pathname === '/api/pi/projects') return new Promise(resolve => setTimeout(() => { send({ projects: [{ cwd, name: 'Assistant', sessionCount: 1 }], roots: ['/synthetic'] }); resolve(); }, scenario === 'slow' ? 1800 : 0));
         if (url.pathname === '/api/pi/profiles') return send({ profiles: [{ id: profileId, name: 'Assistant <img src=x onerror=alert(1)>', enabled: true }] });
-        if (url.pathname === '/api/pi/sessions') return send({ sessions: [{ id: sessionId, cwd, name: 'Main conversation', agentProfile: { id: profileId } }] });
+        if (url.pathname === '/api/pi/sessions') return send({ sessions: url.searchParams.get('cwd') === cwd
+            ? [{ id: sessionId, cwd, name: 'Main conversation', agentProfile: { id: profileId } }] : [] });
         if (url.pathname === '/api/pi/activity') return send({ runtimes: [], replyNotices: [] });
         if (url.pathname === '/api/pi/cron') return new Promise(resolve => setTimeout(() => { send({ jobs, homes, limits, today: { runs: 0, tokens: 0, cost: 0 } }); resolve(); }, scenario === 'slow' ? 350 : 0));
         if (url.pathname === '/api/pi/cron/preview') return send({ times: Array.from({ length: 5 }, (_, i) => now + (i + 1) * 86400000) });

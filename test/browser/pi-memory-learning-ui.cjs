@@ -614,6 +614,7 @@ async function runWave2(browser, base, width, locale) {
     await projectRow.click();
     await page.waitForFunction(() => (document.querySelector('.pi-knowledge-detail')?.textContent || '').includes('r'.repeat(64)));
     const detail = page.locator('.pi-knowledge-detail');
+    await detail.locator('.pi-knowledge-actions button').filter({ hasText: say('编辑', 'Edit') }).waitFor();
     assert.equal(await detail.locator('button').filter({ hasText: say('编辑', 'Edit') }).count(), 1, 'project entry is editable with a session id');
     assert.equal(await detail.locator('button').filter({ hasText: say('删除', 'Delete') }).count(), 1, 'project entry can be deleted with a session id');
     // Undo of the project receipt is offered from the receipt history with the session id.

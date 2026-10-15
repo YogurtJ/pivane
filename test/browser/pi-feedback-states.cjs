@@ -136,6 +136,7 @@ async function run(browser, viewport) {
     assert.match(await page.locator('#pi-deferred-next').textContent(), /\d{2}:\d{2}/);
     await chip.locator('button').click();
     await page.locator('#pi-workflow-dialog').waitFor();
+    await page.waitForFunction(() => document.querySelector('#pi-workflow-content')?.textContent.includes('Remind me tomorrow'));
     assert.match(await page.locator('#pi-workflow-content').textContent(), /Remind me tomorrow/);
     await page.locator('#pi-workflow-close').click();
 

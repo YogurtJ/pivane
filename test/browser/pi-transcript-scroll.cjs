@@ -29,6 +29,8 @@ async function run(browser, size) {
     messages[21].content.push({ type: 'toolCall', id: 'tool-fixture', name: 'bash', arguments: { command: 'pwd' } });
     const currentMessages = () => activeId === session.id ? messages : [text(0)];
     page.on('pageerror', error => errors.push(error.message));
+    // Pixel comparisons need stable fonts; late optional webfont swaps are covered by reflow tests.
+    await page.route(/https:\/\/(fonts\.googleapis\.com|fonts\.gstatic\.com)\//, route => route.abort());
     await page.addInitScript(({ cwd, id }) => {
         localStorage.setItem('pi.web.cwd', cwd);
         localStorage.setItem('pi.web.transcriptMode', 'full');
@@ -84,7 +86,7 @@ async function run(browser, size) {
     const send = event => socket.send(JSON.stringify(event));
     const settle = async () => { send({ type: 'agent_settled' }); await page.waitForTimeout(300); };
     const metrics = () => page.locator('#pi-transcript').evaluate(el => ({
-        top: el.scrollTop, max: el.scrollHeight - el.clientHeight, height: el.clientHeight,
+        top: el.scrollTop, max: el.scrollHeight - el.clientHeight, height: el.clientHeight, width: el.clientWidth, scrollWidth: el.scrollWidth,
         latest: !document.getElementById('pi-jump-latest').hidden
     }));
     const expectBottom = async () => {
@@ -118,6 +120,13 @@ async function run(browser, size) {
         await page.waitForTimeout(250);
     } else {
         const cdp = await context.newCDPSession(page);
+        await page.locator('#pi-transcript').evaluate(viewport => {
+            window.fixtureTouchScrollEnded = false;
+            let started = false;
+            viewport.addEventListener('touchstart', () => { started = true; }, { once: true });
+            const ended = () => { if (started) { window.fixtureTouchScrollEnded = true; viewport.removeEventListener('scrollend', ended); } };
+            viewport.addEventListener('scrollend', ended);
+        });
         const box = await page.locator('#pi-transcript').boundingBox();
         const point = { x: box.x + box.width / 2, y: box.y + box.height / 3 };
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
@@ -126,7 +135,11 @@ async function run(browser, size) {
             await page.waitForTimeout(20);
         }
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-        await page.waitForTimeout(500);
+        await page.waitForFunction(() => {
+            const controller = window.scrollFixtureController, viewport = document.getElementById('pi-transcript');
+            return window.fixtureTouchScrollEnded === true && controller.frame === null
+                && controller.lastTop === viewport.scrollTop && controller.lastHeight === viewport.clientHeight;
+        });
         assert.ok((await metrics()).latest, 'touch gesture pauses follow');
     }
     let before = await metrics();
@@ -143,12 +156,14 @@ async function run(browser, size) {
     send({ type: 'tool_execution_update', toolCallId: 'live-tool', toolName: 'bash', partialResult: { content: [{ type: 'text', text: 'Tool output\n'.repeat(100) }] } });
     send({ type: 'tool_execution_end', toolCallId: 'live-tool', toolName: 'bash', isError: true, result: { content: [{ type: 'text', text: 'Controlled tool error' }] } });
     await page.waitForTimeout(120);
-    assert.ok(Math.abs((await metrics()).top - before.top) <= 2, 'tool output must not move history');
+    const toolPosition = await metrics();
+    assert.ok(Math.abs(toolPosition.top - before.top) <= 2, `tool output must not move history: ${JSON.stringify({ size, before, after: toolPosition })}`);
     assert.equal(await page.locator('[data-tool-id="live-tool"]').getAttribute('data-state'), 'error');
     send({ type: 'message_end', message: live });
     messages.push(live);
     await settle();
-    assert.ok(Math.abs((await metrics()).top - before.top) <= 2, 'settled redraw must not move history');
+    const settledPosition = await metrics();
+    assert.ok(Math.abs(settledPosition.top - before.top) <= 2, `settled redraw must not move history: ${JSON.stringify({ size, before, after: settledPosition })}`);
     await jump();
 
     const next = { role: 'assistant', timestamp: 2001, content: [{ type: 'text', text: 'Large delta. '.repeat(1800) }] };

@@ -118,6 +118,7 @@ async function run(browser, base, width, locale) {
  assert.equal(await row('search').locator('.pi-session-deferred').isVisible(),true,'sidebar retains queued-message indication');
  await row('search').locator('.pi-session-main').click();
  await page.locator('#pi-deferred-open').click();await page.locator('#pi-workflow-dialog').waitFor();
+ await page.locator('#pi-workflow-content').getByText('Fixture queued message',{exact:false}).waitFor();
  assert.match(await page.locator('#pi-workflow-content').innerText(),/Fixture queued message/);
  await page.locator('#pi-workflow-close').click();await drawer();
  await page.locator('[data-project-action="menu"]').click();

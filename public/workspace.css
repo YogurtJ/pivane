@@ -650,6 +650,7 @@ select:focus-visible {
     flex: 1;
     padding: 0 8px 10px;
     overflow-y: auto;
+    overflow-anchor: none;
 }
 
 .pi-list-state,

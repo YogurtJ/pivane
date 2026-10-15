@@ -21,6 +21,8 @@ function edit(id, file, source = patch, options = {}) {
 async function run(browser, viewport) {
     const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width <= 900, hasTouch: viewport.width <= 900 });
     const page = await context.newPage();
+    // Optional webfonts must not change diff geometry during snapshot/reconnect assertions.
+    await page.route(/https:\/\/(fonts\.googleapis\.com|fonts\.gstatic\.com)\//, route => route.abort());
     const errors = [], writes = [], commands = [];
     let socket, sideSocket, busy = false, activeId = session.id, sideStarts = 0, sideCloses = 0, heldState = null, holdState = false;
     const initial = [user('调整界面'), ...edit('a', path), ...edit('b', path, reverse), ...edit('c', 'docs/说明.md'), ...edit('d', 'public/style.css'),

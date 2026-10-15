@@ -303,7 +303,9 @@ async function run(browser, viewport, historyEnabled = true) {
     await page.locator('#pi-workflow-dialog').press('Escape');
     await closeInspector();
     const openClone = async () => {
-        await page.locator('#pi-current-thread-menu').click(); await historyAction('复制为新线程');
+        await page.locator('#pi-current-thread-menu').click();
+        await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+        await historyAction('复制为新线程');
         await page.waitForFunction(() => document.querySelector('#pi-workflow-dialog').open && !document.querySelector('#pi-workflow-submit').disabled);
     };
     // Lost acknowledgement survives closing the panel and a page reload.

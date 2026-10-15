@@ -105,7 +105,10 @@ async function pending(page, button, status, card) {
     assert.equal(await page.locator('#network-feedback').count(), 0, 'feedback has no page-bottom sink');
 }
 async function result(page, status, tone, card) {
-    await page.waitForFunction(({ status, tone }) => document.getElementById(status)?.dataset.tone === tone, { status, tone });
+    await page.waitForFunction(({ status, tone }) => {
+        const node = document.getElementById(status);
+        return node?.dataset.tone === tone && !node.hidden && node.getClientRects().length > 0;
+    }, { status, tone });
     assert.equal(await page.locator(`#${status}`).isVisible(), true);
     assert.equal(await page.locator(`#${status}`).evaluate((node, card) => node.closest(card) !== null, card), true);
 }
@@ -305,7 +308,9 @@ async function widths(page) {
             await page.screenshot({ path: `/tmp/pi-access-${width}.png` });
             await page.locator('#workspace-access-enabled').uncheck(); await page.locator('#workspace-access-save').click({ noWaitAfter: true });
             await page.waitForFunction(() => document.querySelector('#workspace-access-result')?.textContent.includes('已保存，访问验证已关闭'));
-            assert.equal((await fetch(base + '/api/pi/status')).status, 200);
+            const publicStatus = await fetch(base + '/api/pi/status');
+            await publicStatus.arrayBuffer();
+            assert.equal(publicStatus.status, 200);
             await page.route('**/api/access/status', route => route.fulfill({ status: 503, json: { error: 'fixture status unavailable' } }));
             await page.evaluate(async () => { window.auditAccessReady = 0; window.addEventListener('workspace:access-ready', () => window.auditAccessReady++); await window.WorkspaceAccess.refresh(); });
             assert.equal(await page.evaluate(() => window.auditAccessReady), 0, 'failed status must not announce a successful login or reconnect');
