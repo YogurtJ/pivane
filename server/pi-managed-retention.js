@@ -4,6 +4,7 @@ const { randomUUID } = require('node:crypto');
 const { readSafe, hash, atomicJson } = require('./pi-maintenance-files');
 const { inspectBackupContents } = require('./pi-maintenance-backup');
 const { exactVersion, verifyPiPackages, PI_PACKAGES } = require('./pi-update-installer');
+const { validApplicationVersion } = require('./pi-application-installer');
 const storage = require('./pi-retention-storage');
 const DEFAULT_RETENTION = Object.freeze({ releases: 5, backups: 3 });
 const MINIMUM = Object.freeze({ releases: 2, backups: 1 });
@@ -36,7 +37,7 @@ function releaseProof(root, id) {
     if (fs.realpathSync.native(dir) !== dir) throw new Error('Linked retained release');
     const pkg = JSON.parse(readSafe(path.join(dir, 'package.json')));
     const lockBytes = readSafe(path.join(dir, 'package-lock.json'), 16 * 1024 * 1024), lock = JSON.parse(lockBytes);
-    if (pkg.name !== 'pivane' || !exactVersion(pkg.version) || !exactVersion(pkg.dependencies?.[PI_PACKAGES[0]])
+    if (pkg.name !== 'pivane' || !validApplicationVersion(pkg.version) || !exactVersion(pkg.dependencies?.[PI_PACKAGES[0]])
         || lock.packages?.['']?.version !== pkg.version) throw new Error('Invalid native installation metadata');
     if (id === null) verifyPiPackages(dir, pkg, lock, pkg.dependencies[PI_PACKAGES[0]]);
     if (id !== null) {

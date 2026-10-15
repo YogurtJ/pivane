@@ -31,6 +31,8 @@ class AgentWorker extends EventEmitter {
         this.cwd = options.cwd;
         this.sessionPath = options.sessionPath;
         this.sessionId = options.sessionId;
+        // In-memory sessions have a native ID, but no persisted session address.
+        this.runtimeSessionId = options.sessionId;
         this.activity = new PiRuntimeActivity();
         this.compactPending = false;
         this.promptPending = 0;
@@ -120,7 +122,8 @@ class AgentWorker extends EventEmitter {
                 throw new Error('网页会话保护扩展未加载，已拒绝启动');
             }
             const state = await this.client.request('get_state');
-            if (this.noSession ? Boolean(state.sessionFile) : state.sessionFile !== this.sessionPath || state.sessionId !== this.sessionId) throw new Error('启动的原生会话归属与网页不一致');
+            if (this.noSession ? Boolean(state.sessionFile) || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(state.sessionId || '') : state.sessionFile !== this.sessionPath || state.sessionId !== this.sessionId) throw new Error('启动的原生会话归属与网页不一致');
+            this.runtimeSessionId = state.sessionId;
         })();
         return this.readyPromise;
     }
@@ -138,7 +141,7 @@ class AgentWorker extends EventEmitter {
         this.lastUsedAt = Date.now();
         const compacting = this.compactPending || this.activity.compacting;
         if (type === 'compact' && this.historyWriting) throw new Error('正在保存书签，请稍后压缩');
-        if (type === 'compact' && (compacting || this.promptPending > 0 || this.activity.snapshot().busy)) {
+        if (type === 'compact' && (compacting || this.promptPending > 0 || this.runStartupCalls.size > 0 || this.activity.snapshot().busy)) {
             throw new Error('会话正在运行或压缩，请等待完成，或先停止当前任务');
         }
         if (compacting && ['prompt', 'steer', 'follow_up', 'set_model', 'cycle_model', 'set_thinking_level', 'cycle_thinking_level'].includes(type)) {
@@ -702,7 +705,7 @@ class AgentWorker extends EventEmitter {
         if (event.type === 'pivane_run_startup') {
             // Intercept even malformed, foreign and late private frames. Only a
             // matching SDK call completion (or real child exit) releases its slot.
-            if (!this.exited && event.token === this.navigationToken && event.sessionId === this.sessionId
+            if (!this.exited && event.token === this.navigationToken && event.sessionId === this.runtimeSessionId
                 && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(event.id)
                 && Number.isSafeInteger(event.sequence) && event.sequence > this.runStartupSequence
                 && ['started', 'finished'].includes(event.phase)

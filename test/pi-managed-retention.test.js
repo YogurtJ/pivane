@@ -25,6 +25,27 @@ test('retention preserves current and previous native restore backups beyond cap
     for (const id of older) assert.ok(plan.keepBackups.includes(id));
 });
 
+test('application prereleases retain current and previous restore points and remain eligible for pruning', async t => {
+    const f = fixture(t);
+    f.pkg.version = '1.8.0-rc.1'; f.lock.version = f.pkg.version; f.lock.packages[''].version = f.pkg.version;
+    const previous = f.release(), active = f.release();
+    const previousBackup = f.backup(previous), activeBackup = f.backup(active);
+    for (let i = 0; i < 3; i++) f.backup(active);
+    const state = f.state(active, previous), limits = { releases: 2, backups: 1 };
+    const plan = retention.planRetention(f.runtime, state, limits);
+    assert.equal(plan.skipped, undefined);
+    assert.ok(plan.keepReleases.includes(active)); assert.ok(plan.keepReleases.includes(previous));
+    assert.ok(plan.keepBackups.includes(previousBackup));
+    assert.ok(plan.removeBackups.includes(activeBackup));
+    if (process.platform === 'linux') {
+        const moved = retention.moveToTrash(f.runtime, plan, state);
+        assert.equal(moved.backups.length, 3);
+        assert.equal(await retention.purgeTrash(f.runtime, limits), 3);
+        assert.ok(fs.existsSync(path.join(f.runtime, 'backups', previousBackup)));
+        assert.equal(fs.readdirSync(path.join(f.runtime, 'backups')).length, 2);
+    }
+});
+
 function removable(t) {
     const f = fixture(t), releases = Array.from({ length: 4 }, () => f.release());
     const backups = Array.from({ length: 4 }, () => f.backup(null));

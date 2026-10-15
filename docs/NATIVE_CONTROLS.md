@@ -6,7 +6,7 @@
 
 ## 停止与取回
 
-用户 prompt 与触发运行的 custom wake 在 before_agent_start 开始前即保持受管 busy 所有权，包括慢 hook 和 settled 后的延迟 wake。原生调用完成／失败或 worker 实际退出才释放；读取到 idle、原生 settled 或 RPC 超时不代表整项启动结束。启动期间同样阻止回收和维护切换。
+用户 prompt 与触发运行的 custom wake 在 before_agent_start 开始前即保持受管 busy 所有权，包括慢 hook 和 settled 后的延迟 wake。原生调用完成／失败或 worker 实际退出才释放；读取到 idle、原生 settled 或 RPC 超时不代表整项启动结束。持久和临时主会话的启动期间同样阻止手动压缩、回收和维护切换，避免压缩操作中断尚未完成的启动；临时会话的原生 ID 只用于当前运行实例，不变成持久会话地址。
 
 主会话停止按钮调用网关 `stop_and_recover`：服务器在 await 前预占操作，先取回原生队列，再调用 `abort` 并等待返回。持久队列适配通过带操作编号的私有命令调用公开 `clearQueue()`；旧运行实例沿用 `clear_queue`。压缩期间按钮改为取消压缩；不退出 worker。队列窗口的 `take_queue` 只取回队列，不停止当前任务。原生 `abort` 的透传行为不变。
 

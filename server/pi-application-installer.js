@@ -6,8 +6,11 @@ const { privateDir, readSafe, atomicJson, hash } = require('./pi-maintenance-fil
 const { npmCli, installEnvironment, runNode, exactVersion } = require('./pi-update-installer');
 const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[a-z0-9]+(?:\.[a-z0-9]+)*)?$/;
 const MAX_ARCHIVE = 64 * 1024 * 1024, MAX_EXPANDED = 256 * 1024 * 1024;
+function validApplicationVersion(version) {
+    return typeof version === 'string' && version.length < 80 && VERSION.test(version);
+}
 function validRelease(release) {
-    return release && VERSION.test(release.version) && release.version.length < 80 && /^[a-f0-9]{64}$/.test(release.sha256);
+    return release && validApplicationVersion(release.version) && /^[a-f0-9]{64}$/.test(release.sha256);
 }
 async function download(url, { env, signal, request = fetch, maxBytes = MAX_ARCHIVE } = {}) {
     const { proxyFor } = require('./pi-update-service');
@@ -95,4 +98,4 @@ async function stageApplication({ directory, release, env = process.env, signal,
     atomicJson(path.join(directory, 'PI_INSTALL_COMPLETE.json'), { version: pi, appVersion: pkg.version, archiveSha256: release.sha256, completedAt: new Date().toISOString(), lockSha256: hash(readSafe(path.join(directory, 'package-lock.json'), 16 * 1024 * 1024)) });
     return directory;
 }
-module.exports = { stageApplication, unpack, download, validRelease };
+module.exports = { stageApplication, unpack, download, validRelease, validApplicationVersion };

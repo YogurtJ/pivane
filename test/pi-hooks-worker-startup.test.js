@@ -162,7 +162,7 @@ test('managed custom wake remains busy throughout a slow before_agent_start hook
     // Use an independent projection so synthetic sequence numbers do not alter
     // the real child's monotonic transport sequence.
     const projection = Object.assign(Object.create(Object.getPrototypeOf(worker)), {
-        navigationToken: worker.navigationToken, sessionId: session.id, runStartupCalls: new Set(), runStartupSequence: 0,
+        navigationToken: worker.navigationToken, sessionId: session.id, runtimeSessionId: session.id, runStartupCalls: new Set(), runStartupSequence: 0,
         _broadcast: () => { throw new Error('Private startup frame leaked'); },
     });
     const frame = { type: 'pivane_run_startup', token: worker.navigationToken, sessionId: session.id,
@@ -181,6 +181,38 @@ test('managed custom wake remains busy throughout a slow before_agent_start hook
     assert.equal(projection.runStartupCalls.size, 0);
     projection._handleEvent(frame);
     assert.equal(projection.runStartupCalls.size, 0, 'late startup frame cannot resurrect a completed call');
+    // Compaction must be rejected at the gateway before it can abort a custom wake.
+    for (const ephemeral of [false, true]) await t.test(ephemeral ? 'ephemeral startup owns its native ID and blocks compaction' : 'saved startup blocks compaction before dispatch', async () => {
+        const target = ephemeral ? await supervisor.createEphemeralWorker(root) : worker;
+        const seen = [], unsubscribe = target.subscribe(event => seen.push(event));
+        const beforeCalls = calls, originalRequest = target.client.request.bind(target.client);
+        let compactDispatches = 0;
+        try {
+            const state = await target.request('get_state');
+            assert.equal(Boolean(state.sessionFile), !ephemeral);
+            assert.equal(target.runtimeSessionId, state.sessionId);
+            if (ephemeral) assert.equal(target.sessionId, undefined, 'temporary native identity is not a persisted session address');
+            fs.writeFileSync(holdFile, '');
+            await target.request('prompt', { message: '/hookwake' });
+            await waitFor(() => seen.some(event => event.type === 'extension_ui_request' && event.message === 'HOOK WORKER STARTUP'));
+            assert.equal(target.isIdle(), false, 'a custom startup is busy without querying streaming state');
+            assert.ok(target.runStartupCalls.size > 0, 'native custom-call reservation is accepted');
+            target.client.request = (type, ...args) => {
+                if (type === 'compact') { compactDispatches++; return Promise.reject(new Error('unexpected compact dispatch')); }
+                return originalRequest(type, ...args);
+            };
+            await assert.rejects(target.request('compact'), /会话正在运行或压缩/);
+            assert.equal(compactDispatches, 0);
+            fs.unlinkSync(holdFile);
+            await waitFor(() => calls === beforeCalls + 1 && target.isIdle());
+            assert.ok(seen.some(event => event.type === 'agent_settled' && !event.aborted), 'original wake finishes after compaction rejection');
+        } finally {
+            target.client.request = originalRequest;
+            fs.rmSync(holdFile, { force: true }); unsubscribe();
+            if (ephemeral) await target.dispose();
+            else await waitFor(() => target.isIdle());
+        }
+    });
     // Idle snapshots and read timeouts cannot release active calls; real exit can.
     fs.writeFileSync(holdFile, ''); await wake(); await busyBeforeRead();
     const read = worker.client.request.bind(worker.client);
