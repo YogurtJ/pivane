@@ -39,6 +39,8 @@ async function hover(page, index) {
     const box = await tick(page, index).boundingBox(); assert.ok(box);
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.waitForFunction(index => !document.querySelector('.pi-timeline-card').hidden && document.querySelector(`.pi-timeline-tick[data-index="${index}"]`).classList.contains('is-hovered'), index);
+    // Keep the pointer on the tick until the card's position/transform settles.
+    await page.waitForFunction(() => !document.querySelector('.pi-timeline-card').getAnimations().some(animation => animation.playState === 'running'));
 }
 async function topOf(page, selector, offset = 16) {
     await page.locator(selector).evaluate((node, offset) => {
