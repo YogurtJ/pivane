@@ -1,6 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { REVIEWED_PI_VERSION } = require('../server/pi-reviewed-host');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -95,10 +96,10 @@ test('provenance, speed and side permission hooks handle custom wakes without re
     assert.equal((await write()).block, true); assert.equal(confirms, 2, 'decline is not retried');
 });
 
-test('Pi 1.2 native RPC preserves owned hook payloads across task/message/cron wakes, tools, nextTurn, slow queueing and cancellation', { timeout: 90000 }, async t => {
+test('reviewed Pi native RPC preserves owned hook payloads across task/message/cron wakes, tools, nextTurn, slow queueing and cancellation', { timeout: 90000 }, async t => {
     assert.ok(bundle, 'runner supplies the reviewed memory bundle');
     const sdk = await import('@earendil-works/pi-coding-agent');
-    assert.equal(sdk.VERSION, '1.2.0');
+    assert.equal(sdk.VERSION, REVIEWED_PI_VERSION);
     assert.equal(fs.realpathSync.native(sdk.getPackageDir()), fs.realpathSync.native(path.join(__dirname, '../node_modules/@earendil-works/pi-coding-agent')));
     const calls = [], clients = [];
     let switchTools = false;
@@ -181,7 +182,7 @@ test('Pi 1.2 native RPC preserves owned hook payloads across task/message/cron w
     const run = async (target, submit) => {
         const count = settled(target), before = calls.length;
         await submit(); await waitFor(() => settled(target) > count);
-        assert.equal(target.starts.at(-1).version, '1.2.0');
+        assert.equal(target.starts.at(-1).version, REVIEWED_PI_VERSION);
         assert.equal(target.events.filter(event => event.type === 'extension_error').length, 0, JSON.stringify(target.events));
         return calls.slice(before);
     };

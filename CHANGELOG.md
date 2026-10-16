@@ -2,6 +2,12 @@
 
 本页概括用户可见变化与升级要点。安装步骤见[安装与恢复](docs/INSTALL_RECOVERY.md)；每版完整说明和验收附件见 [Releases](https://github.com/YogurtJ/pivane/releases)。历史行为不代表当前功能，当前用法以[用户指南](docs/USER_GUIDE.md)为准。
 
+## 1.9.0-rc.1（Pi 1.3.0，候选）
+
+- 成组绑定七个官方 Pi 1.3.0 包，同步独立记忆安装锁与主题校验入口；pi-subagents 保持 0.78.0、档案记忆保持 0.9.9，保留安全依赖固定版本。候选准备、实例启用和公开发布分别记录。
+- 沿用原生会话工具恢复、跨模型 thinking 清理与供应商修复；模型范围匹配多个供应商时保留原生启动诊断，明确模型选择与不可用模型预检继续生效。
+- Codemode 的取消结果与 VM 实际退出分开，官方额度覆盖单 Pi 进程内最多两个存活 VM；Pivane 的媒体确认和工具授权边界保持。
+
 ## 1.8.0（Pi 1.2.0）
 
 [版本说明](docs/releases/1.8.0.md) · [Release](https://github.com/YogurtJ/pivane/releases/tag/v1.8.0) · [准确包验证](docs/RELEASE_INSTALL_VALIDATION.md)

@@ -48,7 +48,10 @@ try {
         services.resourceLoader = reloadableLoader(services.resourceLoader, input, options);
         const diagnostics = [...services.diagnostics, ...services.resourceLoader.getExtensions().errors.map(item => ({ type: 'error', message: `Extension ${item.path}: ${item.error}` }))];
         const patterns = parsed.models ?? settings.getEnabledModels();
-        const scopedModels = patterns?.length ? (await resolveModelScopeWithDiagnostics(patterns, services.modelRuntime, { allowNetwork: false })).scopedModels : [];
+        const scope = patterns?.length ? await resolveModelScopeWithDiagnostics(patterns, services.modelRuntime, { allowNetwork: false }) : { scopedModels: [], diagnostics: [] };
+        const scopedModels = scope.scopedModels;
+        diagnostics.push(...scope.diagnostics.slice(0, 50).map(item => ({ type: item.type,
+            message: String(item.message).slice(0, 2000) })));
         const selected = resolveCliModel({ cliProvider: parsed.provider, cliModel: parsed.model, cliThinking: parsed.thinking, modelRuntime: services.modelRuntime });
         if (selected.error) throw new Error(selected.error);
         const model = selected.model;

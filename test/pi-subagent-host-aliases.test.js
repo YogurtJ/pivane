@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { REVIEWED_PI_VERSION } = require('../server/pi-reviewed-host');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -8,7 +9,7 @@ const root = path.resolve(__dirname, '..');
 const obsolete = '@earendil-works/pi-agent-core/node';
 const chord = '@earendil-works/chord';
 
-test('official detached host aliases retain Pi 1.2 dependency scope without a host redirect', () => {
+test('official detached host aliases retain reviewed Pi dependency scope without a host redirect', () => {
     const code = `import {resolveHostPeerAliases} from './vendor/pi-subagents/src/runs/background/runner-aliases.js';
         import {VERSION} from '@earendil-works/pi-coding-agent';
         const result=resolveHostPeerAliases(process.cwd()+'/node_modules/@earendil-works/pi-coding-agent');
@@ -17,7 +18,7 @@ test('official detached host aliases retain Pi 1.2 dependency scope without a ho
     const child = spawnSync(process.execPath, ['--import', './server/pi-subagent-native-loader.mjs', '--input-type=module', '-e', code], { cwd: root, encoding: 'utf8' });
     assert.equal(child.status, 0, child.stderr);
     const result = JSON.parse(child.stdout.trim());
-    assert.equal(result.version, '1.2.0');
+    assert.equal(result.version, REVIEWED_PI_VERSION);
     assert.deepEqual(result.missing, []);
     assert.equal(Object.hasOwn(result.aliases, obsolete), false);
     assert.equal(Object.hasOwn(result.aliases, chord), false);

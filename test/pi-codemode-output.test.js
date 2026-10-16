@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { REVIEWED_PI_VERSION } = require('../server/pi-reviewed-host');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -10,7 +11,7 @@ test.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
 async function tool() {
     const sdk = await import('@earendil-works/pi-coding-agent');
-    assert.equal(sdk.VERSION, '1.2.0', 'isolated SDK metadata');
+    assert.equal(sdk.VERSION, REVIEWED_PI_VERSION, 'isolated SDK metadata');
     let registered;
     sdk.createCodemodeExtension({ models: false })({
         registerTool: value => { registered = value; }, getSettings: () => ({}),

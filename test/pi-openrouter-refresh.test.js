@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { REVIEWED_PI_VERSION } = require('../server/pi-reviewed-host');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -47,7 +48,7 @@ test('native OpenRouter refresh personalizes Key A/B, regional limits/prices and
         openrouter: { baseUrl: base + '/us/api/v1' }
     } }));
     const { ModelRuntime, VERSION } = await import('@earendil-works/pi-coding-agent');
-    assert.equal(VERSION, '1.2.0', 'metadata must come from the lane package');
+    assert.equal(VERSION, REVIEWED_PI_VERSION, 'metadata must come from the lane package');
     assert.equal(fs.lstatSync(path.join(process.cwd(), 'node_modules')).isSymbolicLink(), false);
     const service = new PiSettingsService({ cwd: root });
     service.createModelRuntime = () => ModelRuntime.create({ catalogBaseUrl: base, allowModelNetwork: false });

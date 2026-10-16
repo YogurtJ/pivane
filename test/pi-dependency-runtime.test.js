@@ -1,6 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { REVIEWED_PI_VERSION } = require('../server/pi-reviewed-host');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -20,15 +21,15 @@ test.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
 test('installed official Pi group imports its public entries with the exact reviewed lock and security resolutions', async () => {
     const manifest = require('../package.json'), lock = require('../package-lock.json');
-    verifyPiPackages(path.resolve(__dirname, '..'), manifest, lock, '1.2.0');
+    verifyPiPackages(path.resolve(__dirname, '..'), manifest, lock, REVIEWED_PI_VERSION);
     for (const name of PI_PACKAGES) assert.ok(await import(name));
     assert.deepEqual(require('../scripts/install-bundled-capabilities.cjs').enforceShrinkwrapFixes(), []);
 });
 
-test('Pi 1.2 SDK retains offline models, settings and historical session tree/context edits', async () => {
+test('reviewed Pi SDK retains offline models, settings and historical session tree/context edits', async () => {
     const sdk = await import('@earendil-works/pi-coding-agent');
     const ai = await import('@earendil-works/pi-ai');
-    assert.equal(sdk.VERSION, '1.2.0');
+    assert.equal(sdk.VERSION, REVIEWED_PI_VERSION);
     const runtime = await sdk.ModelRuntime.create({ authPath: path.join(root, 'agent', 'auth.json'),
         modelsPath: null, modelsStorePath: path.join(root, 'models-store.json'), allowModelNetwork: false });
     assert.ok(Array.isArray(await runtime.getAvailable()));
@@ -45,7 +46,7 @@ test('Pi 1.2 SDK retains offline models, settings and historical session tree/co
     assert.ok(session.buildSessionContext().messages.some(message => message.content === 'Edited dependency fixture'));
 });
 
-test('unchanged memory 0.9.9 bundle imports against Pi 1.2 without rebuilding upstream implementation', async () => {
+test('unchanged memory 0.9.9 bundle imports against reviewed Pi without rebuilding upstream implementation', async () => {
     const bundle = require('../server/pi-bundled-capabilities').memoryBundle();
     assert.equal(createHash('sha256').update(fs.readFileSync(bundle)).digest('hex'), require('../server/profile-memory/management').BUNDLE_SHA256);
     const memory = await import(pathToFileURL(bundle).href);

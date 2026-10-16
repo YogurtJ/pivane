@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { REVIEWED_PI_VERSION } = require('../server/pi-reviewed-host');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -41,7 +42,7 @@ async function loopback(t, call) {
 }
 async function nativeSession(t, url) {
     const sdk = await import('@earendil-works/pi-coding-agent');
-    assert.equal(sdk.VERSION, '1.2.0');
+    assert.equal(sdk.VERSION, REVIEWED_PI_VERSION);
     const { nativeExtensionFactories } = await import('../server/pi-native-mcp.mjs');
     fs.writeFileSync(path.join(agentDir, 'mcp.json'), JSON.stringify({ mcpServers: { fixture: {
         url, headers: { Authorization: 'synthetic-only' }, exposure: 'codemode',
