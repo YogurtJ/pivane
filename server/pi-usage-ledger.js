@@ -128,6 +128,7 @@ class UsageLedger {
         const checkpoint = this.db.prepare('SELECT checkpoints.data FROM checkpoints JOIN sources USING(path) WHERE path=? AND checkpoints.signature=sources.signature');
         const result = scanUsage({ ...input, filter: { from: '0000-01-01', to: '9999-12-31', timeZone: 'UTC' },
             incremental: {
+                after: input.onlyFile ? '' : this.db.prepare("SELECT value FROM meta WHERE key='scanCursor'").get()?.value || '',
                 cached: (filename, signature) => {
                     const old = source.get(filename);
                     if (!old || old.signature !== signature || old.checkpointSignature !== signature
@@ -162,7 +163,11 @@ class UsageLedger {
         if (input.onlyFile && (coverage.scannedFiles + coverage.cachedFiles !== 1 || coverage.skippedFiles || coverage.invalidDates || coverage.limited)) {
             throw new Error('会话用量尚未完整入账，暂不能删除');
         }
-        if (!input.onlyFile) this.db.prepare("INSERT OR REPLACE INTO meta VALUES ('coverage',?)").run(JSON.stringify(coverage));
+        if (!input.onlyFile) this.transaction(() => {
+            const save = this.db.prepare('INSERT OR REPLACE INTO meta VALUES (?,?)');
+            save.run('coverage', JSON.stringify(coverage));
+            save.run('scanCursor', result.nextCursor);
+        });
         return coverage;
     }
     report(filter, roots, coverage) {

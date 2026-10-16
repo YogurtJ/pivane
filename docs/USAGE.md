@@ -6,7 +6,7 @@
 
 用量保存于 Pi Agent 身份目录的 `pivane-usage/ledger.sqlite`。这是只有用量事实、去重指纹、定价依据和归属信息的独立账本，不是聊天副本，不含正文、思考、工具参数或摘要。原生 SessionManager/JSONL 仍是唯一对话事实来源；统计不会修改 JSONL，也不会创建 RPC worker 或请求模型。
 
-- 首次同步从 `sessions/<project>/*.jsonl` 补录原生 v2/v3 用量，后续按完整文件身份、大小和纳秒 mtime/ctime 跳过未变化文件。新建 BTW 侧聊在原生内存会话中生成的实际调用，会在回合结束、压缩结束及关闭时按侧聊边界之后的条目单独入账；继承的主线程历史不入账。
+- 首次同步从 `sessions/<project>/*.jsonl` 补录原生 v2/v3 用量，后续保留完整文件身份、大小和纳秒 mtime/ctime 校验，并核对完整内容 SHA-256 后复用已解析事实。快速同大小改写可能保留相同内核时间戳，不能只按时间戳跳过。新建 BTW 侧聊在原生内存会话中生成的实际调用，会在回合结束、压缩结束及关闭时按侧聊边界之后的条目单独入账；继承的主线程历史不入账。
 - 保存每个文件的字节位置、完整内容 SHA-256、末尾换行状态及头部元数据。文件增长时，先通过同一安全描述符流式校验旧前缀，确认未改写后只解析新增 JSONL。旧内容仍有校验 I/O，但不再重复 JSON 解析、载荷规范化、逐条去重和入账。文件替换、截断、前缀改变或旧结尾没有 LF 时重新解析；读取中变化的文件整批丢弃。游标与用量事务一起提交，失败不推进位置；旧账本首次读取时补建游标，不重复累计。
 - 服务每 5 分钟进行有界同步，打开统计时也同步；同一查询保留 15 秒内存缓存。服务关闭时等待进行中的账本操作退出。休眠或停机不依赖跨日定时任务，恢复后补录仍存在的历史文件。
 - 每笔事实和各时区日汇总在同一 SQLite 事务内提交，重复导入不再次累计；重启、会话删除或历史文件缩短不会扣回已入账用量。
@@ -54,14 +54,14 @@
 - `total`、`daily`、`providers/models/projects/sessions` 保留 `input/output/cacheRead/cacheWrite/total/cost/records/missingUsage/missingCost/zeroCost`。
 - 各汇总增加 `recordedCost`（原始费用合计）、`estimatedRecords`（官方价补算笔数）、`unpricedRecords`（非零用量但仍无确认价格的笔数）。
 - 增加 `weekly/monthly`，date 分别为周一日期或 YYYY-MM；只合计筛选内日期。
-- `coverage` 为本次同步的 `scannedFiles/cachedFiles/skippedFiles/excludedProjects/duplicates/invalidDates/limited/syncedAt`。cachedFiles 表示身份和修订未变化；新增 `appendedFiles` 表示仅解析后缀的文件数，`parsedBytes` 与 `verifiedBytes` 分别表示送入 JSONL 解析与仅做前缀校验的读取字节数（含失败尝试）。duplicates 表示本次读取中已入账的指纹数，并非账本历史副本总数。
+- `coverage` 为本次同步的 `scannedFiles/cachedFiles/skippedFiles/excludedProjects/duplicates/invalidDates/limited/syncedAt`。cachedFiles 表示身份、修订和完整内容指纹均已核实；`cachedVerifiedBytes` 表示复用事实前的完整字节校验量。`appendedFiles` 表示仅解析后缀的文件数，`parsedBytes` 与 `verifiedBytes` 分别表示送入 JSONL 解析与仅做前缀校验的读取字节数（均含失败尝试）。duplicates 表示本次读取中已入账的指纹数，并非账本历史副本总数。
 - `partial` 在跳过文件、日期异常、达到限额或用量缺失时为 true；价格缺失另行显示。总数包括早先已保存的数据，不能将 partial 报告当作本次完整补录证明。
 
 非法筛选 400，不同筛选或后台同步并发时 429，线程/账本失败或超时 503。空来源目录仍返回已有账本；首次空目录才是零。页面取消或关闭不会撤销已经开始的事务，也不会自动重放请求。
 
 ## 读取预算与平台
 
-一个服务最多一个统计 Worker Thread，30 秒线程限时、192 MiB old generation。最多枚举 100000 个来源路径；单批解析最多 2000 个变化文件、512 MiB、250000 行或 100000 条用量事实，扫描阶段 20 秒，前缀校验读取也计入 512 MiB 和时间预算。后续批次跳过已核实修订继续推进；单文件 64 MiB、单条 8 MiB。超限、损坏、旧 v1、非 UTF-8 或读取中变化的文件不作为完整入账文件。
+一个服务最多一个统计 Worker Thread，30 秒线程限时、192 MiB old generation。最多枚举 100000 个来源路径；单批解析最多 2000 个变化文件、512 MiB、250000 行或 100000 条用量事实，扫描阶段 20 秒，完整缓存校验和前缀校验读取均计入同一 512 MiB 和时间预算，读取前限制单次请求。受限批次在账本中保存扫描位置，后续批次从尚未完成处继续并循环核查，避免旧文件校验持续挡住后面的新增用量；该位置只保存扫描元数据，不保存聊天。单文件 64 MiB、单条 8 MiB。超限、损坏、旧 v1、非 UTF-8 或读取中变化的文件不作为完整入账文件。
 
 目录只读原生两层布局，不跟随目录或文件软链接。O_NOFOLLOW/O_NONBLOCK、BigInt stat、描述符路径、完整身份及前后校验保留；Linux 使用 /proc，macOS 使用 F_GETPATH，Windows 使用 HANDLE 最终路径和完整卷/File ID。缺少安全后端不降级为不安全扫描。新账本事务已通过 Linux 合成验证，既有 Mac/Windows 扫描后端验收不代表新账本已完成当地实机验证。
 

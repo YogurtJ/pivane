@@ -32,6 +32,7 @@ test('durable daily/weekly/monthly totals survive deletion, restart, new timezon
     assert.deepEqual(fs.readFileSync(f.file), before);
     const second = await runLedger(f.input);
     assert.equal(second.coverage.scannedFiles, 0); assert.equal(second.coverage.cachedFiles, 1);
+    assert.equal(second.coverage.cachedVerifiedBytes, before.length);
     fs.unlinkSync(f.file);
     const deleted = await runLedger(f.input); assert.deepEqual(deleted.total, first.total);
     const utc = await runLedger({ ...f.input, filter: { ...f.input.filter, timeZone: 'UTC' } });
@@ -45,6 +46,8 @@ test('durable daily/weekly/monthly totals survive deletion, restart, new timezon
         assert.doesNotMatch(fact, /PRIVATE_BODY|content|summary/);
         assert.equal(JSON.parse(fact).pricing.appliedRates.input, 4);
     } finally { ledger.close(); }
+    fs.rmSync(f.root, { recursive: true });
+    assert.deepEqual((await runLedger(f.input)).total, first.total);
 });
 test('side-chat batches persist only new calls, deduplicate retries and exclude inherited context', async t => {
     const f = fixture(t);
@@ -129,6 +132,44 @@ test('append checkpoints verify old bytes but only parse the new suffix, includi
     assert.equal(value.sessions[0].name, 'Renamed');
     const again = await runLedger(f.input);
     assert.equal(again.coverage.parsedBytes, 0); assert.equal(again.coverage.verifiedBytes, 0);
+});
+test('cached files prove their bytes even when same-size rewrites retain every timestamp', async t => {
+    const f = fixture(t); await runLedger(f.input);
+    const stat = fs.statSync(f.file, { bigint: true });
+    fs.writeFileSync(f.file, fs.readFileSync(f.file, 'utf8').replace('"one"', '"ONE"'));
+    const { descriptorPathSync } = require('../server/pi-file-descriptor');
+    const fstat = fs.fstatSync, lstat = fs.lstatSync;
+    const stamps = Object.fromEntries(['mtimeNs', 'ctimeNs', 'mtimeMs', 'ctimeMs'].map(key => [key, stat[key]]));
+    t.mock.method(fs, 'fstatSync', (...args) => {
+        const value = fstat(...args);
+        return args[1]?.bigint && descriptorPathSync(args[0]) === f.file ? Object.assign(value, stamps) : value;
+    });
+    t.mock.method(fs, 'lstatSync', (...args) => {
+        const value = lstat(...args);
+        return args[1]?.bigint && args[0] === f.file ? Object.assign(value, stamps) : value;
+    });
+    const result = await runLedger(f.input);
+    assert.equal(result.total.records, 2);
+    assert.equal(result.coverage.cachedFiles, 0); assert.equal(result.coverage.skippedFiles, 0);
+    assert.equal(result.coverage.cachedVerifiedBytes, Number(stat.size));
+});
+test('cached byte verification respects the shared budget and later files progress across batches', async t => {
+    const f = fixture(t), render = id => [f.header, f.message(id)].map(row => JSON.stringify(row)).join('\n') + '\n';
+    fs.writeFileSync(path.join(f.root, 'a', 'b.jsonl'), render('two'));
+    await runLedger(f.input);
+    fs.writeFileSync(path.join(f.root, 'a', 'c.jsonl'), render('three'));
+    const limited = { ...f.input, limits: { ...LIMITS, bytes: fs.statSync(f.file).size + 16 } };
+    let result;
+    for (let pass = 0; pass < 3; pass++) {
+        result = await runLedger(limited);
+        assert.equal(result.coverage.limited, true);
+        assert.ok(result.coverage.cachedVerifiedBytes + result.coverage.verifiedBytes + result.coverage.parsedBytes <= limited.limits.bytes);
+    }
+    assert.equal(result.total.records, 3);
+    assert.equal((await runLedger({ ...limited, onlyFile: f.file })).partial, false);
+    const complete = await runLedger(f.input);
+    assert.equal(complete.partial, false); assert.equal(complete.total.records, 3);
+    assert.equal(complete.coverage.cachedFiles, 3);
 });
 test('prefix edits plus growth, same-size rewrites, truncation and replaced files cannot bypass reconciliation', async t => {
     const f = fixture(t); await runLedger(f.input);

@@ -10,6 +10,8 @@
 - 模型高级参数兼容 API 改为按模型 API 从官方 schema 投影布尔和字面量字段，补齐 supportsMidConvoEffort 等能力；清除覆盖只影响当前支持字段，保留未知与其他 API 字段。未新增网页编辑器。
 - 接入 Kimi Coding Chat Completions、GPT-6 API key 思考等级缓存及模型目录修复。已有 Kimi 官方旧地址覆盖需改为带 /v1 的地址，自定义代理按实际协议核对，不自动改写配置或历史。Codemode 取消返回与 VM 实际退出分开，官方额度覆盖单 Pi 进程内最多两个存活 VM。
 
+- 修复快速同大小改写保留相同内核时间戳时，用量缓存漏读修改的问题。复用事实前核对完整内容指纹，缓存与前缀校验共用原有读取预算；受限扫描跨批次继续推进，保留删除前入账检查。
+
 ## 1.8.0（Pi 1.2.0）
 
 [版本说明](docs/releases/1.8.0.md) · [Release](https://github.com/YogurtJ/pivane/releases/tag/v1.8.0) · [准确包验证](docs/RELEASE_INSTALL_VALIDATION.md)
