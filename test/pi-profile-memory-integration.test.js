@@ -156,8 +156,16 @@ test('isolated pinned Pi upstream components enforce profile index, recall, skil
         'skills', 'cwd-only', 'SKILL.md')));
     process.env.PIVANE_PROFILE_MEMORY_REVIEW_MODEL = JSON.stringify({ provider: 'synthetic', modelId: 'cheap' });
     const same = await start(b, alphaId, true);
-    for (let i = 0; i < 5; i++) await same.pi.emit('agent_settled', {}, same.ctx);
-    const lateArchive = await same.pi.tools.get('session_search').execute('call', { query: 'archive-key-26' }, undefined, undefined, same.ctx);
+    // Settled notifications are deliberately coalesced. The search response is
+    // a barrier for each scheduled batch; five rapid notifications alone do not
+    // prove that five background batches completed under concurrent load.
+    let lateArchive;
+    for (let i = 0; i < 5; i++) {
+        await same.pi.emit('agent_settled', {}, same.ctx);
+        lateArchive = await same.pi.tools.get('session_search').execute('call', { query: 'archive-key-26' }, undefined, undefined, same.ctx);
+        if (lateArchive.details.coverage.initialSweepComplete) break;
+    }
+    assert.equal(lateArchive.details.coverage.initialSweepComplete, true, 'bounded backfill completes its native source sweep');
     assert.equal(lateArchive.details.count, 1, 'backfill cursor must progress beyond the first 20 files');
     fs.unlinkSync(archives[26].file);
     const removedArchive = await same.pi.tools.get('session_search').execute('call', { query: 'archive-key-26' }, undefined, undefined, same.ctx);

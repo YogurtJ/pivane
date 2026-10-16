@@ -58,6 +58,14 @@
             origin = source.origin === 'package' ? t('来自 {0}', source.source.replace(/^npm:/, '')) : t('扩展工具');
             info = t('调用时注册的来源：{0}', source.source) + '\n' + source.path;
         }
+        let argumentError = row.querySelector('.pi-tool-arguments-error');
+        if (row._piArgsError) {
+            row.dataset.state = 'error';
+            row.querySelector('.pi-tool-status').textContent = t('失败');
+            const detail = row.querySelector('.pi-tool-detail');
+            if (detail && !argumentError) { argumentError = document.createElement('pre'); argumentError.className = 'pi-tool-arguments-error'; detail.prepend(argumentError); }
+            if (argumentError) argumentError.textContent = row._piArgsError;
+        } else argumentError?.remove();
         const heading = row.querySelector('summary > strong'); if (!heading) return;
         let duration = row.querySelector('.pi-tool-duration');
         if (name === 'codemode' && Number.isSafeInteger(result?.durationMs) && result.durationMs >= 0) {

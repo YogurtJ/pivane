@@ -27,13 +27,17 @@
 
 Pivane 使用未打包的 Pi SDK／RPC 入口；Pi 自带 `dist/bundle` 中的内联代码不受依赖目录修正覆盖，不把本机运行修复宣称为所有上游分发产物已修复。
 
-## Pi 1.2 接入约束
+## Pi 原生接入约束
 
 版本审查包含 `agent_settled.aborted`、原生耗时字段、工具模式/默认修饰语、`disabledBuiltinExtensions`、MCP 取消与关停，以及 Codemode 的 `getPromptGuidelines()`、图片结构化输出/私有临时文件和模型注册表隔离。自定义流必须返回原生 `AssistantMessageEventStream`，不伪造已移除导出；原生 provider 与自定义扩展分别核对。Azure provider 标识改为 `azure`，API 标识 `azure-openai-responses` 与环境变量保持；真实旧配置须另行有界迁移审查，不改写会话正文或凭据，也不凭全局无引用推断全部项目/历史兼容。
 
+Pi 1.3 审查新增：默认工具从 transcript 恢复与显式选择的优先级、Kimi Coding Chat Completions 及官方地址 `/v1`、最终工具参数 `argumentsError`、Responses 的 `providerThinkingLevel` 和模型范围歧义诊断。原生 JSONL 管理格式不迁移；字段往返、跨模型上下文和工具权限通过 SDK/RPC 验证。`pi-reviewed-host.js` 保存显式审查版本，主题门禁与独立记忆 recipe 复用它，并核对 package/lock。更改该常量仍须审查适配边界，不自动兼容任意版本。
+
+模型高级 compat 控件直接投影 `@earendil-works/pi-ai/providers/compat-schema` 的有效 API schema，只开放布尔和字面量选项；复杂对象保留在原生配置，删除覆盖保留未知或其他 API 字段。
+
 ## 原生 Codemode 与 SDK 启动适配
 
-Codemode 输出直接使用 Pi 1.2 官方 executor／sandbox，已移除旧的输出合并子类与精确 import 重定向。原生沙箱拥有 16 Mi 字符／100000 条输出限制、取消、worker 关闭及 store；官方 executor 拥有目录／嵌套权限、用量、截断与私有完整输出文件。Pivane 工厂继续约束模型注册表与媒体确认权限。验证覆盖 100001 条压力、文本／console／返回值及图片顺序、完整输出文件、失败 store、取消与不重放。
+Codemode 输出直接使用官方 executor／sandbox，已移除旧的输出合并子类与精确 import 重定向。原生沙箱拥有 16 Mi 字符／100000 条输出限制、取消及 store；官方 executor 拥有目录／嵌套权限、用量、截断与私有完整输出文件。Pi 1.3 的结果、finished 或 close 完成只表示已请求 VM 停止，真实退出可更晚；官方两个存活 VM 额度按单 Pi 进程共享，取消后仍占额度至实际退出。Pivane 不把它描述为整个工作台的并发上限。Node 专项通过公开 acquireWorker/onWorkerStarted 观测实际退出，并覆盖官方工厂间容量；RPC 进程退出、已派发工具和维护生命周期继续由各自所有者核实。Pivane 工厂继续约束模型注册表与媒体确认权限。验证覆盖 100001 条压力、文本／console／返回值及图片顺序、完整输出文件、失败 store、取消与不重放。
 
 受管主会话在资源发现前初始化原生主题 schema validator；这一内部模块导出路径绑定已审查的 Pi 版本，不复制 schema。模型选择预检在保存的模型或新线程默认不可用时保留原生未选模型状态，完整目录和显式 set_model 仍可恢复；仅在 SDK 初始选择期间隐藏可用候选，真实目录与认证不变。
 

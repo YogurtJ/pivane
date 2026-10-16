@@ -3020,6 +3020,7 @@ document.addEventListener('DOMContentLoaded', () => {
         row.dataset.toolId = toolCall.id || '';
         row.dataset.toolName = toolCall.name || '';
         row._piToolArgs = toolCall.arguments;
+        row._piArgsError = typeof toolCall.argumentsError === 'string' ? toolCall.argumentsError.slice(0, 8192) : '';
         row.innerHTML = `
             <summary>
                 <span class="pi-tool-icon"><i class="fa-solid fa-wrench"></i></span>
@@ -3654,6 +3655,7 @@ document.addEventListener('DOMContentLoaded', () => {
             block.dataset.toolId = delta.toolCall.id || '';
             block.dataset.toolName = delta.toolCall.name || 'tool';
             block._piToolArgs = delta.toolCall.arguments;
+            block._piArgsError = typeof delta.toolCall.argumentsError === 'string' ? delta.toolCall.argumentsError.slice(0, 8192) : '';
             window.PiToolLabels?.update(block);
             block._piLiveText = formatToolArgs(delta.toolCall.arguments);
             block.querySelector('.pi-tool-args').textContent = block._piLiveText;

@@ -64,6 +64,14 @@ API Key 流程输入按 Pi config-value 字面量转义，`!`/`$` 不作为网�
 
 取消可能与 Pi 的原生凭据提交相遇。原生成功时显示成功；CredentialSynchronizationError 显示“凭据已保存但状态同步失败”，要求刷新核对，不重复登录或回滚凭据。服务销毁等待登录清理；终态清除输入、交互事件及本地秘密引用。登录只是认证，不发送模型问题或生成媒体。
 
+## Pi 1.3 供应商兼容
+
+Kimi Coding 内置模型使用 OpenAI Chat Completions，默认地址为 `https://api.kimi.com/coding/v1`。已有 `kimi-coding` 的官方旧 baseUrl 覆盖 `https://api.kimi.com/coding` 需要明确改为带 `/v1` 的地址；自定义代理保留实际端点并核对其协议。内置模型自带的 API 优先于 provider 的默认 api，`modelOverrides.api` 不替换它；显式自定义 models 条目可以指定 api，应单独检查。升级和只读目录加载不自动改写 models.json、凭据或会话正文。
+
+思考等级继续来自实际 runtime。MiMo 聊天模型的原生目录只开放 off/high；Claude、Gemini 与模型上下文修复可被已有本地覆盖遮蔽，修改后按现有流程加载。旧默认不自动改成更高消费档位。
+
+支持该能力的 GPT-6 OpenAI Responses 模型在使用 API key 时，以原生 configuration_update 保留切换思考等级的缓存。ChatGPT 登录不发送该项；兼容代理需确认服务端支持后才能声明 supportsMidConvoEffort。切换模型时，其他模型产生的 thinking 不再作为回答文本发送给新模型，原生历史仍保留。
+
 ## 模型速度（Fast / Ultrafast）
 
 速度与思考等级分别选择。桌面输入区在有加速能力的模型旁显示“速度”，手机从上下文圆环进入模型面板选择；未声明 Fast/Ultrafast 的模型隐藏速度入口。选择器提供跟随供应商（auto，不增加请求参数）、标准（standard，发送 default）和该渠道实际支持的 Fast/Ultrafast。选项显示相对于模型标准价格的费用倍率；加速不改变 Thinking。

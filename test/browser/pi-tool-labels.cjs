@@ -14,6 +14,7 @@ const calls = [
     { id: 'cancel', name: 'extensions_package', arguments: { action: 'install', source: 'npm:fixture' } },
     { id: 'codemode', name: 'codemode', arguments: { code: 'return 1' } },
     { id: 'invalid-duration', name: 'codemode', arguments: {} },
+    { id: 'invalid-args', name: 'fixture_effect', arguments: {}, argumentsError: 'Invalid JSON arguments: <img src=x onerror="window.__badArgs=1">' },
     { id: 'unknown', name: 'unknown_tool', arguments: {} }
 ];
 const result = (id, name, details = {}, isError = false) => ({ role: 'toolResult', toolCallId: id, toolName: name, details, isError, content: [{ type: 'text', text: 'Synthetic tool output' }] });
@@ -64,9 +65,25 @@ async function run(browser, base, width, locale) {
     assert.equal(await row('cancel').getAttribute('data-state'), 'cancelled');
     assert.equal(await row('codemode').locator('.pi-tool-duration').textContent(), '125ms');
     assert.equal(await row('invalid-duration').locator('.pi-tool-duration').count(), 0);
+    assert.equal(await row('invalid-args').getAttribute('data-state'), 'error');
+    assert.equal(await row('invalid-args').locator('.pi-tool-arguments-error').count(), 0, 'error details remain lazy');
+    await row('invalid-args').locator('summary').click();
+    assert.equal(await row('invalid-args').locator('.pi-tool-arguments-error').textContent(), calls.find(call => call.id === 'invalid-args').argumentsError);
+    assert.equal(await row('invalid-args').locator('img').count(), 0);
+    assert.equal(await page.evaluate(() => window.__badArgs), undefined);
+    await row('invalid-args').locator('summary').click();
     await row('skill').locator('summary').click();
     assert.match(await row('skill').locator('.pi-tool-provenance').textContent(), /SKILL.md/);
     const send = event => socket.send(JSON.stringify(event));
+    send({ type: 'message_update', assistantMessageEvent: { type: 'toolcall_end', contentIndex: 0,
+        toolCall: { id: 'live-invalid', name: 'fixture_effect', arguments: {}, argumentsError: 'Malformed final arguments' } } });
+    await row('live-invalid').waitFor();
+    await row('live-invalid').locator('summary').click();
+    assert.equal(await row('live-invalid').locator('.pi-tool-arguments-error').textContent(), 'Malformed final arguments');
+    send({ type: 'tool_execution_end', toolCallId: 'live-invalid', toolName: 'fixture_effect', isError: true,
+        result: { content: [{ type: 'text', text: 'Native validation refused execution' }] } });
+    await page.waitForFunction(() => document.querySelector('[data-tool-id="live-invalid"] .pi-tool-output')?.textContent === 'Native validation refused execution');
+    assert.equal(await row('live-invalid').locator('.pi-tool-arguments-error').textContent(), 'Malformed final arguments');
     send({ type: 'tool_execution_start', toolCallId: 'live-codemode', toolName: 'codemode', args: { code: 'return 1' } });
     send({ type: 'tool_execution_end', toolCallId: 'live-codemode', toolName: 'codemode', isError: false, durationMs: 0,
         result: { content: [{ type: 'text', text: 'Native timed output' }] } });
@@ -93,6 +110,8 @@ async function run(browser, base, width, locale) {
     await row('skill').locator('.pi-tool-provenance').waitFor();
     assert.equal(await row('package').locator('.pi-tool-source').count(), 1);
     assert.equal(await row('codemode').locator('.pi-tool-duration').textContent(), '125ms', 'reload uses native recorded duration');
+    await row('invalid-args').locator('summary').click();
+    assert.match(await row('invalid-args').locator('.pi-tool-arguments-error').textContent(), /Invalid JSON/);
     assert.deepEqual(errors, []); await context.close(); console.log(`PASS tool labels ${width} ${locale}`);
 }
 (async () => {

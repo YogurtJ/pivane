@@ -46,7 +46,9 @@
 
 默认工具列表与 `codemode.mode/inlineBudget` 见[原生设置](NATIVE_SETTINGS.md#默认工具与全局信任策略2026-09-10)。它们控制工具选择与呈现，不是完整权限沙箱；声明预算不是执行超时，脚本超时使用 `@options.timeout_ms`。
 
-Pi 1.2.0 的官方 Codemode executor／sandbox 保留单个脚本输出限制：16 Mi 个字符或 100000 次 text/image/console 调用。超过任一上限会令脚本失败；此前已完成的工具操作不回滚，不自动重试脚本。成功脚本的 store 写入沿用原生分支语义。文本分隔、console、返回值、截断、图片顺序与私有完整输出文件由原生实现处理，Pivane 已移除旧的输出合并适配。
+官方 Codemode executor／sandbox 保留单个脚本输出限制：16 Mi 个字符或 100000 次 text/image/console 调用。超过任一上限会令脚本失败；此前已完成的工具操作不回滚，不自动重试脚本。成功脚本的 store 写入沿用原生分支语义。文本分隔、console、返回值、截断、图片顺序与私有完整输出文件由原生实现处理，Pivane 已移除旧的输出合并适配。
+
+Pi 1.3 取消或超时会结束脚本调用并请求 VM 停止，VM 真实退出可能稍晚；单 Pi 进程最多有两个存活的 Codemode VM，取消后仍占用额度至退出，满额时新脚本直接失败。这个限制不跨 Pivane 的不同 RPC 进程共享。失败或取消的 store 写入不提交，已有工具操作不回滚，不自动重放脚本。
 
 `autoEnableCodemode` 写在 `mcp.json`，不是 `settings.json`；是否实际启用仍以该 worker 的工具目录为准。关闭扩展、侧聊隔离和子任务授权边界保持不变。
 
@@ -97,4 +99,4 @@ Pi 1.2.0 的 `tools.read()` 在图片文件上返回可传给 `image()` 的图�
 
 结构化 MCP 结果使用原生 any-JSON 语义：对象、数组、标量和 null 均可保留，是否声明 output schema、是否为错误结果不改变该值；协议元数据不混入工具内容。取消涵盖等待 OAuth token 和 401 恢复阶段，不派发或重放已取消的工具请求。原生握手支持到 2025-11-25，不宣称支持后续协议版本。
 
-上游参考：[MCP](https://github.com/earendil-works/pi/blob/v1.2.0/packages/coding-agent/docs/mcp.md)、[Codemode](https://github.com/earendil-works/pi/blob/v1.2.0/packages/coding-agent/docs/codemode.md)、[虚拟模型](https://github.com/earendil-works/pi/blob/v1.2.0/packages/coding-agent/docs/virtual-models.md)。
+上游参考：[MCP](https://github.com/earendil-works/pi/blob/v1.3.0/packages/coding-agent/docs/mcp.md)、[Codemode](https://github.com/earendil-works/pi/blob/v1.3.0/packages/coding-agent/docs/codemode.md)、[虚拟模型](https://github.com/earendil-works/pi/blob/v1.3.0/packages/coding-agent/docs/virtual-models.md)。

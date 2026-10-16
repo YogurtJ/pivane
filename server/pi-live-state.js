@@ -28,9 +28,13 @@ class PiLiveState {
             }
             if (d.type === 'toolcall_end' && d.toolCall) {
                 const text = JSON.stringify(d.toolCall.arguments || {});
+                const diagnostic = typeof d.toolCall.argumentsError === 'string' ? d.toolCall.argumentsError.slice(0, 8192) : '';
+                if (diagnostic.length < (d.toolCall.argumentsError?.length || 0)) this.truncated = true;
                 block.id = d.toolCall.id; block.name = d.toolCall.name;
-                if (text.length <= MAX_TOOL && this.characters - String(block.arguments).length + text.length <= MAX_TEXT) {
-                    this.characters += text.length - String(block.arguments).length; block.arguments = clone(d.toolCall.arguments);
+                if (text.length + diagnostic.length <= MAX_TOOL && this.characters - String(block.arguments).length + text.length + diagnostic.length <= MAX_TEXT) {
+                    this.characters += text.length + diagnostic.length - String(block.arguments).length;
+                    block.arguments = clone(d.toolCall.arguments);
+                    if (diagnostic) block.argumentsError = diagnostic;
                 } else this.truncated = true;
             }
         }

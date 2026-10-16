@@ -158,6 +158,8 @@ GET 快照只投影允许字段，分别返回 global、project、配置有效�
 
 设置 → Pi 配置 → 工具使用 `defaultTools`，候选内置名由公开 Pi 工具工厂构造，加上 codemode/tool_search，返回 schema.choices/defaults/platform/maxEntries/maxNameLength；不会启动 runtime、发现扩展或执行工具。PowerShell 需要相应运行环境，Codemode 与 Tool Search 需要对应扩展加载。未设置使用 Pi 标准默认；恢复“Pi 默认”／“继承全局”提交 null 删除本层字段。替换模式保留普通名称，包括自定义名称；原生条目编辑器支持按顺序 `+名称`／`-名称`。只有修饰符时修改继承列表，含普通名称时先替换再应用修饰符。最多 1024 条、每条 500 字符，不接受空名称、空白／控制字符或重复普通名称；重复修饰符保留顺序。未知名称不被删除，但不代表实际工具存在或已获授权。
 
+Pi 1.3 恢复已有会话时，默认工具选择会采用当前原生 transcript 记录的激活集合，再应用本次 CLI 的 `+/-` 修饰符。显式工具列表、`--no-tools`、`--no-builtin-tools` 和排除项仍优先，隐藏或撤销的工具不会因历史记录取得授权；不新增网页工具状态副本。
+
 显式 `defaultTools=[]` 表示无默认内置工具，不当作未配置；受信项目修饰符叠加全局空列表不会恢复 Pi 默认。它不是完整 allowlist：已启用扩展仍可能注册并激活默认工具，Codemode 间接调用另受权限规则约束。此设置不放宽子任务 gate，也不控制手动 Shell；实际工具从当前会话资源清单核对。
 
 主题发现使用已初始化的原生 schema validator；无效元数据、未知颜色键或未定义颜色变量产生原生 warning 并排除主题，不自动修复 authored JSON。此行为在首次加载和资源重载时一致。
@@ -186,7 +188,7 @@ Skills 页复用上述 GET/PUT 资源接口，不新增禁用配置或改写 SKI
 
 独立 GET/PUT 使用原 models.json/settings.json 修订，不回传 apiKey、headers 或其他凭据。已声明的 custom model 修改对应项；内置或继承模型写 modelOverrides，保留未知字段和其他模型。
 
-- compat：支持网页 schema 列出的常见布尔兼容项、maxTokensField、thinkingFormat、thinkingTokenBudgetField。单项 null 删除覆盖；整个 compat=null 只清除网页支持的键，保留未知键。
+- compat：按模型有效 API 从 Pi 公开 schema 投影布尔和字面量选项，返回原生说明和 choices，包括 Responses 的 supportsMidConvoEffort、additional tools 等能力；不接受当前 API 不支持的键，不开放嵌套 routing 或任意请求对象。thinkingFormat 等枚举以返回的 choices 为准。单项 null 删除覆盖；整个 compat=null 只清除当前 API 已投影的键，保留未知键和其他 API 字段。它仍是兼容 API，未提供网页编辑器。
 - samplingParams：仅 temperature/top_p/top_k/min_p/presence_penalty/frequency_penalty/repetition_penalty/seed 的有界数字，不允许 messages/tools 等请求覆盖。仅原生支持的 OpenAI compatible APIs 开放；以模型实际 api 判断。
 - cost：input/output/cacheRead/cacheWrite 的每百万 token 美元费率，0–100000 的有限数。部分更新保留其他费率与既有 tiers；cost=null 明确恢复原生价格。阶梯价格本轮只保留和显示，未实现编辑。
 

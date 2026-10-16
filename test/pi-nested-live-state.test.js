@@ -23,3 +23,17 @@ test('authoritative parent result releases only that live nested tree, including
     live.handle({ type: 'agent_settled' });
     assert.deepEqual(live.snapshot().tools, []);
 });
+
+test('reconnect preview retains bounded final argument errors without converting them into executable arguments', () => {
+    const live = new PiLiveState();
+    live.handle({ type: 'message_start', message: { role: 'assistant', timestamp: 1 } });
+    const call = { id: 'invalid', name: 'write', arguments: {}, argumentsError: 'Invalid arguments: ' + 'x'.repeat(20000) };
+    live.handle({ type: 'message_update', assistantMessageEvent: { type: 'toolcall_end', contentIndex: 0, toolCall: call } });
+    const snapshot = live.snapshot();
+    assert.deepEqual(snapshot.message.content[0].arguments, {});
+    assert.equal(snapshot.message.content[0].argumentsError, call.argumentsError.slice(0, 8192));
+    assert.equal(snapshot.truncated, true);
+    snapshot.message.content[0].argumentsError = 'changed preview';
+    assert.equal(live.snapshot().message.content[0].argumentsError.length, 8192);
+    assert.equal(call.argumentsError.length, 20019);
+});

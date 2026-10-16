@@ -1,10 +1,28 @@
-const boolean = { type: 'boolean' };
-const compatSchema = Object.fromEntries(['supportsStore', 'supportsDeveloperRole', 'supportsReasoningEffort', 'supportsUsageInStreaming', 'supportsFinishReason', 'requiresToolResultName', 'requiresAssistantAfterToolResult', 'requiresThinkingAsText', 'requiresReasoningContentOnAssistantMessages', 'supportsStrictMode', 'supportsStrictTools', 'supportsEagerToolInputStreaming', 'supportsLongCacheRetention', 'supportsCacheControlOnTools', 'forceAdaptiveThinking', 'allowEmptySignature', 'supportsThinkingTokenBudget'].map(key => [key, boolean]));
-Object.assign(compatSchema, {
-    maxTokensField: { choices: ['max_tokens', 'max_completion_tokens'] },
-    thinkingFormat: { choices: ['reasoning_effort', 'openrouter', 'deepseek', 'together', 'baseten', 'zai', 'qwen', 'chat-template', 'qwen-chat-template'] },
-    thinkingTokenBudgetField: { choices: ['thinking_token_budget', 'thinking_budget', 'thinking_budget_tokens'] }
-});
+let nativeCompat;
+// Public Pi schemas own the field names, choices and descriptions. Project only
+// boolean and literal controls; nested routing/request objects stay native-only.
+async function compatSchema(api) {
+    const schemas = await (nativeCompat ||= import('@earendil-works/pi-ai/providers/compat-schema'));
+    const name = {
+        'openai-completions': 'OpenAICompletionsCompatSchema',
+        'openai-responses': 'OpenAIResponsesCompatSchema',
+        'azure-openai-responses': 'OpenAIResponsesCompatSchema',
+        'anthropic-messages': 'AnthropicMessagesCompatSchema',
+        'bedrock-converse-stream': 'BedrockCompatSchema',
+        'mistral-conversations': 'MistralConversationsCompatSchema'
+    }[api];
+    return projectCompatSchema(schemas[name]);
+}
+function projectCompatSchema(native) {
+    return Object.fromEntries(Object.entries(native?.properties || {}).flatMap(([key, field]) => {
+        const literals = field.anyOf || [field];
+        const choices = literals.every(item => Object.hasOwn(item, 'const') && ['string', 'boolean', 'number'].includes(typeof item.const))
+            ? literals.map(item => item.const) : undefined;
+        if (field.type !== 'boolean' && !choices) return [];
+        return [[key, { ...(choices ? { choices } : { type: 'boolean' }),
+            ...(typeof field.description === 'string' ? { description: field.description } : {}) }]];
+    }));
+}
 const samplingSchema = {
     temperature: [0, 2], top_p: [0, 1], top_k: [0, 100000], min_p: [0, 1],
     presence_penalty: [-2, 2], frequency_penalty: [-2, 2], repetition_penalty: [0, 10], seed: [0, 2147483647]
@@ -34,4 +52,4 @@ function mergeFields(base, changes, keys) {
     else for (const [key, value] of Object.entries(changes)) { if (value === null) delete result[key]; else result[key] = value; }
     return result;
 }
-module.exports = { compatSchema, samplingSchema, pick, validateMap, validateCost, mergeFields };
+module.exports = { compatSchema, projectCompatSchema, samplingSchema, pick, validateMap, validateCost, mergeFields };

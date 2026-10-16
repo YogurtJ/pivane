@@ -543,12 +543,13 @@ class PiSettingsService {
     }
 
     async getModelAdvanced(input) {
-        const { compatSchema, samplingSchema, pick } = require('./pi-model-advanced');
+        const { compatSchema: schemaForApi, samplingSchema, pick } = require('./pi-model-advanced');
         const provider = cleanId(input.provider, 'Provider ID'), modelId = cleanModelId(input.modelId);
         const revision = await this.configRevision();
         const runtime = await this.createModelRuntime();
         const model = runtime.getModel(provider, modelId);
         if (!model) throw new Error('模型不存在');
+        const compatSchema = await schemaForApi(model.api);
         const { modelsPath } = await this.paths();
         const config = this.readModelsFile(modelsPath).providers[provider] || {};
         const local = config.models?.find(m => m.id === modelId) || config.modelOverrides?.[modelId] || {};
@@ -562,14 +563,15 @@ class PiSettingsService {
     }
 
     async saveModelAdvanced(input) {
-        const { compatSchema, samplingSchema, validateMap, validateCost, mergeFields } = require('./pi-model-advanced');
+        const { compatSchema: schemaForApi, samplingSchema, validateMap, validateCost, mergeFields } = require('./pi-model-advanced');
         const provider = cleanId(input.provider, 'Provider ID'), modelId = cleanModelId(input.modelId);
-        if (Object.hasOwn(input, 'compat')) validateMap(input.compat, compatSchema, '兼容参数');
         if (Object.hasOwn(input, 'samplingParams')) validateMap(input.samplingParams, samplingSchema, '采样参数');
         if (Object.hasOwn(input, 'cost')) validateCost(input.cost);
         const runtime = await this.createModelRuntime();
         const model = runtime.getModel(provider, modelId);
         if (!model) throw new Error('模型不存在');
+        const compatSchema = await schemaForApi(model.api);
+        if (Object.hasOwn(input, 'compat')) validateMap(input.compat, compatSchema, '兼容参数');
         if (input.samplingParams && Object.keys(input.samplingParams).length && !['openai-completions', 'openai-responses', 'azure-openai-responses'].includes(model.api)) throw new Error('此 API 不支持这些采样参数');
         const { modelsPath } = await this.paths();
         if (input.expectedRevision !== await this.configRevision()) throw Object.assign(new Error('模型配置已变化，请刷新后再保存'), { statusCode: 409 });
