@@ -34,9 +34,9 @@
 
 ### 实际运行效果
 
-Agent 会先列出计划，再读取和修改文件、运行测试并汇报结果。任务完成后，整个过程会收成一行摘要，需要时随时可以展开查看。
+任务完成后，执行过程会收成一行摘要。可以继续检查文件差异、测试结果和任务计划，无需离开对话。
 
-<p align="center"><img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/demo-zh.gif" alt="Pivane 中运行的编程任务：计划、工具调用、测试和最终总结" width="100%"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/demo-zh.gif" alt="在 Pivane 中检查已完成的 CSV 导出任务：文件差异、测试结果和任务计划" width="100%"></p>
 
 <sub>截图和录屏使用的是合成的演示项目。</sub>
 

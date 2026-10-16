@@ -2,7 +2,37 @@
 
 本页是版本验收索引。**结果只适用于对应归档**：准确 SHA256、测试明细和失败尝试见各 [Release](https://github.com/YogurtJ/pivane/releases) 的 `pivane-<版本>.validation.json`。源码、浏览器模拟和旧版结果不能替代新包的实机验收。
 
-## 当前正式版 1.6.2
+## 当前正式版 1.8.0
+
+[1.8.0 说明](releases/1.8.0.md) · [验收附件](https://github.com/YogurtJ/pivane/releases/download/v1.8.0/pivane-1.8.0.validation.json)
+
+准确归档 SHA256：`23c0f5ff5a68a14213bd399e493aaac493494af851f8e2e59ce7c23cd3f57394`，冻结提交：`1e8d1bc5e299061fe7b8665f193c9ef47cbf5418`。
+
+| 实机 | Node | 完整浏览器 | 安装／正式1.7升级／原路径恢复 |
+|---|---|---|---|
+| Linux arm64 / Node22.23.3 / Chromium142 | 900通过 | 101/101 | 17/17 |
+| Apple M1 / macOS15.5 / Node22.23.1 / Chrome155 | 872通过、28平台跳过 | 101/101 | 17/17 |
+| Windows11 x64 / Node22.23.2 / Chrome155 | 872通过、28平台跳过 | 实际普通token101/101 | 17/17 |
+
+三台均零失败、实际退出0，独立锁定安装后核对2253发行文件与七个Pi1.2.0实际包版本，测试后不变；语法、文档及生产依赖audit通过，发布前刷新audit仍零漏洞。Playwright1.58.2、原DPR/Retina和每文件300秒上限保留，截图按CSS像素导出。28项只涉及Linux目录描述符删除边界，macOS/Windows仍执行保留与共同生命周期断言。
+
+Windows17项原生文件系统／安装夹具使用提升权限隔离环境；另以真实Interactive+Limited token独立通过普通安装、onboarding、RPC、完整101和服务退出0，安装／运行administrator均false。每台17项恢复20文件；原生SessionManager另在正式1.7创建完整分支、书签、ID和附件引用，以1.8只读验证并恢复4文件原路径后由新旧SDK重新打开。每台7次loopback请求，Windows普通流程另3次，零真实凭据和付费请求。三平台1440／393恢复截图已复核。
+
+前候选及失败尝试按独立哈希保留，不替代此包；B5一次手机搜索超时首因尚未锁定，文字选择退出的原socket／阶段没有捕获，本包首次完整运行均通过原用例。准确包、历史结果及范围见附件。公开发行没有切换维护者或用户实例，也不证明真实供应商账户或GPU环境已验收。
+
+## 历史正式版 1.7.0
+
+[1.7.0 说明](releases/1.7.0.md) · [验收附件](https://github.com/YogurtJ/pivane/releases/download/v1.7.0/pivane-1.7.0.validation.json)
+
+准确归档 SHA256：`351b0085699334828635121eab9f161ba7cf2841eb245ad28e164c6956d50b2a`，源码提交：`98cadc6e9fb3c98f142fa7f19bc7227b4443170d`。2026-10-11 公开发布，六项附件重新下载后与冻结文件逐字节一致；标签与归档保持不变，主分支补记发布结果。
+
+Linux ARM64 / Node 22.23.2、Apple Silicon macOS / Node 22.23.1 与 Windows 11 x64 / Node 22.23.2，各完成719项 Node 测试（零失败、取消或跳过）、550文件语法、76份文档检查、生产 audit 零漏洞、17项安装升级恢复检查、从正式1.6.2升级与20文件原路径恢复。每台核对2115个包文件，测试后不变；真实 HTTP、三项手动专项及正常停机通过，每台7次合成 Provider 请求、零付费请求。
+
+每平台覆盖94个唯一自动浏览器脚本。原全量均为93通过／1失败，原结果保留，最终覆盖由同一归档的针对性补验完成：Linux 布局夹具使用原宽度选择参数分组完成全部28个场景，每组保留300秒原期限；Windows 预约夹具在原目标选择前等待工作目录异步刷新完成；macOS 菜单夹具等待初始字体、页眉及视口布局稳定，Shell 专项等待第二设备取消完成后执行原排除断言。原断言、输入及驱动期限保留，包外执行文本与原文件分别绑定 SHA；macOS 早期补验和手动失败也保留，不能把原全量记为94／94零失败。
+
+Chromium 桌面和手机宽度检查不代表 Safari、真实手机键盘或麦克风验收；Windows 全套使用提升权限 SSH 用户。未验证真实付费模型／媒体与用户 GPU。本次公开发行未重启或切换运行实例，未迁移用户数据；并行开发保留在共享工作区，发行从隔离源码完成。
+
+## 历史正式版 1.6.2
 
 [1.6.2 说明](releases/1.6.2.md) · [验收附件](https://github.com/YogurtJ/pivane/releases/download/v1.6.2/pivane-1.6.2.validation.json)
 

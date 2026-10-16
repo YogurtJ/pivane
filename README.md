@@ -34,9 +34,9 @@ Subagents, scheduled tasks, MCP, long-term memory, rich file previews and a buil
 
 ### See it in action
 
-The agent plans the task, reads and edits files, runs the tests and reports back. When it finishes, the whole process folds into a one-line summary that you can expand at any time.
+After a task finishes, its tool trace folds into one line. Review the changed files and the result without leaving the conversation.
 
-<p align="center"><img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/demo-en.gif" alt="A coding task running in Pivane: plan, tool calls, tests and the final summary" width="100%"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/demo-en.gif" alt="Reviewing a completed CSV export task in Pivane: file changes, test results and the task plan" width="100%"></p>
 
 <sub>Screenshots and recordings use a synthetic demo project.</sub>
 
