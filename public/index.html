@@ -25,8 +25,10 @@
     <link rel="stylesheet" href="workspace-network.css">
     <link rel="stylesheet" href="pi-model-picker.css">
     <link rel="stylesheet" href="pi-cron.css">
+    <link rel="stylesheet" href="pi-identity-ui.css">
     <link rel="stylesheet" href="pi-agent-profiles.css">
     <link rel="stylesheet" href="pi-profile-knowledge.css">
+    <link rel="stylesheet" href="pi-profile-learning.css">
     <link rel="stylesheet" href="pi-chat-knowledge.css">
     <link rel="stylesheet" href="pi-mobile-header.css">
     <link rel="stylesheet" href="pi-usage.css">
@@ -690,7 +692,7 @@
                         <section id="settings-subagents"></section>
                     </section>
                     <section class="workspace-settings-panel" data-settings-panel="profiles" id="pi-profiles-panel">
-                        <div class="settings-panel-header"><i class="fa-solid fa-user-gear" aria-hidden="true"></i><div><h3>助手身份</h3><p>身份仅在新建线程时确定。已打开的线程不会因保存设置而重新加载。</p></div><button id="pi-profiles-refresh" class="settings-secondary-button settings-header-refresh" type="button" title="刷新助手身份" aria-label="刷新助手身份"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button></div>
+                        <div class="settings-panel-header"><i class="fa-solid fa-user-gear" aria-hidden="true"></i><div><h3>助手身份</h3><p>身份仅在新建线程时确定。已打开的线程不会因保存设置而重新加载。</p></div></div>
                         <div id="pi-profiles-content"></div>
                     </section>
                     <section class="workspace-settings-panel" data-settings-panel="models">
@@ -959,9 +961,12 @@
     <link rel="stylesheet" href="pi-extensions.css">
     <script src="pi-assistant-projects.js"></script>
     <script src="pi-profile-dialog.js"></script>
+    <script src="pi-identity-ui.js"></script>
     <script src="pi-profile-knowledge.js"></script>
+    <script src="pi-profile-learning.js"></script>
     <script src="pi-chat-knowledge.js"></script>
     <script src="pi-cron.js"></script>
+    <script src="pi-identity-templates.js"></script>
     <script src="pi-agent-profiles.js"></script>
     <script src="settings.js"></script>
     <script src="media-fields.js"></script>

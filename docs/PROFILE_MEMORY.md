@@ -105,7 +105,7 @@ arbitrary path can be read through the route.
 ## Unified knowledge management
 
 `mountProfileKnowledgeRoutes(router, { service })` mounts same-origin GET
-`/profiles/:id/knowledge?kind=memory|skill&query=&offset=&sessionId=`, GET
+`/profiles/:id/knowledge?kind=memory|skill&query=&offset=&sessionId=&state=&target=&category=`, GET
 `/profiles/:id/knowledge/items/:itemId`, GET `/profiles/:id/knowledge/injection?sessionId=`, and POST
 `/profiles/:id/knowledge/mutations`. The service is
 `new ProfileKnowledgeService({ profiles, getAgentDir, bundlePath })` from
@@ -116,6 +116,20 @@ own a second store. GET pages contain at most 50 entries (memory previews up to
 bounded to 65,536 characters and marks truncated legacy entries read-only.
 `offset` is a canonical decimal integer from 0 to 100000 (no leading zeros).
 Optional `state=present|deleted|draft|all` filters before pagination; `present` excludes only deleted entries. Omission retains all states for existing callers. Filters do not change the authoritative write revision or remove tombstones. The identity page explicitly requests `present` by default and offers a separate deleted-items view.
+Optional `target=user|memory|project` and
+`category=fact|preference|correction|failure|procedure` both require explicit
+`kind=memory` and filter before pagination. Invalid options return 400 through
+the same query validation path. Target `project` selects project scope regardless
+of the stored target (including SQLite-only entries). Targets `user` and `memory`
+select profile scope only: `user` selects USER entries; `memory` selects MEMORY
+and read-only legacy `failure` entries, keeping their stored target unchanged.
+Every ready snapshot adds `counts: { memory: {total,user,memory,project,deleted},
+skill: {total,active,draft,disabled,deleted} }`, including an empty store. Counts
+cover all listed non-mirrored items, irrespective of kind, query, offset, state,
+target or category. Totals exclude deleted items; subgroup counts also exclude
+deleted items, whose count is separate. Memory subgroups use the same target
+definitions, so legacy profile failures contribute to `total` and `memory`,
+never `user`. Filters and counts do not change the write revision.
 `capabilities.operations` lists supported commands, and `memory`/`skill` flags
 specify which kind is writable. The additive `capabilities.journal` object
 reports live receipt/request/tombstone counts, their windows and real limits.
@@ -370,8 +384,8 @@ tool adapter.
 
 - **Settings** are per profile (`GET/PUT /profiles/:id/learning`), default off:
   `enabled`, `correctionEnabled`, `reviewEnabled`, `extractionEnabled`,
-  `periodicReviewMinutes` (0..10080), `maxRunsPerDay` (1..20, default 20),
-  `maxTokensPerDay` (6000..200000, default 200000),
+  `periodicReviewMinutes` (0..10080), `maxRunsPerDay` (1..500, default 20),
+  `maxTokensPerDay` (6000..5000000, default 200000),
   `consolidationInputChars` (4000..40000, default 12000; a consolidation reserves that plus 6000 tokens),
   and `triggerPhrases` `{correction,preference,temporary,ignore}` (each at most 50
   plain phrases of up to 80 characters, no control characters). Saving never runs a job.
@@ -427,6 +441,12 @@ tool adapter.
   characters reduced to a UTF-8-safe 1,800-byte model excerpt,
   prompt plus excerpt ≤ 5000 UTF-8 bytes, ≤ 320 output tokens, no tools, no
   CLI/subagent fallback, 20 s abort followed by waiting for real settlement.
+  Detailed run history retains 64 entries; a compact private UTC `dayCarry`
+  preserves the current day's counted runs, reserved tokens and provider-reported
+  total tokens as older details leave that window. It expires on the next UTC
+  day, so a budget above 64 runs still counts every reservation. Refunds still
+  require retained run details and native source proof; already-trimmed runs
+  remain ineligible for reconciliation, as before.
   Queue 64 jobs, 128 cursors; each cursor retains at most 2048 native pair
   references to avoid replay after historical edits or branch switches. Capacity
   exhaustion and unprovable legacy branch rewrites block rather than forget old
@@ -443,6 +463,18 @@ tool adapter.
   restart become `uncertain` and are never replayed. Deterministic trusted-write
   refusals (including the 413 source-proof limit) are `skipped/knowledge-rejected`;
   a learned entry refused by the content scan is `skipped/content-blocked`.
+
+Learning snapshots expose `capabilities.limits` with the same settings bounds.
+`health.today` is `{runs,maxRuns,reservedTokens,maxTokens,exhaustedBy,resetsAt,usedTokens}`.
+`exhaustedBy` is `runs` when the daily run count reaches its limit, otherwise
+`tokens` when the remaining reservation budget cannot fit another 6000-token
+turn attempt, otherwise null (runs wins if both limits bind). `resetsAt` is the
+ISO timestamp of the next UTC midnight used by admission. `usedTokens` sums
+only provider-reported `usage.totalTokens` on today's counted runs (including
+running jobs and the daily carry); it is null when no total was reported and 0
+when zero was explicitly reported. Queued/unstarted, other-day and refunded
+runs do not contribute. Actual usage never replaces reservation-based admission;
+refunds preserve each original run's recorded usage and cost.
 
 Each eligible `before_agent_start` re-reads profile and physical-cwd memory
 from disk and appends a native `pivane-profile-memory-read` entry, which also

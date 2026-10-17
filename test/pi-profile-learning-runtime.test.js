@@ -414,10 +414,22 @@ test('learning REST is authenticated, revisioned, bounded and does not start a w
     assert.equal(initial.capabilities.correction, false);
     assert.equal(initial.capabilities.settingsWrite, true);
     assert.ok(Array.isArray(initial.capabilities.actions));
-    assert.equal(initial.capabilities.limits.maxRunsPerDay.max, 20);
+    assert.deepEqual(initial.capabilities.limits.maxRunsPerDay, { min: 1, max: 500 });
+    assert.deepEqual(initial.capabilities.limits.maxTokensPerDay, { min: 6000, max: 5000000 });
     const saved = await fetch(url, { method: 'PUT', headers, body: JSON.stringify({ expectedRevision: initial.revision,
         changes: { enabled: true, correctionEnabled: true, maxRunsPerDay: 1 } }) });
     assert.equal(saved.status, 200);
+    let revision = (await saved.json()).revision;
+    for (const changes of [{ maxRunsPerDay: 500, maxTokensPerDay: 5000000 }, { maxRunsPerDay: 1, maxTokensPerDay: 6000 }]) {
+        const response = await fetch(url, { method: 'PUT', headers, body: JSON.stringify({ expectedRevision: revision, changes }) });
+        assert.equal(response.status, 200);
+        const value = await response.json(); revision = value.revision;
+        for (const [key, expected] of Object.entries(changes)) assert.equal(value.settings[key], expected);
+    }
+    for (const changes of [{ maxRunsPerDay: 0 }, { maxRunsPerDay: 501 }, { maxRunsPerDay: 1.5 }, { maxRunsPerDay: '20' },
+        { maxTokensPerDay: 5999 }, { maxTokensPerDay: 5000001 }, { maxTokensPerDay: 6000.5 }, { maxTokensPerDay: '200000' }]) {
+        assert.equal((await fetch(url, { method: 'PUT', headers, body: JSON.stringify({ expectedRevision: revision, changes }) })).status, 400);
+    }
     assert.equal((await fetch(url, { method: 'PUT', headers, body: JSON.stringify({ expectedRevision: initial.revision,
         changes: { enabled: true } }) })).status, 409);
     assert.equal(gateway.supervisor.workers.size, 0);
@@ -562,7 +574,8 @@ test('health reports off, unavailable, needs-model, quota, failing and ok in pre
     const f = await fixture(t);
     let snap = await f.service.snapshot(profileId);
     assert.equal(snap.health.state, 'off');
-    assert.deepEqual(snap.health.today, { runs: 0, maxRuns: 20, reservedTokens: 0, maxTokens: 200000 });
+    assert.deepEqual(snap.health.today, { runs: 0, maxRuns: 20, reservedTokens: 0, maxTokens: 200000,
+        exhaustedBy: null, usedTokens: null, resetsAt: snap.health.today.resetsAt });
     await f.enable({ reviewEnabled: true, maxRunsPerDay: 4, maxTokensPerDay: 24000 });
     assert.equal((await f.service.snapshot(profileId)).health.state, 'ok');
     f.preferences.writeDocument({ memoryModels: { 'memory-correction': { provider: 'fixture', modelId: 'cheap' } } });
@@ -589,7 +602,8 @@ test('health reports off, unavailable, needs-model, quota, failing and ok in pre
     });
     snap = await f.service.snapshot(profileId);
     assert.equal(snap.health.state, 'quota-exhausted');
-    assert.deepEqual(snap.health.today, { runs: 4, maxRuns: 4, reservedTokens: 24000, maxTokens: 24000 });
+    assert.deepEqual(snap.health.today, { runs: 4, maxRuns: 4, reservedTokens: 24000, maxTokens: 24000,
+        exhaustedBy: 'runs', usedTokens: null, resetsAt: snap.health.today.resetsAt });
     assert.equal(snap.health.lastFailure.error, 'conflict-error');
 });
 
@@ -1077,4 +1091,98 @@ test('periodic scans share one in-flight cycle and register a source once for al
     release(); await Promise.all([first, second, third]);
     assert.equal(registrations, 1); assert.equal(f.service.scans.size, 0);
     await f.service.tick(); assert.equal(registrations, 2, 'a completed scan allows the next cycle');
+});
+
+test('today exposes UTC reset, token admission and only provider-reported totals for counted runs', async t => {
+    const f = await fixture(t);
+    await f.enable({ maxRunsPerDay: 10, maxTokensPerDay: 18000 });
+    const now = new Date(), stamp = now.toISOString();
+    const run = (n, extra = {}) => ({ id: String(n).padStart(64, '0'), reason: 'review', status: 'completed',
+        createdAt: stamp, startedAt: stamp, endedAt: stamp, reservedTokens: 6000, ...extra });
+    await f.service.change(profileId, state => {
+        state.jobs = [run(1, { status: 'running', usage: { totalTokens: 0 } })];
+        state.recentRuns = [run(2, { usage: { totalTokens: 123 } }), run(3, { usage: { input: 20, output: 10 } }),
+            run(4, { startedAt: '2000-01-01T12:00:00.000Z', usage: { totalTokens: 999 } }),
+            run(5, { usage: { totalTokens: 999 }, quotaRefund: { reason: 'inherited-fork-history', runs: 1,
+                reservedTokens: 6000, originalRunHash: 'f'.repeat(64), requestId: 'synthetic-refund' } }),
+            run(6, { startedAt: undefined, usage: { totalTokens: 999 } })];
+    });
+    const today = (await f.service.snapshot(profileId)).health.today;
+    assert.deepEqual(today, { runs: 3, maxRuns: 10, reservedTokens: 18000, maxTokens: 18000,
+        exhaustedBy: 'tokens', usedTokens: 123,
+        resetsAt: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)).toISOString() });
+    await f.enable({ maxTokensPerDay: 23999 });
+    assert.equal((await f.service.snapshot(profileId)).health.today.exhaustedBy, 'tokens', 'less than one reservation remains');
+    await f.enable({ maxTokensPerDay: 24000 });
+    assert.equal((await f.service.snapshot(profileId)).health.today.exhaustedBy, null, 'exactly one reservation still fits');
+    await f.service.change(profileId, state => { state.jobs = []; state.recentRuns = [run(7, { usage: { totalTokens: 0 } })]; });
+    assert.equal((await f.service.snapshot(profileId)).health.today.usedTokens, 0, 'reported zero differs from unknown');
+});
+
+test('daily carry preserves budgets and reported usage past 64 detailed runs and expires on UTC day change', async t => {
+    const f = await fixture(t);
+    await f.enable({ maxRunsPerDay: 66, maxTokensPerDay: 396000 });
+    const stamp = new Date().toISOString();
+    await f.service.change(profileId, state => {
+        state.recentRuns = Array.from({ length: 64 }, (_, i) => ({ id: String(i).padStart(64, '0'), reason: 'review',
+            status: 'completed', createdAt: stamp, startedAt: stamp, endedAt: stamp, reservedTokens: 6000,
+            usage: { totalTokens: i === 0 ? 0 : 100 },
+            ...(i === 1 ? { quotaRefund: { reason: 'inherited-fork-history', runs: 1, reservedTokens: 6000,
+                originalRunHash: 'f'.repeat(64), requestId: 'synthetic-refund' } } : {}) }));
+    });
+    f.runtime.completeSimple = async () => answer('A carried learning entry.', { totalTokens: 50 });
+    for (let i = 0; i < 3; i++) {
+        f.append(`记住以后采用合成日额度步骤 ${i}。`);
+        await f.service.register(f.session);
+        await waitFor(async () => (await f.service.snapshot(profileId)).jobs.length === 0);
+    }
+    let state = f.service.read(await f.service.location(profileId));
+    assert.equal(state.recentRuns.length, 64);
+    assert.deepEqual(state.dayCarry, { date: stamp.slice(0, 10), runs: 2, reservedTokens: 12000, usedTokens: 100 },
+        'folds reported zero and known usage while excluding refunded reservations');
+    let today = (await f.service.snapshot(profileId)).health.today;
+    assert.equal(today.runs, 66); assert.equal(today.reservedTokens, 396000);
+    assert.equal(today.usedTokens, 6350); assert.equal(today.exhaustedBy, 'runs');
+    await f.enable({ maxRunsPerDay: 500 });
+    assert.equal((await f.service.snapshot(profileId)).health.today.exhaustedBy, 'tokens');
+    await f.service.change(profileId, value => {
+        value.dayCarry.date = '2000-01-01';
+        for (const run of value.recentRuns) run.startedAt = '2000-01-01T00:00:00.000Z';
+    });
+    today = (await f.service.snapshot(profileId)).health.today;
+    assert.equal(today.runs, 0); assert.equal(today.reservedTokens, 0); assert.equal(today.usedTokens, null);
+    assert.equal(today.exhaustedBy, null);
+    for (const dayCarry of [{ date: stamp.slice(0, 10), runs: -1, reservedTokens: 6000, usedTokens: null },
+        { date: stamp.slice(0, 10), runs: 5, reservedTokens: 30000, usedTokens: 'unknown' }, []]) {
+        await f.service.change(profileId, value => { value.dayCarry = dayCarry; });
+        state = f.service.read(await f.service.location(profileId));
+        assert.equal(state.dayCarry, undefined, 'invalid optional carry is ignored');
+    }
+});
+
+
+test('discarding an unverified queued source preserves the trimmed daily reservation without charging the discarded job', async t => {
+    const f = await fixture(t);
+    await f.enable({ maxRunsPerDay: 500, maxTokensPerDay: 5000000 });
+    f.service.idle = () => false;
+    f.append('记住以后使用合成校验步骤。');
+    await f.service.register(f.session);
+    await waitFor(() => f.service.pending.size === 0);
+    const stamp = new Date().toISOString();
+    await f.service.change(profileId, state => {
+        state.dayCarry = { date: '2000-01-01', runs: 100, reservedTokens: 600000, usedTokens: 1000 };
+        state.recentRuns = Array.from({ length: 64 }, (_, i) => ({ id: String(i).padStart(64, '0'), reason: 'review',
+            status: 'completed', createdAt: stamp, startedAt: stamp, endedAt: stamp, reservedTokens: 6000 }));
+    });
+    f.service.source = async () => null;
+    f.service.idle = () => true;
+    f.service.wake(profileId);
+    await waitFor(async () => (await f.service.snapshot(profileId)).jobs.length === 0);
+    const state = f.service.read(await f.service.location(profileId));
+    assert.equal(state.recentRuns.length, 64);
+    assert.equal(state.recentRuns.at(-1).error, 'source-changed');
+    assert.deepEqual(state.dayCarry, { date: stamp.slice(0, 10), runs: 1, reservedTokens: 6000, usedTokens: null });
+    const today = (await f.service.snapshot(profileId)).health.today;
+    assert.equal(today.runs, 64); assert.equal(today.reservedTokens, 384000); assert.equal(today.usedTokens, null);
+    assert.equal(f.calls(), 0);
 });

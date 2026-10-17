@@ -1,0 +1,19 @@
+/* Background-learning page layout; visual components and theme tokens are shared. */
+.pi-learning-form, .pi-learning-stack { display: grid; gap: 16px; min-width: 0; margin: 0; }
+.pi-learning-hero-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 12px; }
+.pi-learning-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; min-width: 0; }
+.pi-learning-frequency { padding: 12px 0; }
+.pi-learning-custom { margin-top: 16px; }
+.pi-learning-advanced-body { margin-top: 0; }
+.pi-learning-advanced-body > .pi-id-field:first-child { max-width: 320px; }
+.pi-learning-advanced-body > strong { margin-top: 6px; font-size: .88rem; font-weight: 650; color: var(--text-main); }
+.pi-learning-advanced-body > strong + .pi-id-help { margin-top: -10px; }
+.pi-learning-triggers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; min-width: 0; }
+.pi-learning-job-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.pi-learning-usage .pi-id-meter-head { flex-wrap: wrap; }
+.pi-learning-usage .pi-id-meter-value { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+@media (max-width: 680px) {
+    .pi-learning-fields, .pi-learning-triggers { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .pi-learning-advanced-body > .pi-id-field:first-child { max-width: none; }
+    .pi-learning-form, .pi-learning-stack { gap: 14px; }
+}

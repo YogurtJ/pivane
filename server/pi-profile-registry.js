@@ -34,6 +34,15 @@ function validAvatar(avatar) {
             || avatar.kind === 'image' && /^[a-f0-9]{64}$/.test(avatar.version) && avatar.value === undefined);
 }
 
+function validTrash(profile) {
+    if (profile.trashedAt === undefined && profile.trashedEnabled === undefined) return true;
+    return typeof profile.trashedAt === 'string'
+        && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(profile.trashedAt)
+        && Number.isFinite(Date.parse(profile.trashedAt))
+        && new Date(profile.trashedAt.slice(0, 10)).toISOString().slice(0, 10) === profile.trashedAt.slice(0, 10)
+        && typeof profile.trashedEnabled === 'boolean' && profile.enabled === false;
+}
+
 function readRegistry(file) {
     let fd, existed = false;
     try {
@@ -58,7 +67,7 @@ function readRegistry(file) {
                 || typeof p.name !== 'string' || !p.name.trim() || p.name.length > 80
                 || typeof p.description !== 'string' || p.description.length > 500
                 || typeof p.soul !== 'string' || Buffer.byteLength(p.soul, 'utf8') > 32 * 1024
-                || typeof p.enabled !== 'boolean' || !object(p.memory) || !object(p.skills)
+                || typeof p.enabled !== 'boolean' || !validTrash(p) || !object(p.memory) || !object(p.skills)
                 || typeof p.memory.enabled !== 'boolean' || typeof p.memory.autoLearn !== 'boolean'
                 || typeof p.skills.learnedEnabled !== 'boolean' || p.avatar !== undefined && !validAvatar(p.avatar)
                 || (() => { try { normalizedMemory(p.memory); return false; } catch { return true; } })())) throw fail('Profile registry is invalid');
@@ -142,7 +151,10 @@ class PiProfileRegistry {
     async list(cwdInput) {
         const cwd = cwdInput === undefined ? null : this.store.resolveProject(cwdInput);
         const { state, revision } = await this.state();
-        return { version: 1, revision, profiles: state.profiles,
+        return { version: 1, revision, profiles: state.profiles.filter(profile => profile.trashedAt === undefined),
+            trash: state.profiles.filter(profile => profile.trashedAt !== undefined)
+                .sort((a, b) => Date.parse(b.trashedAt) - Date.parse(a.trashedAt))
+                .map(({ id, name, description, avatar, trashedAt }) => ({ id, name, description, avatar: avatar ?? null, trashedAt })),
             profileRevisions: Object.fromEntries(state.profiles.map(profile => [profile.id, profileRevision(profile)])),
             cwd, defaultProfileId: cwd ? state.defaults[cwd] ?? null : null };
     }
@@ -207,6 +219,7 @@ class PiProfileRegistry {
             const existingId = input.profile.id;
             const index = existingId === undefined ? -1 : state.profiles.findIndex(p => p.id === existingId);
             const previous = state.profiles[index];
+            if (previous?.trashedAt !== undefined) throw fail('Profile is in trash; restore it before saving', 409);
             const profile = validateProfile(input.profile, previous);
             // Image references can only retain an asset already owned by this record.
             if (profile.avatar?.kind === 'image' && (previous?.avatar?.kind !== 'image'
@@ -218,6 +231,36 @@ class PiProfileRegistry {
                 createdAt: previous?.createdAt || now, updatedAt: now };
             if (index < 0) state.profiles.push(record); else state.profiles[index] = record;
             return { ok: true, profile: record, requiresReload: true };
+        }));
+    }
+
+    trash(id, input) {
+        return this.reserve(() => this.mutate(input?.expectedRevision, state => {
+            const profile = state.profiles.find(record => record.id === id);
+            if (!profile) throw fail('Profile not found', 404);
+            if (profile.trashedAt !== undefined) throw fail('Profile is already in trash', 409);
+            const now = new Date().toISOString();
+            profile.trashedAt = now;
+            profile.trashedEnabled = profile.enabled;
+            profile.enabled = false;
+            profile.updatedAt = now;
+            for (const [cwd, profileId] of Object.entries(state.defaults)) {
+                if (profileId === id) delete state.defaults[cwd];
+            }
+            return { ok: true, profile };
+        }));
+    }
+
+    restore(id, input) {
+        return this.reserve(() => this.mutate(input?.expectedRevision, state => {
+            const profile = state.profiles.find(record => record.id === id);
+            if (!profile) throw fail('Profile not found', 404);
+            if (profile.trashedAt === undefined) throw fail('Profile is not in trash', 409);
+            profile.enabled = profile.trashedEnabled;
+            delete profile.trashedAt;
+            delete profile.trashedEnabled;
+            profile.updatedAt = new Date().toISOString();
+            return { ok: true, profile };
         }));
     }
 

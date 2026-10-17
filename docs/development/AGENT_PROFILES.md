@@ -2,7 +2,7 @@
 
 `pi-profile-state.js` 的 `readProfileBinding(manager)` 读取原生 custom entries，只接受唯一且匹配当前原生会话 ID 的档案标记。树导航不改变会话身份；复制的旧 ID 标记不生效，冲突或无效标记使档案能力保持未启用。档案是数据归属规则，不是阻止任意本地代码访问文件的操作系统沙箱。
 
-`pi-profile-registry.js` 拥有档案、兼容项目默认值及修订。名称、头像引用、SOUL、记忆字符上限和技能设置保存在同一私有注册表；图片内容单独保存。读写复用 no-follow 描述符、内核路径、完整身份和前后状态核对；保存使用进程间锁、私密权限、原子替换及目录刷盘。未知持久字段保留。`profiles.reserve()` 在异步工作前预占设置互斥，覆盖档案、项目分类、头像发布、文档编辑和起草会话创建；维护与 disposal 观察同一占用状态。
+`pi-profile-registry.js` 拥有档案、兼容项目默认值及修订。名称、头像引用、SOUL、记忆字符上限和技能设置保存在同一私有注册表；图片内容单独保存。回收站使用成对的 `trashedAt`／`trashedEnabled` 并强制 `enabled:false`，移入／恢复沿用相同预占及原子注册表 CAS，移入同时清除关联默认值，保留身份数据和所有原生会话。读写复用 no-follow 描述符、内核路径、完整身份和前后状态核对；保存使用进程间锁、私密权限、原子替换及目录刷盘。未知持久字段保留。`profiles.reserve()` 在异步工作前预占设置互斥，覆盖档案、项目分类、头像发布、文档编辑和起草会话创建；维护与 disposal 观察同一占用状态。
 
 `pi-session-store.js` 在原生会话暴露前保存身份和分类标记。新建区分省略 profileId 与显式 null；网页 Pi Agent 使用 null，助手对话传入当前档案与分类。服务端专用同步 initializer 仅供受信任的内部创建流程使用，HTTP JSON 不能传入函数。列表与定点查找核对原生文件及解析时修订；worker 仍按唯一规范 sessionPath 管理。列表额外保留最多 32 个 cwd 的可丢弃展示缓存：`pi-session-list-revision.js` 每次重新枚举目录成员，并核对各文件 no-follow 描述符、内核路径、完整身份、类型、大小、mtime/ctime 与前后变化；超过 5,000 个文件或核实失败时不复用缓存。只有原生文件集合、档案和项目修订及服务实例均相同时才复用投影，缓存不参与原生会话恢复。分叉保留原生历史并为新会话 ID 显式重新绑定；导入不会仅凭历史标记激活档案、分类或起草权限。
 
@@ -25,5 +25,7 @@
 `profile-memory/management.js` 提供只读列表和按不透明 ID 读取的单条技能正文。来源说明表示受控的助手技能库位置，不推断实际作者；正文读取仍执行范围、描述符及预算检查。
 
 `pi-profile-authoring.js` 创建专用的无档案原生会话，`pi-profile-authoring-extension.ts` 仅在当前 ID 的有效起草会话中提供 `profile_draft`。工具只记录提案，不写档案或文档。网页创建后填入可见草稿，用户发送才调用模型；审核提案时核对服务端 `profileRevisions`，导入后仍需显式保存。普通会话、分叉和导入不会继承此工具权限。
+
+身份页前端由 `pi-agent-profiles.js` 外壳组合：它拥有已保存档案快照、选中身份、五个分页（overview／persona／memory／skills／learning，旧地址的 soul、user、projects 等由别名映射）、设定草稿、回收站操作和离开保护。`pi-profile-knowledge.js`（记忆、技能，含 USER/MEMORY 全文模式）与 `pi-profile-learning.js` 各自拥有草稿、修订与在途请求，通过 `open/close/dirty/busy/discardChanges` 契约接入，外壳只汇总，不复制它们的状态。`pi-identity-ui.js`／`.css` 是共享组件与主题令牌，页面样式只补布局；`pi-identity-templates.js` 只提供 SOUL 示例文本。`close()` 仅在用户明确拒绝放弃或保存仍在进行时返回 false，设置页据此保留身份页；“与 Agent 起草”以一次性离开标记跳过放弃确认并保留内存草稿，返回后由用户导入提案。
 
 网页页面路由、分类视图、档案编辑和扩展列表的职责见[模块导航](MODULES.md)。助手页启动时并行请求逻辑项目和全局项目发现，已关联 cwd 的线程先加载；每个 cwd 的列表只取一次，再按原生归属分类。全局发现完成后，其他目录的未分类线程逐目录补充，失败只报告该读取错误，不清空已就绪的项目；身份/页面代次与请求预占阻止迟到结果串入其他助手。原生历史仍是唯一对话事实来源；头像、分类和索引元数据不能成为另一份聊天历史。接口及限制见[助手档案](../AGENT_PROFILES.md)、[记忆适配](../PROFILE_MEMORY.md)和[API](../API.md)。

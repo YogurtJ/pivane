@@ -95,7 +95,9 @@ test('ordinary and nested web forks skip inherited pairs but learn each new pair
     await restarted.resume(); await restarted.register(nested); assert.equal(f.calls(), 3);
     f.append(nested, '重启后的合成结果已确认。');
     await restarted.register(nested); await f.settle(4, restarted);
-    assert.deepEqual((await restarted.snapshot(profileId)).health.today, { runs: 4, maxRuns: 20, reservedTokens: 24000, maxTokens: 200000 });
+    const today = (await restarted.snapshot(profileId)).health.today;
+    assert.deepEqual(today, { runs: 4, maxRuns: 20, reservedTokens: 24000, maxTokens: 200000,
+        exhaustedBy: null, usedTokens: null, resetsAt: today.resetsAt });
 });
 
 test('fork before a reply completes the inherited user with a new reply rather than dropping that new pair', async t => {

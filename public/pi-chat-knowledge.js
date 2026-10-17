@@ -118,13 +118,13 @@
             const sessionId = receipt.source?.sessionId || value?.sessionId;
             if (!profileId || !receipt.itemId) return;
             globalThis.PiAgentProfilesUI?.revealKnowledge?.(profileId, receipt.itemId, receipt.kind, sessionId);
-            globalThis.dispatchEvent?.(new CustomEvent('workspace:open-settings', { detail: { tab: 'profiles', profileId, section: 'skills' } }));
+            globalThis.dispatchEvent?.(new CustomEvent('workspace:open-settings', { detail: { tab: 'profiles', profileId, section: receipt.kind === 'memory' ? 'memory' : 'skills' } }));
         }
         function revealProjectMemory() {
             const value = scope();
             if (!value?.profileId || !value?.sessionId) return;
             globalThis.PiAgentProfilesUI?.revealProjectMemory?.(value.profileId, value.sessionId);
-            globalThis.dispatchEvent?.(new CustomEvent('workspace:open-settings', { detail: { tab: 'profiles', profileId: value.profileId, section: 'skills' } }));
+            globalThis.dispatchEvent?.(new CustomEvent('workspace:open-settings', { detail: { tab: 'profiles', profileId: value.profileId, section: 'memory', target: 'project', sessionId: value.sessionId } }));
         }
         function decorate() {
             ensureAnchors();

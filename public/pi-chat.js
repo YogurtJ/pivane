@@ -1659,13 +1659,21 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const profile of state.assistantProfiles) {
             const option = document.createElement('option'); option.value = profile.id; option.textContent = profile.name; selector.append(option);
         }
-        const chosen = [requested.profileId, state.assistantProfileId, localStorage.getItem('pi.web.assistantProfile')]
-            .find(id => state.assistantProfiles.some(profile => profile.id === id)) || state.assistantProfiles[0]?.id || null;
+        // A requested or currently shown identity never silently becomes another one; only a choice
+        // remembered from an earlier visit falls back to the first available identity.
+        const preferred = requested.profileId || state.assistantProfileId || state.assistantMissingProfileId || null;
+        const stored = localStorage.getItem('pi.web.assistantProfile');
+        const remembered = state.assistantProfiles.some(profile => profile.id === stored) ? stored : null;
+        const chosen = preferred ? state.assistantProfiles.find(profile => profile.id === preferred)?.id || null
+            : remembered || state.assistantProfiles[0]?.id || null;
+        state.assistantMissingProfileId = preferred && !chosen ? preferred : null;
         state.assistantProfileId = chosen;
         selector.value = chosen || '';
-        selector.disabled = !chosen;
+        selector.disabled = !state.assistantProfiles.length;
         if (!chosen) {
-            const option = document.createElement('option'); option.value = ''; option.textContent = translateUi('暂无可用助手'); selector.append(option);
+            const option = document.createElement('option'); option.value = '';
+            option.textContent = translateUi(state.assistantProfiles.length ? '选择助手身份' : '暂无可用助手');
+            option.selected = true; selector.prepend(option);
         }
         $('pi-assistant-manage-profiles').querySelector('span').textContent = translateUi(profiles.profiles.length ? '管理助手身份' : '添加助手身份');
         const profile = state.assistantProfiles.find(item => item.id === chosen);
@@ -1674,7 +1682,10 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.newSession.disabled = !chosen || !state.assistantSupported;
         if (!chosen || !state.assistantSupported) {
             state.assistantGroups = []; state.assistantSessions = new Map(); state.assistantProjectId = null;
-            status.replaceChildren(document.createTextNode(!state.assistantSupported ? translateUi('当前服务尚未启用助手项目') : translateUi('还没有已启用的助手身份')));
+            state.assistantListLoading = false;
+            status.replaceChildren(document.createTextNode(!state.assistantSupported ? translateUi('当前服务尚未启用助手项目')
+                : translateUi(preferred ? '当前身份不可用；不会自动改用其他身份' : '还没有已启用的助手身份')));
+            syncMobileHeader();
             renderAssistantSessions(); return;
         }
         localStorage.setItem('pi.web.assistantProfile', chosen);

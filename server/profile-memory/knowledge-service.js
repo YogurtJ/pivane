@@ -241,6 +241,23 @@ function physical(root, data, bundle) {
     }
     return [...indexed.values()];
 }
+// These display groups also include read-only SQLite/legacy entries without
+// changing their stored target or scope.
+const memoryTarget = item => item.scope === 'project' ? 'project' : item.target === 'user' ? 'user' : 'memory';
+function knowledgeCounts(items) {
+    const counts = { memory: { total: 0, user: 0, memory: 0, project: 0, deleted: 0 },
+        skill: { total: 0, active: 0, draft: 0, disabled: 0, deleted: 0 } };
+    for (const item of items) {
+        if (item.mirrored) continue;
+        const count = counts[item.kind];
+        if (item.state === 'deleted') count.deleted++;
+        else {
+            count.total++;
+            count[item.kind === 'memory' ? memoryTarget(item) : item.state]++;
+        }
+    }
+    return counts;
+}
 function findSkillFile(root, projects, id) {
     for (const dir of [path.join(root, 'skills'), ...projects.map(p => path.join(p, 'skills'))]) {
         if (!safeDir(dir)) continue;
@@ -598,7 +615,9 @@ class ProfileKnowledgeService {
         return { profile, root, bundle, installed: profileMemoryCapability({ bundlePath: bundle }).installed };
     }
     async snapshot(profileId, options = {}) {
-        if (!options || !keys(options, ['kind', 'query', 'offset', 'sessionId', 'state']) || options.kind !== undefined && !['memory', 'skill'].includes(options.kind)
+        if (!options || !keys(options, ['kind', 'query', 'offset', 'sessionId', 'state', 'target', 'category']) || options.kind !== undefined && !['memory', 'skill'].includes(options.kind)
+            || options.target !== undefined && (options.kind !== 'memory' || !['user', 'memory', 'project'].includes(options.target))
+            || options.category !== undefined && (options.kind !== 'memory' || !CATEGORY.has(options.category))
             || options.state !== undefined && !['present', 'deleted', 'draft', 'all'].includes(options.state)
             || options.query !== undefined && (typeof options.query !== 'string' || options.query.length > 200)
             || options.sessionId !== undefined && (typeof options.sessionId !== 'string' || options.sessionId.length > 200)
@@ -617,7 +636,7 @@ class ProfileKnowledgeService {
             nativeProjectWrites: Boolean(ctx.installed && ctx.profile.memory?.enabled || ctx.profile.skills?.learnedEnabled), installedSkillsWrite: false,
             operations: ctx.installed && ctx.profile.memory?.enabled || ctx.profile.skills?.learnedEnabled
                 ? [...OPERATIONS] : [], skillNameMaxLength: 64, maxContentLength: MAX_CONTENT };
-        if (!fs.existsSync(ctx.root)) return { ...base, status: 'ready', revision: hash(JSON.stringify([0, 0, []])), capabilities,
+        if (!fs.existsSync(ctx.root)) return { ...base, status: 'ready', revision: hash(JSON.stringify([0, 0, []])), capabilities, counts: knowledgeCounts([]),
             ...(capabilities.memory ? { usage: memoryUsage(ctx.root, ctx.profile.memory) } : {}) };
         if (!ctx.installed && fs.existsSync(path.join(ctx.root, 'sessions.db')))
             return { ...base, status: 'unsupported', capabilities };
@@ -629,10 +648,12 @@ class ProfileKnowledgeService {
             // A search-index row that mirrors a listed Markdown entry is not a second memory; it
             // stays in the revision and remains readable by ID, but is not listed twice.
             const matches = items.filter(item => !item.mirrored && (!options.kind || item.kind === options.kind)
+                && (!options.target || memoryTarget(item) === options.target)
+                && (!options.category || item.category === options.category)
                 && (!options.state || options.state === 'all' || (options.state === 'present' ? item.state !== 'deleted' : item.state === options.state))
                 && (!query || `${item.name || ''} ${item.content || ''} ${item.description || ''}`.toLocaleLowerCase().includes(query)));
             const offset = options.offset || 0;
-            return { ...base, status: 'ready',
+            return { ...base, status: 'ready', counts: knowledgeCounts(items),
                 revision: revision(ctx.root, generation, data, items), items: matches.slice(offset, offset + 50).map(item => {
                     const { content, ...listed } = item;
                     return item.kind === 'memory' ? { ...listed, content: content?.slice(0, 512) } : listed;

@@ -862,8 +862,21 @@ document.addEventListener('DOMContentLoaded', () => {
             : { tab, ...(detail.section ? { section: detail.section } : {}) };
         window.PiWorkspaceRoute?.navigate(route, params);
     });
-    window.addEventListener('workspace:settings-route', event => {
+    let profileLeaveEpoch = 0;
+    window.addEventListener('workspace:settings-route', async event => {
         const { tab, settingsTab, profileId, section, authoringSession, authoringCwd, resourceType } = event.detail;
+        const request = ++profileLeaveEpoch;
+        if (settingsOpen && state.activeTab === 'profiles' && tab !== 'profiles') {
+            elements.dialog.classList.remove('hidden');
+            const currentProfile = document.querySelector('#pi-profiles-list [data-profile-id][aria-current="true"]')?.dataset.profileId;
+            const currentSection = $('pi-profiles-content')?.dataset.section;
+            // Only an explicit refusal (unsaved edits kept, or a save in flight) keeps the profiles page.
+            if (await agentProfiles.close() === false) {
+                if (request === profileLeaveEpoch) window.PiWorkspaceRoute?.navigate('profiles', { profileId: currentProfile, section: currentSection }, true);
+                return;
+            }
+            if (request !== profileLeaveEpoch) return;
+        }
         if (['profiles', 'extensions', 'settings'].includes(tab)) {
             const metadata = { profileId, section, authoringSession: authoringSession ? { id: authoringSession, cwd: authoringCwd } : undefined };
             if (resourceType) metadata.resourceType = resourceType;

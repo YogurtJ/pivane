@@ -33,6 +33,8 @@ function setup(t) {
 test('revision, idempotency, tombstone and explicit restoration', { skip: !bundle }, async t => {
     const { service, root, mutate } = setup(t);
     const first = await service.snapshot(id);
+    assert.deepEqual(first.counts, { memory: { total: 0, user: 0, memory: 0, project: 0, deleted: 0 },
+        skill: { total: 0, active: 0, draft: 0, disabled: 0, deleted: 0 } });
     const base = { requestId: 'stable-request', expectedRevision: first.revision,
         operation: 'create', kind: 'memory', category: 'correction', content: 'Use the corrected limit.' };
     const saved = await service.mutate(id, base);
@@ -279,6 +281,8 @@ test('native provenance and physical project scope are verified and survive relo
         operation: 'create', kind: 'skill', scope: 'project', name: 'verified-draft', description: 'Proposed only',
         content: 'Review before activation', state: 'draft' }, native);
     assert.equal(draft.item.state, 'draft');
+    const counts = (await service.snapshot(id, { kind: 'memory', query: 'no matching entry', offset: 50 })).counts;
+    assert.deepEqual(counts.skill, { total: 2, active: 0, draft: 1, disabled: 1, deleted: 0 });
     assert.equal(draft.receipt.activation, 'unknown');
     assert.equal(fs.existsSync(path.join(root, 'projects', projectKey, 'skills', 'verified-draft', 'SKILL.md')), false);
     await service.mutateFromNative(id, { requestId: 'enable-draft', expectedRevision: (await service.snapshot(id)).revision,
@@ -707,4 +711,86 @@ test('receipts are marked superseded once a later receipt changes the same item'
     assert.equal(receipts.find(row => row.id === other.receipt.id).superseded, undefined);
     assert.equal(receipts[0].operation, 'undo');
     assert.equal(receipts[0].superseded, undefined);
+});
+
+test('memory target and category filters precede pagination while counts include every non-mirrored state and kind', { skip: !bundle }, async t => {
+    const { service, root, mutate } = setup(t);
+    const project = path.join(root, 'projects', 'f'.repeat(64));
+    fs.mkdirSync(project, { recursive: true });
+    fs.writeFileSync(path.join(root, 'USER.md'), Array.from({ length: 55 }, (_, i) => `User fact ${i}`).join('\n§\n'));
+    fs.writeFileSync(path.join(root, 'MEMORY.md'), 'Global fact');
+    fs.writeFileSync(path.join(root, 'failures.md'), 'Read-only legacy failure');
+    fs.writeFileSync(path.join(project, 'MEMORY.md'), 'Physical project fact');
+    const { documentIndex } = require('../server/profile-memory/document-index');
+    for (const target of ['user', 'memory']) {
+        const file = path.join(root, target === 'user' ? 'USER.md' : 'MEMORY.md');
+        const index = await documentIndex(root, target, bundle, null, fs.readFileSync(file, 'utf8'));
+        try { index.mark(); index.sync(); } finally { index.close(); }
+    }
+    await mutate('create', 'memory', { target: 'user', category: 'preference', content: 'User prefers compact checklists.' });
+    await mutate('create', 'memory', { target: 'memory', category: 'correction', content: 'The corrected shared checklist.' });
+    const removed = await mutate('create', 'memory', { category: 'procedure', content: 'Retired procedure.' });
+    await mutate('delete', 'memory', { itemId: removed.item.id, itemRevision: removed.item.revision });
+    for (const name of ['active-fixture', 'disabled-fixture', 'deleted-fixture']) {
+        const created = await mutate('create', 'skill', { name, description: '', content: `Steps for ${name}.` });
+        if (name !== 'active-fixture') await mutate(name === 'disabled-fixture' ? 'disable' : 'delete', 'skill',
+            { itemId: created.item.id, itemRevision: created.item.revision });
+    }
+    const Database = createRequire(bundle)('better-sqlite3');
+    const db = new Database(path.join(root, 'sessions.db'));
+    db.prepare('INSERT INTO memories (project, target, content, created, last_referenced) VALUES (?, ?, ?, ?, ?)')
+        .run('synthetic-project', 'user', 'SQLite project user-target fact', '2026-01-01', '2026-01-01');
+    db.close();
+    const full = await service.snapshot(id);
+    assert.deepEqual(full.counts, { memory: { total: 61, user: 56, memory: 3, project: 2, deleted: 1 },
+        skill: { total: 2, active: 1, draft: 0, disabled: 1, deleted: 1 } });
+    const first = await service.snapshot(id, { kind: 'memory', target: 'user', category: 'fact', state: 'present' });
+    const last = await service.snapshot(id, { kind: 'memory', target: 'user', category: 'fact', state: 'present', offset: 50 });
+    assert.equal(first.items.length, 50); assert.equal(first.hasMore, true);
+    assert.equal(last.items.length, 5); assert.equal(last.hasMore, false);
+    assert.equal(new Set([...first.items, ...last.items].map(item => item.id)).size, 55);
+    for (const item of [...first.items, ...last.items]) {
+        assert.equal(item.target, 'user'); assert.equal(item.scope, 'profile'); assert.equal(item.category, 'fact');
+    }
+    const memory = await service.snapshot(id, { kind: 'memory', target: 'memory', state: 'present' });
+    assert.equal(memory.items.length, 3);
+    assert.equal(memory.items.find(item => item.target === 'failure').readOnly, true, 'legacy failures remain visible in MEMORY');
+    const projects = await service.snapshot(id, { kind: 'memory', target: 'project' });
+    assert.equal(projects.items.length, 2);
+    assert.ok(projects.items.every(item => item.scope === 'project'));
+    assert.ok(projects.items.some(item => item.target === 'user'), 'scope takes priority over a SQLite target');
+    const preference = await service.snapshot(id, { kind: 'memory', target: 'user', category: 'preference' });
+    assert.equal(preference.items.length, 1);
+    const trash = await service.snapshot(id, { kind: 'memory', target: 'memory', category: 'procedure', state: 'deleted' });
+    assert.equal(trash.items[0].id, removed.item.id);
+    const empty = await service.snapshot(id, { kind: 'memory', target: 'user', category: 'correction', query: 'missing', offset: 100 });
+    assert.deepEqual(empty.items, []);
+    for (const page of [first, last, memory, projects, preference, trash, empty]) {
+        assert.deepEqual(page.counts, full.counts); assert.equal(page.revision, full.revision);
+    }
+    const router = { handlers: {}, get(url, fn) { this.handlers[url] = fn; }, post() {} };
+    mountProfileKnowledgeRoutes(router, { service });
+    const response = { set() { return this; }, status(code) { this.code = code; return this; }, json(value) { this.value = value; return this; } };
+    await router.handlers['/profiles/:id/knowledge']({ params: { id }, query: {
+        kind: 'memory', target: 'user', category: 'fact', offset: '50' } }, response);
+    assert.deepEqual(response.value.items, last.items, 'HTTP forwards both filters before the offset');
+    assert.deepEqual(response.value.counts, full.counts);
+});
+
+test('knowledge rejects invalid target/category options through the existing 400 error path', async t => {
+    const { service } = setup(t);
+    const invalid = [{ target: 'user' }, { category: 'fact' }, { kind: 'skill', target: 'project' },
+        { kind: 'skill', category: 'procedure' }, { kind: 'memory', target: 'failure' }, { kind: 'memory', target: '' },
+        { kind: 'memory', target: ['user'] }, { kind: 'memory', category: 'unknown' }, { kind: 'memory', category: '' },
+        { kind: 'memory', category: ['fact'] }, { kind: 'memory', category: null }, { kind: 'memory', target: null }];
+    const router = { handlers: {}, get(url, fn) { this.handlers[url] = fn; }, post() {} };
+    mountProfileKnowledgeRoutes(router, { service });
+    for (const query of invalid) {
+        await assert.rejects(service.snapshot(id, query), error => error.status === 400 && error.message === 'Invalid knowledge query');
+        const response = { set() { return this; }, status(code) { this.code = code; return this; }, json(value) { this.value = value; return this; } };
+        await router.handlers['/profiles/:id/knowledge']({ params: { id }, query }, response);
+        assert.equal(response.code, 400); assert.equal(response.value.error, 'Invalid knowledge query');
+    }
+    for (const category of ['fact', 'preference', 'correction', 'failure', 'procedure'])
+        assert.equal((await service.snapshot(id, { kind: 'memory', category })).status, 'ready');
 });

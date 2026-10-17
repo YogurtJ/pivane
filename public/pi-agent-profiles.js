@@ -1,504 +1,461 @@
-/* Optional profile management. The backend owns identity, revision and memory data. */
+/* Identity workspace. The server owns saved profiles and revisions; page modules own their drafts. */
 (() => {
     'use strict';
     const $ = id => document.getElementById(id);
-    const t = (text, ...args) => globalThis.PiI18n?.t(text, ...args) || text;
-    const html = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+    const t = (text, ...args) => globalThis.PiI18n?.t(text, ...args) || String(text).replace(/\{(\d+)\}/g, (_, i) => args[i] ?? `{${i}}`);
     const healthLabel = { ok: '学习正常', off: '学习已关闭', 'needs-model': '缺少学习模型配置', 'quota-exhausted': '今日学习额度已用完', failing: '最近学习连续失败', unavailable: '学习当前不可用', 'memory-full': '记忆已满' };
-    const healthTone = { ok: 'ok', off: 'off', 'needs-model': 'warn', 'quota-exhausted': 'warn', failing: 'bad', unavailable: 'bad' };
+    const healthShort = { ok: '正常', off: '已关闭', 'needs-model': '缺少模型', 'quota-exhausted': '额度用完', failing: '连续失败', unavailable: '不可用', 'memory-full': '记忆已满' };
+    const healthTone = { ok: 'green', off: 'off', 'needs-model': 'amber', 'quota-exhausted': 'amber', failing: 'danger', unavailable: 'danger', 'memory-full': 'danger' };
+    const sections = [['overview', '概览', 'compass'], ['persona', '设定', 'id-card'], ['memory', '记忆', 'brain'], ['skills', '技能', 'toolbox'], ['learning', '学习', 'seedling']];
+    const clone = value => JSON.parse(JSON.stringify(value));
 
     function create({ apiFetch, currentCwd }) {
-        const root = $('pi-profiles-content'), refresh = $('pi-profiles-refresh');
-        $('pi-profiles-panel').querySelector('h3').textContent = t('助手身份');
-        $('pi-profiles-panel').querySelector('.settings-panel-header p').textContent = t('为不同的协作方式，设置专属的个性、记忆与技能。');
-        refresh.innerHTML = `<i class="fa-solid fa-rotate" aria-hidden="true"></i><span>${html(t('刷新'))}</span>`;
-        refresh.title = t('刷新助手身份');
-        refresh.setAttribute('aria-label', t('刷新助手身份'));
+        const U = globalThis.PiIdentityUI, { el, icon, button, chip, card, stat, empty } = U;
+        const root = $('pi-profiles-content');
         $('pi-meta-profile-row')?.querySelector('dt')?.replaceChildren(document.createTextNode(t('助手身份')));
-        let enabled = false, autoLearnSupported = false, visible = false, epoch = 0, snapshot = null;
-        let draft = null, draftOriginal = '', selected = '', listQuery = '';
-        let listView = false;
-        let mutation = null, editorVersion = 0;
-        let section = 'overview', documents = new Map(), documentEpoch = 0, proposalEpoch = 0, projects = null, proposal = null;
-        let openEpoch = 0, openOptions = {};
-        let healthEpoch = 0, pendingKnowledge = null;
-        // A verified chat session id for the knowledge panel (U2.3); cleared when the page closes.
-        let knowledgeSession = '';
-        const learningHealth = new Map();
-        const proposedDocuments = new Map();
-        let reconcile = null, pendingRefresh = false, loadedProfile = null, loadedKey = '';
-        let displayedSession = null, displayedConnected = false, displayedKey = '';
-
-        root.innerHTML = `<p id="pi-profiles-status" role="status" aria-live="polite"></p><div class="pi-profiles-layout"><aside id="pi-profiles-list" aria-label="${html(t('身份列表'))}"></aside><div class="pi-profile-detail"><div id="pi-profiles-editor"></div><div id="pi-profile-documents"></div><div id="pi-profiles-memory"></div></div></div>`;
-        const status = $('pi-profiles-status'), list = $('pi-profiles-list');
-        const editor = $('pi-profiles-editor'), memoryRoot = $('pi-profiles-memory'), documentRoot = $('pi-profile-documents');
-        const knowledgePanel = window.PiProfileKnowledge.create({ apiFetch, root: memoryRoot });
-        const message = text => { status.textContent = text || ''; };
+        root.classList.add('pi-id-root');
+        const list = el('aside', { id: 'pi-profiles-list', class: 'pi-id-list', 'aria-label': t('身份列表') });
+        const detail = el('div', { class: 'pi-profile-detail pi-id-detail' });
+        const header = el('header', { class: 'pi-id-header' });
+        const tabs = el('nav', { class: 'pi-id-tabs', 'aria-label': t('身份内容') });
+        const overviewRoot = el('div', { class: 'pi-id-page', dataset: { page: 'overview' }, hidden: true });
+        const personaRoot = el('div', { class: 'pi-id-page', dataset: { page: 'persona' }, hidden: true });
+        const knowledgeRoot = el('div', { id: 'pi-profiles-memory', class: 'pi-id-page', dataset: { page: 'memory' }, hidden: true });
+        const learningRoot = el('div', { class: 'pi-id-page', dataset: { page: 'learning' }, hidden: true });
+        const placeholder = el('div', { class: 'pi-id-page' });
+        detail.append(header, tabs, placeholder, overviewRoot, personaRoot, knowledgeRoot, learningRoot);
+        root.replaceChildren(el('div', { class: 'pi-profiles-layout' }, [list, detail]));
+        const toaster = U.createToaster(root);
+        let enabled = false, visible = false, snapshot = null, selected = '', lastViewed = '', draft = null, original = '';
+        let section = 'overview', listView = true, listQuery = '', mutation = null, reconcile = null, proposal = null;
+        let epoch = 0, openEpoch = 0, editorVersion = 0, overviewEpoch = 0, healthEpoch = 0, proposalEpoch = 0;
+        let pendingRefresh = false, knowledgeSession = '', pendingReveal = null, soulPreview = false, openOptions = {}, leaveIntent = false;
+        let saveBar = null, personaNotice = '', overviewData = null, receiptLimit = 6;
+        let loadedProfile = null, loadedKey = '', displayedSession = null, displayedConnected = false, displayedKey = '';
+        const learningHealth = new Map(), badges = new Map(), stagedDocuments = new Map();
         const profiles = () => snapshot?.profiles || [];
+        const savedProfile = () => profiles().find(p => p.id === selected) || null;
         const cwd = () => currentCwd() || '';
         const active = () => enabled && visible;
-
+        const call = (module, method, ...args) => typeof module?.[method] === 'function' ? module[method](...args) : undefined;
+        const ui = {
+            toast: (text, options) => toaster.show(text, options),
+            confirm: options => globalThis.PiProfileDialog.confirm(options),
+            navigate: (next, options) => openSection(next, options),
+            openSettings: detail => window.dispatchEvent(new CustomEvent('workspace:open-settings', { detail })),
+            profile: savedProfile,
+            setBadge(next, value) { value == null ? badges.delete(next) : badges.set(next, value); renderTabs(); },
+            scroller: detail,
+        };
+        const knowledge = globalThis.PiProfileKnowledge.create({ apiFetch, root: knowledgeRoot, ui });
+        const learning = globalThis.PiProfileLearning.create({ apiFetch, root: learningRoot, ui });
+        const busy = () => Boolean(mutation || call(knowledge, 'busy') || call(learning, 'busy'));
+        const profileDirty = () => Boolean(draft && JSON.stringify(draft) !== original);
+        const dirty = () => Boolean(profileDirty() || call(knowledge, 'dirty') || call(learning, 'dirty') || stagedDocuments.size);
+        function avatar(profile, className = '') {
+            const node = el('span', { class: `pi-id-avatar ${className}`.trim() });
+            if (profile.avatar?.kind === 'image' && profile.id) node.append(el('img', { src: `/api/pi/profiles/${encodeURIComponent(profile.id)}/avatar?version=${encodeURIComponent(profile.avatar.version)}`, alt: '' }));
+            else node.textContent = profile.avatar?.kind === 'emoji' ? profile.avatar.value : profile.name?.trim().slice(0, 1).toUpperCase() || '✦';
+            return node;
+        }
+        function notice(text, actions = [], tone = 'amber') {
+            return el('div', { class: 'pi-id-notice', dataset: { tone } }, [icon('circle-exclamation'), el('div', { class: 'pi-id-notice-body' }, [el('p', { text }), actions.length ? el('div', { class: 'pi-id-notice-actions' }, actions) : null])]);
+        }
+        function profileInput(profile) {
+            return profile ? { id: profile.id, name: profile.name, description: profile.description || '', soul: profile.soul || '', avatar: profile.avatar ?? null,
+                enabled: profile.enabled, memory: { memoryCharLimit: 16000, userCharLimit: 8000, ...profile.memory }, skills: { ...profile.skills } }
+                : { name: '', description: '', soul: '', avatar: null, enabled: true, memory: { enabled: false, autoLearn: false, memoryCharLimit: 16000, userCharLimit: 8000 }, skills: { learnedEnabled: true } };
+        }
+        async function guard() {
+            if (busy()) { ui.toast(t('正在保存，请等待服务器确认后再离开。'), { tone: 'warning' }); return false; }
+            if (!dirty()) return true;
+            const version = editorVersion, id = selected;
+            const accepted = await ui.confirm({ title: t('放弃未保存的修改？'), message: t('此身份的设置或文档尚未保存。离开编辑后，这些修改将丢失。'), accept: t('放弃修改') });
+            if (!accepted || version !== editorVersion || id !== selected || busy()) return false;
+            discardChanges(); return true;
+        }
+        function discardChanges() {
+            if (draft) draft = JSON.parse(original);
+            stagedDocuments.clear(); call(knowledge, 'discardChanges'); call(learning, 'discardChanges');
+            personaNotice = ''; renderPersona();
+        }
         function renderList() {
-            const searchFocused = document.activeElement?.id === 'pi-profile-list-query';
+            const focus = document.activeElement?.id === 'pi-profile-list-query';
             root.classList.toggle('has-profile', Boolean(draft) && !listView);
-            if (!snapshot) { list.replaceChildren(); return; }
-            list.innerHTML = `<div class="pi-profile-toolbar"><h4>${html(t('身份列表'))}<span class="pi-profile-count">${profiles().length}</span></h4><button id="pi-profile-add" class="settings-primary-button" type="button"><i class="fa-solid fa-plus" aria-hidden="true"></i> ${html(t('新建'))}</button></div><label class="pi-profile-list-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input type="search" id="pi-profile-list-query" placeholder="${html(t('搜索身份'))}" aria-label="${html(t('搜索身份'))}" value="${html(listQuery)}"></label><div class="pi-profile-rows">${profiles().map(p => `<button class="pi-profile-row" type="button" data-profile-id="${html(p.id)}" aria-current="${selected === p.id}"><span class="pi-profile-avatar">${avatar(p)}</span><span class="pi-profile-row-copy"><strong>${html(p.name)}</strong><small>${html(p.description || t('尚未填写描述'))}</small><span class="pi-profile-row-state">${healthDot(p.id)}${html(p.enabled ? t('已启用') : t('已停用'))}${html(healthNote(p.id))}</span>${draftNote(p.id)}</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>`).join('')}</div><p class="pi-profile-note pi-profile-list-empty" ${profiles().length ? 'hidden' : ''}>${html(t('尚无助手身份。'))}</p>${profiles().length ? '' : `<button type="button" class="settings-secondary-button" data-profile-assist>${html(t('与 Agent 起草'))}</button>`}`;
-            filterList();
-            if (searchFocused) $('pi-profile-list-query')?.focus({ preventScroll: true });
-            if (draft && listView) {
-                const resume = document.createElement('button'); resume.type = 'button'; resume.className = 'settings-secondary-button pi-profile-resume'; resume.textContent = t('继续编辑');
-                resume.onclick = () => { listView = false; renderList(); }; list.querySelector('.pi-profile-toolbar').after(resume);
+            const refresh = button({ label: t('刷新助手身份'), icon: 'rotate', iconOnly: true, variant: 'ghost', size: 'sm', disabled: busy(), attrs: { id: 'pi-profiles-refresh' }, onClick: () => void load() });
+            list.replaceChildren(el('div', { class: 'pi-id-list-head' }, [el('h2', {}, [t('身份'), el('span', { class: 'pi-id-count', text: U.number(profiles().length) })]), refresh,
+                button({ label: t('新建'), icon: 'plus', variant: 'primary', size: 'sm', attrs: { id: 'pi-profile-add' }, onClick: () => void editProfile(null) })]),
+            el('label', { class: 'pi-id-search' }, [icon('magnifying-glass'), el('input', { id: 'pi-profile-list-query', class: 'pi-id-input', type: 'search', value: listQuery, placeholder: t('搜索身份'), 'aria-label': t('搜索身份'), on: { input: event => { listQuery = event.target.value; filterList(); } } })]));
+            if (draft && listView) list.append(button({ label: t('继续编辑'), variant: 'quiet', onClick: () => { listView = false; renderList(); } }));
+            const rows = el('div', { class: 'pi-id-list-rows' });
+            for (const profile of profiles()) {
+                const health = learningHealth.get(profile.id), count = health?.drafts?.pending;
+                const stateDot = U.dot(healthTone[health?.health?.state] || (profile.enabled ? 'green' : 'off'), health?.health?.state ? t(healthLabel[health.health.state] || '学习当前不可用') : undefined);
+                if (health?.health?.state) stateDot.classList.add('pi-health-dot');
+                const meta = el('span', { class: 'pi-id-row-meta' }, [stateDot, t(profile.enabled ? '已启用' : '已停用')]);
+                if (health?.health?.state && !['ok', 'off'].includes(health.health.state)) {
+                    const healthChip = chip(t(healthShort[health.health.state] || '不可用'), healthTone[health.health.state] || 'amber'); healthChip.title = t(healthLabel[health.health.state] || '学习当前不可用'); meta.append(healthChip);
+                }
+                if (count > 0) meta.append(chip(t('{0} 待审', `${U.number(count)}${health.drafts.capped ? '+' : ''}`), 'amber', { className: 'pi-profile-drafts' }));
+                rows.append(el('button', { type: 'button', class: `pi-id-row pi-profile-row${profile.enabled ? '' : ' is-disabled'}`, dataset: { profileId: profile.id }, 'aria-current': String(selected === profile.id),
+                    on: { click: async event => { const drafts = Boolean(event.target.closest('.pi-profile-drafts')); if (await editProfile(profile) && drafts) void openSection('skills', { drafts: true }); } } }, [avatar(profile), el('span', { class: 'pi-id-row-copy' }, [el('span', { class: 'pi-id-row-name', text: profile.name }), el('span', { class: 'pi-id-row-desc', text: profile.description || t('尚未填写描述') }), meta])]));
             }
+            list.append(rows, el('p', { class: 'pi-id-help pi-profile-list-empty' }));
+            if (Array.isArray(snapshot?.trash) && snapshot.trash.length) list.append(el('details', { class: 'pi-id-list-foot' }, [el('summary', {}, [icon('trash-can'), t('回收站'), el('span', { class: 'pi-id-count', text: U.number(snapshot.trash.length) })]),
+                ...snapshot.trash.map(profile => el('div', { class: 'pi-id-trash-row' }, [avatar(profile), el('span', { text: profile.name }), button({ label: t('恢复'), variant: 'ghost', size: 'sm', disabled: busy(), onClick: () => void trashAction(profile, 'restore') })]))]));
+            filterList(); if (focus) $('pi-profile-list-query')?.focus({ preventScroll: true });
         }
         function filterList() {
-            const query = listQuery.trim().toLocaleLowerCase();
-            let count = 0;
+            const query = listQuery.trim().toLocaleLowerCase(); let count = 0;
             for (const row of list.querySelectorAll('[data-profile-id]')) {
                 const profile = profiles().find(p => p.id === row.dataset.profileId);
-                row.hidden = !`${profile.name} ${profile.description || ''}`.toLocaleLowerCase().includes(query);
-                if (!row.hidden) count++;
+                row.hidden = !`${profile.name} ${profile.description || ''}`.toLocaleLowerCase().includes(query); if (!row.hidden) count++;
             }
-            const empty = list.querySelector('.pi-profile-list-empty');
-            if (empty) { empty.hidden = count > 0; empty.textContent = t(profiles().length ? '没有匹配的身份，请尝试其他关键词。' : '尚无助手身份。'); }
+            const message = list.querySelector('.pi-profile-list-empty');
+            if (message) { message.hidden = count > 0; message.textContent = t(profiles().length ? '没有匹配的身份，请尝试其他关键词。' : '尚无助手身份。'); }
         }
-        // Draft learned skills awaiting review (U2.4); clicking the badge filters the skill list.
-        function draftNote(profileId) {
-            const drafts = learningHealth.get(profileId)?.drafts;
-            return Number.isSafeInteger(drafts?.pending) && drafts.pending > 0
-                ? `<span class="pi-profile-drafts">${html(t('{0} 个草稿技能待审', `${drafts.pending}${drafts.capped === true ? '+' : ''}`))}</span>` : '';
-        }
-        const attentionStates = new Set(['needs-model', 'quota-exhausted', 'failing', 'unavailable']);
-        function healthNote(profileId) {
-            const health = learningHealth.get(profileId);
-            return health?.state && attentionStates.has(health.state) ? ` · ${t(healthLabel[health.state] || '学习当前不可用')}` : '';
-        }
-        function healthDot(profileId) {
-            const health = learningHealth.get(profileId);
-            if (!health?.state) return '';
-            const reason = html(t(healthLabel[health.state] || '学习当前不可用'));
-            return `<span class="pi-health-dot pi-health-${healthTone[health.state] || 'off'}" title="${reason}" aria-label="${reason}"></span>`;
-        }
-        // Health and draft counts live in the learning snapshot; absent fields keep the plain list (older backends).
-        async function loadLearningHealth() {
-            const request = ++healthEpoch, ids = profiles().map(p => p.id);
-            const rows = await Promise.all(ids.map(id => apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/learning`)
-                .then(data => [id, data?.health?.state || Number.isSafeInteger(data?.drafts?.pending) ? {
-                    state: data?.health?.state ? String(data.health.state) : null,
-                    drafts: Number.isSafeInteger(data?.drafts?.pending) ? { pending: data.drafts.pending, capped: data.drafts.capped === true } : null } : null])
-                .catch(() => [id, null])));
-            if (request !== healthEpoch || !active()) return;
-            for (const [id, health] of rows) learningHealth.set(id, health);
-            renderList();
-        }
-        async function openKnowledge() {
-            const pending = pendingKnowledge?.profileId === selected ? pendingKnowledge : null;
-            if (pending) pendingKnowledge = null;
-            const profileId = selected;
-            await knowledgePanel.open(selected, { ...(knowledgeSession ? { sessionId: knowledgeSession } : {}),
-                ...(pending?.project ? { kind: 'memory' } : {}), ...(pending?.drafts ? { drafts: true } : {}) });
-            if (pending?.itemId && active() && selected === profileId && section === 'skills') knowledgePanel.reveal?.(pending.itemId, pending.kind, pending.sessionId);
-        }
-        function revealKnowledge(profileId, itemId, kind, sessionId) {
-            pendingKnowledge = profileId && itemId ? { profileId, itemId, kind, sessionId } : null;
-            if (sessionId) knowledgeSession = String(sessionId);
-            if (pendingKnowledge && active() && selected === profileId && section === 'skills') openKnowledge();
-        }
-        function revealProjectMemory(profileId, sessionId) {
-            pendingKnowledge = profileId ? { profileId, project: true, sessionId } : null;
-            if (sessionId) knowledgeSession = String(sessionId);
-            if (pendingKnowledge && active() && selected === profileId && section === 'skills') openKnowledge();
-        }
-        function renderEmptyDetail() {
-            if (!draft && snapshot) editor.innerHTML = `<div class="pi-profile-empty"><span class="pi-profile-empty-icon"><i class="fa-solid fa-user-gear" aria-hidden="true"></i></span><h4>${html(t('让助手更懂你的工作方式'))}</h4><p>${html(t('选择一个身份，调整它的行为、偏好和长期记忆。'))}</p><button type="button" class="settings-primary-button" data-profile-create><i class="fa-solid fa-plus" aria-hidden="true"></i> ${html(t('新建身份'))}</button><div class="pi-profile-empty-guide"><span>${html(t('个性与行为'))}<small>${html(t('设定协作方式'))}</small></span><span>${html(t('偏好与记忆'))}<small>${html(t('积累长期了解'))}</small></span><span>${html(t('学习与技能'))}<small>${html(t('管理可复用经验'))}</small></span></div></div>`;
-        }
-        function avatar(p) {
-            if (p.avatar?.kind === 'emoji') return html(p.avatar.value);
-            if (p.avatar?.kind === 'image') return `<img src="/api/pi/profiles/${encodeURIComponent(p.id)}/avatar?version=${encodeURIComponent(p.avatar.version)}" alt="">`;
-            return html(p.name?.trim().slice(0, 1).toUpperCase() || '?');
-        }
-        function render() { renderList(); renderEmptyDetail(); }
-        async function load() {
-            if (!active()) return;
-            if (mutation) { pendingRefresh = true; message(t('保存结束后请刷新核对。')); return; }
-            const request = ++epoch, project = cwd();
-            if (section === 'skills' && selected && snapshot && profiles().some(p => p.id === selected)) knowledgePanel.close();
-            else memoryRoot.replaceChildren();
-            message(t('正在读取身份设置…'));
-            if (!snapshot && window.PiSkeleton) { message(''); list.innerHTML = window.PiSkeleton.html('list', { rows: 4, label: t('正在读取身份设置…') }); }
-            try {
-                const data = await apiFetch('/api/pi/profiles' + (project ? `?cwd=${encodeURIComponent(project)}` : ''));
-                if (request !== epoch || !active() || project !== cwd()) return;
-                if (data?.version !== 1 || !Array.isArray(data.profiles) || typeof data.revision !== 'string') throw new Error(t('身份接口返回了不支持的数据'));
-                snapshot = data;
-                if (reconcile?.kind === 'profile') {
-                    const input = reconcile.input;
-                    const saved = reconcile.kind === 'profile' && data.profiles.find(p => input.id ? p.id === input.id : p.name === input.name);
-                    const fields = p => JSON.stringify([p.name, p.description, p.soul, p.avatar, p.enabled, p.memory, p.skills]);
-                    reconcile = saved && !input.id ? { ...reconcile, duplicate: true }
-                        : saved && fields(saved) === fields(input) ? { ...reconcile, applied: true } : null;
-                } else reconcile = null;
-                render(); syncEditorSave(); message(reconcile?.duplicate ? t('可能已保存此身份。请查看列表并编辑已保存的身份，勿重复创建。') : reconcile?.applied ? t('这些修改已保存。关闭草稿后可继续编辑身份。') : '');
-                invalidateLoaded();
-                window.dispatchEvent(new CustomEvent('pi:native-config-saved', { detail: { scope: 'global' } }));
-                if (selected && !profiles().some(p => p.id === selected)) { selected = ''; knowledgePanel.close(); memoryRoot.replaceChildren(); }
-                else if (selected && section === 'skills') openKnowledge();
-                void loadLearningHealth();
-                return true;
-            } catch (error) {
-                if (request !== epoch || !active() || project !== cwd()) return;
-                reconcile ||= { kind: 'read' };
-                if (snapshot?.cwd !== project) snapshot = null;
-                render(); syncEditorSave(); knowledgePanel.close(); memoryRoot.replaceChildren();
-                message(t('身份设置读取失败：{0}', error.message));
+        function renderHeader() {
+            header.hidden = tabs.hidden = !draft; placeholder.hidden = Boolean(draft);
+            if (!draft) {
+                placeholder.replaceChildren(empty({ icon: 'user-gear', title: t('让助手更懂你的工作方式'), text: t('选择一个身份，调整它的行为、偏好和长期记忆。'), actions: [button({ label: t('新建身份'), icon: 'plus', variant: 'primary', onClick: () => void editProfile(null) })] })); return;
             }
-        }
-        function setEnabled(value, capability = false) {
-            const wasEnabled = enabled;
-            enabled = value === true;
-            autoLearnSupported = capability === true;
-            document.querySelectorAll('[data-manage-route="profiles"]').forEach(item => { item.hidden = !enabled; });
-            if (!enabled && wasEnabled) {
-                epoch++; documentEpoch++; proposalEpoch++; knowledgePanel.close();
-                snapshot = null; render(); syncEditorSave();
-                message(t('此服务暂不支持助手身份，未保存草稿仍保留。'));
-                root.querySelectorAll('[data-profile-assist], #pi-profile-avatar-upload, #pi-profile-document-save, #pi-profile-document-sync').forEach(control => { control.disabled = true; });
-                $('pi-session-profile').hidden = true; $('pi-meta-profile-row').hidden = true;
+            const profile = savedProfile() || draft, health = learningHealth.get(selected)?.health;
+            const pending = learningHealth.get(selected)?.drafts?.pending;
+            if (pending > 0) badges.set('skills', pending); else badges.delete('skills');
+            const meta = el('div', { class: 'pi-id-header-meta' }, [chip(t(profile.enabled ? '已启用' : '已停用'), profile.enabled ? 'green' : 'off', { icon: profile.enabled ? 'circle-check' : 'circle-pause' })]);
+            if (health?.state && !['ok', 'off'].includes(health.state)) { const healthChip = chip(t(healthShort[health.state] || '不可用'), healthTone[health.state]); healthChip.title = t(healthLabel[health.state] || '学习当前不可用'); meta.append(healthChip); }
+            header.replaceChildren(button({ label: t('返回身份列表'), icon: 'arrow-left', iconOnly: true, variant: 'ghost', className: 'pi-id-back', attrs: { id: 'pi-profile-list-back' }, onClick: () => { listView = true; renderList(); } }), avatar(profile, 'is-lg'),
+                el('div', { class: 'pi-id-header-copy' }, [el('h2', { text: profile.id ? profile.name : t('新建身份') }), el('p', { text: profile.description || t('从名称和协作方式开始') }), profile.id && meta]));
+            if (profile.id) {
+                const menuItems = [{ label: t('与 Agent 起草'), icon: 'wand-magic-sparkles', disabled: !enabled || busy(), onSelect: () => void assist() }];
+                if (Array.isArray(snapshot?.trash)) menuItems.push({ label: t('移到回收站'), icon: 'trash-can', tone: 'danger', disabled: !enabled || busy() || Boolean(reconcile), onSelect: () => void trashAction(profile, 'trash') });
+                header.append(el('div', { class: 'pi-id-header-actions' }, [button({ label: t('用此身份对话'), icon: 'comments', variant: 'primary', disabled: !enabled || !profile.enabled || busy(), title: !profile.enabled ? t('请先启用并保存此身份') : undefined, attrs: { 'data-profile-chat': '' }, onClick: () => void chat() }),
+                    button({ label: t('与 Agent 起草'), icon: 'wand-magic-sparkles', className: 'pi-id-btn-collapsible', disabled: !enabled || busy(), attrs: { 'data-profile-assist': '' }, onClick: () => void assist() }), U.menu({ label: t('更多操作'), items: menuItems })]));
             }
-            if (enabled && !wasEnabled && visible) {
-                const request = openEpoch;
-                void load().then(loaded => {
-                    if (!loaded || request !== openEpoch || !active()) return;
-                    applyOpen(request);
-                    root.querySelectorAll('[data-profile-assist], #pi-profile-avatar-upload').forEach(control => { control.disabled = Boolean(mutation); });
-                    if (section === 'user' || section === 'memory') renderSection();
-                });
+            header.append(button({ label: t('关闭编辑'), icon: 'xmark', iconOnly: true, variant: 'ghost', attrs: { id: 'pi-profile-editor-close' }, onClick: () => void closeEditor() }));
+            renderTabs();
+        }
+        function renderTabs() {
+            tabs.replaceChildren(...sections.map(([id, label, name]) => el('button', { type: 'button', class: 'pi-id-tab', dataset: { profileSection: id }, 'aria-current': section === id ? 'page' : 'false', disabled: !draft?.id && id !== 'persona', title: !draft?.id && id !== 'persona' ? t('保存身份后可用') : undefined, on: { click: () => void openSection(id) } }, [icon(name), el('span', { text: t(label) }), badges.has(id) && el('span', { class: 'pi-id-badge', text: String(badges.get(id)) })])));
+        }
+        function showSection() {
+            root.dataset.section = section;
+            overviewRoot.hidden = !draft || section !== 'overview'; personaRoot.hidden = !draft || section !== 'persona';
+            knowledgeRoot.hidden = !draft || !['memory', 'skills'].includes(section); knowledgeRoot.dataset.page = section === 'skills' ? 'skills' : 'memory';
+            learningRoot.hidden = !draft || section !== 'learning'; renderTabs();
+        }
+        function normalizeSection(next, options = {}) {
+            if (next === 'soul') return ['persona', options];
+            if (next === 'user') return ['memory', { ...options, target: 'user' }];
+            if (next === 'memory') return ['memory', { target: 'memory', ...options }];
+            if (next === 'projects') return ['overview', { ...options, projects: true }];
+            return [sections.some(([id]) => id === next) ? next : 'overview', options];
+        }
+        async function openSection(next, options = {}) {
+            [next, options] = normalizeSection(next, options);
+            if (!draft || !draft.id && next !== 'persona') return;
+            // A pending save owns its page's view and draft; switching would detach the response from them.
+            if (busy() && (next !== section || ['memory', 'skills'].includes(next))) { ui.toast(t('正在保存，请等待服务器确认后再离开。'), { tone: 'warning' }); return; }
+            const previous = section; section = next; detail.scrollTop = 0; showSection();
+            if (['memory', 'skills'].includes(previous) && !['memory', 'skills'].includes(next)) call(knowledge, 'close');
+            if (previous === 'learning' && next !== 'learning') call(learning, 'close');
+            const id = selected, request = openEpoch;
+            if (next === 'overview') { await loadOverview(); if (options.projects && id === selected) overviewRoot.querySelector('[data-projects-card]')?.scrollIntoView({ block: 'start' }); }
+            if (next === 'persona') renderPersona();
+            if (next === 'memory' || next === 'skills') {
+                const pending = pendingReveal?.profileId === id ? pendingReveal : null;
+                if (pending) pendingReveal = null;
+                const opts = { view: next, ...(knowledgeSession ? { sessionId: knowledgeSession } : {}), ...options, ...(pending?.project ? { target: 'project', sessionId: pending.sessionId } : {}) };
+                await call(knowledge, 'open', id, opts);
+                if (request !== openEpoch || selected !== id || section !== next || !active()) return;
+                // Imported documents that the memory page could not accept earlier are handed over now.
+                if (stagedDocuments.size && call(knowledge, 'stageDocuments', Object.fromEntries(stagedDocuments)) !== false) stagedDocuments.clear();
+                if (pending?.itemId) call(knowledge, 'reveal', pending.itemId, pending.kind, pending.sessionId);
             }
-        }
-        function open(options = {}) {
-            visible = true;
-            openOptions = options;
-            const request = ++openEpoch;
-            if (enabled) void load().then(loaded => { if (loaded) applyOpen(request); });
-        }
-        async function applyOpen(request) {
-            if (request !== openEpoch || !active()) return;
-            const options = openOptions, requested = options.profileId;
-            const target = profiles().find(p => p.id === requested);
-            if (target && (!draft || draft.id !== requested) && !await editProfile(target)) return;
-            if (request !== openEpoch || !active()) return;
-            if (target && draft?.id === requested) { listView = false; renderList(); }
-            if (options.authoringSession && !requested && (!draft || draft.id) && !await editProfile(null)) return;
-            if (options.section && draft && (!requested || draft.id === requested) && options.section !== section) void openSection(options.section);
-            else if (['user', 'memory'].includes(section) && !documents.get(section)?.dirty && !mutation) void refreshDocument();
-            if (options.authoringSession && draft && (!requested || draft.id === requested)) void loadProposal(options.authoringSession);
-        }
-        globalThis.addEventListener('beforeunload', event => {
-            if (mutation?.kind !== 'document' && mutation?.kind !== 'index' && !dirty()) return;
-            event.preventDefault(); event.returnValue = '';
-        });
-        function close() { visible = false; openEpoch++; epoch++; documentEpoch++; proposalEpoch++; knowledgeSession = ''; knowledgePanel.close(); globalThis.PiProfileDialog.cancel(); }
-        const profileDirty = () => Boolean(draft && JSON.stringify(readDraft()) !== draftOriginal);
-        const dirty = () => profileDirty() || [...documents.values()].some(doc => doc.dirty) || proposedDocuments.size;
-        async function discard() {
-            if (!dirty()) return true;
-            const version = editorVersion;
-            const accepted = await globalThis.PiProfileDialog.confirm({ title: t('放弃未保存的修改？'), message: t('此身份的设置或文档尚未保存。离开编辑后，这些修改将丢失。'), accept: t('放弃修改') });
-            return accepted && active() && version === editorVersion && !mutation;
-        }
-        function syncEditorSave() {
-            const button = editor.querySelector('#pi-profile-form button[type=submit]');
-            if (button) button.disabled = Boolean(mutation || reconcile || !snapshot || (snapshot.cwd || '') !== cwd() || draft?.id && !profileDirty());
-            for (const control of editor.querySelectorAll('#pi-profile-avatar-upload, #pi-profile-avatar-clear, [name=emoji]')) control.disabled = Boolean(mutation);
-            const state = $('pi-profile-save-state');
-            if (state) { state.textContent = t(profileDirty() || !draft?.id ? '有未保存的修改' : '所有身份设置已保存'); state.classList.toggle('is-dirty', profileDirty() || !draft?.id); }
+            if (next === 'learning') await call(learning, 'open', id);
         }
         async function editProfile(profile) {
-            if (!snapshot || mutation || (reconcile && !reconcile.duplicate && !reconcile.applied) || (snapshot.cwd || '') !== cwd()) return false;
-            if (profile?.id && profile.id === draft?.id && $('pi-profile-form')) { listView = false; renderList(); return true; }
-            if (dirty() && !await discard()) return false;
-            listView = false;
-            reconcile = null;
-            draft = profile ? { id: profile.id, name: profile.name, description: profile.description, soul: profile.soul, avatar: profile.avatar ?? null, enabled: profile.enabled, memory: { ...profile.memory }, skills: { ...profile.skills } } : { name: '', description: '', soul: '', avatar: null, enabled: true, memory: { enabled: false, autoLearn: false, memoryCharLimit: 16000, userCharLimit: 8000 }, skills: { learnedEnabled: true } };
-            draftOriginal = JSON.stringify(draft);
-            editorVersion++;
-            selected = profile?.id || '';
-            section = 'overview'; knowledgePanel.close(); documents = new Map(); proposedDocuments.clear(); documentEpoch++; proposalEpoch++; projects = null; proposal = null; renderList();
-            editor.innerHTML = `<form id="pi-profile-form" class="pi-profile-form"><div class="pi-profile-form-head"><button type="button" id="pi-profile-list-back" class="icon-btn subtle" aria-label="${html(t('返回身份列表'))}" title="${html(t('返回身份列表'))}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i></button><span class="pi-profile-avatar pi-profile-avatar-large">${avatar(draft)}</span><div class="pi-profile-heading"><h4>${html(profile ? profile.name : t('新建身份'))}</h4><p>${html(t(profile ? '管理此身份的个性、记忆与技能' : '从名称和协作方式开始'))}</p></div><button type="button" id="pi-profile-editor-close" class="icon-btn subtle" title="${html(t('关闭编辑'))}" aria-label="${html(t('关闭编辑'))}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
-                <nav class="pi-profile-tabs" aria-label="${html(t('档案内容'))}">${[['overview', t('概览')], ['soul', t('个性与行为')], ['user', t('用户偏好')], ['memory', t('长期记忆')], ['skills', t('学习与技能')], ['projects', t('关联项目')]].map(([id, label]) => `<button type="button" data-profile-section="${id}" aria-current="${section === id ? 'page' : 'false'}">${html(label)}</button>`).join('')}</nav>
-                <div class="pi-profile-overview">
-                <section class="pi-profile-card"><h5>${html(t('基本信息'))}</h5><div class="pi-profile-fields">
-                <label>${html(t('名称'))}<input name="name" maxlength="80" required placeholder="${html(t('例如：研究伙伴'))}" value="${html(draft.name)}"></label>
-                <label>${html(t('描述'))}<textarea name="description" maxlength="500" rows="2" placeholder="${html(t('这个助手擅长什么，与你如何协作？'))}">${html(draft.description)}</textarea></label>
-                </div><div class="pi-profile-avatar-fields"><label>${html(t('头像表情'))}<input name="emoji" maxlength="16" placeholder="✦" value="${html(draft.avatar?.kind === 'emoji' ? draft.avatar.value : '')}"></label>
-                <div class="pi-profile-avatar-actions">${draft.id ? `<label class="pi-profile-upload"><i class="fa-regular fa-image" aria-hidden="true"></i><span>${html(t('上传图片'))}</span><input id="pi-profile-avatar-upload" type="file" aria-label="${html(t('上传头像'))}" accept="image/png,image/jpeg,image/webp,image/gif"></label>` : ''}<button id="pi-profile-avatar-clear" type="button" class="settings-secondary-button" ${draft.avatar ? '' : 'hidden'}>${html(t('移除头像'))}</button></div></div>
-                <p class="pi-profile-note">${html(t(draft.id ? '支持 PNG、JPEG、WebP、GIF，最大 6 MiB；上传后立即保存头像。' : '保存身份后可上传图片头像。'))}</p><p id="pi-profile-avatar-status" class="pi-profile-note" role="status" aria-live="polite"></p></section>
-                <section class="pi-profile-card"><h5>${html(t('能力与使用'))}</h5>
-                ${[['enabled', draft.enabled, '启用身份', '允许新建或重新打开的线程使用此身份。'], ['memoryEnabled', draft.memory.enabled, '长期记忆', '使用此身份保存的记忆；自动学习在“学习与技能”中设置。'], ['learnedEnabled', draft.skills.learnedEnabled, '已学习技能', '让此身份使用积累的可复用方法。']].map(([name, checked, label, note]) => `<label class="pi-profile-toggle"><span><strong>${html(t(label))}</strong><small>${html(t(note))}</small></span><input name="${name}" type="checkbox" role="switch" ${checked ? 'checked' : ''}></label>`).join('')}
-                <input name="autoLearn" type="checkbox" hidden ${draft.memory.autoLearn ? 'checked' : ''}></section>
-                ${draft.id ? `<section class="pi-profile-card"><h5>${html(t('主线程与定时任务'))}</h5><p class="pi-profile-note">${html(t('主线程按需创建，也可以指定已有线程作为定时任务的默认目标。'))}</p><button type="button" class="settings-secondary-button" data-profile-cron>${html(t('管理定时任务'))}</button></section>` : ''}
-                <section class="pi-profile-card pi-profile-limits"><h5>${html(t('文档容量'))}</h5><p class="pi-profile-note">${html(t('控制长期记忆与用户偏好的字符上限。缩小上限不会删除已有内容。'))}</p><div class="pi-profile-fields">
-                <label>${html(t('长期记忆 · MEMORY'))}<input type="number" name="memoryCharLimit" min="256" max="65536" required value="${draft.memory.memoryCharLimit ?? 16000}"><small>256–65,536 ${html(t('字符'))}</small></label>
-                <label>${html(t('用户偏好 · USER'))}<input type="number" name="userCharLimit" min="256" max="32768" required value="${draft.memory.userCharLimit ?? 8000}"><small>256–32,768 ${html(t('字符'))}</small></label></div></section></div>
-                <section class="pi-profile-soul"><div class="pi-profile-section-heading"><h5>${html(t('个性与行为'))}<span class="pi-profile-file-tag">SOUL.md</span></div><p class="pi-profile-note">${html(t('描述助手的角色、语气和协作原则。支持 Markdown。'))}</p><label for="pi-profile-soul-text" class="pi-profile-editor-label">${html(t('行为说明'))}</label><textarea id="pi-profile-soul-text" name="soul" rows="14" spellcheck="false" placeholder="${html(t('例如：用简洁的语言解释问题，在行动前澄清关键假设。'))}">${html(draft.soul)}</textarea><small class="pi-profile-note">${html(t('最多 32 KiB；与概览设置一起保存。'))}</small></section>
-                <div class="pi-profile-form-actions"><div class="pi-profile-save-copy"><span id="pi-profile-save-state" role="status"></span><small>${html(t('运行中的线程需重新打开后使用新设置。'))}</small></div><button type="button" data-profile-assist class="settings-secondary-button"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> ${html(t('与 Agent 起草'))}</button><button type="submit" class="settings-primary-button"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> ${html(t('保存身份'))}</button></div><p id="pi-profile-editor-status" role="status" aria-live="polite"></p></form>`;
-            $('pi-profile-form').noValidate = true;
-            renderSection();
-            syncEditorSave();
-            root.querySelector('.pi-profile-detail').scrollTop = 0;
-            return true;
-        }
-        function readDraft() {
-            if (!draft) return null;
-            const form = $('pi-profile-form');
-            if (!form) return draft;
-            const emoji = form.elements.emoji.value.trim();
-            return { ...(draft.id ? { id: draft.id } : {}), name: form.elements.name.value.trim(), description: form.elements.description.value, soul: form.elements.soul.value,
-                avatar: emoji ? { kind: 'emoji', value: emoji } : draft.avatar?.kind === 'image' ? draft.avatar : null,
-                enabled: form.elements.enabled.checked, memory: { ...draft.memory, enabled: form.elements.memoryEnabled.checked, autoLearn: form.elements.autoLearn.checked,
-                    memoryCharLimit: Number(form.elements.memoryCharLimit.value), userCharLimit: Number(form.elements.userCharLimit.value) }, skills: { ...draft.skills, learnedEnabled: form.elements.learnedEnabled.checked } };
+            if (!snapshot || busy() || (snapshot.cwd || '') !== cwd()) return false;
+            if (profile?.id && profile.id === draft?.id) { listView = false; renderList(); return true; }
+            if (!await guard()) return false;
+            ++openEpoch; ++editorVersion; ++overviewEpoch; ++proposalEpoch;
+            call(knowledge, 'close'); call(learning, 'close'); badges.clear();
+            draft = profileInput(profile); original = JSON.stringify(draft); selected = profile?.id || ''; if (selected) lastViewed = selected;
+            reconcile = null; personaNotice = ''; proposal = null; overviewData = null; receiptLimit = 6; soulPreview = false; knowledgeSession = pendingReveal?.sessionId || '';
+            listView = false; section = profile ? 'overview' : 'persona'; renderList(); renderHeader(); renderPersona(); showSection();
+            detail.scrollTop = 0; if (profile) void loadOverview(); return true;
         }
         async function closeEditor() {
-            if (mutation || !draft) return;
-            if (dirty() && !await discard()) return;
-            draft = null; selected = ''; editorVersion++; documentEpoch++; proposalEpoch++; proposedDocuments.clear(); editor.replaceChildren(); documentRoot.replaceChildren(); knowledgePanel.close(); memoryRoot.replaceChildren(); renderList(); renderEmptyDetail();
-            if (reconcile?.duplicate || reconcile?.applied) reconcile = null;
-            documents.clear();
-            $('pi-profile-add')?.focus({ preventScroll: true });
+            if (!draft || !await guard()) return;
+            draft = null; selected = ''; ++editorVersion; ++overviewEpoch; ++proposalEpoch; ++openEpoch;
+            reconcile = null; proposal = null; call(knowledge, 'close'); call(learning, 'close'); renderPersona(); showSection(); renderHeader(); renderList();
+        }
+        async function chat(projectId) {
+            const id = selected;
+            if (!savedProfile()?.enabled || !await guard() || id !== selected) return;
+            window.PiWorkspaceRoute?.navigate('assistant', { profileId: id, ...(projectId ? { projectId } : {}) });
+        }
+        function field(label, name, value, attrs = {}, tag = 'input') {
+            const id = `pi-profile-${name}`;
+            return el('div', { class: 'pi-id-field' }, [el('label', { for: id, text: t(label) }), el(tag, { id, name, class: tag === 'textarea' ? 'pi-id-textarea' : 'pi-id-input', value, ...attrs }), attrs.type === 'number' && el('small', { text: `${U.number(attrs.min)}–${U.number(attrs.max)} ${t('字符')}` })]);
+        }
+        function renderPersona() {
+            if (!draft) { personaRoot.replaceChildren(); return; }
+            const basicFields = el('div', { class: 'pi-profile-fields' }, [field('名称', 'name', draft.name, { maxLength: 80, 'aria-required': 'true', placeholder: t('例如：研究伙伴') }),
+                el('small', { id: 'pi-profile-name-error', class: 'pi-id-help', hidden: true }), field('描述', 'description', draft.description, { maxLength: 500, rows: 3, placeholder: t('这个助手擅长什么，与你如何协作？') }, 'textarea')]);
+            const picker = el('div', { class: 'pi-profile-avatar-panel', hidden: true });
+            const avatarButton = button({ label: t('更换头像'), variant: 'ghost', attrs: { id: 'pi-profile-avatar-picker', 'aria-expanded': 'false' }, onClick: () => { picker.hidden = !picker.hidden; avatarButton.setAttribute('aria-expanded', String(!picker.hidden)); } });
+            avatarButton.className = 'pi-id-avatar is-xl'; avatarButton.setAttribute('aria-label', t('更换头像')); avatarButton.replaceChildren(...avatar(draft).childNodes);
+            const updateAvatar = value => { draft.avatar = value; renderPersona(); syncSave(); };
+            const avatarActions = el('div', { class: 'pi-id-toolbar' }, [button({ label: t('移除头像'), variant: 'ghost', attrs: { id: 'pi-profile-avatar-clear' }, onClick: () => updateAvatar(null) })]);
+            picker.append(el('div', { class: 'pi-profile-emoji-grid' }, [...'🍀 🌿 🦉 🧠 🔭 📚 ✍️ 🧪 💡 🎯 🛠️ 🐱 🦊 🌙 ⭐ 🤖'.split(' ')].map(emoji => button({ label: emoji, variant: 'ghost', onClick: () => updateAvatar({ kind: 'emoji', value: emoji }) }))),
+                field('自定义表情', 'emoji', draft.avatar?.kind === 'emoji' ? draft.avatar.value : '', { maxLength: 16 }),
+                avatarActions);
+            if (draft.id) {
+                const upload = el('input', { id: 'pi-profile-avatar-upload', type: 'file', accept: 'image/png,image/jpeg,image/webp,image/gif', hidden: true, 'aria-label': t('上传头像'), on: { change: event => void uploadAvatar(event.target.files?.[0]) } });
+                avatarActions.prepend(button({ label: t('上传图片'), icon: 'image', onClick: () => upload.click() }));
+                picker.append(upload, el('p', { class: 'pi-id-help', text: t('图片会立即保存') }));
+            } else picker.append(el('p', { class: 'pi-id-help', text: t('保存身份后可上传图片头像。') }));
+            const switches = el('div', {}, [
+                U.switchRow({ name: 'enabled', label: t('启用身份'), description: t('允许新建或重新打开的线程使用此身份'), checked: draft.enabled }).row,
+                U.switchRow({ name: 'memoryEnabled', label: t('长期记忆'), description: t('让助手读取并积累 USER / MEMORY 里的内容'), info: t('开启后，助手每轮对话前会读取此身份的 USER.md 与 MEMORY.md，并可以把新的事实写进去。关闭后已有内容保留，USER 仍可手动编辑。'), checked: draft.memory.enabled }).row,
+                U.switchRow({ name: 'learnedEnabled', label: t('已学习技能'), description: t('让助手使用此身份积累的技能'), info: t('已学习技能是此身份在协作中沉淀的可复用做法。关闭后仍会保留技能，你可以继续查看和管理。'), checked: draft.skills.learnedEnabled }).row]);
+            const textarea = el('textarea', { id: 'pi-profile-soul-text', name: 'soul', class: 'pi-id-editor-text', value: draft.soul, spellcheck: 'false', 'aria-label': t('行为说明'), hidden: soulPreview });
+            const preview = el('div', { class: 'pi-id-editor-preview', hidden: !soulPreview }); U.markdown(preview, draft.soul);
+            const toggle = () => U.segmented({ label: t('编辑器'), value: soulPreview ? 'preview' : 'edit', items: [{ id: 'edit', label: t('编辑'), icon: 'pen' }, { id: 'preview', label: t('预览'), icon: 'eye' }], onChange: next => { soulPreview = next === 'preview'; textarea.hidden = soulPreview; preview.hidden = !soulPreview; U.markdown(preview, draft.soul); segment.replaceChildren(toggle()); } });
+            const segment = el('div', {}, [toggle()]);
+            const templates = globalThis.PiIdentityTemplates?.list() || [];
+            const editor = el('div', { class: 'pi-id-editor' }, [el('div', { class: 'pi-id-editor-bar' }, [el('div', { class: 'pi-id-editor-tools' }, [segment, U.menu({ label: t('示例模板'), icon: 'shapes', iconOnly: false, variant: 'ghost', align: 'start', items: templates.map(template => ({ label: template.title, description: template.description, onSelect: async () => {
+                const version = editorVersion, content = draft.soul;
+                if (content.trim() && !await ui.confirm({ title: t('用模板替换当前内容？'), message: t('替换后仍需保存，也可以放弃修改恢复原来的内容。'), accept: t('替换') })) return;
+                if (version !== editorVersion || content !== draft.soul || busy()) return;
+                draft.soul = template.content; ++editorVersion; textarea.value = draft.soul; U.markdown(preview, draft.soul); syncSave();
+            } })) })]), el('span', { id: 'pi-profile-soul-bytes', class: 'pi-id-editor-count' })]), textarea, preview]);
+            saveBar = U.createSaveBar({ onSave: () => void saveProfile(), onDiscard: async () => { if (await guard()) renderPersona(); }, saveLabel: t(draft.id ? '保存身份' : '创建身份'), hint: t('保存后，新建或重新打开的线程会使用新设置') });
+            const form = el('form', { id: 'pi-profile-form', class: 'pi-profile-form', novalidate: '', on: { submit: event => { event.preventDefault(); void saveProfile(); }, input: event => updateField(event.target), change: event => updateField(event.target) } }, [
+                el('div', { class: 'pi-id-grid-2' }, [card({ title: t('基本信息'), icon: 'id-badge' }, [el('div', { class: 'pi-profile-basics' }, [avatarButton, basicFields]), picker]), card({ title: t('能力'), icon: 'sliders' }, [switches])]),
+                card({ title: t('个性与行为'), icon: 'feather' }, [editor, el('p', { class: 'pi-id-help pi-profile-soul-help', text: t('描述助手的角色、语气和协作原则，支持 Markdown。') })]),
+                el('details', { class: 'pi-id-card pi-profile-advanced' }, [el('summary', { text: t('高级设置') }), el('div', { class: 'pi-id-grid-2' }, [field('长期记忆 · MEMORY', 'memoryCharLimit', draft.memory.memoryCharLimit ?? 16000, { type: 'number', min: 256, max: 65536 }), field('关于你 · USER', 'userCharLimit', draft.memory.userCharLimit ?? 8000, { type: 'number', min: 256, max: 32768 })]), el('p', { class: 'pi-id-help', text: t('缩小上限不会删除已有内容') })])]);
+            personaRoot.replaceChildren(el('div', { class: 'pi-id-page-head' }, [el('div', {}, [el('h3', { text: t('设定') }), el('p', { text: t('让助手按你的方式协作。') })])]), el('div', { id: 'pi-profile-persona-notice' }), form, saveBar.element);
+            renderPersonaNotice(); renderProposal(); syncSave();
+        }
+        function updateField(input) {
+            if (!draft || busy()) return;
+            const name = input.name;
+            if (['name', 'description', 'soul'].includes(name)) draft[name] = input.value;
+            else if (name === 'emoji') draft.avatar = input.value.trim() ? { kind: 'emoji', value: input.value.trim() } : null;
+            else if (name === 'enabled') draft.enabled = input.checked;
+            else if (name === 'memoryEnabled') draft.memory.enabled = input.checked;
+            else if (name === 'learnedEnabled') draft.skills.learnedEnabled = input.checked;
+            else if (['memoryCharLimit', 'userCharLimit'].includes(name)) draft.memory[name] = Number(input.value);
+            else return;
+            if (name === 'emoji' || name === 'name') $('pi-profile-avatar-picker')?.replaceChildren(...avatar(draft).childNodes);
+            ++editorVersion; syncSave();
+        }
+        function renderPersonaNotice() {
+            const host = $('pi-profile-persona-notice'); if (!host) return;
+            host.replaceChildren(...(personaNotice ? [notice(personaNotice, [button({ label: t('刷新核对'), icon: 'rotate', size: 'sm', onClick: () => void load() })])] : []));
+        }
+        function syncSave() {
+            const count = $('pi-profile-soul-bytes');
+            if (count && draft) { const bytes = U.bytes(draft.soul); count.textContent = `${U.number(Math.round(bytes / 102.4) / 10)} KiB / 32 KiB`; count.classList.toggle('is-over', bytes > 32768); }
+            saveBar?.set({ dirty: profileDirty() || Boolean(draft && !draft.id), saving: Boolean(mutation), canSave: enabled && Boolean(snapshot) && !reconcile && U.bytes(draft?.soul || '') <= 32768 });
+            for (const node of personaRoot.querySelectorAll('input,textarea,button')) if (!node.closest('.pi-id-savebar')) node.disabled = Boolean(mutation) || !enabled;
+            if (saveBar) saveBar.discardButton.disabled = Boolean(mutation);
         }
         async function saveProfile() {
-            if (mutation?.kind === 'avatar') { const target = $('pi-profile-avatar-status'); if (target) target.textContent = t('请等待头像上传完成。'); return; }
-            if (!snapshot || mutation || reconcile || !draft || (snapshot.cwd || '') !== cwd()) return;
-            const input = readDraft(), revision = snapshot.revision, project = cwd(), version = editorVersion, savedSection = section;
-            let savedProfile = null;
-            const unsavedDocuments = new Map([...documents].filter(([, data]) => data.dirty));
-            const stagedDocuments = new Map(proposedDocuments);
-            if (new TextEncoder().encode(input.soul).length > 32768) { $('pi-profile-editor-status').textContent = t('行为说明不能超过 32 KiB'); return; }
-            const target = $('pi-profile-editor-status');
-            if (!autoLearnSupported && !draft.memory.autoLearn && input.memory.autoLearn) { target.textContent = t('自动学习在此服务器上不可用'); return; }
-            const controls = [...editor.querySelectorAll('#pi-profile-form input, #pi-profile-form textarea, #pi-profile-form button')].map(node => [node, node.disabled]);
-            const request = ++epoch;
-            mutation = { kind: 'profile', input }; refresh.disabled = true;
-            for (const [node] of controls) node.disabled = true;
-            target.textContent = t('正在保存…');
+            if (!active() || busy() || !draft || !snapshot || reconcile || (snapshot.cwd || '') !== cwd()) return;
+            const input = clone(draft); input.name = input.name.trim();
+            const name = $('pi-profile-name'), nameError = $('pi-profile-name-error');
+            if (!input.name || input.name.length > 80) {
+                const text = t('请填写名称（最多 80 个字符）'); if (name) name.setAttribute('aria-invalid', 'true'); if (nameError) { nameError.hidden = false; nameError.textContent = text; } name?.focus(); return;
+            }
+            name?.removeAttribute('aria-invalid'); if (nameError) nameError.hidden = true;
+            if (U.bytes(input.soul) > 32768) { personaNotice = t('行为说明不能超过 32 KiB'); renderPersonaNotice(); return; }
+            if (![ ['memoryCharLimit', 65536], ['userCharLimit', 32768] ].every(([key, max]) => Number.isInteger(input.memory[key]) && input.memory[key] >= 256 && input.memory[key] <= max)) {
+                personaNotice = t('请核对高级设置中的字符上限。'); renderPersonaNotice(); return;
+            }
+            if (draft.id && !profileDirty()) return;
+            const revision = snapshot.revision, project = cwd(), version = editorVersion, request = ++epoch;
+            mutation = { kind: 'profile', input }; syncSave(); renderHeader();
+            let resultProfile = null;
             try {
                 const result = await apiFetch('/api/pi/profiles', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedRevision: revision, profile: input }) });
-                if (request !== epoch || !active() || project !== cwd() || version !== editorVersion || snapshot?.revision !== revision) { reconcile = { kind: 'profile', input }; return; }
-                snapshot = { ...snapshot, revision: result.revision, profiles: profiles().some(p => p.id === result.profile.id)
-                    ? profiles().map(p => p.id === result.profile.id ? result.profile : p) : [...profiles(), result.profile] };
-                savedProfile = result.profile;
-                draft = { id: result.profile.id, name: result.profile.name, description: result.profile.description, soul: result.profile.soul, avatar: result.profile.avatar ?? null, enabled: result.profile.enabled, memory: { ...result.profile.memory }, skills: { ...result.profile.skills } };
-                selected = result.profile.id; draftOriginal = JSON.stringify(draft); editorVersion++; editor.replaceChildren(); render(); message(t('身份已保存。运行中的线程需重新打开才能使用新设置。'));
-                invalidateLoaded();
+                if (request !== epoch || !active() || project !== cwd() || version !== editorVersion || snapshot.revision !== revision) { reconcile = { kind: 'profile', input }; return; }
+                snapshot = { ...snapshot, revision: result.revision, profiles: profiles().some(p => p.id === result.profile.id) ? profiles().map(p => p.id === result.profile.id ? result.profile : p) : [...profiles(), result.profile] };
+                resultProfile = result.profile; draft = profileInput(resultProfile); selected = resultProfile.id; lastViewed = selected; original = JSON.stringify(draft); ++editorVersion;
+                personaNotice = ''; reconcile = null; call(knowledge, 'profileSaved', resultProfile);
+                invalidateLoaded(); ui.toast(t('身份已保存'));
                 window.dispatchEvent(new CustomEvent('pi:native-config-saved', { detail: { scope: 'global' } }));
                 window.dispatchEvent(new CustomEvent('workspace:agent-profiles-changed'));
             } catch (error) {
                 reconcile = { kind: 'profile', input };
-                if (request === epoch && active() && project === cwd() && version === editorVersion) target.textContent = error.status === 409 ? t('保存冲突。草稿已保留；请刷新身份列表，核对更改后再保存。') : t('保存结果未确认：{0}。请刷新核对，勿直接重复提交。', error.message);
+                personaNotice = error.status === 409 ? t('保存冲突。草稿已保留；请刷新身份列表，核对更改后再保存。') : t('保存结果未确认：{0}。请刷新核对，勿直接重复提交。', error.message);
             } finally {
-                mutation = null; refresh.disabled = false;
-                for (const [node, disabled] of controls) if (node.isConnected) node.disabled = disabled;
-                if (savedProfile && active()) {
-                    documents = new Map(); proposedDocuments.clear();
-                    await editProfile(savedProfile);
-                    if (savedSection !== 'overview') void openSection(savedSection);
-                    for (const [target, data] of unsavedDocuments) documents.set(target, { ...data, status: 'conflict', message: t('档案设置已保存。请刷新文档，核对草稿后单独保存。') });
-                    for (const [target, content] of stagedDocuments) proposedDocuments.set(target, content);
-                }
-                syncEditorSave();
-                if (pendingRefresh || request !== epoch || project !== cwd()) { pendingRefresh = false; if (active()) void load(); }
+                mutation = null; renderList(); renderHeader(); renderPersona();
+                if (resultProfile && stagedDocuments.size) await stageDocuments(Object.fromEntries(stagedDocuments));
+                if (pendingRefresh) { pendingRefresh = false; if (active()) void load(); }
             }
         }
-        function documentMessage(data, fallback = '') {
-            if (data?.indexSynced !== false) return fallback;
-            const status = data.indexStatus === 'disabled' || data.indexStatus === 'unsupported'
-                ? t('记忆检索尚未启用。') : t('检索索引需要同步。');
-            return fallback ? `${fallback} · ${status}` : status;
+        async function loadOverview() {
+            if (!selected || !active()) return;
+            const id = selected, request = ++overviewEpoch; overviewData = null; renderOverview();
+            const base = `/api/pi/profiles/${encodeURIComponent(id)}`;
+            const results = await Promise.allSettled([apiFetch(`${base}/knowledge?kind=memory&state=present`), apiFetch(`${base}/learning`), apiFetch(`/api/pi/assistant-projects?profileId=${encodeURIComponent(id)}`)]);
+            if (request !== overviewEpoch || selected !== id || !active()) return;
+            overviewData = { knowledge: results[0], learning: results[1], projects: results[2] };
+            if (results[1].status === 'fulfilled') { learningHealth.set(id, results[1].value); renderHeader(); renderList(); }
+            renderOverview();
         }
-        function renderSection() {
-            const form = $('pi-profile-form');
-            if (!form) return;
-            form.querySelector('.pi-profile-proposal')?.remove();
-            form.querySelector('.pi-profile-overview').hidden = section !== 'overview';
-            form.querySelector('.pi-profile-soul').hidden = section !== 'soul';
-            form.querySelector('.pi-profile-form-actions').hidden = !['overview', 'soul'].includes(section);
-            form.querySelectorAll('[data-profile-section]').forEach(button => button.setAttribute('aria-current', String(button.dataset.profileSection === section ? 'page' : 'false')));
-            root.dataset.section = section;
-            documentRoot.replaceChildren(); knowledgePanel.close(); memoryRoot.replaceChildren();
-            if (!draft?.id) {
-                if (!['overview', 'soul'].includes(section)) documentRoot.innerHTML = `<div class="pi-profile-placeholder"><i class="fa-regular fa-bookmark" aria-hidden="true"></i><h5>${html(t('先保存这个身份'))}</h5><p>${html(t('保存后即可编辑用户偏好、长期记忆和学习设置。'))}</p><button type="button" class="settings-secondary-button" data-profile-overview>${html(t('返回概览'))}</button></div>`;
+        function renderOverview() {
+            const profile = savedProfile(); if (!profile) return;
+            if (!overviewData) {
+                overviewRoot.replaceChildren(el('div', { class: 'pi-id-page-head' }, [el('h3', { text: t('概览') })]));
+                if (window.PiSkeleton) { const skeleton = el('div'); skeleton.innerHTML = window.PiSkeleton.html('lines', { rows: 8, label: t('正在读取…') }); overviewRoot.append(skeleton); }
+                else overviewRoot.append(el('p', { class: 'pi-id-help', text: t('正在读取…') }));
                 return;
             }
-            if (section === 'user' || section === 'memory') {
-                const state = documents.get(section);
-                const limit = state?.usage?.limit ?? (section === 'user' ? draft.memory.userCharLimit ?? 8000 : draft.memory.memoryCharLimit ?? 16000);
-                const title = t(section === 'user' ? '用户偏好' : '长期记忆');
-                const unavailable = state && state.status !== 'ready' && state.status !== 'conflict';
-                const statusText = state?.message || (state?.status === 'ready' ? t('已读取保存内容') : t('正在读取…'));
-                const labels = { disabled: t(profiles().find(p => p.id === selected)?.enabled === false ? '请先在概览中启用此身份并保存。' : '请先在概览中启用长期记忆并保存身份。'), unsupported: t('此服务尚未安装记忆组件。'), missing: t('文档尚不可用，请刷新核对。') };
-                documentRoot.innerHTML = `<div class="pi-profile-document"><div class="pi-profile-section-heading"><h4>${html(title)}</h4><span class="pi-profile-file-tag">${section.toUpperCase()}.md</span></div><p class="pi-profile-note">${html(t(section === 'user' ? '记录你的背景、偏好和习惯，让助手更了解你。支持 Markdown。' : '保存跨对话使用的长期事实与经验。支持 Markdown。'))}</p><p id="pi-profile-document-status" data-feedback="${state?.feedback || ''}" role="status" aria-live="polite">${html(labels[state?.status] || statusText)}</p>${state?.status === 'disabled' ? `<button type="button" data-profile-overview class="settings-secondary-button">${html(t('前往概览设置'))}</button>` : ''}<textarea id="pi-profile-document-text" aria-label="${html(title)}" spellcheck="false" ${unavailable ? 'hidden' : ''} ${state?.status !== 'ready' || mutation ? 'disabled' : ''}>${html(state?.content ?? '')}</textarea>${state?.serverContent !== undefined ? `<details class="pi-profile-server-version"><summary>${html(t('服务器最新内容'))}</summary><pre>${html(state.serverContent)}</pre></details><label class="pi-profile-check"><input id="pi-profile-document-reviewed" type="checkbox" ${state.reviewed ? 'checked' : ''}>${html(t('已核对服务器最新内容'))}</label>` : ''}<div class="pi-profile-document-footer">${state?.feedback ? `<p class="pi-profile-document-feedback" data-feedback="${state.feedback}" role="status" aria-live="polite"><i class="fa-solid ${state.feedback === 'saving' ? 'fa-spinner fa-spin' : state.feedback === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'}" aria-hidden="true"></i><span>${html(state.message)}</span></p>` : ''}<div class="pi-profile-document-meta"><span id="pi-profile-document-usage">${state ? `${state.content.length} / ${limit} ${html(t('字符'))}` : ''}</span><small id="pi-profile-document-dirty">${state?.dirty ? html(t('有未保存的修改')) : ''}</small></div><div class="pi-profile-document-actions"><button id="pi-profile-document-refresh" type="button" class="settings-secondary-button" ${mutation ? 'disabled' : ''}><i class="fa-solid fa-rotate" aria-hidden="true"></i> ${html(t('刷新核对'))}</button><button id="pi-profile-document-sync" type="button" class="settings-secondary-button" ${state?.status !== 'ready' || state.indexStatus !== 'pending' ? 'hidden' : ''} ${!enabled || mutation ? 'disabled' : ''}>${html(t('同步检索索引'))}</button><button id="pi-profile-document-save" type="button" class="settings-primary-button" ${!enabled || state?.status !== 'ready' || !state.dirty || mutation || state.content.length > limit || state.serverContent !== undefined && !state.reviewed ? 'disabled' : ''}><i class="fa-solid ${mutation?.kind === 'document' ? 'fa-spinner fa-spin' : 'fa-floppy-disk'}" aria-hidden="true"></i> ${html(t(mutation?.kind === 'document' ? '正在保存…' : '保存文档'))}</button></div></div></div>`;
-                if (!state && window.PiSkeleton) {
-                    $('pi-profile-document-status').innerHTML = window.PiSkeleton.html('lines', { rows: 6, label: t('正在读取…') });
-                    $('pi-profile-document-text').hidden = true;
-                }
-            } else if (section === 'projects') {
-                documentRoot.innerHTML = `<div class="pi-profile-projects"><div class="pi-profile-section-heading"><h4>${html(t('关联项目'))}</h4>${projects ? `<span class="pi-profile-count">${projects.length}</span>` : ''}</div><p class="pi-profile-note">${html(t('这些项目可使用此身份，共享它的个性、偏好与经验。'))}</p>${projects?.map(p => `<article><span class="pi-profile-project-icon"><i class="fa-regular fa-folder" aria-hidden="true"></i></span><div><strong>${html(p.name)}</strong><small>${html(p.cwd)}</small>${p.description ? `<p>${html(p.description)}</p>` : ''}</div></article>`).join('') || `<div class="pi-profile-placeholder"><i class="fa-regular fa-folder-open" aria-hidden="true"></i><h5>${html(projects === null ? t('正在读取…') : t('没有关联项目'))}</h5><p>${html(t('在“助手对话”中创建项目，并选择此身份。'))}</p></div>`}</div>`;
-                if (projects === null && window.PiSkeleton) documentRoot.querySelector('.pi-profile-placeholder').outerHTML = window.PiSkeleton.html('list', { rows: 4, label: t('正在读取…') });
-            } else if (section === 'skills') { openKnowledge(); }
-            if (proposal) showProposal();
+            const result = key => overviewData[key].status === 'fulfilled' ? overviewData[key].value : null;
+            const knowledgeData = result('knowledge'), learningData = result('learning'), projectsData = result('projects');
+            const counts = knowledgeData?.counts, usage = knowledgeData?.usage, health = learningData?.health;
+            const projectRows = projectsData?.projects || [], pending = learningData?.drafts?.pending || 0;
+            const proposals = (learningData?.proposals || []).filter(p => !p.status || ['pending', 'proposed', 'ready'].includes(p.status));
+            const memoryOn = profile.memory?.enabled, skillsOn = profile.skills?.learnedEnabled !== false;
+            const stats = el('div', { class: 'pi-id-stats' }, [
+                stat({ icon: 'brain', label: t('记忆'), value: memoryOn ? U.number(counts?.memory?.total) : t('未启用'), detail: counts ? t('关于你 {0} · 长期 {1} · 项目 {2}', U.number(counts.memory?.user), U.number(counts.memory?.memory), U.number(counts.memory?.project)) : t('助手跨对话记住的信息'), tone: memoryOn ? 'accent' : 'off', onClick: () => void openSection(memoryOn ? 'memory' : 'persona') }),
+                stat({ icon: 'toolbox', label: t('技能'), value: skillsOn ? U.number(counts?.skill?.active) : t('未启用'), badge: pending ? t('{0} 待审', U.number(pending)) : undefined, detail: t('审核后才会启用。'), tone: skillsOn ? 'blue' : 'off', onClick: () => void openSection(skillsOn ? 'skills' : 'persona', { drafts: pending > 0 }) }),
+                stat({ icon: 'seedling', label: t('后台学习'), value: health ? t(healthShort[health.state] || '不可用') : '—', detail: health?.today ? t('今日 {0} / {1} 次', U.number(health.today.runs), U.number(health.today.maxRuns)) : t('对话之后整理记忆与技能草稿'), tone: healthTone[health?.state] || 'off', onClick: () => void openSection('learning') }),
+                stat({ icon: 'folder', label: t('关联项目'), value: projectsData ? U.number(projectRows.length) : '—', detail: t('共享此身份的协作方式'), tone: 'violet', onClick: () => overviewRoot.querySelector('[data-projects-card]')?.scrollIntoView({ block: 'start' }) })]);
+            const attention = el('div', { class: 'pi-id-attention' });
+            const addAttention = (title, text, label, onClick, tone = 'amber', name = 'triangle-exclamation') => attention.append(el('div', { class: 'pi-id-attention-row', dataset: { tone } }, [icon(name), el('div', { class: 'pi-id-attention-copy' }, [el('strong', { text: title }), el('small', { text })]), button({ label, size: 'sm', onClick })]));
+            if (!profile.enabled) addAttention(t('此身份已停用'), t('启用后可用于新对话。'), t('前往设定'), () => void openSection('persona'), 'neutral', 'circle-pause');
+            if (health?.state === 'needs-model') {
+                const names = { 'memory-correction': '纠错模型', 'memory-review': '复盘模型', 'memory-extraction': '提炼模型', correction: '纠错模型', review: '复盘模型', extraction: '提炼模型' };
+                const purposes = (health.missingModels || []).map(value => t(names[typeof value === 'string' ? value : value.purpose] || '辅助模型')).join('、');
+                addAttention(t('学习缺少模型'), purposes || t('请为后台学习配置辅助模型。'), t('配置模型'), () => ui.openSettings({ tab: 'models' }));
+            }
+            let capacityAttention = false;
+            for (const target of ['user', 'memory']) {
+                const capacity = usage?.[target], ratio = capacity?.limit ? capacity.chars / capacity.limit : 0;
+                if (ratio >= .8) { capacityAttention = true; addAttention(t('{0}已用 {1}%', t(target === 'user' ? '关于你' : '长期记忆'), U.number(Math.round(ratio * 100))), t('整理合并相近的条目，为新内容留出空间。'), t('整理记忆'), () => void openSection('memory', { target }), ratio >= 1 ? 'danger' : 'amber'); }
+            }
+            if (!capacityAttention && health?.state === 'memory-full') addAttention(t('记忆已满'), t('整理合并相近的条目，为新内容留出空间。'), t('整理记忆'), () => void openSection('memory'), 'danger');
+            if (pending) addAttention(t('{0} 个技能草稿等待审核', U.number(pending)), t('审核后才会启用。'), t('去审核'), () => void openSection('skills', { drafts: true }), 'blue', 'pen-ruler');
+            if (proposals.length) addAttention(t('有新的记忆整理建议'), t('检查建议后再应用。'), t('查看建议'), () => void openSection('memory', { proposals: true }), 'violet', 'object-group');
+            if (health?.state === 'quota-exhausted') addAttention(t('今日后台学习已暂停'), t(health.today?.exhaustedBy === 'tokens' ? '预留 tokens 用完' : '运行次数用完'), t('调整预算'), () => void openSection('learning'), 'amber', 'gauge-high');
+            if (health?.state === 'failing') addAttention(t('最近学习连续失败'), t('查看运行记录，核对错误后再继续。'), t('查看记录'), () => void openSection('learning'), 'danger');
+            for (const key of ['knowledge', 'learning']) if (overviewData[key].status === 'rejected') attention.append(notice(t('{0}读取失败：{1}', t(key === 'knowledge' ? '记忆' : '学习'), overviewData[key].reason.message), [button({ label: t('重试'), size: 'sm', onClick: () => void loadOverview() })]));
+            if (!attention.childElementCount) attention.append(empty({ icon: 'circle-check', title: t('一切就绪'), text: t('没有需要处理的事项。'), compact: true }));
+            const receipts = knowledgeData?.receipts || [], timeline = el('ol', { class: 'pi-id-timeline' });
+            const operations = { create: ['新增', 'plus', 'green'], update: ['更新', 'pen', 'blue'], delete: ['删除', 'trash-can', 'danger'], restore: ['恢复', 'rotate-left', 'green'], undo: ['撤销', 'arrow-rotate-left', 'neutral'], consolidate: ['整理合并', 'object-group', 'violet'], enable: ['启用', 'toggle-on', 'green'], disable: ['停用', 'toggle-off', 'neutral'] };
+            for (const receipt of receipts.slice(0, receiptLimit)) {
+                const [label, name, tone] = operations[receipt.operation] || ['更新', 'pen', 'blue'];
+                const origin = t(receipt.origin === 'learning' ? '后台学习' : receipt.origin === 'agent' ? '助手' : '手动');
+                timeline.append(el('li', {}, [el('span', { class: 'pi-id-timeline-icon', dataset: { tone } }, [icon(name)]), el('div', { class: 'pi-id-timeline-copy' }, [
+                    el('button', { type: 'button', class: 'pi-profile-receipt', on: { click: () => revealKnowledge(selected, receipt.itemId, receipt.kind, receipt.source?.sessionId || receipt.sessionId) } }, [el('strong', { text: t(receipt.kind === 'skill' ? ({ create: '新增技能', update: '更新技能', delete: '删除技能', restore: '恢复技能' }[receipt.operation] || label) : ({ create: '新增记忆', update: '更新记忆', delete: '删除记忆', restore: '恢复记忆' }[receipt.operation] || label)) }), receipt.preview ? ` “${receipt.preview}”` : '']),
+                    el('small', {}, [origin, ' · ', U.time(receipt.at || receipt.createdAt)])])]));
+            }
+            const changes = card({ title: t('最近变化'), icon: 'clock-rotate-left', actions: receipts.length > 6 && receiptLimit === 6 ? [button({ label: t('显示更多'), size: 'sm', variant: 'ghost', onClick: () => { receiptLimit = 30; renderOverview(); } })] : [] }, [!knowledgeData ? notice(t('{0}读取失败：{1}', t('记忆'), overviewData.knowledge.reason?.message || ''), [button({ label: t('重试'), size: 'sm', onClick: () => void loadOverview() })]) : receipts.length ? timeline : empty({ icon: 'clock', title: t('还没有变化记录'), compact: true })]);
+            const projectsCard = card({ title: t('关联项目'), icon: 'folder-open', subtitle: t('这些项目中的新对话会使用此身份。') }, [
+                projectsData ? projectRows.length ? el('div', { class: 'pi-id-entries' }, projectRows.map(project => el('div', { class: 'pi-id-entry pi-profile-project' }, [el('div', { class: 'pi-id-entry-main' }, [el('span', { class: 'pi-id-entry-title' }, [icon('folder'), ' ', project.name]), el('span', { class: 'pi-id-entry-meta pi-profile-project-path', title: project.cwd, text: project.cwd }), el('span', { class: 'pi-id-entry-text', text: project.description || '' })]), button({ label: t('在此项目对话'), icon: 'arrow-right', variant: 'quiet', size: 'sm', onClick: () => void chat(project.id) })]))) : empty({ icon: 'folder-open', title: t('没有关联项目'), text: t('在“助手对话”中新建项目并选择此身份。'), compact: true })
+                    : notice(t('关联项目读取失败：{0}', overviewData.projects.reason?.message || ''), [button({ label: t('重试'), size: 'sm', onClick: () => void loadOverview() })])]);
+            projectsCard.dataset.projectsCard = '';
+            overviewRoot.replaceChildren(stats, el('div', { class: 'pi-id-grid-2' }, [card({ title: t('需要处理'), icon: 'list-check' }, [attention]), changes]), projectsCard,
+                card({ title: t('主线程与定时任务'), icon: 'calendar-check', actions: [button({ label: t('管理定时任务'), variant: 'quiet', size: 'sm', onClick: () => window.PiWorkspaceRoute?.navigate('cron', { profileId: selected }) })] }, [el('p', { class: 'pi-id-help', text: t('主线程按需创建，也可以指定已有线程作为定时任务的默认目标。') })]));
         }
-        function showProposal() {
-            const form = $('pi-profile-form');
-            if (!form || !proposal || !['overview', 'soul'].includes(section)) return;
-            form.querySelector('.pi-profile-proposal')?.remove();
-            const box = document.createElement('div'); box.className = 'pi-profile-proposal';
-            box.innerHTML = `<h4>${html(t('Agent 草稿'))}</h4><pre></pre><button type="button" id="pi-profile-proposal-apply" class="settings-secondary-button">${html(t('导入到未保存草稿'))}</button>`;
-            box.querySelector('pre').textContent = JSON.stringify(proposal.proposal, null, 2);
-            form.querySelector('.pi-profile-form-actions').before(box);
+        async function loadLearningHealth() {
+            const request = ++healthEpoch;
+            const rows = await Promise.all(profiles().map(profile => apiFetch(`/api/pi/profiles/${encodeURIComponent(profile.id)}/learning`).then(data => [profile.id, data]).catch(() => [profile.id, null])));
+            if (request !== healthEpoch || !active()) return;
+            for (const [id, data] of rows) learningHealth.set(id, data);
+            renderList(); renderHeader();
         }
-        async function openSection(next) {
-            if (section === next || mutation) return;
-            section = next; const request = ++documentEpoch, id = selected;
-            root.querySelector('.pi-profile-detail').scrollTop = 0;
-            if (next === 'skills') knowledgePanel.close();
-            if (draft) { draft = readDraft(); renderSection(); }
-            if (!active() || !id) return;
-            if ((next === 'user' || next === 'memory') && !documents.get(next)?.dirty) {
-                try {
-                    const data = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/documents?target=${next}`, { cache: 'no-store' });
-                    if (request !== documentEpoch || id !== selected || next !== section || !active()) return;
-                    if (documents.get(next)?.dirty || mutation) return;
-                    const proposed = proposedDocuments.get(next);
-                    documents.set(next, { ...data, savedContent: data.content ?? '', content: proposed ?? data.content ?? '', dirty: proposed !== undefined, message: data.status === 'ready' ? documentMessage(data) : data.status });
-                    proposedDocuments.delete(next); renderSection();
-                } catch (error) {
-                    if (request === documentEpoch && id === selected && next === section && active()) {
-                        const previous = documents.get(next);
-                        // Re-entry can refresh an editable cached document: never erase edits made during that read.
-                        if (previous) { previous.message = error.message; previous.feedback = 'warning'; }
-                        else documents.set(next, { status: 'error', content: '', message: error.message });
-                        renderSection();
-                    }
-                }
-            } else if (next === 'projects') {
-                try {
-                    const data = await apiFetch(`/api/pi/assistant-projects?profileId=${encodeURIComponent(id)}`);
-                    if (request !== documentEpoch || id !== selected || next !== section || !active()) return;
-                    projects = data.projects || []; renderSection();
-                } catch (error) { if (request === documentEpoch && id === selected) { projects = []; message(error.message); renderSection(); } }
+        async function load() {
+            if (!active()) return false;
+            if (busy()) { pendingRefresh = true; ui.toast(t('保存结束后请刷新核对。'), { tone: 'info' }); return false; }
+            const request = ++epoch, project = cwd();
+            try {
+                const data = await apiFetch('/api/pi/profiles' + (project ? `?cwd=${encodeURIComponent(project)}` : ''));
+                if (request !== epoch || !active() || project !== cwd()) return false;
+                if (data?.version !== 1 || !Array.isArray(data.profiles) || typeof data.revision !== 'string') throw new Error(t('身份接口返回了不支持的数据'));
+                snapshot = data;
+                if (reconcile?.kind === 'profile') {
+                    const input = reconcile.input, saved = data.profiles.find(p => input.id ? p.id === input.id : p.name === input.name);
+                    // Canonical projection: the registry merges nested objects in its own key order and fills defaults.
+                    const fields = p => JSON.stringify([p.name, p.description || '', p.soul || '', p.avatar ?? null, p.enabled === true,
+                        [p.memory?.enabled === true, p.memory?.autoLearn === true, p.memory?.memoryCharLimit ?? 16000, p.memory?.userCharLimit ?? 8000], p.skills?.learnedEnabled !== false]);
+                    reconcile = saved && !input.id ? { ...reconcile, duplicate: true } : saved && fields(saved) === fields(input) ? { ...reconcile, applied: true } : null;
+                    personaNotice = reconcile?.duplicate ? t('可能已保存此身份。请查看列表并编辑已保存的身份，勿重复创建。') : reconcile?.applied ? t('这些修改已保存。关闭草稿后可继续编辑身份。') : t('草稿已保留，请核对后再保存。');
+                } else { reconcile = null; if (personaNotice) personaNotice = ''; }
+                if (selected && !savedProfile()) { selected = ''; if (!dirty()) { draft = null; original = ''; } }
+                if (savedProfile()) call(knowledge, 'profileSaved', savedProfile());
+                renderList(); renderHeader(); renderPersona(); showSection(); invalidateLoaded();
+                void loadLearningHealth();
+                if (section === 'overview' && selected) void loadOverview();
+                return true;
+            } catch (error) {
+                if (request !== epoch || !active() || project !== cwd()) return false;
+                reconcile ||= { kind: 'read' };
+                if (snapshot?.cwd !== project) snapshot = null;
+                personaNotice = t('身份设置读取失败：{0}', error.message); renderList(); renderPersonaNotice(); syncSave(); ui.toast(personaNotice, { tone: 'error' }); return false;
             }
         }
-        async function saveDocument() {
-            const target = section, state = documents.get(target), id = selected;
-            if (!active() || !state?.dirty || state.status !== 'ready' || mutation || state.serverContent !== undefined && !state.reviewed) return;
-            if (state.content.length > state.usage?.limit) { state.message = t('文档超出字符上限。'); renderSection(); return; }
-            ++documentEpoch; // Invalidate any read begun before this write.
-            mutation = { kind: 'document' }; state.feedback = 'saving'; state.message = t('正在保存，请等待服务器确认后再刷新或离开。'); renderSection();
-            try {
-                const result = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/documents`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target, content: state.content, expectedRevision: state.revision, expectedProfileRevision: state.profileRevision }) });
-                if (id !== selected) return;
-                documents.set(target, { ...result, savedContent: result.content, dirty: false, feedback: result.indexSynced === false ? 'warning' : 'success', message: documentMessage(result, t('文档已保存到服务器。')) });
-            } catch (error) {
-                if (id !== selected) return;
-                if (error.data?.documentSaved === true && error.data.document) {
-                    documents.set(target, { ...error.data.document, savedContent: error.data.document.content, indexStatus: 'pending', dirty: false, feedback: 'warning',
-                        message: t('文档已保存；检索索引需要同步。') });
-                } else {
-                    state.feedback = 'warning';
-                    state.status = error.status === 400 ? 'ready' : 'conflict';
-                    state.message = error.status === 409 ? t('文档已变化。草稿已保留；刷新档案后核对。') : error.status === 400 ? `${t('文档未保存')}：${error.message}` : t('结果未确认；草稿已保留。请刷新核对。');
-                }
+        async function trashAction(profile, operation) {
+            if (!active() || busy() || reconcile || !Array.isArray(snapshot?.trash)) return;
+            const id = profile.id, revision = snapshot.revision;
+            if (operation === 'trash') {
+                if (selected !== id || !await guard()) return;
+                const accepted = await ui.confirm({ title: t('将“{0}”移到回收站？', profile.name), message: t('身份会被停用并从列表中隐藏。它的设定、记忆、技能和历史对话都会保留，可以随时从回收站恢复。已经打开的线程不受影响。'), accept: t('移到回收站') });
+                if (!accepted || busy() || selected !== id || snapshot.revision !== revision) return;
             }
-            finally { mutation = null; if (id === selected && section === target) renderSection(); }
-        }
-        async function syncDocumentIndex() {
-            const target = section, id = selected, previous = documents.get(target);
-            if (!active() || mutation || previous?.status !== 'ready' || previous.indexStatus !== 'pending') return;
-            ++documentEpoch;
-            mutation = { kind: 'index' }; renderSection();
+            mutation = { kind: operation }; renderList(); renderHeader(); syncSave();
             try {
-                const current = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/documents?target=${target}`, { cache: 'no-store' });
-                const result = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/documents`, { method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target, content: current.content,
-                        expectedRevision: current.revision, expectedProfileRevision: current.profileRevision }) });
-                if (id !== selected) return;
-                const keepDraft = previous.dirty && previous.content !== result.content;
-                documents.set(target, { ...result, savedContent: result.content, content: keepDraft ? previous.content : result.content, dirty: Boolean(keepDraft),
-                    ...(keepDraft ? { serverContent: result.content, reviewed: false } : {}),
-                    message: documentMessage(result, keepDraft ? t('草稿已保留。请对照最新文档核对后再保存。') : t('检索索引已同步。')) });
+                await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/${operation}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedRevision: revision }) });
+                if (operation === 'trash') { draft = null; selected = ''; original = ''; call(knowledge, 'close'); call(learning, 'close'); }
+                ui.toast(t(operation === 'trash' ? '身份已移到回收站' : '身份已恢复')); window.dispatchEvent(new CustomEvent('workspace:agent-profiles-changed'));
             } catch (error) {
-                previous.message = error.message;
-            } finally { mutation = null; if (id === selected && target === section) renderSection(); }
-        }
-        async function refreshDocument() {
-            if (mutation) return;
-            const target = section, id = selected, previous = documents.get(target), request = ++documentEpoch;
-            const initialContent = previous?.content;
-            const button = $('pi-profile-document-refresh');
-            if (button) button.disabled = true;
-            try {
-                const data = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/documents?target=${target}`, { cache: 'no-store' });
-                if (request !== documentEpoch || id !== selected || target !== section || !active()) return;
-                const pending = previous?.dirty && previous.content !== data.content && data.status === 'ready';
-                if (previous?.content !== initialContent || documents.get(target) !== previous) return;
-                documents.set(target, { ...data, savedContent: data.content ?? '', content: pending ? previous.content : data.content ?? '', dirty: Boolean(pending),
-                    ...(pending ? { serverContent: data.content ?? '', reviewed: false } : {}),
-                    message: pending ? t('草稿已保留。请对照最新文档核对后再保存。') : data.status === 'ready' ? documentMessage(data, previous?.dirty ? t('这些修改已保存。') : '') : data.status });
-                renderSection();
-            } catch (error) { if (request === documentEpoch && id === selected && target === section && active()) $('pi-profile-document-status').textContent = error.message; }
-            finally { if (button?.isConnected) button.disabled = false; }
+                if (error.status === 409) ui.toast(t('身份已变化，请刷新核对。'), { tone: 'warning' });
+                else { reconcile = { kind: operation }; personaNotice = t('结果未确认，请刷新核对'); ui.toast(personaNotice, { tone: 'warning' }); }
+            } finally { mutation = null; if (!reconcile) await load(); renderList(); renderHeader(); showSection(); renderPersonaNotice(); syncSave(); }
         }
         async function uploadAvatar(file) {
-            if (!active() || !file || !draft?.id || mutation) return;
-            const target = $('pi-profile-avatar-status');
-            if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type) || file.size > 6 * 1024 * 1024) {
-                if (target) target.textContent = t('仅支持不超过 6 MiB 的 PNG、JPEG、WebP 或 GIF。');
-                return;
-            }
-            const id = selected, revision = snapshot.revision;
-            mutation = { kind: 'avatar' }; syncEditorSave();
-            if (target) target.textContent = t('正在处理并上传头像…');
+            if (!active() || !file || !draft?.id || busy() || reconcile) return;
+            if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type) || file.size > 6 * 1024 * 1024) { ui.toast(t('仅支持不超过 6 MiB 的 PNG、JPEG、WebP 或 GIF。'), { tone: 'warning' }); return; }
+            const id = selected, revision = snapshot.revision, project = cwd();
+            mutation = { kind: 'avatar' }; syncSave(); renderHeader();
             try {
-                const bitmap = await createImageBitmap(file);
-                let dataUrl;
+                const bitmap = await createImageBitmap(file); let dataUrl;
                 try {
                     for (const size of [1024, 768, 512, 384, 256]) {
-                        const scale = Math.min(1, size / Math.max(bitmap.width, bitmap.height));
-                        const canvas = document.createElement('canvas');
-                        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-                        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-                        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-                        dataUrl = canvas.toDataURL('image/png');
+                        const scale = Math.min(1, size / Math.max(bitmap.width, bitmap.height)), canvas = document.createElement('canvas');
+                        canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+                        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height); dataUrl = canvas.toDataURL('image/png');
                         if (dataUrl.length <= 1.4 * 1024 * 1024) break;
                     }
                 } finally { bitmap.close(); }
                 if (dataUrl.length > 1.4 * 1024 * 1024) throw new Error(t('转换后的 PNG 超过 1 MiB，请选择较小的图片。'));
-                if (id !== selected || !active()) return;
+                if (selected !== id || !active() || cwd() !== project) return;
                 const result = await apiFetch(`/api/pi/profiles/${encodeURIComponent(id)}/avatar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedRevision: revision, dataUrl }) });
-                if (id !== selected || !active()) return;
+                if (selected !== id || !active() || cwd() !== project) return;
                 snapshot = { ...snapshot, revision: result.revision, profiles: profiles().map(p => p.id === id ? result.profile : p) };
-                draft.avatar = result.profile.avatar; draftOriginal = JSON.stringify({ ...JSON.parse(draftOriginal), avatar: result.profile.avatar });
-                const emoji = $('pi-profile-form')?.elements.emoji; if (emoji) emoji.value = '';
-                const preview = $('pi-profile-form')?.querySelector('.pi-profile-avatar-large'); if (preview) preview.innerHTML = avatar(draft);
-                $('pi-profile-avatar-clear').hidden = false;
-                renderList();
-                if (target?.isConnected) target.textContent = t('头像已单独保存；其他修改请点击保存身份。');
-                window.dispatchEvent(new CustomEvent('workspace:agent-profiles-changed'));
-            } catch (error) {
-                if (target?.isConnected) target.textContent = `${t('头像未保存；其他草稿仍在')}：${error.message}`;
-            } finally { mutation = null; syncEditorSave(); }
+                draft.avatar = result.profile.avatar; original = JSON.stringify({ ...JSON.parse(original), avatar: result.profile.avatar }); call(knowledge, 'profileSaved', result.profile);
+                ui.toast(t('头像已单独保存；其他修改请点击保存身份。')); window.dispatchEvent(new CustomEvent('workspace:agent-profiles-changed'));
+            } catch (error) { ui.toast(`${t('头像未保存；其他草稿仍在')}：${error.message}`, { tone: 'warning' }); }
+            finally { mutation = null; renderList(); renderHeader(); renderPersona(); }
         }
         async function assist() {
-            if (!active() || mutation) return;
-            const input = readDraft() || { name: '', description: '', soul: '' }, id = selected;
-            mutation = { kind: 'authoring' };
-            document.querySelectorAll('#pi-profiles-content [data-profile-assist]').forEach(button => { button.disabled = true; });
+            if (!active() || busy()) return;
+            const input = clone(draft || profileInput(null)), id = selected;
+            mutation = { kind: 'authoring' }; renderHeader(); syncSave();
             try {
-                const data = await apiFetch('/api/pi/profiles/authoring-sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: cwd() || undefined, profileId: input.id || null, language: globalThis.PiI18n?.locale === 'en' ? 'en' : 'zh-CN', draft: { ...(input.name?.trim() ? { name: input.name } : {}), description: input.description, soul: input.soul, user: documents.get('user')?.content, memory: documents.get('memory')?.content } }) });
+                const data = await apiFetch('/api/pi/profiles/authoring-sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: cwd() || undefined, profileId: input.id || null, language: globalThis.PiI18n?.locale === 'en' ? 'en' : 'zh-CN', draft: { ...(input.name?.trim() ? { name: input.name } : {}), description: input.description, soul: input.soul } }) });
                 if (id !== selected || !active()) return;
                 if (typeof window.PiChatNavigation?.openSession !== 'function') throw new Error(t('会话导航不可用'));
+                // Authoring is an intentional round trip: drafts stay in memory and the proposal is imported on return.
+                mutation = null; leaveIntent = true;
                 await window.PiChatNavigation.openSession({ cwd: data.session.cwd, sessionId: data.session.id, draft: data.prompt });
-            } catch (error) { if (id === selected && active()) message(`${t('无法创建起草会话')}：${error.message}`); }
-            finally { mutation = null; document.querySelectorAll('#pi-profiles-content [data-profile-assist]').forEach(button => { button.disabled = false; }); }
+            } catch (error) { ui.toast(`${t('无法创建起草会话')}：${error.message}`, { tone: 'error' }); }
+            finally { mutation = null; leaveIntent = false; renderHeader(); syncSave(); }
         }
         async function loadProposal(session) {
             if (!session?.id || !session?.cwd) return;
@@ -506,31 +463,92 @@
             try {
                 const data = await apiFetch(`/api/pi/profiles/authoring-sessions/${encodeURIComponent(session.id)}/draft?cwd=${encodeURIComponent(session.cwd)}`);
                 if (request !== proposalEpoch || !active() || selected !== id || data.profileId !== (draft?.id || null)) return;
-                if (data.status !== 'ready') { message(t('尚无起草建议，请先在起草会话中完成讨论。')); return; }
-                proposal = data; showProposal();
-            } catch (error) { if (request === proposalEpoch) message(`${t('读取 Agent 草稿失败')}：${error.message}`); }
+                if (data.status !== 'ready') { ui.toast(t('尚无起草建议，请先在起草会话中完成讨论。'), { tone: 'info' }); return; }
+                proposal = data; await openSection('persona'); renderProposal();
+            } catch (error) { if (request === proposalEpoch) ui.toast(`${t('读取 Agent 草稿失败')}：${error.message}`, { tone: 'error' }); }
+        }
+        function renderProposal() {
+            personaRoot.querySelector('.pi-profile-proposal')?.remove(); if (!proposal) return;
+            const box = notice(t('Agent 起草了新的设定'), [button({ label: t('导入到草稿'), variant: 'quiet', onClick: () => void applyProposal() }), button({ label: t('忽略'), variant: 'ghost', onClick: () => { proposal = null; renderProposal(); } })], 'blue');
+            box.classList.add('pi-profile-proposal'); box.querySelector('.pi-id-notice-body').append(el('details', { class: 'pi-id-details' }, [el('summary', { text: t('预览') }), el('pre', { text: JSON.stringify(proposal.proposal, null, 2) })]));
+            personaRoot.prepend(box);
+        }
+        async function stageDocuments(documents) {
+            for (const [target, content] of Object.entries(documents)) stagedDocuments.set(target, content);
+            if (!draft?.id) return;
+            const id = selected;
+            mutation = { kind: 'proposal' }; syncSave();
+            try {
+                await call(knowledge, 'open', id, { view: 'memory', target: Object.hasOwn(documents, 'user') ? 'user' : 'memory', mode: 'document' });
+                if (selected !== id || !active()) return;
+                // Keep the shell's copy until the memory page accepts it (it refuses while its own save is pending).
+                if (call(knowledge, 'stageDocuments', documents) === false) { ui.toast(t('记忆正在保存，导入的文档已保留；保存完成后打开记忆页核对。'), { tone: 'warning' }); return; }
+                stagedDocuments.clear();
+                if (!['memory', 'skills'].includes(section)) call(knowledge, 'close');
+            } catch (error) { ui.toast(error.message, { tone: 'error' }); }
+            finally { mutation = null; syncSave(); }
         }
         async function applyProposal() {
-            if (!proposal || !draft || proposal.profileId !== (draft.id || null)) return;
-            const id = selected, selectedProposal = proposal;
+            if (!proposal || !draft || busy() || proposal.profileId !== (draft.id || null)) return;
+            const id = selected, selectedProposal = proposal, version = editorVersion;
             if (draft.id && proposal.profileRevision) {
-                let revision;
+                // Reserve before the await so no navigation or save can start until the import is applied.
+                mutation = { kind: 'proposal' }; syncSave();
                 try {
                     const current = await apiFetch('/api/pi/profiles');
-                    revision = current.profileRevisions?.[draft.id];
-                } catch (error) { message(error.message); return; }
-                if (id !== selected || selectedProposal !== proposal) return;
-                if (!revision || proposal.profileRevision !== revision) { message(t('档案版本已变化；请刷新核对提案。')); return; }
+                    if (id !== selected || selectedProposal !== proposal || version !== editorVersion || !active()) return;
+                    if (!current.profileRevisions?.[draft.id] || proposal.profileRevision !== current.profileRevisions[draft.id]) { ui.toast(t('档案版本已变化；请刷新核对提案。'), { tone: 'warning' }); return; }
+                } catch (error) { ui.toast(error.message, { tone: 'error' }); return; }
+                finally { mutation = null; syncSave(); }
             }
-            const input = proposal.proposal;
-            const form = $('pi-profile-form'), original = JSON.parse(draftOriginal);
-            for (const key of ['name', 'description', 'soul']) if (typeof input[key] === 'string' && form.elements[key].value === original[key]) form.elements[key].value = input[key];
-            for (const key of ['user', 'memory']) if (typeof input[key] === 'string') {
-                const doc = documents.get(key);
-                if (doc?.status === 'ready' && !doc.dirty) documents.set(key, { ...doc, content: input[key], dirty: true });
-                else if (!doc) proposedDocuments.set(key, input[key]);
+            const input = proposal.proposal, baseline = JSON.parse(original), documents = {};
+            for (const key of ['name', 'description', 'soul']) if (typeof input[key] === 'string' && draft[key] === baseline[key]) draft[key] = input[key];
+            for (const key of ['user', 'memory']) if (typeof input[key] === 'string') documents[key] = input[key];
+            proposal = null; ++editorVersion; renderPersona();
+            if (Object.keys(documents).length) await stageDocuments(documents);
+            ui.toast(t('已导入草稿，请检查后分别保存'));
+        }
+        function revealKnowledge(profileId, itemId, kind, sessionId) {
+            pendingReveal = profileId && itemId ? { profileId, itemId, kind, sessionId } : null;
+            if (sessionId) knowledgeSession = String(sessionId);
+            if (pendingReveal && active() && selected === profileId) void openSection(kind === 'skill' ? 'skills' : 'memory');
+        }
+        function revealProjectMemory(profileId, sessionId) {
+            knowledgeSession = sessionId ? String(sessionId) : '';
+            pendingReveal = profileId ? { profileId, project: true, sessionId: knowledgeSession } : null;
+            if (pendingReveal && active() && selected === profileId) void openSection('memory', { target: 'project', sessionId: knowledgeSession });
+        }
+        function setEnabled(value) {
+            const wasEnabled = enabled; enabled = value === true;
+            document.querySelectorAll('[data-manage-route="profiles"]').forEach(item => { item.hidden = !enabled; });
+            if (!enabled && wasEnabled) {
+                ++epoch; ++openEpoch; ++overviewEpoch; ++proposalEpoch; call(knowledge, 'close'); call(learning, 'close'); snapshot = null; renderHeader();
+                ui.toast(t('此服务暂不支持助手身份，未保存草稿仍保留。'), { tone: 'warning' }); syncSave();
+                $('pi-session-profile').hidden = true; $('pi-meta-profile-row').hidden = true;
             }
-            proposal = null; renderSection(); syncEditorSave(); message(t('已导入草稿；请检查并逐项保存。'));
+            if (enabled && !wasEnabled && visible) open(openOptions);
+        }
+        function open(options = {}) {
+            visible = true; openOptions = options; const request = ++openEpoch;
+            if (!enabled) return;
+            void load().then(async loaded => {
+                if (!loaded || request !== openEpoch || !active()) return;
+                const requested = profiles().find(p => p.id === options.profileId);
+                const target = requested || (!draft && !window.matchMedia('(max-width: 680px)').matches ? profiles().find(p => p.id === lastViewed) || profiles()[0] : null);
+                if (options.authoringSession && !options.profileId && (!draft || draft.id)) { if (!await editProfile(null)) return; }
+                else if (target && !await editProfile(target)) return;
+                if (requested && draft?.id === requested.id) { listView = false; renderList(); }
+                if (options.section && draft && (!options.profileId || options.profileId === selected)) await openSection(options.section);
+                if (pendingReveal?.profileId === selected) await openSection(pendingReveal.kind === 'skill' ? 'skills' : 'memory');
+                if (options.authoringSession && draft && (!options.profileId || options.profileId === selected)) await loadProposal(options.authoringSession);
+            });
+        }
+        async function close() {
+            if (!visible) return true;
+            const keepDrafts = leaveIntent && !busy(); leaveIntent = false;
+            if (!keepDrafts && !await guard()) return false;
+            visible = false; ++openEpoch; ++epoch; ++overviewEpoch; ++proposalEpoch; knowledgeSession = '';
+            call(knowledge, 'close'); call(learning, 'close'); globalThis.PiProfileDialog.cancel(); return true;
         }
         function displaySession(session, connected = false, key = '') {
             displayedSession = session; displayedConnected = connected; displayedKey = key;
@@ -564,86 +582,13 @@
             displaySession(session, connected, key);
         }
 
-        refresh.addEventListener('click', () => { void load(); });
-        list.addEventListener('input', event => { if (event.target.id === 'pi-profile-list-query') { listQuery = event.target.value; filterList(); } });
-        list.addEventListener('click', async event => {
-            if (event.target.closest('#pi-profile-add')) return editProfile(null);
-            if (event.target.closest('[data-profile-assist]')) return void assist();
-            const id = event.target.closest('[data-profile-id]')?.dataset.profileId;
-            const profile = profiles().find(p => p.id === id);
-            if (!profile) return;
-            const drafts = Boolean(event.target.closest('.pi-profile-drafts'));
-            if (!await editProfile(profile)) return;
-            if (drafts && draft?.id === id) {
-                pendingKnowledge = { profileId: id, drafts: true };
-                if (section === 'skills') openKnowledge(); else void openSection('skills');
-            }
+        globalThis.addEventListener('beforeunload', event => { if (busy() || dirty()) { event.preventDefault(); event.returnValue = ''; } });
+        personaRoot.addEventListener('keydown', event => {
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void saveProfile(); }
         });
-        editor.addEventListener('click', event => {
-            if (event.target.closest('[data-profile-cron]') && selected) window.PiWorkspaceRoute?.navigate('cron', { profileId: selected });
-            if (event.target.closest('[data-profile-create]')) void editProfile(null);
-            if (event.target.closest('#pi-profile-list-back')) { listView = true; renderList(); $('pi-profile-add')?.focus({ preventScroll: true }); }
-            if (event.target.closest('#pi-profile-editor-close')) void closeEditor();
-            if (event.target.closest('[data-profile-assist]')) void assist();
-            if (event.target.closest('#pi-profile-proposal-apply')) applyProposal();
-            if (event.target.closest('#pi-profile-avatar-clear')) {
-                draft.avatar = null; $('pi-profile-form').elements.emoji.value = '';
-                $('pi-profile-form').querySelector('.pi-profile-avatar-large').innerHTML = avatar(readDraft());
-                event.target.closest('button').hidden = true;
-                syncEditorSave();
-            }
-            const next = event.target.closest('[data-profile-section]')?.dataset.profileSection;
-            if (next) void openSection(next);
-        });
-        editor.addEventListener('submit', event => {
-            event.preventDefault();
-            const form = $('pi-profile-form');
-            if (!form.checkValidity()) { void openSection('overview'); form.reportValidity(); return; }
-            if (draft?.id && !profileDirty()) return;
-            void saveProfile();
-        });
-        editor.addEventListener('input', event => {
-            syncEditorSave();
-            if (event.target.name !== 'emoji' && event.target.name !== 'name') return;
-            const preview = $('pi-profile-form')?.querySelector('.pi-profile-avatar-large'); if (preview) preview.innerHTML = avatar(readDraft());
-            $('pi-profile-avatar-clear').hidden = !readDraft().avatar;
-        });
-        editor.addEventListener('keydown', event => {
-            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); if (['overview', 'soul'].includes(section)) $('pi-profile-form')?.requestSubmit(); }
-        });
-        editor.addEventListener('change', event => { if (event.target.id === 'pi-profile-avatar-upload') void uploadAvatar(event.target.files?.[0]); });
-        documentRoot.addEventListener('input', event => {
-            if (event.target.id !== 'pi-profile-document-text') return;
-            const state = documents.get(section); if (!state) return;
-            state.content = event.target.value; state.dirty = state.content !== state.savedContent;
-            state.feedback = ''; state.message = state.dirty ? t('有未保存的修改') : t('已读取保存内容');
-            documentRoot.querySelector('.pi-profile-document-feedback')?.remove();
-            $('pi-profile-document-status').textContent = state.message;
-            $('pi-profile-document-status').dataset.feedback = '';
-            state.reviewed = false;
-            const review = $('pi-profile-document-reviewed'); if (review) review.checked = false;
-            const limit = state.usage?.limit ?? Infinity;
-            $('pi-profile-document-usage').textContent = `${state.content.length} / ${state.usage?.limit ?? '?'} ${t('字符')}`;
-            $('pi-profile-document-usage').classList.toggle('is-over-limit', state.content.length > limit);
-            $('pi-profile-document-dirty').textContent = state.content.length > limit ? t('文档超出字符上限。') : state.dirty ? t('有未保存的修改') : '';
-            $('pi-profile-document-save').disabled = !enabled || Boolean(mutation) || !state.dirty || state.status !== 'ready' || state.content.length > limit || state.serverContent !== undefined && !state.reviewed;
-        });
-        documentRoot.addEventListener('change', event => {
-            if (event.target.id !== 'pi-profile-document-reviewed') return;
-            const state = documents.get(section); if (!state) return;
-            state.reviewed = event.target.checked;
-            $('pi-profile-document-save').disabled = !enabled || Boolean(mutation) || !state.reviewed || !state.dirty || state.status !== 'ready' || state.content.length > state.usage?.limit;
-        });
-        documentRoot.addEventListener('click', event => {
-            if (event.target.closest('[data-profile-overview]')) void openSection('overview');
-            if (event.target.closest('#pi-profile-document-save')) void saveDocument();
-            if (event.target.closest('#pi-profile-document-refresh')) void refreshDocument();
-            if (event.target.closest('#pi-profile-document-sync')) void syncDocumentIndex();
-        });
-        documentRoot.addEventListener('keydown', event => {
-            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); $('pi-profile-document-save')?.click(); }
-        });
-        return { setEnabled, open, close, displaySession, setLoadedProfile, revealKnowledge, revealProjectMemory, projectChanged() { epoch++; if (active()) void load(); } };
+        renderList(); renderHeader(); showSection();
+        return { setEnabled, open, close, displaySession, setLoadedProfile, revealKnowledge, revealProjectMemory,
+            projectChanged() { ++epoch; ++openEpoch; ++overviewEpoch; if (active()) open({ profileId: selected, section }); } };
     }
     globalThis.PiAgentProfiles = Object.freeze({ create });
 })();

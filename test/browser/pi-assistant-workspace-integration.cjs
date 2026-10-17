@@ -116,19 +116,20 @@ async function main() {
         app.use(express.static(path.join(sourceRoot, 'public')));
         server = http.createServer(app); server.listen(0, '127.0.0.1'); await once(server, 'listening');
         wss = gateway.attachWebSocket(server);
-        browser = await chromium.launch({ executablePath: '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
+        browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
 
         const desktop = await open(1440, 'en', 'dark');
         const { page } = desktop;
         await page.locator('#workspace-profiles-toggle').click();
-        await page.locator('#pi-profiles-list .pi-profile-note').waitFor();
+        await page.locator('#pi-profiles-list .pi-profile-list-empty').waitFor();
         assert.equal((await api('GET', '/profiles')).profiles.length, 0);
         await page.locator('#pi-profile-add').click();
         await page.locator('#pi-profile-form [name=name]').fill('Fixture Guide');
         await page.locator('#pi-profile-form [name=description]').fill('Manual fixture profile');
+        await page.locator('.pi-profile-advanced summary').click();
         await page.locator('#pi-profile-form [name=userCharLimit]').fill('512');
         await page.locator('#pi-profile-form [name=memoryEnabled]').check();
-        await page.locator('#pi-profile-form button[type=submit]').click();
+        await page.locator('[data-page=persona] .pi-id-savebar .pi-id-btn-primary').click();
         // Read the store only after the UI shows the saved profile; the POST is still in flight right after the click.
         await page.waitForFunction(() => document.querySelectorAll('[data-profile-id]').length === 1);
         const firstProfile = await api('GET', '/profiles');
@@ -138,12 +139,12 @@ async function main() {
         await page.locator('#pi-profile-form [name=description]').fill('Edited with unavailable crypto.subtle');
         const [saveResponse] = await Promise.all([
             page.waitForResponse(response => response.url().endsWith('/api/pi/profiles') && response.request().method() === 'PUT'),
-            page.locator('#pi-profile-form button[type=submit]').click()
+            page.locator('[data-page=persona] .pi-id-savebar .pi-id-btn-primary').click()
         ]);
         assert.equal(saveResponse.ok(), true);
         await page.waitForFunction(() => document.querySelector('#pi-profile-form [name=description]')?.value === 'Edited with unavailable crypto.subtle'
             && !document.querySelector('#pi-profile-form [name=description]')?.disabled
-            && document.querySelector('#pi-profile-form button[type=submit]')?.disabled);
+            && document.querySelector('[data-page=persona] .pi-id-savebar')?.dataset.visible === 'false');
         const edited = await api('GET', '/profiles');
         assert.equal(edited.profiles[0].description, 'Edited with unavailable crypto.subtle');
         assert.notEqual(edited.profileRevisions[profileId], firstProfile.profileRevisions[profileId]);
@@ -156,8 +157,7 @@ async function main() {
         await page.locator('#pi-profile-avatar-upload').setInputFiles({ name: 'avatar.png', mimeType: 'image/png', buffer: png });
         try { await page.waitForFunction(() => Boolean(document.querySelector('.pi-profile-row img')), null, { timeout: 10000 }); }
         catch (error) {
-            console.error(JSON.stringify({ stage: 'avatar', profileStatus: await page.locator('#pi-profiles-status').innerText(),
-                editorStatus: await page.locator('#pi-profile-editor-status').innerText(), errors: desktop.errors }));
+            console.error(JSON.stringify({ stage: 'avatar', profileStatus: await page.locator('#pi-profiles-content').innerText(), errors: desktop.errors }));
             await screenshot(page, 'avatar-failure-1440-en-dark'); throw error;
         }
         const avatar = (await api('GET', '/profiles')).profiles[0].avatar;
@@ -166,10 +166,12 @@ async function main() {
         assert.equal(avatarResponse.status, 200);
         assert.equal(avatarResponse.headers.get('content-type'), 'image/png');
 
-        await page.locator('[data-profile-section=user]').click();
-        await page.locator('#pi-profile-document-text:not([disabled])').waitFor();
-        assert.match(await page.locator('#pi-profile-document-usage').innerText(), /512/);
-        await page.locator('#pi-profile-document-text').fill('Synthetic verified user fact');
+        await page.locator('[data-profile-section=memory]').click();
+        await page.locator('.pi-knowledge-target-row [data-value=user]').click();
+        await page.locator('.pi-id-page-head [data-value=document]').click();
+        await page.locator('#pi-profiles-memory .pi-id-editor-text:not([disabled])').waitFor();
+        assert.match(await page.locator('#pi-profiles-memory .pi-id-editor-count').innerText(), /512/);
+        await page.locator('#pi-profiles-memory .pi-id-editor-text').fill('Synthetic verified user fact');
         let injected = false;
         const unlink = fs.unlinkSync;
         fs.unlinkSync = function (file, ...args) {
@@ -182,26 +184,16 @@ async function main() {
         try {
             [partial] = await Promise.all([
                 page.waitForResponse(res => res.url().endsWith(`/profiles/${profileId}/documents`) && res.request().method() === 'PUT'),
-                page.locator('#pi-profile-document-save').click()
+                page.locator('#pi-profiles-memory .pi-id-savebar .pi-id-btn-primary').click()
             ]);
         } finally { fs.unlinkSync = unlink; }
         assert.equal(injected, true);
         assert.equal(partial.status(), 503);
         const partialBody = await partial.json();
         assert.deepEqual([partialBody.documentSaved, partialBody.indexSynced, partialBody.indexStatus], [true, false, 'pending']);
-        await page.locator('#pi-profile-document-sync:visible').waitFor();
-        await page.locator('#pi-profile-document-sync').click();
-        await page.waitForFunction(() => document.querySelector('#pi-profile-document-sync')?.hidden === true,
-            null, { timeout: 2500 }).catch(() => {});
-        if (!await page.locator('#pi-profile-document-sync').evaluate(button => button.hidden)) {
-            issues.push('USER index sync button did not dispatch PUT: document button is in #pi-profile-documents, but pi-agent-profiles.js listens for it on sibling #pi-profiles-editor');
-            await screenshot(page, 'document-sync-failure-1440-en-dark');
-            const pending = await api('GET', `/profiles/${profileId}/documents?target=user`);
-            assert.equal(pending.indexStatus, 'pending');
-            // Repair this synthetic fixture through the real endpoint to reach later browser checks.
-            await api('PUT', `/profiles/${profileId}/documents`, { target: 'user', content: pending.content,
-                expectedRevision: pending.revision, expectedProfileRevision: pending.profileRevision });
-        }
+        await page.locator('.pi-knowledge-document-sync:visible').waitFor();
+        await page.locator('.pi-knowledge-document-sync').click();
+        await page.locator('.pi-knowledge-document-sync').waitFor({ state: 'hidden' });
         const savedUser = await api('GET', `/profiles/${profileId}/documents?target=user`);
         assert.equal(savedUser.content, 'Synthetic verified user fact');
         assert.equal(savedUser.indexSynced, true);
@@ -301,9 +293,9 @@ async function main() {
 
         await page.locator('#workspace-profiles-toggle').click();
         await page.locator(`[data-profile-id="${profileId}"]`).click();
-        await page.locator('[data-profile-section=overview]').click();
+        await page.locator('[data-profile-section=persona]').click();
         await page.locator('#pi-profile-form [name=description]').fill('User-owned unsaved description');
-        await page.locator('#pi-profile-form [data-profile-assist]').click();
+        await page.locator('[data-profile-assist]').click();
         await page.waitForFunction(() => location.hash.startsWith('#/chat') && location.hash.includes('sessionId=')
             && document.querySelector('#pi-profile-authoring-return')?.hidden === false && document.querySelector('#pi-input')?.value.length > 0);
         const helperId = new URLSearchParams(page.url().split('?')[1]).get('sessionId');
@@ -339,8 +331,8 @@ async function main() {
                 detail: { tab: 'profiles', profileId, authoringSession: { cwd, id } }
             })), { cwd, id: helperId, profileId });
         }
-        await page.locator('#pi-profile-proposal-apply').waitFor();
-        await page.locator('#pi-profile-proposal-apply').click();
+        await page.locator('.pi-profile-proposal .pi-id-btn-quiet').waitFor();
+        await page.locator('.pi-profile-proposal .pi-id-btn-quiet').click();
         await page.waitForFunction(() => document.querySelector('#pi-profile-form [name=name]')?.value === 'Fixture Reviewed');
         assert.equal(await page.locator('#pi-profile-form [name=name]').inputValue(), 'Fixture Reviewed');
         assert.equal(await page.locator('#pi-profile-form [name=description]').inputValue(), 'User-owned unsaved description');
