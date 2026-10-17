@@ -216,6 +216,12 @@ async function run(browser, base, width, locale, theme) {
         await main.locator('.pi-knowledge-add').click();
         await main.locator('[data-focus=entry-name]').fill('pending-memory-skill');
         await main.locator('[data-focus=entry-description]').fill('An unrelated unsaved skill.');
+        if (outcome === 'saved') {
+            // Pi selects skills by description; the editor allows Pi's full 1024-character limit and says so.
+            assert.equal(await main.locator('[data-focus=entry-description]').evaluate(el => el.maxLength), 1024);
+            assert.ok(await main.locator('.pi-knowledge-editor .pi-id-help', { hasText: T('Pi 只按描述决定何时使用技能：写清用途，以及会触发它的说法、报错或场景') }).isVisible());
+            await shot('skill-editor-description');
+        }
         await main.locator('.pi-knowledge-editor textarea').fill(skillDraft);
         await page.evaluate(() => manager.open('profile-one', { view: 'memory', target: 'memory', mode: 'entries' }));
         await main.locator('.pi-knowledge-add').click();

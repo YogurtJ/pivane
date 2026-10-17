@@ -64,7 +64,7 @@ test('reviewed host, primary lock and isolated memory recipe bind the same offic
         assert.equal(memoryLock.packages['node_modules/' + name].version, REVIEWED_PI_VERSION, name);
         if (recipe.dependencies[name]) assert.equal(recipe.dependencies[name], REVIEWED_PI_VERSION);
     }
-    assert.equal(recipe.dependencies['pi-hermes-memory'], '0.9.9');
+    assert.equal(recipe.dependencies['pi-hermes-memory'], '0.9.10');
 });
 
 test('compatibility controls follow the native API schema and preserve unsupported saved fields on reset', async () => {

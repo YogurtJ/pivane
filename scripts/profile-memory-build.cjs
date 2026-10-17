@@ -7,10 +7,10 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 
-const SHA256 = '6a1b71dfa34f40bba6372a4f71dec54cce76be4ae55923d3b83ebfc1c5920c20';
+const SHA256 = '821dc844ddd6f87a0747c195cf02d6a6db03f65d110ecd8fedb76f4ff8af20cb';
 const [tarball, prefix] = process.argv.slice(2);
 if (!tarball || !prefix || !path.isAbsolute(tarball) || !path.isAbsolute(prefix)) {
-    throw new Error('Usage: node scripts/profile-memory-build.cjs /absolute/pi-hermes-memory-0.9.9.tgz /absolute/isolated-prefix');
+    throw new Error('Usage: node scripts/profile-memory-build.cjs /absolute/pi-hermes-memory-0.9.10.tgz /absolute/isolated-prefix');
 }
 if (crypto.createHash('sha256').update(fs.readFileSync(tarball)).digest('hex') !== SHA256) throw new Error('Upstream tarball SHA256 mismatch');
 if (fs.existsSync(prefix) && fs.readdirSync(prefix).length) throw new Error('Build prefix must be empty; retain existing data and choose a fresh prefix');
@@ -18,7 +18,7 @@ fs.mkdirSync(prefix, { recursive: true, mode: 0o700 });
 execFileSync('tar', ['-xzf', tarball, '-C', prefix]);
 const source = path.join(prefix, 'package');
 const metadata = JSON.parse(fs.readFileSync(path.join(source, 'package.json'), 'utf8'));
-if (metadata.name !== 'pi-hermes-memory' || metadata.version !== '0.9.9' || metadata.license !== 'MIT') throw new Error('Unexpected package metadata');
+if (metadata.name !== 'pi-hermes-memory' || metadata.version !== '0.9.10' || metadata.license !== 'MIT') throw new Error('Unexpected package metadata');
 const esbuild = require(process.env.PIVANE_PROFILE_MEMORY_ESBUILD || 'esbuild');
 const imports = [
     ['DatabaseManager', 'store/db'], ['MemoryStore', 'store/memory-store'], ['SkillStore', 'store/skill-store'],

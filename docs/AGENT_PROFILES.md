@@ -72,7 +72,7 @@
 
 ## 记忆组件安装与实例配置
 
-Pivane 随包提供 pi-hermes-memory 0.9.9 的选定组件。`node scripts/install.cjs` 安装依赖并构建当前应用目录的记忆 bundle，正常安装不再需要手动填写 `pivane-profiles/runtime.json`。平台 SQLite 依赖和故障补全步骤见[内置能力包](BUNDLED_CAPABILITIES.md)。
+Pivane 随包提供 pi-hermes-memory 0.9.10 的选定组件。`node scripts/install.cjs` 安装依赖并构建当前应用目录的记忆 bundle，正常安装不再需要手动填写 `pivane-profiles/runtime.json`。平台 SQLite 依赖和故障补全步骤见[内置能力包](BUNDLED_CAPABILITIES.md)。
 
 已有 `runtime.json.bundlePath` 保留；可用的内置组件优先，缺少可用内置组件时才按旧校验规则尝试该绝对路径。记忆数据目录不变。旧 `reviewModel` 配置只读兼容，不再供旧的三轮复盘调用。后台学习需要在“设置 → 辅助模型”按纠错、复盘、提取分别指定可用模型，并在档案的学习设置显式开启；保存两类设置本身均不发送模型请求。
 

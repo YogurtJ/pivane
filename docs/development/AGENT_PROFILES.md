@@ -18,7 +18,7 @@
 
 ## 文档、技能与辅助起草
 
-`profile-memory/extension.ts` 在每次索引、检索、注入、技能发现及写入时校验有效档案与原生会话。环境 JSON 本身不是授权令牌。适配器使用已核对的独立 bundle，按档案和真实 cwd 保存资源；不会全局注册上游默认扩展或扫描其他档案。`background-index.js` 持有每个启用记忆 worker 的历史索引工作线程；`index-worker.js` 串行执行原有来源核实、事务替换和检索，不写原生会话。启动与 settled 只调度可合并的派生工作，搜索等待在途刷新并继续前后核实，退出等待线程关闭；详情见[索引边界](../PROFILE_MEMORY.md#source-index-and-bounds)。
+`profile-memory/extension.ts` 在每次索引、检索、注入、技能发现及写入时校验有效档案与原生会话。环境 JSON 本身不是授权令牌。适配器使用已核对的独立 bundle，按档案和真实 cwd 保存资源；不会全局注册上游默认扩展或扫描其他档案。`background-index.js` 持有每个启用记忆 worker 的历史索引工作线程；`index-worker.js` 串行执行原有来源核实、事务替换和检索，不写原生会话。启动与 settled 只调度可合并的派生工作，搜索等待在途刷新并继续前后核实，退出等待线程关闭；详情见[索引边界](../PROFILE_MEMORY.md#source-index-and-bounds)。`schema-prep.js` 在索引线程、文档索引打开前及 worker 首次执行记忆工具前，以 `BEGIN IMMEDIATE` 补齐上游追加的 `memories` 列，避免并发首次打开时上游未加事务的列快照重复 ALTER；锁等待超时等失败会让该次调用失败关闭，不回退到上游无同步迁移，扩展注册阶段不执行；升级上游时须核对其列定义与上游一致（[0.9.10 接入](../PROFILE_MEMORY.md#upstream-0910-adaptation)）。
 
 `pi-profile-documents.js` 提供 USER/MEMORY 文档及双修订编辑，使用与 worker 写入相同的变更锁和代次。`profile-memory/document-index.js` 只同步旧／新 Markdown 对应的准确 SQLite 身份，保留不相关的扩展记忆。重复候选或冲突身份拒绝保存。待同步标记保护文件发布与索引间的中断；未发布计划只有在旧内容被验证后才可清除，已发布计划按当前修订修复，未知内容继续拒绝。文件保存、索引状态与失败结果分开返回，不能用 HTTP 超时推断回滚或自动重放修改。
 

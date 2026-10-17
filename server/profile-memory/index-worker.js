@@ -3,9 +3,11 @@
 const { parentPort, workerData } = require('node:worker_threads');
 const { pathToFileURL } = require('node:url');
 const { createIndex } = require('./index');
+const { prepareProfileDatabase } = require('./schema-prep');
 
 const ready = (async () => {
     const upstream = await import(pathToFileURL(workerData.bundle).href);
+    prepareProfileDatabase(workerData.context.profileRoot, workerData.bundle);
     const db = new upstream.DatabaseManager(workerData.context.profileRoot);
     const index = createIndex(db, upstream, workerData.context);
     let search;

@@ -10,6 +10,7 @@ import backgroundIndexer from './background-index.js';
 import mutation from './mutation-lock.js';
 import documentIndex from './document-index.js';
 import toolMutations from './tool-mutations.js';
+import schemaPrep from './schema-prep.js';
 import { profileMemoryCapability, safeFile } from './management.js';
 
 function assertPrivateSkillTree(...roots: string[]) {
@@ -41,6 +42,9 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
     if (fs.realpathSync.native(projectRoot) !== projectRoot) throw new Error('Profile project root is not canonical');
 
     let started = false;
+    // The main-thread DatabaseManager opens lazily inside memory tools; prepare its schema
+    // just before, so a busy database fails that call instead of extension registration.
+    let databasePrepared = false;
     let stopped = false;
     let sourceIndex: ReturnType<typeof backgroundIndexer.createBackgroundIndex> | null = null;
     let activeIdentity: any = null;
@@ -97,6 +101,10 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
                             'A memory_add without comparisonToken returns related old entries and saves nothing. Read them before choosing update or new; pass the returned token only with unchanged create arguments. Multiple overlapping records require a consolidation proposal, not separate new copies. Do not ask the user to approve this internal check.' ] : tool.promptGuidelines,
                     execute: async (...args: any[]) => {
                         if (!allowed(args[args.length - 1])) throw new Error('Profile memory session binding is unavailable');
+                        if (!databasePrepared && ['memory_search', 'memory_add', 'memory_replace', 'memory_remove'].includes(tool.name)) {
+                            schemaPrep.prepareProfileDatabase(root, bundle);
+                            databasePrepared = true;
+                        }
                         if ((tool.name === 'memory_search' || ['memory_add', 'memory_replace', 'memory_remove'].includes(tool.name))
                             && await indexUnavailable(args[1]?.target)) throw new Error('Profile document search index needs repair');
                         if (tool.name === 'session_search') {
@@ -154,7 +162,10 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
     const db = context.memory.enabled ? new upstream.DatabaseManager(root) : null;
     if (db) {
         upstream.registerMemoryTool(guarded, store, () => projectStore, db, () => context.cwd);
-        upstream.registerMemorySearchTool(guarded, db);
+        // Upstream 0.9.10 records hit_count/last_hit_at on every memory_search by default.
+        // Pivane has no consumer for those counters (no upstream consolidation or insights),
+        // and keeping search read-only avoids synchronous SQLite write locks on the RPC loop.
+        upstream.registerMemorySearchTool(guarded, db, { usageTrackingEnabled: false });
         upstream.registerSessionSearchTool(guarded, db, { variant: 'legacy' });
         pi.on('before_agent_start', async (event: any, ctx: any) => {
             if (!allowed(ctx)) return;

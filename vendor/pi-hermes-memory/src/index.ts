@@ -193,12 +193,19 @@ export default function (pi: ExtensionAPI) {
         shouldMigrateExtensionRoot ? path.join(legacyGlobalDir, STANDING_FILE) : undefined)
     : null;
 
-  const initialization = createMemoryInitializer(async () => {
+  const initialization = createMemoryInitializer(async (ctx) => {
     const timingPrefix = lazy ? "memory-init" : "session-start";
     if (lazy) migrateLegacyProjectMemoryDirs(agentRoot, config.projectsMemoryDir);
     if (!persistenceInitialized) {
       try {
         await measureLifecycle(`${timingPrefix}.persistence-sync`, async () => {
+          // Startup reconciles the global files plus the current project only:
+          // a full sweep over every projects-memory folder serialized
+          // concurrent startups on the shared mutation-lock database.
+          // /memory-sync-markdown remains the repair path for other scopes.
+          const startupProject = ctx?.cwd
+            ? detectProject(config.projectsMemoryDir, ctx.cwd).name
+            : null;
           await migrateThenSyncMarkdownMemories(
             dbManager,
             shouldMigrateExtensionRoot ? legacyGlobalDir : null,
@@ -206,6 +213,7 @@ export default function (pi: ExtensionAPI) {
             config.projectsMemoryDir,
             agentRoot,
             {
+              onlyProjects: startupProject ? [startupProject] : [],
               onMigrationSucceeded: () => {
                 databaseMigrationPending = false;
               },
@@ -295,12 +303,31 @@ export default function (pi: ExtensionAPI) {
   // ── 2. Inject memory policy by default; legacy mode keeps full frozen memory blocks ──
   pi.on("before_agent_start", async (event, _ctx) => {
     const promptContext = await buildPromptContext(config, store, projectStoreRef(), projectNameRef(), standingStore);
+    if (!promptContext) return;
 
-    if (promptContext) {
-      return {
-        systemPrompt: event.systemPrompt + "\n\n" + promptContext,
-      };
+    // pi 0.86+ hands handlers a normalized clone of these options and re-renders
+    // the prompt from it, so appending through `appendSystemPrompt` keeps the
+    // prompt a set of named sections; returning `systemPrompt` instead forces the
+    // rendered text and flattens the sections for every later handler and for
+    // section-aware providers (#251).
+    //
+    // Branch on that mechanism, not on the field: `systemPromptOptions` is on the
+    // event at the 0.80.6 floor too, but 0.80.x-0.85.x pass the raw long-lived
+    // base options and only apply a returned `systemPrompt`, so an append there
+    // reaches no prompt and does not stay private either — it accumulates in the
+    // object `ctx.getSystemPromptOptions()` hands to other extensions. Every
+    // 0.86+ runner normalizes `sections` onto the clone it passes.
+    const promptOptions = event.systemPromptOptions;
+    if (promptOptions && "sections" in promptOptions) {
+      promptOptions.appendSystemPrompt = [promptOptions.appendSystemPrompt, promptContext]
+        .filter(Boolean)
+        .join("\n\n");
+      return;
     }
+
+    return {
+      systemPrompt: event.systemPrompt + "\n\n" + promptContext,
+    };
   });
 
   // ── 3. Register action-specific memory write tools with SQLite sync ──
@@ -336,11 +363,14 @@ export default function (pi: ExtensionAPI) {
       config.consolidationTimeoutMs,
       toolTarget,
       config,
+      null,
+      dbManager,
+      toolTarget === "project" ? projectNameRef() : null,
     );
     if (result.deferred) {
       console.info(`⏳ Auto-consolidation for '${toolTarget}' deferred: ${result.error ?? "another session holds the consolidation lock"}`);
-    } else if (shouldWarnAutoConsolidationFailure(config.autoConsolidationWarnOnFailure, result.consolidated)) {
-      console.warn(`⚠️ Auto-consolidation failed for '${toolTarget}': ${result.error ?? "no reason reported"}`);
+    } else if (shouldWarnAutoConsolidationFailure(config.autoConsolidationWarnOnFailure, result.consolidated, result.partial === true)) {
+      console.warn(`⚠️ Auto-consolidation ${result.partial ? "partially " : ""}failed for '${toolTarget}': ${result.error ?? "no reason reported"}`);
     }
     return result;
   };
@@ -359,7 +389,7 @@ export default function (pi: ExtensionAPI) {
   setupCorrectionDetector(pi, store, projectStoreRef, config, dbManager, projectNameRef, { ensureMemoryReady });
 
   // ── 9. Register commands ──
-  registerInsightsCommand(memoryPi, store, projectStoreRef, projectNameRef);
+  registerInsightsCommand(memoryPi, store, projectStoreRef, projectNameRef, dbManager);
   registerSkillsCommand(pi, skillStore);
   registerInterviewCommand(memoryPi, store);
   registerSwitchProjectCommand(pi, config);
@@ -380,7 +410,7 @@ export default function (pi: ExtensionAPI) {
   // ── 11. SQLite session search + extended memory ──
   registerSessionSearchTool(config.sessionSearch?.variant === "anchors" ? pi : memoryPi,
     dbManager, config.sessionSearch ?? { variant: "legacy" });
-  registerMemorySearchTool(memoryPi, dbManager);
+  registerMemorySearchTool(memoryPi, dbManager, { usageTrackingEnabled: config.usageHitTrackingEnabled });
   registerIndexSessionsCommand(memoryPi, config);
 
   // ── 12. Auto-index session on shutdown ──

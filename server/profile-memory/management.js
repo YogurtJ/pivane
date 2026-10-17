@@ -9,7 +9,7 @@ const { descriptorPathSync, assertDescriptorBackend } = require('../pi-file-desc
 const { reviewModelConfig } = require('./auto-learn');
 const MAX_FILE = 2 * 1024 * 1024;
 const MAX_SKILL_SCAN = 5000;
-const BUNDLE_SHA256 = '0b2d8dae469077d615f46cb7d96d408663dc66980748718441d137293f9f9faa';
+const BUNDLE_SHA256 = '339d157c0490d50884efe70e3e0798eb1f3a28acefcd12e63f0104fd3017a2ad';
 const hash = data => createHash('sha256').update(data).digest('hex');
 const stamp = s => [s.dev, s.ino, s.mode, s.size, s.mtimeNs, s.ctimeNs].map(String).join(':');
 function safeFile(file, maxBytes = MAX_FILE) {

@@ -39,6 +39,8 @@ const CONSOLIDATE_MAX = 20;
 const MAX_INJECTION_BYTES = 64 * 1024;
 const MAX_LEDGER = 8 * 1024 * 1024;
 const MAX_CONTENT = 65536;
+// Pi and the upstream skill tool accept descriptions up to 1024 characters (Agent Skills spec).
+const MAX_SKILL_DESCRIPTION = 1024;
 // Version 2 journal bounds: the active receipt window is small and old receipts
 // are compacted to digests, while request and tombstone identities stay valid
 // far beyond the window so replay and anti-revival guarantees outlive it.
@@ -138,7 +140,7 @@ function skillPath(root, item) {
     return file;
 }
 function skillContent(name, description, content) {
-    if (typeof description !== 'string' || description.length > 1000 || /[\r\n\0]/.test(description)) throw fail('Invalid skill description');
+    if (typeof description !== 'string' || description.length > MAX_SKILL_DESCRIPTION || /[\r\n\0]/.test(description)) throw fail('Invalid skill description');
     if (typeof content !== 'string' || !content.trim() || content.length > MAX_CONTENT || /\0|\r/.test(content)) throw fail('Invalid skill content');
     const header = `---\nname: ${name}\ndescription: ${description}\n---\n`;
     const result = content.startsWith('---\n') ? content : `${header}${content.trim()}\n`;
@@ -625,7 +627,7 @@ class ProfileKnowledgeService {
         const ctx = await this.context(profileId);
         const base = { version: 1, profileId, status: 'missing', revision: null, items: [], receipts: [], hasMore: false,
             capabilities: { memory: false, skill: false, projectWrites: false, projectWritesBySession: false, projectSkillDeletesBySession: false, nativeProjectWrites: false,
-                installedSkillsWrite: false, operations: [], skillNameMaxLength: 64, maxContentLength: MAX_CONTENT } };
+                installedSkillsWrite: false, operations: [], skillNameMaxLength: 64, skillDescriptionMaxLength: MAX_SKILL_DESCRIPTION, maxContentLength: MAX_CONTENT } };
         if (!ctx.profile) return base;
         if (!ctx.profile.enabled) return { ...base, status: 'disabled' };
         const capabilities = { memory: Boolean(ctx.installed && ctx.profile.memory?.enabled),
@@ -635,7 +637,7 @@ class ProfileKnowledgeService {
             projectSkillDeletesBySession: Boolean(ctx.profile.skills?.learnedEnabled),
             nativeProjectWrites: Boolean(ctx.installed && ctx.profile.memory?.enabled || ctx.profile.skills?.learnedEnabled), installedSkillsWrite: false,
             operations: ctx.installed && ctx.profile.memory?.enabled || ctx.profile.skills?.learnedEnabled
-                ? [...OPERATIONS] : [], skillNameMaxLength: 64, maxContentLength: MAX_CONTENT };
+                ? [...OPERATIONS] : [], skillNameMaxLength: 64, skillDescriptionMaxLength: MAX_SKILL_DESCRIPTION, maxContentLength: MAX_CONTENT };
         if (!fs.existsSync(ctx.root)) return { ...base, status: 'ready', revision: hash(JSON.stringify([0, 0, []])), capabilities, counts: knowledgeCounts([]),
             ...(capabilities.memory ? { usage: memoryUsage(ctx.root, ctx.profile.memory) } : {}) };
         if (!ctx.installed && fs.existsSync(path.join(ctx.root, 'sessions.db')))

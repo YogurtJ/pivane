@@ -83,6 +83,8 @@ test('isolated pinned Pi upstream components enforce profile index, recall, skil
         'the adapter must remove the upstream automatic skill-write trigger');
     assert.ok(skillGuidelines.includes("Use 'view' before patching or updating when you need to inspect an existing skill."),
         'ordinary upstream skill inspection guidance remains available');
+    assert.ok(skillGuidelines.some(guideline => guideline.includes("Pi indexes skills by that field alone")),
+        'upstream description discovery guidance reaches the active agent');
     const add = alpha.pi.tools.get('memory_add');
     const { validateToolArguments } = await import('@earendil-works/pi-ai');
     const validated = validateToolArguments(add, { type: 'toolCall', id: 'schema-probe', name: 'memory_add',
@@ -218,6 +220,10 @@ test('isolated pinned Pi upstream components enforce profile index, recall, skil
     const { createRequire } = require('node:module');
     const Database = createRequire(bundle)('better-sqlite3');
     const staleDb = new Database(path.join(same.root, 'sessions.db'));
+    const memoryColumns = staleDb.prepare('PRAGMA table_info(memories)').all().map(column => column.name);
+    assert.ok(memoryColumns.includes('hit_count') && memoryColumns.includes('last_hit_at'), 'upstream recall columns are migrated additively');
+    assert.equal(staleDb.prepare('SELECT COUNT(*) AS total FROM memories WHERE hit_count != 0 OR last_hit_at IS NOT NULL').get().total, 0,
+        'profile memory_search stays read-only and records no upstream usage hits');
     staleDb.prepare('INSERT INTO sessions (id, project, cwd, started_at) VALUES (?, ?, ?, ?)')
         .run('unproven', cwdA, cwdA, '2026-01-01');
     staleDb.prepare('INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (?, ?, ?, ?, ?)')

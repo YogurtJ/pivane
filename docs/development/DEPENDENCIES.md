@@ -43,7 +43,7 @@ Codemode 输出直接使用官方 executor／sandbox，已移除旧的输出合�
 
 公开 prompt/sendCustomMessage 适配在原生调用前保留带 UUID、会话身份与导航 nonce 的启动所有权，通过原生串行 stdout 发送私有开始／完成帧。真实 Promise 完成或进程退出释放；原生 settled、读取快照及超时不能提前释放。命名 prompt section 保留普通用户／custom wake 的组合顺序和更早的 forceSystemPrompt。Pi 升级须重新验证这些公开方法的完成语义及内部 transport／theme seam。
 
-pi-subagents 使用官方 child factory 与原生包解析；已移除旧 host alias 兼容层，Pivane 精确 MCP selector／授权仍保留。官方 calendar 模块需要根锁定的 Temporal polyfill；不安装 vendor 的开发依赖。记忆仍绑定 0.9.9。
+pi-subagents 使用官方 child factory 与原生包解析；已移除旧 host alias 兼容层，Pivane 精确 MCP selector／授权仍保留。官方 calendar 模块需要根锁定的 Temporal polyfill；不安装 vendor 的开发依赖。记忆绑定 0.9.10：上游把 pi-tui 改为 peer，根依赖与独立 recipe 均直接提供宿主 TUI；数据库追加列、搜索只读与技能描述上限见[记忆适配](../PROFILE_MEMORY.md#upstream-0910-adaptation)。
 
 ## 验证与交付
 

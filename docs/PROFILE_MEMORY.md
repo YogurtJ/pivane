@@ -1,7 +1,7 @@
 # Profile memory adapter
 
-The adapter uses selected components from **pi-hermes-memory 0.9.9** (MIT) with
-the application-pinned Pi 1.0.2. It never loads upstream's default factory: that factory scans the
+The adapter uses selected components from **pi-hermes-memory 0.9.10** (MIT) with
+the application-pinned Pi. It never loads upstream's default factory: that factory scans the
 shared Pi sessions root, migrates global state, and may spawn an unscoped Pi
 child. Native JSONL is the conversation authority. Profile-local `sessions.db`
 is a disposable derived search index, not a parallel chat transcript tree.
@@ -365,7 +365,7 @@ write methods, so they carry the equivalent check themselves.
 which covers manual web edits, background learning and Agent tool writes routed
 through the knowledge service, and on the entries a full-document editor save
 adds (existing entries never block an edit). It ports upstream 0.9.9
-`content-scanner.ts` (MIT): invisible Unicode, English injection/exfiltration
+`content-scanner.ts` (MIT; unchanged in 0.9.10): invisible Unicode, English injection/exfiltration
 phrases and credential shapes, plus Chinese injection phrases and newer key
 prefixes. Unlike upstream, a bare variable name such as `OPENAI_API_KEY` is
 allowed. A refusal is `400 {code:'content-blocked', details:{rule, kind}}` with
@@ -530,12 +530,12 @@ resolvable. Release and local activation states are recorded separately from thi
 
 ## Bundled installation
 
-The current source ships the upstream 0.9.9 npm contents in `vendor/pi-hermes-memory/`.
+The current source ships the upstream 0.9.10 npm contents in `vendor/pi-hermes-memory/`.
 `node scripts/install.cjs` prepares locked workspace dependencies and runs
 `scripts/install-bundled-capabilities.cjs`, which verifies vendor hashes, builds
 selected components and checks native SQLite. The resulting
-`server/profile-memory/upstream-bundle.mjs` retains the previously reviewed SHA256
-`0b2d8dae469077d615f46cb7d96d408663dc66980748718441d137293f9f9faa`.
+`server/profile-memory/upstream-bundle.mjs` must match the reviewed SHA256
+`339d157c0490d50884efe70e3e0798eb1f3a28acefcd12e63f0104fd3017a2ad`.
 The configuration service selects this release-local bundle before the legacy
 `pivane-profiles/runtime.json` absolute path. It does not rewrite the old file or
 move profile data. `npm test` supplies the built-in bundle and Pi's Jiti loader,
@@ -543,18 +543,75 @@ so memory integration gates are no longer silently skipped by the normal suite.
 See [bundled capabilities](BUNDLED_CAPABILITIES.md) for installation, platform
 requirements, child-session loading and update procedures.
 
+<a id="upstream-0910-adaptation"></a>
+
+### Upstream 0.9.10 adaptation
+
+The selected exports are unchanged. Features that live only in upstream's
+default factory do not run here: chunked consolidation, consolidation usage
+signals, the `/memory-insights` usage section, scoped startup Markdown sync,
+`appendSystemPrompt` policy injection and the direct-review transport changes.
+Pivane already injects its block through the native `pivane_profile_memory`
+prompt section, and background learning keeps its own auxiliary-model path.
+
+The first 0.9.10 `DatabaseManager` open of a profile `sessions.db` (worker,
+index worker or document index) adds `memories.hit_count INTEGER NOT NULL
+DEFAULT 0` and `memories.last_hit_at DATE` with `ALTER TABLE ... ADD COLUMN`.
+Rows, IDs, Markdown and the knowledge listing revision (which hashes explicit
+columns) are unchanged; the previous bundle's explicit-column statements accept
+the extra columns, so reverting the application does not require a database
+rollback. If the previous bundle ever rebuilds a corrupt database, it recreates
+its own schema without the counters; Pivane leaves them unpopulated, so nothing
+is lost and the next 0.9.10 open adds them again. Keep the usual pre-activation
+backup regardless.
+
+Upstream takes its column snapshot outside a transaction, so two first opens of
+one database (for example the RPC worker and its index thread, or two sessions
+of the same profile) could both `ALTER` and one would fail with `duplicate column
+name`; a failed index thread would stay unavailable for that session.
+`server/profile-memory/schema-prep.js` therefore adds the same two columns under
+`BEGIN IMMEDIATE` before every Pivane-owned `DatabaseManager` opens the file:
+the index thread and document index before their open, the RPC worker lazily
+before its first memory tool call (never during extension registration). It
+only reads the schema once migrated and never creates a database. Missing,
+empty, symlinked or non-regular files and corrupt databases are left to the
+existing open paths and upstream recovery. Any other failure, such as a writer
+holding the lock past the 5 s busy timeout, fails closed: the tool call,
+document save (before publication) or index thread start reports the error
+instead of falling through to the unsynchronized upstream migration. Its column
+list must match upstream's on each upgrade; the upgrade test compares both.
+
+Upstream `memory_search` now increments those counters by default. The adapter
+registers it with `usageTrackingEnabled:false`: Pivane has no consumer for the
+counters, document edits replace mirrored rows (which would reset them), and a
+read tool should not take a synchronous SQLite write lock on the RPC event loop.
+The columns therefore stay `0`/`NULL` until a reviewed feature records recalls
+off that loop.
+
+Pi discovers skills by frontmatter `description` alone. The upstream
+`skill_manage` guidance now says so and passes through the adapter. Knowledge
+writes accept descriptions up to 1024 characters (Pi's limit, advertised as
+`capabilities.skillDescriptionMaxLength`), the skill editor explains what to put
+there, and background-learning skill proposals ask for trigger phrasing in the
+description. `MemoryStore` capacity labels are unchanged for Pivane's enforced
+`legacy-inject` mode, and importing the bundle no longer spawns the lock
+incarnation probe until a lock is first used.
+
 ## Legacy isolated installation
 
 The following recipe remains available for legacy installations and compatibility
 testing; ordinary Pivane installation uses the bundled path above.
 
 Use the pinned upstream tarball; its SHA256 is
-`6a1b71dfa34f40bba6372a4f71dec54cce76be4ae55923d3b83ebfc1c5920c20`
+`821dc844ddd6f87a0747c195cf02d6a6db03f65d110ecd8fedb76f4ff8af20cb`
 (npm integrity
-`sha512-6EfhmlgBuMfN7bQwN+xHMDVwX/Tm0fKKi6X8lAIBZtcjqxS9Of0rboJzmxfO3r+rGMWb71ss4p+dY34aEsJ1dg==`).
+`sha512-1cZzVieL1H3o5ZNtgunwu7nD1+Cn/7GQv5SvPpWDoN+7iLHEy4dkY5D30g/gKdVhW2Pm+63wFwQ3mXxc7k2/OA==`).
 The reviewed isolated lock at `server/profile-memory/upstream-lock.json` has
-SHA256 `55729bb2926d489de04f4717b258a15ec8cb456af6fb8248687d39e70eac260f`.
-This source recipe pins Pi and the host TUI to 1.0.2 and verifies brace-expansion 5.0.12 / undici 8.11.2 through the shared installation boundary; earlier published archives keep their own historical locks.
+SHA256 `e1449da8edc62d79fd4d9b1c54f37d86663cafc6edfaac129d12bcb9ced92c2a`.
+Upstream 0.9.10 declares `@earendil-works/pi-tui` as a peer dependency; the
+recipe already installs the host TUI directly, so the lock contains one copy.
+This source recipe pins Pi and the host TUI to the reviewed host version in
+`server/pi-reviewed-host.js` and verifies brace-expansion 5.0.12 / undici 8.11.2 through the shared installation boundary; earlier published archives keep their own historical locks.
 The isolated installer retains the reviewed JSON lock and rejects a different lock, creates a
 fresh prefix, runs `npm ci
 --ignore-scripts` for that locked graph, then runs only pinned `better-sqlite3`
@@ -563,9 +620,9 @@ LICENSE and license metadata remain in the isolated prefix. It verifies the revi
 running service during this review.
 
 ```sh
-npm pack pi-hermes-memory@0.9.9 --pack-destination /private/evidence
+npm pack pi-hermes-memory@0.9.10 --pack-destination /private/evidence
 PIVANE_PROFILE_MEMORY_ESBUILD=/path/to/esbuild \
-  node scripts/profile-memory-build.cjs /private/evidence/pi-hermes-memory-0.9.9.tgz /private/fresh-prefix
+  node scripts/profile-memory-build.cjs /private/evidence/pi-hermes-memory-0.9.10.tgz /private/fresh-prefix
 HOME=/private/disposable-identity node scripts/profile-memory-install.cjs /private/fresh-prefix
 PIVANE_TEST_HERMES_BUNDLE=/private/fresh-prefix/package/profile-memory-bundle.mjs \
 PIVANE_TEST_PI_JITI=/private/fresh-prefix/node_modules/@earendil-works/pi-coding-agent/node_modules/jiti \

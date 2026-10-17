@@ -10099,5 +10099,8 @@
     rows.push(
         ["记忆正在保存，导入的文档已保留；保存完成后打开记忆页核对。","Memory is still saving. The imported document has been kept; open the Memories page to review it when the save finishes."]
     );
+    rows.push(
+        ["Pi 只按描述决定何时使用技能：写清用途，以及会触发它的说法、报错或场景","Pi chooses skills by description alone: state what it does and the phrases, errors or situations that should trigger it"]
+    );
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

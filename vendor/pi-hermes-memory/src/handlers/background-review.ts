@@ -275,7 +275,7 @@ export function setupBackgroundReview(
       if (usesDirectTransport(config)) {
         try {
           const directResult = await runDirectReview(
-            ctx as Pick<ExtensionContext, "model" | "modelRegistry">,
+            ctx,
             store,
             activeProjectStore,
             {

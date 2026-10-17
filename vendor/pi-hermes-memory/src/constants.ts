@@ -46,6 +46,28 @@ export const DEFAULT_FLUSH_COMPACT_TIMEOUT_MS = 60_000;
 /** Shutdown flush cap. Not configurable. */
 export const DEFAULT_FLUSH_SHUTDOWN_TIMEOUT_MS = 10_000;
 
+/**
+ * Above this many chars of (metadata-stripped) entries in one consolidation
+ * prompt, the subprocess path splits the work into multiple child runs
+ * ("rounds") that share one overall time budget (consolidationTimeoutMs),
+ * reloading from disk between rounds; the loop stops at the target's capacity
+ * goal. Stores at or below the threshold keep today's single-shot child run.
+ * #P1: one whole-store LLM merge routinely exceeds any sane single-call
+ * timeout at cap scale.
+ */
+export const DEFAULT_CONSOLIDATION_CHUNK_CHARS = 4000;
+/** Whether chunked subprocess consolidation is enabled. Default OFF — the original single-shot timeout was never reproduced on a fast model; the feature is available for users who hit it. Set consolidationChunking: true to enable. */
+export const DEFAULT_CONSOLIDATION_CHUNKING = false;
+
+/** Floor for the consolidationChunkChars config value. */
+export const CONSOLIDATION_CHUNK_CHARS_MIN = 500;
+/**
+ * Safety cap on subprocess consolidation rounds per trigger. In practice the
+ * loop exits earlier: capacity goal met, overall budget exhausted (the trigger
+ * never blocks longer than the old single call — consolidationTimeoutMs), a
+ * round that shrinks nothing, or a child failure.
+ */
+export const MAX_CONSOLIDATION_ROUNDS = 6;
 /** Wall-clock grace after overflow before an automatic consolidation may run. */
 export const DEFAULT_OVERFLOW_GRACE_MS = 180000;
 export const DEFAULT_FAILURE_INJECTION_MAX_AGE_DAYS = 7;
@@ -125,7 +147,7 @@ If memory conflicts with current evidence, prefer current evidence and mention t
 Procedural skills:
 - Use the skill_manage tool during normal work when a task reveals a reusable how-to workflow, or when the user asks you to remember how to do something later.
 - Always pass scope explicitly on create: scope="global" for portable procedures, scope="project" for workflows tied to this repo's paths, scripts, architecture, deploy steps, or conventions.
-- Prefer structured fields for create/update/patch: when_to_use, procedure_steps, pitfalls, verification_steps. Use patch with the matching structured field for one section, update for a full rewrite, and view before changing an existing skill.
+- Prefer structured fields for create/update/patch: when_to_use, procedure_steps, pitfalls, verification_steps. Use patch with the matching structured field for one section, update for a full rewrite, and view before changing an existing skill. Write the trigger signals a user would actually type into \`description\`: it is the only field Pi indexes for skill discovery, and \`when_to_use\` renders into the body only.
 - Do not create skills for one-off task state, generic summaries, or overly file-specific notes that will create noisy future matches.
 
 Do not use memory_search for generic questions, one-off examples, or explanations where durable memory would not help.
@@ -404,10 +426,10 @@ WHEN TO UPDATE A SKILL:
 
 SKILL FORMAT:
 - name: short, descriptive (e.g., "debug-typescript-errors")
-- description: one-line summary of when to use it
+- description: what the skill does and the trigger signals a user would type (error strings, symptoms, phrasings). Pi indexes skills by this field alone, so body-only triggers never surface at discovery time.
 - body: structured with sections — ## When to Use, ## Procedure, ## Pitfalls, ## Verification
 - Prefer structured fields over raw markdown when possible:
-  - when_to_use: trigger conditions and boundaries
+  - when_to_use: expanded trigger conditions and boundaries. Renders into the skill body and does not participate in Pi's skill index — discoverable trigger signals belong in description.
   - procedure_steps: ordered concrete steps
   - pitfalls: caveats or failure modes
   - verification_steps: checks that prove success
@@ -417,9 +439,9 @@ ONE-SHOT EXAMPLE:
 {
   "action": "create",
   "name": "debug-typescript-errors",
-  "description": "Debug TypeScript build failures in this repo",
+  "description": "Debug TypeScript build failures in this repo: tsc --noEmit errors, type-check failures in the workspace or CI.",
   "scope": "project",
-  "when_to_use": "Use when TypeScript fails in this repo's workspace or CI.",
+  "when_to_use": "Use when pnpm tsc --noEmit fails locally or in CI, or when asked to fix TypeScript build errors here. Not for runtime-only type issues.",
   "procedure_steps": [
     "Run pnpm tsc --noEmit to get the full error list.",
     "Fix dependency or config errors before leaf-module errors.",

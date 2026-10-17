@@ -640,9 +640,9 @@
             if (kind === 'skill') {
                 const name = el('input', { class: 'pi-id-input', value: draft.name, required: true, maxLength: snapshot?.capabilities?.skillNameMaxLength || 64, pattern: '[a-z][a-z0-9-]{0,63}', dataset: { focus: 'entry-name' } });
                 name.oninput = () => { draft.name = name.value; };
-                const description = el('input', { class: 'pi-id-input', value: draft.description, maxLength: 1000, dataset: { focus: 'entry-description' } });
+                const description = el('input', { class: 'pi-id-input', value: draft.description, maxLength: snapshot?.capabilities?.skillDescriptionMaxLength || 1024, dataset: { focus: 'entry-description' } });
                 description.oninput = () => { draft.description = description.value; };
-                form.append(field(t('名称'), name), node('small', t('名称以小写字母开头，最多64位小写字母、数字或连字符'), 'pi-id-help'), field(t('描述'), description));
+                form.append(field(t('名称'), name), node('small', t('名称以小写字母开头，最多64位小写字母、数字或连字符'), 'pi-id-help'), field(t('描述'), description), node('small', t('Pi 只按描述决定何时使用技能：写清用途，以及会触发它的说法、报错或场景'), 'pi-id-help'));
             }
             const content = el('textarea', { class: 'pi-id-textarea', required: true, rows: kind === 'skill' ? 10 : 4, maxLength: snapshot?.capabilities?.maxContentLength || 65536,
                 value: draft.content, 'aria-label': t('正文'), dataset: { focus: 'entry-content' } });

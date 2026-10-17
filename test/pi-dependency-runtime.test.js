@@ -46,7 +46,7 @@ test('reviewed Pi SDK retains offline models, settings and historical session tr
     assert.ok(session.buildSessionContext().messages.some(message => message.content === 'Edited dependency fixture'));
 });
 
-test('unchanged memory 0.9.9 bundle imports against reviewed Pi without rebuilding upstream implementation', async () => {
+test('unchanged memory 0.9.10 bundle imports against reviewed Pi without rebuilding upstream implementation', async () => {
     const bundle = require('../server/pi-bundled-capabilities').memoryBundle();
     assert.equal(createHash('sha256').update(fs.readFileSync(bundle)).digest('hex'), require('../server/profile-memory/management').BUNDLE_SHA256);
     const memory = await import(pathToFileURL(bundle).href);

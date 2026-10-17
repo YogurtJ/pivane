@@ -120,6 +120,28 @@ export class MemoryStore {
     if (target === "failure") return this.config.memoryCharLimit * 2; // Failures get more space
     return target === "user" ? this.config.userCharLimit : this.config.memoryCharLimit;
   }
+
+  /**
+   * Public read for consolidation tooling: the char budget this target is held
+   * to (failure tier is 2× the memory limit). Chunked consolidation stops at
+   * this goal instead of its own prompt budget, so a 2×-tier store is not
+   * over-merged down to a single slice size.
+   */
+  capacityGoal(target: "memory" | "user" | "failure"): number {
+    return this.charLimit(target);
+  }
+
+  /**
+   * Public read for consolidation tooling: the store's current size in the
+   * SAME units the cap enforces (encoded entries, metadata included). The
+   * chunked loop measures progress against capacityGoal() in these units —
+   * prompt-side chars are metadata-stripped and would under-report by ~40
+   * chars per entry, letting consolidation declare success while the
+   * triggering add still fails.
+   */
+  capacityUsage(target: "memory" | "user" | "failure"): number {
+    return this.charCount(target);
+  }
   private get capEnforced(): boolean {
     return this.config.memoryMode !== "policy-only";
   }
@@ -327,7 +349,10 @@ export class MemoryStore {
 
     const retried = await this.addWithConsolidation(target, content, signal, retriesLeft - 1, addedMessage, project);
     if (retried.success || !retried.error?.startsWith("Memory at ")) return retried;
-    return { ...retried, error: `${retried.error} Auto-consolidation ran but did not free enough space.` };
+    const partialNote = consolidation.partial
+      ? ` Consolidation is incomplete: ${consolidation.error ?? "retrigger consolidation to continue"}.`
+      : " Auto-consolidation ran but did not free enough space.";
+    return { ...retried, error: `${retried.error}${partialNote}` };
   }
 
   private async fifoEvictAndAdd(
@@ -710,16 +735,27 @@ export class MemoryStore {
     const entries = this.entriesFor(target);
     const current = this.charCount(target);
     const limit = this.charLimit(target);
-    const pct = limit > 0 ? Math.min(100, Math.floor((current / limit) * 100)) : 0;
 
     const resp: MemoryResult = {
       success: true,
       target,
-      usage: `${pct}% — ${current}/${limit} chars`,
+      usage: this.usageLabel(current, limit),
       entry_count: entries.length,
     };
     if (message) resp.message = message;
     return resp;
+  }
+
+  /**
+   * Capacity label shared by tool results and rendered block headers.
+   * policy-only mode does not enforce the cap (#218 / #221), so a percentage
+   * would name a ceiling that is intentionally not applied; report the count
+   * alone. Single source so the report and the gates cannot drift apart.
+   */
+  private usageLabel(current: number, limit: number): string {
+    if (!this.capEnforced) return `${current} chars`;
+    const pct = limit > 0 ? Math.min(100, Math.floor((current / limit) * 100)) : 0;
+    return `${pct}% — ${current}/${limit} chars`;
   }
 
   private renderBlock(target: "memory" | "user", entries: string[]): string {
@@ -727,11 +763,11 @@ export class MemoryStore {
     const limit = this.charLimit(target);
     const content = entries.join(ENTRY_DELIMITER);
     const current = content.length;
-    const pct = limit > 0 ? Math.min(100, Math.floor((current / limit) * 100)) : 0;
+    const usage = this.usageLabel(current, limit);
 
     const header = target === "user"
-      ? `USER PROFILE (who the user is) [${pct}% — ${current}/${limit} chars]`
-      : `MEMORY (your personal notes) [${pct}% — ${current}/${limit} chars]`;
+      ? `USER PROFILE (who the user is) [${usage}]`
+      : `MEMORY (your personal notes) [${usage}]`;
 
     const separator = "═".repeat(46);
     return `${separator}\n${header}\n${separator}\n${content}`;
@@ -761,9 +797,9 @@ export class MemoryStore {
     const limit = this.config.memoryCharLimit;
     const content = entries.join(ENTRY_DELIMITER);
     const current = content.length;
-    const pct = limit > 0 ? Math.min(100, Math.floor((current / limit) * 100)) : 0;
+    const usage = this.usageLabel(current, limit);
 
-    const header = `PROJECT MEMORY: ${projectName} [${pct}% — ${current}/${limit} chars]`;
+    const header = `PROJECT MEMORY: ${projectName} [${usage}]`;
     const separator = "═".repeat(46);
     return `${separator}\n${header}\n${separator}\n${content}`;
   }

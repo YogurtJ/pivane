@@ -5336,9 +5336,9 @@
     },
     {
       "name": "pi-hermes-memory",
-      "version": "0.9.9",
-      "source": "https://registry.npmjs.org/pi-hermes-memory/-/pi-hermes-memory-0.9.9.tgz",
-      "sha256": "6a1b71dfa34f40bba6372a4f71dec54cce76be4ae55923d3b83ebfc1c5920c20",
+      "version": "0.9.10",
+      "source": "https://registry.npmjs.org/pi-hermes-memory/-/pi-hermes-memory-0.9.10.tgz",
+      "sha256": "821dc844ddd6f87a0747c195cf02d6a6db03f65d110ecd8fedb76f4ff8af20cb",
       "license": "MIT",
       "files": [
         {
@@ -5347,7 +5347,7 @@
         },
         {
           "path": "vendor/pi-hermes-memory/package.json",
-          "sha256": "c73db9c95cb64990dcb9bd071e007ecc6786dfab2283f835bf882cd58b2b5358"
+          "sha256": "dd5fa290a5964ec0ee718942e42b16943f866bbda3caebbc56d9952cc2206f8d"
         },
         {
           "path": "vendor/pi-hermes-memory/docs/0.6/CHANGELOG.md",
@@ -5383,7 +5383,7 @@
         },
         {
           "path": "vendor/pi-hermes-memory/README.md",
-          "sha256": "ba00ce65c6db60899e00b86b09c544f4eac1a5d9b6d03968f18c36eeb04d59b0"
+          "sha256": "77525e8c4150c3199451ee3af9252954aea376c1d8dd0e306c0413e08b12a647"
         },
         {
           "path": "vendor/pi-hermes-memory/docs/0.4/RELEASE-POST.md",
@@ -5487,19 +5487,19 @@
         },
         {
           "path": "vendor/pi-hermes-memory/src/store/atomic-lock-coordinator.ts",
-          "sha256": "3f0746f41c7a5339da32c6353baec62ceec25a8a9b8cb6e98ec5393728596d1e"
+          "sha256": "fe68bad17f1c3291936d9bfa92bfe2a8d2e396b99f81f4bb44480106b931e253"
         },
         {
           "path": "vendor/pi-hermes-memory/src/handlers/auto-consolidate.ts",
-          "sha256": "f88fba2f637d5f1c5ff35045d433a1d2a9d5ea12e869fa8edc252f7b09b10050"
+          "sha256": "484387043540d86f9f868b81e33b09e712e7a8da0812435331e98e9c6e90cf7b"
         },
         {
           "path": "vendor/pi-hermes-memory/src/auto-consolidation-warning.ts",
-          "sha256": "dbd9a06f6718f89b14705cc1fb66cccdbf41fe9c1effe72636d1f98ab916b636"
+          "sha256": "8b17e8d3e2417a17ab02fe887218735a44f132cac33c14455a790340a5b22c8c"
         },
         {
           "path": "vendor/pi-hermes-memory/src/handlers/background-review.ts",
-          "sha256": "060ada5a818fd12359c8151a22851722f6f4f3ded355d75de43b39663aa56756"
+          "sha256": "c985f0e2b3f522d2bf6cffa3ddfb1bc677b0fbfed31f7242656e6adad9e94f5f"
         },
         {
           "path": "vendor/pi-hermes-memory/src/store/canonical-storage-path.ts",
@@ -5507,11 +5507,11 @@
         },
         {
           "path": "vendor/pi-hermes-memory/src/config.ts",
-          "sha256": "9ca838c152c58bbdb3a751fb550854c87d984a874ab416a69f76765580410bda"
+          "sha256": "3f4bacc7c99c0063fd30ab7996e925e9fccef69473906474cd23d08a6057efae"
         },
         {
           "path": "vendor/pi-hermes-memory/src/constants.ts",
-          "sha256": "d8c76c6e5358410052221eb4284c987ce837b5c464f6ec5a931d533e46e55c4b"
+          "sha256": "47e49aeae3240e12dce93c8c87d9c51a3eadd32b0f906f4537cfe92e0226f68b"
         },
         {
           "path": "vendor/pi-hermes-memory/src/store/content-scanner.ts",
@@ -5523,7 +5523,7 @@
         },
         {
           "path": "vendor/pi-hermes-memory/src/store/db.ts",
-          "sha256": "1564d4392760ee10185c56b7b07b45ae5cda7b338bc146b93cf9b2557a80066a"
+          "sha256": "3b1c9836ba89680cdc0a71c87edc47d4fbc29186a093f8fec01b6adae155b095"
         },
         {
           "path": "vendor/pi-hermes-memory/src/extension-root-migration.ts",
@@ -5539,11 +5539,11 @@
         },
         {
           "path": "vendor/pi-hermes-memory/src/index.ts",
-          "sha256": "6d4ce67bebfee67dbb8b198edb590659f1d6f721c1dff2d3323ff930f4d14246"
+          "sha256": "b2ac5a86a2c1409b21cb509d28da432623697bd2bc2e10a53a793ec6e3bca408"
         },
         {
           "path": "vendor/pi-hermes-memory/src/handlers/insights.ts",
-          "sha256": "1ab6840883e6309ca99a1319eb76b161290da0e03754c4ef575c681e96564fc1"
+          "sha256": "6aa530be6135b985af4584f6e76f07dcd9599ed7fd9dc996ce4b37a19bfdbecc"
         },
         {
           "path": "vendor/pi-hermes-memory/src/handlers/interview.ts",
@@ -5563,7 +5563,7 @@
         },
         {
           "path": "vendor/pi-hermes-memory/src/memory-initialization.ts",
-          "sha256": "e2b0d2560fa8e359006cb74aa2f35ec53e7e5e2a8eddda177432bbf4bfe25b2c"
+          "sha256": "2a3bba7a4a3c79965eb833e27603d93f30d4ca311de6842834eab6abea1d82bd"
         },
         {
           "path": "vendor/pi-hermes-memory/src/store/memory-lookup.ts",
@@ -5571,11 +5571,11 @@
         },
         {
           "path": "vendor/pi-hermes-memory/src/tools/memory-search-tool.ts",
-          "sha256": "a8f5f5ac2e29929b3eb1fc8c67b3acf58c5055575ad436d676efb51f3ac7c48b"
+          "sha256": "7952c6232ee588e1c9fd7b191d7887353b2296f5bb166a098d908a677f4ae2c5"
         },
         {
           "path": "vendor/pi-hermes-memory/src/store/memory-store.ts",
-          "sha256": "e2bf000fa6493948f16b2b8411ecb898838c8bd0f1ce0174e3b392a7903ad5ce"
+          "sha256": "08c817c4dfa6582434449926f78405a562c7772a0b8a80b016b56d5b2c8bf166"
         },
         {
           "path": "vendor/pi-hermes-memory/src/tools/memory-tool.ts",
@@ -5619,11 +5619,11 @@
         },
         {
           "path": "vendor/pi-hermes-memory/src/handlers/review-memory-ops.ts",
-          "sha256": "8637c173ca6bebb190308ad7bfe1142199becba626cc19664301c9f2077ca6a7"
+          "sha256": "6ffa78f3e3afcadf4e96532ce3d1d3ba3a0de394b6251b33519ed6542604fa7b"
         },
         {
           "path": "vendor/pi-hermes-memory/src/store/schema.ts",
-          "sha256": "c8147096d45aebbe877925cea34fd14960a08abec2793119ee1ebb19684dd8e6"
+          "sha256": "dff9be0daf3eb22e207dc06bef04fd5490b1ad9720a4ba3944a32ae7e318cb38"
         },
         {
           "path": "vendor/pi-hermes-memory/src/store/session-anchor-search.ts",
@@ -5667,7 +5667,7 @@
         },
         {
           "path": "vendor/pi-hermes-memory/src/tools/skill-tool.ts",
-          "sha256": "6187fbbdeb52ac7fb81cc13b29e56bb86f35b7e55512f77eadb5a70fa03d3ceb"
+          "sha256": "7c7fe5ca6ef9d1ee2d097a4e300bb1cea7f776e2330495d2dfd9bc91d1f36cf6"
         },
         {
           "path": "vendor/pi-hermes-memory/src/store/skill-utils.ts",
@@ -5679,7 +5679,7 @@
         },
         {
           "path": "vendor/pi-hermes-memory/src/store/sqlite-memory-store.ts",
-          "sha256": "f85b9fcdebab77a10271a5030cc8ccaf0ddaa34fda7f73a61ca18f41b5072bb9"
+          "sha256": "76f3055a1c86d06d47ae90c434a8320bce7517de9d4ba83123d824f393c01660"
         },
         {
           "path": "vendor/pi-hermes-memory/src/store/sqlite-native.ts",
@@ -5699,7 +5699,7 @@
         },
         {
           "path": "vendor/pi-hermes-memory/src/handlers/sync-markdown-memories.ts",
-          "sha256": "f8b56b93bcefc725bf4ef2df8acbe5ed33a11c92aed2b4356bca750142e62888"
+          "sha256": "dca297e7467d4b9bd22ba9b570ca5cc62185053008139e957af34b30dacde91f"
         },
         {
           "path": "vendor/pi-hermes-memory/src/tools/tool-result-views.ts",
@@ -5707,7 +5707,7 @@
         },
         {
           "path": "vendor/pi-hermes-memory/src/types.ts",
-          "sha256": "0e61861b935fccb717fd6613b0660b106b16945607a719227cc2ce5cb3274d60"
+          "sha256": "077359641055d0d6e0b32319abec760c12610521a7521e921f31c323c2ffc9d2"
         }
       ]
     }

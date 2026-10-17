@@ -300,6 +300,8 @@ For `create` and `update`, the preferred shape is structured input instead of ha
 
 The tool renders these into a valid `SKILL.md` body with `## When to Use`, `## Procedure`, `## Pitfalls`, and `## Verification` automatically. Raw `content` is still supported for compatibility, but structured fields are the recommended path.
 
+Pi discovers skills by the frontmatter `description` alone — `when_to_use` and the other structured fields render into the body, which Pi reads only after the skill has been selected. Put the trigger phrasings a user would actually type (symptoms, error strings, tool names) in `description`.
+
 Global skill creation also has duplicate/similarity guards:
 
 - exact slug match → blocked (update existing via `patch`/`update`)
@@ -311,13 +313,13 @@ Each skill uses a structured `SKILL.md` body:
 ```markdown
 ---
 name: debug-typescript-errors
-description: Step-by-step approach to debugging TS errors in monorepos
+description: Debug TypeScript errors in a monorepo — tsc --noEmit failures, type-check errors in CI, tsconfig extends-chain breakage
 version: 1
 created: 2026-04-26
 updated: 2026-04-26
 ---
 ## When to Use
-When you see TypeScript compilation errors, especially in monorepo setups.
+TypeScript compilation errors in this workspace, especially monorepo setups. Not for runtime-only type issues.
 
 ## Procedure
 1. Read the error message carefully
@@ -539,6 +541,10 @@ Create `~/.pi/agent/hermes-memory-config.json`:
   "failureInjectionMaxAgeDays": 7,
   "failureInjectionMaxEntries": 5,
   "consolidationTimeoutMs": 180000,
+  "consolidationChunking": false,
+  "consolidationChunkChars": 4000,
+  "usageHitTrackingEnabled": true,
+  "consolidationUsageSignals": true,
   "overflowGraceMs": 180000,
   "autoConsolidationWarnOnFailure": true,
   "flushOnCompact": true,
@@ -575,7 +581,11 @@ Create `~/.pi/agent/hermes-memory-config.json`:
 | `reviewTransport` | `direct` | LLM transport for background review, session flush, correction save, and manual consolidation: `direct` uses in-process `completeSimple()` with subprocess fallback; `subprocess` forces legacy `pi -p` only |
 | `memoryOverflowStrategy` | `auto-consolidate` | Legacy-inject behavior when a Markdown memory file reaches its character limit: `auto-consolidate` runs the existing consolidation flow; `reject` returns an error; `fifo-evict` rotates older entries in file order until the new entry fits |
 | `autoConsolidate` | `true` | Legacy alias for `memoryOverflowStrategy` when `memoryOverflowStrategy` is not set (`true` = `auto-consolidate`, `false` = `reject`) |
-| `consolidationTimeoutMs` | `180000` | Maximum time in milliseconds for a consolidation run (auto and `/memory-consolidate` alike). Configured values are used verbatim; a consolidation pays child-process boot plus a full LLM turn, so values below the default are frequently killed mid-run and log a warning at startup |
+| `consolidationTimeoutMs` | `180000` | Maximum time in milliseconds for a consolidation run (auto and `/memory-consolidate` alike). Also bounds the TOTAL time of a chunked consolidation trigger, so a trigger never blocks longer than the single call it replaced. Configured values are used verbatim; a consolidation pays child-process boot plus a full LLM turn, so values below the default are frequently killed mid-run and log a warning at startup |
+| `consolidationChunking` | `false` | Enables chunked subprocess consolidation: stores whose entries exceed `consolidationChunkChars` are consolidated in bounded rounds with per-round timeouts and resume-from-disk, instead of one whole-store child call. Off by default — enable it if whole-store consolidations time out on your model. Has no effect on the direct in-process transport |
+| `consolidationChunkChars` | `4000` | Applies when `consolidationChunking` is enabled: entries above this many chars (joined) split the subprocess work into multiple child runs that share the `consolidationTimeoutMs` budget, reloading from disk between rounds. The loop stops at the target's capacity goal; a store that fits one prompt runs a single unscoped decisive round. Minimum 500 | When the entries to consolidate exceed this many chars, the subprocess path splits consolidation into multiple child runs (rounds) that share the `consolidationTimeoutMs` budget, reloading from disk between rounds so a killed run resumes from partial progress. The loop stops at the target's capacity goal (not the chunk size). A store that fits one prompt runs a single unscoped decisive round with the whole remaining store. Stores at or below the threshold keep the single-shot call shape — the only difference is that a child exiting 0 without shrinking now reports an honest partial result instead of silent success. Has no effect on the direct in-process transport. Minimum 500 |
+| `usageHitTrackingEnabled` | `true` | Record per-entry recall counts (`hit_count`, `last_hit_at`) every time `memory_search` returns an entry. Recording is invisible — it changes no prompt, ranking, or result — and the counters feed consolidation usage signals and the `/memory-insights` usage section. Set to `false` to stop recording |
+| `consolidationUsageSignals` | `true` | Feed recorded `memory_search` recalls into consolidation prompts as per-entry "Usage Signals" (the promotion gate: well-recalled entries are load-bearing, never-recalled entries are weaker keep candidates — tie-breakers, never removal orders). Inert until entries have actually been recalled, so fresh stores see byte-identical prompts until real usage accrues |
 | `overflowGraceMs` | `180000` | Wall-clock grace period after a memory overflow before automatic consolidation is retried; this gives the active agent time to consolidate manually. Set to `0` to disable the grace period |
 | `autoConsolidationWarnOnFailure` | `true` | Log failed automatic consolidation attempts to the session console. Set to `false` to suppress only this warning; the memory tool result still reports the failure reason |
 | `correctionDetection` | `true` | Detect user corrections and save immediately |

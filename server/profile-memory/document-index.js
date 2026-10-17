@@ -7,6 +7,7 @@ const { createRequire } = require('node:module');
 const { pathToFileURL } = require('node:url');
 const { safeFile } = require('./management');
 const privateFiles = require('../pi-private-files');
+const { prepareProfileDatabase } = require('./schema-prep');
 
 const fail = (message, status = 409) => { throw Object.assign(new Error(message), { status }); };
 const hash = text => createHash('sha256').update(text).digest('hex');
@@ -104,6 +105,7 @@ async function documentIndexSynced(root, target, bundlePath, content, { database
 async function documentIndex(root, target, bundlePath, before, after, { databaseRoot = root, project = null } = {}) {
     const upstream = await import(pathToFileURL(bundlePath).href);
     const store = new upstream.MemoryStore({ memoryDir: root });
+    prepareProfileDatabase(databaseRoot, bundlePath);
     const dbManager = new upstream.DatabaseManager(databaseRoot);
     const file = path.join(root, target === 'user' ? 'USER.md' : 'MEMORY.md');
     try {

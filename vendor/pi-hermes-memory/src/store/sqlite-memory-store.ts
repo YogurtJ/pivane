@@ -1170,6 +1170,69 @@ export function touchMemory(dbManager: DatabaseManager, id: number): void {
 }
 
 /**
+ * Per-entry recall stats gathered from the memory_search read path.
+ */
+export interface MemoryUsageSignal {
+  hits: number;
+  /** ISO date (YYYY-MM-DD) of the most recent recall, or null if never recalled. */
+  lastHit: string | null;
+}
+
+/**
+ * Record one recall per given entry id (batched, single statement). Called by
+ * the memory_search tool after results are returned; failures must never
+ * break search, so callers are expected to swallow errors from this function.
+ */
+export function recordSearchHits(dbManager: DatabaseManager, ids: number[]): void {
+  if (ids.length === 0) return;
+  const db = dbManager.getDb();
+  const placeholders = ids.map(() => '?').join(', ');
+  db.prepare(
+    `UPDATE memories SET hit_count = hit_count + 1, last_hit_at = ? WHERE id IN (${placeholders})`,
+  ).run(today(), ...ids);
+}
+
+/**
+ * Recall stats for every entry in a store scope, keyed by entry CONTENT only
+ * (trimmed — the same stripped form MemoryStore entries and the SQLite mirror
+ * both use). Note this is narrower than syncMemoryEntry's identity
+ * (project+target+category+content): two rows with identical text but
+ * different categories share one signal, and the first matching row wins —
+ * harmless for advisory tie-breaker data. Entries with no recorded recalls
+ * are absent from the map.
+ */
+export function getMemoryUsageSignals(
+  dbManager: DatabaseManager,
+  options: { target: 'memory' | 'user' | 'failure'; project?: string | null }
+): Map<string, MemoryUsageSignal> {
+  const db = dbManager.getDb();
+  const { target, project = null } = options;
+  const params: unknown[] = [target];
+  const conditions = ['target = ?'];
+  if (project === null) {
+    conditions.push('project IS NULL');
+  } else {
+    conditions.push('project = ?');
+    params.push(project);
+  }
+
+  const rows = db.prepare(`
+    SELECT content, hit_count, last_hit_at
+    FROM memories
+    WHERE ${conditions.join(' AND ')}
+  `).all(...params) as Array<{ content: string; hit_count: number | bigint; last_hit_at: string | null }>;
+
+  const signals = new Map<string, MemoryUsageSignal>();
+  for (const row of rows) {
+    const hits = typeof row.hit_count === 'bigint' ? Number(row.hit_count) : (row.hit_count ?? 0);
+    if (hits > 0 && !signals.has(row.content)) {
+      signals.set(row.content, { hits, lastHit: row.last_hit_at ?? null });
+    }
+  }
+  return signals;
+}
+
+/**
  * Get memory statistics.
  */
 export function getMemoryStats(dbManager: DatabaseManager): {

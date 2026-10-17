@@ -33,11 +33,11 @@ Pivane自身的代码使用[ISC许可证](LICENSE)。第三方软件、字体、
 
 ## 内置第三方能力
 
-[pi-subagents](https://github.com/nicobailon/pi-subagents) 0.74.0（Nico Bailon，MIT）官方 npm 发布内容原样保存于 `vendor/pi-subagents/`，包含 JavaScript、声明、source map、角色、技能、提示词和文档；原始 LICENSE 随包保留。Pivane 的安装与运行适配独立于上游文件，版本随应用更新。
+[pi-subagents](https://github.com/nicobailon/pi-subagents) 0.78.0（Nico Bailon，MIT）官方 npm 发布内容原样保存于 `vendor/pi-subagents/`，包含 JavaScript、声明、source map、角色、技能、提示词和文档；原始 LICENSE 随包保留。Pivane 的安装与运行适配独立于上游文件，版本随应用更新。
 
 ## 可选档案记忆组件
 
-[pi-hermes-memory](https://github.com/chandra447/pi-hermes-memory) 0.9.9 使用 MIT 许可证。官方 npm 发布源码原样保存于 `vendor/pi-hermes-memory/`，原始 LICENSE 随包保留；Pivane 从选定组件生成档案记忆 bundle，不加载其默认扩展。`vendor/manifest.json` 记录两个包的来源、版本和逐文件哈希；运行依赖的许可证由 npm 安装保留，版本图由根 lockfile 锁定。安装、SQLite 平台要求和维护边界见[内置能力包](docs/BUNDLED_CAPABILITIES.md)与[档案记忆适配](docs/PROFILE_MEMORY.md)。
+[pi-hermes-memory](https://github.com/chandra447/pi-hermes-memory) 0.9.10 使用 MIT 许可证。官方 npm 发布源码原样保存于 `vendor/pi-hermes-memory/`，原始 LICENSE 随包保留；Pivane 从选定组件生成档案记忆 bundle，不加载其默认扩展。`vendor/manifest.json` 记录两个包的来源、版本和逐文件哈希；运行依赖的许可证由 npm 安装保留，版本图由根 lockfile 锁定。安装、SQLite 平台要求和维护边界见[内置能力包](docs/BUNDLED_CAPABILITIES.md)与[档案记忆适配](docs/PROFILE_MEMORY.md)。
 
 ## 平台与外部服务
 

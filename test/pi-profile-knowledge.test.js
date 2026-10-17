@@ -794,3 +794,14 @@ test('knowledge rejects invalid target/category options through the existing 400
     for (const category of ['fact', 'preference', 'correction', 'failure', 'procedure'])
         assert.equal((await service.snapshot(id, { kind: 'memory', category })).status, 'ready');
 });
+
+test('skill descriptions accept the Pi discovery limit of 1024 characters', async t => {
+    const { service, mutate } = setup(t);
+    assert.equal((await service.snapshot(id)).capabilities.skillDescriptionMaxLength, 1024);
+    const description = `Trigger phrases ${'d'.repeat(1024 - 'Trigger phrases '.length)}`;
+    const saved = await mutate('create', 'skill', { name: 'long-description', description, content: 'One step.' });
+    assert.equal(saved.item.description, description);
+    assert.match((await service.getItem(id, saved.item.id)).item.content, /^---\nname: long-description\ndescription: Trigger phrases d+\n---\n/);
+    await assert.rejects(mutate('create', 'skill', { name: 'too-long-description', description: `${description}x`, content: 'One step.' }),
+        /Invalid skill description/);
+});

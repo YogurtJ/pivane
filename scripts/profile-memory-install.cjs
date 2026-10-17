@@ -7,12 +7,12 @@ const { execFileSync } = require('node:child_process');
 const { createRequire } = require('node:module');
 const { createHash } = require('node:crypto');
 const { REVIEWED_PI_VERSION: piVersion } = require('../server/pi-reviewed-host');
-const LOCK_SHA256 = 'ceeb68056bb12c34c36b235529a5b98574dcd64ce23082838b9e35225f29ab28';
+const LOCK_SHA256 = 'e1449da8edc62d79fd4d9b1c54f37d86663cafc6edfaac129d12bcb9ced92c2a';
 
 const manifest = {
     name: 'pivane-profile-memory-isolated', version: '1.0.0', private: true,
     dependencies: {
-        'pi-hermes-memory': '0.9.9', 'better-sqlite3': '13.0.3',
+        'pi-hermes-memory': '0.9.10', 'better-sqlite3': '13.0.3',
         '@earendil-works/pi-coding-agent': piVersion, '@earendil-works/pi-ai': piVersion,
         '@earendil-works/pi-tui': piVersion, 'typebox': '1.3.27', 'strip-ansi': '7.2.0',
         'brace-expansion': '5.0.12', undici: '8.11.2',
@@ -50,9 +50,9 @@ function install(prefix) {
     try {
         db.exec('CREATE VIRTUAL TABLE verify_fts USING fts5(content, tokenize=trigram)');
     } finally { db.close(); }
-    if (req('pi-hermes-memory/package.json').version !== '0.9.9'
+    if (req('pi-hermes-memory/package.json').version !== '0.9.10'
         || JSON.parse(fs.readFileSync(path.join(prefix, 'package-lock.json'), 'utf8')).packages['node_modules/pi-hermes-memory'].integrity
-            !== 'sha512-6EfhmlgBuMfN7bQwN+xHMDVwX/Tm0fKKi6X8lAIBZtcjqxS9Of0rboJzmxfO3r+rGMWb71ss4p+dY34aEsJ1dg==')
+            !== 'sha512-1cZzVieL1H3o5ZNtgunwu7nD1+Cn/7GQv5SvPpWDoN+7iLHEy4dkY5D30g/gKdVhW2Pm+63wFwQ3mXxc7k2/OA==')
         throw new Error('Installed versions or upstream integrity differ from verified recipe');
     console.log(JSON.stringify({ prefix, bundle: path.join(prefix, 'package', 'profile-memory-bundle.mjs'), node: process.version, sqlite: 'ok' }));
 }
