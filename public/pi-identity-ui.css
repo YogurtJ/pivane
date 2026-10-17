@@ -387,11 +387,11 @@ button.pi-id-stat:hover { border-color: color-mix(in srgb, var(--tone) 45%, var(
 @media (max-width: 680px) {
     .pi-id-root :is(input:not([type=checkbox]):not([type=radio]), select, textarea) { font-size: 16px; }
     .pi-id-btn { min-height: 40px; font-size: .86rem; }
-    /* Touch targets stay at least 40px; info toggles keep their small glyph and grow only their hit area. */
+    /* Touch targets stay at least 40px. Info toggles keep their small glyph; the negative block margin keeps
+       label rows compact, and no horizontal bleed is used, so nothing can widen the scroll area. */
     .pi-id-btn-sm { min-height: 40px; font-size: .8rem; }
     .pi-id-btn-icon, .pi-id-btn-icon.pi-id-btn-sm { width: 40px; }
-    .pi-id-info { position: relative; }
-    .pi-id-info::after { content: ''; position: absolute; inset: -8px; }
+    .pi-id-info { width: 40px; height: 40px; margin-block: -8px; }
     .pi-id-seg-item { min-height: 40px; }
     .pi-id-root .pi-profiles-layout { grid-template-columns: minmax(0, 1fr); }
     .pi-id-list { padding: 14px 10px; }
@@ -422,7 +422,7 @@ button.pi-id-stat:hover { border-color: color-mix(in srgb, var(--tone) 45%, var(
     .pi-id-stat-value { font-size: 1.3rem; }
     .pi-id-savebar { bottom: 10px; width: 100%; padding: 10px 10px 10px 14px; flex-wrap: wrap; }
     .pi-id-savebar-actions { flex: 1 1 100%; }
-    .pi-id-savebar-actions .pi-id-btn { flex: 1; }
+    .pi-id-savebar-actions .pi-id-btn { flex: 1; min-width: 0; white-space: normal; text-align: center; }
     .pi-id-toasts { right: 12px; left: 12px; bottom: 12px; width: auto; justify-items: stretch; }
     .pi-id-entry { padding: 12px 10px 10px 12px; }
     .pi-id-entry .pi-id-entry-actions { opacity: 1 !important; }
