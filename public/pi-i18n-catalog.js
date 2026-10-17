@@ -10102,5 +10102,9 @@
     rows.push(
         ["Pi 只按描述决定何时使用技能：写清用途，以及会触发它的说法、报错或场景","Pi chooses skills by description alone: state what it does and the phrases, errors or situations that should trigger it"]
     );
+    rows.push(
+        ["检索命中 {0} 次","Found by search {0} times","Found by search {0} time"],
+        ["记忆搜索找到这条 {0} 次，最近一次 {1}。USER／MEMORY 全文每轮都会提供给助手，这里只统计助手主动搜索找到它的次数；内容修改后重新计数。","Memory search found this entry {0} times, most recently on {1}. The full USER/MEMORY documents are given to the assistant every turn; this only counts the times the assistant searched and found it. Editing the content restarts the count.","Memory search found this entry {0} time, most recently on {1}. The full USER/MEMORY documents are given to the assistant every turn; this only counts the times the assistant searched and found it. Editing the content restarts the count."]
+    );
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

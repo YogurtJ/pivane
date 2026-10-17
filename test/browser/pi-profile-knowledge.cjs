@@ -58,7 +58,7 @@ async function run(browser, base, width, locale, theme) {
         documentHeld: false, documentStarted: null, releaseDocument: null,
         documentReadFail: false, detailFailure: '', delayedDetail: false, detailStarted: null, releaseDetail: null, documentFail: '', indexPending: false, documentStatus: 'ready', delayedRead: false, releaseRead: null, delayStarted: null,
         items: [memory(ids.user, '喜欢先了解整体思路，再逐步展开细节；讨论学习问题时，请给出一个具体例子。', 'preference', 'user'),
-            memory(ids.memory, '项目“研究笔记”的参考资料统一放在 Zotero 的 Research 文件夹，引用格式使用 APA 第 7 版。', 'fact'),
+            { ...memory(ids.memory, '项目“研究笔记”的参考资料统一放在 Zotero 的 Research 文件夹，引用格式使用 APA 第 7 版。', 'fact'), recall: { hits: 3, lastHitAt: '2026-10-15' } },
             memory(ids.memory2, '整理周报：先列完成事项，再列风险和下周计划，每项不超过两行。', 'procedure'),
             { ...memory(ids.failure, 'Legacy failure kept for reference.', 'failure', 'failure'), readOnly: true },
             memory(ids.project, 'Project-specific build steps.', 'procedure', 'project', 'project'), skill(ids.skill, 'source-review', 'active'), skill(ids.draft, 'research-notes', 'draft'), skill(ids.disabled, 'weekly-report', 'disabled')],
@@ -79,6 +79,7 @@ async function run(browser, base, width, locale, theme) {
             }
             item = memory(hash(50 + calls.length), input.content, input.category, input.target); state.items.unshift(item);
         }
+        if (input.operation === 'update') delete item.recall;
         if (input.operation === 'update') Object.assign(item, { content: input.content, category: input.category || item.category, name: input.name || item.name, description: input.description || item.description });
         if (['delete', 'restore', 'enable', 'disable'].includes(input.operation)) item.state = { delete: 'deleted', restore: 'active', enable: 'active', disable: 'disabled' }[input.operation];
         if (input.operation === 'undo') {
@@ -172,6 +173,27 @@ async function run(browser, base, width, locale, theme) {
     assert.equal(await button(entry(ids.failure), '编辑').count(), 0);
     assert.equal(await button(entry(ids.failure), '删除').count(), 0);
     await entry(ids.failure).locator('.pi-id-entry-main').click();
+    // memory_search recall counters show as a chip and a detail note, only where present.
+    const recallChip = entry(ids.memory).locator('.pi-knowledge-recall');
+    assert.equal((await recallChip.innerText()).trim(), T('检索命中 {0} 次', 3));
+    assert.equal(await entry(ids.memory2).locator('.pi-knowledge-recall').count(), 0);
+    await entry(ids.memory).locator('.pi-id-entry-main').click();
+    const recallNote = T('记忆搜索找到这条 {0} 次，最近一次 {1}。USER／MEMORY 全文每轮都会提供给助手，这里只统计助手主动搜索找到它的次数；内容修改后重新计数。', 3, '2026-10-15');
+    await entry(ids.memory).locator('.pi-knowledge-recall-note').waitFor();
+    assert.equal((await entry(ids.memory).locator('.pi-knowledge-recall-note').innerText()).trim(), recallNote);
+    assert.equal(await recallChip.getAttribute('title'), recallNote);
+    await shot('memory-recall');
+    // A refreshed count with the same item revision updates the open entry without refetching it.
+    const detailReads = reads.length;
+    state.items.find(item => item.id === ids.memory).recall = { hits: 5, lastHitAt: '2026-10-16' };
+    await page.evaluate(() => manager.refresh());
+    await page.waitForFunction(() => !manager.busy());
+    await page.waitForFunction(text => document.querySelector('#knowledge .pi-id-entry.is-open .pi-knowledge-recall')?.textContent.trim() === text, T('检索命中 {0} 次', 5));
+    assert.equal((await entry(ids.memory).locator('.pi-knowledge-recall-note').innerText()).trim(),
+        T('记忆搜索找到这条 {0} 次，最近一次 {1}。USER／MEMORY 全文每轮都会提供给助手，这里只统计助手主动搜索找到它的次数；内容修改后重新计数。', 5, '2026-10-16'));
+    assert.ok(reads.length > detailReads, 'the list was reloaded');
+    await entry(ids.memory).locator('.pi-id-entry-main').click();
+    await entry(ids.memory).locator('.pi-knowledge-recall-note').waitFor({ state: 'detached' });
     if (width === 393) {
         const actions = await main.locator('.pi-id-entry-actions .pi-id-btn-sm').evaluateAll(nodes => nodes.map(node => {
             const rect = node.getBoundingClientRect(); return { width: rect.width, height: rect.height };

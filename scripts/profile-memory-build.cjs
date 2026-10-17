@@ -26,7 +26,7 @@ const imports = [
     ['upsertSessionFileMetadata', 'store/session-indexer'], ['searchSessions', 'store/session-search'],
     ['searchMemories', 'store/sqlite-memory-store'], ['registerMemoryTool', 'tools/memory-tool'],
     ['registerMemorySearchTool', 'tools/memory-search-tool'], ['registerSessionSearchTool', 'tools/session-search-tool'],
-    ['registerSkillTool', 'tools/skill-tool'],
+    ['registerSkillTool', 'tools/skill-tool'], ['recordSearchHits', 'store/sqlite-memory-store'],
 ];
 const entry = imports.map(([name, file]) => `export { ${name} } from './src/${file}.ts';`).join('\n');
 esbuild.buildSync({

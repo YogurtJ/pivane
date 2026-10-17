@@ -62,6 +62,44 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
     const allowed = (ctx: any) => started && !stopped && ctx?.mode === 'rpc'
         && scope.eligibleManager(ctx.sessionManager, context, ctx.cwd)
         && scope.sameActiveFile(ctx.sessionManager.getSessionFile(), activeIdentity);
+    // The upstream tool reports only a count. Its search runs synchronously inside execute(),
+    // so the adapter's DatabaseManager view records the rows that statement actually returned
+    // during that call (the final memory-row read is the returned result; stats run first).
+    // Anything else, such as a future await before the read, records nothing and counts nothing.
+    let searchReads: any[][] | null = null;
+    const bound = (target: any, key: PropertyKey) => {
+        const value = Reflect.get(target, key, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+    };
+    const recordingConnection = (connection: any) => new Proxy(connection, { get(target, key) {
+        if (key !== 'prepare') return bound(target, key);
+        return (...sql: any[]) => new Proxy(target.prepare(...sql), { get(statement, name) {
+            if (name !== 'all') return bound(statement, name);
+            return (...params: any[]) => {
+                const rows = statement.all(...params);
+                if (searchReads && Array.isArray(rows)) searchReads.push(rows);
+                return rows;
+            };
+        } });
+    } });
+    const searchView = (manager: any) => new Proxy(manager, { get(target, key) {
+        if (key !== 'getDb') return bound(target, key);
+        return () => { const connection = target.getDb(); return searchReads ? recordingConnection(connection) : connection; };
+    } });
+    const runSearch = (tool: any, args: any[]) => {
+        searchReads = [];
+        let pending: any, reads: any[][];
+        try { pending = tool.execute(...args); } finally { reads = searchReads; searchReads = null; }
+        return Promise.resolve(pending).then((result: any) => ({ result, rows: reads.at(-1) || [] }));
+    };
+    const recalledIds = (rows: any[], result: any): number[] | null => {
+        const count = result?.details?.success ? result.details.count : 0;
+        const text = result?.content?.[0]?.text;
+        if (!Number.isSafeInteger(count) || count < 1 || count > 20 || rows.length !== count || typeof text !== 'string'
+            || !rows.every((row: any) => Number.isSafeInteger(row?.id) && row.id > 0 && typeof row.content === 'string' && text.includes(row.content)))
+            return null;
+        return rows.map((row: any) => row.id);
+    };
     const indexPending = (target?: string) => ['memory', 'user'].some(kind =>
         (!target || target === kind) && documentIndex.pendingDocumentIndex(root, kind));
     const indexUnavailable = async (target?: string) => {
@@ -114,7 +152,13 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
                             return result;
                         }
                         if (tool.name === 'skill_manage') assertPrivateSkillTree(skillStore.getGlobalSkillsDir(), skillStore.getProjectSkillsDir());
-                        const execute = async () => tool.execute(...args);
+                        let searchRows: any[] = [];
+                        const execute = async () => {
+                            if (tool.name !== 'memory_search') return tool.execute(...args);
+                            const searched = await runSearch(tool, args);
+                            searchRows = searched.rows;
+                            return searched.result;
+                        };
                         const viaKnowledge = knowledgeTools && (['memory_add', 'memory_replace', 'memory_remove', 'skill_manage'].includes(tool.name))
                             ? await knowledgeTools(tool.name, args[1], args[2], () => allowed(args[args.length - 1]), args[args.length - 1]) : null;
                         if (knowledge && tool.name === 'skill_manage' && !viaKnowledge
@@ -128,8 +172,11 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
                                 if (await indexUnavailable(args[1]?.target)) throw new Error('Profile document search index needs repair');
                                 return execute();
                             }) : await execute());
+                        const recalled = tool.name === 'memory_search' ? recalledIds(searchRows, result) : null;
                         if (tool.name === 'memory_search' && await indexUnavailable(args[1]?.target))
                             throw new Error('Profile document search index changed during search');
+                        // Count only results actually returned after verification; the index thread writes.
+                        if (recalled && allowed(args[args.length - 1])) sourceIndex?.recordHits(recalled);
                         return result;
                     },
                 };
@@ -162,10 +209,10 @@ export async function registerProfileMemory(pi: ExtensionAPI): Promise<void> {
     const db = context.memory.enabled ? new upstream.DatabaseManager(root) : null;
     if (db) {
         upstream.registerMemoryTool(guarded, store, () => projectStore, db, () => context.cwd);
-        // Upstream 0.9.10 records hit_count/last_hit_at on every memory_search by default.
-        // Pivane has no consumer for those counters (no upstream consolidation or insights),
-        // and keeping search read-only avoids synchronous SQLite write locks on the RPC loop.
-        upstream.registerMemorySearchTool(guarded, db, { usageTrackingEnabled: false });
+        // Upstream 0.9.10 records hit_count/last_hit_at inside memory_search. Pivane keeps the
+        // search itself read-only on the RPC loop and records the rows it returned through the
+        // index thread instead (see runSearch/recalledIds/recordHits above).
+        upstream.registerMemorySearchTool(guarded, searchView(db), { usageTrackingEnabled: false });
         upstream.registerSessionSearchTool(guarded, db, { variant: 'legacy' });
         pi.on('before_agent_start', async (event: any, ctx: any) => {
             if (!allowed(ctx)) return;

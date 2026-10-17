@@ -706,7 +706,7 @@ const consolidationReply = groups => ({ stopReason: 'stop', usage: { input: 400,
     content: [{ type: 'text', text: JSON.stringify({ groups }) }] });
 async function consolidationFixture(t, options) {
     const f = await fixture(t, options);
-    const rows = [memoryRow(1, '合成环境使用新版校验清单。'), memoryRow(2, '合成环境的校验清单是新版。'),
+    const rows = [memoryRow(1, '合成环境使用新版校验清单。', { recall: { hits: 3, lastHitAt: '2026-10-15' } }), memoryRow(2, '合成环境的校验清单是新版。'),
         memoryRow(3, '合成部署前先运行隔离检查。'), memoryRow(4, '部署合成环境之前运行隔离检查。'),
         memoryRow(5, '用户偏好中文回答。', { target: 'user', category: 'preference' }),
         memoryRow(6, '旧失败记录。', { target: 'failure', readOnly: true })];
@@ -747,6 +747,8 @@ test('propose-consolidation stores a plan from the review model without writing 
     const offered = JSON.parse(request.messages[0].content);
     assert.deepEqual(offered.map(entry => entry.id), ['m1', 'm2', 'm3', 'm4'], 'only writable profile entries of the target');
     assert.ok(!request.messages[0].content.includes(f.rows[0].id), 'model sees short references, not item IDs');
+    assert.deepEqual(offered.map(entry => entry.recalled), [3, undefined, undefined, undefined], 'memory_search recall counts are offered only where present');
+    assert.match(request.systemPrompt, /"recalled" field .* only a tie-breaker/);
     assert.equal(snap.proposals.length, 1);
     const proposal = snap.proposals[0];
     assert.deepEqual({ id: proposal.id, target: proposal.target, model: proposal.model }, { id: run.id, target: 'memory',

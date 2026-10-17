@@ -222,8 +222,16 @@ test('isolated pinned Pi upstream components enforce profile index, recall, skil
     const staleDb = new Database(path.join(same.root, 'sessions.db'));
     const memoryColumns = staleDb.prepare('PRAGMA table_info(memories)').all().map(column => column.name);
     assert.ok(memoryColumns.includes('hit_count') && memoryColumns.includes('last_hit_at'), 'upstream recall columns are migrated additively');
-    assert.equal(staleDb.prepare('SELECT COUNT(*) AS total FROM memories WHERE hit_count != 0 OR last_hit_at IS NOT NULL').get().total, 0,
-        'profile memory_search stays read-only and records no upstream usage hits');
+    // Verified memory_search results are counted by the index thread (alpha and the
+    // second session each found the 秩 entry once); unsearched entries stay at zero.
+    const recall = content => staleDb.prepare('SELECT hit_count AS hits, last_hit_at AS lastHitAt FROM memories WHERE content = ?').get(content);
+    assert.equal(recall('线性代数的秩').hits, 2, JSON.stringify(recall('线性代数的秩')));
+    assert.match(recall('线性代数的秩').lastHitAt, /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(recall('极限证明法').hits, 1);
+    assert.deepEqual(recall('parallel-alpha'), { hits: 0, lastHitAt: null }, 'entries no search returned are not counted');
+    // Same text in another project scope: only rows a search actually returned are counted.
+    staleDb.prepare('INSERT INTO memories (project, target, category, content, created, last_referenced) VALUES (?, ?, NULL, ?, ?, ?)')
+        .run('/elsewhere/project', 'memory', 'parallel-beta', '2026-01-01', '2026-01-01');
     staleDb.prepare('INSERT INTO sessions (id, project, cwd, started_at) VALUES (?, ?, ?, ?)')
         .run('unproven', cwdA, cwdA, '2026-01-01');
     staleDb.prepare('INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (?, ?, ?, ?, ?)')
@@ -236,7 +244,15 @@ test('isolated pinned Pi upstream components enforce profile index, recall, skil
         const result = await reopened.pi.tools.get('memory_search').execute('call', { query: term }, undefined, undefined, reopened.ctx);
         assert.equal(result.details.count >= 1, true, term);
     }
+    const scoped = await reopened.pi.tools.get('memory_search').execute('call', { query: 'parallel-beta', project: '/elsewhere/project' },
+        undefined, undefined, reopened.ctx);
+    assert.equal(scoped.details.count, 1);
     await reopened.close();
+    const recallDb = new Database(path.join(same.root, 'sessions.db'), { readonly: true });
+    const scopedHits = recallDb.prepare("SELECT project, hit_count AS hits FROM memories WHERE content = 'parallel-beta' ORDER BY project IS NULL, project").all();
+    recallDb.close();
+    assert.deepEqual(scopedHits, [{ project: '/elsewhere/project', hits: 2 }, { project: null, hits: 1 }],
+        'the unfiltered search counted both returned rows; the project-filtered search only the row it returned');
     const beta = await start(create('beta-session', betaId, cwdA, '栈 beta-note'), betaId);
     const noRecall = await beta.pi.tools.get('memory_search').execute('call', { query: '秩' }, undefined, undefined, beta.ctx);
     assert.equal(noRecall.details.success, false);

@@ -13,7 +13,7 @@ const imports = [
     ['upsertSessionFileMetadata', 'store/session-indexer'], ['searchSessions', 'store/session-search'],
     ['searchMemories', 'store/sqlite-memory-store'], ['registerMemoryTool', 'tools/memory-tool'],
     ['registerMemorySearchTool', 'tools/memory-search-tool'], ['registerSessionSearchTool', 'tools/session-search-tool'],
-    ['registerSkillTool', 'tools/skill-tool'],
+    ['registerSkillTool', 'tools/skill-tool'], ['recordSearchHits', 'store/sqlite-memory-store'],
 ];
 // Older reviewed Pi packages shipped a shrinkwrap ahead of root overrides;
 // Pi 1.0.2 does not. Validate the real consumer in either nested or hoisted

@@ -147,6 +147,12 @@
                     if (newer && newer.revision !== selected.revision) {
                         selected = newer; detail = null; reviewed = false; detailReadError = null;
                         void fetchDetail(newer, generation);
+                    } else if (newer) {
+                        // The advisory recall count is outside the revision: refresh it in place
+                        // without refetching the body or touching an open draft.
+                        for (const held of [selected, detail?.item]) if (held && held.id === newer.id) {
+                            if (newer.recall) held.recall = newer.recall; else delete held.recall;
+                        }
                     }
                 }
                 const found = data.receipts.find(row => row.requestId === uncertain?.requestId);
@@ -591,10 +597,16 @@
             }
             return actions;
         }
+        // Advisory counter from verified memory_search results; absent until a search finds the entry.
+        const recalled = item => item?.kind === 'memory' && item.state !== 'deleted' && Number.isSafeInteger(item.recall?.hits) && item.recall.hits > 0;
+        const recallNote = item => t('记忆搜索找到这条 {0} 次，最近一次 {1}。USER／MEMORY 全文每轮都会提供给助手，这里只统计助手主动搜索找到它的次数；内容修改后重新计数。',
+            item.recall.hits, item.recall.lastHitAt || '—');
         function renderEntry(row) {
             const open = selected?.id === row.id, item = open ? original() : row;
             const meta = el('span', { class: 'pi-id-entry-meta' }, [item.kind === 'memory' ? categoryChip(item.category) : chip(t(label[item.state] || item.state), item.state === 'active' ? 'green' : item.state === 'draft' ? 'amber' : 'neutral'),
-                item.scope === 'project' && chip(t('项目')), (item.readOnly || item.truncated) && chip(t('只读')), time(item.updatedAt)]);
+                item.scope === 'project' && chip(t('项目')), (item.readOnly || item.truncated) && chip(t('只读')),
+                recalled(item) && chip(t('检索命中 {0} 次', item.recall.hits), 'accent', { icon: 'magnifying-glass', className: 'pi-knowledge-recall', title: recallNote(item) }),
+                time(item.updatedAt)]);
             const main = el('button', { class: 'pi-id-entry-main', type: 'button', 'aria-expanded': String(open), dataset: { itemId: item.id }, on: { click: () => void choose(row) } },
                 item.kind === 'skill' ? [el('span', { class: 'pi-knowledge-skill-head' }, [el('span', { class: 'pi-knowledge-skill-icon', dataset: { tone: item.state === 'active' ? 'accent' : item.state === 'draft' ? 'amber' : 'neutral' } }, [icon('wand-magic-sparkles')]), node('span', item.name, 'pi-id-entry-title pi-knowledge-skill-name')]), node('span', item.description || '', 'pi-id-entry-text'), meta]
                     : [node('span', open && detail ? item.content : row.content || '', 'pi-id-entry-text'), meta]);
@@ -608,6 +620,7 @@
                     if (item.kind === 'skill' && !editing) body.append(U.markdown(el('div'), bodyFor(item).replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '')));
                     if (editing) body.append(renderEditor());
                     else body.append(el('div', { class: 'pi-id-toolbar' }, [...entryActions(item), button(t('收起详情'), () => void choose(row), 'ghost', { size: 'sm' })]));
+                    if (!editing && recalled(item)) body.append(node('small', recallNote(item), 'pi-id-help pi-knowledge-recall-note'));
                     const receipts = (snapshot?.receipts || []).filter(receipt => receipt.itemId === item.id);
                     if (receipts.length) body.append(renderReceipts(receipts, item));
                     body.append(renderTechnical(item));

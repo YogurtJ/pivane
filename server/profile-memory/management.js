@@ -9,7 +9,7 @@ const { descriptorPathSync, assertDescriptorBackend } = require('../pi-file-desc
 const { reviewModelConfig } = require('./auto-learn');
 const MAX_FILE = 2 * 1024 * 1024;
 const MAX_SKILL_SCAN = 5000;
-const BUNDLE_SHA256 = '339d157c0490d50884efe70e3e0798eb1f3a28acefcd12e63f0104fd3017a2ad';
+const BUNDLE_SHA256 = 'c1e3dec1004829df2715cacb457990c6f2b1ce6c6fe1439428b92625ac8f7f75';
 const hash = data => createHash('sha256').update(data).digest('hex');
 const stamp = s => [s.dev, s.ino, s.mode, s.size, s.mtimeNs, s.ctimeNs].map(String).join(':');
 function safeFile(file, maxBytes = MAX_FILE) {
@@ -54,6 +54,19 @@ function projectRoots(root) {
     }
     return dirs;
 }
+// Internal recall identity for a listed memory: [listed target, project key, SQLite content].
+// A symbol, so it is never serialized into API responses or hashed into revisions.
+const RECALL_KEY = Symbol('pivane.memoryRecallKey');
+const recallKey = (target, projectKey, content) => JSON.stringify([target, projectKey || null, content]);
+// A Markdown entry without upstream's trailing metadata comment (MemoryStore.decodeEntry's
+// pattern), i.e. the text its SQLite row stores, plus a project64 attribution if present.
+function entryMetadata(raw) {
+    const match = String(raw).match(/^(.*?)\s*<!--\s*created=([^,]+),\s*last=([^,>]+)(?:,\s*project64=([A-Za-z0-9_-]+))?\s*-->\s*$/s);
+    let project = null;
+    if (match?.[4]) project = Buffer.from(match[4], 'base64url').toString('utf8').trim() || null;
+    return { text: (match ? match[1] : String(raw)).trim(), project };
+}
+const entryText = raw => entryMetadata(raw).text;
 function listMemories(root, projects) {
     const items = [], versions = [];
     const scopes = [[root, 'memory', 'MEMORY.md'], [root, 'user', 'USER.md'], [root, 'failure', 'failures.md'],
@@ -65,8 +78,13 @@ function listMemories(root, projects) {
         versions.push(`${file}:${data.revision}`);
         let ordinal = 0;
         for (const content of data.text.split('\n§\n').map(part => part.trim()).filter(Boolean)) {
+            // The recall key follows the SQLite row: Pivane indexes MEMORY/USER text per store
+            // scope, while legacy failure rows carry the entry's own project metadata.
+            const entry = entryMetadata(content);
             items.push({ id: hash(`${file}\0${ordinal++}\0${content}`), kind: 'memory', target, content,
-                ...(target === 'project' ? { projectKey: path.basename(dir) } : {}), updatedAt: data.updatedAt });
+                ...(target === 'project' ? { projectKey: path.basename(dir) } : {}), updatedAt: data.updatedAt,
+                [RECALL_KEY]: recallKey(target, target === 'project' ? path.basename(dir)
+                    : target === 'failure' && entry.project ? hash(entry.project) : null, entry.text) });
         }
     }
     return { items, versions };
@@ -122,11 +140,48 @@ function listExtendedMemories(root, bundle) {
             || rows.reduce((sum, row) => sum + Buffer.byteLength(row.content), 0) > 8 * MAX_FILE) throw new Error('Memory response budget exceeded');
         const versions = rows.map(row => JSON.stringify(row));
         return { versions, items: rows.map(row => ({ id: hash(`${dbPath}\0${row.id}`), kind: 'memory',
+            [RECALL_KEY]: rowRecallKey(row),
             target: row.project && row.target === 'memory' ? 'project' : row.target,
             ...(row.project ? { projectKey: hash(row.project) } : {}),
             ...(row.category ? { category: row.category } : {}),
             content: row.content, createdAt: row.created, updatedAt: row.last_referenced })) };
     } finally { db.close(); }
+}
+const rowRecallKey = row => recallKey(row.project && row.target === 'memory' ? 'project' : row.target,
+    row.project ? hash(row.project) : null, row.content);
+// Advisory memory_search recall counters keyed like listed items. They are read
+// separately from listExtendedMemories so they never enter a write revision. A
+// database not yet migrated to the counter columns simply has no recalls.
+function memoryRecall(root, bundle) {
+    const recall = new Map();
+    const dbPath = path.join(root, 'sessions.db');
+    if (!fs.existsSync(dbPath) || !bundle || !path.isAbsolute(bundle)) return recall;
+    if (fs.realpathSync.native(dbPath) !== dbPath || !fs.lstatSync(dbPath).isFile()) throw new Error('Unsafe database');
+    const db = new (createRequire(bundle)('better-sqlite3'))(dbPath, { readonly: true, fileMustExist: true });
+    try {
+        const names = new Set(db.prepare('PRAGMA table_info(memories)').all().map(column => column.name));
+        if (!names.has('hit_count') || !names.has('last_hit_at')) return recall;
+        const rows = db.prepare('SELECT project, target, content, hit_count, last_hit_at FROM memories WHERE hit_count > 0 LIMIT 10001').all();
+        if (rows.length > 10000) throw new Error('Memory browsing limit exceeded');
+        for (const row of rows) {
+            if (typeof row.content !== 'string' || !Number.isSafeInteger(Number(row.hit_count))) continue;
+            const key = rowRecallKey(row);
+            const previous = recall.get(key);
+            const lastHitAt = typeof row.last_hit_at === 'string' && /^\d{4}-\d{2}-\d{2}/.test(row.last_hit_at) ? row.last_hit_at.slice(0, 10) : null;
+            recall.set(key, { hits: (previous?.hits || 0) + Number(row.hit_count),
+                lastHitAt: [previous?.lastHitAt, lastHitAt].filter(Boolean).sort().pop() || null });
+        }
+        return recall;
+    } finally { db.close(); }
+}
+// Uses the internal (non-serialized) key each listing attached for its own source.
+function withRecall(items, recall) {
+    if (!recall.size) return items;
+    return items.map(item => {
+        if (item.kind !== 'memory' || item.state === 'deleted' || typeof item[RECALL_KEY] !== 'string') return item;
+        const found = recall.get(item[RECALL_KEY]);
+        return found ? { ...item, recall: found } : item;
+    });
 }
 function resolveBundle(bundlePath) { return typeof bundlePath === 'function' ? bundlePath() : bundlePath; }
 function profileMemoryCapability({ bundlePath, reviewModel } = {}) {
@@ -208,4 +263,4 @@ function mountProfileMemoryRoutes(router, { profiles, getAgentDir, bundlePath = 
         } catch { return res.status(409).json({ error: 'Profile skill cannot be read safely' }); }
     });
 }
-module.exports = { BUNDLE_SHA256, mountProfileMemoryRoutes, profileMemoryCapability, safeFile, listMemories, listSkills, projectRoots, skillFiles, listExtendedMemories, safeDir };
+module.exports = { BUNDLE_SHA256, mountProfileMemoryRoutes, profileMemoryCapability, safeFile, listMemories, listSkills, projectRoots, skillFiles, listExtendedMemories, memoryRecall, withRecall, entryText, entryMetadata, RECALL_KEY, safeDir };

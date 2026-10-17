@@ -5,7 +5,7 @@ const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const scope = require('./scope');
-const { safeFile, safeDir, projectRoots, listMemories, listSkills, listExtendedMemories, profileMemoryCapability } = require('./management');
+const { safeFile, safeDir, projectRoots, listMemories, listSkills, listExtendedMemories, memoryRecall, withRecall, profileMemoryCapability } = require('./management');
 const { createMutationLock } = require('./mutation-lock');
 const { documentIndex, pendingDocumentIndex, documentIndexSynced } = require('./document-index');
 const { location, publish } = require('../pi-profile-documents');
@@ -277,6 +277,10 @@ function publicRecord(record) {
 }
 // The monotonic sequence keeps revisions stable while receipts rotate through
 // the active window and the archive.
+// Recall counters are advisory display data: a read failure shows none rather than failing the page.
+function recallFor(root, bundle) {
+    try { return memoryRecall(root, bundle); } catch { return new Map(); }
+}
 function revision(root, generation, data, items) {
     return hash(JSON.stringify([generation, data.sequence, items.map(item => [item.id, item.revision, item.state]).sort()]));
 }
@@ -656,7 +660,7 @@ class ProfileKnowledgeService {
                 && (!query || `${item.name || ''} ${item.content || ''} ${item.description || ''}`.toLocaleLowerCase().includes(query)));
             const offset = options.offset || 0;
             return { ...base, status: 'ready', counts: knowledgeCounts(items),
-                revision: revision(ctx.root, generation, data, items), items: matches.slice(offset, offset + 50).map(item => {
+                revision: revision(ctx.root, generation, data, items), items: withRecall(matches.slice(offset, offset + 50), recallFor(ctx.root, ctx.bundle)).map(item => {
                     const { content, ...listed } = item;
                     return item.kind === 'memory' ? { ...listed, content: content?.slice(0, 512) } : listed;
                 }), receipts: recent(data, options.sessionId), hasMore: matches.length > offset + 50,
@@ -676,7 +680,8 @@ class ProfileKnowledgeService {
             return { version: 1, status: 'unsupported' };
         return createMutationLock(ctx.root).inspect(() => {
             if (safeFile(pendingFile(ctx.root), MAX_LEDGER)) return { version: 1, status: 'pending' };
-            const item = physical(ctx.root, ledger(ctx.root), ctx.bundle).find(row => row.id === itemId);
+            const found = physical(ctx.root, ledger(ctx.root), ctx.bundle).find(row => row.id === itemId);
+            const item = found && withRecall([found], recallFor(ctx.root, ctx.bundle))[0];
             const content = item && body(ctx.root, item);
             return { version: 1, status: item ? 'ready' : 'missing', ...(item ? { item: {
                 ...item, content: content?.slice(0, MAX_CONTENT),

@@ -535,7 +535,7 @@ The current source ships the upstream 0.9.10 npm contents in `vendor/pi-hermes-m
 `scripts/install-bundled-capabilities.cjs`, which verifies vendor hashes, builds
 selected components and checks native SQLite. The resulting
 `server/profile-memory/upstream-bundle.mjs` must match the reviewed SHA256
-`339d157c0490d50884efe70e3e0798eb1f3a28acefcd12e63f0104fd3017a2ad`.
+`c1e3dec1004829df2715cacb457990c6f2b1ce6c6fe1439428b92625ac8f7f75`.
 The configuration service selects this release-local bundle before the legacy
 `pivane-profiles/runtime.json` absolute path. It does not rewrite the old file or
 move profile data. `npm test` supplies the built-in bundle and Pi's Jiti loader,
@@ -561,9 +561,10 @@ Rows, IDs, Markdown and the knowledge listing revision (which hashes explicit
 columns) are unchanged; the previous bundle's explicit-column statements accept
 the extra columns, so reverting the application does not require a database
 rollback. If the previous bundle ever rebuilds a corrupt database, it recreates
-its own schema without the counters; Pivane leaves them unpopulated, so nothing
-is lost and the next 0.9.10 open adds them again. Keep the usual pre-activation
-backup regardless.
+its own schema without the counters; only the advisory recall counts described
+below are lost (memories, Markdown and revisions are not), and the next 0.9.10
+open adds the columns again at zero. Keep the usual pre-activation backup
+regardless.
 
 Upstream takes its column snapshot outside a transaction, so two first opens of
 one database (for example the RPC worker and its index thread, or two sessions
@@ -581,12 +582,50 @@ document save (before publication) or index thread start reports the error
 instead of falling through to the unsynchronized upstream migration. Its column
 list must match upstream's on each upgrade; the upgrade test compares both.
 
-Upstream `memory_search` now increments those counters by default. The adapter
-registers it with `usageTrackingEnabled:false`: Pivane has no consumer for the
-counters, document edits replace mirrored rows (which would reset them), and a
-read tool should not take a synchronous SQLite write lock on the RPC event loop.
-The columns therefore stay `0`/`NULL` until a reviewed feature records recalls
-off that loop.
+Upstream `memory_search` increments those counters inside the tool by default.
+The adapter registers it with `usageTrackingEnabled:false`, so the search keeps
+no SQLite write lock on the RPC event loop, and records recalls itself:
+
+- The tool receives an adapter view of the `DatabaseManager` whose connection
+  records the rows each statement's `.all()` returns, only while the upstream
+  `execute()` call is running synchronously. Upstream reads its stats first and
+  returns the final memory-row query, so the last recorded result is exactly the
+  row set the tool returned; there is no second read that could see a replaced
+  row. IDs are counted only after a successful search (`count` 1-20), the
+  existing post-search index check and a still-allowed binding, and only when
+  that row set's size equals the reported count and the returned text contains
+  each row's content. An upstream change that awaits before reading records
+  nothing and so counts nothing.
+- IDs go fire-and-forget to the session's index thread. Pending counts coalesce
+  per row ID (at most 200 IDs, 1000 per ID) and at most one `hits` batch waits
+  in the serial worker queue, so a long refresh or contention cannot pile up
+  writes ahead of `session_search` or shutdown. The worker applies a batch with
+  upstream `recordSearchHits` in one `IMMEDIATE` transaction under a temporary
+  100 ms busy timeout (restored afterwards); a busy, failed or closing thread
+  drops that batch and never retries it. The search result never depends on it.
+  Shutdown sends the last coalesced batch before closing the thread.
+- `management.memoryRecall` reads `hit_count > 0` rows read-only and sums them
+  per key [listed target, project key, content]. Each listing attaches its own
+  internal key as a non-serialized symbol: SQLite rows use their exact text;
+  Markdown MEMORY/USER entries use the text without upstream's trailing metadata
+  comment and their store's project key; Markdown failures use the project from
+  their own `project64` metadata, like the legacy failure rows. The knowledge
+  snapshot page and item detail attach `recall:{hits,lastHitAt}` to present
+  memory items. It is not part of `listExtendedMemories` or the revision, so a
+  recall never invalidates an open edit, and a read failure or a database
+  without the columns shows no counts instead of failing the page. An expanded
+  entry takes a refreshed count from the next list load without refetching its
+  body or touching a draft.
+- The count belongs to the index row. Saving a changed entry replaces only that
+  entry's row, so its count restarts while unchanged siblings keep theirs;
+  deleting an entry hides its count. The full USER/MEMORY documents are injected
+  every turn regardless, so the number measures explicit searches, not use.
+- The only other reader is the consolidation proposal (`propose-consolidation`):
+  each offered record carries an optional `recalled` count and the system prompt
+  treats it as a tie-breaker (keep the wording and key terms of frequently
+  recalled records; never drop a fact or merge unrelated records over a low or
+  missing count). Proposals still need review; turn-time background learning,
+  the injected memory block and writes do not read it.
 
 Pi discovers skills by frontmatter `description` alone. The upstream
 `skill_manage` guidance now says so and passes through the adapter. Knowledge
