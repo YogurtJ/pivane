@@ -10,6 +10,16 @@ const controls = id => ({ runtimeId: id, revision: 1, stopping: false, queue: { 
 async function run(browser, viewport, legacy = false) {
     const context = await browser.newContext({ locale: 'zh-CN', viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900, permissions: ['microphone'] });
     const page = await context.newPage();
+    // Advance the native Web Audio clock on CI hosts without an output device;
+    // the fake microphone, ScriptProcessor PCM and upload assertions remain real.
+    await page.addInitScript(() => {
+        const NativeAudioContext = window.AudioContext;
+        if (NativeAudioContext && 'setSinkId' in NativeAudioContext.prototype) {
+            window.AudioContext = class extends NativeAudioContext {
+                constructor(options = {}) { super({ ...options, sinkId: { type: 'none' } }); }
+            };
+        }
+    });
     const errors = [], writes = [], commands = [], sockets = [];
     const states = new Map(sessions.map(s => [s.id, { isStreaming: s.id !== 'c', isCompacting: false, model, thinkingLevel: 'off' }]));
     const views = new Map(sessions.map(s => [s.id, controls(s.id)]));

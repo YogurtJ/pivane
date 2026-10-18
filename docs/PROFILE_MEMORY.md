@@ -500,8 +500,11 @@ snapshot cap. An active conversation exceeding that cap retains memory and
 skill tools, while its transcript is not indexed. A profile-local
 `pivane_sources` table binds each derived session row to the verified native
 path and content fingerprint. Replacing session rows, upstream messages/file
-metadata and provenance is one SQLite transaction, with a fresh source check
-inside it even when another worker supplied an older candidate. Legacy
+metadata and provenance is one immediate SQLite transaction: it reserves the
+writer before reading source rows, so another connection cannot invalidate a
+read snapshot before its write upgrade. The existing busy timeout remains;
+a fresh native source check still runs inside the transaction even when another
+worker supplied an older candidate. Legacy
 unproven derived rows are removed. Search
 reconciles all tracked sources before and after querying; deleted, edited,
 rebound or replaced sources cannot leak old snippets. A change detected after
@@ -510,9 +513,15 @@ index refresh and session search, including both source reconciliations; the Pi
 RPC event loop does not parse or index historical JSONL at startup or after a
 settled turn. Startup schedules a bounded refresh without awaiting it. Settled
 events coalesce into one running and one pending refresh, and a search waits for
-that work before verifying and querying. Shutdown drops the pending disposable
-refresh, waits for in-flight work, closes the index connection and joins the
-thread; it does not re-index the current session. A failed worker makes search
+that work before verifying and querying. A failed refresh still services an
+already-pending notification; failure alone does not enqueue an automatic retry.
+Notifications arriving during drain completion are retained. If the last refresh
+fails, search reports the failure (`PROFILE_INDEX_REFRESH_FAILED` internally)
+until an explicitly scheduled refresh succeeds, rather than returning an ordinary
+negative result. Successful but incomplete coverage retains its partial status.
+Shutdown drops the pending disposable refresh, waits for in-flight work, closes
+the index connection and joins the thread; repeated close calls share this
+completion promise. It does not re-index the current session. A failed worker makes search
 fail closed; no unchecked parent-side fallback is used. Active-session binding
 verification and memory document operations retain their existing checks.
 Indexing advances a

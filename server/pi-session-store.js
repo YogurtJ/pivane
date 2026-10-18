@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
+const { AsyncLocalStorage } = require('node:async_hooks');
 
 const { windowsPath } = require('./pi-platform-path');
 const io = require('./pi-file-io');
@@ -63,6 +64,7 @@ class PiSessionStore {
         this.sessionListCache = new Map();
         this.sessionMetadata = new (require('./pi-session-metadata').SessionMetadataCache)();
         this.sessionRows = new WeakMap();
+        this.sessionReads = new AsyncLocalStorage();
         const defaults = process.platform === 'win32'
             ? Array.from({ length: 26 }, (_, index) => `${String.fromCharCode(65 + index)}:\\`)
             : ['/'];
@@ -171,6 +173,10 @@ class PiSessionStore {
     // Pi owns the parsing; pin the same native file identity around that parse.
     // A replaced path must not contribute a marker to a different list row.
     profileManager(session, SessionManager) {
+        return this.sessionFileRead(session, SessionManager).manager();
+    }
+
+    sessionFileRead(session, SessionManager) {
         let fd;
         const listed = fs.lstatSync(session.path, { bigint: true });
         if (!listed.isFile() || listed.isSymbolicLink()) throw new Error('Session file changed');
@@ -189,7 +195,28 @@ class PiSessionStore {
                 || sessionStamp(opened) !== sessionStamp(fs.lstatSync(session.path, { bigint: true }))
                 || descriptorPathSync(fd) !== file || !io.sameIdentityAtPath(file, identity)
                 || fs.realpathSync.native(session.path) !== file) throw new Error('Session file changed');
-            return manager;
+            let parsed = manager;
+            const validate = () => {
+                if (!parsed) throw new Error('Session read expired');
+                let check;
+                try {
+                    const listedNow = fs.lstatSync(session.path, { bigint: true });
+                    if (!listedNow.isFile() || listedNow.isSymbolicLink() || fs.realpathSync.native(session.path) !== file)
+                        throw new Error('Session file changed');
+                    check = io.openReadSync(file);
+                    const current = fs.fstatSync(check, { bigint: true });
+                    if (!current.isFile() || sessionStamp(current) !== sessionStamp(opened)
+                        || sessionStamp(listedNow) !== sessionStamp(opened)
+                        || descriptorPathSync(check) !== file || io.identity(check) !== identity
+                        || !io.sameIdentityAtPath(file, identity)
+                        || sessionStamp(fs.lstatSync(file, { bigint: true })) !== sessionStamp(opened)
+                        || sessionStamp(fs.lstatSync(session.path, { bigint: true })) !== sessionStamp(opened)
+                        || sessionStamp(fs.fstatSync(check, { bigint: true })) !== sessionStamp(opened)
+                        || descriptorPathSync(check) !== file || fs.realpathSync.native(session.path) !== file)
+                        throw new Error('Session file changed');
+                } finally { if (check !== undefined) fs.closeSync(check); }
+            };
+            return { manager() { validate(); return parsed; }, validate, close() { parsed = null; } };
         } finally { if (fd !== undefined) fs.closeSync(fd); }
     }
 
@@ -268,21 +295,43 @@ class PiSessionStore {
     }
 
     async getSession(cwdInput, id) {
+        return this.withSessionRead(cwdInput, id, session => session);
+    }
+
+    // A read is shared only inside this callback's async chain. Consumers must
+    // call manager()/validate() after their awaits and before using parsed data.
+    // Cleanup drops the body without validating: a newly started worker may
+    // already have appended by the time the startup callback returns.
+    async withSessionRead(cwdInput, id, action) {
         const cwd = this.resolveProject(cwdInput);
         await this.sessionMoves?.assertAvailable(cwd, id);
+        const current = this.sessionReads.getStore();
+        if (current?.active && current.session.cwd === cwd && current.session.id === id) {
+            current.read.validate();
+            return action(structuredClone(current.session), current.read);
+        }
         const { SessionManager } = await getSdk();
         const candidate = (await this._nativeSessionMetadata(cwd, SessionManager)).find(item => item.id === id);
         if (!candidate) throw new Error('Session not found in this project');
-        // One physical session must keep one supervisor key even when the OS accepts a case/symlink alias.
+        // One physical session must keep one supervisor key even through aliases.
         const canonical = fs.realpathSync.native(candidate.path);
-        const manager = this.profileManager(candidate, SessionManager);
-        const agentProfile = this.profiles ? await this.profiles.describe(manager) : null;
-        const assistantProject = this.projects ? this.projects.describe(manager, cwd, (await this.projects.state()).state) : null;
-        const session = this._serializeSession(candidate, agentProfile, assistantProject);
-        const assistant = require('./pi-extension-assistant').assistantProfile(manager);
-        const profileAuthoring = require('./pi-profile-authoring').readProfileAuthoring(manager);
-        await this.sessionMoves?.assertAvailable(cwd, id);
-        return { ...session, path: canonical, assistant, profileAuthoring };
+        const read = this.sessionFileRead(candidate, SessionManager);
+        try {
+            const agentProfile = this.profiles ? await this.profiles.describe(read.manager()) : null;
+            read.validate();
+            const projectState = this.projects ? (await this.projects.state()).state : null;
+            const manager = read.manager();
+            const assistantProject = this.projects ? this.projects.describe(manager, cwd, projectState) : null;
+            const session = { ...this._serializeSession(candidate, agentProfile, assistantProject), path: canonical,
+                assistant: require('./pi-extension-assistant').assistantProfile(manager),
+                profileAuthoring: require('./pi-profile-authoring').readProfileAuthoring(manager) };
+            await this.sessionMoves?.assertAvailable(cwd, id);
+            read.validate();
+            const scope = { session, read, active: true };
+            try {
+                return await this.sessionReads.run(scope, () => action(structuredClone(session), read));
+            } finally { scope.active = false; }
+        } finally { read.close(); }
     }
 
     async createSession(cwdInput, name = '', { autoTitle = false, assistant = null, task = null, agentProfileId, inheritedProfileId,

@@ -156,6 +156,7 @@ async function main() {
                 assert.equal(await page.locator('#workspace-extensions-toggle').isVisible(), false);
                 await page.locator('#workspace-settings-toggle').click();
                 assert.match(page.url(), /#\/settings\?tab=providers$/);
+                await page.locator('[data-settings-panel="providers"]').waitFor({ state: 'visible' });
                 assert.equal(await page.locator('[data-settings-panel="providers"]').isVisible(), true);
                 await page.locator('#workspace-settings-close').click();
                 await page.locator('#workspace-more-toggle').click();
@@ -176,6 +177,7 @@ async function main() {
                 assert.equal(await page.evaluate(() => document.activeElement?.id), 'workspace-more-toggle');
                 await page.locator('#workspace-settings-toggle').click();
                 assert.match(page.url(), /#\/settings\?tab=providers$/, 'settings cannot inherit the profiles route');
+                await page.locator('[data-settings-panel="providers"]').waitFor({ state: 'visible' });
                 assert.equal(await page.locator('[data-settings-panel="providers"]').isVisible(), true);
                 await page.locator('#workspace-settings-close').click();
                 await page.locator('#workspace-more-toggle').click();
@@ -373,6 +375,7 @@ async function main() {
                 await page.goto(`http://127.0.0.1:${server.address().port}/?direct=1#/profiles`, { waitUntil: 'domcontentloaded' });
                 await page.waitForFunction(() => document.querySelector('#pi-input')?.disabled === false);
                 assert.match(page.url(), /#\/profiles$/, 'session restoration must not leave a direct management URL');
+                await page.locator('#workspace-settings-dialog').waitFor({ state: 'visible' });
                 assert.equal(await page.locator('#workspace-settings-dialog').isVisible(), true);
                 await page.locator('#workspace-settings-close').click();
                 assert.match(page.url(), new RegExp(`sessionId=${helperId}`));
@@ -476,6 +479,7 @@ async function main() {
                     await page.goto(`http://127.0.0.1:${server.address().port}/?direct=settings#/settings`, { waitUntil: 'domcontentloaded' });
                     await page.waitForFunction(() => document.querySelector('[data-settings-panel="providers"]')?.classList.contains('active'));
                     assert.match(page.url(), /#\/settings\?tab=providers$/, 'direct settings route is canonical');
+                    await page.locator('#workspace-settings-dialog').waitFor({ state: 'visible' });
                     assert.equal(await page.locator('#workspace-settings-dialog').isVisible(), true);
                     await page.goto(`http://127.0.0.1:${server.address().port}/?direct=old-settings#/settings?tab=profiles`, { waitUntil: 'domcontentloaded' });
                     await page.waitForFunction(() => document.querySelector('[data-settings-panel="profiles"]')?.classList.contains('active'));

@@ -89,6 +89,7 @@ details[open] > summary > .pi-agent-card-toggle::after { transform: translateY(1
     font-size: 0.8rem;
     min-width: 0; overflow-wrap: anywhere;
 }
+.pi-agent-card-plain { white-space: pre-wrap; }
 .pi-agent-card-content > :first-child,
 .pi-summary-content > :first-child { margin-top: 0; }
 

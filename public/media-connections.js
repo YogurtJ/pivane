@@ -1,6 +1,9 @@
 (() => {
     const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
-    document.addEventListener('DOMContentLoaded', () => {
+    let initialized = false;
+    function start() {
+        if (initialized) return;
+        initialized = true;
         const dialog = document.getElementById('lab-connections-dialog');
         if (!dialog) return;
         const content = document.getElementById('mc-content'), footer = document.getElementById('mc-footer');
@@ -26,6 +29,13 @@
             if (!response.ok) throw new Error(translateUi(data.error || `HTTP ${response.status}`));
             return data;
         }
+        window.PiTranscriptionSettings?.create({ apiFetch: async (url, options = {}) => {
+            const token = sessionStorage.getItem('pi.web.token');
+            const response = await (window.WorkspaceAccess?.fetch || fetch)(url, { ...options, headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers } });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(translateUi(data.error || `HTTP ${response.status}`));
+            return data;
+        } });
         function changed(modelId) { window.dispatchEvent(new CustomEvent('media-lab:configured', { detail: { modelId } })); }
         function shell(heading, onBack) {
             content.querySelectorAll('input[type="password"]').forEach(input => { input.value = ''; });
@@ -457,5 +467,7 @@
             if (!dialog.open) dialog.showModal();
             selectSection(options?.section, options?.modelId);
         } };
-    });
+    }
+    window.PiMediaConnectionsPage = { start };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
 })();

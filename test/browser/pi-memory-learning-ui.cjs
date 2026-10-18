@@ -66,7 +66,7 @@ app.get('/profiles-fixture', (_req, res) => res.send(`<!doctype html><html><head
 <div id="pi-profiles-content"></div>
 <dl id="pi-meta-profile-row"><dt></dt><dd id="pi-meta-profile"></dd></dl><div id="pi-session-profile"></div>
 </main>
-<script src="/vendor/marked/marked.umd.js"></script><script src="/vendor/dompurify/purify.min.js"></script><script src="/pi-i18n-catalog.js"></script><script src="/pi-i18n.js"></script><script src="/pi-profile-dialog.js"></script><script src="/pi-identity-ui.js"></script><script src="/pi-profile-learning.js"></script><script src="/pi-profile-knowledge.js"></script><script src="/pi-agent-profiles.js"></script>
+<script src="/vendor/marked/marked.umd.js"></script><script src="/vendor/dompurify/purify.min.js"></script><script src="/pi-i18n-catalog.js"></script><script src="/pi-i18n.js"></script><script src="/pi-profile-dialog.js"></script><script src="/pi-identity-ui.js"></script><script src="/pi-profile-learning.js"></script><script src="/pi-profile-knowledge.js"></script><script src="/pi-profile-session.js"></script><script src="/pi-agent-profiles.js"></script>
 <script>
 window.api = async (url, options) => {
     const response = await fetch(url, options);

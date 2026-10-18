@@ -313,10 +313,16 @@
             // A marker folded into a closed turn has no box: measure the nearest visible node
             // before it, and keep ranges ordered so a hidden marker cannot invert them.
             let floor = 0;
+            const placeholder = this.archive?.placeholderLookup?.();
+            const offsets = new Map();
             const starts = this.turns.map(turn => {
-                let node = turn.node || (turn.archive ? this.archive.placeholder(turn.archive.index) : null);
-                while (node && (node.hidden || !node.offsetParent)) node = node.previousElementSibling;
-                return floor = Math.max(floor, node ? node.offsetTop : 0);
+                const node = turn.node || (turn.archive ? (placeholder ? placeholder(turn.archive.index) : this.archive.placeholder(turn.archive.index)) : null);
+                if (!offsets.has(node)) {
+                    let visible = node;
+                    while (visible && (visible.hidden || !visible.offsetParent)) visible = visible.previousElementSibling;
+                    offsets.set(node, visible ? visible.offsetTop : 0);
+                }
+                return floor = Math.max(floor, offsets.get(node));
             });
             const next = new Set(); let current = -1;
             for (let i = 0; i < starts.length; i++) {
@@ -358,7 +364,9 @@
                 this.turns[i].tick.style.setProperty('--lens', String(FALLOFF[Math.abs(d)])); this.lensed.push(i); touched.delete(i);
             }
             for (const i of touched) this.turns[i]?.tick.style.removeProperty('--lens');
-            this.turns.forEach((turn, i) => turn.tick.classList.toggle('is-hovered', i === center));
+            this.hoverTick?.classList.remove('is-hovered');
+            this.hoverTick = this.turns[center]?.tick || null;
+            this.hoverTick?.classList.add('is-hovered');
             this.nav.classList.toggle('is-active', center >= 0);
         }
 

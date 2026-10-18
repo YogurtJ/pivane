@@ -16,7 +16,10 @@
         trash: [['restore', 'delete'], []]
     };
     ACTIONS.favorite = ACTIONS.saved;
-    document.addEventListener('DOMContentLoaded', () => {
+    let initialized = false;
+    function start({ activate = true } = {}) {
+        if (initialized) return;
+        initialized = true;
         document.querySelectorAll('[data-artifacts-label]').forEach(label => { label.textContent = tr('成果中心', 'Artifacts'); });
         const page = document.getElementById('artifacts-tab'); if (!page) return;
         const state = { items: new Map(), savedItems: new Map(), savedSources: new Set(), collections: [], availableProjects: [], selected: new Map(), busy: new Set(), view: 'saved', selecting: false, libraryNext: null, libraryRevision: null, mutating: false, projects: [], type: 'all', project: '', collection: '', query: '', page: 0, active: false, loading: false, epoch: 0, scope: '', next: null, snapshot: null, urls: new Set(), thumbs: new Map(), thumbnailQueue: [], queued: new Set(), storageBytes: 0, limitBytes: 0, trashBytes: 0 };
@@ -56,11 +59,6 @@
                 return manager.run(action, [file], extra);
             }
         });
-        const mediaHeader = document.querySelector('#media-tab .lab-header');
-        if (mediaHeader) {
-            const back = button(tr('成果库', 'Artifact library'), () => window.PiWorkspaceRoute.navigate('artifacts'), 'lab-secondary');
-            back.id = 'lab-open-artifacts'; mediaHeader.append(back);
-        }
         // ---------- Header ----------
         const shell = node('div', null, 'artifacts-shell');
         const header = node('header', null, 'artifacts-header'), titleRow = node('div', null, 'artifacts-title');
@@ -562,6 +560,8 @@
         window.addEventListener('workspace:tabchanged', e => route(e.detail));
         window.addEventListener('workspace:artifacts-invalidated', () => { if (state.active) void load(true); });
         window.addEventListener('pagehide', () => { state.active = false; state.epoch++; state.controller?.abort(); viewer.close(); disposeThumbnails(); });
-        route(window.PiWorkspaceRoute?.current());
-    });
+        if (activate) route(window.PiWorkspaceRoute?.current());
+    }
+    window.PiArtifactsPage = { start };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
 })();

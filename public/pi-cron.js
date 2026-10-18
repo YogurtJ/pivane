@@ -14,7 +14,7 @@
         skipped: '已跳过', failed: '执行失败', error: '执行失败', stopped: '已停止', cancelled: '已取消', uncertain: '需要核对' };
     const date = (value, zone) => value ? new Intl.DateTimeFormat(globalThis.PiI18n?.locale || 'zh-CN',
         { timeZone: zone, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(value) : '—';
-    function create({ api, currentCwd }) {
+    function create({ api, currentCwd, activate = true }) {
         const root = document.getElementById('cron-tab'); if (!root) return;
         let snapshot = null, profiles = [], projects = [], selected = '', draft = null, dirty = false, busy = false, visible = false, epoch = 0, query = '', filterProfile = '';
         let runRequest = null, previewEpoch = 0, projectsRequested = false;
@@ -368,7 +368,7 @@
             void load().then(() => { if (newTarget && visible && !draft) return edit(null, newTarget); });
         });
         setInterval(() => { if (visible && !document.hidden && !draft && !busy) void load(); }, 15000);
-        visible = window.PiWorkspaceRoute?.current().tab === 'cron'; if (visible) void load();
+        visible = activate && window.PiWorkspaceRoute?.current().tab === 'cron'; if (visible) void load();
         return { open: target => window.PiWorkspaceRoute.navigate('cron', target || {}) };
     }
     window.PiCron = { create };

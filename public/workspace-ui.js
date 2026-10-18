@@ -121,6 +121,39 @@
         const moreToggle = document.getElementById('workspace-more-toggle');
         const moreMenu = document.getElementById('workspace-more-menu');
         let lastConversation = '#/chat';
+        let routeRevision = 0;
+        const featureState = document.createElement('main');
+        featureState.id = 'workspace-feature-state';
+        featureState.className = 'content-area tab-content workspace-feature-state';
+        featureState.setAttribute('aria-live', 'polite');
+        app?.append(featureState);
+        const featureText = (zh, en) => window.PiI18n?.locale === 'en' ? en : zh;
+        function featureStatus(error, retry) {
+            featureState.replaceChildren();
+            const message = document.createElement('p');
+            message.textContent = error ? featureText('页面加载失败，请重试。', 'Unable to load this page. Please retry.') : featureText('正在读取…', 'Loading…');
+            featureState.append(message);
+            featureState.setAttribute('aria-busy', String(!error));
+            if (error) {
+                const button = document.createElement('button'); button.type = 'button';
+                button.className = 'settings-secondary-button'; button.textContent = featureText('重试', 'Retry');
+                button.addEventListener('click', retry, { once: true }); featureState.append(button);
+            }
+        }
+        // Dialog entry failures retain the conversation and offer an explicit retry.
+        const featureError = document.createElement('dialog');
+        featureError.className = 'workspace-feature-error';
+        app?.append(featureError);
+        window.PiFeatureFeedback = { show(error, retry) {
+            featureError.replaceChildren();
+            const message = document.createElement('p'); message.textContent = featureText('页面加载失败，请重试。', 'Unable to load this page. Please retry.');
+            featureError.append(message);
+            for (const [label, action] of [[featureText('重试', 'Retry'), retry], [featureText('关闭', 'Close'), () => {}]]) {
+                const button = document.createElement('button'); button.type = 'button'; button.className = 'settings-secondary-button'; button.textContent = label;
+                button.addEventListener('click', () => { featureError.close(); action(); }); featureError.append(button);
+            }
+            if (!featureError.open) featureError.showModal();
+        } };
         function closeMoreMenu(restoreFocus = false) {
             if (!moreMenu) return;
             const wasOpen = !moreMenu.hidden;
@@ -141,15 +174,25 @@
             let target = '';
             if (inner === 'profiles') target = '#/profiles';
             else if (inner === 'packages' || inner === 'skills') target = `#/extensions?tab=installed&type=${inner}`;
-            else if (inner && extensionTabs.has(inner)) target = `#/extensions?tab=${inner}`;
-            if (!target) return;
+            else if (inner && extensionTabs.has(inner) && tab === 'settings') target = `#/extensions?${params}`;
+            else if (tab === 'settings' && !settingsTabs.has(inner)) {
+                params.set('tab', 'providers'); target = `#/settings?${params}`;
+            }
+            if (!target || target === location.hash) return;
             history.replaceState(null, '', target);
             window.dispatchEvent(new CustomEvent('workspace:settings-route-normalized', { detail: { from: tab, tab: inner } }));
         }
-        function showRoute() {
+        function showRoute(completedRevision) {
             normalizeLegacySettingsRoute();
             const { tab, params } = parseRoute();
+            const completion = typeof completedRevision === 'number';
+            const revision = completion ? completedRevision : ++routeRevision;
+            window.PiFeatures.routeChanged(revision);
+            const routeKey = location.hash;
+            const group = window.PiFeatures.routeGroup(tab);
+            const pending = group && !window.PiFeatures.ready(group);
             closeMoreMenu();
+            if (featureError.open) featureError.close();
             if (tab === 'chat' || tab === 'assistant') lastConversation = location.hash || '#/chat';
             moreToggle?.classList.toggle('active', moreTabs.has(tab));
             if (moreTabs.has(tab)) moreToggle?.setAttribute('aria-current', 'page'); else moreToggle?.removeAttribute('aria-current');
@@ -162,13 +205,28 @@
                 button.classList.toggle('active', active);
                 if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
             });
-            document.querySelectorAll('.tab-content').forEach(panel => panel.classList.toggle('active', panel.id === `${tab === 'assistant' ? 'chat' : tab}-tab`));
-            document.getElementById('workspace-settings-dialog')?.classList.toggle('hidden', !['profiles', 'extensions', 'settings'].includes(tab));
-            window.dispatchEvent(new CustomEvent('workspace:tabchanged', { detail: { tab, params } }));
+            document.querySelectorAll('.tab-content').forEach(panel => panel.classList.toggle('active', pending ? panel === featureState : panel.id === `${tab === 'assistant' ? 'chat' : tab}-tab`));
+            document.getElementById('workspace-settings-dialog')?.classList.toggle('hidden', pending || !['profiles', 'extensions', 'settings'].includes(tab));
             const settingsTab = tab === 'profiles' ? 'profiles'
                 : tab === 'extensions' ? (extensionTabs.has(params.get('tab')) ? params.get('tab') : 'extensions')
                     : settingsTabs.has(params.get('tab')) ? params.get('tab') : 'providers';
-            window.dispatchEvent(new CustomEvent('workspace:settings-route', { detail: { tab, settingsTab, profileId: params.get('profileId'), section: params.get('section'), authoringSession: params.get('authoringSession'), authoringCwd: params.get('authoringCwd'), resourceType: params.get('type') } }));
+            const settingsRoute = () => window.dispatchEvent(new CustomEvent('workspace:settings-route', { detail: { tab, settingsTab, revision, pending: Boolean(pending), profileId: params.get('profileId'), section: params.get('section'), authoringSession: params.get('authoringSession'), authoringCwd: params.get('authoringCwd'), resourceType: params.get('type') } }));
+            if (pending) {
+                featureStatus(null);
+                settingsRoute();
+                window.dispatchEvent(new CustomEvent('workspace:tabchanged', { detail: { tab: 'loading', params } }));
+                void window.PiFeatures.ensure(group).then(() => {
+                    if (revision === routeRevision && location.hash === routeKey) showRoute(revision);
+                }).catch(error => {
+                    if (revision === routeRevision && location.hash === routeKey) featureStatus(error, () => {
+                        if (revision === routeRevision && location.hash === routeKey) showRoute(revision);
+                    });
+                });
+                return;
+            }
+            if (group === 'settings') window.PiFeatures.applySettingsIntent(revision);
+            window.dispatchEvent(new CustomEvent('workspace:tabchanged', { detail: { tab, params } }));
+            if (!completion || group === 'settings') settingsRoute();
         }
         function routeHash(tab, params = {}) {
             if (!routeTabs.has(tab)) throw new Error('Unknown workspace route');
@@ -184,7 +242,7 @@
             else history.pushState(null, '', hash);
             showRoute();
         }
-        window.PiWorkspaceRoute = Object.freeze({ navigate, current: parseRoute,
+        window.PiWorkspaceRoute = Object.freeze({ navigate, current: parseRoute, revision: () => routeRevision,
             rememberConversation(tab, params) { if (tab === 'chat' || tab === 'assistant') lastConversation = routeHash(tab, params); },
             returnToConversation: () => {
             const url = ['chat', 'assistant'].includes(parseRoute().tab) ? location.hash : lastConversation;

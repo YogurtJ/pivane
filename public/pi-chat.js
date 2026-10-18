@@ -166,7 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
         assistantRevision: null,
         assistantEpoch: 0,
         navigationEpoch: 0,
-        routeKey: null,
+        routeKey: location.hash || '#/chat',
         creatingSession: false,
         deletedSessions: new Set(),
         projects: [],
@@ -850,7 +850,8 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => elements.tokenInput.focus(), 0);
     }
 
-    const cronPage = window.PiCron?.create({ api: apiFetch, currentCwd: () => state.cwd });
+    window.PiUpdateNotifications.start({ apiFetch });
+    window.PiFeatures.configureCron({ api: apiFetch, currentCwd: () => state.cwd });
     const cronAddButton = document.createElement('button');
     cronAddButton.id = 'pi-cron-add-button'; cronAddButton.type = 'button'; cronAddButton.hidden = true;
     cronAddButton.disabled = true; cronAddButton.tabIndex = -1; cronAddButton.setAttribute('role', 'menuitem');
@@ -861,7 +862,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('pi-schedule-button').after(cronAddButton);
     cronAddButton.addEventListener('click', () => {
         if (cronAddButton.disabled || !state.scheduledTasks || !state.session || state.session.ephemeral) return;
-        cronPage?.open({ cwd: state.cwd, sessionId: state.session.id });
+        window.PiWorkspaceRoute.navigate('cron', { cwd: state.cwd, sessionId: state.session.id });
     });
     const taskProgress = new window.PiTaskProgress(document.getElementById('pi-task-progress'));
     const taskResults = window.PiTaskResults?.create({ root: document.getElementById('pi-task-results'), fetch: apiFetch,
@@ -905,7 +906,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const status = await apiFetch('/api/pi/status');
             state.scheduledTasks = status.scheduledTasks === true;
-            cronAddButton.hidden = !cronPage || !state.scheduledTasks;
+            cronAddButton.hidden = !state.scheduledTasks;
             accessBootstrapped = true;
             state.modelCatalogSupported = status.modelCatalog === true;
             taskResults?.setEnabled(status.agentTaskResults === true);
@@ -2393,6 +2394,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function openSession(session) {
         if (!session || state.session?.id === session.id && state.connected) return;
+        if (state.session?.id !== session.id || state.session?.cwd !== session.cwd) mediaRequests?.reset();
         turnEdits.reset();
         filesPanel.reset();
         const draftKey = JSON.stringify([state.cwd, session.id]);
@@ -3109,7 +3111,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         row.dataset.state = message.isError ? 'error' : 'done';
         row.querySelector('.pi-tool-status').textContent = message.isError ? translateUi("失败") : translateUi("完成");
-        window.PiNestedTools?.persisted(row, message.nestedCalls);
+        if (!message.nestedCalls) window.PiNestedTools?.persisted(row, null);
         setToolOutput(row, message);
         return existing ? null : row;
     }
@@ -3224,6 +3226,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         state.renderedTranscript = { context, records };
+        if (removed.length) mediaRequests?.prune();
         state.dirtyTranscriptIndex = Infinity;
         state.lastAssistantText = '';
         for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === 'assistant' && messageText(messages[i].content).trim()) {
@@ -3324,6 +3327,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function clearSessionView() {
+        mediaRequests?.reset();
         state.recoveryNotice = null;
         transcriptActivity?.reset();
         renderRecoveryNotice();
@@ -3361,8 +3365,8 @@ document.addEventListener('DOMContentLoaded', () => {
         setAgentState('idle', translateUi("未连接"), translateUi("等待会话"));
     }
 
-    function decorateCodeBlocks(root) {
-        root.querySelectorAll('.pi-markdown pre').forEach(pre => {
+    function decorateCodeBlocks(root, markdownFragment = false) {
+        root.querySelectorAll(markdownFragment ? 'pre' : '.pi-markdown pre').forEach(pre => {
             if (pre.querySelector('.pi-code-copy')) return;
             const button = document.createElement('button');
             button.className = 'pi-code-copy';
@@ -3629,8 +3633,7 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const [block, type] of live.pending) {
             if (type === 'text') {
                 block.dataset.raw = block._piLiveText;
-                block.innerHTML = renderMarkdown(block._piLiveText);
-                decorateCodeBlocks(block);
+                window.PiFileViewer.updateMarkdown(block, renderMarkdown(block._piLiveText), fragment => decorateCodeBlocks(fragment, true));
             } else {
                 block.querySelector(type === 'thinking' ? '.pi-thinking-content' : '.pi-tool-args').textContent = block._piLiveText;
             }
@@ -4674,11 +4677,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // The message display switch lives in Settings; the thread menu is a shortcut to it.
     function openMessageViewSetting() {
-        window.dispatchEvent(new CustomEvent('workspace:open-settings', { detail: { tab: 'models' } }));
-        requestAnimationFrame(() => {
-            $('settings-message-view')?.scrollIntoView({ block: 'center' });
-            $('pi-transcript-modes')?.querySelector('[aria-pressed="true"]')?.focus({ preventScroll: true });
-        });
+        window.dispatchEvent(new CustomEvent('workspace:open-settings', { detail: { tab: 'models', focusTarget: 'message-view' } }));
     }
 
     function showThreadMenu(target, point, current = false) {

@@ -4,6 +4,7 @@ const http = require('node:http');
 const { once } = require('node:events');
 const express = require('express');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const mathCases = require('./pi-math-cases.cjs');
 const root = path.resolve(__dirname, '../..');
 const cwd = '/srv/math-fixture', session = { id: 'math-fixture', cwd, name: '公式测试' };
 const mathText = String.raw`行内 $E=mc^2$，以及 \(\frac{a_1}{b^2}\)。
@@ -21,7 +22,14 @@ $$
 
 \[
 \frac{\frac12t^2+o(t^2)}{t^2}\to\frac12，
-\]`;
+\]` + '\n\n' + String.raw`矩阵关系：
+\[
+\begin{pmatrix}3\\5\end{pmatrix}
+=
+\begin{pmatrix}1\\2\end{pmatrix}+\begin{pmatrix}2\\3\end{pmatrix}.
+\]
+
+**求 $a**b$ 的值**`;
 (async () => {
     const app = express();
     for (const [name, directory] of [['marked', 'marked/lib'], ['dompurify', 'dompurify/dist'], ['highlight', '@highlightjs/cdn-assets']]) app.use('/vendor/' + name, express.static(path.join(root, 'node_modules', directory)));
@@ -60,11 +68,50 @@ $$
             });
             await page.goto(base, { waitUntil: 'domcontentloaded' });
             await page.waitForSelector('#pi-transcript-content .katex');
-            assert.equal(await page.locator('#pi-transcript-content .katex').count(), 7);
+            assert.equal(await page.locator('#pi-transcript-content .katex').count(), 9);
+            assert.equal(await page.locator('#pi-transcript-content h1, #pi-transcript-content h2').count(), 0);
             assert.equal(await page.locator('#pi-transcript-content code .katex').count(), 0);
             assert.ok((await page.locator('#pi-transcript-content').textContent()).includes('价格 $5 和 $10'));
             assert.equal(await page.locator('.pi-math-fallback').count(), 0);
             assert.equal(await page.evaluate(() => { const t = document.createElement('template'); t.innerHTML = PiFileViewer.markdown('<code>$x$</code>'); return t.content.querySelectorAll('.katex').length; }), 0);
+            const audit = await page.evaluate(({ valid, ordinary, fallback, rawCode }) => {
+                const inspect = source => {
+                    const node = document.createElement('article'); node.innerHTML = PiFileViewer.markdown(source);
+                    return { text: node.textContent.trim(), annotations: [...node.querySelectorAll('annotation')].map(e => e.textContent.trim()), fallback: [...node.querySelectorAll('.pi-math-fallback')].map(e => e.textContent), headings: node.querySelectorAll('h1,h2').length, strong: node.querySelectorAll('strong').length, em: node.querySelectorAll('em').length, del: node.querySelectorAll('del').length, blockquotes: node.querySelectorAll('blockquote').length, listItems: node.querySelectorAll('li').length, links: node.querySelectorAll('a').length, tableColumns: [...node.querySelectorAll('tbody tr')].map(e => e.cells.length), keep: node.textContent.includes('KEEP') };
+                };
+                const sanitize = html => DOMPurify.sanitize(html, { USE_PROFILES: { html: true }, FORBID_TAGS: ['style', 'iframe', 'form', 'input', 'button'], FORBID_ATTR: ['style', 'onerror', 'onclick'] });
+                return {
+                    valid: valid.map(test => ({ name: test.name, actual: inspect(test.source) })),
+                    ordinary: ordinary.flatMap(source => {
+                        const expected = sanitize(new marked.Marked({ renderer: new marked.Renderer() }).parse(source)), actual = PiFileViewer.markdown(source);
+                        return actual === expected ? [] : [{ source, expected, actual }];
+                    }),
+                    fallback: fallback.map(source => ({ source, actual: inspect(source) })),
+                    rawCode: rawCode.map(([source, text]) => ({ source, text, actual: inspect(source) }))
+                };
+            }, mathCases);
+            for (const [index, result] of audit.valid.entries()) {
+                const { name, source: _source, ...expected } = mathCases.valid[index];
+                for (const [field, value] of Object.entries(expected)) assert.deepEqual(result.actual[field], value, `${width}/${name}/${field}`);
+                assert.deepEqual(result.actual.fallback, [], `${width}/${name}/fallback`);
+            }
+            assert.deepEqual(audit.ordinary, []);
+            for (const { source, actual } of audit.fallback) {
+                assert.deepEqual(actual.annotations, [], `${width}: ${source}`);
+                assert.deepEqual(actual.fallback, [source], `${width}: ${source}`);
+                assert.equal(actual.headings, 0, `${width}: ${source}`);
+            }
+            for (const { source, text, actual } of audit.rawCode) {
+                assert.equal(actual.text, text, `${width}: ${source}`);
+                assert.deepEqual(actual.annotations, []); assert.deepEqual(actual.fallback, []);
+            }
+            console.log(`Math compatibility ${width}: ${mathCases.valid.length} valid, ${mathCases.ordinary.length} ordinary, ${mathCases.fallback.length} fallback, ${mathCases.rawCode.length} raw code cases`);
+            const tableFallback = await page.evaluate(() => {
+                const source = String.raw`\(\badcommand{a\|b}\)`;
+                const node = document.createElement('article'); node.innerHTML = PiFileViewer.markdown(`| 公式 | 说明 |\n|---|---|\n| ${source} | KEEP |`);
+                return { source, fallback: [...node.querySelectorAll('.pi-math-fallback')].map(e => e.textContent), columns: node.querySelector('tbody tr').cells.length, keep: node.querySelector('tbody td:last-child').textContent };
+            });
+            assert.deepEqual(tableFallback.fallback, [tableFallback.source]); assert.equal(tableFallback.columns, 2); assert.equal(tableFallback.keep, 'KEEP');
             // Only common CJK punctuation warnings are relaxed; other strict checks stay unchanged.
             const punctuation = await page.evaluate(() => {
                 const inspect = source => { const node = document.createElement('article'); node.innerHTML = PiFileViewer.markdown(source); return { count: node.querySelectorAll('.katex').length, fallback: [...node.querySelectorAll('.pi-math-fallback')].map(e => e.textContent.trim()), annotations: [...node.querySelectorAll('annotation')].map(e => e.textContent) }; };
@@ -140,22 +187,38 @@ $$
                     await page.evaluate(selector => { document.querySelector(selector).scrollLeft = 0; }, selector);
                 }
             }
+            // Re-render the shared parser in both other consumers, including the
+            // no-blank-line/setext conflict and emphasis around a TeX star.
+            const consumers = await page.evaluate(source => {
+                return [['#pi-side-messages', false], ['#pi-transcript-content', true]].map(([host, preview]) => {
+                    const node = document.createElement('article'); node.className = 'pi-markdown math-consumer';
+                    node.innerHTML = PiFileViewer.markdown(source, '/srv/lesson.md', preview); document.querySelector(host).append(node);
+                    return { formulas: node.querySelectorAll('.katex').length, fallback: node.querySelectorAll('.pi-math-fallback').length, headings: node.querySelectorAll('h1,h2').length, strong: node.querySelectorAll('strong').length };
+                });
+            }, '说明\n\\[a\n=\nb\\]\n\n**求 $a**b$ 的值**');
+            assert.deepEqual(consumers, [{ formulas: 2, fallback: 0, headings: 0, strong: 1 }, { formulas: 2, fallback: 0, headings: 0, strong: 1 }]);
             await page.screenshot({ path: `/tmp/pi-math-${width}.png` });
             await page.evaluate(() => document.querySelectorAll('.math-short, .math-wide-inline').forEach(e => e.remove()));
-            socket.send(JSON.stringify({ type: 'message_start', message: { role: 'assistant', content: [], timestamp: 2222 } }));
-            const partial = String.raw`公式：\(\frac{1}{2}，`;
-            const delta = text => socket.send(JSON.stringify({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: text } }));
-            delta(partial);
-            await page.waitForFunction(partial => document.querySelector('.streaming')?.textContent.includes(partial), partial);
-            assert.equal(await page.locator('.streaming .katex').count(), 0);
-            assert.ok((await page.locator('.streaming').textContent()).includes(partial));
-            delta(String.raw`\)`);
-            await page.waitForSelector('.streaming .katex');
-            const completed = { role: 'assistant', timestamp: 2222, content: [{ type: 'text', text: partial + String.raw`\)` }] };
-            messages = [...messages, completed];
-            socket.send(JSON.stringify({ type: 'message_end', message: completed }));
-            socket.send(JSON.stringify({ type: 'agent_settled' }));
-            await page.waitForFunction(() => !document.querySelector('.streaming') && document.querySelectorAll('#pi-transcript-content .katex').length === 8);
+            const streamingCases = [
+                ['说明\n\\[\na\n=\nb', '\n\\]'],
+                ['说明\n$$\na\n=\nb', '\n$$'],
+                [String.raw`**求 \(a*b`, String.raw`\) 的值**`],
+                [String.raw`公式：\(\frac{1}{2}，`, String.raw`\)`]
+            ];
+            for (const [index, [partial, rest]] of streamingCases.entries()) {
+                const timestamp = 2222 + index;
+                socket.send(JSON.stringify({ type: 'message_start', message: { role: 'assistant', content: [], timestamp } }));
+                const delta = text => socket.send(JSON.stringify({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: text } }));
+                delta(partial);
+                await page.waitForFunction(partial => document.querySelector('.streaming')?.textContent.includes(partial.replace(/^\*\*/, '')), partial);
+                assert.equal(await page.locator('.streaming .katex').count(), 0);
+                assert.equal(await page.locator('.streaming h1, .streaming h2').count(), 0);
+                delta(rest); await page.waitForSelector('.streaming .katex');
+                const completed = { role: 'assistant', timestamp, content: [{ type: 'text', text: partial + rest }] };
+                messages = [...messages, completed];
+                socket.send(JSON.stringify({ type: 'message_end', message: completed })); socket.send(JSON.stringify({ type: 'agent_settled' }));
+                await page.waitForFunction(count => !document.querySelector('.streaming') && document.querySelectorAll('#pi-transcript-content .katex').length === count, 10 + index);
+            }
             // Invalid, oversized, recursive, and untrusted commands preserve readable content, never run HTML/network.
             const security = await page.evaluate(() => {
                 const sources = [String.raw`$\badcommand{x}$`, String.raw`$\href{javascript:alert(1)}{x}$`, String.raw`$\includegraphics{https://example.invalid/x}$`, String.raw`$\htmlStyle{background:url(https://example.invalid/x)}{x}$`, String.raw`$\def\a{\a}\a$`, '$' + 'x'.repeat(10001) + '$'];

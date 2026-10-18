@@ -153,6 +153,7 @@
         update(options);
         return { update, close };
     }
-    document.addEventListener('DOMContentLoaded', placeToasts);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', placeToasts, { once: true });
+    else placeToasts();
     window.PiArtifactsUI = Object.freeze({ tr, node, icon, button, relabel, menu, closeMenus, layer, toast, kindIcon, kindLabel, extension, bytes, day, stamp, kinds: Object.keys(KINDS) });
 })();

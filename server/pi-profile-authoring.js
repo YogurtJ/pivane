@@ -74,18 +74,19 @@ function sessionProof(session, sessionsRoot, parseManager) {
         return { fingerprint: digest.digest('hex'), manager };
     } finally { if (fd !== undefined) fs.closeSync(fd); }
 }
-async function verifiedManager(store, cwd, sessionId) {
+async function verifiedManager(store, cwd, sessionId, read) {
     const session = await store.getSession(cwd, sessionId);
     const { SessionManager, getAgentDir } = await getSdk();
     const agentDir = fs.realpathSync.native(getAgentDir());
     const context = { sessionId, cwd, sessionPath: session.path,
         sessionsRoot: path.join(agentDir, 'sessions'), profileId: null };
-    const proof = sessionProof(session, context.sessionsRoot, () => store.profileManager(session, SessionManager));
+    const proof = sessionProof(session, context.sessionsRoot, () => read ? read.manager() : store.profileManager(session, SessionManager));
     const manager = proof.manager, authoring = readProfileAuthoring(manager);
     if (manager.getHeader()?.id !== sessionId || manager.getHeader()?.cwd !== cwd || !authoring
         || !verifyNativeSession(context, manager)) throw fail('Profile drafting session unavailable', 404);
     if (sessionProof(session, context.sessionsRoot).fingerprint !== proof.fingerprint)
         throw fail('Profile drafting session changed during read', 409);
+    read?.validate();
     return { session, manager, authoring, proof, context };
 }
 function mountProfileAuthoringRoutes(router, { store, profiles } = {}) {
@@ -119,21 +120,31 @@ function mountProfileAuthoringRoutes(router, { store, profiles } = {}) {
         res.set('Cache-Control', 'no-store');
         try {
             const cwd = store.resolveProject(req.query.cwd);
-            const { session, manager, authoring, proof, context } = await verifiedManager(store, cwd, req.params.id);
-            const entry = manager.getBranch().findLast(item => item.type === 'custom' && item.customType === DRAFT_ENTRY
-                && item.data?.sessionId === authoring.sessionId);
-            if (sessionProof(session, context.sessionsRoot).fingerprint !== proof.fingerprint) throw fail('Draft changed during read', 409);
-            const proposal = entry && validateProposal(entry.data?.proposal);
-            const result = { status: proposal ? 'ready' : 'missing', sourceSessionId: authoring.sessionId,
-                profileId: authoring.profileId, profileRevision: authoring.profileRevision,
-                proposal: proposal ?? null, revision: proposal ? createHash('sha256').update(JSON.stringify(entry.data)).digest('hex') : null };
-            res.json(result);
+            const respond = async (_session, read) => {
+                const { session, manager, authoring, proof, context } = await verifiedManager(store, cwd, req.params.id, read);
+                const entry = manager.getBranch().findLast(item => item.type === 'custom' && item.customType === DRAFT_ENTRY
+                    && item.data?.sessionId === authoring.sessionId);
+                if (sessionProof(session, context.sessionsRoot).fingerprint !== proof.fingerprint) throw fail('Draft changed during read', 409);
+                read?.validate();
+                const proposal = entry && validateProposal(entry.data?.proposal);
+                const result = { status: proposal ? 'ready' : 'missing', sourceSessionId: authoring.sessionId,
+                    profileId: authoring.profileId, profileRevision: authoring.profileRevision,
+                    proposal: proposal ?? null, revision: proposal ? createHash('sha256').update(JSON.stringify(entry.data)).digest('hex') : null };
+                res.json(result);
+            };
+            if (store.withSessionRead) await store.withSessionRead(cwd, req.params.id, respond);
+            else await respond();
         } catch (error) { res.status(error.status || 400).json({ error: error.message }); }
     });
 }
-async function profileAuthoringEnvironment({ store, cwd, sessionId }) {
+async function profileAuthoringEnvironment({ store, cwd, sessionId, read }) {
     try {
-        const checked = await verifiedManager(store, cwd, sessionId);
+        // Only a checked native manager can establish the ordinary-session fast
+        // path. Serialized profileAuthoring metadata is never an authorization.
+        if (read && !readProfileAuthoring(read.manager())) return {};
+        if (!read && store.withSessionRead) return await store.withSessionRead(cwd, sessionId,
+            (_session, prepared) => profileAuthoringEnvironment({ store, cwd, sessionId, read: prepared }));
+        const checked = await verifiedManager(store, cwd, sessionId, read);
         return { PIVANE_PROFILE_AUTHORING_CONTEXT: JSON.stringify({ version: 1, sessionId,
             cwd, sessionPath: checked.session.path, profileId: checked.authoring.profileId,
             profileRevision: checked.authoring.profileRevision }) };

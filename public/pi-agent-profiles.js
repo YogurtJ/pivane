@@ -31,7 +31,8 @@
         let epoch = 0, openEpoch = 0, editorVersion = 0, overviewEpoch = 0, healthEpoch = 0, proposalEpoch = 0;
         let pendingRefresh = false, knowledgeSession = '', pendingReveal = null, soulPreview = false, openOptions = {}, leaveIntent = false;
         let saveBar = null, personaNotice = '', overviewData = null, receiptLimit = 6;
-        let loadedProfile = null, loadedKey = '', displayedSession = null, displayedConnected = false, displayedKey = '';
+        const sessionProfile = window.PiProfileSessionState || window.PiProfileSession.create();
+        const { displaySession, setLoadedProfile, invalidateLoaded } = sessionProfile;
         const learningHealth = new Map(), badges = new Map(), stagedDocuments = new Map();
         const profiles = () => snapshot?.profiles || [];
         const savedProfile = () => profiles().find(p => p.id === selected) || null;
@@ -66,12 +67,12 @@
                 enabled: profile.enabled, memory: { memoryCharLimit: 16000, userCharLimit: 8000, ...profile.memory }, skills: { ...profile.skills } }
                 : { name: '', description: '', soul: '', avatar: null, enabled: true, memory: { enabled: false, autoLearn: false, memoryCharLimit: 16000, userCharLimit: 8000 }, skills: { learnedEnabled: true } };
         }
-        async function guard() {
+        async function guard(current = () => true) {
             if (busy()) { ui.toast(t('正在保存，请等待服务器确认后再离开。'), { tone: 'warning' }); return false; }
             if (!dirty()) return true;
             const version = editorVersion, id = selected;
-            const accepted = await ui.confirm({ title: t('放弃未保存的修改？'), message: t('此身份的设置或文档尚未保存。离开编辑后，这些修改将丢失。'), accept: t('放弃修改') });
-            if (!accepted || version !== editorVersion || id !== selected || busy()) return false;
+            const accepted = await ui.confirm({ title: t('放弃未保存的修改？'), message: t('此身份的设置或文档尚未保存。离开编辑后，这些修改将丢失。'), accept: t('放弃修改'), current });
+            if (!current() || !accepted || version !== editorVersion || id !== selected || busy()) return false;
             discardChanges(); return true;
         }
         function discardChanges() {
@@ -519,7 +520,7 @@
             if (pendingReveal && active() && selected === profileId) void openSection('memory', { target: 'project', sessionId: knowledgeSession });
         }
         function setEnabled(value) {
-            const wasEnabled = enabled; enabled = value === true;
+            const wasEnabled = enabled; enabled = value === true; sessionProfile.setEnabled(value);
             document.querySelectorAll('[data-manage-route="profiles"]').forEach(item => { item.hidden = !enabled; });
             if (!enabled && wasEnabled) {
                 ++epoch; ++openEpoch; ++overviewEpoch; ++proposalEpoch; call(knowledge, 'close'); call(learning, 'close'); snapshot = null; renderHeader();
@@ -543,50 +544,19 @@
                 if (options.authoringSession && draft && (!options.profileId || options.profileId === selected)) await loadProposal(options.authoringSession);
             });
         }
-        async function close() {
+        async function close({ current = () => true } = {}) {
             if (!visible) return true;
             const keepDrafts = leaveIntent && !busy(); leaveIntent = false;
-            if (!keepDrafts && !await guard()) return false;
+            if ((!keepDrafts && !await guard(current)) || !current()) return false;
             visible = false; ++openEpoch; ++epoch; ++overviewEpoch; ++proposalEpoch; knowledgeSession = '';
             call(knowledge, 'close'); call(learning, 'close'); globalThis.PiProfileDialog.cancel(); return true;
-        }
-        function displaySession(session, connected = false, key = '') {
-            displayedSession = session; displayedConnected = connected; displayedKey = key;
-            if (!connected || key !== loadedKey) { loadedKey = key; loadedProfile = null; }
-            const badge = $('pi-session-profile');
-            const row = $('pi-meta-profile-row');
-            badge.hidden = !enabled || !session;
-            row.hidden = badge.hidden;
-            if (badge.hidden) return;
-            const profile = session.ephemeral ? null : loadedProfile && Object.hasOwn(loadedProfile, 'saved') ? loadedProfile.saved : session.agentProfile;
-            const name = profile ? (profile.name || t('未知身份')) : t('无身份');
-            badge.textContent = profile ? `${t('身份')}: ${name}${profile.available === false || profile.enabled === false ? ` · ${t('不可用')}` : ''}` : t('无身份');
-            const loaded = connected && loadedProfile?.loadedConfirmed === true;
-            const comparable = loaded && (!profile || typeof loadedProfile.savedProfileRevision === 'string' && typeof loadedProfile.loadedProfileRevision === 'string');
-            const matches = comparable && loadedProfile.matchesSavedProfile === true && (profile
-                ? loadedProfile.loadedProfileId === profile.id && loadedProfile.savedProfileRevision === loadedProfile.loadedProfileRevision
-                : loadedProfile.loadedProfileId === null);
-            const loadedName = loadedProfile?.loadedProfileId ? loadedProfile.loadedProfileId === profile?.id ? t('此身份的旧设置') : loadedProfile.loadedProfileId : t('无身份');
-            const detail = !comparable ? t('运行中的身份尚未核对') : matches ? t('运行中设置与已保存设置一致') : t('运行中使用：{0}；已保存设置需重新打开线程后生效', loadedName);
-            badge.title = profile ? `${t('会话保存的身份')}: ${name} · ${profile.available === false || profile.enabled === false ? `${t('当前身份不可用；不会自动改用其他身份')} · ` : ''}${detail}` : t('此线程没有身份绑定；不会使用身份记忆');
-            $('pi-meta-profile').textContent = `${profile ? `${t('会话保存的身份')}: ${name}${profile.available === false || profile.enabled === false ? ` · ${t('不可用')}` : ''}` : t('无身份（不使用身份记忆）')} · ${detail}`;
-        }
-        function invalidateLoaded() {
-            loadedProfile = null;
-            displaySession(displayedSession, displayedConnected, displayedKey);
-        }
-        function setLoadedProfile(value, key, session, connected) {
-            if (!connected || !key) return;
-            loadedKey = key;
-            loadedProfile = value && typeof value === 'object' ? value : null;
-            displaySession(session, connected, key);
         }
 
         globalThis.addEventListener('beforeunload', event => { if (busy() || dirty()) { event.preventDefault(); event.returnValue = ''; } });
         personaRoot.addEventListener('keydown', event => {
             if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void saveProfile(); }
         });
-        renderList(); renderHeader(); showSection();
+        renderList(); renderHeader(); showSection(); setEnabled(sessionProfile.enabled);
         return { setEnabled, open, close, displaySession, setLoadedProfile, revealKnowledge, revealProjectMemory,
             projectChanged() { ++epoch; ++openEpoch; ++overviewEpoch; if (active()) open({ profileId: selected, section }); } };
     }

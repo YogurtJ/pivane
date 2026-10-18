@@ -37,12 +37,23 @@
         const content = document.createElement('div'); content.className = 'pi-agent-card-content pi-markdown';
         details.append(summary, content);
         let rendered = false;
+        const ensure = () => {
+            if (rendered) return;
+            rendered = true;
+            if (markdown) content.innerHTML = markdown(source);
+            else {
+                // Archive projections omit routing metadata. Preserve their text
+                // without inferring links, status or Markdown from that text.
+                const text = document.createElement('div'); text.className = 'pi-agent-card-plain'; text.textContent = source;
+                content.append(text);
+            }
+        };
         const sync = () => {
-            if (details.open && !rendered) { rendered = true; content.innerHTML = markdown(source); }
+            if (details.open) ensure();
             toggle.textContent = details.open ? t("收起") : label;
         };
         details.addEventListener('toggle', sync);
-        details._piRenderNow = () => { if (!rendered) { rendered = true; content.innerHTML = markdown(source); } };
+        details._piRenderNow = ensure;
         return details;
     }
 
@@ -136,5 +147,5 @@
         });
         return details;
     }
-    globalThis.PiAgentCards = { handles, render, summary, preview };
+    globalThis.PiAgentCards = { handles, render, summary, preview, collapsible };
 })();

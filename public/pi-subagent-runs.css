@@ -92,7 +92,7 @@
 .pi-subagent-notice-fold > summary > i:first-child { flex-shrink: 0; width: 14px; text-align: center; color: var(--blue); }
 .pi-subagent-notice[data-subagent-tone="attention"] .pi-subagent-notice-fold > summary > i:first-child { color: var(--amber); }
 .pi-subagent-notice[data-subagent-tone="error"] .pi-subagent-notice-fold > summary > i:first-child { color: var(--danger); }
-.pi-subagent-notice-fold > summary > strong { flex-shrink: 0; color: var(--text-main); font-size: 12.5px; font-weight: 600; }
+.pi-subagent-notice-fold > summary > strong { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main); font-size: 12.5px; font-weight: 600; }
 .pi-subagent-notice-preview { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pi-subagent-notice-source { flex-shrink: 0; color: var(--text-muted); font-size: 11px; opacity: .8; }
 .pi-subagent-notice-chevron { flex-shrink: 0; font-size: 9px; transition: transform .12s; }

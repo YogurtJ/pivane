@@ -3,7 +3,8 @@ const fs = require('node:fs');
 const path = require('path');
 const { randomUUID } = require('node:crypto');
 const { version: PI_VERSION } = require('../node_modules/@earendil-works/pi-coding-agent/package.json');
-const { WebSocketServer, WebSocket } = require('ws');
+const { WebSocketServer } = require('ws');
+const { createWebSocketSender } = require('./pi-websocket-send');
 const { PiAgentSupervisor } = require('./pi-agent-supervisor');
 const { PiSessionStore } = require('./pi-session-store');
 const { PiSettingsService } = require('./pi-settings-service');
@@ -41,17 +42,7 @@ const ALLOWED_RPC_COMMANDS = new Set([
 
 const LONG_RUNNING_COMMANDS = new Set(['compact']);
 
-function safeSend(socket, payload) {
-    if (socket.workspaceAccess && !socket.workspaceAccess.validIdentity(socket.workspaceIdentity)) {
-        socket.close(4401, 'Access expired or revoked');
-        return;
-    }
-    if (payload.type === 'gateway_shell' && socket.bufferedAmount > 1024 * 1024) {
-        socket.close(1013, 'Shell output consumer too slow; reconnect for snapshot');
-        return;
-    }
-    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
-}
+const safeSend = createWebSocketSender();
 
 function validateRpcPayload(command, payload) {
     if (['set_auto_compaction', 'set_auto_retry'].includes(command) && typeof payload.enabled !== 'boolean') {
@@ -170,21 +161,20 @@ function createPiAgentGateway(options = {}) {
     notifications.mount(router);
     require('./pi-extension-assistant').mountExtensionAssistant(router, { store, supervisor, resourceService, settingsService, access });
     const assistantEnvironment = supervisor.workerEnvironment;
-    supervisor.workerEnvironment = async ({ cwd, sessionId, sessionPath }) => {
-        const env = assistantEnvironment ? await assistantEnvironment({ cwd, sessionId }) : {};
-        const session = await store.getSession(cwd, sessionId);
+    supervisor.workerEnvironment = ({ cwd, sessionId, sessionPath }) => store.withSessionRead(cwd, sessionId, async (session, read) => {
         if (session.path !== sessionPath) throw new Error('Session path changed before runtime startup');
-        const { SessionManager } = await require('./pi-session-store').getSdk();
-        const manager = SessionManager.open(session.path);
-        if (manager.getSessionId() !== sessionId) throw new Error('Native session identity changed');
-        const context = await profiles.context(manager, cwd);
-        const projectContext = await assistantProjects.context(manager, cwd);
+        const env = assistantEnvironment ? await assistantEnvironment({ cwd, sessionId }) : {};
+        const context = await profiles.context(read.manager(), cwd);
+        const projectContext = await assistantProjects.context(read.manager(), cwd);
+        read.validate();
+        const authoringEnvironment = await require('./pi-profile-authoring').profileAuthoringEnvironment({ store, cwd, sessionId, read });
+        read.validate();
+        const memoryEnvironment = await profileMemory.environment(context);
+        read.validate();
         return { ...env, PIVANE_AGENT_PROFILE_CONTEXT: context ? JSON.stringify(context) : undefined,
             PIVANE_ASSISTANT_PROJECT_CONTEXT: projectContext ? JSON.stringify(projectContext) : undefined,
-            PIVANE_PROFILE_AUTHORING_CONTEXT: undefined,
-            ...await require('./pi-profile-authoring').profileAuthoringEnvironment({ store, cwd, sessionId }),
-            ...await profileMemory.environment(context) };
-    };
+            PIVANE_PROFILE_AUTHORING_CONTEXT: undefined, ...authoringEnvironment, ...memoryEnvironment };
+    });
     const profileRoute = action => async (req, res) => {
         res.set('Cache-Control', 'no-store');
         try { res.json(await action(req)); }
@@ -662,19 +652,21 @@ function createPiAgentGateway(options = {}) {
             let socketClosed = false;
             const sessionClassification = session => {
                 if (session.path !== workerSessionPath) return;
-                safeSend(socket, { type: 'gateway_session_classified', session });
+                safeSend(socket, { type: 'gateway_session_classified', session }, { code: 1012, reason: 'Session classification changed' });
                 socket.close(1012, 'Session classification changed');
             };
             sessionClassificationListeners.add(sessionClassification);
             const sessionRemoval = event => {
                 if (event.path !== workerSessionPath) return;
-                if (event.deleted) safeSend(socket, { type: 'gateway_session_deleted', cwd: event.cwd, sessionId: event.id, trashed: event.result.trashed });
+                if (event.deleted) safeSend(socket, { type: 'gateway_session_deleted', cwd: event.cwd, sessionId: event.id, trashed: event.result.trashed },
+                    { code: 4004, reason: 'Session deleted' });
                 socket.close(event.deleted ? 4004 : 1012, event.deleted ? 'Session deleted' : 'Session deletion failed');
             };
             sessionRemovalListeners.add(sessionRemoval);
             const sessionMove = event => {
                 if (event.source.path !== workerSessionPath) return;
-                if (!event.failed) safeSend(socket, { type: 'gateway_session_moved', sourceCwd: event.source.cwd, session: event.session });
+                if (!event.failed) safeSend(socket, { type: 'gateway_session_moved', sourceCwd: event.source.cwd, session: event.session },
+                    { code: 4005, reason: 'Session moved' });
                 socket.close(event.failed ? 1012 : 4005, event.failed ? 'Session move failed' : 'Session moved');
             };
             sessionMoveListeners.add(sessionMove);
@@ -785,8 +777,9 @@ function createPiAgentGateway(options = {}) {
                 if (sideSocket) {
                     if (!sideConnection) throw new Error('侧聊连接已失效，请重新打开');
                     const data = await sideConnection.handle(message);
-                    safeSend(socket, { type: 'response', id: message.id, command: message.type, success: true, data });
-                    if (['quit_side_chat', 'close_side_segment'].includes(message.type)) socket.close(1000, 'Side chat ended');
+                    const closing = ['quit_side_chat', 'close_side_segment'].includes(message.type) ? { code: 1000, reason: 'Side chat ended' } : undefined;
+                    safeSend(socket, { type: 'response', id: message.id, command: message.type, success: true, data }, closing);
+                    if (closing) socket.close(closing.code, closing.reason);
                     return;
                 }
                 if (message.type === 'get_side_model_options') {
@@ -829,8 +822,10 @@ function createPiAgentGateway(options = {}) {
                             ephemeral: true
                         };
                     } else {
-                        session = await store.getSession(message.cwd, message.sessionId);
-                        worker = await supervisor.getWorker({ cwd: session.cwd, sessionPath: session.path, sessionId: session.id });
+                        await store.withSessionRead(message.cwd, message.sessionId, async prepared => {
+                            session = prepared;
+                            worker = await supervisor.getWorker({ cwd: session.cwd, sessionPath: session.path, sessionId: session.id });
+                        });
                         workerSessionPath = session.path;
                     }
                     unsubscribe = worker.subscribe(event => {

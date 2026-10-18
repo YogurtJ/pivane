@@ -183,5 +183,7 @@
         open(target) { active = true; section = target; void load().then(() => { if (active && section === 'proxy') $('network-proxy')?.scrollIntoView({ block: 'start' }); }); },
         close() { active = false; epoch++; busy = false; finishAction(); }
     };
-    document.addEventListener('DOMContentLoaded', build, { once: true });
+    let initialized = false;
+    window.WorkspaceNetwork.start = () => { if (!initialized) { initialized = true; build(); } };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', window.WorkspaceNetwork.start, { once: true });
 })();

@@ -174,22 +174,22 @@ test('large changed-file parsing yields to unrelated event-loop work', async t =
     t.diagnostic(JSON.stringify({ fileMiB: +(fs.statSync(file).size / 1048576).toFixed(1), elapsedMs: +(performance.now() - start).toFixed(1), parsingTicks, maxHeartbeatGapMs: +maxGap.toFixed(1) }));
 });
 
-test('large image records share native fallback and cache only proven metadata', async () => {
+test('large image records share per-file projection and cache only proven metadata', async () => {
     const sdk = await getSdk(), directory = path.join(root, 'image-records'); fs.mkdirSync(directory);
     const file = fixture(directory, 'image', [header(root, 'image'), message('user', 'small preview'),
         message('toolResult', [{ type: 'image', data: 'x'.repeat(2 * 1024 * 1024), mimeType: 'image/png' }])]);
     const cache = new SessionMetadataCache(); let fallbacks = 0;
     const fallback = async () => { fallbacks++; return sdk.SessionManager.listAll(directory); };
     const rows = await Promise.all(Array.from({ length: 12 }, () => cache.list(directory, sdk, fallback)));
-    assert.equal(fallbacks, 1, 'concurrent lists share a native scan');
+    assert.equal(fallbacks, 0, 'concurrent lists share the bounded per-file projection');
     assert.ok(rows.every(list => list[0] === rows[0][0]), 'unchanged metadata retains projection identity');
     assert.equal(rows[0][0].allMessagesText, undefined, 'search bodies are not retained');
     const warm = await cache.list(directory, sdk, fallback);
-    assert.equal(fallbacks, 1, 'large unchanged records do not fall back on each refresh');
+    assert.equal(fallbacks, 0, 'large unchanged records do not fall back on each refresh');
     assert.equal(warm[0], rows[0][0]);
     fs.appendFileSync(file, '\n' + JSON.stringify({ type: 'session_info', name: 'updated' }));
     assert.equal((await cache.list(directory, sdk, fallback))[0].name, 'updated');
-    assert.equal(fallbacks, 2, 'append invalidates the native metadata proof');
+    assert.equal(fallbacks, 0, 'append refreshes the changed file without native discovery');
     assert.equal(cache.pending.size, 0);
 });
 

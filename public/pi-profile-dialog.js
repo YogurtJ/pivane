@@ -2,7 +2,7 @@
 (() => {
     'use strict';
     let pending = null;
-    function confirm({ title, message, accept, cancelLabel }) {
+    function confirm({ title, message, accept, cancelLabel, current = () => true }) {
         if (pending) return Promise.resolve(false);
         const t = text => globalThis.PiI18n?.t(text) || text;
         const focus = document.activeElement;
@@ -19,7 +19,7 @@
         return new Promise(resolve => {
             const finish = value => {
                 pending = null; dialog.close(); dialog.remove();
-                if (focus?.isConnected) focus.focus({ preventScroll: true });
+                if (current() && focus?.isConnected) focus.focus({ preventScroll: true });
                 resolve(value);
             };
             pending = () => finish(false);

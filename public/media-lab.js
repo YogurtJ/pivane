@@ -1,6 +1,9 @@
 (() => {
     const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
-    document.addEventListener('DOMContentLoaded', () => {
+    let initialized = false;
+    function start() {
+        if (initialized) return;
+        initialized = true;
         const $ = id => document.getElementById(id);
         const apiRoot = '/api/pi/media/lab';
         const labels = { image: translateUi("图像"), video: translateUi("视频"), tts: translateUi("语音") };
@@ -67,6 +70,8 @@
             if (key === 'data' && typeof item === 'string' && /^(image|video)\//.test(this?.mimeType || '')) return translateUi('[二进制编码 · {0} 字符]', item.length);
             return window.PiMediaFields.displayValue(item);
         }, 2);
+        const artifacts = button(window.PiI18n?.locale === 'en' ? 'Artifact library' : '成果库', '', () => window.PiWorkspaceRoute.navigate('artifacts'), 'lab-secondary');
+        artifacts.id = 'lab-open-artifacts'; document.querySelector('#media-tab .lab-header')?.append(artifacts);
         const collect = window.PiMediaFields.collect;
         function remember() {
             if (!modelId) return;
@@ -453,5 +458,7 @@
             });
             $('lab-info-content').replaceChildren(mode, docs, editor, message, actions); info.showModal();
         });
-    });
+    }
+    window.PiMediaLabPage = { start };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
 })();

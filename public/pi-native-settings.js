@@ -1,10 +1,7 @@
 (() => {
     const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
     const $ = id => document.getElementById(id);
-    const node = (tag, text, attrs = {}) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e; };
-    const button = (text, id, action) => { const b = node('button', text, { type: 'button', ...(id ? { id } : {}) }); b.addEventListener('click', action); return b; };
-    const select = (items, value, id) => { const s = node('select', undefined, id ? { id } : {}); for (const [v, text] of items) s.append(node('option', text, { value: v })); s.value = value; return s; };
-    const label = (text, field) => { const l = node('label', text); l.append(field); return l; };
+    const { node, button, select, label } = window.PiNativeUI;
     const scopes = [['global', translateUi("所有项目")], ['project', translateUi("当前项目")]];
     const groups = [
         ['messages', translateUi("消息与模型"), translateUi("消息投递方式、常用模型范围"), 'fa-comment-dots', k => ['steeringMode', 'followUpMode', 'enabledModels'].includes(k)],
@@ -16,7 +13,6 @@
         ['privacy', translateUi("隐私与诊断"), translateUi("安装遥测与环境覆盖"), 'fa-shield-halved', k => k === 'enableInstallTelemetry'],
         ['other', translateUi("其他选项"), translateUi("其他原生设置"), 'fa-sliders', () => true]
     ];
-    window.PiNativeUI = { node, button, select, label };
     function create({ apiFetch, currentCwd }) {
         let epoch = 0, resourceRequest = 0, capabilities, config, focusKey;
         const panel = $('native-settings-panel'), installedPanel = $('native-installed');

@@ -141,8 +141,6 @@
 }
 .pi-archive-link:hover { text-decoration: underline; }
 
-.pi-archive-agent-text { white-space: pre-wrap; color: var(--text-muted); }
-
 @media (max-width: 900px) {
     .pi-transcript-archive { padding-inline: 20px; }
     .pi-archive-process > summary { min-height: 40px; }

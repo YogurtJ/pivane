@@ -19,6 +19,13 @@ const finished = { ...running, runs: [{ ...running.runs[0], state: 'paused', end
 const controls = (snapshot, active) => ({ runtimeId: 'main', revision: ++revision, queue: { steering: [], followUp: [] }, recoveries: [], stopping: false, drafts: [], draftOverflow: false,
     extension: { title: '', statuses: [], widgets: [] }, subagents: { snapshot, background: active === null ? null : { supported: true, active, sources: active ? ['pi-subagents'] : [] } } });
 const longReport = '## Review result\n\n' + Array.from({ length: 30 }, (_, index) => `- finding ${index} <img src=x onerror="window.__xss=1">`).join('\n');
+const extraNotices = [
+    ['subagent-supervisor-unanswered', '子 Agent 请求尚未答复', 'Subagent request unanswered'],
+    ['subagent-supervisor-blocked', '子 Agent 请求受阻', 'Subagent request blocked'],
+    ['subagent-completion-unanswered', '子 Agent 结果尚未答复', 'Subagent result unanswered'],
+    ['subagent-completion-unhandled', '子 Agent 结果尚未处理', 'Subagent result unhandled'],
+    ['subagent_watchdog_clarification', '子 Agent 监督待澄清', 'Subagent watchdog needs clarification']
+];
 const messages = [
     { role: 'user', timestamp: 1, content: 'Delegate a review' },
     { role: 'assistant', timestamp: 2, content: [{ type: 'toolCall', name: 'subagents_enable', id: 'enable', arguments: {} }] },
@@ -29,6 +36,7 @@ const messages = [
     { role: 'toolResult', toolName: 'subagent_supervisor', toolCallId: 'reply', timestamp: 7, content: [{ type: 'text', text: 'sent' }], isError: false },
     { role: 'custom', customType: 'subagent_supervisor_request', display: true, timestamp: 8, content: 'reviewer asks: **may I edit tests?**' },
     { role: 'custom', customType: 'subagent-notify', display: true, timestamp: 9, content: longReport },
+    ...extraNotices.map(([customType], index) => ({ role: 'custom', customType, display: true, timestamp: 9.1 + index / 10, content: `${customType}\n\n${longReport}` })),
     { role: 'custom', customType: 'unrelated-extension', display: true, timestamp: 10, content: 'Other extension note' }
 ];
 const innerWidthOf = width => width;
@@ -224,7 +232,7 @@ async function check(browser, base, width, language) {
 
     // Transcript notices and tool titles
     await selectMessageView(page, 'full');
-    const request = page.locator('.pi-message.pi-subagent-notice[data-subagent-tone="attention"]');
+    const request = page.locator('.pi-message.pi-subagent-notice[data-subagent-tone="attention"]').first();
     assert.equal(await request.locator('summary strong').textContent(), en ? 'Subagent needs guidance' : '子 Agent 请求指示');
     assert.equal(await request.locator('.pi-subagent-notice-preview').textContent(), 'reviewer asks: may I edit tests?');
     assert.equal(await request.locator('details').evaluate(node => node.open), false, 'notices start collapsed');
@@ -244,6 +252,24 @@ async function check(browser, base, width, language) {
     assert.equal(await result.locator('.pi-markdown li').count(), 30);
     assert.equal(await page.evaluate(() => window.__xss), undefined);
     assert.equal(await page.locator('.pi-message-body [onerror]').count(), 0);
+    const { SUBAGENT_MESSAGE_TYPES } = await import('../../vendor/pi-subagents/src/tui/subagent-messages.js');
+    const supported = await page.evaluate(() => window.PiSubagentNotices.types);
+    assert.deepEqual(SUBAGENT_MESSAGE_TYPES.filter(type => !supported.includes(type)), [], 'every bundled subagents message type has a web card');
+    for (const [index, [, zh, english]] of extraNotices.entries()) {
+        const card = page.locator('.pi-message.pi-subagent-notice').nth(index + 2);
+        assert.equal(await card.locator('summary strong').textContent(), en ? english : zh);
+        assert.equal(await card.locator('details').evaluate(node => node.open), false, 'new notice types also start collapsed');
+        assert.ok(await card.evaluate(node => node.getBoundingClientRect().height) <= 44);
+        assert.ok(await card.evaluate(node => node.querySelector('.pi-subagent-notice-chevron').getBoundingClientRect().right <= node.querySelector('details').getBoundingClientRect().right - 4), 'the disclosure chevron stays inside the card even with long labels');
+    }
+    const liveMessage = { role: 'custom', customType: 'subagent_supervisor_request', display: true, timestamp: now, content: 'Live supervisor request.\n\n' + longReport };
+    emit({ type: 'message_end', message: liveMessage });
+    await page.waitForFunction(count => document.querySelectorAll('.pi-message.pi-subagent-notice').length === count, extraNotices.length + 3);
+    const liveCard = page.locator('.pi-message.pi-subagent-notice').last();
+    assert.equal(await liveCard.locator('details').evaluate(node => node.open), false, 'live requests start collapsed');
+    emit({ type: 'message_end', message: liveMessage });
+    await page.waitForTimeout(50);
+    assert.equal(await page.locator('.pi-message.pi-subagent-notice').count(), extraNotices.length + 3, 'duplicate live deliveries do not add a second card');
     assert.equal(await page.locator('.pi-message.custom:not(.pi-subagent-notice) header strong').first().textContent(), en ? 'System' : '系统');
     const title = id => page.locator(`[data-tool-id="${id}"] summary > strong`).textContent();
     assert.equal(await title('launch'), en ? 'Start background subagent · Code reviewer' : '后台启动子 Agent · 代码审查');

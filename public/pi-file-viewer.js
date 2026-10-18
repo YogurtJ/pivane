@@ -77,6 +77,44 @@
         return math ? math.finish(html) : html;
     }
 
+    // Signatures describe the sanitized, undecorated output, never source Markdown.
+    // Weak keys let removed messages and their signatures be collected together.
+    const markdownSignatures = new WeakMap();
+    function updateMarkdown(root, html, decorate) {
+        const range = document.createRange();
+        range.selectNodeContents(root);
+        const fragment = range.createContextualFragment(html);
+        const next = [...fragment.childNodes];
+        const signature = node => `${node.nodeType}:${node.nodeType === Node.ELEMENT_NODE ? node.outerHTML : node.nodeValue}`;
+        const signatures = next.map(signature);
+        let current = root.firstChild, retained = 0;
+        // Always parse the complete result: references, containers and browser HTML
+        // tree repair can change earlier blocks when only the source suffix grows.
+        while (current && retained < next.length && markdownSignatures.has(current)
+            && markdownSignatures.get(current) === signatures[retained]) {
+            current = current.nextSibling;
+            next[retained++].remove();
+        }
+        while (current) {
+            const following = current.nextSibling;
+            markdownSignatures.delete(current);
+            current.remove();
+            current = following;
+        }
+        // Bound the derived cache per mounted text block. Oversized output falls
+        // back to replacement on the next update; no detached tree is cached.
+        let bytes = 0, index = 0;
+        for (const node of [...root.childNodes, ...fragment.childNodes]) {
+            const value = signatures[index];
+            if (++index > 4096 || (bytes += value.length * 2) > 2 * 1024 * 1024) break;
+            markdownSignatures.set(node, value);
+        }
+        if (fragment.childNodes.length) {
+            decorate?.(fragment);
+            root.appendChild(fragment);
+        }
+    }
+
     class PiFileViewer {
         constructor(host) {
             this.host = host; this.sequence = 0; this.enabled = false; this.file = null; this.data = null;
@@ -405,4 +443,5 @@
     window.PiFileViewer = PiFileViewer;
     window.PiFileViewer.linkTarget = linkTarget;
     window.PiFileViewer.markdown = markdown;
+    window.PiFileViewer.updateMarkdown = updateMarkdown;
 })();

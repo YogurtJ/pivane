@@ -330,6 +330,11 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
     await page.waitForFunction(() => document.querySelector('#pi-side-input').value === '');
     assert.equal(sidePrompts.at(-1).confirmUncertain, true);
     sendMode = 'hold'; await page.locator('#pi-side-input').fill('停止这条侧聊'); await page.locator('#pi-side-send').click();
+    await page.waitForFunction(() => document.querySelector('#pi-side-messages .assistant:last-child h2')?.textContent === '侧聊回答');
+    await page.evaluate(() => { window.__sideStableHeading = document.querySelector('#pi-side-messages .assistant:last-child h2'); });
+    send(activeSide.ws, { type: 'message_update', assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: '\n\n流式后缀' } });
+    await page.waitForFunction(() => document.querySelector('#pi-side-messages').textContent.includes('流式后缀'));
+    assert.equal(await page.evaluate(() => window.__sideStableHeading === document.querySelector('#pi-side-messages .assistant:last-child h2')), true, 'side stream retains the unchanged heading');
     await page.locator('#pi-side-stop:not([hidden])').waitFor(); await page.locator('#pi-side-stop').click();
     await page.waitForFunction(() => document.querySelector('#pi-side-stop').hidden);
     assert.ok(!sockets.find(item => item.kind === 'main').closed);

@@ -5,10 +5,10 @@ const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const { schema } = require('../../server/pi-native-service');
 const fields = { ...schema, defaultTools: { ...schema.defaultTools, choices: ['read', 'bash', 'edit', 'write', 'codemode', 'tool_search'], defaults: ['read', 'bash', 'edit', 'write'] } };
-const html = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/pi-native-settings.css"><style>body{margin:8px}*{box-sizing:border-box}label{display:flex;flex-direction:column}input,select,textarea{max-width:100%;font-size:16px}small,p,button{overflow-wrap:anywhere}button{max-width:100%;white-space:normal}.native-save-row{flex-wrap:wrap}</style><div id="workspace-settings-dialog"><div id="native-settings-panel"></div><div id="native-installed"></div><div id="native-settings-nav"></div><div id="system-prompts-nav"></div></div><script src="/pi-native-settings.js"></script>`;
+const html = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/pi-native-settings.css"><style>body{margin:8px}*{box-sizing:border-box}label{display:flex;flex-direction:column}input,select,textarea{max-width:100%;font-size:16px}small,p,button{overflow-wrap:anywhere}button{max-width:100%;white-space:normal}.native-save-row{flex-wrap:wrap}</style><div id="workspace-settings-dialog"><div id="native-settings-panel"></div><div id="native-installed"></div><div id="native-settings-nav"></div><div id="system-prompts-nav"></div></div><script src="/pi-native-ui.js"></script><script src="/pi-native-settings.js"></script>`;
 const server = http.createServer((req, res) => {
     if (req.url === '/') { res.setHeader('Content-Type', 'text/html'); return res.end(html); }
-    const allowed = { '/pi-native-settings.js': 'application/javascript', '/pi-native-settings.css': 'text/css' };
+    const allowed = { '/pi-native-ui.js': 'application/javascript', '/pi-native-settings.js': 'application/javascript', '/pi-native-settings.css': 'text/css' };
     if (!allowed[req.url]) { res.writeHead(404); return res.end(); }
     res.setHeader('Content-Type', allowed[req.url]); res.end(fs.readFileSync(path.join(__dirname, '../../public', req.url.slice(1))));
 });

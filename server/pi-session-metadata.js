@@ -10,28 +10,35 @@ const MAX_FILE_BYTES = 64 * 1024 * 1024;
 const { StringDecoder } = require('node:string_decoder');
 const yieldTurn = () => new Promise(resolve => setImmediate(resolve));
 
-// Keep changed-file CPU work interruptible. Exceptionally large individual JSON
-// records retain native streaming discovery rather than one long synchronous parse.
+// Bound the synchronous native JSON parse independently of the 64 MiB file
+// budget. Ordinary image/tool records fit this 8 MiB-character compatibility
+// window; larger records still use native discovery. Decoding/scanning yields
+// every 64 KiB, and a spanning record is assembled only once, at its delimiter.
+const MAX_RECORD_CHARS = 8 * 1024 * 1024;
 async function* nativeLines(bytes) {
     const decoder = new StringDecoder('utf8');
-    let pending = '';
+    let fragments = [], length = 0;
+    const append = fragment => {
+        length += fragment.length;
+        if (length > MAX_RECORD_CHARS) throw new Error('Session metadata proof unavailable');
+        if (fragment) fragments.push(fragment);
+    };
     for (let offset = 0; offset < bytes.length; offset += 65536) {
         const chunk = decoder.write(bytes.subarray(offset, offset + 65536));
         if (/[\u2028\u2029]/u.test(chunk)) throw new Error('Session metadata proof unavailable');
-        pending += chunk;
         let start = 0, match;
         const lines = [], delimiters = /[\r\n]/g;
-        while ((match = delimiters.exec(pending))) {
-            if (match.index - start > 1024 * 1024) throw new Error('Session metadata proof unavailable');
-            lines.push(pending.slice(start, match.index)); start = match.index + 1;
+        while ((match = delimiters.exec(chunk))) {
+            append(chunk.slice(start, match.index));
+            lines.push(fragments.length === 1 ? fragments[0] : fragments.join(''));
+            fragments = []; length = 0; start = match.index + 1;
         }
-        pending = pending.slice(start);
+        append(chunk.slice(start));
         if (lines.length) yield lines;
-        if (pending.length > 1024 * 1024) throw new Error('Session metadata proof unavailable');
         await yieldTurn();
     }
-    pending += decoder.end();
-    if (pending) yield [pending];
+    append(decoder.end());
+    if (length) yield [fragments.length === 1 ? fragments[0] : fragments.join('')];
 }
 
 // Native parseSessionEntries owns JSONL parsing. This adapter projects precisely
@@ -42,6 +49,13 @@ async function projectMetadata(bytes, file, stat, parseSessionEntries) {
     try {
         let header, name, messageCount = 0, firstMessage = '', lastActivityTime;
         for await (const lines of nativeLines(bytes)) for (const line of lines) {
+            // Native list skips blank lines but JSON-parses the original line;
+            // the public helper trims it first. Non-JSON outer whitespace must
+            // retain native discovery, while whitespace inside strings is valid.
+            const unindented = line.trimStart();
+            if (!unindented) continue;
+            if (/[^\t\n\r ]/u.test(line.slice(0, line.length - unindented.length))
+                || /[^\t\n\r ]/u.test(line.slice(line.trimEnd().length))) throw new Error('Session metadata proof unavailable');
             const entry = parseSessionEntries(line)[0];
             if (!entry) continue;
             if (!header) {

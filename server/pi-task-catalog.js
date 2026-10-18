@@ -5,7 +5,7 @@ const { descriptorPathSync, assertDescriptorBackend } = require('./pi-file-descr
 const { customTypeIs } = require('./pivane-compat');
 const { getSdk } = require('./pi-session-store');
 const { MESSAGE_OUT, MESSAGE_IN, outboundMessage } = require('./pi-agent-message-format');
-const LIMITS = { outboxPerSession: 2000, projects: 8, batchBytes: 8 * 1024 * 1024, milliseconds: 100, refreshMilliseconds: 2000, lineBytes: 32 * 1024 * 1024, files: 50000, metadataBytes: 32 * 1024 * 1024 };
+const LIMITS = { replyLocationBytes: 1024 * 1024, outboxPerSession: 2000, projects: 8, batchBytes: 8 * 1024 * 1024, milliseconds: 100, refreshMilliseconds: 2000, lineBytes: 32 * 1024 * 1024, files: 50000, metadataBytes: 32 * 1024 * 1024 };
 const fingerprint = stat => [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].map(String).join(':');
 const failure = (code, message) => Object.assign(new Error(message), { code });
 
@@ -16,6 +16,7 @@ class TaskCatalog {
         Object.assign(this, { store, directory, suspended });
         this.limits = { ...LIMITS, ...limits };
         this.projects = new Map(); this.reads = new Set(); this.stopping = false; this.bytesRead = 0;
+        this.replyLocations = new Map(); this.replyLocationBytes = 0;
     }
     async project(cwd) {
         cwd = this.store.resolveProject(cwd);
@@ -114,7 +115,7 @@ class TaskCatalog {
                 if (!stat.isFile()) throw failure('TASK_FILE', 'Session file changed during discovery');
                 let record = project.files.get(filename);
                 if (!record || fingerprint(record.stat) !== fingerprint(stat)) {
-                    record = { path: filename, stat, position: 0, parts: [], pendingBytes: 0, complete: false,
+                    record = { path: filename, stat, position: 0, linePosition: 0, parts: [], pendingBytes: 0, complete: false,
                         header: null, task: null, state: null, name: '', results: new Map(), receipts: new Set(), read: new Set(),
                         preview: '', special: null, outbox: new Map(), inbox: new Set() };
                     project.files.set(filename, record);
@@ -180,8 +181,9 @@ class TaskCatalog {
                 let currentCwd; try { currentCwd = fs.realpathSync.native(record.header.rawCwd); } catch { currentCwd = record.header.rawCwd; }
                 if (currentCwd !== record.header.cwd) throw failure('TASK_CHANGED', 'Project alias changed during task discovery; retry');
             }
-            while (record.position < Number(stat.size) && bytes < allowance && Date.now() - started < this.limits.milliseconds) {
-                const buffer = Buffer.alloc(Math.min(65536, allowance - bytes, Number(stat.size) - record.position));
+            const endPosition = record.endPosition ?? Number(stat.size);
+            while (record.position < endPosition && bytes < allowance && Date.now() - started < this.limits.milliseconds) {
+                const buffer = Buffer.alloc(Math.min(65536, allowance - bytes, endPosition - record.position));
                 const count = fs.readSync(fd, buffer, 0, buffer.length, record.position);
                 if (!count) throw failure('TASK_CHANGED', 'Session changed during task discovery; retry');
                 record.position += count; bytes += count; this.bytesRead += count;
@@ -194,6 +196,7 @@ class TaskCatalog {
                 while ((end = buffer.indexOf(10, from)) >= 0 && end < count) {
                     append(buffer.subarray(from, end));
                     this.line(project, record, Buffer.concat(record.parts, record.pendingBytes));
+                    record.linePosition = record.position - count + end + 1;
                     record.parts = []; record.pendingBytes = 0; from = end + 1;
                 }
                 append(buffer.subarray(from, count));
@@ -202,7 +205,7 @@ class TaskCatalog {
             if (!current.isFile() || fingerprint(after) !== fingerprint(stat) || fingerprint(current) !== fingerprint(stat)
                 || !fileIo.sameIdentityAtPath(record.path, identity) || descriptorPathSync(fd) !== actual
                 || fs.realpathSync.native(record.path) !== actual) throw failure('TASK_CHANGED', 'Session changed during task discovery; retry');
-            if (record.position === Number(stat.size)) {
+            if (record.position === endPosition) {
                 // An unfinished LF frame is not negative evidence for creation.
                 if (record.pendingBytes || !record.header) throw failure('TASK_INCOMPLETE', 'Session has an unfinished record; task discovery will retry');
                 record.complete = true;
@@ -221,9 +224,11 @@ class TaskCatalog {
             if (entry.type !== 'session' || ![2, 3].includes(entry.version) || typeof entry.id !== 'string' || !entry.id || entry.id.length > 160
                 || typeof entry.cwd !== 'string' || !path.isAbsolute(entry.cwd)) throw failure('TASK_HEADER', 'Unsupported native session header');
             let cwd; try { cwd = fs.realpathSync.native(entry.cwd); } catch { cwd = entry.cwd; }
-            record.header = { id: entry.id, cwd, rawCwd: entry.cwd }; return;
+            record.header = { id: entry.id, cwd, rawCwd: entry.cwd };
+            record.headerEndPosition = record.linePosition + buffer.length + 1; return;
         }
         if (entry.type === 'message' && entry.id === record.selectEntryId && entry.message?.role === 'assistant') {
+            record.selectedLocation = { position: record.linePosition, length: buffer.length + 1 };
             const content = entry.message.content;
             record.selectedText = typeof content === 'string' ? content : (Array.isArray(content) ? content : [])
                 .filter(block => block.type === 'text' && typeof block.text === 'string').map(block => block.text).join('\n');
@@ -269,16 +274,45 @@ class TaskCatalog {
     async readReply(cwd, sessionId, entryId, offset = 0) {
         if (!Number.isInteger(offset) || offset < 0 || offset > this.limits.lineBytes) throw new Error('Invalid result offset');
         const project = await this.project(cwd), source = await this.source(cwd, sessionId);
-        const record = { path: source.path, stat: fs.lstatSync(source.path, { bigint: true }), position: 0, parts: [], pendingBytes: 0,
+        const location = this.replyLocations.get(JSON.stringify([source.path, entryId]));
+        const located = location && location.revision === fingerprint(source.stat) && location.identity === source.identity;
+        const record = { path: source.path, stat: source.stat, identity: source.identity, position: 0, linePosition: 0, parts: [], pendingBytes: 0,
+            endPosition: located ? source.headerEndPosition : undefined,
             header: null, task: null, state: null, results: new Map(), receipts: new Set(), read: new Set(), selectEntryId: entryId,
             preview: '', special: null, outbox: new Map(), inbox: new Set() };
         const started = Date.now();
         while (record.selectedText === undefined && !record.complete) {
             if (this.stopping || this.suspended() || Date.now() - started > 20000) throw failure('TASK_RESULT_LIMIT', 'Result reading stopped; retry with the same task and result identifiers');
             this.readBatch(project, record, this.limits.batchBytes, Date.now());
+            // Re-read the native header even with a location hint. Only the long
+            // intervening history is skipped, never the requested session proof.
+            if (located && record.complete && record.position === source.headerEndPosition) {
+                if (record.header.id !== sessionId || record.header.cwd !== project.cwd) throw failure('TASK_RESULT_MISSING', 'Original task reply is no longer available');
+                record.position = record.linePosition = location.position;
+                record.endPosition = location.position + location.length; record.complete = false;
+            }
             await new Promise(resolve => setImmediate(resolve));
         }
+        // The event-loop yield above may allow a writer or maintenance to run.
+        if (this.stopping || this.suspended() || Date.now() - started > 20000) throw failure('TASK_RESULT_LIMIT', 'Result reading stopped; retry with the same task and result identifiers');
+        this.readBatch(project, record, 0, Date.now());
         if (record.header?.id !== sessionId || record.header.cwd !== project.cwd || record.selectedText === undefined) throw failure('TASK_RESULT_MISSING', 'Original task reply is no longer available');
+        // Preserve readReply's batch selection, including the last matching ID
+        // within that batch. Discovery and reads of other entries never choose it.
+        const key = JSON.stringify([source.path, entryId]);
+        const selected = { ...record.selectedLocation, revision: fingerprint(record.stat), identity: record.identity };
+        const bytes = Buffer.byteLength(key) + Buffer.byteLength(JSON.stringify(selected)) + 64;
+        const previous = this.replyLocations.get(key);
+        if (previous) { this.replyLocationBytes -= previous.bytes; this.replyLocations.delete(key); }
+        // Commit only after final proof. Eviction falls back to native scanning;
+        // this bounded cache contains no reply body or independent conversation.
+        if (bytes <= this.limits.replyLocationBytes) {
+            while (this.replyLocationBytes + bytes > this.limits.replyLocationBytes) {
+                const oldest = this.replyLocations.keys().next().value;
+                this.replyLocationBytes -= this.replyLocations.get(oldest).bytes; this.replyLocations.delete(oldest);
+            }
+            this.replyLocations.set(key, { ...selected, bytes }); this.replyLocationBytes += bytes;
+        }
         const text = record.selectedText.slice(offset, offset + 8000);
         return { entryId, text, offset, nextOffset: offset + text.length < record.selectedText.length ? offset + text.length : null, totalCharacters: record.selectedText.length };
     }
@@ -286,7 +320,7 @@ class TaskCatalog {
         this.stopping = true;
         for (const project of this.projects.values()) clearTimeout(project.timer);
         await Promise.allSettled([...this.reads, ...[...this.projects.values()].flatMap(p => [p.flight, p.ready]).filter(Boolean)]);
-        this.projects.clear();
+        this.projects.clear(); this.replyLocations.clear(); this.replyLocationBytes = 0;
     }
 }
 module.exports = { TaskCatalog, LIMITS };

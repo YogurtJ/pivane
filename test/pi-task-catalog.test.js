@@ -146,3 +146,150 @@ test('linked files are refused and a cold cache rebuild preserves native results
         await assert.rejects(f.catalog.refresh(f.cwd), error => error.code === 'TASK_FILE');
     }
 });
+
+test('reply pagination pays one prefix scan to locate, then reads only the verified header and selected entry', async t => {
+    const f = fixture(t), text = '中文😀'.repeat(20000);
+    const reply = { type: 'message', id: 'reply', message: { role: 'assistant', content: [{ type: 'text', text }, { type: 'thinking', thinking: 'private' }] } };
+    const file = f.write('child.jsonl', [f.header('child'), f.task('child'),
+        { type: 'custom', customType: 'padding', data: 'x'.repeat(16 * 1024 * 1024) }, reply]);
+    await complete(f.catalog, f.cwd);
+    const before = f.catalog.bytesRead, readSync = fs.readSync, headerBytes = fs.readFileSync(file).indexOf(10) + 1;
+    assert.equal(f.catalog.replyLocations.size, 0, 'discovery does not select reply positions');
+    let bytesRead = 0, firstReadBytes = 0;
+    t.mock.method(fs, 'readSync', (...args) => { const count = readSync(...args); bytesRead += count; return count; });
+    let actual = '', offset = 0, pages = 0;
+    do {
+        const page = await f.catalog.reply(f.cwd, 'child', 'reply', offset);
+        actual += page.text; offset = page.nextOffset; pages++;
+        if (pages === 1) firstReadBytes = bytesRead;
+    } while (offset !== null);
+    assert.equal(actual, text); assert.equal(pages, 10);
+    const entryBytes = Buffer.byteLength(JSON.stringify(reply) + '\n'), fileBytes = fs.statSync(file).size;
+    assert.equal(firstReadBytes, fileBytes, 'first read locates using the original bounded scan');
+    assert.equal(bytesRead - firstReadBytes, 9 * (headerBytes + entryBytes), 'subsequent pages read only header and selected entry');
+    assert.equal(f.catalog.bytesRead - before, bytesRead);
+    assert.ok(bytesRead < fileBytes * 1.15);
+    t.diagnostic(JSON.stringify({ worktree: process.cwd(), pages, fileBytes, firstReadBytes, subsequentPageBytes: headerBytes + entryBytes,
+        subsequentPagesBytes: bytesRead - firstReadBytes, bytesRead, previousPrefixBytes: fileBytes * pages }));
+});
+
+test('reply offsets are disposable and bounded, including lines spanning scan batches', async t => {
+    const f = fixture(t, { replyLocationBytes: 512, batchBytes: 127, refreshMilliseconds: 0 });
+    const replies = Array.from({ length: 12 }, (_, i) => ({ type: 'message', id: `reply-${i}`, message: { role: 'assistant', content: `第${i}😀`.repeat(300) } }));
+    const file = f.write('child.jsonl', [f.header('child'), f.task('child'), ...replies]);
+    await complete(f.catalog, f.cwd);
+    assert.equal(f.catalog.replyLocations.size, 0);
+    const before = f.catalog.bytesRead;
+    assert.equal((await f.catalog.reply(f.cwd, 'child', 'reply-11')).text, replies[11].message.content);
+    assert.equal(f.catalog.bytesRead - before, fs.statSync(file).size, 'first read locates the last entry across batches');
+    const located = f.catalog.bytesRead;
+    assert.equal((await f.catalog.reply(f.cwd, 'child', 'reply-11')).text, replies[11].message.content);
+    assert.equal(f.catalog.bytesRead - located, fs.readFileSync(file).indexOf(10) + 1 + Buffer.byteLength(JSON.stringify(replies[11]) + '\n'));
+    for (let i = 0; i < replies.length; i++) {
+        await f.catalog.reply(f.cwd, 'child', `reply-${i}`);
+        assert.ok(f.catalog.replyLocationBytes <= 512); assert.ok(f.catalog.replyLocations.size < replies.length);
+    }
+    f.catalog.replyLocations.clear(); f.catalog.replyLocationBytes = 0;
+    assert.equal((await f.catalog.reply(f.cwd, 'child', 'reply-0')).text, replies[0].message.content, 'evicted hints fall back to scanning native bytes');
+});
+
+test('reply ranges reject append, truncation, rewrite, and replacement after verified discovery', async t => {
+    for (const mutation of ['append', 'truncate', 'rewrite', 'replace']) {
+        await t.test(mutation, async t => {
+            const f = fixture(t);
+            const entries = [f.header('child'), f.task('child'), { type: 'message', id: 'reply', message: { role: 'assistant', content: 'original' } }];
+            const file = f.write('child.jsonl', entries);
+            await complete(f.catalog, f.cwd);
+            await f.catalog.reply(f.cwd, 'child', 'reply');
+            if (mutation === 'append') fs.appendFileSync(file, '{}\n');
+            if (mutation === 'truncate') fs.truncateSync(file, 20);
+            if (mutation === 'rewrite') {
+                fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('original', 'modified'));
+                // Some filesystems coalesce immediate same-size writes into one
+                // timestamp tick. Give this revision a deterministic new mtime.
+                fs.utimesSync(file, new Date(), new Date(Date.now() + 1000));
+            }
+            if (mutation === 'replace') fs.renameSync(f.write('new', entries), file);
+            await assert.rejects(f.catalog.reply(f.cwd, 'child', 'reply'), error => error.code === 'TASK_CHANGED');
+        });
+    }
+});
+
+test('reply changes after decoding fail, and concurrent reads reserve the existing maintenance budget', async t => {
+    const f = fixture(t);
+    const file = f.write('child.jsonl', [f.header('child'), f.task('child'), { type: 'message', id: 'reply', message: { role: 'assistant', content: 'answer' } }]);
+    await complete(f.catalog, f.cwd);
+    const line = f.catalog.line.bind(f.catalog); let changed = false;
+    f.catalog.line = (...args) => {
+        line(...args);
+        if (!changed && args[1].selectedText !== undefined) { changed = true; setImmediate(() => fs.appendFileSync(file, '{}\n')); }
+    };
+    const one = f.catalog.reply(f.cwd, 'child', 'reply'), two = f.catalog.reply(f.cwd, 'child', 'reply');
+    assert.equal(f.catalog.busy, true);
+    await assert.rejects(f.catalog.reply(f.cwd, 'child', 'reply'), /busy/);
+    for (const outcome of await Promise.allSettled([one, two])) {
+        assert.equal(outcome.status, 'rejected'); assert.equal(outcome.reason.code, 'TASK_CHANGED');
+    }
+    assert.equal(f.catalog.busy, false);
+    assert.equal(f.catalog.replyLocations.size, 0, 'failed final proof never publishes a selected location');
+    await complete(f.catalog, f.cwd);
+    f.catalog.suspended = () => true;
+    await assert.rejects(f.catalog.reply(f.cwd, 'child', 'reply'), error => error.code === 'TASK_RESULT_LIMIT');
+});
+
+test('located replies still decode the native header and match the requested session even when stat revisions collide', async t => {
+    const f = fixture(t);
+    const file = f.write('child.jsonl', [f.header('child'), f.task('child'), { type: 'message', id: 'reply', message: { role: 'assistant', content: 'answer' } }]);
+    await complete(f.catalog, f.cwd);
+    await f.catalog.reply(f.cwd, 'child', 'reply');
+    const stat = fs.statSync(file, { bigint: true }), fstat = fs.fstatSync, lstat = fs.lstatSync;
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('"id":"child"', '"id":"other"'));
+    // Model an equal-size overwrite within one timestamp tick. Header semantics
+    // are independently checked; they must not be inferred from a location hint.
+    t.mock.method(fs, 'fstatSync', (fd, ...args) => { const now = fstat(fd, ...args); return now.ino === stat.ino ? stat : now; });
+    t.mock.method(fs, 'lstatSync', (filename, ...args) => filename === file ? stat : lstat(filename, ...args));
+    await assert.rejects(f.catalog.reply(f.cwd, 'child', 'reply'), error => error.code === 'TASK_RESULT_MISSING');
+});
+
+test('duplicate reply IDs preserve the original batch choice through discovery, other reads, eviction and rebuild', async t => {
+    for (const acrossBatches of [true, false]) {
+        await t.test(acrossBatches ? 'duplicates across 8 MiB batches select FIRST' : 'duplicates in one 64 KiB block select SECOND', async t => {
+            const f = fixture(t, { milliseconds: 10000 });
+            const first = 'FIRST' + 'a'.repeat(acrossBatches ? 31995 : 11995);
+            const second = 'SECOND' + 'b'.repeat(acrossBatches ? 31994 : 11994);
+            const message = (id, content, role = 'assistant') => ({ type: 'message', id, message: { role, content } });
+            const entries = [f.header('child'), f.task('child'), message('same', first)];
+            if (acrossBatches) entries.push(message('padding', 'x'.repeat(9 * 1024 * 1024), 'toolResult'));
+            entries.push(message('same', second), message('other', 'OTHER'));
+            const file = f.write('child.jsonl', entries), expected = acrossBatches ? first : second;
+            if (!acrossBatches) assert.ok(fs.statSync(file).size < 65536, 'duplicates share one read block');
+            await complete(f.catalog, f.cwd);
+            assert.equal(f.catalog.replyLocations.size, 0, 'normal discovery makes no reply selection');
+            const key = JSON.stringify([file, 'same']);
+            const page = await f.catalog.reply(f.cwd, 'child', 'same');
+            assert.equal(page.text, expected.slice(0, 8000)); assert.equal(page.totalCharacters, expected.length);
+            const chosen = { ...f.catalog.replyLocations.get(key) };
+            assert.ok(chosen.length > 0);
+            f.catalog.projects.clear(); await complete(f.catalog, f.cwd);
+            assert.deepEqual(f.catalog.replyLocations.get(key), chosen, 'full inventory rebuild does not overwrite the selected position');
+            assert.equal((await f.catalog.reply(f.cwd, 'child', 'same', page.nextOffset)).text, expected.slice(8000, 16000));
+            assert.equal((await f.catalog.reply(f.cwd, 'child', 'other')).text, 'OTHER');
+            assert.deepEqual(f.catalog.replyLocations.get(key), chosen, 'scanning for another entry does not select same');
+            assert.equal((await f.catalog.reply(f.cwd, 'child', 'same')).text, expected.slice(0, 8000));
+            f.catalog.limits.replyLocationBytes = 512;
+            await f.catalog.reply(f.cwd, 'child', 'other');
+            assert.equal(f.catalog.replyLocations.has(key), false, 'another selected entry evicts the bounded hint');
+            assert.ok(f.catalog.replyLocationBytes <= 512);
+            f.catalog.projects.clear(); await complete(f.catalog, f.cwd);
+            const resumed = await f.catalog.reply(f.cwd, 'child', 'same', 8000);
+            assert.equal(resumed.text, expected.slice(8000, 16000)); assert.equal(resumed.totalCharacters, expected.length);
+            assert.equal(resumed.nextOffset, expected.length > 16000 ? 16000 : null);
+            let actual = expected.slice(0, 8000) + resumed.text, offset = resumed.nextOffset;
+            while (offset !== null) {
+                const next = await f.catalog.reply(f.cwd, 'child', 'same', offset);
+                actual += next.text; offset = next.nextOffset;
+            }
+            assert.equal(actual, expected, 'pages never switch to the other duplicate');
+        });
+    }
+});

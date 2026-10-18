@@ -14,7 +14,10 @@ const { saveExternalMedia } = require('../../server/media-lab-storage');
 const { mountMediaRoutes } = require('../../server/routes/media');
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEUlEQVR4nGP4z8AARGDiPwMAHfAD/aAzCYkAAAAASUVORK5CYII=';
 // A half-second 64px green H.264 fixture; no generation service or ffmpeg required at test time.
-const mp4 = Buffer.from('AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAPBbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAAfQAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAux0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAAfQAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAEAAAABAAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAH0AAAEAAABAAAAAAJkbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAAAwAAAAGABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAACD21pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAc9zdGJsAAAAv3N0c2QAAAAAAAAAAQAAAK9hdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAEAAQABIAAAASAAAAAAAAAABFUxhdmM2MS4xOS4xMDEgbGlieDI2NAAAAAAAAAAAAAAAGP//AAAANWF2Y0MBZAAK/+EAGGdkAAqs2UQmwEQAAAMABAAAAwDAPEiWWAEABmjr48siwP34+AAAAAAQcGFzcAAAAAEAAAABAAAAFGJ0cnQAAAAAAAA3YAAAAAAAAAAYc3R0cwAAAAAAAAABAAAADAAAAgAAAAAUc3RzcwAAAAAAAAABAAAAAQAAAGhjdHRzAAAAAAAAAAsAAAABAAAEAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAIAAAAAAIAAAIAAAAAHHN0c2MAAAAAAAAAAQAAAAEAAAAMAAAAAQAAAERzdHN6AAAAAAAAAAAAAAAMAAAC3AAAAA4AAAAMAAAADAAAAAwAAAAUAAAADgAAAAwAAAAMAAAAFAAAAA4AAAAMAAAAFHN0Y28AAAAAAAAAAQAAA/EAAABhdWR0YQAAAFltZXRhAAAAAAAAACFoZGxyAAAAAAAAAABtZGlyYXBwbAAAAAAAAAAAAAAAACxpbHN0AAAAJKl0b28AAAAcZGF0YQAAAAEAAAAATGF2ZjYxLjcuMTAzAAAACGZyZWUAAAN+bWRhdAAAAq4GBf//qtxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNjQgcjMxMDggMzFlMTlmOSAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMjMgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0xIHJlZj0zIGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDM6MHgxMTMgbWU9aGV4IHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTEgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0yIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MyBiX3B5cmFtaWQ9MiBiX2FkYXB0PTEgYl9iaWFzPTAgZGlyZWN0PTEgd2VpZ2h0Yj0xIG9wZW5fZ29wPTAgd2VpZ2h0cD0yIGtleWludD0yNTAga2V5aW50X21pbj0yNCBzY2VuZWN1dD00MCBpbnRyYV9yZWZyZXNoPTAgcmNfbG9va2FoZWFkPTQwIHJjPWNyZiBtYnRyZWU9MSBjcmY9MjMuMCBxY29tcD0wLjYwIHFwbWluPTAgcXBtYXg9NjkgcXBzdGVwPTQgaXBfcmF0aW89MS40MCBhcT0xOjEuMDAAgAAAACZliIQAO//+46v4FNGvoc9hzE2yUNGNPzxSPTYUNLTnUBLOor0B3wAAAApBmiRsQ3/+p4+IAAAACEGeQniF/wm5AAAACAGeYXRCvww4AAAACAGeY2pCvww5AAAAEEGaaEmoQWiZTAhn//6eLfEAAAAKQZ6GRREsL/8JuQAAAAgBnqV0Qr8MOQAAAAgBnqdqQr8MOAAAABBBmqtJqEFsmUwIV//+OI3AAAAACkGeyUUVLCv/DDkAAAAIAZ7qakK/DDg=', 'base64');
+let mp4 = Buffer.from('AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAPBbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAAfQAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAux0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAAfQAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAEAAAABAAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAH0AAAEAAABAAAAAAJkbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAAAwAAAAGABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAACD21pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAc9zdGJsAAAAv3N0c2QAAAAAAAAAAQAAAK9hdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAEAAQABIAAAASAAAAAAAAAABFUxhdmM2MS4xOS4xMDEgbGlieDI2NAAAAAAAAAAAAAAAGP//AAAANWF2Y0MBZAAK/+EAGGdkAAqs2UQmwEQAAAMABAAAAwDAPEiWWAEABmjr48siwP34+AAAAAAQcGFzcAAAAAEAAAABAAAAFGJ0cnQAAAAAAAA3YAAAAAAAAAAYc3R0cwAAAAAAAAABAAAADAAAAgAAAAAUc3RzcwAAAAAAAAABAAAAAQAAAGhjdHRzAAAAAAAAAAsAAAABAAAEAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAIAAAAAAIAAAIAAAAAHHN0c2MAAAAAAAAAAQAAAAEAAAAMAAAAAQAAAERzdHN6AAAAAAAAAAAAAAAMAAAC3AAAAA4AAAAMAAAADAAAAAwAAAAUAAAADgAAAAwAAAAMAAAAFAAAAA4AAAAMAAAAFHN0Y28AAAAAAAAAAQAAA/EAAABhdWR0YQAAAFltZXRhAAAAAAAAACFoZGxyAAAAAAAAAABtZGlyYXBwbAAAAAAAAAAAAAAAACxpbHN0AAAAJKl0b28AAAAcZGF0YQAAAAEAAAAATGF2ZjYxLjcuMTAzAAAACGZyZWUAAAN+bWRhdAAAAq4GBf//qtxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNjQgcjMxMDggMzFlMTlmOSAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMjMgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0xIHJlZj0zIGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDM6MHgxMTMgbWU9aGV4IHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTEgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0yIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MyBiX3B5cmFtaWQ9MiBiX2FkYXB0PTEgYl9iaWFzPTAgZGlyZWN0PTEgd2VpZ2h0Yj0xIG9wZW5fZ29wPTAgd2VpZ2h0cD0yIGtleWludD0yNTAga2V5aW50X21pbj0yNCBzY2VuZWN1dD00MCBpbnRyYV9yZWZyZXNoPTAgcmNfbG9va2FoZWFkPTQwIHJjPWNyZiBtYnRyZWU9MSBjcmY9MjMuMCBxY29tcD0wLjYwIHFwbWluPTAgcXBtYXg9NjkgcXBzdGVwPTQgaXBfcmF0aW89MS40MCBhcT0xOjEuMDAAgAAAACZliIQAO//+46v4FNGvoc9hzE2yUNGNPzxSPTYUNLTnUBLOor0B3wAAAApBmiRsQ3/+p4+IAAAACEGeQniF/wm5AAAACAGeYXRCvww4AAAACAGeY2pCvww5AAAAEEGaaEmoQWiZTAhn//6eLfEAAAAKQZ6GRREsL/8JuQAAAAgBnqV0Qr8MOQAAAAgBnqdqQr8MOAAAABBBmqtJqEFsmUwIV//+OI3AAAAACkGeyUUVLCv/DDkAAAAIAZ7qakK/DDg=', 'base64');
+// The open Chromium build omits H.264. Keep the original fixture for capable
+// browsers and exercise the same MP4/playback assertions with this 64px AV1 clip.
+const av1Mp4 = Buffer.from('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', 'base64');
 (async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'chat-video-browser-'));
     const provider = { baseUrl: 'http://mock.invalid/api', auth: { mode: 'none' }, downloadOrigins: [] };
@@ -57,6 +60,10 @@ document.querySelector('#chat').append(cards.render(message));
     const server = http.createServer(app); server.listen(0, '127.0.0.1'); await once(server, 'listening'); let browser;
     try {
         browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
+        const probe = await browser.newPage();
+        const h264 = await probe.evaluate(() => document.createElement('video').canPlayType('video/mp4; codecs="avc1.64000A"'));
+        await probe.close();
+        if (!h264) { mp4 = av1Mp4; console.log('MP4 playback fixture: AV1 (this browser does not decode H.264)'); }
         for (const width of [1440, 393, 320]) {
             const image = lab.references.put('data:image/png;base64,' + png).ref;
             const video = lab.references.put('data:video/mp4;base64,' + mp4.toString('base64')).ref;
@@ -64,6 +71,10 @@ document.querySelector('#chat').append(cards.render(message));
             failQuery = true; terminalFailure = false;
             const context = await browser.newContext({ viewport: { width, height: 900 }, isMobile: width < 500 });
             const page = await context.newPage(), errors = []; page.on('pageerror', error => errors.push(error.message));
+            await page.addInitScript(() => {
+                const original = window.setInterval;
+                window.setInterval = (callback, ms, ...args) => { if (ms === 2500) window.mediaPoll = callback; return original(callback, ms, ...args); };
+            });
             await page.goto('http://127.0.0.1:' + server.address().port, { waitUntil: 'networkidle' });
             await page.waitForFunction(() => [...document.querySelectorAll('.pi-media-request-ref img')].filter(i => i.naturalWidth).length === 2);
             assert.deepEqual(await page.locator('.pi-media-request-ref figcaption').allTextContents(), ['首帧', '尾帧', '参考视频']);
@@ -77,14 +88,38 @@ document.querySelector('#chat').append(cards.render(message));
             failQuery = false;
             await page.getByRole('button', { name: '继续查询原任务', exact: true }).click();
             await page.locator('.pi-media-request[data-state=done]').waitFor();
-            await page.waitForFunction(() => document.querySelector('video.pi-media-request-media')?.videoWidth === 64);
+            await page.waitForFunction(() => document.querySelector('video.pi-media-request-media')?.videoWidth === 64).catch(async error => {
+                console.error(JSON.stringify(await page.locator('video.pi-media-request-media').evaluateAll(nodes => nodes.map(video => ({ src: video.src, readyState: video.readyState, networkState: video.networkState, error: video.error?.message, width: video.videoWidth, connected: video.isConnected })))));
+                throw error;
+            });
             assert.equal(posts, before + 1, 'recovery must not POST a new video');
             assert.match(await page.locator('a[download]').getAttribute('href'), /^\/videos\//);
+            // Keep a synthetic newer attempt running so finished video is refreshed by real status GETs.
+            await page.route('**/api/pi/media/chat/requests?*', async route => {
+                const response = await route.fetch(), data = await response.json();
+                for (const state of Object.values(data.requests || {})) state.attempts.push({ id: 'synthetic-running', status: 'running', kind: 'video' });
+                await route.fulfill({ response, json: data });
+            });
             await page.reload({ waitUntil: 'networkidle' });
-            await page.locator('.pi-media-request[data-state=done]').waitFor();
-            await page.locator('video.pi-media-request-media').evaluate(async video => { await video.play(); });
+            await page.locator('.pi-media-request[data-state=running]').waitFor();
+            await page.locator('video.pi-media-request-media').evaluate(async video => {
+                window.finishedVideo = video; video.loop = true; window.playerDetaches = 0;
+                new MutationObserver(records => {
+                    for (const record of records) for (const node of record.removedNodes)
+                        if (node === video || node.contains?.(video)) window.playerDetaches++;
+                }).observe(document.body, { childList: true, subtree: true });
+                await video.play();
+            });
             await page.waitForFunction(() => document.querySelector('video.pi-media-request-media')?.currentTime > 0.05);
+            const refreshed = page.waitForResponse(response => response.url().includes('/api/pi/media/chat/requests?'));
+            await page.evaluate(() => window.mediaPoll()); await refreshed;
+            await page.waitForTimeout(80);
+            const playback = await page.evaluate(() => ({ same: finishedVideo === document.querySelector('video.pi-media-request-media'),
+                paused: finishedVideo.paused, detaches: playerDetaches, currentTime: finishedVideo.currentTime }));
+            assert.equal(playback.same, true); assert.equal(playback.paused, false); assert.equal(playback.detaches, 0);
+            assert.ok(playback.currentTime > 0);
             await page.locator('video.pi-media-request-media').evaluate(video => video.pause());
+            await page.unroute('**/api/pi/media/chat/requests?*');
             const metrics = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth,
                 rows: [...document.querySelectorAll('.pi-media-request,.pi-media-request-refs,.pi-media-request-actions')].map(n => ({ width: n.clientWidth, scroll: n.scrollWidth })) }));
             assert.ok(metrics.scroll <= width, JSON.stringify(metrics)); for (const row of metrics.rows) assert.ok(row.scroll <= row.width + 1, JSON.stringify(metrics));

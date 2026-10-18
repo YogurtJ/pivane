@@ -9,6 +9,7 @@
     const TOOLS = new Set(['media_generate', 'media_plan_request']);
     const MEDIA_URL = /^\/(images|videos|audio)\/[^/?#\\]+(?:\?[^#]*)?$/;
     const TEXT_KEYS = ['prompt', 'text', 'input'];
+    const STATUS_TIMEOUT_MS = 8000;
     const ICONS = { image: 'fa-image', video: 'fa-film', tts: 'fa-volume-high' };
     const KIND_NAMES = { image: '图像', video: '视频', tts: '语音' };
     const el = (tag, className = '', text = '') => { const node = document.createElement(tag); if (className) node.className = className; if (text) node.textContent = text; return node; };
@@ -22,37 +23,122 @@
     }
 
     function create({ fetch }) {
-        const memory = new Map();   // key -> { state, parameters, editing, error, notice, armed }
-        const cards = new Map();    // key -> latest rendered card
-        let catalog = null, queued = new Set(), queueTimer = null, poller = null;
+        const memory = new Map();   // Mounted-card state; pending writes retain only their own state.
+        const cards = new Map();    // key -> WeakRef(card), never an owner of detached DOM.
+        const mounted = new WeakMap(); // A connected root owns its card; detached cycles can be collected.
+        const inFlight = new Map(); // key -> shared read-only batch
+        const queued = new Set();
+        let catalog = null, catalogModels = null, queueTimer = null, poller = null, generation = 0;
 
-        const models = () => catalog ||= fetch('/api/pi/media/lab').then(data => new Map((data?.models || []).map(model => [model.id, model])))
-            .catch(error => { catalog = null; throw error; });
-        const slot = key => { if (!memory.has(key)) memory.set(key, { state: null, parameters: null, editing: false, error: '', notice: '', armed: false, busy: false }); return memory.get(key); };
-        const live = () => [...cards.values()].filter(card => card.root.isConnected);
+        const models = () => catalog ||= fetch('/api/pi/media/lab').then(data => {
+            catalogModels = new Map((data?.models || []).map(model => [model.id, model]));
+            for (const card of live()) applyCatalog(card);
+            return catalogModels;
+        }, error => {
+            catalog = null;
+            for (const card of live()) if (memory.get(card.key)?.editRequested) applyCatalog(card, error);
+            return null;
+        });
+        const slot = key => { if (!memory.has(key)) memory.set(key, { state: null, parameters: null, editing: false, error: '', readTimeoutError: '', notice: '', armed: false, busy: false, revision: 0 }); return memory.get(key); };
+        const current = key => cards.get(key)?.deref();
         const running = key => memory.get(key)?.state?.attempts?.some(attempt => attempt.status === 'running' || attempt.status === 'queued');
+        const live = () => [...cards.keys()].map(current).filter(card => card?.root.isConnected);
+        const update = key => { const card = current(key); if (card?.root.isConnected) card.update(); };
+
+        // A view reset invalidates reads, but never cancels a confirmed server mutation.
+        function prune() {
+            const batches = new Set(inFlight.values());
+            for (const [key, ref] of cards) {
+                if (ref.deref()?.root.isConnected) continue;
+                cards.delete(key); queued.delete(key); inFlight.delete(key);
+                const item = memory.get(key);
+                clearTimeout(item?.armTimer);
+                if (!item?.busy) memory.delete(key);
+                else { item.editing = false; item.editRequested = false; item.armed = false; }
+            }
+            for (const batch of batches) {
+                if (batch.keys.some(key => inFlight.get(key) === batch)) continue;
+                for (const key of batch.keys) if (inFlight.get(key) === batch) inFlight.delete(key);
+                batch.controller.abort();
+            }
+            if (!queued.size) { clearTimeout(queueTimer); queueTimer = null; }
+            if (!live().some(card => running(card.key))) { clearInterval(poller); poller = null; }
+        }
+
+        function reset() {
+            generation++;
+            cards.clear(); queued.clear();
+            clearTimeout(queueTimer); queueTimer = null;
+            clearInterval(poller); poller = null;
+            for (const batch of new Set(inFlight.values())) batch.controller.abort();
+            inFlight.clear();
+            for (const [key, item] of memory) {
+                clearTimeout(item.armTimer);
+                if (!item.busy) memory.delete(key);
+                else { item.editing = false; item.editRequested = false; item.armed = false; }
+            }
+        }
+
+        // Native transcript replacements also release cards without an explicit host call.
+        if (typeof MutationObserver !== 'undefined') new MutationObserver(records => {
+            if (records.some(record => record.removedNodes.length)) prune();
+        }).observe(document, { childList: true, subtree: true });
 
         function request(keys) {
-            for (const key of keys) queued.add(key);
-            if (queueTimer) return;
-            queueTimer = setTimeout(async () => {
-                queueTimer = null;
-                const batch = [...queued].slice(0, 100); queued = new Set([...queued].slice(100));
-                if (queued.size) request([]);
-                try {
-                    const data = await fetch(`/api/pi/media/chat/requests?keys=${batch.map(encodeURIComponent).join(',')}`);
-                    for (const [key, state] of Object.entries(data?.requests || {})) {
-                        const item = slot(key); item.state = state;
-                        if (!item.parameters) item.parameters = state.attempts?.at(-1)?.parameters || null;
-                        cards.get(key)?.update();
-                    }
-                } catch (error) { for (const key of batch) { const card = cards.get(key); if (card) { slot(key).error = error.message; card.update(); } } }
-                schedulePolling();
-            }, 30);
+            for (const key of keys) if (!inFlight.has(key) && !memory.get(key)?.busy) queued.add(key);
+            if (queueTimer || !queued.size) return;
+            queueTimer = setTimeout(flush, 30);
+        }
+
+        async function flush() {
+            queueTimer = null;
+            prune();
+            const keys = [...queued].slice(0, 100);
+            for (const key of keys) queued.delete(key);
+            if (!keys.length) return;
+            const batch = { keys, controller: new AbortController(), generation, timedOut: false,
+                revisions: new Map(keys.map(key => [key, memory.get(key)?.revision])) };
+            for (const key of keys) inFlight.set(key, batch);
+            if (queued.size) request([]);
+            const valid = key => inFlight.get(key) === batch && batch.generation === generation &&
+                cards.has(key) && memory.get(key)?.revision === batch.revisions.get(key) && !memory.get(key)?.busy;
+            let abortRead;
+            const interrupted = new Promise((_, reject) => {
+                abortRead = () => reject(new Error('Aborted'));
+                batch.controller.signal.addEventListener('abort', abortRead, { once: true });
+            });
+            // Bound only status reads. Racing the abort also releases the gate if a fetch adapter ignores its signal.
+            const deadline = setTimeout(() => { batch.timedOut = true; batch.controller.abort(); }, STATUS_TIMEOUT_MS);
+            try {
+                const data = await Promise.race([
+                    fetch(`/api/pi/media/chat/requests?keys=${keys.map(encodeURIComponent).join(',')}`, { signal: batch.controller.signal }),
+                    interrupted
+                ]);
+                for (const key of keys) {
+                    if (!valid(key) || batch.controller.signal.aborted || !data?.requests?.[key]) continue;
+                    const item = memory.get(key), state = data.requests[key]; item.state = state;
+                    if (item.error === item.readTimeoutError) item.error = '';
+                    item.readTimeoutError = '';
+                    if (!item.parameters) item.parameters = state.attempts?.at(-1)?.parameters || null;
+                    update(key);
+                }
+            } catch (error) {
+                if (!batch.controller.signal.aborted || batch.timedOut) for (const key of keys) if (valid(key)) {
+                    const item = memory.get(key);
+                    item.error = batch.timedOut ? (item.readTimeoutError = t('媒体状态查询超时')) : error.message;
+                    update(key);
+                }
+            } finally {
+                clearTimeout(deadline);
+                batch.controller.signal.removeEventListener('abort', abortRead);
+                for (const key of keys) if (inFlight.get(key) === batch) inFlight.delete(key);
+                prune(); schedulePolling();
+            }
         }
         // Background tabs throttle timers; refresh running cards as soon as the page is visible again.
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState !== 'visible') return;
+            prune();
             const keys = live().map(card => card.key).filter(running);
             if (keys.length) request(keys);
         });
@@ -61,8 +147,9 @@
             const keys = live().map(card => card.key).filter(running);
             if (!keys.length) { clearInterval(poller); poller = null; return; }
             poller ||= setInterval(() => {
+                prune();
                 const active = live().map(card => card.key).filter(running);
-                if (active.length) request(active); else { clearInterval(poller); poller = null; }
+                if (active.length) request(active);
             }, 2500);
         }
 
@@ -73,8 +160,9 @@
             const root = el('section', 'pi-media-request');
             root.dataset.planKey = key; root.dataset.kind = plan.kind || '';
             root.setAttribute('aria-label', t('媒体生成卡片'));
-            const card = { key, plan, root, update: () => paint(card) };
-            cards.set(key, card);
+            const card = { key, plan, root, model: catalogModels?.get(plan.modelId) || null, update: () => paint(card) };
+            mounted.set(root, card);
+            cards.set(key, new WeakRef(card));
             paint(card);
             // A card rebuilt after a session switch or reconnect may still be running:
             // the poller stopped while the transcript was empty, so resume it here.
@@ -187,6 +275,17 @@
             return row;
         }
 
+        function reconcile(parent, children) {
+            const keep = new Set(children);
+            for (const child of [...parent.childNodes]) if (!keep.has(child)) child.remove();
+            let cursor = parent.firstChild;
+            for (const child of children) {
+                if (child === cursor) cursor = cursor.nextSibling;
+                else parent.insertBefore(child, cursor);
+            }
+            while (cursor) { const next = cursor.nextSibling; cursor.remove(); cursor = next; }
+        }
+
         function paint(card) {
             const item = slot(card.key), plan = card.plan;
             const model = card.model;
@@ -200,7 +299,7 @@
                 card.error.textContent = item.error || ''; card.error.hidden = !item.error;
                 paintActions(card, model, attempts, last, busy); return;
             }
-            root.replaceChildren();
+            const children = [];
             root.dataset.state = statusLabel(last)[1];
             const header = el('header');
             header.append(icon(ICONS[plan.kind] || 'fa-wand-magic-sparkles'));
@@ -209,34 +308,46 @@
             const [label, stateName] = statusLabel(last);
             const pill = el('span', `pi-media-request-state ${stateName}`, label);
             header.append(title, pill);
-            root.append(header);
+            children.push(header);
             if (item.editing) {
                 const form = el('form', 'lab-fields pi-media-request-form');
                 form.addEventListener('submit', event => event.preventDefault());
                 if (model && window.PiMediaFields) window.PiMediaFields.render(form, model, parametersOf(card));
                 else form.append(el('p', 'pi-media-request-note', t('无法读取这个模型的参数定义；它可能已被移除或尚未配置。')));
-                card.form = form; root.append(form);
-            } else { card.form = null; root.append(preview(card, model)); }
+                card.form = form; children.push(form);
+            } else { card.form = null; children.push(preview(card, model)); }
             const notes = attempts.length ? [] : [...(plan.warnings || []).map(text => t(text))];
             if (item.notice) notes.unshift(item.notice);
             if (!attempts.length) notes.push(t('点确认后才会调用模型。'));
             if (model && !model.executable) notes.push(t('这个模型还没有可用的执行配置，请先在模型接入里完成配置。'));
-            for (const text of notes) root.append(el('p', 'pi-media-request-note', text));
+            for (const text of notes) children.push(el('p', 'pi-media-request-note', text));
             const error = el('p', 'pi-media-request-error'); error.setAttribute('role', 'alert'); error.textContent = item.error || ''; error.hidden = !item.error;
-            root.append(error); card.error = error;
+            children.push(error); card.error = error;
             // Newest result first, then the actions; while editing, actions stay next to the form.
             const actions = el('div', 'pi-media-request-actions'); card.actions = actions;
             // Newest attempt and earlier finished media stay visible; earlier problems fold away.
-            const results = el('div', 'pi-media-request-results');
-            const newest = [...attempts].reverse(), earlier = newest.slice(1).filter(attempt => attempt.status !== 'done');
-            for (const attempt of newest) if (attempt === newest[0] || attempt.status === 'done') results.append(result(attempt));
+            const results = card.results ||= el('div', 'pi-media-request-results');
+            const previous = card.completed || new Map(), completed = new Map();
+            const resultOf = attempt => {
+                if (attempt.status !== 'done' || !attempt.id) return result(attempt);
+                const signature = JSON.stringify([attempt.asset, attempt.kind, attempt.modelName, attempt.modelId, attempt.finishedAt]);
+                const cached = previous.get(attempt.id);
+                const entry = cached?.signature === signature ? cached : { signature, node: result(attempt) };
+                completed.set(attempt.id, entry);
+                return entry.node;
+            };
+            const rows = [], newest = [...attempts].reverse(), earlier = newest.slice(1).filter(attempt => attempt.status !== 'done');
+            for (const attempt of newest) if (attempt === newest[0] || attempt.status === 'done') rows.push(resultOf(attempt));
             if (earlier.length) {
                 const fold = el('details', 'pi-media-request-earlier');
                 fold.append(el('summary', '', t('更早的 {0} 次未完成尝试', earlier.length)), ...earlier.map(result));
-                results.append(fold);
+                rows.push(fold);
             }
-            if (item.editing) root.append(actions, ...(attempts.length ? [results] : []));
-            else root.append(...(attempts.length ? [results] : []), actions);
+            card.completed = completed;
+            reconcile(results, rows);
+            if (item.editing) children.push(actions, ...(attempts.length ? [results] : []));
+            else children.push(...(attempts.length ? [results] : []), actions);
+            reconcile(root, children);
             paintActions(card, model, attempts, last, busy);
             if (focused && !root.contains(focused)) root.querySelector('.pi-media-request-actions button:not(:disabled)')?.focus({ preventScroll: true });
         }
@@ -265,69 +376,78 @@
             const primary = button(primaryText, item.armed || !charged ? 'fa-play' : 'fa-rotate-right', canResume ? 'lab-secondary' : 'lab-primary', () => {
                 if (charged && !item.armed) {
                     item.armed = true; paint(card);
-                    clearTimeout(item.armTimer); item.armTimer = setTimeout(() => { item.armed = false; card.update(); }, 8000);
+                    const key = card.key;
+                    clearTimeout(item.armTimer); item.armTimer = setTimeout(() => { item.armed = false; update(key); }, 8000);
                     return;
                 }
                 submit(card, again);
             });
             primary.disabled = Boolean(disabled);
             if (item.editing) button(t('取消修改'), 'fa-xmark', 'lab-secondary', () => { item.editing = false; item.error = ''; paint(card); });
-            else button(t('修改参数'), 'fa-pen', 'lab-secondary', async () => {
-                try { card.model = (await models()).get(card.plan.modelId) || null; } catch (error) { item.error = error.message; }
-                item.editing = true; item.armed = false; paint(card);
-                card.form?.querySelector('textarea, input, select')?.focus({ preventScroll: true });
-            }).disabled = Boolean(busy);
+            else button(t('修改参数'), 'fa-pen', 'lab-secondary', () => edit(card)).disabled = Boolean(busy);
         }
 
-        async function submit(card, again) {
+        function applyCatalog(card, error) {
+            const item = memory.get(card.key);
+            if (!item) return;
+            card.model = catalogModels?.get(card.plan.modelId) || null;
+            const openEditor = item.editRequested;
+            if (openEditor) {
+                item.editRequested = false; item.editing = true; item.armed = false;
+                if (error) item.error = error.message;
+            }
+            paint(card);
+            if (openEditor) card.form?.querySelector('textarea, input, select')?.focus({ preventScroll: true });
+        }
+
+        function edit(card) {
+            const item = slot(card.key);
+            item.editRequested = true;
+            if (catalogModels) applyCatalog(card);
+            else models();
+        }
+
+        function submit(card, again) {
             const item = slot(card.key);
             if (item.busy) return;
             let parameters;
             try { parameters = item.editing && card.form ? window.PiMediaFields.collect(card.form) : parametersOf(card); }
             catch (error) { item.error = error.message; paint(card); return; }
-            item.busy = true; item.error = ''; item.notice = ''; item.armed = false; clearTimeout(item.armTimer); paint(card);
+            const key = card.key;
+            mutate(key, item, '/api/pi/media/chat/requests', { key, modelId: card.plan.modelId, parameters, confirmed: true, ...(again ? { again: true } : {}) }, parameters);
+        }
+
+        function resume(card) {
+            mutate(card.key, slot(card.key), '/api/pi/media/chat/requests/resume', { key: card.key, confirmed: true });
+        }
+
+        function cancel(card) {
+            mutate(card.key, slot(card.key), '/api/pi/media/chat/requests/cancel', { key: card.key });
+        }
+
+        // Only key and plain state cross the await. Detached cards/forms are never retained
+        // by a write, and completion can update only the currently registered live card.
+        async function mutate(key, item, url, body, parameters) {
+            if (item.busy) return;
+            item.busy = true; item.revision++; queued.delete(key);
+            item.error = ''; item.notice = ''; item.editRequested = false; item.armed = false; clearTimeout(item.armTimer); update(key);
             try {
-                const data = await fetch('/api/pi/media/chat/requests', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ key: card.key, modelId: card.plan.modelId, parameters, confirmed: true, ...(again ? { again: true } : {}) }) });
-                if (data.status === 'changed') {
-                    item.parameters = data.parameters; item.notice = t('服务端调整了部分参数（如默认值或格式），请核对后再确认。');
-                    if (item.editing && card.model) item.editing = false;
-                } else { item.parameters = data.parameters || parameters; item.editing = false; }
+                const data = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                if (parameters) {
+                    if (data.status === 'changed') {
+                        item.parameters = data.parameters; item.notice = t('服务端调整了部分参数（如默认值或格式），请核对后再确认。');
+                    } else item.parameters = data.parameters || parameters;
+                    item.editing = false;
+                }
                 if (data.state) item.state = data.state;
             } catch (error) {
                 item.error = error.message;
                 if (error.data?.state) item.state = error.data.state;
             } finally {
-                // The transcript may have been rebuilt during the request; paint the card that is shown.
-                item.busy = false; paint(cards.get(card.key)?.root.isConnected ? cards.get(card.key) : card); schedulePolling();
-            }
-        }
-
-        async function resume(card) {
-            const item = slot(card.key);
-            if (item.busy) return;
-            item.busy = true; item.error = ''; item.armed = false; clearTimeout(item.armTimer); paint(card);
-            try {
-                const data = await fetch('/api/pi/media/chat/requests/resume', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ key: card.key, confirmed: true }) });
-                if (data.state) item.state = data.state;
-            } catch (error) { item.error = error.message; }
-            finally { item.busy = false; paint(cards.get(card.key)?.root.isConnected ? cards.get(card.key) : card); schedulePolling(); }
-        }
-
-        async function cancel(card) {
-            const item = slot(card.key);
-            if (item.busy) return;
-            item.busy = true; item.error = ''; paint(card);
-            try {
-                const data = await fetch('/api/pi/media/chat/requests/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: card.key }) });
-                if (data.state) item.state = data.state;
-            } catch (error) {
-                // It may have started meanwhile; show the current state.
-                item.error = error.message;
-                if (error.data?.state) item.state = error.data.state;
-            } finally {
-                item.busy = false; paint(cards.get(card.key)?.root.isConnected ? cards.get(card.key) : card); schedulePolling();
+                item.busy = false; item.revision++;
+                update(key); prune();
+                if (!cards.has(key)) memory.delete(key);
+                schedulePolling();
             }
         }
 
@@ -336,10 +456,14 @@
         return {
             render(message) {
                 const root = original(message);
-                if (root) models().then(map => { const card = cards.get(root.dataset.planKey); if (card && card.root === root) { card.model = map.get(card.plan.modelId) || null; card.update(); } }, () => {});
+                if (root) models();
                 return root;
             },
-            planOf
+            planOf,
+            // After partial transcript removals; automatic DOM observation also prunes.
+            prune,
+            // Before a conversation replacement. Confirmed writes remain busy until settled.
+            reset
         };
     }
 

@@ -133,7 +133,8 @@ async function main() {
             page.on('pageerror', error => errors.push(error.message));
             await page.route('**/*', request => new URL(request.request().url()).origin === base() ? request.continue() : request.abort());
             await page.goto(`${base()}/${route}`, { waitUntil: 'domcontentloaded' });
-            await page.waitForFunction(() => window.PiWorkspaceRoute && window.PiAgentProfiles);
+            await page.waitForFunction(() => window.PiWorkspaceRoute && window.PiProfileSessionState);
+            if (route.startsWith('#/profiles')) await page.waitForFunction(() => window.PiAgentProfiles);
             await page.waitForFunction(() => !document.querySelector('#pi-project-button')?.disabled);
             if (await page.locator('#pi-project-dialog').isVisible()) {
                 await page.locator('#pi-project-input').fill(cwd);

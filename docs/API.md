@@ -433,6 +433,10 @@ POST `/sessions/:id/title` 接受 `{cwd}`，使用请求开始时冻结的标题
 
 每条浏览器命令包含 request ID。第一条消息必须是 `open_session`、`open_ephemeral`，或持有已准备票据的独立侧聊 `open_side_chat`；认证失败使用 WebSocket close code `4401`。
 
+出站发送按每个连接的总 `bufferedAmount` 检查积压，新帧计 UTF-8 字节并预留 14 字节帧开销。普通发送余量为 8 MiB，`gateway_shell` 为 1 MiB；允许一个更大的合法单帧及有界额外积压，大快照保持完整，因此该数值不是单帧长度上限。超过预算时关闭当前连接（1013），本策略发起的关闭在 1 秒后仍未完成则强制终止；关闭帧无法送达时客户端可能观察到 1006。发送时身份失效优先 4401；删除 4004、移动 4005、分类变化 1012 和主动结束侧聊 1000 保留原含义。
+
+压力关闭不会取消已接受的操作或停止共享持久 worker，也不重发失败／结果未知的请求。持久线程客户端可重新 `open_session`，从原生快照及其 `webLive` 序号边界恢复；其他连接独立处理。临时线程和侧聊仍遵循各自原有断线清理规则。
+
 ### 3.1 打开持久 session
 
 ```json
@@ -565,7 +569,7 @@ gateway 当前白名单：
 - 图片最多 6 张。
 - MIME 仅 PNG/JPEG/WebP/GIF。
 - 图片 base64 字符串总长度最多 24 MB。
-- WebSocket `maxPayload` 32 MB。
+- 入站 WebSocket `maxPayload` 32 MB；出站积压与大快照策略见本节开头。
 
 浏览器附件入口：加号中的“添加附件”/粘贴真实文件/拖放共用客户端校验，主框最多 8 个附件，最多 6 张单张 6 MiB 的 PNG/JPEG/WebP/GIF，文本附件单个 1 MiB 且必须 UTF-8。添加与发送前检查上述 message/images 总量，不再等 gateway 拒绝后丢失草稿。文本文件名 XML 转义后包入 `<attached_file>` 并并入 message；图片仍是既有 base64 block。未新增服务器上传接口/存储、未改变上述 gateway 限额。PDF/Office/压缩包/HEIC 及文件夹不支持。
 

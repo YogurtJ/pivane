@@ -91,7 +91,21 @@
             node.open = opened.has(call.id); if (node.open) load();
         }
     }
+    const frames = new WeakMap();
+    function cancelPaint(row) {
+        const frame = frames.get(row);
+        if (frame !== undefined) { root.cancelAnimationFrame(frame); frames.delete(row); }
+    }
+    function schedulePaint(row) {
+        if (frames.has(row)) return;
+        if (typeof root.requestAnimationFrame !== 'function') return paint(row);
+        frames.set(row, root.requestAnimationFrame(() => {
+            frames.delete(row);
+            if (row.isConnected) paint(row);
+        }));
+    }
     function persisted(row, record) {
+        cancelPaint(row);
         if (!record) { delete row._piNested; row.querySelector(':scope > .pi-nested-tools')?.remove(); return; }
         const normalized = records(row.dataset.toolId, record);
         row._piNested = { persisted: true, complete: normalized.complete, calls: new Map(normalized.calls.map(call => [call.id, call])) };
@@ -128,7 +142,7 @@
         // an unbounded result or the raw event object in page memory.
         const serialized = argsText(call.arguments);
         try { call.arguments = serialized ? JSON.parse(serialized) : undefined; } catch { call.arguments = undefined; }
-        data.calls.set(call.id, call); paint(owner); return owner;
+        data.calls.set(call.id, call); schedulePaint(owner); return owner;
     }
     return { records, mutations, persisted, live, limits: { calls: LIMIT, depth: DEPTH, text: TEXT } };
 });

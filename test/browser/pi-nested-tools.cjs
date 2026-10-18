@@ -44,6 +44,7 @@ const root = path.resolve(__dirname, '../..');
                 view.setMode('full', false); row.open = true;
             });
             assert.equal(await page.locator('.pi-tool-row').count(), 1);
+            await page.waitForFunction(() => document.querySelectorAll('.pi-nested-call').length === 2);
             assert.equal(await page.locator('.pi-nested-call').count(), 2);
             assert.match(await page.locator('.pi-nested-call > summary').first().innerText(), /17ms/);
             await page.locator('.pi-nested-call > summary').first().click();
@@ -66,7 +67,36 @@ const root = path.resolve(__dirname, '../..');
             const dimensions = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }));
             assert.ok(dimensions.scroll <= width, JSON.stringify(dimensions));
             assert.deepEqual(errors, []);
-            console.log(`nested native/live/folding/no-output/XSS/width ${width}: passed`);
+            const batching = await page.evaluate(async () => {
+                const row = document.createElement('details'); row.dataset.toolId = 'burst'; document.getElementById('content').append(row);
+                const rows = new Map([['burst', row]]), frame = window.requestAnimationFrame;
+                const nextFrame = () => new Promise(resolve => frame(resolve));
+                const event = (type, id, extra = {}) => ({ type, parentToolCallId: 'burst', toolCallId: `burst/${id}`, toolName: 'read', ...extra });
+                for (let i = 1; i <= 256; i++) PiNestedTools.live(rows, event('tool_execution_start', i));
+                if (row.querySelector('.pi-nested-call')) throw Error('nested start burst painted synchronously');
+                await nextFrame();
+                if (row.querySelectorAll('.pi-nested-call').length !== 256) throw Error('nested starts were lost');
+                let scheduled = 0;
+                window.requestAnimationFrame = callback => { scheduled++; return frame(callback); };
+                try {
+                    for (let i = 0; i < 100; i++) PiNestedTools.live(rows, event('tool_execution_update', 1,
+                        { partialResult: { content: [{ type: 'text', text: `part ${i}` }] } }));
+                } finally { window.requestAnimationFrame = frame; }
+                if (row._piNested.calls.get('burst/1').output !== 'part 99') throw Error('state update was deferred or lost');
+                await nextFrame();
+                PiNestedTools.live(rows, event('tool_execution_update', 1, { partialResult: { content: [{ type: 'text', text: 'late live' }] } }));
+                PiNestedTools.persisted(row, { complete: true, calls: [{ id: 'burst/1', name: 'read', status: 'ok' }] });
+                await nextFrame();
+                if (row.querySelectorAll('.pi-nested-call').length !== 1 || !row._piNested.persisted) throw Error('pending live paint replaced native truth');
+                if (PiNestedTools.live(rows, event('tool_execution_update', 1))) throw Error('late event accepted after native result');
+                const removed = document.createElement('details'); removed.dataset.toolId = 'gone'; document.body.append(removed);
+                PiNestedTools.live(new Map([['gone', removed]]), { type: 'tool_execution_start', parentToolCallId: 'gone', toolCallId: 'gone/1', toolName: 'read' });
+                removed.remove(); await nextFrame();
+                if (removed.childElementCount) throw Error('detached parent was painted');
+                row.remove(); return { scheduled, updates: 100 };
+            });
+            assert.equal(batching.scheduled, 1, 'one paint for a burst; state and authority remain immediate');
+            console.log(`nested native/live/folding/no-output/XSS/width/batching ${width}: passed`);
             await page.close();
         }
     } finally { await browser?.close(); await new Promise(resolve => server.close(resolve)); }

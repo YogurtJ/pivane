@@ -39,7 +39,8 @@ async function hover(page, index) {
     const box = await tick(page, index).boundingBox(); assert.ok(box);
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.waitForFunction(index => !document.querySelector('.pi-timeline-card').hidden && document.querySelector(`.pi-timeline-tick[data-index="${index}"]`).classList.contains('is-hovered'), index);
-    // Keep the pointer on the tick until the card's position/transform settles.
+    // The card transitions its position for 110ms and its transform for 160ms.
+    // Keep the pointer on the tick until it settles, before moving onto a button.
     await page.waitForFunction(() => !document.querySelector('.pi-timeline-card').getAnimations().some(animation => animation.playState === 'running'));
 }
 async function topOf(page, selector, offset = 16) {
@@ -49,7 +50,17 @@ async function topOf(page, selector, offset = 16) {
     }, offset);
     await frames(page);
 }
-function fixture(sdk, count = 60) {
+const ARCHIVE_NOTICES = [
+    ['subagent_supervisor_request', 'Subagent needs a supervisor decision.\n\nRun: synthetic-run\nAgent: worker\n\n**Review scope**\n\n' + 'Long decision details. '.repeat(400) + '<img src=x onerror="window.__archiveXss=1">'],
+    ['subagent-supervisor-blocked', 'Supervisor request is blocked.\n\n' + 'Pending decision. '.repeat(80)],
+    ['subagent_watchdog_clarification', 'Watchdog needs clarification.\n\n' + 'Clarification details. '.repeat(80)],
+    ['subagent_control_notice', 'Subagent needs attention: worker\n\nRun: synthetic-run step 1\nSignal: worker needs attention after repeated mutating tool failures\n\n' + 'Inspect status before guiding the worker. '.repeat(45)],
+    ['pivane-agent-message', '[Agent message from thread synthetic-peer]\n\n' + 'Archived Agent message <img src=x onerror="window.__archiveXss=1">\n'.repeat(80)],
+    ['pivane-agent-task-result', 'Archived Agent task result\n\n' + 'Result details. '.repeat(100)],
+    ['pivane-agent-task-message', 'Archived Agent task handoff\n\n' + 'Task details. '.repeat(100)],
+    ['pivane-agent-task-receipt', 'Archived Agent creation receipt\n\n' + 'Receipt details. '.repeat(100)]
+];
+function fixture(sdk, count = 60, notices = false) {
     const { SessionManager, buildContextEntries } = sdk;
     const sm = SessionManager.inMemory(cwd), ids = [], questions = [];
     let time = Date.parse('2026-10-11T08:00:00Z');
@@ -67,6 +78,7 @@ function fixture(sdk, count = 60) {
         if (i === 10) sm.appendCustomMessageEntry('scheduled-task', 'Synthetic Agent notice: archive task finished.', true);
         if (i === 15) sm.appendCompaction('Older compaction inside archive', ids[8], 12000);
     }
+    if (notices) for (const [type, text] of ARCHIVE_NOTICES) sm.appendCustomMessageEntry(type, text, true);
     const kept = append(sm, 'Live retained question one');
     append(sm, 'Live retained question two');
     sm.appendCompaction('Latest compaction: synthetic history only', kept, 48000);
@@ -80,7 +92,7 @@ function fixture(sdk, count = 60) {
     assert.ok(branch.slice(0, cut).every(e => !contextIds.has(e.id)), 'archive prefix is outside native model context');
     assert.ok(branch.slice(cut, ci).filter(e => e.type === 'message').every(e => contextIds.has(e.id)), 'kept messages remain in native context');
     assert.equal(items.filter(t => t.kind === 'user').length, count);
-    assert.equal(items.filter(t => t.kind === 'agent').length, 1);
+    assert.equal(items.filter(t => t.kind === 'agent').length, 1 + (notices ? ARCHIVE_NOTICES.length : 0));
     assert.equal(items.filter(t => t.kind === 'summary').length, 1);
     return { sm, other, ids, questions, items, total: index.total, kept, append };
 }
@@ -97,9 +109,9 @@ function transcript(sdk, manager) {
 function snapshot(manager) {
     return { entries: structuredClone(manager.getEntries().filter(e => e.type !== 'label')), context: structuredClone(manager.buildSessionContext()) };
 }
-async function setup(browser, sdk, { width = 1440, height = 1000, count = 60, enabled = true, indexFailures = 0, refreshDelay = 0, operationRefusals = 0 } = {}) {
-    const mobile = width < 900, data = fixture(sdk, count);
-    const context = await browser.newContext({ locale: 'zh-CN', viewport: { width, height }, isMobile: mobile, hasTouch: mobile });
+async function setup(browser, sdk, { width = 1440, height = 1000, count = 60, enabled = true, indexFailures = 0, refreshDelay = 0, operationRefusals = 0, notices = false, language = 'zh-CN' } = {}) {
+    const mobile = width < 900, data = fixture(sdk, count, notices);
+    const context = await browser.newContext({ locale: language, viewport: { width, height }, isMobile: mobile, hasTouch: mobile });
     const page = await context.newPage(), commands = [], errors = [], writes = [], failures = [];
     const ctl = { hold: false, held: null, busy: 0, indexFailures, operationRefusals, refreshing: false, readsDuringRefresh: 0, socket: null, maxBackground: 0, current: data.sm };
     const baseline = snapshot(data.sm), otherBaseline = snapshot(data.other), backgroundRequests = new Set();
@@ -107,15 +119,16 @@ async function setup(browser, sdk, { width = 1440, height = 1000, count = 60, en
     const model = { id: 'fixture', provider: 'fixture', name: 'Fixture', input: ['text'], contextWindow: 32000 };
     const archiveRequests = view => commands.filter(c => c.type === 'get_history_archive' && (!view || c.view === view));
     page.on('pageerror', e => errors.push(e.message));
-    await page.addInitScript(({ cwd }) => {
+    await page.addInitScript(({ cwd, language }) => {
         localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem(`pi.web.session:${cwd}`, 'a'); localStorage.setItem('pi.workspace.theme', 'daylight');
+        localStorage.setItem('pi.workspace.language', language);
         window.__archiveSockets = [];
         const add = EventTarget.prototype.addEventListener;
         EventTarget.prototype.addEventListener = function(type, ...args) {
             if (type === 'message' && this.url?.endsWith('/api/pi/ws') && !window.__archiveSockets.includes(this)) window.__archiveSockets.push(this);
             return add.call(this, type, ...args);
         };
-    }, { cwd });
+    }, { cwd, language });
     await page.route('**/api/**', route => {
         const r = route.request(), p = new URL(r.url()).pathname;
         if (r.method() !== 'GET') { writes.push(`${r.method()} ${p}`); return route.fulfill({ json: {} }); }
@@ -487,10 +500,57 @@ async function boundaries(browser, sdk) {
         await h.unchanged(); await h.safe(); console.log(`PASS DOM cap: 150 archived questions, ${h.archiveRequests('turns').length} segments, maximum ${Math.max(...loadedCounts)} loaded sections, evicted placeholders`);
     } finally { await h.close(); }
 }
+async function agentNotices(browser, sdk, width, language) {
+    const h = await setup(browser, sdk, { width, height: 900, count: 20, notices: true, language }), { page, data } = h;
+    try {
+        // Load the newest native segment through the real archive projection, as in the screenshot.
+        await page.locator('.pi-archive-load').evaluate(node => node.click());
+        const agents = data.items.filter(item => ARCHIVE_NOTICES.some(([type]) => type === item.customType));
+        await section(page, agents.at(-1).index).waitFor();
+        for (const item of agents) {
+            const card = section(page, item.index).locator('.pi-archive-agent');
+            assert.equal(await card.locator('details').count(), 1, `${item.customType} has a disclosure in archived history`);
+            assert.equal(await card.locator('details').evaluate(node => node.open), false, `${item.customType} starts collapsed`);
+            assert.ok(await card.evaluate(node => node.getBoundingClientRect().height) <= 100, `${item.customType} stays compact`);
+        }
+        const request = section(page, agents[0].index).locator('.pi-subagent-notice');
+        assert.equal(await request.locator('summary strong').textContent(), language === 'en' ? 'Subagent needs guidance' : '子 Agent 请求指示');
+        assert.equal(await request.locator('.pi-markdown').innerHTML(), '', 'archived notice Markdown stays lazy');
+        await topOf(page, `.pi-archive-turn[data-archive-index="${agents[0].index}"]`, 16);
+        await request.locator('summary').click();
+        await request.locator('.pi-markdown strong').waitFor();
+        assert.equal(await request.locator('.pi-markdown strong').textContent(), 'Review scope');
+        const body = await request.locator('.pi-message-body').evaluate(node => ({ height: node.getBoundingClientRect().height, client: node.clientHeight, scroll: node.scrollHeight }));
+        assert.ok(body.height <= 561 && body.scroll > body.client, 'archived supervisor request scrolls inside a bounded card');
+        await screenshot(page, `agent-notice-open-${width}-${language}`);
+        await request.locator('summary').click();
+        const control = section(page, agents.find(item => item.customType === 'subagent_control_notice').index).locator('.pi-subagent-notice');
+        assert.equal(await control.locator('summary strong').textContent(), language === 'en' ? 'Subagent status notice' : '子 Agent 状态提醒');
+        assert.equal(await control.locator('details').evaluate(node => node.open), false, 'control notices from compacted history start collapsed');
+        for (const item of agents.filter(item => item.customType.startsWith('pivane-'))) {
+            const card = section(page, item.index).locator('.pi-archive-agent');
+            await card.locator('summary').click();
+            await page.waitForFunction(index => document.querySelector(`.pi-archive-turn[data-archive-index="${index}"] .pi-agent-card-content`)?.textContent.length > 0, item.index);
+            assert.equal(await card.locator('.pi-agent-card-content').textContent(), ARCHIVE_NOTICES.find(([type]) => type === item.customType)[1], 'reduced archive records retain their source text');
+            assert.equal(await card.locator('.pi-agent-card-content img').count(), 0, 'generic archived Agent text stays plain');
+            await card.locator('summary').click();
+        }
+        await request.scrollIntoViewIfNeeded(); await screenshot(page, `agent-notices-collapsed-${width}-${language}`);
+        await noOverflow(page);
+        assert.deepEqual(await page.locator('.pi-archive-agent *').evaluateAll(nodes => nodes.filter(node => {
+            const box = node.getBoundingClientRect(); return box.width > 0 && (box.left < -1 || box.right > innerWidth + 1);
+        }).map(node => node.className)), [], 'individual card contents fit the viewport');
+        assert.equal(await page.evaluate(() => window.__archiveXss), undefined);
+        assert.equal(await page.locator('.pi-archive-agent [onerror]').count(), 0);
+        await h.unchanged(); await h.safe();
+        console.log(`PASS archived Agent/subagent notices: ${width} ${language}`);
+    } finally { await h.close(); }
+}
 (async () => {
     const sdk = await import('@earendil-works/pi-coding-agent');
     const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', args: ['--no-sandbox'], headless: true });
     try {
+        for (const width of [1440, 393, 320]) for (const language of ['zh-CN', 'en']) await agentNotices(browser, sdk, width, language);
         for (const viewport of [{ width: 1440, height: 1000 }, { width: 393, height: 852 }, { width: 320, height: 740 }]) await core(browser, sdk, viewport);
         await boundaries(browser, sdk);
         console.log('PASS archive: all 16 scenario groups; desktop 1440/mobile 393/320, daylight/mint/dark; no pageerror or forbidden writes');

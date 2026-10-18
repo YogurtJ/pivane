@@ -11,7 +11,8 @@ const path = require('node:path');
 const MAX_PENDING_HIT_IDS = 200, MAX_HITS_PER_ID = 1000;
 function createBackgroundIndex(context, bundle) {
     const worker = new Worker(path.join(__dirname, 'index-worker.js'), { workerData: { context, bundle } });
-    let serial = 0, failed = null, closing = false, refresh = null, pendingFile = null;
+    let serial = 0, failed = null, closing = false, closePromise = null;
+    let refresh = null, refreshError = null, pendingFile = null;
     let pendingHits = new Map(), hitsInFlight = false;
     const requests = new Map();
     const fail = error => {
@@ -41,23 +42,42 @@ function createBackgroundIndex(context, bundle) {
         hitsInFlight = true;
         request('hits', { counts: takeHits() }).catch(() => {}).finally(() => { hitsInFlight = false; flushHits(); });
     }
+    function drain() {
+        if (refresh || !pendingFile || closing || failed) return;
+        refresh = (async () => {
+            while (pendingFile && !closing && !failed) {
+                const current = pendingFile; pendingFile = null;
+                try {
+                    await request('refresh', { file: current });
+                    refreshError = null;
+                } catch (error) {
+                    // Service only an already-coalesced notification next. A
+                    // failure alone must not create an automatic retry loop.
+                    refreshError = error;
+                }
+            }
+        })().finally(() => {
+            refresh = null;
+            // A notification can arrive after the loop ends but before this
+            // finalizer. Keep that single pending notification in the drain.
+            drain();
+        });
+    }
     function schedule(file) {
         if (closing || failed) return;
         pendingFile = file;
-        if (refresh) return;
-        refresh = (async () => {
-            while (pendingFile && !closing) {
-                const current = pendingFile; pendingFile = null;
-                await request('refresh', { file: current });
-            }
-        })().catch(() => { /* Search retries verification; failed backfill never proves coverage. */ })
-            .finally(() => { refresh = null; });
+        drain();
     }
     return {
         schedule,
         async search(args) {
             if (closing) throw new Error('Profile index is closed');
-            if (refresh) await refresh;
+            while (refresh) await refresh;
+            if (closing) throw new Error('Profile index is closed');
+            if (failed) throw failed;
+            if (refreshError) throw Object.assign(new Error(`Profile session index refresh failed: ${refreshError.message}`, {
+                cause: refreshError,
+            }), { code: 'PROFILE_INDEX_REFRESH_FAILED' });
             return request('search', args);
         },
         // Fire-and-forget: a lost or failed count never affects the search result. At most one
@@ -73,16 +93,20 @@ function createBackgroundIndex(context, bundle) {
             flushHits();
             return true;
         },
-        async close() {
-            if (closing) return;
+        close() {
+            if (closePromise) return closePromise;
             closing = true; pendingFile = null;
-            try {
-                if (refresh) await refresh;
-                // One last bounded batch for counts that were still coalescing; then close.
-                if (!failed && pendingHits.size) request('hits', { counts: takeHits() }).catch(() => {});
-                if (!failed) await request('close');
-            }
-            finally { await worker.terminate(); }
+            closePromise = (async () => {
+                try {
+                    while (refresh) await refresh;
+                    // Preserve the running release's last bounded counter batch.
+                    // The worker serializes it before the database close request.
+                    if (!failed && pendingHits.size) request('hits', { counts: takeHits() }).catch(() => {});
+                    if (!failed) await request('close');
+                }
+                finally { await worker.terminate(); }
+            })();
+            return closePromise;
         },
     };
 }

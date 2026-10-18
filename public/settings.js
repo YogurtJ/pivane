@@ -1,4 +1,8 @@
-document.addEventListener('DOMContentLoaded', () => {
+(() => {
+let initialized = false;
+function start() {
+    if (initialized) return;
+    initialized = true;
     const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
     const $ = id => document.getElementById(id);
     const elements = {
@@ -112,7 +116,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const titleSettings = window.PiTitleSettings?.create({ apiFetch, saved: settings => {
         if (state.modelSnapshot) state.modelSnapshot.preferences.sessionTitles = settings;
     } });
-    window.PiTranscriptionSettings?.create({ apiFetch });
     const usagePanel = window.PiUsage.create({ apiFetch });
     window.PiExtensions?.connect?.({ apiFetch, currentCwd, currentSession: () => window.PiNativeRuntime?.currentSession?.() || null });
     const nativeSettings = window.PiNativeSettings.create({ apiFetch, currentCwd, toast });
@@ -842,12 +845,8 @@ document.addEventListener('DOMContentLoaded', () => {
         state.editorReturnFocus = null;
     }
 
-    window.addEventListener('workspace:agent-profiles-status', event => agentProfiles.setEnabled(event.detail?.enabled === true, event.detail?.autoLearn === true));
-    elements.toggle.addEventListener('click', () => window.PiWorkspaceRoute?.navigate('settings', {
-        tab: extensionTabs.has(state.activeTab) || state.activeTab === 'profiles' ? 'providers' : state.activeTab
-    }));
-    window.addEventListener('workspace:open-settings', event => {
-        const detail = event.detail || {};
+    window.PiSettings.activeTab = () => extensionTabs.has(state.activeTab) || state.activeTab === 'profiles' ? 'providers' : state.activeTab;
+    window.PiSettings.focus = detail => {
         if (detail.setting) nativeSettings.focusSetting(detail.setting);
         if (detail.promptKind) systemPrompts.focus(detail.promptKind, detail.promptScope);
         if (detail.providerSearch !== undefined) {
@@ -856,37 +855,34 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.modelAvailable.checked = false;
         }
         if (detail.showConfigured === false) elements.providerConfigured.checked = false;
-        const tab = detail.tab || state.activeTab;
-        const route = tab === 'profiles' ? 'profiles' : extensionTabs.has(tab) ? 'extensions' : 'settings';
-        const params = route === 'profiles' ? { profileId: detail.profileId, section: detail.section, authoringSession: detail.authoringSession?.id, authoringCwd: detail.authoringSession?.cwd }
-            : { tab, ...(detail.section ? { section: detail.section } : {}) };
-        window.PiWorkspaceRoute?.navigate(route, params);
-    });
-    let profileLeaveEpoch = 0;
+    };
+    let profileLeaveEpoch = 0, profileLeavePending = null;
     window.addEventListener('workspace:settings-route', async event => {
         const { tab, settingsTab, profileId, section, authoringSession, authoringCwd, resourceType } = event.detail;
-        const request = ++profileLeaveEpoch;
+        const request = ++profileLeaveEpoch, revision = event.detail.revision ?? window.PiWorkspaceRoute.revision();
+        const current = () => request === profileLeaveEpoch && revision === window.PiWorkspaceRoute.revision();
+        if (profileLeavePending !== null) window.PiProfileDialog.cancel();
         if (settingsOpen && state.activeTab === 'profiles' && tab !== 'profiles') {
             elements.dialog.classList.remove('hidden');
             const currentProfile = document.querySelector('#pi-profiles-list [data-profile-id][aria-current="true"]')?.dataset.profileId;
             const currentSection = $('pi-profiles-content')?.dataset.section;
             // Only an explicit refusal (unsaved edits kept, or a save in flight) keeps the profiles page.
-            if (await agentProfiles.close() === false) {
-                if (request === profileLeaveEpoch) window.PiWorkspaceRoute?.navigate('profiles', { profileId: currentProfile, section: currentSection }, true);
+            profileLeavePending = request;
+            const closed = await agentProfiles.close({ current });
+            if (profileLeavePending === request) profileLeavePending = null;
+            if (!current()) return;
+            if (closed === false) {
+                window.PiWorkspaceRoute?.navigate('profiles', { profileId: currentProfile, section: currentSection }, true);
                 return;
             }
-            if (request !== profileLeaveEpoch) return;
         }
         if (['profiles', 'extensions', 'settings'].includes(tab)) {
             const metadata = { profileId, section, authoringSession: authoringSession ? { id: authoringSession, cwd: authoringCwd } : undefined };
             if (resourceType) metadata.resourceType = resourceType;
             openSettings(settingsTab, metadata);
+            window.PiFeatures.settingsOpened(revision);
         } else if (settingsOpen || !elements.dialog.classList.contains('hidden')) closeSettings();
     });
-    const initialRoute = window.PiWorkspaceRoute?.current();
-    if (['profiles', 'extensions', 'settings'].includes(initialRoute?.tab)) {
-        window.PiWorkspaceRoute.navigate(initialRoute.tab, Object.fromEntries(initialRoute.params), true);
-    }
     elements.close.addEventListener('click', () => window.PiWorkspaceRoute?.returnToConversation());
     elements.editorClose.addEventListener('click', closeEditor);
     elements.editor.addEventListener('click', event => { if (event.target === elements.editor) closeEditor(); });
@@ -989,4 +985,8 @@ document.addEventListener('DOMContentLoaded', () => {
             toast(translateUi("Skill command 设置已保存；重新打开 runtime 后生效"), 'success');
         } catch (error) { elements.skillCommands.checked = !elements.skillCommands.checked; toast(error.message, 'error'); }
     });
-});
+}
+window.PiSettings = { start };
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
+
+})();

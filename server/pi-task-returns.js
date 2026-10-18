@@ -19,7 +19,9 @@ class TaskReturns {
     }
     async list(cwd, sourceSessionId, { pendingOnly = false } = {}) {
         if (typeof sourceSessionId !== 'string' || !sourceSessionId || sourceSessionId.length > 160) throw new Error('Invalid source session');
-        const snapshot = await this.catalog.refresh(cwd);
+        return this.listSnapshot(cwd, sourceSessionId, await this.catalog.refresh(cwd), { pendingOnly });
+    }
+    async listSnapshot(cwd, sourceSessionId, snapshot, { pendingOnly = false } = {}) {
         if (!snapshot.complete) return { status: 'indexing', coverage: snapshot.coverage, results: [] };
         const source = await this.catalog.source(cwd, sourceSessionId);
         const related = snapshot.records.filter(r => r.sourceMatches !== false && r.task.returnResults === true && r.task.source?.sessionId === sourceSessionId);
@@ -40,17 +42,30 @@ class TaskReturns {
     pump() {
         if (this.stopping || this.isSuspended() || this.flight) return this.flight || Promise.resolve();
         const flight = Promise.resolve().then(async () => {
+            // Retain only one adjacent project's snapshot. Switching projects
+            // discards it before refresh can evict its catalog index. Public
+            // list/create callers always refresh their own inventory.
+            let snapshotCwd, snapshot;
             for (const worker of this.supervisor.workers?.values?.() || []) {
                 if (this.stopping || this.isSuspended()) return;
+                if (snapshotCwd !== worker.cwd) { snapshot = null; snapshotCwd = worker.cwd; }
                 if (worker.noSession || worker.disposed || worker.restarting) continue;
                 try {
-                    const list = await this.list(worker.cwd, worker.sessionId, { pendingOnly: true });
-                    if (list.status !== 'ready' || !worker.isIdle()) continue;
-                    for (const result of list.results.filter(r => !r.delivered).slice(0, 5)) {
-                        if (!worker.isIdle() || this.isSuspended() || this.stopping) break;
+                    for (let delivered = 0; delivered < 5; delivered++) {
+                        if (!snapshot) snapshot = await this.catalog.refresh(worker.cwd);
+                        const list = await this.listSnapshot(worker.cwd, worker.sessionId, snapshot, { pendingOnly: true });
+                        if (list.status !== 'ready' || !worker.isIdle() || this.isSuspended() || this.stopping) break;
+                        const result = list.results.find(r => !r.delivered);
+                        if (!result) break;
+                        // An uncertain/late acknowledgement may already have appended.
+                        // Invalidate before awaiting, including the failure path.
+                        snapshot = null;
                         await worker.taskReturn({ result });
                     }
-                } catch { /* Preserve native evidence; next pass verifies receipt identity before retry. */ }
+                } catch {
+                    snapshot = null; // A failed source/index lookup cannot validate the next worker.
+                    /* Preserve native evidence; next pass verifies receipt identity before retry. */
+                }
             }
         });
         this.flight = flight;

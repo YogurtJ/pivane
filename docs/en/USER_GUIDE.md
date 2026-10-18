@@ -23,6 +23,8 @@ If Pi CLI has models but the browser does not, check its identity directory and 
 
 Opening management pages does not end the session. Returning to Assistant chat reloads its projects and threads while retaining drafts and attachments within the page. When switching between Pi Agent and Assistant chat, select the thread again to continue. Drafts and loaded attachments are retained per thread within the page; **preserve unsent content before refreshing or closing it**.
 
+Management pages load on first use, showing a loading state and a Retry action if resources cannot be read. You can navigate elsewhere while loading; a late result will not return you to the old page. Chat identity names, configuration viewers and automatic update reminders work before you visit a management page.
+
 ## Models and capabilities
 
 Click the model name on desktop, or the context ring on phones. Search by name, ID or provider. Favorites are shared across devices using the instance; recent selections stay in the browser. Models, thinking levels and speed options come from actual capabilities and require an idle conversation to change.
@@ -55,11 +57,15 @@ Enable **Show average reply request speed** in the same section to display `Requ
 
 Timing uses boundary-only monotonic clock reads and a small snapshot stored with each native assistant message. It adds no per-token listener, timer, model request or separate statistics file. The visibility preference does not disable this lightweight recording.
 
-Expand tool details before using browser Find to search their output. Long inline code wraps; code blocks and wide formulas scroll within their own areas. Invalid or over-budget formulas retain their source. Common Chinese punctuation (`，。、；：！？`) inside formulas renders normally; other strict checks and rendering limits remain in place. Main chat, side chat and Markdown file previews protect vertical bars inside complete table formulas and support bold text whose closing markers follow punctuation and immediately precede Chinese characters. These display adaptations preserve original messages, code examples and escapes, and also apply when old messages are rendered again. Long user messages can be expanded, and Copy still returns their complete text. Reply timestamps may indicate generation start rather than completion.
+Expand tool details before using browser Find to search their output. Long inline code wraps; code blocks and wide formulas scroll within their own areas. Invalid or over-budget formulas retain their source. Common Chinese punctuation (`，。、；：！？`) inside formulas renders normally; other strict checks and rendering limits remain in place. Main chat, side chat and Markdown file previews support `$…$`, `\(…\)`, `$$…$$`, `\[…\]` and `math`/`latex` fences. Formulas may follow prose without a blank line; standalone equals or minus signs inside math do not become headings. Lists, quotes, tables and bold/italic text protect formula pipes, stars and subscripts; `\|x\|` in tables retains its norm meaning. Incomplete display formulas retain their source while streaming and render when closed. Bold closing markers may follow punctuation and immediately precede Chinese characters. These display adaptations preserve original messages, code examples and escapes, and also apply when old messages are rendered again. Long user messages can be expanded, and Copy still returns their complete text. Reply timestamps may indicate generation start rather than completion.
+
+Long replies scan formula starts within the current paragraph and reuse repeated formulas in a bounded cache. Consecutive nested-tool updates share a display frame. Streaming main and side chat retain unchanged paragraph, code and formula nodes, rebuilding them when later content changes their meaning. Finished replies are corrected from native records. Original messages and rendering limits are preserved.
+
+Math commands follow the bundled KaTeX support: common fractions, roots, matrices, cases, multiline alignment and display equation numbering with `\tag` are supported. Put Chinese prose inside `\text{…}`. Custom macros apply only within one formula; external LaTeX packages are not loaded. The chemistry extension `\ce`, cross-formula `\label`/`\ref`/`\eqref` references and environments without math delimiters are not automatically rendered.
 
 `!command` runs server Shell; `!!command` excludes it from later model context but retains its native execution record. Project roots are not a sandbox. Install only trusted extensions. After a timeout, disconnect or uncertain Stop/Take queue result, verify state before repeating a request. Stopping does not undo completed file changes or external requests.
 
-Temporary sessions have no saved session file and end on refresh or disconnect. See [composer tools](../COMPOSER_TOOLS.md), [Shell](../WEB_SHELL.md) and [runtime controls](../NATIVE_CONTROLS.md).
+When a connection cannot keep up with queued output, the server closes that slow connection. Persistent threads attempt to reconnect and read current records; accepted operations and other connections continue. The page does not automatically repeat requests whose outcome is unknown. Temporary sessions have no saved session file and end on refresh or disconnect. See [composer tools](../COMPOSER_TOOLS.md), [Shell](../WEB_SHELL.md) and [runtime controls](../NATIVE_CONTROLS.md).
 
 ### Voice input
 
@@ -157,7 +163,7 @@ Configure a media model, then ask “draw a cover for this report” or “read 
 - Video requests default to a two-hour wait, configurable up to 24 hours; existing saved values are preserved. For accepted asynchronous jobs, Continue querying original task retrieves the same job after a timeout or restart without creating another generation. Synchronous requests without a task ID need checking at the provider.
 - To edit an image, upload a PNG/JPEG/WebP in Pi Agent or an assistant conversation and describe the changes. The Agent selects a model with image inputs and shows the reference on the confirmation card. You can also ask to edit a completed card image, or replace the reference under Edit parameters. Available inputs depend on the model.
 - Edit parameters before confirming. Server-normalized changes return for another review.
-- Results appear in the card and lab history, including after reconnecting or changing devices. The same card is not submitted twice.
+- Results appear in the card and lab history, including after reconnecting or changing devices. The same card is not submitted twice. Status refreshes preserve unsaved parameter edits on the page and playback progress for unchanged results; switching threads releases the old cards. Status queries and generation jobs have separate timeout limits.
 - Multiple confirmed cards queue for available slots and can be cancelled before starting. Remote services allow 4 concurrent items (2 videos); local backends allow 1.
 - A timeout may mean the provider is still processing and charging. Check history and the remote task first. Failures and uncertain results are not retried automatically; another generation needs confirmation.
 

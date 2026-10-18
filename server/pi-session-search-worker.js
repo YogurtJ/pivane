@@ -33,7 +33,8 @@ function searchSessions({ root, roots, q, cwd: selectedCwd, hidden = [], archive
             check(); fd = fileIo.openReadSync(filename);
             const stat = fs.fstatSync(fd, { bigint: true }), actual = descriptorPathSync(fd), identity = fileIo.identity(fd);
             if (!stat.isFile() || stat.size > limits.fileBytes || !within(root, actual)) throw new Error('file');
-            let header, cwd, name = '', first = '', hit = null, matches = 0, position = 0, pending = Buffer.alloc(0);
+            let header, cwd, name = '', first = '', hit = null, matches = 0, position = 0;
+            let parts = [], pendingBytes = 0;
             const line = buffer => {
                 if (!buffer.length) return;
                 entries++; check(); if (buffer.length > limits.lineBytes) throw new Error('line');
@@ -56,15 +57,28 @@ function searchSessions({ root, roots, q, cwd: selectedCwd, hidden = [], archive
                 if (!hit && typeof entry.id === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(entry.id)) hit = { entryId: entry.id, role: m.role, matchOffset: at,
                     snippet: (at > 80 ? '…' : '') + text.slice(Math.max(0, at - 80), at + needle.length + 160) + (at + needle.length + 160 < text.length ? '…' : '') };
             };
+            const append = part => {
+                if (!part.length) return;
+                pendingBytes += part.length;
+                if (pendingBytes > limits.lineBytes) throw new Error('line');
+                parts.push(part);
+            };
+            const consume = () => {
+                if (pendingBytes) line(parts.length === 1 ? parts[0] : Buffer.concat(parts, pendingBytes));
+                parts = []; pendingBytes = 0;
+            };
             const size = Number(stat.size);
             while (position < size) {
                 check(); const chunk = Buffer.alloc(Math.min(65536, size - position)); const n = fs.readSync(fd, chunk, 0, chunk.length, position);
-                if (!n) throw new Error('changed'); position += n; bytes += n; pending = Buffer.concat([pending, chunk.subarray(0, n)]);
+                if (!n) throw new Error('changed'); position += n; bytes += n;
+                const read = chunk.subarray(0, n);
                 let begin = 0, end;
-                while ((end = pending.indexOf(10, begin)) >= 0) { line(pending.subarray(begin, end)); begin = end + 1; }
-                pending = pending.subarray(begin); if (pending.length > limits.lineBytes) throw new Error('line');
+                while ((end = read.indexOf(10, begin)) >= 0) {
+                    append(read.subarray(begin, end)); consume(); begin = end + 1;
+                }
+                append(read.subarray(begin));
             }
-            if (pending.length) line(pending);
+            consume();
             const after = fs.fstatSync(fd, { bigint: true }), current = fs.lstatSync(filename, { bigint: true });
             if (!fileIo.sameIdentityAtPath(filename, identity) || !header || !current.isFile() || current.ino !== stat.ino || current.dev !== stat.dev || stat.size !== after.size || stat.mtimeMs !== after.mtimeMs || stat.ctimeMs !== after.ctimeMs || stat.mtimeNs !== after.mtimeNs || stat.ctimeNs !== after.ctimeNs
                 || fs.realpathSync.native(header.cwd) !== cwd || fs.realpathSync.native(filename) !== actual || descriptorPathSync(fd) !== actual) throw new Error('changed');

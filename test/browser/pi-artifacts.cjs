@@ -108,6 +108,7 @@ async function run(browser, base, width, locale, theme) {
     else await page.locator('.nav-btn[data-tab="artifacts"]').click();
     await card('Research report').waitFor();
     await page.evaluate(() => PiWorkspaceRoute.navigate('media'));
+    await page.locator('#media-tab.active').waitFor();
     assert.equal(await page.locator('#media-tab').evaluate(n => n.classList.contains('active')), true);
     await page.locator('#lab-open-artifacts').click(); await card('Research report').waitFor();
     await page.goBack(); await page.locator('#media-tab.active').waitFor();

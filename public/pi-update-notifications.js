@@ -111,5 +111,6 @@
         schedule();
         return { element, refresh: () => refresh(false) };
     }
-    window.PiUpdateNotifications = { create };
+    let runtime;
+    window.PiUpdateNotifications = { create, start(options) { return runtime ||= create(options); } };
 })();

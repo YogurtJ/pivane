@@ -73,7 +73,7 @@ async function main() {
             return request.abort();
         });
         await page.goto(base() + '/' + route, { waitUntil: 'domcontentloaded' });
-        await page.waitForFunction(() => window.PiWorkspaceRoute && window.PiChatNavigation && window.PiAgentProfiles && window.PiExtensions);
+        await page.waitForFunction(() => window.PiWorkspaceRoute && window.PiChatNavigation && window.PiProfileSessionState && window.PiExtensions);
         await page.waitForFunction(() => !document.querySelector('#pi-project-button')?.disabled);
         if (await page.locator('#pi-project-dialog').isVisible()) {
             await page.locator('#pi-project-input').fill(cwd);
@@ -121,6 +121,7 @@ async function main() {
         const desktop = await open(1440, 'en', 'dark');
         const { page } = desktop;
         await page.locator('#workspace-profiles-toggle').click();
+        await page.waitForFunction(() => window.PiAgentProfiles);
         await page.locator('#pi-profiles-list .pi-profile-list-empty').waitFor();
         assert.equal((await api('GET', '/profiles')).profiles.length, 0);
         await page.locator('#pi-profile-add').click();

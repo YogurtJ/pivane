@@ -62,7 +62,7 @@ npm test -- --timing
 - `--timing` 保留 Node TAP 输出、失败和退出码，并追加最慢的至多 10 个文件及 10 个用例/套件。使用 Node 事件中的耗时；旧 Node 没有逐文件 summary 时仅列用例。嵌套耗时重叠，不可相加；文件耗时不含父运行器开销，用例外的准备也不一定进入用例耗时。
 - 开发中先跑相关文件；交付按上面的矩阵。不要为了定向运行而绕过环境过滤，也不要在尚未证明用例隔离前提高全量并发。
 
-全量与定向 Node／浏览器入口还移除继承的 `PI_PACKAGE_DIR` 和 `PI_SUBAGENT_`／`PI_SUBAGENTS_` 元数据，使目标 SDK 从本地安装读取版本、独立父 fixture 不误加载 child registration。用例在运行器启动后可明确建立自身 child 配置；原供应商凭据过滤保持。
+全量与定向 Node／浏览器入口还移除继承的 `PI_PACKAGE_DIR`、`PI_SUBAGENT_`／`PI_SUBAGENTS_` 元数据及部署用的 `PI_WEB_SECURE_COOKIE`，使目标 SDK 从本地安装读取版本、独立父 fixture 不误加载 child registration，本地 HTTP fixture 也不继承线上 HTTPS Cookie 策略。用例在运行器启动后可明确建立自身 child 配置或 Cookie 策略；原供应商凭据过滤保持。
 
 Node 用例的清理必须先等待网关、worker 和 SQLite 连接关闭，再删除临时目录；Windows 不允许删除仍被打开的数据库。创建恶意符号链接 fixture 的全量测试需要 Windows 的符号链接权限（开发者模式或提升权限的独立测试任务）；应用安装和日常运行不因此要求管理员权限。浏览器与普通权限核心运行另行验证。
 

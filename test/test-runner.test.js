@@ -48,9 +48,9 @@ test('selection still rejects linked source directories', t => {
     assert.throws(() => selectTests(directory, ['test/a.test.js']), /symlink/);
 });
 
-test('targeted and full execution share credential filtering without mutating caller environment', () => {
+test('targeted and full execution share credential and deployment filtering without mutating caller environment', () => {
     const input = { PATH: 'fixture', PI_CODING_AGENT_DIR: 'synthetic-agent', OPENAI_API_KEY: 'synthetic-secret', AWS_PROFILE: 'synthetic-profile',
-        PIVANE_PORT: '9999', PIVANE_TEST_HERMES_BUNDLE: 'synthetic-bundle', PIVANE_TEST_PI_JITI: 'synthetic-loader', MINIMAX_API_KEY: 'synthetic-key' };
+        PIVANE_PORT: '9999', PI_WEB_SECURE_COOKIE: 'true', PIVANE_TEST_HERMES_BUNDLE: 'synthetic-bundle', PIVANE_TEST_PI_JITI: 'synthetic-loader', MINIMAX_API_KEY: 'synthetic-key' };
     const original = { ...input };
     assert.deepEqual(testEnvironment(input), { PATH: 'fixture', PI_CODING_AGENT_DIR: 'synthetic-agent', PIVANE_TEST_HERMES_BUNDLE: 'synthetic-bundle', PIVANE_TEST_PI_JITI: 'synthetic-loader' });
     assert.deepEqual(input, original);

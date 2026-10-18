@@ -10,7 +10,9 @@ const brotli = promisify(zlib.brotliCompress);
 const gzip = promisify(zlib.gzip);
 const MAX_SOURCE_BYTES = 4 * 1024 * 1024;
 const MAX_CACHE_BYTES = 8 * 1024 * 1024;
-const MAX_CACHE_ENTRIES = 24;
+// Cover both br and gzip for the workbench's modules; bytes remain the tighter
+// bound for large representations.
+const MAX_CACHE_ENTRIES = 512;
 const revision = stat => [stat.dev, stat.ino, stat.mode, stat.size, stat.mtimeNs, stat.ctimeNs].map(String).join(':');
 
 function encodingQuality(header, name) {
@@ -32,7 +34,7 @@ function createStaticAssets(roots) {
         }
         return { prefix, directory: path.resolve(directory), realRoot };
     });
-    const cache = new Map();
+    const cache = new Map(), pending = new Map();
     let cacheBytes = 0, activeCompressions = 0;
     function evict(key) {
         const item = cache.get(key);
@@ -63,7 +65,7 @@ function createStaticAssets(roots) {
         if (encoding === 'identity') return next();
         const filename = path.join(route.directory, relative);
         const canonical = path.join(route.realRoot, relative);
-        let handle, reserved = false;
+        let handle;
         try {
             if (await fs.promises.realpath(filename) !== canonical) return fallback();
             const named = await fs.promises.lstat(canonical, { bigint: true });
@@ -86,28 +88,37 @@ function createStaticAssets(roots) {
             if (item && (item.revision !== sourceRevision || item.identity !== identity)) { evict(key); item = null; }
             if (item) { cache.delete(key); cache.set(key, item); }
             else {
-                if (activeCompressions >= 4) return fallback();
-                activeCompressions++; reserved = true;
-                // Bound the read even if a writer grows the file after the stat.
-                const bytes = Buffer.alloc(Number(before.size) + 1);
-                let total = 0;
-                while (total < bytes.length) {
-                    const { bytesRead } = await handle.read(bytes, total, bytes.length - total, total);
-                    if (!bytesRead) break;
-                    total += bytesRead;
+                const flightKey = key + '\0' + sourceRevision + '\0' + identity;
+                let flight = pending.get(flightKey);
+                if (!flight) {
+                    if (activeCompressions >= 4) return fallback();
+                    activeCompressions++;
+                    // Reserve before reading. Each waiter still proves its own open
+                    // descriptor before using the shared representation.
+                    flight = Promise.resolve().then(async () => {
+                        const bytes = Buffer.alloc(Number(before.size) + 1);
+                        let total = 0;
+                        while (total < bytes.length) {
+                            const { bytesRead } = await handle.read(bytes, total, bytes.length - total, total);
+                            if (!bytesRead) break;
+                            total += bytesRead;
+                        }
+                        if (total !== Number(before.size)) throw new Error('Static source changed');
+                        await verify();
+                        const compressed = encoding === 'br'
+                            ? await brotli(bytes.subarray(0, total), { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } })
+                            : await gzip(bytes.subarray(0, total));
+                        const result = { revision: sourceRevision, identity, bytes: compressed,
+                            etag: '"' + crypto.createHash('sha256').update(compressed).digest('hex') + '"' };
+                        await verify();
+                        evict(key);
+                        while (cache.size >= MAX_CACHE_ENTRIES || cacheBytes + result.bytes.length > MAX_CACHE_BYTES) evict(cache.keys().next().value);
+                        cache.set(key, result); cacheBytes += result.bytes.length;
+                        return result;
+                    }).finally(() => { pending.delete(flightKey); activeCompressions--; });
+                    pending.set(flightKey, flight);
                 }
-                if (total !== Number(before.size)) throw new Error('Static source changed');
-                await verify();
-                const compressed = encoding === 'br'
-                    ? await brotli(bytes.subarray(0, total), { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } })
-                    : await gzip(bytes.subarray(0, total));
-                item = { revision: sourceRevision, identity, bytes: compressed,
-                    etag: '"' + crypto.createHash('sha256').update(compressed).digest('hex') + '"' };
-                await verify();
-                // Another cold request may have populated the same representation.
-                evict(key);
-                while (cache.size >= MAX_CACHE_ENTRIES || cacheBytes + item.bytes.length > MAX_CACHE_BYTES) evict(cache.keys().next().value);
-                cache.set(key, item); cacheBytes += item.bytes.length;
+                item = await flight;
             }
             await verify();
             res.set({ 'Content-Encoding': encoding, 'ETag': item.etag,
@@ -119,7 +130,6 @@ function createStaticAssets(roots) {
             if (error.message === 'Static source changed') return res.sendStatus(409);
             return fallback();
         } finally {
-            if (reserved) activeCompressions--;
             await handle?.close();
         }
     };

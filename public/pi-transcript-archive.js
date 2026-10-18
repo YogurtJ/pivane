@@ -321,12 +321,21 @@
 
         // Scheduled tasks, Agent handoffs and background notices that started a turn.
         agent(turn) {
-            const article = el('article', 'pi-message custom pi-archive-agent');
-            article._piCustomMessage = { role: 'custom', customType: turn.customType, content: turn.text || '', timestamp: turn.timestamp };
+            const message = { role: 'custom', customType: turn.customType, content: turn.text || '', timestamp: turn.timestamp };
+            // Use the live notice renderer for known subagents types. Other archive
+            // records have no structured routing/status details: show their original
+            // text in a collapsed card instead of reconstructing those details.
+            if (window.PiSubagentNotices?.types.includes(turn.customType)) {
+                const notice = this.render(message);
+                if (notice) { notice.classList.add('pi-archive-agent'); notice._piCustomMessage = message; return notice; }
+            }
+            const article = el('article', 'pi-message custom pi-archive-agent pi-agent-card');
+            article._piCustomMessage = message;
             const header = el('header'); header.append(el('strong', null, translateUi("Agent 消息")));
-            if (turn.customType) header.append(el('span', null, turn.customType));
-            const body = el('div', 'pi-message-body'), text = el('div', 'pi-markdown pi-archive-agent-text', turn.text || translateUi("无文字正文"));
-            body.append(text); article.append(header, body);
+            if (turn.customType) header.append(el('span', 'pi-agent-thread-meta', turn.customType));
+            const body = el('div', 'pi-message-body');
+            body.append(window.PiAgentCards.collapsible(turn.text || translateUi("无文字正文")));
+            article.append(header, body);
             return article;
         }
 
@@ -418,6 +427,23 @@
                 if (index >= Number(gap.dataset.start) && index < Number(gap.dataset.end)) return gap;
             }
             return null;
+        }
+
+        // Build a read-only range lookup for one outline/layout pass. Keeping it
+        // local avoids stale gaps after a segment is loaded, trimmed or reset.
+        placeholderLookup() {
+            const gaps = [...this.container.querySelectorAll(':scope > .pi-archive-gap')]
+                .map(node => ({ node, start: Number(node.dataset.start), end: Number(node.dataset.end) }))
+                .sort((a, b) => a.start - b.start);
+            return index => {
+                let low = 0, high = gaps.length;
+                while (low < high) {
+                    const middle = (low + high) >> 1;
+                    if (gaps[middle].start <= index) low = middle + 1; else high = middle;
+                }
+                const gap = gaps[low - 1];
+                return gap && index < gap.end ? gap.node : null;
+            };
         }
 
         has(entryId) { return this.state === 'ready' && this.entries.has(entryId); }

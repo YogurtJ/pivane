@@ -10106,5 +10106,14 @@
         ["检索命中 {0} 次","Found by search {0} times","Found by search {0} time"],
         ["记忆搜索找到这条 {0} 次，最近一次 {1}。USER／MEMORY 全文每轮都会提供给助手，这里只统计助手主动搜索找到它的次数；内容修改后重新计数。","Memory search found this entry {0} times, most recently on {1}. The full USER/MEMORY documents are given to the assistant every turn; this only counts the times the assistant searched and found it. Editing the content restarts the count.","Memory search found this entry {0} time, most recently on {1}. The full USER/MEMORY documents are given to the assistant every turn; this only counts the times the assistant searched and found it. Editing the content restarts the count."]
     );
+    // Append only: preserve the running UI numeric translation bindings.
+    rows.push(
+        ["子 Agent 请求尚未答复", "Subagent request unanswered"],
+        ["子 Agent 请求受阻", "Subagent request blocked"],
+        ["子 Agent 结果尚未答复", "Subagent result unanswered"],
+        ["子 Agent 结果尚未处理", "Subagent result unhandled"],
+        ["子 Agent 监督待澄清", "Subagent watchdog needs clarification"]
+    );
+    rows.push(["媒体状态查询超时", "Media status request timed out"]);
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

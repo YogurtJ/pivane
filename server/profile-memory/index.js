@@ -33,6 +33,9 @@ function createIndex(dbManager, upstream, context) {
     // Older derived rows have no verified source mapping; never expose them.
     for (const row of db.prepare('SELECT id FROM sessions WHERE id NOT IN (SELECT session_id FROM pivane_sources)').all()) erase(row.id);
     // Replace rows and their verified source in a single SQLite transaction across connections.
+    // Reserve the SQLite writer before any source-row SELECT. With a deferred
+    // transaction another connection can commit after our read snapshot, making
+    // its write upgrade fail immediately with SQLITE_BUSY_SNAPSHOT.
     const replace = db.transaction((file, candidate, parsed) => {
         const current = scope.snapshot(file, context);
         if (!current || current.fingerprint !== candidate.fingerprint || current.stamp !== candidate.stamp) return false;
@@ -47,7 +50,7 @@ function createIndex(dbManager, upstream, context) {
         db.prepare('INSERT INTO pivane_sources (session_id, path, fingerprint, stamp) VALUES (?, ?, ?, ?)')
             .run(parsed.id, file, candidate.fingerprint, candidate.stamp);
         return true;
-    });
+    }).immediate;
     function index(file, candidate = scope.snapshot(file, context)) {
         if (!candidate) return false;
         const parsed = upstream.parseSessionManagerSnapshot({ getHeader: () => candidate.header, getEntries: () => candidate.entries });

@@ -70,9 +70,10 @@ test('saturation and compression failures never send forbidden identity', async 
     zlib.gzip = function(...args) { releases.push(() => original(...args)); if (releases.length === 4) ready(); };
     const modulePath = require.resolve('../server/static-assets'); delete require.cache[modulePath];
     const delayed = require('../server/static-assets').createStaticAssets; zlib.gzip = original; delete require.cache[modulePath];
-    const { publicRoot, port } = await fixture(t, delayed); fs.writeFileSync(path.join(publicRoot, 'asset.js'), 'a'.repeat(3000));
-    const pending = Array.from({ length: 4 }, () => request(port, '/asset.js'));
-    try { await four; const fifth = await request(port, '/asset.js'); assert.equal(fifth.status, 406); assert.equal(fifth.headers['content-encoding'], undefined); }
+    const { publicRoot, port } = await fixture(t, delayed);
+    for (let i = 0; i < 5; i++) fs.writeFileSync(path.join(publicRoot, `asset-${i}.js`), 'a'.repeat(3000));
+    const pending = Array.from({ length: 4 }, (_, i) => request(port, `/asset-${i}.js`));
+    try { await four; const fifth = await request(port, '/asset-4.js'); assert.equal(fifth.status, 406); assert.equal(fifth.headers['content-encoding'], undefined); }
     finally { for (const release of releases) release(); await Promise.all(pending); }
     zlib.gzip = (...args) => args.at(-1)(new Error('synthetic compression error'));
     delete require.cache[modulePath]; const failing = require('../server/static-assets').createStaticAssets; zlib.gzip = original; delete require.cache[modulePath];

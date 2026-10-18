@@ -5240,3 +5240,10 @@ html.pv-boot-leaving .pv-boot { opacity: 0; transition: opacity 220ms ease; poin
 .pi-transcript-loading-label .pi-spinner[hidden] { display: none; }
 .pi-transcript-loading[role="alert"] .pv-skeleton { display: none; }
 .pi-transcript-loading[role="alert"] .pi-transcript-loading-label { padding: 56px 12px; color: var(--danger); font-size: .85rem; }
+
+/* The route stays pending until its page assets and styles are ready. */
+.workspace-feature-state.active { align-items: flex-start; justify-content: center; flex-direction: column; gap: 16px; padding: 24px; }
+.workspace-feature-state p { color: var(--text-muted); }
+.workspace-feature-error { max-width: min(420px, calc(100vw - 32px)); padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-1); color: var(--text-main); }
+.workspace-feature-error::backdrop { background: rgb(0 0 0 / .3); }
+.workspace-feature-error button + button { margin-left: 12px; }
