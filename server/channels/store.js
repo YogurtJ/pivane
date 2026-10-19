@@ -23,7 +23,8 @@ class ChannelStore {
             || value.bindings.some(b => !b || !id(b.id) || !id(b.accountId) || !id(b.peerId) || !id(b.sessionId)
                 || typeof b.cwd !== 'string' || !path.isAbsolute(b.cwd) || b.cwd.length > 4096)
             || value.jobs.some(j => !j || typeof j.id !== 'string' || typeof j.status !== 'string')
-            || value.peers.some(p => !p || !id(p.accountId) || !id(p.peerId) || typeof p.contextToken !== 'string' || p.contextToken.length > 8192))
+            || value.peers.some(p => !p || !id(p.accountId) || !id(p.peerId) || typeof p.contextToken !== 'string' || p.contextToken.length > 8192
+                || p.typingTicket !== undefined && (typeof p.typingTicket !== 'string' || p.typingTicket.length > 4096)))
             throw new Error('消息渠道账号或绑定记录无效');
         this.value = value; this.diskHash = hash(bytes);
     }

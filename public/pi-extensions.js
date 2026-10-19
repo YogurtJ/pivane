@@ -11,8 +11,8 @@
         { id: 'pivane-weixin', name: 'WeChat ClawBot', author: 'Tencent · Pivane', kind: ['可选组件 · 消息渠道', 'Optional · Messaging'], icon: 'fa-comments',
             url: 'https://github.com/Tencent/openclaw-weixin',
             title: ['在微信继续对话', 'Continue in WeChat'],
-            description: ['扫码连接微信 ClawBot，把私聊绑定到 Pivane 线程。', 'Connect WeChat ClawBot with a QR code and bind a DM to a Pivane thread.'],
-            requirement: ['按需下载连接组件；当前支持文字私聊，需要扫码和线程绑定。', 'Downloads the connector on demand. Text DMs require QR login and a thread binding.'],
+            description: ['扫码连接微信 ClawBot，把私聊绑定到 Pivane 线程，支持图片、文件、斜杠指令和定时通知。', 'Connect WeChat ClawBot with a QR code and bind a DM to a Pivane thread, with images, files, slash commands and scheduled notifications.'],
+            requirement: ['按需下载连接组件；支持文字与图片私聊、文件交付及定时推送，需要扫码和线程绑定。', 'Downloads the connector on demand. Supports text/image DMs, file delivery and scheduled notifications with QR login and a thread binding.'],
             example: ['把当前项目线程连接到我的微信聊天。', 'Connect this project thread to my WeChat chat.'] },
         { id: 'ppt-master', name: 'PPT Master', author: 'hugohe3', kind: ['技能工作流', 'Skill workflow'], icon: 'fa-file-powerpoint',
             url: 'https://github.com/hugohe3/ppt-master',
@@ -67,7 +67,7 @@
         return git ? `github:${git[1].toLowerCase()}` : '';
     }
     function installation(entry) {
-        if (entry.id === 'pivane-weixin') return { state: 'optional', label: text('按需安装 · 消息渠道中管理', 'Optional · Manage in Messaging') };
+        if (entry.id === 'pivane-weixin') return { state: 'optional', label: text('按需安装', 'Optional') };
         if (inventoryState !== 'ready') return { state: inventoryState, label: inventoryState === 'loading' ? text('正在核对…', 'Checking…') : text('状态待核对', 'Status unknown') };
         if (entry.id === 'pi-native-mcp') {
             const builtin = inventory.resources?.find(item => item.path === 'builtin:mcp');
@@ -163,7 +163,7 @@
     const extensionTabLabels = {
         extensions: ['发现', 'Discover'],
         installed: ['已安装', 'Installed'],
-        mcp: ['原生 MCP', 'Native MCP'],
+        mcp: ['MCP', 'MCP'],
         channels: ['消息渠道', 'Messaging']
     };
     function mountSubnav() {
@@ -185,7 +185,9 @@
         install.className = 'settings-primary-button';
         install.prepend(node('i', '', { class: 'fa-solid fa-plus', 'aria-hidden': 'true' }));
         actions.append(install);
-        subnav.append(tabs, actions);
+        const inner = node('div', null, { class: 'extensions-nav-inner' });
+        inner.append(tabs, actions);
+        subnav.append(inner);
         header.after(subnav);
     }
     window.PiExtensions = {
@@ -243,34 +245,52 @@
         const panel = node('section', null, { class: 'workspace-settings-panel', 'data-settings-panel': 'extensions' });
         const featured = node('section', null, { id: 'extensions-featured' });
         const intro = node('div', null, { class: 'extensions-intro' });
-        intro.append(node('h3', text('为你的工作添一种能力', 'Add a capability to your work')), node('p', text('发现适合你的工具与技能，按需配置到 Pivane。', 'Discover tools and skills for your work, and configure them when you need them.')),
-            button(text('添加自定义', 'Add custom'), () => assistant(), { class: 'settings-primary-button', 'data-extension-configure': '', disabled: '' }));
+        const introIcon = node('span', null, { class: 'extensions-intro-icon', 'aria-hidden': 'true' });
+        introIcon.append(node('i', '', { class: 'fa-solid fa-puzzle-piece', 'aria-hidden': 'true' }));
+        const introCopy = node('div', null, { class: 'extensions-intro-copy' });
+        introCopy.append(node('h3', text('为你的工作添一种能力', 'Add a capability to your work')), node('p', text('发现适合你的工具与技能，按需配置到 Pivane。', 'Discover tools and skills for your work, and configure them when you need them.')));
+        const customBtn = button(text('添加自定义', 'Add custom'), () => assistant(), { class: 'settings-primary-button', 'data-extension-configure': '', disabled: '' });
+        customBtn.prepend(node('i', '', { class: 'fa-solid fa-wand-magic-sparkles', 'aria-hidden': 'true' }));
+        intro.append(introIcon, introCopy, customBtn);
+        const controlsRow = node('div', null, { class: 'extensions-controls-bar' });
+        const searchWrap = node('label', null, { class: 'extensions-search-field' });
         const search = node('input', null, { type: 'search', id: 'extensions-search', placeholder: text('搜索名称、用途或作者', 'Search names, uses, or authors'), 'aria-label': text('搜索精选扩展', 'Search featured extensions') });
+        searchWrap.append(node('i', '', { class: 'fa-solid fa-magnifying-glass', 'aria-hidden': 'true' }), search);
         const toolbar = node('div', null, { class: 'extensions-inventory-toolbar' });
         const scope = node('select', null, { id: 'extensions-scope', 'aria-label': text('核对安装范围', 'Installation scope') });
         scope.append(node('option', text('所有项目', 'Global'), { value: 'global' }), node('option', text('当前项目（含全局）', 'Current project (including global)'), { value: 'project' }));
         scope.addEventListener('change', () => void refreshInventory());
-        toolbar.append(scope, button(text('刷新安装状态', 'Refresh installation status'), () => void refreshInventory(), { class: 'settings-secondary-button', id: 'extensions-refresh' }));
+        const refreshBtn = button(text('刷新安装状态', 'Refresh installation status'), () => void refreshInventory(), { class: 'settings-secondary-button', id: 'extensions-refresh' });
+        refreshBtn.prepend(node('i', '', { class: 'fa-solid fa-rotate', 'aria-hidden': 'true' }));
+        toolbar.append(scope, refreshBtn);
+        controlsRow.append(searchWrap, toolbar);
         const feedback = node('p', '', { id: 'extensions-inventory-status', class: 'extensions-note', role: 'status' });
         const grid = node('div', null, { class: 'extensions-grid' });
-        const empty = node('p', text('没有匹配的精选扩展。', 'No matching featured extensions.'), { hidden: '', role: 'status' });
+        const empty = node('p', text('没有匹配的精选扩展。', 'No matching featured extensions.'), { hidden: '', role: 'status', class: 'extensions-empty' });
         const render = () => {
             const query = search.value.trim().toLowerCase();
             grid.replaceChildren();
             for (const entry of entries.filter(item => [item.name, item.author, ...item.title, ...item.kind, ...item.description].join(' ').toLowerCase().includes(query))) {
                 const card = node('article', null, { class: 'extensions-card', id: `extension-${entry.id}`, tabindex: '-1' });
+                const top = node('div', null, { class: 'extensions-card-top' });
                 const heading = node('div', null, { class: 'extensions-card-heading' });
-                heading.append(node('i', '', { class: `fa-solid ${entry.icon}`, 'aria-hidden': 'true' }), node('h4', text(...entry.title)));
+                heading.append(node('i', '', { class: `fa-solid ${entry.icon}`, 'aria-hidden': 'true' }));
+                const titleBlock = node('div', null, { class: 'extensions-card-title' });
+                titleBlock.append(node('h4', text(...entry.title)), node('small', `${entry.name} · ${entry.author}`));
+                heading.append(titleBlock);
+                const installed = installation(entry);
+                const badge = node('span', installed.label, { class: 'extensions-installation', 'data-installation': installed.state });
+                top.append(heading, badge);
                 const details = node('details'); details.append(node('summary', text('使用前提与示例', 'Requirements & example')), node('p', text(...entry.requirement)), node('p', text(...entry.example)));
                 const actions = node('div', null, { class: 'extensions-card-actions' });
                 const configure = entry.id === 'pivane-weixin'
-                    ? button(text('安装与连接', 'Install & connect'), () => window.dispatchEvent(new CustomEvent('workspace:open-settings', { detail: { tab: 'channels' } })), { class: 'settings-secondary-button' })
-                    : button(text('了解与配置', 'Learn & set up'), () => assistant(entry), { 'data-extension-configure': '', class: 'settings-secondary-button' });
+                    ? button(text('安装与连接', 'Install & connect'), () => window.dispatchEvent(new CustomEvent('workspace:open-settings', { detail: { tab: 'channels' } })), { class: 'settings-secondary-button extensions-card-cta' })
+                    : button(text('了解与配置', 'Learn & set up'), () => assistant(entry), { 'data-extension-configure': '', class: 'settings-secondary-button extensions-card-cta' });
                 if (entry.id !== 'pivane-weixin') configure.disabled = !enabled;
-                actions.append(node('a', text('查看来源', 'View source'), { href: entry.url, target: '_blank', rel: 'noopener noreferrer' }), configure);
-                const installed = installation(entry);
-                const badge = node('span', installed.label, { class: 'extensions-installation', 'data-installation': installed.state });
-                card.append(heading, badge, node('small', `${entry.name} · ${entry.author}`), node('p', text(...entry.description)), node('span', text(...entry.kind), { class: 'extensions-kind' }), details, actions); grid.append(card);
+                const sourceLink = node('a', text('查看来源', 'View source'), { href: entry.url, target: '_blank', rel: 'noopener noreferrer', class: 'extensions-source-link' });
+                sourceLink.append(node('i', '', { class: 'fa-solid fa-arrow-up-right-from-square', 'aria-hidden': 'true' }));
+                actions.append(sourceLink, configure);
+                card.append(top, node('p', text(...entry.description), { class: 'extensions-card-desc' }), node('span', text(...entry.kind), { class: 'extensions-kind' }), details, actions); grid.append(card);
             }
             empty.hidden = grid.childElementCount > 0;
         };
@@ -283,7 +303,7 @@
         };
         search.addEventListener('input', render); render();
         const unavailable = node('p', text('当前服务未提供扩展助手。可查看来源，或在已安装页面管理资源。', 'The extension assistant is unavailable on this server. View the sources or manage resources in the installed tabs.'), { id: 'extensions-assistant-unavailable', role: 'status' });
-        featured.append(intro, search, toolbar, feedback, unavailable, grid, empty);
+        featured.append(intro, controlsRow, feedback, unavailable, grid, empty);
         panel.append(featured);
         const invalidate = () => { channelsPanel?.close(); generation++; view = ''; inventory = null; inventoryState = 'unknown'; renderCards(); };
         window.addEventListener('workspace:settings-closed', invalidate);

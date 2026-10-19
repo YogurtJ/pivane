@@ -5,12 +5,23 @@ const { ChannelStore, pending } = require('./store');
 const { WeixinComponent } = require('./weixin-component');
 const { WeixinAdapter, createTransport, validId } = require('./weixin-adapter');
 const { outcome } = require('./runtime');
+const { DeliverableStore } = require('../pi-deliverables');
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const same = (a, b) => a?.cwd === b?.cwd && a?.sessionId === b?.sessionId;
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
+const SLASH_COMMANDS = new Set(['/help', '/status', '/stop', '/new', '/reset', '/model']);
+function parseSlash(text) {
+    const trimmed = String(text || '').trim();
+    if (!trimmed.startsWith('/')) return null;
+    const match = /^(\/[a-zA-Z0-9_-]+)(?:\s+([\s\S]*))?$/.exec(trimmed);
+    if (!match) return null;
+    const cmd = match[1].toLowerCase();
+    return SLASH_COMMANDS.has(cmd) ? { command: cmd, args: (match[2] || '').trim() } : null;
+}
 class ChannelsService {
     constructor({ store, supervisor, isSuspended = () => false, directory, componentFactory, adapterFactory }) {
         Object.assign(this, { store, supervisor, isSuspended, directory, componentFactory, adapterFactory });
+        this.deliverables = new DeliverableStore(store);
         this.mutating = false; this.operations = new Set(); this.pollers = new Map(); this.runs = new Map(); this.connections = new Map();
         this.stopping = false; this.stopController = new AbortController(); this.login = null; this.loginFlight = null; this.error = null;
         this.initializing = true;
@@ -47,9 +58,9 @@ class ChannelsService {
         return { revision: this.db?.value.revision, error: this.error, busy: this.mutating, component,
             accounts: (this.db?.value.accounts || []).map(({ id, userId, enabled, allowedUsers }) => ({ id, userId, enabled, allowedUsers, connection: this.connections.get(id) || (enabled ? 'starting' : 'disabled') })),
             bindings: this.db?.value.bindings || [], peers: (this.db?.value.peers || []).map(({ accountId, peerId, lastSeenAt }) => ({ accountId, peerId, lastSeenAt })),
-            jobs: (this.db?.value.jobs || []).slice(-60).reverse().map(({ id, accountId, peerId, target, status, reason, at, sentChunks, waiting, sendStarted }) => ({ id, accountId, peerId, target, status, reason, at, sentChunks, waiting, canRecover: status === 'uncertain' && !sendStarted })),
+            jobs: (this.db?.value.jobs || []).slice(-60).reverse().map(({ id, accountId, peerId, target, status, reason, at, sentChunks, sentMedia, waiting, sendStarted, kind }) => ({ id, accountId, peerId, target, status, reason, at, sentChunks, sentMedia, waiting, kind, canRecover: status === 'uncertain' && !sendStarted })),
             login: this.login ? { id: this.login.id, matrix: this.login.matrix, status: this.login.status, expiresAt: this.login.expiresAt } : null,
-            capabilities: { text: true, images: false, groups: false, proactive: false } };
+            capabilities: { text: true, images: true, files: true, slashCommands: true, typing: true, groups: false, proactive: true } };
     }
     claim() { this.db.claim(); }
     async action(input) {
@@ -86,7 +97,7 @@ class ChannelsService {
                 this.healthy();
                 this.db.change(v => {
                     Object.assign(v.accounts.find(a => a.id === account.id), { enabled: input.enabled, allowedUsers: allow });
-                    for (const j of v.jobs) if (j.accountId === account.id && j.status === 'queued' && (!input.enabled || !allow.includes(j.peerId))) { j.status = 'cancelled'; delete j.text; }
+                    for (const j of v.jobs) if (j.accountId === account.id && j.status === 'queued' && (!input.enabled || !allow.includes(j.peerId))) { j.status = 'cancelled'; delete j.text; delete j.images; }
                 }, { config: true, revision: input.expectedRevision });
                 if (!input.enabled) { await this.stopPoll(account.id); this.connections.set(account.id, 'disabled'); }
                 else this.start();
@@ -114,13 +125,13 @@ class ChannelsService {
             } else if (action === 'acknowledge') {
                 const job = this.job(input.jobId);
                 if (!job || this.runs.has(job.id) || !['uncertain', 'failed', 'ready'].includes(job.status)) throw fail('此消息不能标记为已核对');
-                this.updateJob(job.id, { status: 'reviewed', reason: 'user-reviewed', text: undefined });
+                this.updateJob(job.id, { status: 'reviewed', reason: 'user-reviewed', text: undefined, images: undefined, directReply: undefined });
             } else if (action === 'recover') {
                 const job = this.job(input.jobId);
                 if (!job || job.status !== 'uncertain' || job.sendStarted || this.runs.has(job.id)) throw fail('此消息不能恢复自动发送，请在网页查看回复');
-                const result = await this.readOutcome(job);
+                const result = job.directReply ? { status: 'completed', body: job.directReply } : await this.readOutcome(job);
                 if (!result || !['completed', 'error', 'stopped'].includes(result.status)) throw fail('未找到原生完成记录；不会重新运行任务');
-                this.updateJob(job.id, { status: 'ready', reason: null, text: undefined });
+                this.updateJob(job.id, { status: 'ready', reason: null, text: undefined, images: undefined });
             } else if (action === 'stop') {
                 const job = this.job(input.jobId), run = job && this.runs.get(job.id);
                 if (!run?.worker || run.worker.channelRun !== job.id) throw fail('此微信任务当前没有运行');
@@ -217,29 +228,83 @@ class ChannelsService {
                 Object.assign(peer, { ...(msg.contextToken ? { contextToken: msg.contextToken } : {}), lastSeenAt: Date.now() });
                 const binding = v.bindings.find(b => b.accountId === accountId && b.peerId === msg.peerId);
                 const activeCount = v.jobs.filter(j => pending(j) && j.accountId === accountId && j.peerId === msg.peerId).length;
-                const isStop = msg.text.trim() === '/stop';
-                const stopQueued = isStop && v.jobs.some(j => pending(j) && j.accountId === accountId && j.peerId === msg.peerId && j.text?.trim() === '/stop');
-                const reason = !binding ? 'unbound' : msg.unsupported ? 'unsupported-message' : !msg.text.trim() ? 'empty-message'
-                    : !peer.contextToken && !isStop ? 'reply-context-missing' : stopQueued ? 'stop-already-queued' : activeCount >= 20 && !isStop ? 'queue-full' : null;
+                const slash = !msg.images?.length ? parseSlash(msg.text) : null;
+                const isControl = Boolean(slash && ['/stop', '/status', '/help'].includes(slash.command));
+                const isStop = slash?.command === '/stop';
+                const stopQueued = isStop && v.jobs.some(j => pending(j) && j.accountId === accountId && j.peerId === msg.peerId && parseSlash(j.text)?.command === '/stop');
+                const hasContent = Boolean(msg.text.trim() || msg.images?.length);
+                const reason = !binding ? 'unbound' : msg.unsupported ? 'unsupported-message' : !hasContent ? 'empty-message'
+                    : !peer.contextToken && !isStop ? 'reply-context-missing' : stopQueued ? 'stop-already-queued' : activeCount >= 20 && !isControl ? 'queue-full' : null;
                 v.jobs.push({ id, accountId, peerId: msg.peerId, target: binding ? { cwd: binding.cwd, sessionId: binding.sessionId } : null,
-                    bindingId: binding?.id, status: reason ? 'ignored' : 'queued', reason, at: Date.now(), ...(reason ? {} : { text: msg.text }) });
+                    bindingId: binding?.id, status: reason ? 'ignored' : 'queued', reason, at: Date.now(),
+                    ...(reason ? {} : { text: msg.text, ...(msg.images?.length ? { images: msg.images } : {}) }) });
             }
             // Cursor commits with admitted intents and deduplication receipts.
             if (typeof response.get_updates_buf === 'string') account.cursor = response.get_updates_buf;
             while (v.jobs.length > 4500) { const index = v.jobs.findIndex(j => !pending(j)); if (index < 0) throw fail('渠道消息记录已满'); v.jobs.splice(index, 1); }
         });
     }
+    async notifyScheduledRun(event) {
+        await this.ready;
+        if (this.stopping || this.error || !this.db?.owner || !event?.target) return;
+        const bindings = this.db.value.bindings.filter(b => b.cwd === event.target.cwd && b.sessionId === event.target.sessionId);
+        if (!bindings.length) return;
+        let replyText = '';
+        let deliverables = [];
+        try {
+            const session = await this.store.getSession(event.target.cwd, event.target.sessionId);
+            await this.store.withSessionRead(session.cwd, session.id, async (_s, read) => {
+                const branch = read.manager().getBranch();
+                const entry = event.replyEntryId && branch.find(e => e.id === event.replyEntryId);
+                if (entry?.type === 'message' && entry.message?.role === 'assistant') {
+                    replyText = (entry.message.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+                }
+                const start = branch.findLastIndex(e => e.type === 'custom' && e.customType === 'pivane-cron-run' && e.data?.runId === event.runId);
+                if (start >= 0) {
+                    const seen = new Set();
+                    for (const item of branch.slice(start + 1)) {
+                        if (item.type === 'custom' && item.customType === 'pivane-deliverable' && item.data?.id && item.data.manifestRevision) {
+                            const key = `${item.data.id}:${item.data.manifestRevision}`;
+                            if (!seen.has(key)) { seen.add(key); deliverables.push({ id: item.data.id, manifestRevision: item.data.manifestRevision }); }
+                        }
+                    }
+                }
+                read.validate();
+            });
+        } catch { return; }
+        const header = `⏰ 定时任务「${event.name}」`;
+        const body = event.status === 'stopped' ? `${header}已停止。`
+            : event.status === 'error' ? `${header}执行失败，请在 Pivane 网页查看。`
+            : `${header}\n\n${replyText || '已完成，请在 Pivane 网页查看结果。'}`;
+        this.db.change(v => {
+            for (const binding of bindings) {
+                const account = v.accounts.find(a => a.id === binding.accountId);
+                if (!account?.enabled || !account.allowedUsers.includes(binding.peerId)) continue;
+                const peer = v.peers.find(p => p.accountId === binding.accountId && p.peerId === binding.peerId);
+                const id = digest(['weixin-cron', event.runId, binding.accountId, binding.peerId]);
+                if (v.jobs.some(j => j.id === id)) continue;
+                const reason = !peer?.contextToken ? 'reply-context-missing' : null;
+                v.jobs.push({ id, kind: 'cron', accountId: binding.accountId, peerId: binding.peerId,
+                    target: { cwd: binding.cwd, sessionId: binding.sessionId }, bindingId: binding.id,
+                    status: reason ? 'ignored' : 'ready', reason, at: Date.now(),
+                    ...(reason ? {} : { directReply: body.slice(0, 60000), deliverables }) });
+            }
+            while (v.jobs.length > 4500) { const index = v.jobs.findIndex(j => !pending(j)); if (index < 0) break; v.jobs.splice(index, 1); }
+        });
+        this.pump();
+    }
     job(id) { return this.db.value.jobs.find(j => j.id === id); }
     updateJob(id, changes) { this.db.change(v => { const j = v.jobs.find(j => j.id === id); if (j) Object.assign(j, changes); }); }
     pump() {
         if (this.stopping || this.isSuspended() || this.mutating || this.error || !this.db?.owner) return;
         for (const job of this.db.value.jobs) {
-            const stopping = job.status === 'queued' && job.text?.trim() === '/stop';
-            if (this.runs.size >= (stopping ? 4 : 3)) continue;
+            const slash = job.status === 'queued' && !job.images?.length ? parseSlash(job.text) : null;
+            const control = Boolean(slash && ['/stop', '/status', '/help'].includes(slash.command));
+            if (this.runs.size >= (control ? 4 : 3)) continue;
             if (!['queued', 'ready'].includes(job.status) || this.runs.has(job.id)) continue;
             const account = this.db.value.accounts.find(a => a.id === job.accountId);
             if (!account?.enabled || !account.allowedUsers.includes(job.peerId)) continue;
-            if (!stopping && ([...this.runs.values()].some(r => same(r.target, job.target)) || this.db.value.jobs.some(j => j.id !== job.id && same(j.target, job.target) && j.status === 'uncertain'))) continue;
+            if (!control && ([...this.runs.values()].some(r => same(r.target, job.target)) || this.db.value.jobs.some(j => j.id !== job.id && same(j.target, job.target) && j.status === 'uncertain'))) continue;
             const run = { target: job.target, worker: null, promise: null }; this.runs.set(job.id, run);
             run.promise = Promise.resolve().then(() => this.run(job.id, run)).catch(() => {
                 try { this.updateJob(job.id, { status: 'uncertain', reason: 'execution-or-delivery-uncertain' }); }
@@ -255,52 +320,216 @@ class ChannelsService {
         return !this.stopping && !this.isSuspended() && ['queued', 'dispatching'].includes(job?.status)
             && Boolean(account?.enabled && account.allowedUsers.includes(job.peerId) && this.bindingFor(job));
     }
+    async startTyping(account, peerId) {
+        const peer = this.db.value.peers.find(p => p.accountId === account.id && p.peerId === peerId);
+        if (!peer?.contextToken || !this.adapter?.typing) return () => Promise.resolve();
+        let ticket = peer.typingTicket || '';
+        try {
+            if (!ticket && this.adapter.typingTicket) {
+                ticket = await this.adapter.typingTicket(account, peer);
+                if (ticket) this.db.change(v => { const p = v.peers.find(x => x.accountId === account.id && x.peerId === peerId); if (p) p.typingTicket = ticket; });
+            }
+        } catch { ticket = ''; }
+        if (!ticket) return () => Promise.resolve();
+        const send = active => this.adapter.typing(account, peer, ticket, active).catch(() => {});
+        await send(true);
+        const timer = setInterval(() => { if (!this.stopping && !this.isSuspended()) void send(true); }, 5000);
+        timer.unref?.();
+        let stopped = false;
+        return async () => {
+            if (stopped) return;
+            stopped = true;
+            clearInterval(timer);
+            await send(false);
+        };
+    }
+    async handleSlash(job, slash) {
+        const binding = this.bindingFor(job);
+        if (!binding) return null;
+        if (slash.command === '/help') {
+            return [
+                '📋 微信可用指令：',
+                '/status — 查看当前绑定线程、运行状态与模型',
+                '/stop — 停止当前正在运行的微信任务',
+                '/new [标题] — 新建线程并切换当前微信绑定（别名 /reset）',
+                '/model — 查看当前模型与候选模型',
+                '/model <模型名或 provider/modelId> — 切换当前线程模型',
+                '/help — 查看此帮助说明'
+            ].join('\n');
+        }
+        if (slash.command === '/stop') {
+            const targetRun = [...this.runs.entries()].find(([key, r]) => key !== job.id && same(r.target, job.target) && r.worker);
+            if (targetRun?.[1].worker) {
+                await targetRun[1].worker.request('abort');
+                return '';
+            }
+            const session = await this.store.getSession(binding.cwd, binding.sessionId);
+            const active = this.supervisor.getActiveWorker(session.path);
+            if (active && !active.isIdle()) {
+                await active.request('abort').catch(() => {});
+                return '⏹ 已向当前线程发送停止请求。';
+            }
+            return '当前线程没有正在运行的任务。';
+        }
+        if (slash.command === '/status') {
+            const session = await this.store.getSession(binding.cwd, binding.sessionId);
+            const worker = this.supervisor.getActiveWorker(session.path);
+            const running = [...this.runs.entries()].find(([key, r]) => key !== job.id && same(r.target, job.target) && r.worker);
+            const waitingJob = running && this.job(running[0])?.waiting;
+            let modelText = '将在首次运行时加载';
+            let stateText = worker ? (worker.isIdle() ? '空闲' : '运行中') : '未打开（空闲）';
+            if (waitingJob) stateText = '⚠️ 等待网页交互确认';
+            if (worker) {
+                try {
+                    const state = await worker.request('get_state');
+                    if (state.model) modelText = `${state.model.provider}/${state.model.id}（思考：${state.thinkingLevel || '默认'}）`;
+                } catch {}
+            }
+            return [
+                `📌 当前线程：${session.name || session.id}`,
+                `📁 项目：${session.cwd}`,
+                `⚙️ 状态：${stateText}`,
+                `🤖 模型：${modelText}`
+            ].join('\n');
+        }
+        if (slash.command === '/new' || slash.command === '/reset') {
+            if ([...this.runs.entries()].some(([key, r]) => key !== job.id && same(r.target, job.target))) {
+                return '⚠️ 当前线程正在运行任务，请先发送 /stop 或等待完成后再新建线程。';
+            }
+            const session = await this.store.getSession(binding.cwd, binding.sessionId);
+            const active = this.supervisor.getActiveWorker(session.path);
+            if (active && !active.isIdle()) return '⚠️ 当前线程正忙，请稍后再新建线程。';
+            const title = slash.args ? slash.args.slice(0, 80) : '微信对话';
+            const created = await this.store.createSession(binding.cwd, title);
+            const newBindingId = randomUUID();
+            this.db.change(v => {
+                v.bindings = v.bindings.filter(b => !(b.accountId === job.accountId && b.peerId === job.peerId));
+                v.bindings.push({ id: newBindingId, accountId: job.accountId, peerId: job.peerId, cwd: created.cwd, sessionId: created.id, name: created.name || title });
+                const current = v.jobs.find(j => j.id === job.id);
+                if (current) { current.bindingId = newBindingId; current.target = { cwd: created.cwd, sessionId: created.id }; }
+            }, { config: true });
+            return `✅ 已新建并绑定线程：${created.name || created.id}\n原线程历史已完整保留。`;
+        }
+        if (slash.command === '/model') {
+            if ([...this.runs.entries()].some(([key, r]) => key !== job.id && same(r.target, job.target))) {
+                return '⚠️ 当前线程正在运行，请等待完成后再查看或切换模型。';
+            }
+            const session = await this.store.getSession(binding.cwd, binding.sessionId);
+            let worker = this.supervisor.getActiveWorker(session.path);
+            if (worker && !worker.isIdle()) return '⚠️ 当前线程正忙，请等待空闲后再切换模型。';
+            worker = await this.supervisor.getWorker({ cwd: session.cwd, sessionPath: session.path, sessionId: session.id });
+            const state = await worker.request('get_state');
+            const catalog = await worker.request('get_available_models');
+            const models = catalog?.models || [];
+            if (!slash.args || slash.args.toLowerCase() === 'list') {
+                const current = state.model ? `${state.model.provider}/${state.model.id}` : '未选择';
+                const sample = models.slice(0, 12).map(m => `- ${m.provider}/${m.id}`).join('\n');
+                return `🤖 当前模型：${current}\n思考等级：${state.thinkingLevel || '默认'}\n\n可用模型示例：\n${sample || '（暂无可用模型）'}\n\n发送 /model <provider/modelId> 即可切换。`;
+            }
+            const query = slash.args.trim().toLowerCase();
+            const exact = models.find(m => `${m.provider}/${m.id}`.toLowerCase() === query || String(m.id).toLowerCase() === query);
+            const matches = exact ? [exact] : models.filter(m => `${m.provider}/${m.id} ${m.name || ''}`.toLowerCase().includes(query));
+            if (!matches.length) return `❌ 未找到匹配的可用模型：${slash.args}`;
+            if (matches.length > 1) return `找到多个匹配模型，请指定完整名称：\n${matches.slice(0, 8).map(m => `- ${m.provider}/${m.id}`).join('\n')}`;
+            const chosen = matches[0];
+            await worker.request('set_model', { provider: chosen.provider, modelId: chosen.id });
+            return `✅ 已将当前线程模型切换为：${chosen.provider}/${chosen.id}`;
+        }
+        return null;
+    }
     async run(id, run) {
         let job = this.job(id);
-        if (!this.bindingFor(job)) { this.updateJob(id, { status: 'failed', reason: 'binding-changed', text: undefined }); return; }
-        if (job.status === 'queued') {
-            if (job.text.trim() === '/stop') {
-                const targetRun = [...this.runs.entries()].find(([key, r]) => key !== id && same(r.target, job.target));
-                if (targetRun?.[1].worker) await targetRun[1].worker.request('abort');
-                this.updateJob(id, { status: 'reviewed', reason: 'stop-request', text: undefined }); return;
+        if (!this.bindingFor(job)) { this.updateJob(id, { status: 'failed', reason: 'binding-changed', text: undefined, images: undefined }); return; }
+        let stopTyping = () => Promise.resolve();
+        let slash = null;
+        try {
+            if (job.status === 'queued') {
+                slash = !job.images?.length ? parseSlash(job.text) : null;
+                if (slash) {
+                    const reply = await this.handleSlash(job, slash);
+                    this.updateJob(id, { status: 'ready', kind: 'slash', directReply: reply, text: undefined, images: undefined, waiting: false });
+                } else {
+                    const session = await this.store.getSession(job.target.cwd, job.target.sessionId);
+                    let worker = this.supervisor.getActiveWorker(session.path);
+                    if (worker && !worker.isIdle()) return;
+                    worker = await this.supervisor.getWorker({ cwd: session.cwd, sessionPath: session.path, sessionId: session.id });
+                    run.worker = worker;
+                    if (!worker.isIdle() || !this.canAdmit(this.job(id)) || this.job(id).status !== 'queued') return;
+                    const account = this.db.value.accounts.find(a => a.id === job.accountId);
+                    stopTyping = await this.startTyping(account, job.peerId);
+                    let images = [];
+                    if (job.images?.length) {
+                        try {
+                            for (const ref of job.images) images.push(await this.adapter.downloadImage(ref));
+                        } catch (error) {
+                            this.updateJob(id, { status: 'ready', directReply: `⚠️ 微信图片读取失败：${error.message || '请稍后重试'}`, text: undefined, images: undefined });
+                            images = null;
+                        }
+                    }
+                    if (images !== null) {
+                        if (!worker.isIdle() || !this.canAdmit(this.job(id)) || this.job(id).status !== 'queued') return;
+                        this.updateJob(id, { status: 'dispatching' });
+                        let waitingNotified = false;
+                        let result;
+                        try {
+                            result = await worker.channelTurn({ id, peerId: job.peerId, text: job.text, images }, {
+                                admit: () => this.canAdmit(this.job(id)),
+                                accepted: () => this.updateJob(id, { status: 'running', text: undefined, images: undefined }),
+                                waiting: () => {
+                                    try { this.updateJob(id, { waiting: true }); } catch { this.error = '渠道记录保存失败'; }
+                                    if (waitingNotified) return;
+                                    waitingNotified = true;
+                                    const currentAccount = this.db.value.accounts.find(a => a.id === job.accountId);
+                                    const peer = this.db.value.peers.find(p => p.accountId === job.accountId && p.peerId === job.peerId);
+                                    if (currentAccount?.enabled && peer?.contextToken) {
+                                        void this.adapter.send(currentAccount, peer, '⚠️ 当前任务正在等待交互确认，请打开 Pivane 网页端处理。', `pivane-wait-${id}`).catch(() => {});
+                                    }
+                                }
+                            });
+                        } catch (error) {
+                            if (error.code === 'SESSION_BUSY') { this.updateJob(id, { status: 'queued' }); return; }
+                            if (/不支持图片输入|配置可用模型/.test(error.message || '')) {
+                                this.updateJob(id, { status: 'ready', directReply: `⚠️ ${error.message}`, text: undefined, images: undefined, waiting: false });
+                                result = null;
+                            } else throw error;
+                        }
+                        if (result?.cancelled) { this.updateJob(id, { status: 'cancelled', reason: 'admission-changed', text: undefined, images: undefined }); return; }
+                        if (result) {
+                            if (!['completed', 'stopped', 'error'].includes(result.status)) throw fail('No native completion proof');
+                            this.updateJob(id, { status: 'ready', text: undefined, images: undefined, waiting: false });
+                        }
+                    }
+                }
             }
-            const session = await this.store.getSession(job.target.cwd, job.target.sessionId);
-            let worker = this.supervisor.getActiveWorker(session.path);
-            if (worker && !worker.isIdle()) return;
-            worker = await this.supervisor.getWorker({ cwd: session.cwd, sessionPath: session.path, sessionId: session.id });
-            run.worker = worker;
-            if (!worker.isIdle() || !this.canAdmit(this.job(id)) || this.job(id).status !== 'queued') return;
-            this.updateJob(id, { status: 'dispatching' });
-            let result;
-            try {
-                result = await worker.channelTurn({ id, peerId: job.peerId, text: job.text }, {
-                    admit: () => this.canAdmit(this.job(id)),
-                    accepted: () => this.updateJob(id, { status: 'running', text: undefined }),
-                    waiting: () => { try { this.updateJob(id, { waiting: true }); } catch { this.error = '渠道记录保存失败'; } }
-                });
-            } catch (error) {
-                if (error.code === 'SESSION_BUSY') { this.updateJob(id, { status: 'queued' }); return; }
-                throw error;
-            }
-            if (result?.cancelled) { this.updateJob(id, { status: 'cancelled', reason: 'admission-changed', text: undefined }); return; }
-            if (!result || !['completed', 'stopped', 'error'].includes(result.status)) throw fail('No native completion proof');
-            this.updateJob(id, { status: 'ready', text: undefined, waiting: false });
+        } finally {
+            await stopTyping();
         }
         if (this.stopping || this.isSuspended()) return;
         job = this.job(id);
+        if (job.status !== 'ready') return;
         const account = this.db.value.accounts.find(a => a.id === job.accountId);
         if (!account?.enabled || !account.allowedUsers.includes(job.peerId) || !this.bindingFor(job)) return;
-        const session = await this.store.getSession(job.target.cwd, job.target.sessionId);
-        const activeWorker = this.supervisor.getActiveWorker(session.path);
-        if (activeWorker && !activeWorker.isIdle()) return;
+        const isStop = slash?.command === '/stop';
         let result;
-        try { result = await this.readOutcome(job); }
-        catch (error) { if (error.code === 'SESSION_BUSY') return; throw error; }
+        if (typeof job.directReply === 'string') {
+            if (isStop && (!job.directReply || !this.db.value.peers.find(p => p.accountId === account.id && p.peerId === job.peerId)?.contextToken)) {
+                this.updateJob(id, { status: 'reviewed', reason: 'stop-request', directReply: undefined });
+                return;
+            }
+            result = { status: 'completed', body: job.directReply, deliverables: job.deliverables || [] };
+        } else {
+            const session = await this.store.getSession(job.target.cwd, job.target.sessionId);
+            const activeWorker = this.supervisor.getActiveWorker(session.path);
+            if (activeWorker && !activeWorker.isIdle()) return;
+            try { result = await this.readOutcome(job); }
+            catch (error) { if (error.code === 'SESSION_BUSY') return; throw error; }
+        }
         if (!result) throw fail('Native reply is unavailable');
         const text = result.status === 'stopped' ? '任务已停止。已发生的操作不会撤销，请在 Pivane 网页核对。'
             : result.status === 'error' ? '本次任务未成功完成，请在 Pivane 网页查看。' : result.body || '任务已完成，请在 Pivane 网页查看工具结果。';
         const chunks = Array.from(text.matchAll(/[\s\S]{1,1800}/gu), m => m[0]);
-        this.updateJob(id, { status: 'sending', sendStarted: true, sentChunks: 0 });
+        const mediaFiles = await this.collectDeliverables(result.deliverables || []);
+        this.updateJob(id, { status: 'sending', sendStarted: true, sentChunks: 0, sentMedia: 0 });
         for (let i = 0; i < chunks.length; i++) {
             if (this.stopping || this.isSuspended()) throw fail('Delivery interrupted');
             const latestAccount = this.db.value.accounts.find(a => a.id === job.accountId);
@@ -309,7 +538,34 @@ class ChannelsService {
             const receipt = await this.adapter.send(latestAccount, peer || { peerId: job.peerId }, chunks[i], `pivane-${id}-${i}`);
             this.updateJob(id, { sentChunks: i + 1, lastPlatformMessageId: receipt?.message_id ? String(receipt.message_id) : null });
         }
-        this.updateJob(id, { status: 'delivered', reason: null });
+        for (let i = 0; i < mediaFiles.length; i++) {
+            if (this.stopping || this.isSuspended()) throw fail('Media delivery interrupted');
+            const latestAccount = this.db.value.accounts.find(a => a.id === job.accountId);
+            if (!latestAccount?.enabled || !latestAccount.allowedUsers.includes(job.peerId) || !this.bindingFor(job)) throw fail('Delivery permission changed');
+            const peer = this.db.value.peers.find(p => p.accountId === latestAccount.id && p.peerId === job.peerId);
+            if (typeof this.adapter.sendMedia === 'function') {
+                const receipt = await this.adapter.sendMedia(latestAccount, peer || { peerId: job.peerId }, mediaFiles[i], `pivane-media-${id}-${i}`);
+                this.updateJob(id, { sentMedia: i + 1, lastPlatformMessageId: receipt?.message_id ? String(receipt.message_id) : null });
+            }
+        }
+        this.updateJob(id, { status: isStop ? 'reviewed' : 'delivered', reason: isStop ? 'stop-request' : null, directReply: undefined, deliverables: undefined });
+    }
+    async collectDeliverables(refs) {
+        const items = [];
+        for (const ref of refs.slice(0, 6)) {
+            try {
+                const { manifest } = await this.deliverables.manifest(ref.id, ref.manifestRevision);
+                const root = await this.deliverables.root();
+                for (const file of manifest.files) {
+                    if (items.length >= 6 || file.size > 16 * 1024 * 1024) continue;
+                    const verified = await this.deliverables.readObject(root, path.join(root, ref.id, `${file.index}.bin`), 16 * 1024 * 1024);
+                    if (verified.revision !== file.revision || verified.size !== file.size) continue;
+                    const type = require('../pi-file-types').classify(verified.bytes, file.name);
+                    items.push({ kind: type.kind === 'image' ? 'image' : 'file', name: file.name, mime: type.mime, bytes: verified.bytes });
+                }
+            } catch {}
+        }
+        return items;
     }
     async readOutcome(job) {
         const session = await this.store.getSession(job.target.cwd, job.target.sessionId);
@@ -345,4 +601,4 @@ function mountChannels(router, service) {
         catch (error) { res.status(error.status || 400).json({ error: error.status ? error.message : '操作失败或结果待核对，请刷新状态；不会自动重试。' }); }
     });
 }
-module.exports = { ChannelsService, mountChannels, digest };
+module.exports = { ChannelsService, mountChannels, digest, parseSlash };

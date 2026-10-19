@@ -10115,6 +10115,10 @@
         ["子 Agent 监督待澄清", "Subagent watchdog needs clarification"]
     );
     rows.push(["媒体状态查询超时", "Media status request timed out"]);
-    rows.push(["连接微信…", "Connect to WeChat…"]);
+    rows.push(["连接微信…", "Connect to WeChat…"],
+        ["微信通知", "WeChat notification"],
+        ["已启用（推送至已绑定微信）", "Enabled (send to bound WeChat)"],
+        ["未启用", "Disabled"],
+        ["完成后推送至目标线程已绑定的微信私聊", "Send result to bound WeChat DM on completion"]);
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

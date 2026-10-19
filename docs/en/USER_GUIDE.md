@@ -105,7 +105,7 @@ Open **Extensions** on desktop or **More → Extensions** on phones:
 
 - **Discover** shows sources and requirements. Learn & set up places a request in a dedicated Extension Assistant draft for you to send; browsing does not install or call a model.
 - **Installed** filters Packages, Skills, extension modules, templates and terminal themes. Enable/disable is in the row; update, remove and restore inheritance are in its menu. Review source, scope and code-execution implications before installation.
-- **Messaging** installs the optional WeChat connector, handles QR login and allowed users, and binds text DMs to native threads. Use **Connect to WeChat…** in a thread menu to preselect it. See [messaging channels](../MESSAGE_CHANNELS.md).
+- **Messaging** installs the optional WeChat connector, handles QR login and allowed users, and binds text/image DMs, file deliveries, slash commands and scheduled notifications to native threads. Use **Connect to WeChat…** in a thread menu to preselect it. See [messaging channels](../MESSAGE_CHANNELS.md).
 - **MCP** manages global or trusted-project configuration. Saving is separate from connecting or reloading. Existing credentials stay unless explicitly replaced or removed. Status, reconnect and OAuth use an open persistent thread.
 
 Installed does not mean loaded in the current conversation. Reload idle resources and verify them after setup. Untrusted projects cannot receive project writes. Legacy MCP adapter migration requires stopped backups; see [MCP](../MCP.md) and [native resources](../NATIVE_SETTINGS.md).

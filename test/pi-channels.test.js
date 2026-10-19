@@ -37,18 +37,25 @@ test('upstream downloads are pinned and platform identities stay lossless', () =
 });
 
 test('authenticated optional channel connects, binds and delivers once through the native worker', { timeout: 120000 }, async () => {
-    const calls = [], sends = []; let hold = null, releaseModel, sendFailure = false, installed = false, sendHold = null, releaseSend;
+    const calls = [], sends = [], typings = [], mediaSends = []; let hold = null, releaseModel, sendFailure = false, installed = false, sendHold = null, releaseSend;
     let replyText = 'Native channel reply';
+    let deliverTool = false;
+    const onePixelPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==', 'base64');
     const provider = http.createServer(async (req, res) => {
         let body = ''; for await (const part of req) body += part; const input = JSON.parse(body); calls.push(input);
         if (hold) await hold;
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        if (deliverTool && !input.messages.some(m => m.role === 'tool')) {
+            const call = { role: 'assistant', tool_calls: [{ index: 0, id: `deliver-${calls.length}`, type: 'function', function: { name: 'deliver_files', arguments: JSON.stringify({ requestId: `req-${calls.length}`, title: 'Channel deliverables', files: ['report.md', 'chart.png'] }) } }] };
+            for (const [delta, finish] of [[call, null], [{}, 'tool_calls']]) res.write(`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: input.model, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`);
+            return res.end('data: [DONE]\n\n');
+        }
         for (const [delta, finish] of [[{ role: 'assistant', content: replyText }, null], [{}, 'stop']]) res.write(`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: input.model, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`);
         res.end('data: [DONE]\n\n');
     });
     provider.listen(0, '127.0.0.1'); await once(provider, 'listening');
     fs.writeFileSync(path.join(process.env.PI_CODING_AGENT_DIR, 'settings.json'), JSON.stringify({ defaultProvider: 'fixture', defaultModel: 'normal', defaultThinkingLevel: 'off', defaultProjectTrust: 'never', enableInstallTelemetry: false }));
-    fs.writeFileSync(path.join(process.env.PI_CODING_AGENT_DIR, 'models.json'), JSON.stringify({ providers: { fixture: { baseUrl: `http://127.0.0.1:${provider.address().port}/v1`, api: 'openai-completions', apiKey: 'synthetic', models: [{ id: 'normal', input: ['text'], contextWindow: 32000, maxTokens: 1000 }] } } }));
+    fs.writeFileSync(path.join(process.env.PI_CODING_AGENT_DIR, 'models.json'), JSON.stringify({ providers: { fixture: { baseUrl: `http://127.0.0.1:${provider.address().port}/v1`, api: 'openai-completions', apiKey: 'synthetic', models: [{ id: 'normal', input: ['text'], contextWindow: 32000, maxTokens: 1000 }, { id: 'vision', input: ['text', 'image'], contextWindow: 32000, maxTokens: 1000 }] } } }));
     const { WorkspaceAccessService } = require('../server/workspace-access-service');
     const { createPiAgentGateway } = require('../server/pi-agent-routes');
     const access = new WorkspaceAccessService({ envToken: () => 'synthetic' });
@@ -56,9 +63,13 @@ test('authenticated optional channel connects, binds and delivers once through t
         loginStart: async () => ({ id: 'login-one', status: 'wait', matrix: [[true]], expiresAt: Date.now() + 30000 }),
         loginPoll: async () => ({ status: 'confirmed', account: { id: 'bot-one', userId: 'owner', token: 'PRIVATE_BOT_TOKEN', baseUrl: 'https://ilinkai.weixin.qq.com', allowedUsers: ['owner'], enabled: true, cursor: '' } }),
         notify: async () => ({}),
+        typingTicket: async () => 'ticket-1',
+        typing: async (_account, peer, ticket, active) => { typings.push({ peer: peer.peerId, ticket, active }); },
+        downloadImage: async () => ({ type: 'image', mimeType: 'image/png', data: onePixelPng.toString('base64') }),
         poll: async (_a, signal) => { await delay(60000, undefined, { signal }); return { msgs: [] }; },
         message: raw => WeixinAdapter.prototype.message(raw),
-        send: async (account, peer, text, clientId) => { sends.push({ account: account.id, peer: peer.peerId, text, clientId }); if (sendHold) await sendHold; if (sendFailure) throw Error('ambiguous send'); return { message_id: String(sends.length) }; }
+        send: async (account, peer, text, clientId) => { sends.push({ account: account.id, peer: peer.peerId, text, clientId }); if (sendHold) await sendHold; if (sendFailure) throw Error('ambiguous send'); return { message_id: String(sends.length) }; },
+        sendMedia: async (account, peer, media, clientId) => { mediaSends.push({ account: account.id, peer: peer.peerId, kind: media.kind, name: media.name, size: media.bytes.length, clientId }); return { message_id: `media-${mediaSends.length}` }; }
     };
     const directory = path.join(root, 'channels');
     const gateway = createPiAgentGateway({ accessService: access, channelsOptions: { directory,
@@ -100,12 +111,69 @@ test('authenticated optional channel connects, binds and delivers once through t
         releaseModel(); hold = null;
         await wait(() => service.db.value.jobs[0].status === 'delivered');
         assert.equal(calls.length, 1); assert.equal(sends.length, 1); assert.equal(sends[0].peer, 'owner'); assert.equal(sends[0].text, 'Native channel reply');
+        assert.ok(typings.some(t => t.active === true && t.ticket === 'ticket-1'), 'typing indicator started');
+        assert.ok(typings.some(t => t.active === false && t.ticket === 'ticket-1'), 'typing indicator cancelled on finish');
         assert.doesNotMatch(fs.readFileSync(service.db.file, 'utf8'), /USER_CHANNEL_REQUEST|Native channel reply/, 'receipt is not a transcript copy');
         service.receive('bot-one', { msgs: [incoming('2')] }); service.pump(); await delay(50); assert.equal(calls.length, 1);
         const entries = (await worker.request('get_entries')).entries;
         assert.equal(entries.filter(e => e.customType === 'pivane-channel-message').length, 1);
         assert.ok(entries.some(e => e.customType === 'pivane-channel-turn' && e.data.status === 'completed'));
         await worker.request('prompt', { message: 'web-only message' }); await wait(() => worker.isIdle()); assert.equal(sends.length, 1, 'web turns do not leak into the channel');
+        // Slash commands: /help, /status, /model, /new
+        const callsBeforeSlash = calls.length;
+        service.receive('bot-one', { msgs: [incoming('slash-help', '/help')] }); service.pump();
+        await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
+        assert.match(sends.at(-1).text, /可用指令/);
+        service.receive('bot-one', { msgs: [incoming('slash-status', '/status')] }); service.pump();
+        await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
+        assert.match(sends.at(-1).text, /Bound thread/);
+        // Image input with non-vision model warns user; switching via /model vision allows image input
+        const incomingImage = id => ({ message_type: 1, message_state: 2, message_id: id, from_user_id: 'owner', context_token: 'PRIVATE_CONTEXT_TOKEN', item_list: [{ type: 2, image_item: { media: { encrypt_query_param: 'enc-img-1', aes_key: Buffer.alloc(16, 1).toString('base64') } } }] });
+        service.receive('bot-one', { msgs: [incomingImage('img-no-vision')] }); service.pump();
+        await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
+        assert.match(sends.at(-1).text, /不支持图片输入/);
+        service.receive('bot-one', { msgs: [incoming('slash-model', '/model vision')] }); service.pump();
+        await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
+        assert.match(sends.at(-1).text, /fixture\/vision/);
+        assert.equal(calls.length, callsBeforeSlash, 'slash commands do not invoke LLM');
+        // Now image input + deliver_files outbound media & file
+        fs.writeFileSync(path.join(cwd, 'report.md'), '# Channel Report\n');
+        fs.writeFileSync(path.join(cwd, 'chart.png'), onePixelPng);
+        deliverTool = true;
+        service.receive('bot-one', { msgs: [incomingImage('img-with-vision')] }); service.pump();
+        await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
+        deliverTool = false;
+        assert.equal(mediaSends.length, 2, 'deliver_files sends both markdown file and png image to WeChat');
+        assert.deepEqual(mediaSends.map(m => ({ kind: m.kind, name: m.name })), [{ kind: 'file', name: 'report.md' }, { kind: 'image', name: 'chart.png' }]);
+        // Waiting confirmation notification
+        hold = new Promise(resolve => { releaseModel = resolve; });
+        const sendsBeforeWait = sends.length;
+        service.receive('bot-one', { msgs: [incoming('wait-ui-turn', 'need confirmation')] }); service.pump();
+        await wait(() => worker.channelRun);
+        worker._handleEvent({ type: 'extension_ui_request', id: 'ui-1', method: 'confirm', title: 'Confirm', message: 'Proceed?' });
+        await wait(() => sends.length > sendsBeforeWait);
+        assert.match(sends.at(-1).text, /等待交互确认/);
+        worker.resolveUi('ui-1');
+        releaseModel(); hold = null;
+        await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
+        // Proactive scheduled task notification to bound WeChat DM
+        const cronJob = await gateway.cron.save({
+            id: '11111111-1111-4111-8111-111111111111', name: 'Daily digest', prompt: 'Digest prompt',
+            enabled: false, notifyWeixin: true, mode: 'text',
+            target: { kind: 'thread', cwd, sessionId: session.id },
+            schedule: { kind: 'cron', expression: '0 9 * * *', timeZone: 'Asia/Shanghai' }
+        });
+        replyText = 'Scheduled morning digest body';
+        const cronRun = await gateway.cron.action(cronJob.id, { action: 'run', revision: cronJob.revision, requestId: '22222222-2222-4222-8222-222222222222' });
+        await wait(async () => { await gateway.cron.tick(); return gateway.cron.db.run(cronRun.id)?.status === 'completed'; });
+        await wait(() => sends.some(s => s.text.includes('Scheduled morning digest body')));
+        // /new command creates and rebinds to a fresh thread, then we rebind back to session for remaining tests
+        service.receive('bot-one', { msgs: [incoming('slash-new', '/new 新建的微信会话')] }); service.pump();
+        await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
+        assert.match(sends.at(-1).text, /已新建并绑定线程：新建的微信会话/);
+        assert.notEqual(service.db.value.bindings[0].sessionId, session.id);
+        await action('bind', { accountId: 'bot-one', peerId: 'owner', cwd, sessionId: session.id });
+        replyText = 'Native channel reply';
         replyText = 'Long reply '.repeat(500);
         sendHold = new Promise(resolve => { releaseSend = resolve; });
         const beforeRevoke = sends.length;

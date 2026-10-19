@@ -17,6 +17,7 @@ function validateJob(input, now) {
     if (!input || typeof input.name !== 'string' || !input.name.trim() || input.name.length > 120
         || typeof input.prompt !== 'string' || !input.prompt.trim() || input.prompt.length > 40000
         || typeof input.enabled !== 'boolean' || !['text', 'work'].includes(input.mode)) fail('Invalid scheduled task');
+    if (input.notifyWeixin !== undefined && typeof input.notifyWeixin !== 'boolean') fail('Invalid WeChat notification setting');
     if (!input.target || !['thread', 'profile'].includes(input.target.kind)) fail('Choose a target thread or profile');
     const target = input.target.kind === 'thread' ? { kind: 'thread', cwd: input.target.cwd, sessionId: input.target.sessionId }
         : { kind: 'profile', profileId: input.target.profileId };
@@ -41,7 +42,7 @@ function validateJob(input, now) {
     }
     const condition = input.condition || null;
     if (condition && (condition.kind !== 'no-user-since' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(condition.time))) fail('Invalid activity condition');
-    return { name: input.name.trim(), prompt: input.prompt, enabled: input.enabled, mode: input.mode, target, schedule, startsAt, model,
+    return { name: input.name.trim(), prompt: input.prompt, enabled: input.enabled, mode: input.mode, notifyWeixin: Boolean(input.notifyWeixin), target, schedule, startsAt, model,
         condition: condition ? { kind: condition.kind, time: condition.time } : null,
         misfire: { policy: misfire.policy, graceMinutes: misfire.graceMinutes }, execution, budget: limits(input.budget) };
 }
@@ -307,6 +308,11 @@ class CronService {
         if (complete && status !== 'silent' && status !== 'skipped' && run.status !== status) {
             this.supervisor.emit('completion', { cwd: run.target.cwd, sessionId: run.target.sessionId,
                 completionId: run.id, completedAt: new Date(this.now()).toISOString() });
+            const job = run.job || this.db.job(run.jobId);
+            if (job?.notifyWeixin && typeof this.onChannelNotify === 'function') {
+                void Promise.resolve(this.onChannelNotify({ runId: run.id, jobId: job.id, name: job.name, status,
+                    target: run.target, replyEntryId: result.replyEntryId || null, scheduledAt: run.scheduledAt })).catch(() => {});
+            }
         }
     }
     async reconcile() {

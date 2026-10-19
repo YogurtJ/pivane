@@ -219,6 +219,7 @@ function createPiAgentGateway(options = {}) {
     const channels = new (require('./channels/service').ChannelsService)({ store, supervisor,
         isSuspended: () => maintenance.locked || maintenance.referenceLocked || Boolean(store.sessionMoves?.running),
         ...options.channelsOptions });
+    cron.onChannelNotify = event => channels.notifyScheduledRun(event);
     require('./channels/service').mountChannels(router, channels);
 
     router.get('/status', async (req, res) => {

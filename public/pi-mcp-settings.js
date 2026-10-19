@@ -42,7 +42,7 @@
         refresh.classList.add('settings-header-refresh');
         const header = el('header', null, { class: 'settings-panel-header mcp-header' });
         const intro = el('div');
-        intro.append(el('h3', t('原生 MCP', 'Native MCP')), el('p', t('保存配置与会话连接分别管理。打开此页不会连接服务器或执行命令。', 'Saved configuration and session connections are separate. Opening this page does not connect servers or execute commands.')));
+        intro.append(el('h3', 'MCP'), el('p', t('保存配置与会话连接分别管理。打开此页不会连接服务器或执行命令。', 'Saved configuration and session connections are separate. Opening this page does not connect servers or execute commands.')));
         header.append(icon('fa-plug'), intro, refresh);
         const toolbar = el('div', null, { class: 'mcp-toolbar' });
         const scopeField = el('label', null, { class: 'mcp-scope' }); scopeField.append(el('span', t('配置范围', 'Scope')), scope);

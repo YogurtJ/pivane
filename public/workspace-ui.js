@@ -130,15 +130,33 @@
         const featureText = (zh, en) => window.PiI18n?.locale === 'en' ? en : zh;
         function featureStatus(error, retry) {
             featureState.replaceChildren();
+            const card = document.createElement('div');
+            card.className = 'workspace-feature-card';
+            const badge = document.createElement('span');
+            badge.className = error ? 'workspace-feature-icon is-error' : 'workspace-feature-icon';
+            if (error) {
+                const icon = document.createElement('i'); icon.className = 'fa-solid fa-triangle-exclamation'; icon.setAttribute('aria-hidden', 'true');
+                badge.append(icon);
+            } else {
+                const spinner = document.createElement('span'); spinner.className = 'pi-spinner'; spinner.setAttribute('aria-hidden', 'true');
+                badge.append(spinner);
+            }
             const message = document.createElement('p');
             message.textContent = error ? featureText('页面加载失败，请重试。', 'Unable to load this page. Please retry.') : featureText('正在读取…', 'Loading…');
-            featureState.append(message);
-            featureState.setAttribute('aria-busy', String(!error));
+            card.append(badge, message);
+            if (!error && window.PiSkeleton) {
+                const skeleton = document.createElement('div');
+                skeleton.className = 'workspace-feature-skeleton';
+                skeleton.innerHTML = window.PiSkeleton.html('lines', { rows: 3, decorative: true });
+                card.append(skeleton);
+            }
             if (error) {
                 const button = document.createElement('button'); button.type = 'button';
                 button.className = 'settings-secondary-button'; button.textContent = featureText('重试', 'Retry');
-                button.addEventListener('click', retry, { once: true }); featureState.append(button);
+                button.addEventListener('click', retry, { once: true }); card.append(button);
             }
+            featureState.append(card);
+            featureState.setAttribute('aria-busy', String(!error));
         }
         // Dialog entry failures retain the conversation and offer an explicit retry.
         const featureError = document.createElement('dialog');

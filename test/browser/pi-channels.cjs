@@ -5,8 +5,8 @@ const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const root = path.resolve(__dirname, '../..');
 const server = http.createServer((req, res) => {
-    if (req.url === '/') { res.setHeader('Content-Type', 'text/html'); return res.end('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/public/pi-channels.css"><style>:root{--text-main:#25312c;--text-muted:#64706a;--surface-1:#fff;--surface-2:#edf4ed;--line:#c9d1ca;--accent:#137757}body{margin:0;font:16px sans-serif;background:var(--surface-2);color:var(--text-main)}.workspace-settings-content{padding:12px;box-sizing:border-box;max-width:100%}button{padding:10px}</style><main class="workspace-settings-content"></main><script src="/public/pi-channels.js"></script>'); }
-    if (['/public/pi-channels.js', '/public/pi-channels.css'].includes(req.url)) { res.setHeader('Content-Type', req.url.endsWith('.css') ? 'text/css' : 'text/javascript'); return res.end(fs.readFileSync(path.join(root, req.url))); }
+    if (req.url === '/') { res.setHeader('Content-Type', 'text/html'); return res.end('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/public/brand/fontawesome-6.4.0/css/all.min.css"><link rel="stylesheet" href="/public/pi-channels.css"><style>:root{--text-main:#25312c;--text-muted:#64706a;--surface-1:#fff;--surface-2:#edf4ed;--line:#c9d1ca;--accent:#137757}body{margin:0;font:16px sans-serif;background:var(--surface-2);color:var(--text-main)}.workspace-settings-content{padding:12px;box-sizing:border-box;max-width:100%}button{padding:10px}</style><main class="workspace-settings-content"></main><script src="/public/pi-channels.js"></script>'); }
+    if (req.url.startsWith('/public/')) { const file = path.join(root, req.url); if (fs.existsSync(file) && fs.statSync(file).isFile()) { res.setHeader('Content-Type', req.url.endsWith('.css') ? 'text/css' : req.url.endsWith('.js') ? 'text/javascript' : 'font/woff2'); return res.end(fs.readFileSync(file)); } }
     res.writeHead(404); res.end();
 });
 (async () => {

@@ -7,7 +7,7 @@ const SOURCES = Object.freeze([
     { name: '@tencent-weixin/openclaw-weixin', version: '2.4.10', url: 'https://registry.npmjs.org/@tencent-weixin/openclaw-weixin/-/openclaw-weixin-2.4.10.tgz', sha256: '69dd18af16a992edbe3700d244f9591ab52f5f58abfe976a9f1250bd8eacdbbb' },
     { name: 'qrcode-terminal', version: '0.12.0', url: 'https://registry.npmjs.org/qrcode-terminal/-/qrcode-terminal-0.12.0.tgz', sha256: '3a6260c4e0d80bd527a3f930e90ea2348c03646621f25aa0bd960ee205a0a706' }
 ]);
-const API_FILES = ['dist/src/api/api.js', 'dist/src/api/types.js', 'dist/src/util/redact.js', 'dist/src/messaging/markdown-filter.js', 'dist/src/cdn/aes-ecb.js'];
+const API_FILES = ['dist/src/api/api.js', 'dist/src/api/types.js', 'dist/src/util/redact.js', 'dist/src/messaging/markdown-filter.js', 'dist/src/cdn/aes-ecb.js', 'dist/src/cdn/cdn-url.js', 'dist/src/cdn/pic-decrypt.js', 'dist/src/cdn/cdn-upload.js'];
 const QR_FILES = ['index', 'QRMath', 'QR8bitByte', 'QRRSBlock', 'QRUtil', 'QRErrorCorrectLevel', 'QRBitBuffer', 'QRMaskPattern', 'QRPolynomial', 'QRMode'].map(n => `vendor/QRCode/${n}.js`);
 // Packages are data until their archive hash has been checked. No npm lifecycle,
 // peer dependencies, plugin entrypoint, OpenClaw runtime or terminal login runs.
@@ -53,8 +53,12 @@ async function compile(api, qr) {
     files.set('/api/dist/src/util/logger.js', 'const noop=()=>{}; export const logger={debug:noop,info:noop,warn:noop,error:noop};');
     files.set('/package-fs.js', `export default {existsSync:()=>true,readFileSync:()=>${JSON.stringify(api.get('package.json'))}};`);
     files.set('/entry.js', `export * as api from './api/dist/src/api/api.js';
+        export * as types from './api/dist/src/api/types.js';
         export * as formatting from './api/dist/src/messaging/markdown-filter.js';
         export * as cryptoMedia from './api/dist/src/cdn/aes-ecb.js';
+        export * as cdnUrl from './api/dist/src/cdn/cdn-url.js';
+        export * as cdnDecrypt from './api/dist/src/cdn/pic-decrypt.js';
+        export * as cdnUpload from './api/dist/src/cdn/cdn-upload.js';
         import QRCode from './qr/vendor/QRCode/index.js';
         export function qrMatrix(value) { const qr = new QRCode(-1, 1); qr.addData(value); qr.make(); return qr.modules; }
         export function setTransport(transport) { pivaneChannelFetch = transport; }`);
@@ -81,7 +85,8 @@ class WeixinComponent {
     record() {
         try {
             const value = JSON.parse(readSafe(this.filename, 2 * 1024 * 1024));
-            if (value.version !== 1 || value.sources?.map(s => s.sha256).join() !== SOURCES.map(s => s.sha256).join() || hash(value.code) !== value.codeHash) throw new Error('Invalid component receipt');
+            if (value.version === 1) return null;
+            if (value.version !== 2 || value.sources?.map(s => s.sha256).join() !== SOURCES.map(s => s.sha256).join() || hash(value.code) !== value.codeHash) throw new Error('Invalid component receipt');
             return value;
         } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
     }
@@ -94,20 +99,25 @@ class WeixinComponent {
         if (signal.aborted) throw new Error('安装已取消');
         // Verify independent loading and QR generation before publishing receipt.
         const loaded = await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'));
-        if (!loaded.qrMatrix('Pivane').length || typeof loaded.api.getUpdates !== 'function') throw new Error('Component probe failed');
+        if (!loaded.qrMatrix('Pivane').length || typeof loaded.api.getUpdates !== 'function' || typeof loaded.cdnDecrypt.downloadAndDecryptBuffer !== 'function' || typeof loaded.cdnUpload.uploadBufferToCdn !== 'function') throw new Error('Component probe failed');
         privateDir(this.directory);
         const licenses = archives.map((a, i) => ({ name: SOURCES[i].name, text: a.get('LICENSE') || a.get('LICENSE.txt') }));
         if (licenses.some(l => !l.text)) throw new Error('Missing upstream license');
         licenses.push({ name: 'QRCode for JavaScript', text: 'Copyright (c) 2009 Kazuhiko Arase\nMIT License\n\n' + apiLicense(archives[0]) });
         const upstreamFiles = [...API_FILES.map(name => ({ source: SOURCES[0].name, name, content: archives[0].get(name) })),
             ...QR_FILES.map(name => ({ source: SOURCES[1].name, name, content: archives[1].get(name) }))];
-        atomicJson(this.filename, { version: 1, sources: SOURCES, code, codeHash: hash(code), licenses, upstreamFiles,
+        atomicJson(this.filename, { version: 2, sources: SOURCES, code, codeHash: hash(code), licenses, upstreamFiles,
             adaptations: 'Pivane supplies account configuration, bounded network transport and private diagnostics; upstream module bytes are retained unchanged.', installedAt: new Date().toISOString() });
         return this.status();
     }
     async load(transport) {
         if (!this.module) {
-            const r = this.record(); if (!r) throw new Error('请先安装微信连接组件');
+            let r = this.record();
+            if (!r && fs.existsSync(this.filename)) {
+                await this.install(new AbortController().signal);
+                r = this.record();
+            }
+            if (!r) throw new Error('请先安装微信连接组件');
             this.module = await import('data:text/javascript;base64,' + Buffer.from(r.code).toString('base64') + '#pivane-' + require('node:crypto').randomUUID());
         }
         this.module.setTransport(transport); return this.module;
