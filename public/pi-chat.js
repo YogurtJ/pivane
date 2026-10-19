@@ -906,6 +906,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const status = await apiFetch('/api/pi/status');
             state.scheduledTasks = status.scheduledTasks === true;
+            state.messageChannels = status.messageChannels === true;
             cronAddButton.hidden = !state.scheduledTasks;
             accessBootstrapped = true;
             state.modelCatalogSupported = status.modelCatalog === true;
@@ -4711,6 +4712,9 @@ document.addEventListener('DOMContentLoaded', () => {
             items = [
                 ...(historyItems.length ? [{ label: translateUi('历史与记录'), icon: 'fa-clock-rotate-left', children: historyItems }] : []),
                 ...(current ? [command(translateUi("消息显示…"), 'fa-eye', openMessageViewSetting)] : []),
+                ...(state.messageChannels ? [command(translateUi('连接微信…'), 'fa-comments', () => {
+                    window.dispatchEvent(new CustomEvent('workspace:open-settings', { detail: { tab: 'channels', channelTarget: { cwd, sessionId: session.id } } }));
+                }, { disabled: session.ephemeral })] : []),
                 command(translateUi("重命名"), 'fa-pen', () => renameCurrent(session, cwd), { disabled: session.ephemeral }),
                 ...(titleEditor?.enabled ? [command(translateUi('重新生成标题'), 'fa-wand-magic-sparkles', () => titleEditor.open(session, cwd), { disabled: session.ephemeral })] : []),
                 ...(workflows.enabled ? [command(translateUi("复制为新线程"), 'fa-code-branch', async () => {

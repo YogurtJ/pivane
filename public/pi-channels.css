@@ -1,0 +1,69 @@
+.channel-panel {
+    display: none;
+    width: 100%;
+    max-width: 900px;
+    min-width: 0;
+    padding: 16px;
+    color: var(--text-main, inherit);
+}
+.channel-panel.active { display: block; }
+.channel-panel * { box-sizing: border-box; min-width: 0; }
+.channel-panel h3, .channel-panel h4 { margin: 0 0 12px; }
+.channel-intro p, .channel-note { color: var(--text-muted, #667); line-height: 1.6; }
+.channel-card {
+    padding: 20px;
+    margin: 16px 0;
+    border: 1px solid var(--line, #8884);
+    border-radius: 14px;
+    background: var(--surface-1, transparent);
+    overflow-wrap: anywhere;
+}
+.channel-card p { line-height: 1.6; }
+.channel-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.channel-panel button {
+    max-width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--line, #8884);
+    border-radius: 8px;
+    background: var(--surface-2, #8881);
+    color: var(--text-main, inherit);
+    font: inherit;
+    line-height: 1.4;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+}
+.channel-panel button:hover:not(:disabled) { border-color: var(--accent, #2f7d5c); }
+.channel-panel button:disabled { opacity: .55; cursor: not-allowed; }
+.channel-panel :is(button, input, select, textarea):focus-visible { outline: 2px solid var(--accent, #2f7d5c); outline-offset: 2px; }
+.channel-field { display: flex; flex-direction: column; gap: 7px; margin: 14px 0; }
+.channel-field input, .channel-field select, .channel-field textarea {
+    width: 100%;
+    font: inherit;
+    font-size: 16px;
+    padding: 10px;
+    border: 1px solid var(--line, #8884);
+    border-radius: 8px;
+    background: var(--surface-1, transparent);
+    color: var(--text-main, inherit);
+}
+.channel-field textarea { resize: vertical; }
+.channel-qr {
+    display: block;
+    width: 240px;
+    max-width: 100%;
+    height: auto;
+    margin: 18px auto;
+    image-rendering: pixelated;
+    border: 8px solid white;
+    border-radius: 4px;
+}
+.channel-feedback { min-height: 1.5em; overflow-wrap: anywhere; }
+.channel-binding, .channel-job { border-top: 1px solid var(--line, #8884); padding: 14px 0; overflow-wrap: anywhere; }
+.channel-job small { display: block; margin: 6px 0; color: var(--text-muted, #667); }
+.channel-binding small { display: block; margin-bottom: 10px; }
+@media (max-width: 600px) {
+    .channel-card { padding: 14px; }
+    .channel-actions button { flex: 1 1 auto; }
+    .channel-panel { padding: 12px 0 24px; }
+}

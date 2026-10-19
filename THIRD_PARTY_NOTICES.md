@@ -39,6 +39,12 @@ Pivane自身的代码使用[ISC许可证](LICENSE)。第三方软件、字体、
 
 [pi-hermes-memory](https://github.com/chandra447/pi-hermes-memory) 0.9.10 使用 MIT 许可证。官方 npm 发布源码原样保存于 `vendor/pi-hermes-memory/`，原始 LICENSE 随包保留；Pivane 从选定组件生成档案记忆 bundle，不加载其默认扩展。`vendor/manifest.json` 记录两个包的来源、版本和逐文件哈希；运行依赖的许可证由 npm 安装保留，版本图由根 lockfile 锁定。安装、SQLite 平台要求和维护边界见[内置能力包](docs/BUNDLED_CAPABILITIES.md)与[档案记忆适配](docs/PROFILE_MEMORY.md)。
 
+## 按需下载的微信连接组件
+
+微信连接使用 [Tencent/openclaw-weixin](https://github.com/Tencent/openclaw-weixin) 官方 npm 包 `@tencent-weixin/openclaw-weixin` 2.4.10（Tencent，MIT），以及 `qrcode-terminal` 0.12.0 包（Apache-2.0）中的 QRCode for JavaScript（Copyright 2009 Kazuhiko Arase，MIT）。这些包不随默认 Pivane 归档分发；用户确认安装后才下载精确归档并核对 SHA256。
+
+私有组件回执保留上游选定文件原始字节、两个包的 LICENSE、二维码作者的版权与 MIT 条款，以及 Pivane 的适配说明。Pivane 仅替换模块装配中的账户、日志和网络边界，不执行上游 OpenClaw 插件入口或修改上游源文件；当前审查版本与安装方式见[消息渠道](docs/MESSAGE_CHANNELS.md)。
+
 ## 平台与外部服务
 
 随包macOS/Windows原生文件系统组件为项目自有代码，使用ISC；构建输入及哈希记录在native目录。Node.js、操作系统、Bash、ripgrep与浏览器由用户另行安装，不随本源码包分发。

@@ -115,7 +115,7 @@
         if (hostLabel) hostLabel.textContent = window.location.host;
         const routeTabs = new Set(['chat', 'assistant', 'cron', 'artifacts', 'media', 'profiles', 'extensions', 'settings']);
         const settingsTabs = new Set(['providers', 'media', 'models', 'system-prompts', 'native', 'access', 'usage', 'updates']);
-        const extensionTabs = new Set(['extensions', 'installed', 'mcp']);
+        const extensionTabs = new Set(['extensions', 'installed', 'mcp', 'channels']);
         const moreTabs = new Set(['cron', 'artifacts', 'media', 'profiles', 'extensions']);
         document.querySelectorAll('[data-cron-nav]').forEach(label => { label.textContent = translateUi('定时任务'); });
         const moreToggle = document.getElementById('workspace-more-toggle');

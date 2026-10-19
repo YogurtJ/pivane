@@ -1,4 +1,4 @@
-/* Curated discovery metadata only. Installation always goes through the extension assistant. */
+/* Curated discovery metadata; messaging connectors have a dedicated setup page. */
 (() => {
     const text = (zh, en) => globalThis.PiI18n?.locale === 'en' ? en : zh;
     const node = (tag, content, attrs = {}) => {
@@ -8,6 +8,12 @@
         return el;
     };
     const entries = [
+        { id: 'pivane-weixin', name: 'WeChat ClawBot', author: 'Tencent · Pivane', kind: ['可选组件 · 消息渠道', 'Optional · Messaging'], icon: 'fa-comments',
+            url: 'https://github.com/Tencent/openclaw-weixin',
+            title: ['在微信继续对话', 'Continue in WeChat'],
+            description: ['扫码连接微信 ClawBot，把私聊绑定到 Pivane 线程。', 'Connect WeChat ClawBot with a QR code and bind a DM to a Pivane thread.'],
+            requirement: ['按需下载连接组件；当前支持文字私聊，需要扫码和线程绑定。', 'Downloads the connector on demand. Text DMs require QR login and a thread binding.'],
+            example: ['把当前项目线程连接到我的微信聊天。', 'Connect this project thread to my WeChat chat.'] },
         { id: 'ppt-master', name: 'PPT Master', author: 'hugohe3', kind: ['技能工作流', 'Skill workflow'], icon: 'fa-file-powerpoint',
             url: 'https://github.com/hugohe3/ppt-master',
             title: ['制作演示文稿', 'Create presentations'],
@@ -50,7 +56,7 @@
         const el = node('button', label, { type: 'button', ...attrs });
         el.addEventListener('click', action); return el;
     };
-    let mcpPanel;
+    let mcpPanel, channelsPanel;
     let enabled = false, host, generation = 0, view = '', inventory = null, inventoryState = 'unknown', renderCards = () => {}, subnav = null;
     const repositories = { 'ppt-master': 'hugohe3/ppt-master', 'pi-web-access': 'nicobailon/pi-web-access', 'pi-computer-use': 'injaneity/pi-computer-use', 'pi-subagents': 'nicobailon/pi-subagents', 'pi-hermes-memory': 'chandra447/pi-hermes-memory' };
     function identity(source) {
@@ -61,6 +67,7 @@
         return git ? `github:${git[1].toLowerCase()}` : '';
     }
     function installation(entry) {
+        if (entry.id === 'pivane-weixin') return { state: 'optional', label: text('按需安装 · 消息渠道中管理', 'Optional · Manage in Messaging') };
         if (inventoryState !== 'ready') return { state: inventoryState, label: inventoryState === 'loading' ? text('正在核对…', 'Checking…') : text('状态待核对', 'Status unknown') };
         if (entry.id === 'pi-native-mcp') {
             const builtin = inventory.resources?.find(item => item.path === 'builtin:mcp');
@@ -156,7 +163,8 @@
     const extensionTabLabels = {
         extensions: ['发现', 'Discover'],
         installed: ['已安装', 'Installed'],
-        mcp: ['原生 MCP', 'Native MCP']
+        mcp: ['原生 MCP', 'Native MCP'],
+        channels: ['消息渠道', 'Messaging']
     };
     function mountSubnav() {
         const dialog = document.getElementById('workspace-settings-dialog');
@@ -183,6 +191,11 @@
     window.PiExtensions = {
         connect(value) {
             host = value;
+            channelsPanel?.close(); channelsPanel?.root.remove();
+            if (window.PiChannels) {
+                channelsPanel = window.PiChannels.create(value);
+                document.querySelector('.workspace-settings-content')?.append(channelsPanel.root);
+            }
             mcpPanel?.close(); mcpPanel?.root.remove();
             if (window.PiMcpSettings) {
                 mcpPanel = window.PiMcpSettings.create(value);
@@ -190,6 +203,7 @@
             }
         },
         mountExplore,
+        setChannelTarget(value) { channelsPanel?.setTarget(value); },
         setAssistantEnabled(value) {
             enabled = Boolean(value);
             document.querySelectorAll('[data-extension-configure]').forEach(el => { el.disabled = !enabled; });
@@ -203,12 +217,17 @@
             dialog?.classList.toggle('extensions-view', extensionView);
             if (subnav) {
                 subnav.hidden = !extensionView;
+                subnav.querySelector('.extensions-nav-actions').hidden = view === 'channels';
                 subnav.querySelectorAll('[data-extensions-tab]').forEach(item => {
                     const active = extensionView && item.dataset.extensionsTab === view;
                     item.classList.toggle('active', active);
                     if (active) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current');
                 });
             }
+            if (view === 'channels') {
+                document.querySelectorAll('[data-settings-panel]').forEach(panel => panel.classList.remove('active'));
+                channelsPanel?.open();
+            } else channelsPanel?.close();
             if (view === 'mcp') {
                 document.querySelectorAll('[data-settings-panel]').forEach(panel => panel.classList.remove('active'));
                 mcpPanel?.open();
@@ -244,7 +263,10 @@
                 heading.append(node('i', '', { class: `fa-solid ${entry.icon}`, 'aria-hidden': 'true' }), node('h4', text(...entry.title)));
                 const details = node('details'); details.append(node('summary', text('使用前提与示例', 'Requirements & example')), node('p', text(...entry.requirement)), node('p', text(...entry.example)));
                 const actions = node('div', null, { class: 'extensions-card-actions' });
-                const configure = button(text('了解与配置', 'Learn & set up'), () => assistant(entry), { 'data-extension-configure': '', class: 'settings-secondary-button' }); configure.disabled = !enabled;
+                const configure = entry.id === 'pivane-weixin'
+                    ? button(text('安装与连接', 'Install & connect'), () => window.dispatchEvent(new CustomEvent('workspace:open-settings', { detail: { tab: 'channels' } })), { class: 'settings-secondary-button' })
+                    : button(text('了解与配置', 'Learn & set up'), () => assistant(entry), { 'data-extension-configure': '', class: 'settings-secondary-button' });
+                if (entry.id !== 'pivane-weixin') configure.disabled = !enabled;
                 actions.append(node('a', text('查看来源', 'View source'), { href: entry.url, target: '_blank', rel: 'noopener noreferrer' }), configure);
                 const installed = installation(entry);
                 const badge = node('span', installed.label, { class: 'extensions-installation', 'data-installation': installed.state });
@@ -263,7 +285,7 @@
         const unavailable = node('p', text('当前服务未提供扩展助手。可查看来源，或在已安装页面管理资源。', 'The extension assistant is unavailable on this server. View the sources or manage resources in the installed tabs.'), { id: 'extensions-assistant-unavailable', role: 'status' });
         featured.append(intro, search, toolbar, feedback, unavailable, grid, empty);
         panel.append(featured);
-        const invalidate = () => { generation++; view = ''; inventory = null; inventoryState = 'unknown'; renderCards(); };
+        const invalidate = () => { channelsPanel?.close(); generation++; view = ''; inventory = null; inventoryState = 'unknown'; renderCards(); };
         window.addEventListener('workspace:settings-closed', invalidate);
         window.addEventListener('workspace:access-locked', invalidate);
         window.addEventListener('storage', event => { if (event.key === 'pi.web.cwd' || event.key === null) void refreshInventory(); });

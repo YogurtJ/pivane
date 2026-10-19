@@ -128,7 +128,7 @@ function start() {
     let settingsViewEpoch = 0;
     let settingsOpen = false;
     let activeProfileMetadata = null;
-    const extensionTabs = new Set(['extensions', 'installed', 'mcp']);
+    const extensionTabs = new Set(['extensions', 'installed', 'mcp', 'channels']);
     function openSettings(tab = state.activeTab, metadata = {}) {
         settingsOpen = true;
         elements.dialog.classList.remove('hidden');
@@ -847,6 +847,7 @@ function start() {
 
     window.PiSettings.activeTab = () => extensionTabs.has(state.activeTab) || state.activeTab === 'profiles' ? 'providers' : state.activeTab;
     window.PiSettings.focus = detail => {
+        if (detail.channelTarget) window.PiExtensions?.setChannelTarget(detail.channelTarget);
         if (detail.setting) nativeSettings.focusSetting(detail.setting);
         if (detail.promptKind) systemPrompts.focus(detail.promptKind, detail.promptScope);
         if (detail.providerSearch !== undefined) {

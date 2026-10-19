@@ -6,7 +6,7 @@ const cwd = '/synthetic/startup';
 const profile = { id: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', name: 'Fixture identity', enabled: true, soul: '', memory: {}, skills: {} };
 const session = { id: 'startup-thread', cwd, name: 'Synthetic thread', messageCount: 1, agentProfile: profile };
 const model = { id: 'fixture', provider: 'fixture', name: 'Fixture', input: ['text'] };
-const deferredScripts = ['settings.js', 'pi-agent-profiles.js', 'pi-native-settings.js', 'pi-system-prompts.js', 'pi-profile-knowledge.js', 'pi-profile-learning.js', 'media-connections.js', 'pi-transcription-settings.js', 'media-lab.js', 'pi-cron.js', 'pi-artifacts.js', 'pi-artifacts-preview.js'];
+const deferredScripts = ['pi-channels.js', 'settings.js', 'pi-agent-profiles.js', 'pi-native-settings.js', 'pi-system-prompts.js', 'pi-profile-knowledge.js', 'pi-profile-learning.js', 'media-connections.js', 'pi-transcription-settings.js', 'media-lab.js', 'pi-cron.js', 'pi-artifacts.js', 'pi-artifacts-preview.js'];
 async function fixture(browser, width, hash = '#/chat', options = {}) {
     const context = await browser.newContext({ viewport: { width, height: 900 }, locale: width < 700 ? 'zh-CN' : 'en-US', isMobile: width < 700, hasTouch: width < 700 });
     const page = await context.newPage(), errors = [], requests = [], writes = [], commands = [];
@@ -35,7 +35,7 @@ async function fixture(browser, width, hash = '#/chat', options = {}) {
         }
         if (options.oauth && path === '/api/pi/settings/providers/fixture/login') return route.fulfill({ json: { id: 'fixture-login', revision: 1, finished: false, status: 'waiting', events: [], prompts: [] } });
         if (options.oauth && path === '/api/pi/settings/login/fixture-login') return route.fulfill({ json: { id: 'fixture-login', revision: 1, finished: false, status: 'waiting', events: [], prompts: [] } });
-        const data = path === '/api/pi/status' ? { ok: true, agentProfiles: true, assistantProjects: true, scheduledTasks: true, projectIdentity: true, defaultProject: cwd, projectRoots: ['/synthetic'] }
+        const data = path === '/api/pi/status' ? { ok: true, agentProfiles: true, assistantProjects: true, scheduledTasks: true, messageChannels: true, projectIdentity: true, defaultProject: cwd, projectRoots: ['/synthetic'] }
             : path === '/api/pi/projects/resolve' ? { cwd }
             : path === '/api/pi/projects' ? { projects: [{ cwd, name: 'Synthetic', sessionCount: 1 }], roots: ['/synthetic'] }
             : path === '/api/pi/sessions' ? { sessions: [session] }
@@ -43,6 +43,7 @@ async function fixture(browser, width, hash = '#/chat', options = {}) {
             : path === '/api/pi/assistant-projects' ? { version: 1, revision: 'projects-1', projects: [] }
             : path === '/api/pi/activity' ? { runtimes: [], pinnedProjects: [], hiddenProjects: [], replyNotices: [] }
             : path === '/api/pi/settings/models' ? { models: options.oauth ? [model] : [], providers: options.oauth ? [{ id: 'fixture', name: 'Fixture', configured: true, authMethods: { oauth: true } }] : [], customProviders: [], providerLogin: options.oauth === true, preferences: {}, prompts: [] }
+            : path === '/api/pi/channels' ? { revision: 'channels-1', component: { installed: false }, accounts: [], bindings: [], peers: [], jobs: [], login: null }
             : path === '/api/pi/cron' ? { jobs: [], today: { runs: 0 }, limits: { maxRunsPerDay: 10 }, mainThreads: [] }
             : path === '/api/pi/media/lab' ? { models: [], mediaConnections: true }
             : path === '/api/pi/media/lab/connections' ? { revision: 'connections-1', providers: [], models: [], transcriptionModels: [] }
@@ -90,6 +91,15 @@ async function main() {
                     await page.evaluate(() => PiWorkspaceRoute.navigate('settings', { tab: 'providers' }));
                     await page.locator('[data-settings-panel="providers"]').waitFor({ state: 'visible' });
                     await page.locator('#workspace-settings-close').click();
+                    await page.locator('#pi-current-thread-menu').click();
+                    await page.getByRole('menuitem', { name: /连接微信|Connect to WeChat/ }).click();
+                    await page.locator('[data-settings-panel="channels"]').waitFor({ state: 'visible' });
+                    await page.waitForFunction(() => document.querySelector('[data-settings-panel="channels"] select[aria-label="线程"], [data-settings-panel="channels"] select[aria-label="Thread"]')?.value === 'startup-thread');
+                    if (process.env.PIVANE_TEST_SCREENSHOT_DIR) {
+                        require('node:fs').mkdirSync(process.env.PIVANE_TEST_SCREENSHOT_DIR, { recursive: true });
+                        await page.screenshot({ path: require('node:path').join(process.env.PIVANE_TEST_SCREENSHOT_DIR, `channel-shell-${width}.png`), fullPage: true });
+                    }
+                    await page.locator('#workspace-settings-close').click();
                     assert.equal(await page.locator('#pi-input').inputValue(), 'Unsent draft');
                     assert.equal(await page.locator('#pi-attachments .pi-attachment-chip').count(), 1);
                     assert.equal(f.socketCount(), 1, 'management navigation does not reconnect chat');
@@ -106,7 +116,7 @@ async function main() {
                 results.push({ width, mode, deferredOnStartup: true }); await clean(f, mode);
             }
             for (const [hash, group, selector] of [
-                ['#/profiles', 'settings', '#pi-profiles-content'], ['#/extensions?tab=mcp', 'settings', '[data-settings-panel="mcp"]'],
+                ['#/profiles', 'settings', '#pi-profiles-content'], ['#/extensions?tab=channels', 'settings', '[data-settings-panel="channels"]'], ['#/extensions?tab=mcp', 'settings', '[data-settings-panel="mcp"]'],
                 ['#/settings?tab=models', 'settings', '[data-settings-panel="models"]'], ['#/cron', 'cron', '#cron-tab .cron-header'],
                 ['#/media', 'media', '#media-tab .lab-header'], ['#/artifacts', 'artifacts', '#artifacts-tab .artifacts-header'],
                 ['#/settings?tab=skills', 'settings', '[data-settings-panel="installed"]']

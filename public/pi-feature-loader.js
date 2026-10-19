@@ -2,8 +2,8 @@
 (() => {
     const groups = Object.freeze({
         settings: {
-            styles: ['workspace-network.css', 'pi-usage.css', 'pi-profile-knowledge.css', 'pi-profile-learning.css', 'pi-auxiliary-models.css', 'pi-mcp-settings.css'],
-            scripts: ['workspace-network.js', 'pi-usage.js', 'pi-native-settings.js', 'pi-system-prompts.js', 'pi-updates.js', 'pi-auxiliary-models.js', 'pi-title-settings.js', 'pi-mcp-settings.js', 'pi-profile-knowledge.js', 'pi-profile-learning.js', 'pi-identity-templates.js', 'pi-agent-profiles.js', 'settings.js'],
+            styles: ['workspace-network.css', 'pi-usage.css', 'pi-profile-knowledge.css', 'pi-profile-learning.css', 'pi-auxiliary-models.css', 'pi-mcp-settings.css', 'pi-channels.css'],
+            scripts: ['workspace-network.js', 'pi-usage.js', 'pi-native-settings.js', 'pi-system-prompts.js', 'pi-updates.js', 'pi-auxiliary-models.js', 'pi-title-settings.js', 'pi-mcp-settings.js', 'pi-channels.js', 'pi-profile-knowledge.js', 'pi-profile-learning.js', 'pi-identity-templates.js', 'pi-agent-profiles.js', 'settings.js'],
             start: () => {
                 window.WorkspaceNetwork.start(); window.PiSettings.start();
                 if (pendingReveal) {
@@ -47,7 +47,7 @@
     }
     function settingsTarget(detail) {
         const tab = detail.tab || 'providers';
-        const route = tab === 'profiles' ? 'profiles' : ['extensions', 'installed', 'mcp', 'packages', 'skills'].includes(tab) ? 'extensions' : 'settings';
+        const route = tab === 'profiles' ? 'profiles' : ['extensions', 'installed', 'mcp', 'channels', 'packages', 'skills'].includes(tab) ? 'extensions' : 'settings';
         return { route, params: route === 'profiles' ? { profileId: detail.profileId, section: detail.section, authoringSession: detail.authoringSession?.id, authoringCwd: detail.authoringSession?.cwd }
             : { tab, ...(detail.section ? { section: detail.section } : {}) } };
     }

@@ -79,7 +79,8 @@ async function run(browser, base, width, locale, noProject = false) {
     } else await page.locator('#workspace-extensions-toggle').click();
     await page.locator('.extensions-view').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#extensions-learned').count(), 0, 'learned skills belong to assistant profiles');
-    assert.equal(await page.locator('.extensions-card').count(), 6);
+    assert.equal(await page.locator('.extensions-card').count(), 7);
+    assert.equal(await page.locator('#extension-pivane-weixin [data-installation="optional"]').count(), 1, 'messaging connectors use their dedicated optional installation flow');
     await page.locator('#extension-pi-subagents [data-installation="installed"]').waitFor();
     assert.match(await page.locator('#extension-pi-subagents [data-installation]').textContent(), /Pivane.*0\.74\.0/);
     assert.equal(await page.locator('#extension-pi-web-access [data-installation="installed"]').count(), 1);
@@ -128,7 +129,7 @@ async function run(browser, base, width, locale, noProject = false) {
         assert.equal(await page.locator('#extension-pi-native-mcp [data-installation="installed"]').count(), 1, 'native built-in stays available in global scope');
         projectTrusted = false;
     }
-    assert.equal(await page.locator('#extensions-nav [data-extensions-tab]').count(), 3);
+    assert.equal(await page.locator('#extensions-nav [data-extensions-tab]').count(), 4);
     assert.equal(await page.locator('.workspace-settings-nav button:visible').count(), 0, 'settings tabs stay out of the extension centre');
     await page.locator('#extensions-search').fill('injaneity');
     assert.equal(await page.locator('.extensions-card').count(), 1);
@@ -168,7 +169,7 @@ async function run(browser, base, width, locale, noProject = false) {
     await page.locator('#workspace-settings-close').click();
     if (!noProject) assert.equal(await page.locator('#pi-input').inputValue(), 'Discovery draft');
     await page.locator('.extensions-explore-choices button').first().click();
-    assert.equal(await page.locator('.extensions-card').count(), 6, 'home shortcuts clear stale search');
+    assert.equal(await page.locator('.extensions-card').count(), 7, 'home shortcuts clear stale search');
     await page.locator('#extensions-nav [data-extensions-tab="installed"]').click();
     await page.locator('#native-installed .native-assistant-entry').waitFor({ state: 'visible' });
     await page.locator('#workspace-settings-close').click();
@@ -302,7 +303,7 @@ async function run(browser, base, width, locale, noProject = false) {
     await page.waitForFunction(() => document.getElementById('pi-extension-assistant-add')?.hidden === true);
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('workspace:open-settings', { detail: { tab: 'extensions' } })));
     await page.locator('.extensions-card').first().waitFor();
-    assert.equal(await page.locator('.extensions-card').count(), 6);
+    assert.equal(await page.locator('.extensions-card').count(), 7);
     assert.equal(await page.locator('[data-extension-configure]:enabled').count(), 0);
     assert.equal(await page.locator('#extensions-assistant-unavailable').isVisible(), true);
     assert.deepEqual(errors, []);

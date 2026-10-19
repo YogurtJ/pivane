@@ -25,7 +25,7 @@
 
 内置子 Agent 包返回 `managedBy:"pivane"`、`name` 和 `version`，界面不提供独立更新和移除；资源开关写入当前范围的 `pivaneBuiltins.subagents`，保留原 CLI Packages 声明。发现页通过服务端内置元数据识别该包，不猜测本地目录名称。档案记忆仍通过 `status.profileMemory` 核对。
 
-扩展中心包含“发现”“已安装”和“MCP”。已安装按资源类型筛选，行内启停，菜单更新／移除／恢复继承；安装核对来源、范围、信任、修订及代码执行确认。确认后固定当时的项目与来源，提交期间锁定控件，迟到响应不能改变范围或重复提交。旧 `#/extensions?tab=packages|skills` 归一化到 `#/extensions?tab=installed&type=…`。已学习技能在助手身份页管理，具体操作见[用户指南](USER_GUIDE.md#扩展精选与已安装资源)。
+扩展中心包含“发现”“已安装”“MCP”和“消息渠道”。消息渠道使用独立的可选组件安装与连接管理服务，扫码、账号和线程绑定见[微信与消息渠道](MESSAGE_CHANNELS.md)，不通过 Pi Package 工厂加载。已安装按资源类型筛选，行内启停，菜单更新／移除／恢复继承；安装核对来源、范围、信任、修订及代码执行确认。确认后固定当时的项目与来源，提交期间锁定控件，迟到响应不能改变范围或重复提交。旧 `#/extensions?tab=packages|skills` 归一化到 `#/extensions?tab=installed&type=…`。已学习技能在助手身份页管理，具体操作见[用户指南](USER_GUIDE.md#扩展精选与已安装资源)。
 
 发现目录使用随包双语元数据，不自动抓取外部内容。只读核对原生资源清单，通过 npm 包身份或已知 GitHub 来源精确匹配，不用显示名或目录名猜测。Pi 原生 MCP 的 `builtin:mcp` 标记只表示资源配置，连接和授权状态单独核对，见[MCP](MCP.md)。
 

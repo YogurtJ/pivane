@@ -5,6 +5,7 @@
 .extensions-nav-tab { min-height: 40px; padding: 8px 14px; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--text-muted); font: inherit; font-size: .8rem; cursor: pointer; }
 .extensions-nav-tab:hover { background: var(--surface-2); color: var(--text-main); }
 .extensions-nav-tab.active { background: var(--green-soft); border-color: var(--green); color: var(--text-main); font-weight: 600; }
+.extensions-nav-actions[hidden] { display: none; }
 .extensions-nav-actions { display: flex; align-items: center; gap: 8px; }
 .extensions-nav-actions .settings-primary-button { min-height: 40px; }
 #workspace-settings-dialog.extensions-view .workspace-settings-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }

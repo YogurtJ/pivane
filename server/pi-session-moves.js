@@ -41,8 +41,8 @@ function syncDirectory(directory) {
 // This journal records a filesystem operation and its recovery evidence, never a
 // second conversation. Unknown/interrupted operations remain blocked on restart.
 class PiSessionMoves {
-    constructor({ store, supervisor, preferences, usage, deferred, cron, sideChat, busy = () => false, isSuspended = () => false }) {
-        Object.assign(this, { store, supervisor, preferences, usage, deferred, cron, sideChat, busy, isSuspended });
+    constructor({ store, supervisor, preferences, usage, deferred, cron, sideChat, channels, busy = () => false, isSuspended = () => false }) {
+        Object.assign(this, { store, supervisor, preferences, usage, deferred, cron, sideChat, channels, busy, isSuspended });
         this.running = 0; this.stopping = false; this.flight = null;
         store.sessionMoves = this;
     }
@@ -130,6 +130,7 @@ class PiSessionMoves {
     }
     globalBlockers(session) {
         const reasons = [];
+        try { this.channels?.assertUnbound(session.cwd, session.id); } catch (error) { reasons.push(error.message); }
         if (this.isSuspended() || this.stopping || this.supervisor.disposing || this.busy()) reasons.push('工作台有相关后台操作，请等待完成后再移动');
         if (this.deferred?.list(session.cwd, session.id).some(job => !['sent', 'cancelled'].includes(job.status))) reasons.push('线程有预约消息，请先处理或取消预约');
         if (this.cron?.db.homes().some(home => home.cwd === session.cwd && home.sessionId === session.id)

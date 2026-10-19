@@ -1,5 +1,17 @@
 # API Reference
 
+## 消息渠道（messageChannels）
+
+`GET /api/pi/status.messageChannels=true` 表示消息渠道接口可用，不表示微信组件已安装或账号已连接。以下接口沿用工作台身份、Origin/CSRF、维护准入与 no-store；worker 内部凭据不能管理渠道。
+
+- `GET /api/pi/channels`：返回配置 `revision`、组件 installed/version/availableVersion/sources、脱敏 accounts、bindings、已允许 peers、最近 60 条 jobs、当前登录的二维码布尔矩阵/status/expiresAt 和 capabilities。没有账号 token、微信 context token、登录验证码或消息正文。
+- `POST /api/pi/channels/weixin/actions`：共同字段 `{action, confirmed:true, expectedRevision}`。操作在 await 前预占互斥；冲突 409，其他失败 400，结果不确定不自动重放。当前支持 `install`、`uninstall`、`login`、`cancel-login`、`verify-login`、`account`、`bind`、`unbind`、`stop`、`recover`、`acknowledge`。
+- `cancel-login` 需要 loginId；`verify-login` 需要 loginId/code（1–12 位数字）；登录最多五分钟，通过 GET 查询进度，不由浏览器重复提交登录请求。
+- `account` 需要 accountId/enabled/allowedUsers（最多 100 个 1–256 字符 ID）；启用必须有非空允许列表。`bind` 需要 accountId/peerId/cwd 和 sessionId，或显式 newSession=true。`unbind` 需要 accountId/peerId。最多 10 个账号、200 条绑定、500 个已允许聊天；临时及管理助手线程不接受绑定。
+- `stop`、`recover`、`acknowledge` 需要 jobId。stop 仅请求中止所属微信运行；recover 仅在未开始微信发送且原生当前分支存在已完成结果时恢复发送；acknowledge 不重跑、不补发。
+
+状态、队列预算、组件来源与存储见[消息渠道](MESSAGE_CHANNELS.md)。原生私有命令标记 `channels-v1` 不加入公开 RPC 命令白名单；`pivane-channel-message` 是唯一聊天正文，`pivane-channel-turn` 记录运行状态和回复条目 ID。浏览器只按真实回执显示送达，不以模型输出结束推断微信收到。
+
 ## 成果中心（artifacts）
 
 `GET /api/pi/status.artifacts` 表示成果能力；`GET /api/pi/activity.artifactOperations` 为真实读写操作数量。`GET /api/pi/artifacts` 仍返回有界、来源重验的待保存目录；新增 `/artifacts/library` 独立库分页、`POST /artifacts/batch` 逐文件／批量保存、星标、合集、重命名、项目标签、导出、回收站和永久删除（purge 可从任意视图永久删除已保存的库条目，要求 confirmed=true、精确 library ID 及当前 revision；中断的删除在回收站显示为删除待核对／deletionPending），`GET /artifacts/operations/:requestId` 核对不确定写入。`/artifacts/:key/preview|cover|origin|location` 按来源 key 或稳定 library ID 读取。已独立保存的文件不依赖来源会话；删除会话与删除成果副本分开。原交付链接语义不变，source key 仍不是授权。完整字段、确认／修订、预算和错误见 [成果中心](ARTIFACTS.md#预算资格与接口)。

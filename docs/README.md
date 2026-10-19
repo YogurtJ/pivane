@@ -33,6 +33,7 @@
 | 输入、命令模板、Shell | [命令与模板](COMPOSER_TOOLS.md) · [Shell](WEB_SHELL.md) |
 | 停止、重试、运行与配置恢复 | [运行控制](NATIVE_CONTROLS.md) · [运行与配置恢复](NATIVE_COMPLETION.md) |
 | 历史、分叉、导入导出 | [历史](HISTORY.md) · [工作流](SESSION_WORKFLOWS.md) · [导入导出](SESSION_TRANSFER.md) |
+| 将微信文字私聊绑定到原生线程 | [微信与消息渠道](MESSAGE_CHANNELS.md) |
 | 围绕当前任务的临时侧聊 | [侧聊](SIDE_CHAT.md) |
 | 让 Agent 新开线程交办任务、线程间直接沟通 | [Agent 任务线程与线程间消息](AGENT_THREADS.md) |
 | 周期执行、文字问候与身份主线程 | [定时任务](SCHEDULED_TASKS.md) |

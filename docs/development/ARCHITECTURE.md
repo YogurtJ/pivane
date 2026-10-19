@@ -80,6 +80,12 @@ Pi 1.1.0 原生 MCP/Codemode 经 `pi-native-mcp.mjs` 和受管 ResourceLoader �
 
 相关契约：[辅助模型](../AUXILIARY_MODELS.md)、[记忆适配](../PROFILE_MEMORY.md)、[任务线程](../AGENT_THREADS.md)、[侧聊](../SIDE_CHAT.md)、[原生设置](../NATIVE_SETTINGS.md)。
 
+## 外部消息渠道
+
+`channels/service` 在服务端维护一个账号一个轮询连接，与 `channels/store` 的私有配置、游标、待发送意图及回执配合；消息正文在进入原生会话后移除，不建立平行聊天历史。`channels/weixin-component` 仅在用户安装时获取锁定哈希的上游归档，在有界内存解析后装配审查过的模块；账户、私密日志和受限网络边界由 Pivane 提供，上游原件与许可保留。默认用户不创建渠道数据或周期任务。
+
+`worker.channelTurn` 使用已有 exclusive 槽，保留至原生 settled 或实际进程退出；`message-channel` 投影参加生命周期。私有 channel 命令通过已有导航 nonce 管道启动原生 custom message，`channels/runtime` 将运行身份和回复 entry 引用写入原生记录。回复发送前重新核对绑定、允许用户与当前原生分支；发送中和执行中的重启记录标为不确定，不重放。操作与登录参加维护空闲，长轮询在正常停机中取消；组件卸载不删除线程。界面、限额与恢复规则见[消息渠道](../MESSAGE_CHANNELS.md)。
+
 ## 实例网络
 
 `WorkspaceNetworkService` 拥有私有 pivane-network.json 的监听与代理草稿修订、启动快照和固定目标诊断；访问认证仍由 WorkspaceAccessService 负责。配置保存不热切换网络；HOST 部署覆盖优先，新实例回环默认在首次启动持久化，已识别旧受管安装保留原默认。网络 API 经过现有认证、CSRF 和维护 HTTP 占用。

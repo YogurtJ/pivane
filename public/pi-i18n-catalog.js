@@ -10115,5 +10115,6 @@
         ["子 Agent 监督待澄清", "Subagent watchdog needs clarification"]
     );
     rows.push(["媒体状态查询超时", "Media status request timed out"]);
+    rows.push(["连接微信…", "Connect to WeChat…"]);
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();
