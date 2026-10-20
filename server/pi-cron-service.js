@@ -7,6 +7,8 @@ const fail = (message, status = 400) => { throw Object.assign(new Error(message)
 const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(value);
 const number = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const TERMINAL = new Set(['completed', 'silent', 'skipped', 'stopped', 'error', 'failed', 'cancelled']);
+const notificationReason = value => String(value || 'Channel admission failed').slice(0, 500);
 function limits(value, defaults = { maxRunsPerDay: 8, maxTokensPerDay: 200000, maxCostPerDay: null }) {
     const result = Object.fromEntries(Object.keys(defaults).map(key => [key, value?.[key] === undefined ? defaults[key] : value[key]]));
     if (!number(result.maxRunsPerDay, 1, 1000) || !number(result.maxTokensPerDay, 1000, 10000000)
@@ -47,9 +49,9 @@ function validateJob(input, now) {
         misfire: { policy: misfire.policy, graceMinutes: misfire.graceMinutes }, execution, budget: limits(input.budget) };
 }
 class CronService {
-    constructor({ store, supervisor, profiles, catalog, isSuspended = () => false, now = Date.now, filename }) {
-        Object.assign(this, { store, supervisor, profiles, catalog, isSuspended, now, filename });
-        this.stopping = false; this.running = null; this.mutating = null; this.db = null; this.error = null;
+    constructor({ store, supervisor, profiles, catalog, isSuspended = () => false, now = Date.now, filename, captureChannelNotify, onChannelNotify }) {
+        Object.assign(this, { store, supervisor, profiles, catalog, isSuspended, now, filename, captureChannelNotify, onChannelNotify });
+        this.stopping = false; this.running = null; this.mutating = null; this.notifying = null; this.db = null; this.error = null;
         this.ready = this.initialize();
         this.timer = setInterval(() => { void this.tick(); }, 1000); this.timer.unref?.();
     }
@@ -72,7 +74,7 @@ class CronService {
             }
         } catch (error) { this.error = error.message; }
     }
-    get busy() { return Boolean(this.running || this.mutating); }
+    get busy() { return Boolean(this.running || this.mutating || this.notifying); }
     healthy() { if (this.error) fail(this.error, 503); if (!this.db) fail('Scheduler is loading', 503); }
     reserve(action) {
         if (this.stopping || this.isSuspended() || this.mutating) fail('Scheduler is busy or workspace is stopping', 409);
@@ -85,6 +87,7 @@ class CronService {
         const now = this.now(), day = new Date(now).toISOString().slice(0, 10);
         return { schedulerError: this.lastError || null, jobs: this.db.jobs().filter(job => !job.deleted).map(job => ({ ...job, today: this.db.usage(day, job.id),
             lastRun: this.db.runs(job.id)[0] || null })), homes: this.db.homes(), limits: this.db.limits(), today: this.db.usage(day),
+            channelNotifications: this.db.channelNotificationSummary(),
             capabilities: { maxJobs: 100, maxRuns: 10000, budgetDay: 'UTC', cost: 'estimated', maxConcurrent: 2 }, serverTime: now };
     }
     async target(target) {
@@ -200,7 +203,8 @@ class CronService {
                         await worker.cron({ action: 'acknowledge', runId: run.id });
                     }
                 }
-                this.db.saveRun({ ...run, status: 'stopped', reason: 'reviewed-uncertain', completedAt: this.now() });
+                if (this.db.run(run.id)?.status === 'uncertain')
+                    this.db.saveRun({ ...this.db.run(run.id), status: 'stopped', reason: 'reviewed-uncertain', completedAt: this.now() });
                 return this.db.run(run.id);
             }
             if (input.action === 'stop') {
@@ -244,6 +248,7 @@ class CronService {
                 if (this.db.activeRuns().filter(run => ['dispatching', 'running'].includes(run.status)).length >= 2) break;
                 await this.dispatch(run);
             }
+            await this.reconcileChannelNotifications();
         }).catch(error => { this.lastError = error.message; }).finally(() => { this.running = null; });
         return this.running;
     }
@@ -299,21 +304,78 @@ class CronService {
             this.db.saveRun({ ...run, status, reason: error.message, completedAt: status === 'failed' ? this.now() : undefined });
         }
     }
+    captureNotification(event) {
+        const notification = { status: 'pending', event: { ...event, recipients: [] }, attempts: 0, nextAttemptAt: this.now() };
+        try {
+            if (typeof this.captureChannelNotify !== 'function') throw new Error('Channel recipient capture is unavailable');
+            const recipients = this.captureChannelNotify(JSON.parse(JSON.stringify(event)));
+            if (recipients && typeof recipients.then === 'function') {
+                void Promise.resolve(recipients).catch(() => {});
+                throw new Error('Channel recipient capture must be synchronous');
+            }
+            if (!Array.isArray(recipients) || recipients.length > 200) throw new Error('Invalid channel recipient snapshot');
+            const encoded = JSON.stringify({ ...event, recipients });
+            if (Buffer.byteLength(encoded) > 65536) throw new Error('Channel recipient snapshot exceeds its budget');
+            notification.event = JSON.parse(encoded);
+        } catch (error) {
+            Object.assign(notification, { status: 'skipped', reason: 'capture-error', lastError: notificationReason(error?.message || error), resolvedAt: this.now() });
+        }
+        return notification;
+    }
     applyResult(run, result) {
         if (!result) return;
-        const status = result.status === 'prepared' ? 'uncertain' : result.status === 'settled' ? 'running' : result.status;
-        const complete = ['completed', 'silent', 'skipped', 'stopped', 'error'].includes(status);
-        this.db.saveRun({ ...run, status, reason: result.reason, model: result.model, thinkingLevel: result.thinkingLevel,
-            usage: result.usage, replyEntryId: result.replyEntryId, ...(complete ? { completedAt: result.completedAt || this.now() } : {}) });
-        if (complete && status !== 'silent' && status !== 'skipped' && run.status !== status) {
-            this.supervisor.emit('completion', { cwd: run.target.cwd, sessionId: run.target.sessionId,
-                completionId: run.id, completedAt: new Date(this.now()).toISOString() });
+        let completed = false;
+        this.db.transaction(() => {
+            run = this.db.run(run.id) || run;
+            if (TERMINAL.has(run.status)) return;
+            const status = result.status === 'prepared' ? 'uncertain' : result.status === 'settled' ? 'running' : result.status;
+            const complete = ['completed', 'silent', 'skipped', 'stopped', 'error'].includes(status);
+            completed = complete && status !== 'silent' && status !== 'skipped';
             const job = run.job || this.db.job(run.jobId);
-            if (job?.notifyWeixin && typeof this.onChannelNotify === 'function') {
-                void Promise.resolve(this.onChannelNotify({ runId: run.id, jobId: job.id, name: job.name, status,
-                    target: run.target, replyEntryId: result.replyEntryId || null, scheduledAt: run.scheduledAt })).catch(() => {});
+            const channelNotify = completed && job?.notifyWeixin ? this.captureNotification({
+                runId: run.id, jobId: job.id, name: job.name, status, target: run.target,
+                replyEntryId: result.replyEntryId || null, scheduledAt: run.scheduledAt
+            }) : null;
+            this.db.saveRun({ ...run, status, reason: result.reason, model: result.model, thinkingLevel: result.thinkingLevel,
+                usage: result.usage, replyEntryId: result.replyEntryId, ...(complete ? { completedAt: result.completedAt || this.now() } : {}),
+                ...(channelNotify ? { channelNotify } : {}) });
+        });
+        if (completed) this.supervisor.emit('completion', { cwd: run.target.cwd, sessionId: run.target.sessionId,
+            completionId: run.id, completedAt: new Date(this.now()).toISOString() });
+    }
+    reconcileChannelNotifications() {
+        if (this.notifying || this.stopping || this.isSuspended() || this.mutating) return this.notifying;
+        const pending = Promise.resolve().then(async () => {
+            await this.ready; this.healthy();
+            for (const run of this.db.pendingChannelNotifications()) {
+                if (this.stopping || this.isSuspended() || this.mutating) break;
+                const notification = run.channelNotify, job = this.db.job(run.jobId);
+                if (!job || job.deleted || job.notifyWeixin === false) {
+                    this.db.updateChannelNotification(run.id, notification.attempts, { ...notification,
+                        status: 'skipped', reason: 'configuration-revoked', resolvedAt: this.now() });
+                    continue;
+                }
+                if (notification.nextAttemptAt > this.now()) continue;
+                const attempts = Math.min(notification.attempts + 1, 1000000);
+                const backoff = Math.min(60000, 1000 * 2 ** Math.min(attempts - 1, 6));
+                const attempt = { ...notification, attempts, nextAttemptAt: this.now() + backoff };
+                if (!this.db.updateChannelNotification(run.id, notification.attempts, attempt)) continue;
+                let response;
+                try {
+                    if (typeof this.onChannelNotify !== 'function') throw new Error('Channel admission is unavailable');
+                    // This hook only admits locally, idempotently by runId; it must never perform a network send.
+                    response = await this.onChannelNotify(JSON.parse(JSON.stringify(attempt.event)));
+                    if (!['accepted', 'skipped', 'retry'].includes(response?.status)) throw new Error('Unrecognized channel admission result');
+                } catch (error) { response = { status: 'retry', reason: notificationReason(error?.message || error) }; }
+                const resolved = response.status === 'accepted' || response.status === 'skipped';
+                this.db.updateChannelNotification(run.id, attempts, { ...attempt, status: resolved ? response.status : 'pending',
+                    nextAttemptAt: this.now() + backoff,
+                    reason: notificationReason(response.reason || (resolved ? response.status : 'admission-retry')),
+                    ...(resolved ? { resolvedAt: this.now(), lastError: null } : { lastError: notificationReason(response.reason) }) });
             }
-        }
+        });
+        this.notifying = pending;
+        return pending.finally(() => { if (this.notifying === pending) this.notifying = null; });
     }
     async reconcile() {
         for (const run of this.db.activeRuns().filter(run => ['running', 'dispatching', 'uncertain'].includes(run.status))) {
@@ -344,7 +406,7 @@ class CronService {
     }
     async dispose() {
         this.stopping = true; clearInterval(this.timer);
-        await this.ready; await this.running; await this.mutating?.catch(() => {});
+        await this.ready; await this.running; await this.mutating?.catch(() => {}); await this.notifying;
         this.db?.close();
     }
 }

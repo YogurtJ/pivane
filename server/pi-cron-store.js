@@ -61,8 +61,34 @@ class CronStore {
     runCount() { return this.db.prepare('SELECT count(*) AS n FROM runs').get().n; }
     run(id) { const row = this.db.prepare('SELECT data FROM runs WHERE id=?').get(id); return row ? JSON.parse(row.data) : null; }
     saveRun(run) {
+        // Notification acknowledgements and stale worker results must not erase each other.
+        const previous = this.run(run.id);
+        if (previous?.channelNotify) run = { ...run, channelNotify: previous.channelNotify };
         if (!ACTIVE.has(run.status)) { run = { ...run, jobRevision: run.job?.revision ?? run.jobRevision }; delete run.job; }
         this.db.prepare('INSERT OR REPLACE INTO runs VALUES (?,?,?,?)').run(run.id, run.jobId, run.scheduledAt, JSON.stringify(run));
+    }
+    pendingChannelNotifications() {
+        return this.db.prepare("SELECT data FROM runs WHERE json_extract(data,'$.channelNotify.status')='pending' ORDER BY at")
+            .all().map(row => JSON.parse(row.data));
+    }
+    channelNotificationSummary() {
+        const row = this.db.prepare(`SELECT
+            count(*) FILTER (WHERE json_extract(data,'$.channelNotify.status')='pending') AS pending,
+            count(*) FILTER (WHERE json_extract(data,'$.channelNotify.status')='skipped'
+                AND json_extract(data,'$.channelNotify.reason')='capture-error') AS failed,
+            count(*) FILTER (WHERE json_extract(data,'$.channelNotify.status')='pending'
+                AND json_extract(data,'$.channelNotify.lastError') IS NOT NULL) AS retrying
+            FROM runs WHERE json_type(data,'$.channelNotify') IS NOT NULL`).get();
+        return { pending: row.pending, failed: row.failed,
+            lastError: row.retrying ? 'channel-admission-pending' : row.failed ? 'channel-capture-failed' : null };
+    }
+    updateChannelNotification(id, attempts, notification) {
+        return this.transaction(() => {
+            const run = this.run(id);
+            if (run?.channelNotify?.status !== 'pending' || run.channelNotify.attempts !== attempts) return false;
+            this.db.prepare('UPDATE runs SET data=? WHERE id=?').run(JSON.stringify({ ...run, channelNotify: notification }), id);
+            return true;
+        });
     }
     home(id) { const row = this.db.prepare('SELECT data FROM homes WHERE profileId=?').get(id); return row ? JSON.parse(row.data) : null; }
     homes() { return this.db.prepare('SELECT profileId,data FROM homes').all().map(row => ({ profileId: row.profileId, ...JSON.parse(row.data) })); }
