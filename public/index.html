@@ -674,27 +674,26 @@
                     </section>
 
                     <section class="workspace-settings-panel" data-settings-panel="media">
-                        <div class="settings-panel-header"><i class="fa-solid fa-photo-film" aria-hidden="true"></i><div><h3 id="settings-capabilities-title">模型与能力</h3><p><!--i18n:s1517-->接入自己的图像、视频和语音服务，模型 ID 由你选择。</p></div></div>
-                        <h4 id="settings-multimodal-title">多模态</h4>
-                        <div class="mc-settings-kinds">
-                            <button type="button" data-media-settings-kind="image"><i class="fa-regular fa-image"></i><strong><!--i18n:s109-->图像</strong><span>OpenAI、Gemini、Seedream</span></button>
-                            <button type="button" data-media-settings-kind="video"><i class="fa-solid fa-film"></i><strong><!--i18n:s108-->视频</strong><span><!--i18n:s1518-->Seedance、自定义异步服务</span></button>
-                            <button type="button" id="settings-speech-open" data-media-settings-kind="tts"><i class="fa-solid fa-volume-high"></i><strong><!--i18n:s107-->语音</strong><span><!--i18n:s3529-->朗读与语音转文字</span></button>
-                        </div>
-                        <p class="settings-help"><!--i18n:s1520-->选择常用服务，填写地址、Key 和模型 ID。高级参数可按需展开，也可让 Agent 根据 API 文档填写接入草稿。</p>
-                        <p class="settings-help"><!--i18n:s1521-->同一服务的模型共用 Key。保存接入后，在实验室检查清单并确认生成；回复朗读默认模型在“使用偏好”中选择。</p>
-                        <section id="settings-media-chat-execution" class="settings-feature-card" aria-labelledby="settings-media-chat-execution-title">
-                            <div class="settings-feature-title">
-                                <span class="settings-model-icon"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i></span>
-                                <div>
-                                    <h4 id="settings-media-chat-execution-title">对话媒体卡片自动生成</h4>
-                                    <p class="settings-feature-description">当 Agent 在对话中调用媒体生成时，开启的类型将直接开始生成并保留卡片记录（微信私聊中完成后会自动发回图片或音频）；未开启的类型（如视频）仍需在卡片或通过微信 /confirm 确认后才生成。</p>
-                                </div>
+                        <div class="settings-panel-header"><i class="fa-solid fa-photo-film" aria-hidden="true"></i><div><h3 id="settings-capabilities-title">模型与能力</h3><p><!--i18n:s4277-->配置媒体服务与 Agent 能力。</p></div></div>
+                        <section class="settings-media-section" aria-labelledby="settings-multimodal-title">
+                            <header class="settings-media-heading"><h4 id="settings-multimodal-title"><!--i18n:s4278-->媒体服务</h4><p><!--i18n:s4279-->选择类型，管理服务与模型。</p></header>
+                            <div class="mc-settings-kinds">
+                                <button type="button" data-media-settings-kind="image"><i class="fa-regular fa-image settings-media-kind-icon" aria-hidden="true"></i><span class="settings-media-kind-copy"><strong><!--i18n:s109-->图像</strong><span><!--i18n:s4280-->图像生成与编辑</span></span><i class="fa-solid fa-chevron-right settings-media-chevron" aria-hidden="true"></i></button>
+                                <button type="button" data-media-settings-kind="video"><i class="fa-solid fa-film settings-media-kind-icon" aria-hidden="true"></i><span class="settings-media-kind-copy"><strong><!--i18n:s108-->视频</strong><span><!--i18n:s4281-->文字、图片生成视频</span></span><i class="fa-solid fa-chevron-right settings-media-chevron" aria-hidden="true"></i></button>
+                                <button type="button" id="settings-speech-open" data-media-settings-kind="tts"><i class="fa-solid fa-volume-high settings-media-kind-icon" aria-hidden="true"></i><span class="settings-media-kind-copy"><strong><!--i18n:s107-->语音</strong><span><!--i18n:s3529-->朗读与语音转文字</span></span><i class="fa-solid fa-chevron-right settings-media-chevron" aria-hidden="true"></i></button>
                             </div>
-                            <label class="settings-toggle-line" for="settings-media-auto-image"><strong>图像（生图 / 图生图）自动开始生成</strong><input id="settings-media-auto-image" type="checkbox" checked></label>
-                            <label class="settings-toggle-line" for="settings-media-auto-tts"><strong>语音（TTS 合成）自动开始生成</strong><input id="settings-media-auto-tts" type="checkbox" checked></label>
-                            <label class="settings-toggle-line" for="settings-media-auto-video"><strong>视频自动开始生成（建议保持关闭以先核对参数）</strong><input id="settings-media-auto-video" type="checkbox"></label>
-                            <p id="settings-media-chat-execution-status" role="status" aria-live="polite"></p>
+                            <section id="settings-media-chat-execution" aria-labelledby="settings-media-chat-execution-title" aria-describedby="settings-media-chat-execution-description">
+                                <div class="settings-media-heading">
+                                    <h4 id="settings-media-chat-execution-title"><!--i18n:s4282-->对话自动生成</h4>
+                                    <p id="settings-media-chat-execution-description"><!--i18n:s4283-->开启后直接生成，关闭则先确认。</p>
+                                </div>
+                                <div class="settings-media-toggles">
+                                    <label class="settings-toggle-line" for="settings-media-auto-image"><span><!--i18n:s109-->图像</span><input id="settings-media-auto-image" type="checkbox" role="switch" checked></label>
+                                    <label class="settings-toggle-line" for="settings-media-auto-video"><span><!--i18n:s108-->视频</span><input id="settings-media-auto-video" type="checkbox" role="switch"></label>
+                                    <label class="settings-toggle-line" for="settings-media-auto-tts"><span><!--i18n:s107-->语音</span><input id="settings-media-auto-tts" type="checkbox" role="switch" checked></label>
+                                </div>
+                                <p id="settings-media-chat-execution-status" role="status" aria-live="polite"></p>
+                            </section>
                         </section>
                         <section id="settings-subagents"></section>
                     </section>

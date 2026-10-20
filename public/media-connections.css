@@ -24,20 +24,6 @@
 .mc-dialog .lab-field { overflow-wrap: anywhere; }
 .mc-presets { padding: 16px; margin-bottom: 20px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-1); }
 .mc-protocol-summary { font-size: 13px; line-height: 1.7; color: var(--text-muted); margin: 0 0 4px; overflow-wrap: anywhere; }
-.mc-settings-kinds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 24px 0; }
-[data-settings-panel="media"] :is(.settings-help, .settings-section-header p) { font-size: 13px; line-height: 1.75; color: var(--text-muted); margin: 8px 0 12px; overflow-wrap: anywhere; }
-.mc-settings-kinds button { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; min-width: 0; padding: 24px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--text-main); text-align: left; cursor: pointer; }
-.mc-settings-kinds button:hover { border-color: var(--primary); background: var(--surface-1); }
-.mc-settings-kinds button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
-.mc-settings-kinds i { color: var(--primary); font-size: 22px; }
-.mc-settings-kinds strong { font-size: 16px; }
-.mc-settings-kinds span { font-size: 12px; line-height: 1.6; color: var(--text-muted); overflow-wrap: anywhere; }
-@media (max-width: 680px) {
-    .mc-settings-kinds { grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 16px 0; }
-    .mc-settings-kinds button { display: grid; grid-template-columns: 28px minmax(0, 1fr); padding: 18px; gap: 6px 14px; }
-    .mc-settings-kinds i { grid-row: span 2; align-self: center; }
-    .mc-settings-kinds span { grid-column: 2; }
-}
 .mc-dialog > header h2 { flex: 1; }
 .mc-dialog .wide { grid-column: 1 / -1; }
 .mc-dialog .lab-fields { align-items: start; }

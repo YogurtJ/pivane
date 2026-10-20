@@ -10130,5 +10130,14 @@
         ["聊天媒体执行策略参数无效", "Invalid in-chat media execution policy parameters"],
         ["聊天媒体执行策略需要布尔值", "In-chat media execution policy requires boolean values"],
         ["聊天媒体执行策略已变化，请刷新后再保存", "In-chat media execution policy changed; refresh before saving"]);
+    rows.push(
+        ['配置媒体服务与 Agent 能力。', 'Configure media services and Agent capabilities.'],
+        ['媒体服务', 'Media services'],
+        ['选择类型，管理服务与模型。', 'Choose a type to manage services and models.'],
+        ['图像生成与编辑', 'Generate and edit images'],
+        ['文字、图片生成视频', 'Text or images to video'],
+        ['对话自动生成', 'Auto-generate in chat'],
+        ['开启后直接生成，关闭则先确认。', 'Start immediately when enabled; ask first when disabled.']
+    );
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

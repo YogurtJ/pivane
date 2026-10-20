@@ -20,7 +20,6 @@
             this.epoch = 0; this.scope = 'global'; this.drafts = new Map(); this.expanded = new Set(); this.busy = false;
             document.querySelector('[data-settings-tab="media"] span').textContent = t('模型与能力');
             document.getElementById('settings-capabilities-title').textContent = t('模型与能力');
-            document.getElementById('settings-multimodal-title').textContent = t('多模态');
         }
         close() { this.epoch++; this.closePicker(); }
         closePicker() { if (this.picker) { this.picker.close(); this.picker.remove(); this.picker = null; } }

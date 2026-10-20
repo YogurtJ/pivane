@@ -128,11 +128,63 @@
         featureState.setAttribute('aria-live', 'polite');
         app?.append(featureState);
         const featureText = (zh, en) => window.PiI18n?.locale === 'en' ? en : zh;
+        function settingsLoadingPage(params) {
+            const tab = settingsTabs.has(params.get('tab')) ? params.get('tab') : 'providers';
+            const names = { providers: ['供应商与模型', 'Providers and models'], media: ['模型与能力', 'Models & capabilities'], models: ['使用偏好', 'Preferences'], 'system-prompts': ['系统提示词', 'System prompts'], native: ['Pi 配置', 'Pi configuration'], access: ['访问控制', 'Access control'], usage: ['用量统计', 'Usage'], updates: ['版本与更新', 'Versions and updates'] };
+            const page = document.createElement('div'); page.className = 'workspace-feature-settings'; page.dataset.loadingTab = tab;
+            const header = document.createElement('header'); header.className = 'workspace-settings-header';
+            const heading = document.createElement('div');
+            const kicker = document.createElement('span'); kicker.className = 'pi-pane-kicker'; kicker.textContent = 'PI WORKSPACE';
+            const title = document.createElement('h2'); title.textContent = featureText('工作台设置', 'Workspace settings');
+            heading.append(kicker, title);
+            const back = document.createElement('button'); back.type = 'button'; back.className = 'icon-btn subtle';
+            back.setAttribute('aria-label', featureText('返回对话', 'Back to conversation'));
+            back.innerHTML = '<i class="fa-solid fa-arrow-left" aria-hidden="true"></i>';
+            back.addEventListener('click', () => window.PiWorkspaceRoute.returnToConversation());
+            header.append(heading, back);
+            const body = document.createElement('div'); body.className = 'workspace-feature-settings-body';
+            const nav = document.createElement('div'); nav.className = 'workspace-feature-settings-nav pv-skeleton'; nav.setAttribute('aria-hidden', 'true');
+            nav.innerHTML = [...settingsTabs].map(key => `<span class="workspace-settings-placeholder-nav${key === tab ? ' is-current' : ''}"><span class="pv-skel-icon"></span><span class="pv-skel-line"></span></span>`).join('');
+            const content = document.createElement('div'); content.className = 'workspace-feature-settings-content';
+            const panel = document.createElement('div'); panel.className = 'workspace-feature-settings-panel';
+            const panelTitle = document.createElement('h3'); panelTitle.textContent = featureText(...names[tab]);
+            const status = document.createElement('p'); status.className = 'workspace-feature-page-status'; status.setAttribute('role', 'status');
+            const spinner = document.createElement('span'); spinner.className = 'pi-spinner'; spinner.setAttribute('aria-hidden', 'true');
+            status.append(spinner, document.createTextNode(featureText('正在加载设置…', 'Loading settings…')));
+            const panelHeader = document.createElement('div'); panelHeader.className = 'workspace-feature-settings-heading'; panelHeader.append(panelTitle, status);
+            const skeleton = document.createElement('div'); skeleton.className = 'workspace-settings-placeholder pv-skeleton'; skeleton.dataset.layout = tab; skeleton.setAttribute('aria-hidden', 'true');
+            const lines = rows => window.PiSkeleton.html('lines', { rows, decorative: true });
+            const section = rows => '<div class="workspace-settings-placeholder-section"><span class="pv-skel-line is-heading"></span>'
+                + Array.from({ length: rows }, () => '<span class="workspace-settings-placeholder-field"><span class="pv-skel-line"></span><span class="pv-skel-block"></span></span>').join('') + '</div>';
+            if (tab === 'providers') {
+                skeleton.innerHTML = '<div class="workspace-feature-page-toolbar"><span class="pv-skel-line"></span><span class="pv-skel-line"></span></div>'
+                    + '<div class="workspace-settings-placeholder-section">' + window.PiSkeleton.html('list', { rows: 6, decorative: true }) + '</div>';
+            } else if (tab === 'media') {
+                skeleton.innerHTML = window.PiSkeleton.html('cards', { rows: 3, decorative: true }) + section(3) + section(2);
+            } else if (tab === 'usage') {
+                skeleton.innerHTML = window.PiSkeleton.html('cards', { rows: 4, decorative: true })
+                    + '<div class="workspace-settings-placeholder-section"><span class="pv-skel-line is-heading"></span><span class="pv-skel-block is-chart"></span>' + lines(3) + '</div>';
+            } else if (tab === 'system-prompts') {
+                skeleton.innerHTML = '<div class="workspace-feature-page-toolbar"><span class="pv-skel-line"></span><span class="pv-skel-line"></span></div>'
+                    + '<div class="workspace-settings-placeholder-section is-editor"><span class="pv-skel-line is-heading"></span>' + lines(8) + '</div>';
+            } else {
+                skeleton.innerHTML = section(3) + section(3);
+            }
+            panel.append(panelHeader, skeleton); content.append(panel); body.append(nav, content); page.append(header, body);
+            return page;
+        }
         function featureStatus(error, retry) {
             featureState.replaceChildren();
-            const pageLoading = !error && parseRoute().tab === 'extensions';
+            const route = parseRoute();
+            const settingsLoading = !error && route.tab === 'settings';
+            const pageLoading = !error && route.tab === 'extensions';
+            featureState.classList.toggle('is-settings-loading', settingsLoading);
             featureState.classList.toggle('is-page-loading', pageLoading);
             featureState.setAttribute('aria-busy', String(!error));
+            if (settingsLoading) {
+                featureState.append(settingsLoadingPage(route.params));
+                return;
+            }
             if (pageLoading) {
                 const page = document.createElement('div'); page.className = 'workspace-feature-page';
                 const header = document.createElement('header'); header.className = 'workspace-feature-page-header';
