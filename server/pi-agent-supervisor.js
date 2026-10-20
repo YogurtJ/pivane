@@ -576,9 +576,10 @@ class AgentWorker extends EventEmitter {
             const before = find(await this.client.request('get_commands'));
             if (!before) throw new Error('当前 runtime 尚未加载重载接口，请在任务结束后退出并重新打开会话');
             try {
-                this.loadedAgentProfileConfirmed = false;
-                this.loadedAssistantProjectConfirmed = false;
-                await rpc('prompt', { message: `/${before.name} ${JSON.stringify({ mode: 'reload', token: this.navigationToken })}` }, 120000);
+                await rpc('prompt', { message: `/${before.name} ${JSON.stringify({ mode: 'reload', token: this.navigationToken })}` }, 120000, () => {
+                    this.loadedAgentProfileConfirmed = false;
+                    this.loadedAssistantProjectConfirmed = false;
+                });
                 const raw = await this.client.request('get_commands');
                 const after = find(raw);
                 const commands = { ...raw, commands: raw.commands.filter(c => !isInternalCommand(c.name)) };

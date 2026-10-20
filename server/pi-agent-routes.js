@@ -222,7 +222,7 @@ function createPiAgentGateway(options = {}) {
         ...options.channelsOptions });
     cron.captureChannelNotify = event => channels.captureScheduledRecipients(event);
     cron.onChannelNotify = event => channels.track(channels.notifyScheduledRun(event));
-    channels.canNotifyScheduled = id => Boolean(cron.db?.job(id)?.notifyWeixin);
+    channels.canNotifyScheduled = id => { const job = cron.db?.job(id); return Boolean(job && !job.deleted && job.notifyWeixin); };
     channels.scheduledAdmissionPending = id => cron.db?.run(id)?.channelNotify?.status === 'pending';
     require('./channels/service').mountChannels(router, channels);
 

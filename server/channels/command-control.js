@@ -24,8 +24,11 @@ function commandControl(service, job, run = {}) {
         return worker.exclusive(async (rpc, state) => {
             check();
             worker.channelCommandId = job.id;
-            const guardedRpc = (type, payload = {}, timeout) => rpc(type, payload,
-                type.startsWith('get_') ? timeout : null, type.startsWith('get_') ? check : submit);
+            const guardedRpc = (type, payload = {}, timeout, prepared) => rpc(type, payload,
+                type.startsWith('get_') ? timeout : null, () => {
+                    (type.startsWith('get_') ? check : submit)();
+                    prepared?.();
+                });
             try { return await callback(worker, guardedRpc, state, session); }
             finally { worker.channelCommandId = null; }
         });

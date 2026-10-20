@@ -222,6 +222,15 @@ test('authenticated optional channel connects, binds and delivers once through t
         service.pump(); await delay(40);
         assert.equal(service.db.value.jobs.length, jobsBeforeDuplicate, 'lost local admission acknowledgement cannot duplicate a channel job');
         assert.equal(sends.length, sendsBeforeDuplicate);
+        const originalPump = service.pump.bind(service); service.pump = () => {};
+        const deletionRun = await gateway.cron.action(cronJob.id, { action: 'run', revision: cronJob.revision, requestId: '33333333-3333-4333-8333-333333333333' });
+        await wait(async () => { await gateway.cron.tick(); return service.db.value.jobs.some(j => j.cronRunId === deletionRun.id && j.status === 'ready'); });
+        const deletionNotice = service.db.value.jobs.find(j => j.cronRunId === deletionRun.id);
+        const beforeDeleteSend = sends.length;
+        await gateway.cron.action(cronJob.id, { action: 'delete', revision: cronJob.revision });
+        service.pump = originalPump; service.pump();
+        await wait(() => service.job(deletionNotice.id).status === 'cancelled');
+        assert.equal(sends.length, beforeDeleteSend, 'deleted cron tombstone revokes already-admitted notifications');
         // /new command creates and rebinds to a fresh thread, then /resume lists and switches back by index or keyword
         service.receive('bot-one', { msgs: [incoming('slash-new', '/new 新建的微信会话')] }); service.pump();
         await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
@@ -255,6 +264,22 @@ test('authenticated optional channel connects, binds and delivers once through t
         gateway.supervisor.getWorker = nativeGetWorker;
         assert.equal((await worker.request('get_state')).model.id, 'vision', 'a cancelled command cannot mutate the real native model');
         assert.equal(service.db.value.jobs.at(-1).status, 'cancelled');
+        await action('account', { accountId: 'bot-one', enabled: true, allowedUsers: ['owner'] });
+        const nativeRequest = worker.client.request.bind(worker.client);
+        let announceReload, releaseReload;
+        const reloadStarted = new Promise(resolve => { announceReload = resolve; });
+        const reloadGate = new Promise(resolve => { releaseReload = resolve; });
+        const priorConfirmations = [worker.loadedAgentProfileConfirmed, worker.loadedAssistantProjectConfirmed];
+        worker.loadedAgentProfileConfirmed = true; worker.loadedAssistantProjectConfirmed = true;
+        worker.client.request = async (...args) => { if (args[0] === 'get_commands') { announceReload(); await reloadGate; } return nativeRequest(...args); };
+        service.receive('bot-one', { msgs: [incoming('revoke-reload', '/reload')] }); service.pump(); await reloadStarted;
+        await action('account', { accountId: 'bot-one', enabled: false, allowedUsers: ['owner'] });
+        releaseReload(); await wait(() => service.runs.size === 0);
+        worker.client.request = nativeRequest;
+        assert.equal(service.db.value.jobs.at(-1).status, 'cancelled');
+        assert.equal(worker.loadedAgentProfileConfirmed, true, 'cancelled reload preserves profile confirmation');
+        assert.equal(worker.loadedAssistantProjectConfirmed, true, 'cancelled reload preserves project confirmation');
+        [worker.loadedAgentProfileConfirmed, worker.loadedAssistantProjectConfirmed] = priorConfirmations;
         await action('account', { accountId: 'bot-one', enabled: true, allowedUsers: ['owner'] });
         replyText = 'Long reply '.repeat(500);
         sendHold = new Promise(resolve => { releaseSend = resolve; });
