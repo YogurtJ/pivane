@@ -56,6 +56,27 @@ function assertOwn(result) {
     assert.deepEqual(result.deliverables, [{ id: 'own-file', manifestRevision: 1 }]);
     assert.deepEqual(result.mediaPlans, [{ id: planId, kind: 'image', modelId: 'synthetic-image', summary: 'Own media', prompt: 'A fixture' }]);
 }
+async function appendBundledNotices(m) {
+    const { handleSubagentControlNotice } = await import('../vendor/pi-subagents/src/extension/control-notices.js');
+    const { default: registerSubagentNotify, createCompletionSendRegistry } = await import('../vendor/pi-subagents/src/runs/background/notify.js');
+    const sent = [];
+    const pi = { events: { on: () => () => {} }, isHeld: () => false,
+        sendMessage: (message, options) => {
+            sent.push({ message, options });
+            m.appendCustomMessageEntry(message.customType, message.content, message.display, message.details);
+        } };
+    handleSubagentControlNotice({ pi, state: {}, visibleControlNotices: new Set(),
+        details: { source: 'goal', noticeText: 'Synthetic goal continuation notice',
+            event: { type: 'needs_attention', to: 'needs_attention', ts: 1, runId: 'goal-fixture-turn-1',
+                agent: 'goal mission', message: 'Synthetic goal continuation notice', reason: 'idle' } } });
+    const notifier = registerSubagentNotify(pi, { currentSessionId: m.getSessionId() }, { sendRegistry: createCompletionSendRegistry() });
+    try {
+        assert.equal(await notifier.deliver({ id: 'synthetic-child', sessionId: m.getSessionId(), agent: 'worker',
+            source: 'foreground', success: true, summary: 'Synthetic saved child result', triggerTurn: false }), true);
+    } finally { notifier.dispose(); }
+    assert.deepEqual(sent.map(({ message, options }) => [message.customType, options.triggerTurn]),
+        [['subagent_control_notice', false], ['subagent-notify', false]]);
+}
 
 test('outcome bounds native channel files, media and reply before later web/cron/channel turns', () => {
     const m = SessionManager.create(root, path.join(root, 'sessions'));
@@ -211,6 +232,73 @@ test('registerChannelTurns settles the owned reply and reuses completion without
     laterTurns(m);
     assertOwn(command(ctx, input)); assert.equal(command(ctx, input).reused, true); assert.equal(sent.length, 1);
     assert.match(sent[0].content, /\/confirm/);
+});
+
+test('registerChannelTurns completes with owned reply, files and media across bundled native notices', async () => {
+    const m = manager(), handlers = {};
+    const command = registerChannelTurns({ on: (name, callback) => { handlers[name] = callback; },
+        appendEntry: (type, data) => m.appendCustomEntry(type, data),
+        sendMessage: message => m.appendCustomMessageEntry(message.customType, message.content, message.display, message.details) });
+    const ctx = { sessionManager: m, isIdle: () => true, hasPendingMessages: () => false, model: { input: ['text'] } };
+    command(ctx, { action: 'start', id: turnId, sessionId: m.getSessionId(), peerId: 'synthetic-peer', text: 'Synthetic request' });
+    await appendBundledNotices(m);
+    file(m); plan(m); const replyEntryId = assistant(m);
+    await appendBundledNotices(m);
+    handlers.agent_settled({}, ctx);
+    const result = outcome(m, turnId);
+    assert.equal(result.status, 'completed'); assert.equal(result.replyEntryId, replyEntryId); assertOwn(result);
+    laterTurns(m); assertOwn(outcome(m, turnId));
+});
+
+test('scheduledOutcome preserves owned reply, files and media through native cron settlement with bundled notices', async () => {
+    const { registerCron } = require('../server/pi-cron-runtime');
+    const m = manager(), handlers = {};
+    const command = registerCron({ on: (name, callback) => { handlers[name] = callback; },
+        appendEntry: (type, data) => m.appendCustomEntry(type, data),
+        sendMessage: message => m.appendCustomMessageEntry(message.customType, message.content, message.display, message.details),
+        getThinkingLevel: () => 'off', getActiveTools: () => [], setActiveTools: () => {}, setThinkingLevel: () => {}, setModel: async () => true });
+    const model = { provider: 'fixture', id: 'fixture' };
+    const ctx = { sessionManager: m, isIdle: () => true, hasPendingMessages: () => false, model,
+        modelRegistry: { find: () => model }, ui: { notify: () => {} } };
+    try {
+        await command(ctx, { action: 'start', runId, sessionId: m.getSessionId(), prompt: 'Synthetic scheduled request',
+            mode: 'work', maxCalls: 4, maxTokens: 1000, maxDurationSeconds: 60, scheduledAt: 1, name: 'Fixture', timeZone: 'UTC' });
+        await appendBundledNotices(m);
+        file(m); plan(m); const replyEntryId = assistant(m);
+        await appendBundledNotices(m);
+        handlers.agent_before_settle({ outcome: 'completed' }, ctx);
+        handlers.agent_settled({}, ctx);
+        const terminal = await command(ctx, { action: 'finish', runId });
+        assert.equal(terminal.status, 'completed'); assert.equal(terminal.replyEntryId, replyEntryId);
+        const event = cronEvent(m, replyEntryId);
+        assertOwn(scheduledOutcome(m, event));
+        laterTurns(m); assertOwn(scheduledOutcome(m, event));
+    } finally { handlers.session_shutdown(); }
+});
+
+test('native notices never replace owning input or authorize foreign and malformed prompts in channel or cron turns', async () => {
+    const foreignPrompts = [
+        m => m.appendMessage({ role: 'user', content: 'Foreign user input', timestamp: Date.now() }),
+        m => channelPrompt(m, 'foreign-turn'),
+        m => cronPrompt(m, 'foreign-run'),
+        m => m.appendCustomMessageEntry('unknown-prompt', 'Foreign context', true),
+        m => m.appendCustomMessageEntry('subagent_control_notice', 'Not a goal notice', true, { source: 'async', event: { type: 'needs_attention', runId: 'other' } }),
+        m => m.appendCustomMessageEntry('subagent-notify', 'Not a completion notice', true, { runs: [{ agent: 'worker', status: 'running' }] })
+    ];
+    for (const kind of ['channel', 'cron']) {
+        for (const [index, foreignPrompt] of [...foreignPrompts, null].entries()) {
+            const m = manager();
+            if (kind === 'channel') channel(m); else cron(m, 'running');
+            if (foreignPrompt) { if (kind === 'channel') channelPrompt(m); else cronPrompt(m); }
+            await appendBundledNotices(m);
+            if (foreignPrompt) foreignPrompt(m);
+            else if (kind === 'channel') channelPrompt(m); else cronPrompt(m);
+            const replyEntryId = assistant(m);
+            if (kind === 'channel') channel(m, { status: 'completed', replyEntryId });
+            else { cron(m, 'settled', { replyEntryId }); cron(m, 'completed', { replyEntryId }); }
+            assert.equal(kind === 'channel' ? outcome(m, turnId) : scheduledOutcome(m, cronEvent(m, replyEntryId)), null, `${kind} case ${index}`);
+        }
+    }
 });
 
 test('registerChannelTurns never selects a later web assistant after its running marker goes stale', () => {

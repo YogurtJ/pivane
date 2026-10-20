@@ -4,6 +4,18 @@ const DELIVERABLE_ENTRY = 'pivane-deliverable';
 const CRON_STATE = 'pivane-cron-run';
 const CRON_MESSAGE = 'pivane-cron-message';
 const TERMINAL = new Set(['completed', 'stopped', 'error']);
+const SUBAGENT_RESULT_STATUSES = new Set(['completed', 'failed', 'paused', 'stopped']);
+
+function isTurnNotice(entry) {
+    // Bundled control-notices sends goal notices without starting a turn;
+    // background/notify sends completion context with structured run results.
+    if (entry.customType === 'subagent_control_notice') {
+        return entry.details?.source === 'goal' && entry.details.event?.type === 'needs_attention'
+            && typeof entry.details.event.runId === 'string';
+    }
+    return entry.customType === 'subagent-notify' && Array.isArray(entry.details?.runs) && entry.details.runs.length > 0
+        && entry.details.runs.every(run => typeof run?.agent === 'string' && SUBAGENT_RESULT_STATUSES.has(run.status));
+}
 
 function stateFor(manager, id) {
     return manager.getBranch().findLast(entry => entry.type === 'custom' && entry.customType === STATE
@@ -22,6 +34,7 @@ function ownedEntries(branch, start, end, messageType, key, id) {
     let prompt = false;
     for (const entry of entries) {
         if (entry.type === 'custom_message') {
+            if (prompt && isTurnNotice(entry)) continue;
             if (prompt || entry.customType !== messageType || entry.details?.[key] !== id) return null;
             prompt = true;
         } else if (entry.type === 'message' && entry.message?.role === 'user') return null;
