@@ -24,7 +24,8 @@ class ChannelStore {
                 || typeof b.cwd !== 'string' || !path.isAbsolute(b.cwd) || b.cwd.length > 4096)
             || value.jobs.some(j => !j || typeof j.id !== 'string' || typeof j.status !== 'string')
             || value.peers.some(p => !p || !id(p.accountId) || !id(p.peerId) || typeof p.contextToken !== 'string' || p.contextToken.length > 8192
-                || p.typingTicket !== undefined && (typeof p.typingTicket !== 'string' || p.typingTicket.length > 4096)))
+                || p.typingTicket !== undefined && (typeof p.typingTicket !== 'string' || p.typingTicket.length > 4096)
+                || p.resumeCandidates !== undefined && (!Array.isArray(p.resumeCandidates) || p.resumeCandidates.length > 20 || p.resumeCandidates.some(c => !id(c)))))
             throw new Error('消息渠道账号或绑定记录无效');
         this.value = value; this.diskHash = hash(bytes);
     }

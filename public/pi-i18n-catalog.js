@@ -10116,6 +10116,8 @@
     );
     rows.push(["媒体状态查询超时", "Media status request timed out"]);
     rows.push(["连接微信…", "Connect to WeChat…"],
+        ["微信", "WeChat"],
+        ["来自已绑定的微信私聊", "From bound WeChat DM"],
         ["微信通知", "WeChat notification"],
         ["已启用（推送至已绑定微信）", "Enabled (send to bound WeChat)"],
         ["未启用", "Disabled"],

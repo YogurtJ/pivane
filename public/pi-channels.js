@@ -179,7 +179,7 @@
                 component.append(steps);
 
                 if (snapshot.component.error) component.append(el('p', snapshot.component.error, 'channel-inline-alert'));
-                component.append(el('p', t('支持文字、图片收发、deliver_files 文件交付、正在输入状态、斜杠指令（/help /status /stop /new /model）及定时任务通知推送。语音与普通微信群暂未开放。', 'Supports text, image send/receive, deliver_files attachments, typing indicator, slash commands (/help /status /stop /new /model) and scheduled task notifications. Voice and ordinary WeChat groups are not available yet.'), 'channel-note'));
+                component.append(el('p', t('支持文字、图片收发、deliver_files 文件交付、正在输入状态、斜杠指令（/help /status /stop /new /resume /name /model /thinking /compact /reload）及定时任务通知推送。语音与普通微信群暂未开放。', 'Supports text, image send/receive, deliver_files attachments, typing indicator, slash commands (/help /status /stop /new /resume /name /model /thinking /compact /reload) and scheduled task notifications. Voice and ordinary WeChat groups are not available yet.'), 'channel-note'));
                 const actions = el('div', null, 'channel-actions');
                 if (!snapshot.component.installed) actions.append(button(t('安装微信组件', 'Install WeChat connector'), () => write('install'), 'primary'));
                 else {

@@ -235,6 +235,10 @@
                 const item = turn.archive;
                 if (turn.summary) return item.summaryType === 'branch_summary' ? translateUi("分支摘要") : translateUi("上下文已压缩");
                 const text = clean(item.title);
+                if (item.kind === 'agent' && item.customType === 'pivane-channel-message') {
+                    const body = text.replace(/^\[用户通过已绑定的微信私聊发来消息。[\s\S]*?\]\s*/, '').trim();
+                    return [translateUi("微信"), body].filter(Boolean).join(' · ') || translateUi("无文字正文");
+                }
                 if (item.kind === 'agent') return [item.customType, text].filter(Boolean).join(' · ') || translateUi("无文字正文");
                 return text || (item.images ? translateUi("图片附件 {0} 张", item.images) : translateUi("无文字正文"));
             }
@@ -246,17 +250,18 @@
         readTitle(node) {
             if (node.matches('.pi-summary-notice')) return clean(node.querySelector(':scope > summary strong')?.textContent) || translateUi("摘要");
             if (node.matches('.pi-message.user')) {
+                const prefix = node.matches('.pi-channel-message') ? `${translateUi("微信")} · ` : '';
                 const body = node.querySelector('.pi-message-body');
                 for (const block of body?.querySelectorAll('.pi-markdown p') || []) {
                     if (block.closest('.pi-quote-card')) continue;
-                    const text = clean(block.textContent); if (text) return text;
+                    const text = clean(block.textContent); if (text) return `${prefix}${text}`;
                 }
                 const quote = clean(body?.querySelector('.pi-quote-preview')?.textContent);
-                if (quote) return `${translateUi("引用")} · ${quote}`;
+                if (quote) return `${prefix}${translateUi("引用")} · ${quote}`;
                 const file = clean(body?.querySelector('.pi-document-card strong')?.textContent);
-                if (file) return file;
+                if (file) return `${prefix}${file}`;
                 const images = body?.querySelectorAll('.pi-message-image').length || 0;
-                return images ? translateUi("图片附件 {0} 张", images) : translateUi("无文字正文");
+                return images ? `${prefix}${translateUi("图片附件 {0} 张", images)}` : `${prefix}${translateUi("无文字正文")}`;
             }
             // Scheduled tasks and Agent handoffs: "<card kind> · <first body line>".
             const message = node._piCustomMessage, offset = message?.details?.bodyOffset;

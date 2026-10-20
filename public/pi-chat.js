@@ -2902,14 +2902,32 @@ document.addEventListener('DOMContentLoaded', () => {
         if (role === 'custom' && message.display === false) return null;
         if (window.PiAgentCards?.handles(message)) return window.PiAgentCards.render(message, { link: appendAgentThreadLink, markdown: renderMarkdown });
 
+        const isChannelTurn = role === 'custom' && message.customType === 'pivane-channel-message';
+        const isUserTurn = role === 'user' || isChannelTurn;
+        const cleanChannelText = text => {
+            if (!isChannelTurn || typeof text !== 'string') return text || '';
+            const offset = message.details?.bodyOffset;
+            if (Number.isInteger(offset) && offset >= 0 && offset <= text.length) return text.slice(offset);
+            return text.replace(/^\[用户通过已绑定的微信私聊发来消息。[\s\S]*?\]\r?\n\r?\n/, '');
+        };
+
         const article = document.createElement('article');
-        article.className = `pi-message ${role}`;
+        article.className = isChannelTurn ? 'pi-message custom user pi-channel-message pi-agent-turn-start' : `pi-message ${role}`;
         if (role === 'user') article._piUserMessage = message;
         if (role === 'assistant') article._piAssistantMessage = message;
         const header = document.createElement('header');
         const title = role === 'user' ? translateUi("你") : role === 'assistant' ? 'Pi' : translateUi("系统");
         const model = role === 'assistant' && message.model ? `<span>${escapeHtml(message.model)}</span>` : '';
-        header.innerHTML = `<strong>${title}</strong>${model}`;
+        if (isChannelTurn) {
+            const strong = document.createElement('strong'); strong.textContent = translateUi("你");
+            const badge = document.createElement('span'); badge.className = 'pi-channel-badge';
+            badge.innerHTML = `<i class="fa-solid fa-comments" aria-hidden="true"></i><span>${escapeHtml(translateUi("微信"))}</span>`;
+            const peerId = typeof message.details?.peerId === 'string' ? message.details.peerId : '';
+            badge.title = peerId ? `${translateUi("来自已绑定的微信私聊")} · ${peerId}` : translateUi("来自已绑定的微信私聊");
+            header.append(strong, badge);
+        } else {
+            header.innerHTML = `<strong>${title}</strong>${model}`;
+        }
         if (role === 'assistant' && message.pivaneSpeed) {
             const speed = document.createElement('span'); speed.className = 'pi-message-speed';
             const actual = message.pivaneSpeed.serviceTier;
@@ -2918,10 +2936,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (message.pivaneSpeed.costBasis === 'requested-tier-estimate') speed.title += ` · ${translateUi('费用按请求档位估算')}`;
             header.append(speed);
         }
-        const subagentNotice = role === 'custom' && Boolean(window.PiSubagentNotices?.decorate(article, header, message));
+        const subagentNotice = role === 'custom' && !isChannelTurn && Boolean(window.PiSubagentNotices?.decorate(article, header, message));
         const responseText = role === 'assistant' ? messageText(message.content).trim() : '';
         if (responseText && !options.archived) state.lastAssistantText = responseText;
-        if (role === 'user') {
+        if (isUserTurn) {
             if (typeof message.timestamp === 'number' || typeof message.timestamp === 'string') {
                 const sentAt = new Date(message.timestamp);
                 if (Number.isFinite(sentAt.getTime())) {
@@ -2935,7 +2953,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const actions = document.createElement('span');
             actions.className = 'pi-user-actions';
-            actions.appendChild(createMessageCopy(messageText(message.content), role));
+            const rawText = messageText(message.content);
+            actions.appendChild(createMessageCopy(isChannelTurn ? cleanChannelText(rawText) : rawText, 'user'));
             header.appendChild(actions);
         }
         article.appendChild(header);
@@ -2943,18 +2962,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const body = document.createElement('div');
         body.className = 'pi-message-body';
         const content = Array.isArray(message.content) ? message.content : [{ type: 'text', text: message.content || '' }];
+        let strippedChannelHeader = false;
         for (const block of content) {
             if (block.type === 'text') {
+                const blockText = isChannelTurn && !strippedChannelHeader ? (strippedChannelHeader = true, cleanChannelText(block.text)) : (block.text || '');
                 const text = document.createElement('div');
                 text.className = 'pi-markdown';
                 // pi-subagents notices are Markdown reports; renderMarkdown sanitizes them.
                 // Subagent notices start collapsed; their Markdown renders on first expansion.
-                if (subagentNotice) { text.dataset.pendingMarkdown = ''; text._piMarkdown = block.text || ''; }
-                else if (role === 'assistant') text.innerHTML = renderMarkdown(block.text);
-                else if (role === 'user') documentAttachments.render(text, block.text);
-                else window.PiQuotes.renderUser(text, block.text);
+                if (subagentNotice) { text.dataset.pendingMarkdown = ''; text._piMarkdown = blockText; }
+                else if (role === 'assistant') text.innerHTML = renderMarkdown(blockText);
+                else if (isUserTurn) documentAttachments.render(text, blockText);
+                else window.PiQuotes.renderUser(text, blockText);
                 body.appendChild(text);
-                if (role === 'user') foldLongUserText(text, block.text || '');
+                if (isUserTurn) foldLongUserText(text, blockText);
             } else if (block.type === 'thinking') {
                 body.appendChild(createThinkingBlock(block.thinking));
             } else if (block.type === 'toolCall') {
@@ -3153,7 +3174,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         // Commentary can be plain text too; only the last reply in a user segment gets actions.
         messages.forEach((message, index) => {
-            if (message.role === 'user') finish();
+            if (message.role === 'user' || (message.role === 'custom' && message.customType === 'pivane-channel-message')) finish();
             else if (message.role === 'assistant') {
                 const hasTools = Array.isArray(message.content) && message.content.some(block => block.type === 'toolCall');
                 candidate = !hasTools && !['toolUse', 'pending'].includes(message.stopReason) && messageText(message.content).trim() ? index : null;
@@ -3182,7 +3203,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const identity = anchors.has(key) ? anchors.get(key) : message.timestamp == null ? projection ? `projection:${index}:${message.role}` : null : key;
             if (!identity || identities.has(identity)) ambiguous = true;
             identities.add(identity);
-            return { identity, signature: JSON.stringify(message), role: message.role, actions: finalReplies.has(index), nodes: [] };
+            return { identity, signature: JSON.stringify(message), role: message.role, customType: message.customType, actions: finalReplies.has(index), nodes: [] };
         });
         let keep = 0;
         if (!ambiguous) while (keep < records.length && keep < previous.length
@@ -3196,9 +3217,9 @@ document.addEventListener('DOMContentLoaded', () => {
             for (const block of Array.isArray(message.content) ? message.content : []) if (block.type === 'toolCall') calls.set(block.id, index);
         });
         for (const message of messages.slice(keep)) if (message.role === 'toolResult' && calls.has(message.toolCallId)) keep = Math.min(keep, calls.get(message.toolCallId));
-        const boundary = role => ['user', 'compactionSummary', 'branchSummary'].includes(role);
+        const boundary = record => ['user', 'compactionSummary', 'branchSummary'].includes(record?.role) || (record?.role === 'custom' && record?.customType === 'pivane-channel-message');
         if (keep < records.length || keep < previous.length || state.liveMessage || state.dirtyTranscriptIndex < Infinity) {
-            while (keep > 0 && !boundary((records[keep] || previous[keep])?.role)) keep--;
+            while (keep > 0 && !boundary(records[keep] || previous[keep])) keep--;
         }
         if ([...records.slice(keep), ...previous.slice(keep)].some(record => ['compactionSummary', 'branchSummary'].includes(record.role))) keep = 0;
         let retained = null;

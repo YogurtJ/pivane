@@ -322,10 +322,10 @@
         // Scheduled tasks, Agent handoffs and background notices that started a turn.
         agent(turn) {
             const message = { role: 'custom', customType: turn.customType, content: turn.text || '', timestamp: turn.timestamp };
-            // Use the live notice renderer for known subagents types. Other archive
-            // records have no structured routing/status details: show their original
+            // Use the live notice renderer for known subagents types and channel user messages.
+            // Other archive records have no structured routing/status details: show their original
             // text in a collapsed card instead of reconstructing those details.
-            if (window.PiSubagentNotices?.types.includes(turn.customType)) {
+            if (turn.customType === 'pivane-channel-message' || window.PiSubagentNotices?.types.includes(turn.customType)) {
                 const notice = this.render(message);
                 if (notice) { notice.classList.add('pi-archive-agent'); notice._piCustomMessage = message; return notice; }
             }

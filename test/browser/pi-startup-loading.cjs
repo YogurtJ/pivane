@@ -57,7 +57,12 @@ async function fixture(browser, width, hash = '#/chat', options = {}) {
         ws.onMessage(raw => {
             const command = JSON.parse(raw); commands.push(command.type);
             const state = { model, thinkingLevel: 'off', isStreaming: false };
-            const data = command.type === 'open_session' ? { session, state, messages: { messages: [{ role: 'user', content: [{ type: 'text', text: 'Fixture' }] }] }, stats: {}, models: { models: [model] }, thinkingLevels: { levels: ['off'] }, commands: { commands: [] } }
+            const channelHeader = '[用户通过已绑定的微信私聊发来消息。请完成本次请求；回复及本次通过 deliver_files 发布的文件/图片将发送回该微信聊天。需要交互确认时请提示用户到 Pivane 网页处理。]';
+            const channelBody = '请帮我优化扩展-消息渠道的样式，让它在大屏和手机端都更美观易用。';
+            const data = command.type === 'open_session' ? { session, state, messages: { messages: [
+                { role: 'user', timestamp: 1700000000000, content: [{ type: 'text', text: 'Fixture' }] },
+                { role: 'custom', customType: 'pivane-channel-message', display: true, timestamp: 1700000005000, content: `${channelHeader}\n\n${channelBody}`, details: { channel: 'weixin', peerId: 'owner@im.wechat', bodyOffset: channelHeader.length + 2 } }
+            ] }, stats: {}, models: { models: [model] }, thinkingLevels: { levels: ['off'] }, commands: { commands: [] } }
                 : command.type === 'get_state' ? state : {};
             ws.send(JSON.stringify({ type: 'response', id: command.id, command: command.type, success: true, data }));
         });
@@ -85,6 +90,15 @@ async function main() {
                 assert.deepEqual(f.requests.filter(url => deferredScripts.some(file => url.endsWith('/' + file))), [], 'initial chat requests no page scripts');
                 if (mode === 'chat') {
                     assert.equal(await page.locator('#pi-meta-profile').textContent().then(text => text.includes('Fixture identity')), true, 'identity details work before profile editor loads');
+                    const wechatBubble = page.locator('article.pi-message.user.pi-channel-message');
+                    await wechatBubble.waitFor({ state: 'visible' });
+                    assert.match(await wechatBubble.locator('.pi-channel-badge').textContent(), /微信|WeChat/);
+                    assert.equal(await wechatBubble.locator('.pi-message-body').textContent().then(t => t.includes('用户通过已绑定的微信私聊发来消息')), false, 'channel system prompt header is stripped from UI display');
+                    assert.equal(await wechatBubble.locator('.pi-message-body').textContent().then(t => t.includes('请帮我优化扩展-消息渠道的样式')), true, 'channel user message body is rendered cleanly');
+                    if (process.env.PIVANE_TEST_SCREENSHOT_DIR) {
+                        require('node:fs').mkdirSync(process.env.PIVANE_TEST_SCREENSHOT_DIR, { recursive: true });
+                        await page.screenshot({ path: require('node:path').join(process.env.PIVANE_TEST_SCREENSHOT_DIR, `chat-wechat-bubble-${width}.png`), fullPage: false });
+                    }
                     await page.locator('#pi-input').fill('Unsent draft');
                     await page.locator('#pi-file-input').setInputFiles({ name: 'draft.txt', mimeType: 'text/plain', buffer: Buffer.from('Fixture') });
                     await page.waitForFunction(() => document.querySelectorAll('#pi-attachments .pi-attachment-chip').length === 1);

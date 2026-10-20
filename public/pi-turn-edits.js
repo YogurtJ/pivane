@@ -1,14 +1,22 @@
 (() => {
     const translateUi = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? `{${index}}`));
     const $ = id => document.getElementById(id);
-    const textOf = message => typeof message.content === 'string' ? message.content : (Array.isArray(message.content) ? message.content.filter(b => b.type === 'text').map(b => b.text).join('\n') : '');
+    const textOf = message => {
+        const raw = typeof message.content === 'string' ? message.content : (Array.isArray(message.content) ? message.content.filter(b => b.type === 'text').map(b => b.text).join('\n') : '');
+        if (message.role === 'custom' && message.customType === 'pivane-channel-message') {
+            const offset = message.details?.bodyOffset;
+            if (Number.isInteger(offset) && offset >= 0 && offset <= raw.length) return raw.slice(offset);
+            return raw.replace(/^\[用户通过已绑定的微信私聊发来消息。[\s\S]*?\]\r?\n\r?\n/, '');
+        }
+        return raw;
+    };
 
     // Derived exclusively from the loaded native messages. No disk reads or saved history.
     function collect(messages, running) {
         const segments = [];
         let segment = null;
         messages.forEach((message, index) => {
-            if (message.role === 'user') {
+            if (message.role === 'user' || (message.role === 'custom' && message.customType === 'pivane-channel-message')) {
                 segment = { timestamp: message.timestamp, label: textOf(message).trim().slice(0, 100) || translateUi("附件问题"), endIndex: index, calls: new Map(), results: new Map() };
                 segments.push(segment);
             } else if (['compactionSummary', 'branchSummary'].includes(message.role)) {

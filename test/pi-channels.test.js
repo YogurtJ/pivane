@@ -136,6 +136,28 @@ test('authenticated optional channel connects, binds and delivers once through t
         await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
         assert.match(sends.at(-1).text, /fixture\/vision/);
         assert.equal(calls.length, callsBeforeSlash, 'slash commands do not invoke LLM');
+        // /thinking, /name, /compact, /reload
+        service.receive('bot-one', { msgs: [incoming('slash-thinking-list', '/thinking')] }); service.pump();
+        await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
+        assert.match(sends.at(-1).text, /当前思考等级/);
+        service.receive('bot-one', { msgs: [incoming('slash-thinking-set', '/thinking off')] }); service.pump();
+        await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
+        assert.match(sends.at(-1).text, /切换为：off/);
+        service.receive('bot-one', { msgs: [incoming('slash-name', '/name 重命名后的主线程')] }); service.pump();
+        await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
+        assert.match(sends.at(-1).text, /重命名为：重命名后的主线程/);
+        service.receive('bot-one', { msgs: [incoming('slash-status-rich', '/status')] }); service.pump();
+        await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
+        assert.match(sends.at(-1).text, /重命名后的主线程/);
+        assert.match(sends.at(-1).text, new RegExp(`会话 ID：${session.id}`));
+        assert.match(sends.at(-1).text, /上下文：/);
+        assert.match(sends.at(-1).text, /记录：共 \d+ 条消息/);
+        service.receive('bot-one', { msgs: [incoming('slash-compact', '/compact')] }); service.pump();
+        await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
+        assert.match(sends.at(-1).text, /上下文/);
+        service.receive('bot-one', { msgs: [incoming('slash-reload', '/reload')] }); service.pump();
+        await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
+        assert.match(sends.at(-1).text, /已重新加载当前线程的技能、提示词与扩展资源/);
         // Now image input + deliver_files outbound media & file
         fs.writeFileSync(path.join(cwd, 'report.md'), '# Channel Report\n');
         fs.writeFileSync(path.join(cwd, 'chart.png'), onePixelPng);
@@ -167,12 +189,19 @@ test('authenticated optional channel connects, binds and delivers once through t
         const cronRun = await gateway.cron.action(cronJob.id, { action: 'run', revision: cronJob.revision, requestId: '22222222-2222-4222-8222-222222222222' });
         await wait(async () => { await gateway.cron.tick(); return gateway.cron.db.run(cronRun.id)?.status === 'completed'; });
         await wait(() => sends.some(s => s.text.includes('Scheduled morning digest body')));
-        // /new command creates and rebinds to a fresh thread, then we rebind back to session for remaining tests
+        // /new command creates and rebinds to a fresh thread, then /resume lists and switches back by index or keyword
         service.receive('bot-one', { msgs: [incoming('slash-new', '/new 新建的微信会话')] }); service.pump();
         await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
         assert.match(sends.at(-1).text, /已新建并绑定线程：新建的微信会话/);
         assert.notEqual(service.db.value.bindings[0].sessionId, session.id);
-        await action('bind', { accountId: 'bot-one', peerId: 'owner', cwd, sessionId: session.id });
+        service.receive('bot-one', { msgs: [incoming('slash-resume-list', '/resume')] }); service.pump();
+        await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
+        assert.match(sends.at(-1).text, /当前项目最近线程/);
+        assert.match(sends.at(-1).text, /\[1\]/);
+        service.receive('bot-one', { msgs: [incoming('slash-resume-kw', '/resume 重命名后的主线程')] }); service.pump();
+        await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
+        assert.match(sends.at(-1).text, /已切换微信绑定到线程：重命名后的主线程/);
+        assert.equal(service.db.value.bindings[0].sessionId, session.id);
         replyText = 'Native channel reply';
         replyText = 'Long reply '.repeat(500);
         sendHold = new Promise(resolve => { releaseSend = resolve; });

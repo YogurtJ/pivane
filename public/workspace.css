@@ -1074,6 +1074,26 @@ button.pi-action-pending:not(.icon-btn):not(.pi-message-action) .pi-spinner { ma
     background: #1a1e1f;
 }
 
+.pi-channel-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 1px 7px;
+    border: 1px solid color-mix(in srgb, var(--green) 36%, var(--line));
+    border-radius: 999px;
+    background: var(--green-soft);
+    color: var(--green);
+    font-size: 0.64rem;
+    font-weight: 600;
+    line-height: 1.45;
+    white-space: nowrap;
+}
+.pi-channel-badge i { font-size: 0.62rem; }
+.pi-message.user.pi-channel-message .pi-message-body {
+    border-color: color-mix(in srgb, var(--green) 32%, var(--line));
+    background: color-mix(in srgb, var(--green) 4%, var(--surface-1));
+}
+
 .pi-user-text-collapsed {
     display: -webkit-box;
     -webkit-box-orient: vertical;

@@ -6,10 +6,17 @@ const { WeixinComponent } = require('./weixin-component');
 const { WeixinAdapter, createTransport, validId } = require('./weixin-adapter');
 const { outcome } = require('./runtime');
 const { DeliverableStore } = require('../pi-deliverables');
+const { sessionStats } = require('../pi-session-store');
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const same = (a, b) => a?.cwd === b?.cwd && a?.sessionId === b?.sessionId;
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
-const SLASH_COMMANDS = new Set(['/help', '/status', '/stop', '/new', '/reset', '/model']);
+const SLASH_COMMANDS = new Set(['/help', '/status', '/stop', '/new', '/reset', '/resume', '/name', '/model', '/thinking', '/compact', '/reload']);
+function fmtTokens(n) {
+    if (!Number.isFinite(n) || n < 0) return null;
+    if (n >= 1000000) return `${(n / 1000000).toFixed(n >= 10000000 ? 0 : 1)}M`;
+    if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
+    return String(Math.round(n));
+}
 function parseSlash(text) {
     const trimmed = String(text || '').trim();
     if (!trimmed.startsWith('/')) return null;
@@ -343,17 +350,31 @@ class ChannelsService {
             await send(false);
         };
     }
-    async handleSlash(job, slash) {
+    async handleSlash(job, slash, run) {
         const binding = this.bindingFor(job);
         if (!binding) return null;
+        const busyWithOther = () => [...this.runs.entries()].some(([key, r]) => key !== job.id && same(r.target, job.target));
+        const bindToSession = targetSession => {
+            const newBindingId = randomUUID();
+            this.db.change(v => {
+                v.bindings = v.bindings.filter(b => !(b.accountId === job.accountId && b.peerId === job.peerId));
+                v.bindings.push({ id: newBindingId, accountId: job.accountId, peerId: job.peerId, cwd: targetSession.cwd, sessionId: targetSession.id, name: targetSession.name || targetSession.id });
+                const current = v.jobs.find(j => j.id === job.id);
+                if (current) { current.bindingId = newBindingId; current.target = { cwd: targetSession.cwd, sessionId: targetSession.id }; }
+            }, { config: true });
+        };
         if (slash.command === '/help') {
             return [
                 '📋 微信可用指令：',
-                '/status — 查看当前绑定线程、运行状态与模型',
-                '/stop — 停止当前正在运行的微信任务',
-                '/new [标题] — 新建线程并切换当前微信绑定（别名 /reset）',
-                '/model — 查看当前模型与候选模型',
-                '/model <模型名或 provider/modelId> — 切换当前线程模型',
+                '/status — 查看当前线程详情、上下文用量、模型与统计',
+                '/stop — 停止当前正在运行的任务',
+                '/new [标题] — 新建线程并切换微信绑定（别名 /reset）',
+                '/resume [序号|关键词|ID] — 查看最近线程列表或切换绑定线程',
+                '/name <新标题> — 重命名当前绑定的线程',
+                '/model [模型名] — 查看或切换当前线程模型',
+                '/thinking [等级] — 查看或切换思考等级（如 off/low/medium/high）',
+                '/compact [附加要求] — 手动压缩当前线程上下文',
+                '/reload — 重新加载当前线程的技能、提示词与扩展资源',
                 '/help — 查看此帮助说明'
             ].join('\n');
         }
@@ -372,48 +393,158 @@ class ChannelsService {
             return '当前线程没有正在运行的任务。';
         }
         if (slash.command === '/status') {
-            const session = await this.store.getSession(binding.cwd, binding.sessionId);
+            let offlineStats = null;
+            const session = await this.store.withSessionRead(binding.cwd, binding.sessionId, (s, read) => {
+                offlineStats = sessionStats(read.manager());
+                return s;
+            });
             const worker = this.supervisor.getActiveWorker(session.path);
             const running = [...this.runs.entries()].find(([key, r]) => key !== job.id && same(r.target, job.target) && r.worker);
             const waitingJob = running && this.job(running[0])?.waiting;
-            let modelText = '将在首次运行时加载';
+            let modelText = offlineStats?.model?.id ? `${offlineStats.model.provider ? offlineStats.model.provider + '/' : ''}${offlineStats.model.id}` : '将在首次运行时加载';
             let stateText = worker ? (worker.isIdle() ? '空闲' : '运行中') : '未打开（空闲）';
             if (waitingJob) stateText = '⚠️ 等待网页交互确认';
+            let contextLine = null;
+            let messagesCount = offlineStats?.messages ?? session.messageCount ?? 0;
+            const compactionsCount = offlineStats?.compactions ?? 0;
+            const contextKept = offlineStats?.context ?? messagesCount;
+            let usageLine = null;
             if (worker) {
                 try {
-                    const state = await worker.request('get_state');
+                    const [state, stats] = await Promise.all([
+                        worker.request('get_state'),
+                        worker.request('get_session_stats').catch(() => null)
+                    ]);
                     if (state.model) modelText = `${state.model.provider}/${state.model.id}（思考：${state.thinkingLevel || '默认'}）`;
+                    if (state.isCompacting) stateText = '正在压缩上下文';
+                    const autoCompact = state.autoCompactionEnabled !== false ? '开启' : '关闭';
+                    stateText += ` · 自动压缩：${autoCompact}`;
+                    if (stats?.totalMessages != null) messagesCount = stats.totalMessages;
+                    const cu = stats?.contextUsage;
+                    if (cu && Number.isFinite(cu.percent) && Number.isFinite(cu.tokens)) {
+                        const cap = Number.isFinite(cu.contextWindow) ? ` / ${fmtTokens(cu.contextWindow)}` : '';
+                        contextLine = `${Math.round(cu.percent)}%（${fmtTokens(cu.tokens)}${cap} tokens）`;
+                    } else if (cu && Number.isFinite(cu.contextWindow)) {
+                        const est = offlineStats?.contextTokens ? `约 ${fmtTokens(offlineStats.contextTokens)}` : '--';
+                        contextLine = `${est} / ${fmtTokens(cu.contextWindow)} tokens`;
+                    }
+                    const tok = stats?.tokens;
+                    if (tok && (tok.input || tok.output || tok.cacheRead)) {
+                        const parts = [
+                            `输入 ${fmtTokens(tok.input || 0)}`,
+                            `输出 ${fmtTokens(tok.output || 0)}`,
+                            ...(tok.cacheRead ? [`缓存 ${fmtTokens(tok.cacheRead)}`] : [])
+                        ];
+                        if (Number.isFinite(Number(stats.cost)) && Number(stats.cost) > 0) parts.push(`约 $${Number(stats.cost).toFixed(3)}`);
+                        usageLine = parts.join(' / ');
+                    }
                 } catch {}
             }
-            return [
-                `📌 当前线程：${session.name || session.id}`,
+            if (!contextLine && offlineStats?.contextTokens) {
+                contextLine = `最近约 ${fmtTokens(offlineStats.contextTokens)} tokens`;
+            }
+            const profileName = session.agentProfile?.name || '无身份';
+            const recordParts = [`共 ${messagesCount} 条消息`];
+            if (compactionsCount > 0) recordParts.push(`已压缩 ${compactionsCount} 次（当前保留 ${contextKept} 条）`);
+            const lines = [
+                `📌 线程：${session.name || session.id}`,
+                `🆔 会话 ID：${session.id}`,
                 `📁 项目：${session.cwd}`,
+                `👤 身份：${profileName}`,
                 `⚙️ 状态：${stateText}`,
-                `🤖 模型：${modelText}`
-            ].join('\n');
+                `🤖 模型：${modelText}`,
+                `📊 上下文：${contextLine || '暂无统计'}`,
+                `💬 记录：${recordParts.join(' · ')}`
+            ];
+            if (usageLine) lines.push(`💰 累计用量：${usageLine}`);
+            if (session.modified) {
+                const d = new Date(session.modified);
+                if (Number.isFinite(d.getTime())) lines.push(`🕒 更新于：${d.toLocaleString('zh-CN', { hour12: false })}`);
+            }
+            return lines.join('\n');
         }
         if (slash.command === '/new' || slash.command === '/reset') {
-            if ([...this.runs.entries()].some(([key, r]) => key !== job.id && same(r.target, job.target))) {
-                return '⚠️ 当前线程正在运行任务，请先发送 /stop 或等待完成后再新建线程。';
-            }
+            if (busyWithOther()) return '⚠️ 当前线程正在运行任务，请先发送 /stop 或等待完成后再新建线程。';
             const session = await this.store.getSession(binding.cwd, binding.sessionId);
             const active = this.supervisor.getActiveWorker(session.path);
             if (active && !active.isIdle()) return '⚠️ 当前线程正忙，请稍后再新建线程。';
             const title = slash.args ? slash.args.slice(0, 80) : '微信对话';
             const created = await this.store.createSession(binding.cwd, title);
-            const newBindingId = randomUUID();
+            bindToSession(created);
+            return `✅ 已新建并绑定线程：${created.name || created.id}\n🆔 会话 ID：${created.id}\n原线程历史已完整保留。`;
+        }
+        if (slash.command === '/resume') {
+            if (busyWithOther()) return '⚠️ 当前线程正在运行任务，请先发送 /stop 或等待完成后再切换线程。';
+            const currentSession = await this.store.getSession(binding.cwd, binding.sessionId);
+            const active = this.supervisor.getActiveWorker(currentSession.path);
+            if (active && !active.isIdle()) return '⚠️ 当前线程正忙，请等待空闲后再切换线程。';
+            const allSessions = await this.store.listSessions(binding.cwd);
+            if (!allSessions.length) return '当前项目下暂无可切换的会话线程。';
+            const formatList = (list, headerText) => {
+                const candidateIds = list.map(s => s.id);
+                this.db.change(v => {
+                    const p = v.peers.find(x => x.accountId === job.accountId && x.peerId === job.peerId);
+                    if (p) p.resumeCandidates = candidateIds;
+                });
+                const rows = list.map((s, idx) => {
+                    const currentMark = s.id === binding.sessionId ? '（当前绑定）' : '';
+                    const title = s.name || s.firstMessage?.slice(0, 28) || s.id.slice(0, 8);
+                    const count = s.stats?.messages ?? s.messageCount ?? 0;
+                    return `[${idx + 1}] ${title}${currentMark}\n    ID: ${s.id.slice(0, 8)}… · ${count} 条消息`;
+                });
+                return `${headerText}\n${rows.join('\n')}\n\n💡 发送 /resume <序号> 或 /resume <标题关键词> 即可切换绑定。`;
+            };
+            const arg = slash.args.trim();
+            if (!arg || arg.toLowerCase() === 'list') {
+                return formatList(allSessions.slice(0, 10), `📂 当前项目最近线程（共 ${allSessions.length} 条，显示前 ${Math.min(10, allSessions.length)} 条）：`);
+            }
+            const peer = this.db.value.peers.find(p => p.accountId === job.accountId && p.peerId === job.peerId);
+            let chosen = null;
+            if (/^\d{1,2}$/.test(arg)) {
+                const index = Number(arg) - 1;
+                const candidates = peer?.resumeCandidates?.length
+                    ? peer.resumeCandidates.map(id => allSessions.find(s => s.id === id)).filter(Boolean)
+                    : allSessions.slice(0, 10);
+                if (index < 0 || index >= candidates.length) {
+                    return `❌ 序号 ${arg} 超出范围（1–${candidates.length}）。请先发送 /resume 查看列表。`;
+                }
+                chosen = candidates[index];
+            } else {
+                const q = arg.toLowerCase();
+                const exactId = allSessions.find(s => s.id.toLowerCase() === q);
+                if (exactId) chosen = exactId;
+                else {
+                    const matches = allSessions.filter(s => s.id.toLowerCase().startsWith(q)
+                        || (s.name || '').toLowerCase().includes(q)
+                        || (s.firstMessage || '').toLowerCase().includes(q));
+                    if (!matches.length) return `❌ 未找到匹配「${arg}」的线程。可发送 /resume 查看最近线程列表。`;
+                    if (matches.length > 1) {
+                        return formatList(matches.slice(0, 10), `🔍 找到 ${matches.length} 条匹配「${arg}」的线程，请按序号选择：`);
+                    }
+                    chosen = matches[0];
+                }
+            }
+            if (chosen.id === binding.sessionId) {
+                return `📌 当前已绑定在该线程：${chosen.name || chosen.id}\n🆔 会话 ID：${chosen.id}`;
+            }
+            bindToSession(chosen);
+            return `✅ 已切换微信绑定到线程：${chosen.name || chosen.id}\n🆔 会话 ID：${chosen.id}\n💬 消息数：${chosen.stats?.messages ?? chosen.messageCount ?? 0} 条`;
+        }
+        if (slash.command === '/name') {
+            const newName = slash.args.trim().slice(0, 120);
+            if (!newName) return '✏️ 请提供新线程名称，例如：/name 微信渠道优化讨论';
+            if (busyWithOther()) return '⚠️ 当前线程正在运行任务，请等待完成后再修改名称。';
+            const session = await this.store.getSession(binding.cwd, binding.sessionId);
+            const active = this.supervisor.getActiveWorker(session.path);
+            if (active && !active.isIdle()) return '⚠️ 当前线程正忙，请等待空闲后再修改名称。';
+            const renamed = await this.store.renameSession(binding.cwd, binding.sessionId, newName, active);
             this.db.change(v => {
-                v.bindings = v.bindings.filter(b => !(b.accountId === job.accountId && b.peerId === job.peerId));
-                v.bindings.push({ id: newBindingId, accountId: job.accountId, peerId: job.peerId, cwd: created.cwd, sessionId: created.id, name: created.name || title });
-                const current = v.jobs.find(j => j.id === job.id);
-                if (current) { current.bindingId = newBindingId; current.target = { cwd: created.cwd, sessionId: created.id }; }
+                for (const b of v.bindings) if (b.cwd === binding.cwd && b.sessionId === binding.sessionId) b.name = renamed.name;
             }, { config: true });
-            return `✅ 已新建并绑定线程：${created.name || created.id}\n原线程历史已完整保留。`;
+            return `✅ 已将当前线程重命名为：${renamed.name}`;
         }
         if (slash.command === '/model') {
-            if ([...this.runs.entries()].some(([key, r]) => key !== job.id && same(r.target, job.target))) {
-                return '⚠️ 当前线程正在运行，请等待完成后再查看或切换模型。';
-            }
+            if (busyWithOther()) return '⚠️ 当前线程正在运行，请等待完成后再查看或切换模型。';
             const session = await this.store.getSession(binding.cwd, binding.sessionId);
             let worker = this.supervisor.getActiveWorker(session.path);
             if (worker && !worker.isIdle()) return '⚠️ 当前线程正忙，请等待空闲后再切换模型。';
@@ -435,6 +566,69 @@ class ChannelsService {
             await worker.request('set_model', { provider: chosen.provider, modelId: chosen.id });
             return `✅ 已将当前线程模型切换为：${chosen.provider}/${chosen.id}`;
         }
+        if (slash.command === '/thinking') {
+            if (busyWithOther()) return '⚠️ 当前线程正在运行，请等待完成后再查看或切换思考等级。';
+            const session = await this.store.getSession(binding.cwd, binding.sessionId);
+            let worker = this.supervisor.getActiveWorker(session.path);
+            if (worker && !worker.isIdle()) return '⚠️ 当前线程正忙，请等待空闲后再切换思考等级。';
+            worker = await this.supervisor.getWorker({ cwd: session.cwd, sessionPath: session.path, sessionId: session.id });
+            const [state, available] = await Promise.all([
+                worker.request('get_state'),
+                worker.request('get_available_thinking_levels')
+            ]);
+            const levels = available?.levels || [];
+            const arg = slash.args.trim().toLowerCase();
+            if (!arg || arg === 'list') {
+                return `🧠 当前思考等级：${state.thinkingLevel || '默认'}\n当前模型支持的等级：${levels.join('、') || '默认'}\n\n发送 /thinking <等级> 即可切换。`;
+            }
+            if (!levels.includes(arg)) {
+                return `❌ 当前模型不支持思考等级「${slash.args.trim()}」。\n可选等级：${levels.join('、') || '无'}`;
+            }
+            await worker.request('set_thinking_level', { level: arg });
+            return `✅ 已将当前线程思考等级切换为：${arg}`;
+        }
+        if (slash.command === '/compact') {
+            if (busyWithOther()) return '⚠️ 当前线程正在运行任务，请等待完成后再压缩上下文。';
+            const session = await this.store.getSession(binding.cwd, binding.sessionId);
+            let worker = this.supervisor.getActiveWorker(session.path);
+            if (worker && !worker.isIdle()) return '⚠️ 当前线程正忙，请等待空闲后再压缩上下文。';
+            worker = await this.supervisor.getWorker({ cwd: session.cwd, sessionPath: session.path, sessionId: session.id });
+            if (run) run.worker = worker;
+            const account = this.db.value.accounts.find(a => a.id === job.accountId);
+            const stopTyping = account ? await this.startTyping(account, job.peerId) : () => Promise.resolve();
+            try {
+                const customInstructions = slash.args.trim().slice(0, 4000);
+                await worker.request('compact', customInstructions ? { customInstructions } : {}, 11 * 60 * 1000);
+                const state = await worker.request('get_state');
+                const c = state.webCompaction;
+                if (c?.status === 'unchanged') return 'ℹ️ 当前上下文无需压缩（内容较少或刚刚压缩过）。';
+                if (c?.status === 'cancelled') return '⏹ 上下文压缩已取消。';
+                if (c?.status === 'error') return `❌ 上下文压缩未完成：${c.errorMessage || '请稍后重试'}`;
+                const details = [];
+                if (Number.isFinite(c?.tokensBefore)) details.push(`压缩前 ${fmtTokens(c.tokensBefore)}`);
+                if (Number.isFinite(c?.estimatedTokensAfter)) details.push(`压缩后约 ${fmtTokens(c.estimatedTokensAfter)} tokens`);
+                return `✅ 上下文压缩完成${details.length ? `（${details.join(' → ')}）` : ''}。`;
+            } catch (error) {
+                if (/Already compacted|Nothing to compact/i.test(error.message || '')) return 'ℹ️ 当前上下文无需压缩（内容较少或刚刚压缩过）。';
+                return `❌ 上下文压缩失败：${error.message || '请稍后重试'}`;
+            } finally {
+                await stopTyping();
+            }
+        }
+        if (slash.command === '/reload') {
+            if (busyWithOther()) return '⚠️ 当前线程正在运行任务，请等待完成后再重新加载资源。';
+            const session = await this.store.getSession(binding.cwd, binding.sessionId);
+            let worker = this.supervisor.getActiveWorker(session.path);
+            if (worker && !worker.isIdle()) return '⚠️ 当前线程正忙，请等待空闲后再重新加载资源。';
+            worker = await this.supervisor.getWorker({ cwd: session.cwd, sessionPath: session.path, sessionId: session.id });
+            try {
+                const commands = await worker.reloadResources();
+                const count = commands?.commands?.length ?? 0;
+                return `✅ 已重新加载当前线程的技能、提示词与扩展资源（当前可用命令 ${count} 项）。`;
+            } catch (error) {
+                return `❌ 重新加载资源失败：${error.message || '请稍后重试'}`;
+            }
+        }
         return null;
     }
     async run(id, run) {
@@ -446,7 +640,7 @@ class ChannelsService {
             if (job.status === 'queued') {
                 slash = !job.images?.length ? parseSlash(job.text) : null;
                 if (slash) {
-                    const reply = await this.handleSlash(job, slash);
+                    const reply = await this.handleSlash(job, slash, run);
                     this.updateJob(id, { status: 'ready', kind: 'slash', directReply: reply, text: undefined, images: undefined, waiting: false });
                 } else {
                     const session = await this.store.getSession(job.target.cwd, job.target.sessionId);
