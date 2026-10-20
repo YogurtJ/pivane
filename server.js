@@ -528,38 +528,7 @@ function safeComfyFilename(value) {
     return String(value || 'image.png').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 160) || 'image.png';
 }
 
-async function comfyRequest(baseUrl, requestPath, options = {}) {
-    const args = [
-        '-sS',
-        '--fail-with-body',
-        '--max-time',
-        String(options.timeout || 240),
-        '--retry',
-        options.method && options.method !== 'GET' ? '0' : '5',
-        '--retry-all-errors',
-        '--retry-delay',
-        '1'
-    ];
-
-    if (options.method) args.push('-X', options.method);
-    for (const header of options.headers || []) args.push('-H', header);
-    if (options.body) args.push('--data-binary', options.body);
-    args.push(`${baseUrl}${requestPath}`);
-
-    try {
-        const { stdout } = await execFileAsync('curl', args, {
-            encoding: options.binary ? 'buffer' : 'utf8',
-            maxBuffer: 120 * 1024 * 1024
-        });
-        return stdout;
-    } catch (error) {
-        const detailSource = error.stdout || error.stderr || error.message;
-        const detail = Buffer.isBuffer(detailSource)
-            ? detailSource.toString('utf8').slice(0, 600)
-            : String(detailSource || error.message).slice(0, 600);
-        throw new Error(`连不上 ComfyUI：${baseUrl}。请确认 RunPod Pod 还开着，并且填的是 8188 的代理地址。原始错误：${detail}`);
-    }
-}
+const { comfyRequest } = require('./server/comfy-http');
 
 async function comfyJson(baseUrl, requestPath, options = {}) {
     const text = await comfyRequest(baseUrl, requestPath, options);

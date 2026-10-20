@@ -101,7 +101,7 @@
 ## 内置执行器
 
 - Z-Image：沿用显式配置的 GPU worker。身份前缀、LoRA 文件名、权重、配方和 worker 路径来自本地配置，不在公共 UI 植入个人配方。前缀规范化后的完整提示词出现在提交清单；负面提示词仅记录的限制明确显示。
-- Flux 2 Dev：设置 `FLUX2_COMFY_BASE_URL` 和需要覆盖的权重环境变量。生成前检查 ComfyUI 节点和权重；不使用其他 worker 的 LoRA。
+- Flux 2 Dev：设置 `FLUX2_COMFY_BASE_URL` 和需要覆盖的权重环境变量。生成前检查 ComfyUI 节点和权重；不使用其他 worker 的 LoRA。ComfyUI 传输兼容 curl 7.68，不依赖较新的失败/重试参数；保留 HTTP 错误正文，图片不混入状态信息。GET 最多尝试 6 次，失败后间隔 1 秒；生成 POST 只提交一次，断线或 HTTP 错误不会自动重发。请求使用显式参数和代理环境变量，不读取用户 `.curlrc` 中的隐式重试或输出设置。
 - MiniMax H3：沿用动态 config、原生 Pi credential store、文本/可选首帧、轮询和下载。清单显示首帧，图生视频将 ratio 规范为 adaptive。
 - TTS：从本地 registry 动态显示 provider、模型、音色、语言及专属选项；执行时继续复用 `TtsProviderService.resolveRequest()`。Breeze/Qwen 的 stdin bridge 和原历史兼容。
 
