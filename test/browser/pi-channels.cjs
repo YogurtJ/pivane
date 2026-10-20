@@ -67,6 +67,45 @@ const server = http.createServer((req, res) => {
             await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
             assert.equal(await page.getByRole('button', { name: 'Save allowed users', exact: true }).isDisabled(), false);
             await page.evaluate(() => {
+                data.jobs = Array.from({ length: 12 }, (_, i) => ({ id: 'job-' + i, peerId: 'wechat-user-with-a-long-identifier@im.wechat', at: Date.UTC(2026, 9, 20, 8, 30 - i), status: i === 5 ? 'uncertain' : i === 0 ? 'running' : 'delivered', sentChunks: i === 0 ? 0 : 2, sentMedia: i === 1 ? 1 : 0, canRecover: i === 5, kind: i === 2 ? 'cron' : undefined }));
+            });
+            await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
+            assert.equal(await page.locator('.channel-job').count(), 5);
+            assert.equal(await page.getByRole('button', { name: 'Previous', exact: true }).isDisabled(), true);
+            const beforePaging = await page.evaluate(() => writes.length);
+            await page.getByRole('button', { name: 'Next', exact: true }).click();
+            assert.equal(await page.locator('.channel-job').first().getAttribute('data-job-id'), 'job-5');
+            await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
+            assert.equal(await page.locator('.channel-job').first().getAttribute('data-job-id'), 'job-5', 'polling keeps the current page');
+            await page.getByRole('button', { name: 'Next', exact: true }).click();
+            assert.equal(await page.locator('.channel-job').count(), 2);
+            assert.equal(await page.getByRole('button', { name: 'Next', exact: true }).isDisabled(), true);
+            assert.equal(await page.evaluate(() => writes.length), beforePaging, 'paging is read-only');
+            await page.getByRole('button', { name: 'Previous', exact: true }).click();
+            await page.getByRole('button', { name: 'Mark reviewed', exact: true }).click();
+            assert.equal(await page.evaluate(() => writes.at(-1).jobId), 'job-5', 'actions target the visible record');
+            await page.getByRole('button', { name: 'Previous', exact: true }).click();
+            await page.evaluate(() => { window.preservedRow = document.querySelector('.channel-job'); });
+            await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
+            assert.equal(await page.evaluate(() => preservedRow === document.querySelector('.channel-job')), true, 'unchanged records do not lose focus on refresh');
+            const overflow = await page.evaluate(() => [...document.querySelectorAll('input,select,textarea,button,canvas,.channel-card')].filter(n => n.getBoundingClientRect().right > innerWidth + 1).map(n => n.outerHTML));
+            assert.deepEqual(overflow, []);
+            assert.equal(await page.getByLabel('WeChat user ID', { exact: true }).evaluate(n => getComputedStyle(n).fontSize), '16px');
+            if (process.env.PIVANE_TEST_SCREENSHOT_DIR) {
+                fs.mkdirSync(process.env.PIVANE_TEST_SCREENSHOT_DIR, { recursive: true });
+                await page.screenshot({ path: path.join(process.env.PIVANE_TEST_SCREENSHOT_DIR, `channels-${width}.png`), fullPage: true });
+            }
+            await page.getByRole('button', { name: 'Next', exact: true }).click();
+            await page.evaluate(() => { data.jobs = data.jobs.slice(0, 2); });
+            await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
+            assert.equal(await page.locator('.channel-job').count(), 2);
+            assert.equal(await page.locator('.channel-job').first().getAttribute('data-job-id'), 'job-0', 'shrinking snapshots clamp the page');
+            assert.equal(await page.getByRole('button', { name: 'Next', exact: true }).isVisible(), false);
+            await page.evaluate(() => { data.jobs = []; });
+            await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
+            assert.equal(await page.locator('.channel-job').count(), 0);
+            assert.equal(await page.locator('.channel-jobs-card .channel-empty-note').isVisible(), true);
+            await page.evaluate(() => {
                 data.typing = [{ accountId: data.accounts[0].id, peerId: 'owner', status: 'degraded', failures: 2, reason: 'typing-failed' }];
                 data.jobs = [{ id: 'partial-fixture', kind: 'cron', accountId: data.accounts[0].id, peerId: 'owner', status: 'partial', at: Date.now(), reason: 'attachments-incomplete', sentChunks: 1, sentMedia: 1, deliveryIssues: [{ name: '<img src=x onerror=alert(1)>.pdf', reason: 'size' }] }];
             });
@@ -75,13 +114,8 @@ const server = http.createServer((req, res) => {
             await page.getByText('Typing feedback is unavailable.', { exact: false }).waitFor();
             assert.match(await page.locator('.channel-job').innerText(), /Exceeds 16 MiB/);
             assert.equal(await page.locator('[onerror]').count(), 0, 'diagnostic file names use safe text');
-            const overflow = await page.evaluate(() => [...document.querySelectorAll('input,select,textarea,button,canvas,.channel-card')].filter(n => n.getBoundingClientRect().right > innerWidth + 1).map(n => n.outerHTML));
-            assert.deepEqual(overflow, []);
-            assert.equal(await page.getByLabel('WeChat user ID', { exact: true }).evaluate(n => getComputedStyle(n).fontSize), '16px');
-            if (process.env.PIVANE_TEST_SCREENSHOT_DIR) {
-                fs.mkdirSync(process.env.PIVANE_TEST_SCREENSHOT_DIR, { recursive: true });
-                await page.screenshot({ path: path.join(process.env.PIVANE_TEST_SCREENSHOT_DIR, `channels-${width}.png`), fullPage: true });
-            }
+            const diagnosticOverflow = await page.evaluate(() => [...document.querySelectorAll('.channel-job,.channel-inline-alert')].some(n => n.getBoundingClientRect().right > innerWidth + 1));
+            assert.equal(diagnosticOverflow, false);
             await page.evaluate(() => { delayedRead = true; });
             await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
             await page.waitForFunction(() => typeof resolveRead === 'function');
