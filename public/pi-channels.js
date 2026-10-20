@@ -63,6 +63,18 @@
             bindForm, peerList, bindFooter, bindingList
         );
         const jobs = el('section', null, 'channel-card channel-jobs-card');
+        const jobList = el('div', null, 'channel-job-list'); jobList.setAttribute('role', 'list');
+        const jobEmpty = el('p', t('绑定后，在微信发送第一条消息。', 'After binding, send your first message in WeChat.'), 'channel-empty-note');
+        const jobPager = el('div', null, 'channel-job-pager');
+        const jobRange = el('span', '', 'channel-job-range');
+        const jobPrevious = button(t('上一页', 'Previous'), () => changeJobPage(-1));
+        const jobNext = button(t('下一页', 'Next'), () => changeJobPage(1));
+        for (const b of [jobPrevious, jobNext]) b.dataset.channelReadOnly = 'true';
+        const jobPageButtons = el('div', null, 'channel-job-page-buttons'); jobPageButtons.append(jobPrevious, jobNext);
+        jobPager.append(jobRange, jobPageButtons);
+        jobs.append(cardHead('fa-paper-plane', t('最近消息与投递', 'Recent messages and delivery'), t('最新记录在前，每页显示 5 条。', 'Newest first, 5 records per page.')), jobEmpty, jobList, jobPager);
+        let jobPage = 0, jobSignature = '';
+        const jobPageSize = 5;
         lowerGrid.append(binding, jobs);
         root.append(header, status, skeletonWrap, component, accounts, lowerGrid);
 
@@ -74,7 +86,7 @@
         }
         function controls() {
             root.querySelectorAll('button,input,textarea,select').forEach(n => {
-                n.disabled = writing || (blocked && n !== refreshButton) || n.dataset.unavailable === 'true';
+                n.disabled = writing || (blocked && n !== refreshButton && n.dataset.channelReadOnly !== 'true') || n.dataset.unavailable === 'true';
             });
         }
         function updateSelect(select, rows, chosen) {
@@ -250,16 +262,44 @@
             } else {
                 bindingList.append(el('p', t('尚未绑定任何微信聊天。在上方选择微信用户与线程后点击“绑定线程”。', 'No WeChat chats bound yet. Select a user and thread above, then click Bind thread.'), 'channel-empty-note'));
             }
-            jobs.replaceChildren(cardHead('fa-paper-plane', t('最近消息与投递', 'Recent messages and delivery'), t('展示微信入站消息、原生执行状态与回执。', 'Inbound WeChat messages, native execution state, and delivery receipts.')));
-            if (!snapshot.jobs.length) jobs.append(el('p', t('绑定后，在微信发送第一条文字消息。', 'After binding, send your first text message in WeChat.'), 'channel-empty-note'));
-            const jobList = el('div', null, 'channel-job-list');
-            for (const job of snapshot.jobs.slice(0, 20)) {
-                const row = el('div', null, 'channel-job');
+            renderJobs();
+            bindButton.dataset.unavailable = String(!snapshot.accounts.length || Boolean(snapshot.error));
+            if (snapshot.error) { setStatus(snapshot.error, 'error'); blocked = true; }
+            controls();
+        }
+        function changeJobPage(delta) {
+            if (!snapshot) return;
+            jobPage += delta;
+            renderJobs(); controls();
+        }
+        function renderJobs() {
+            const total = snapshot.jobs.length;
+            jobPage = Math.max(0, Math.min(jobPage, Math.ceil(total / jobPageSize) - 1));
+            const start = jobPage * jobPageSize, visible = snapshot.jobs.slice(start, start + jobPageSize);
+            jobEmpty.hidden = total > 0; jobList.hidden = total === 0; jobPager.hidden = total === 0;
+            jobRange.textContent = t(`最近 ${total} 条 · ${start + 1}–${start + visible.length}`, `Recent ${total} · ${start + 1}–${start + visible.length}`);
+            jobPageButtons.hidden = total <= jobPageSize;
+            jobPrevious.dataset.unavailable = String(jobPage === 0);
+            jobNext.dataset.unavailable = String(start + jobPageSize >= total);
+            const next = JSON.stringify([visible, window.PiI18n?.locale]);
+            if (jobSignature === next) return;
+            jobSignature = next;
+            jobList.replaceChildren();
+            for (const job of visible) {
+                const row = el('div', null, 'channel-job'); row.setAttribute('role', 'listitem'); row.dataset.jobId = job.id;
                 const top = el('div', null, 'channel-job-top');
-                top.append(badge(labels()[job.status] || job.status, jobKind(job.status)), el('small', `${job.peerId} · ${new Date(job.at).toLocaleString()}`));
-                row.append(top);
-                if (job.sentChunks) row.append(el('small', t(`已确认发送 ${job.sentChunks} 段`, `${job.sentChunks} chunks confirmed sent`)));
-                if (job.sentMedia) row.append(el('small', t(`已发送 ${job.sentMedia} 个图片/文件`, `${job.sentMedia} media/files sent`)));
+                top.append(el('strong', job.kind === 'cron' ? t('定时通知', 'Scheduled notification') : t('微信消息', 'WeChat message')), badge(labels()[job.status] || job.status, jobKind(job.status)));
+                const recipient = el('span', job.peerId, 'channel-job-peer'); recipient.title = job.peerId;
+                const meta = el('div', null, 'channel-job-meta'), date = new Date(job.at), time = el('time');
+                if (Number.isFinite(date.getTime())) {
+                    time.dateTime = date.toISOString(); time.title = date.toLocaleString();
+                    time.textContent = date.toLocaleString(window.PiI18n?.locale === 'en' ? 'en-US' : 'zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+                }
+                meta.append(recipient, time); row.append(top, meta);
+                const sent = [];
+                if (job.sentChunks) sent.push(t(`文字 ${job.sentChunks} 段`, `${job.sentChunks} text chunks`));
+                if (job.sentMedia) sent.push(t(`图片/文件 ${job.sentMedia} 个`, `${job.sentMedia} images/files`));
+                if (sent.length) row.append(el('small', t('已发送：', 'Sent: ') + sent.join(' · '), 'channel-job-sent'));
                 if (job.waiting) row.append(el('p', t('正在等待交互确认，请打开 Pivane 线程处理。', 'Waiting for confirmation. Open the Pivane thread to respond.'), 'channel-job-alert'));
                 if (job.reason && reasons()[job.reason]) row.append(el('p', reasons()[job.reason], 'channel-job-reason'));
                 const actions = el('div', null, 'channel-actions');
@@ -269,10 +309,6 @@
                 if (actions.childElementCount) row.append(actions);
                 jobList.append(row);
             }
-            if (jobList.childElementCount) jobs.append(jobList);
-            bindButton.dataset.unavailable = String(!snapshot.accounts.length || Boolean(snapshot.error));
-            if (snapshot.error) { setStatus(snapshot.error, 'error'); blocked = true; }
-            controls();
         }
         function setTarget(value) {
             if (!value?.cwd || !value?.sessionId) return;
@@ -299,7 +335,7 @@
                 await loadSessions(target?.sessionId);
             } catch { if (valid(n)) setStatus(t('无法读取项目，请刷新。', 'Unable to read projects. Refresh to check.'), 'error'); }
         }
-        function close() { active = false; epoch++; readEpoch++; fetching = false; sessionEpoch++; clearTimeout(timer); root.classList.remove('active'); target = null; snapshot = null; signature = ''; component.replaceChildren(); skeletonWrap.hidden = true; skeletonWrap.replaceChildren(); }
+        function close() { active = false; epoch++; readEpoch++; fetching = false; sessionEpoch++; clearTimeout(timer); root.classList.remove('active'); target = null; snapshot = null; signature = ''; jobPage = 0; jobSignature = ''; jobList.replaceChildren(); component.replaceChildren(); skeletonWrap.hidden = true; skeletonWrap.replaceChildren(); }
         return { root, open, close, setTarget };
     }
     window.PiChannels = { create };

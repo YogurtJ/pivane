@@ -39,6 +39,7 @@ class MediaChatRequests {
         this.pending = new Set();
         this.waiting = [];          // { key, attempt, entry, modelId, parameters, model, bytes } in confirmation order
         this.executions = new Set();
+        this.attemptPromises = new Map();
         try { this.entries = this.load(); }
         catch (error) {
             // Keep the server usable; refuse new submissions rather than overwrite unreadable records.
@@ -243,6 +244,27 @@ class MediaChatRequests {
         return { status: 'cancelled', state: this.publicState(key) };
     }
 
+    async waitFor(key, timeoutMs = 60000) {
+        if (!KEY.test(key || '')) fail('Unknown media plan id');
+        const budget = Math.max(0, Math.min(90000, Number(timeoutMs) || 60000));
+        const deadline = Date.now() + budget;
+        while (Date.now() < deadline) {
+            const state = this.publicState(key);
+            const last = state.attempts.at(-1);
+            if (!last || !ACTIVE.has(last.status)) return state;
+            const promise = this.attemptPromises.get(last.id);
+            const remaining = Math.max(10, deadline - Date.now());
+            if (promise) {
+                let timer;
+                await Promise.race([promise.catch(() => {}), new Promise(resolve => { timer = setTimeout(resolve, Math.min(remaining, 1000)); })]);
+                clearTimeout(timer);
+            } else {
+                await new Promise(resolve => setTimeout(resolve, Math.min(remaining, 150)));
+            }
+        }
+        return this.publicState(key);
+    }
+
     // Start queued requests in confirmation order while slots allow; each is reviewed again first.
     async pump() {
         if (this.pumping) { this.pumpAgain = true; return; }
@@ -301,8 +323,10 @@ class MediaChatRequests {
             attempt.finishedAt = new Date(this.now()).toISOString(); entry.updatedAt = attempt.finishedAt; delete attempt.ticket;
             this.trySave('finish');
             this.executions.delete(execution);
+            this.attemptPromises.delete(attempt.id);
         });
         this.executions.add(execution);
+        this.attemptPromises.set(attempt.id, execution);
     }
 }
 

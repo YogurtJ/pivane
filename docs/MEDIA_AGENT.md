@@ -16,7 +16,7 @@
 |---|---|
 | `media_models` | 读取实验室目录中的图像/视频/语音模型，只返回 id、名称、可执行状态、要求和精简参数定义；预设、音色默认值和文档链接留在实验室 |
 | `media_results` | `{limit?:1–30,offset?:0–500}` 读取当前分支最近 500 张卡片，默认最近 10 张、每张最近 3 次尝试；返回状态、任务编号、提示词摘要和完成结果的固定引用，支持分页；只读本地记录，不提交或恢复远端任务，也不分析视频内容 |
-| `media_generate` | `{modelId, summary, parameters}` 经 `/api/media-agent/validate` 生成规范方案，结果 `details.plan` 写入原生工具结果；不创建票据、不执行 |
+| `media_generate` | `{modelId, summary, parameters}` 经 `/api/media-agent/validate` 生成规范方案，结果 `details.plan` 写入原生工具结果；对开启“对话媒体卡片自动生成”的类型（默认开启图像与语音，关闭视频，单轮最多自动触发 4 张）直接启动首次执行并等待短任务结果，卡片保留完整尝试与参数记录 |
 
 这些工具只使用受管进程的内部规划凭据，无法调用执行或聊天卡片接口。前端对 `media_generate` 和已有 `media_plan_request` 的成功工具结果（`details.plan.id` 为 `plan-<uuid>` 且有 modelId）在工具结果后渲染卡片；卡片不属于过程折叠，三种显示模式都可见。经 codemode 嵌套调用不会产生卡片。
 

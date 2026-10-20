@@ -158,6 +158,9 @@ test('authenticated optional channel connects, binds and delivers once through t
         service.receive('bot-one', { msgs: [incoming('slash-reload', '/reload')] }); service.pump();
         await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
         assert.match(sends.at(-1).text, /已重新加载当前线程的技能、提示词与扩展资源/);
+        service.receive('bot-one', { msgs: [incoming('slash-confirm-none', '/confirm')] }); service.pump();
+        await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
+        assert.match(sends.at(-1).text, /未启用媒体卡片服务|没有媒体生成卡片/);
         // Now image input + deliver_files outbound media & file
         fs.writeFileSync(path.join(cwd, 'report.md'), '# Channel Report\n');
         fs.writeFileSync(path.join(cwd, 'chart.png'), onePixelPng);

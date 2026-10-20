@@ -160,7 +160,7 @@ function start() {
         $('workspace-settings-title').textContent = translateUi(view === 'profiles' ? '助手身份'
             : view === 'extensions' ? '扩展' : '工作台设置');
         state.activeTab = tab;
-        if (tab === 'media') void subagentSettings.open();
+        if (tab === 'media') { void subagentSettings.open(); void loadMediaChatExecution(); }
         else subagentSettings.close();
         if (tab === 'media' && metadata.section === 'speech') window.PiMediaConnections?.open({ kind: 'tts', section: 'asr' });
         if (tab === 'access') { window.WorkspaceAccess?.openSettings(); window.WorkspaceNetwork?.open(metadata.section); }
@@ -920,6 +920,50 @@ function start() {
 
     elements.modelSearch.addEventListener('input', renderModels);
     elements.modelProvider.addEventListener('change', renderModels);
+    let mediaChatExecutionRevision = 0;
+    let mediaChatExecutionBusy = false;
+    async function loadMediaChatExecution() {
+        const statusEl = $('settings-media-chat-execution-status');
+        try {
+            const data = await apiFetch('/api/pi/settings/media-chat-execution');
+            if (!data || typeof data !== 'object') return;
+            mediaChatExecutionRevision = Number.isSafeInteger(data.revision) ? data.revision : 0;
+            for (const kind of ['image', 'tts', 'video']) {
+                const input = $(`settings-media-auto-${kind}`);
+                if (input && typeof data[kind] === 'boolean') input.checked = data[kind];
+            }
+            if (statusEl) statusEl.textContent = '';
+        } catch {}
+    }
+    for (const kind of ['image', 'tts', 'video']) {
+        const input = $(`settings-media-auto-${kind}`);
+        if (!input) continue;
+        input.addEventListener('change', async () => {
+            if (mediaChatExecutionBusy) return;
+            mediaChatExecutionBusy = true;
+            const statusEl = $('settings-media-chat-execution-status');
+            if (statusEl) statusEl.textContent = translateUi('正在保存，请稍候');
+            try {
+                const data = await apiFetch('/api/pi/settings/media-chat-execution', {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ [kind]: input.checked, expectedRevision: mediaChatExecutionRevision })
+                });
+                mediaChatExecutionRevision = Number.isSafeInteger(data.revision) ? data.revision : mediaChatExecutionRevision;
+                for (const k of ['image', 'tts', 'video']) {
+                    const el = $(`settings-media-auto-${k}`);
+                    if (el && typeof data[k] === 'boolean') el.checked = data[k];
+                }
+                if (statusEl) statusEl.textContent = translateUi('对话媒体自动生成策略已保存');
+            } catch (error) {
+                input.checked = !input.checked;
+                if (statusEl) statusEl.textContent = error.message;
+                void loadMediaChatExecution();
+            } finally {
+                mediaChatExecutionBusy = false;
+            }
+        });
+    }
+
     elements.mediaAgentProvider.addEventListener('change', () => populateMediaAgentModelSelect());
     elements.mediaAgentForm.addEventListener('submit', event => {
         event.preventDefault();

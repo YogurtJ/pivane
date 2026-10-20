@@ -177,3 +177,18 @@ test('image edit cards keep short references across confirmation, execution, res
     assert.equal(next.parameters.image, ref);
     await settle(chat);
 });
+
+test('waitFor resolves when an active attempt settles and mediaChatExecution preference defaults to image+tts on, video off', async () => {
+    const { lab, chat, dataRoot } = fixture();
+    const { WorkspacePreferencesService } = require('../server/workspace-preferences-service');
+    const prefs = new WorkspacePreferencesService({ agentDir: dataRoot });
+    assert.deepEqual(prefs.getMediaChatExecution(), { image: true, tts: true, video: false, revision: 0 });
+    const updated = prefs.setMediaChatExecution({ image: false, video: true, expectedRevision: 0 });
+    assert.deepEqual(updated, { image: false, tts: true, video: true, revision: 1 });
+    assert.throws(() => prefs.setMediaChatExecution({ image: true, expectedRevision: 0 }), error => error.statusCode === 409);
+    const plan = await lab.plan({ modelId: 'fixture-image', summary: 'Auto wait', parameters: { prompt: 'Fast cat' } });
+    await chat.run({ key: plan.id, modelId: plan.modelId, parameters: plan.parameters, confirmed: true });
+    const state = await chat.waitFor(plan.id, 5000);
+    assert.equal(state.attempts[0].status, 'done');
+    assert.match(state.attempts[0].asset.url, /^\/images\/lab_/);
+});

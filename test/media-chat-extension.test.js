@@ -25,7 +25,7 @@ test('managed media tool uses the current branch image, preserves prompt text, a
         let data;
         if (route.startsWith('/api/media-agent/capabilities/')) data = { lab: { models: [model] } };
         else if (route === '/api/media-agent/references') data = store.put(body.data);
-        else if (route === '/api/media-agent/validate') data = { plan: body.plan };
+        else if (route === '/api/media-agent/validate') data = { plan: body.plan, ...(body.autoExecute && body.plan.modelId === 'auto-fixture' ? { autoExecution: { status: 'done', asset: { url: '/images/auto.png', kind: 'image' }, state: { attempts: [{ id: 'attempt-auto', status: 'done', asset: { url: '/images/auto.png', kind: 'image' } }] } } } : {}) };
         else if (route === '/api/media-agent/chat-images') { assert.deepEqual(body.keys, ['plan-11111111-2222-4333-8444-555555555555']); data = { images: [{ url: '/images/result.png' }] }; }
         else if (route === '/api/media-agent/chat-results') data = { requests: mediaResults.filter(row => body.keys.includes(row.key)) };
         else throw new Error('Unexpected request: ' + route);
@@ -69,4 +69,15 @@ test('managed media tool uses the current branch image, preserves prompt text, a
     await assert.rejects(run({ image: 'media-result:' + first + '/' + attempt }), /not in the current conversation branch/);
     assert.ok(calls.every(url => url.startsWith('/api/media-agent/')));
     assert.ok(!calls.some(url => /execute|review/.test(url)));
+    // Auto-executed result reports completion and enforces per-turn cap (MAX_AUTO_PER_TURN = 4)
+    model.id = 'auto-fixture';
+    events.get('turn_start')({}, ctx);
+    for (let i = 0; i < 4; i++) {
+        const autoRes = await tool.execute(`auto-${i}`, { modelId: 'auto-fixture', summary: `Auto ${i}`, parameters: { prompt: 'cat', image: '/images/first.png' } }, new AbortController().signal, () => {}, ctx);
+        assert.match(autoRes.content[0].text, /Media generated automatically/);
+        assert.equal(autoRes.details.autoExecution?.status, 'done');
+    }
+    const fifth = await tool.execute('auto-5', { modelId: 'auto-fixture', summary: 'Auto 5', parameters: { prompt: 'cat', image: '/images/first.png' } }, new AbortController().signal, () => {}, ctx);
+    assert.match(fifth.content[0].text, /Card ready for the user to confirm/);
+    assert.equal(fifth.details.autoExecution, undefined);
 });

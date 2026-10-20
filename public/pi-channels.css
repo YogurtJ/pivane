@@ -327,8 +327,8 @@
 }
 .channel-bind-hint { font-size: .76rem; color: var(--channel-muted); flex: 1 1 200px; }
 
-.channel-bindings, .channel-job-list { display: grid; gap: 10px; }
-.channel-binding, .channel-job {
+.channel-bindings { display: grid; gap: 10px; }
+.channel-binding {
     display: grid;
     gap: 6px;
     padding: 12px 14px;
@@ -349,14 +349,20 @@
     font-size: .74rem;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
-.channel-job-top {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-}
+.channel-job-list { display: grid; grid-template-columns: minmax(0, 1fr); }
+.channel-job { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 12px 0; border-top: 1px solid var(--channel-line); }
+.channel-job-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; }
+.channel-job-top strong { font-size: .82rem; font-weight: 550; }
+.channel-job-top .channel-badge { padding: 3px 8px; }
+.channel-job-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; color: var(--channel-muted); font-size: .74rem; }
+.channel-job-peer { min-width: 0; flex: 1 1 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.channel-job-meta time { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .channel-job small { color: var(--channel-muted); font-size: .74rem; }
+.channel-job-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; border-top: 1px solid var(--channel-line); }
+.channel-job-range { color: var(--channel-muted); font-size: .74rem; font-variant-numeric: tabular-nums; }
+.channel-job-page-buttons { display: flex; gap: 6px; }
+.channel-job-page-buttons button { min-height: 36px; padding: 6px 10px; }
+.channel-job-list[hidden], .channel-job-pager[hidden], .channel-job-page-buttons[hidden], .channel-empty-note[hidden] { display: none; }
 .channel-job-alert { color: var(--channel-amber); font-size: .79rem; }
 .channel-job-reason { color: var(--channel-muted); font-size: .78rem; }
 .channel-empty-note {
@@ -384,4 +390,5 @@
     .channel-bind-grid { grid-template-columns: minmax(0, 1fr); }
     .channel-binding { grid-template-columns: minmax(0, 1fr); }
     .channel-actions button, .channel-bind-footer button { flex: 1 1 auto; min-height: 44px; }
+    .channel-job-page-buttons button { min-height: 44px; }
 }

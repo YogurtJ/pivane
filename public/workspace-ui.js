@@ -130,6 +130,25 @@
         const featureText = (zh, en) => window.PiI18n?.locale === 'en' ? en : zh;
         function featureStatus(error, retry) {
             featureState.replaceChildren();
+            const pageLoading = !error && parseRoute().tab === 'extensions';
+            featureState.classList.toggle('is-page-loading', pageLoading);
+            featureState.setAttribute('aria-busy', String(!error));
+            if (pageLoading) {
+                const page = document.createElement('div'); page.className = 'workspace-feature-page';
+                const header = document.createElement('header'); header.className = 'workspace-feature-page-header';
+                const title = document.createElement('h1'); title.textContent = featureText('扩展', 'Extensions');
+                const status = document.createElement('p'); status.className = 'workspace-feature-page-status'; status.setAttribute('role', 'status');
+                const spinner = document.createElement('span'); spinner.className = 'pi-spinner'; spinner.setAttribute('aria-hidden', 'true');
+                status.append(spinner, document.createTextNode(featureText('正在加载扩展…', 'Loading extensions…')));
+                header.append(title, status);
+                const skeleton = document.createElement('div'); skeleton.className = 'workspace-feature-page-skeleton pv-skeleton'; skeleton.setAttribute('aria-hidden', 'true');
+                skeleton.innerHTML = '<div class="workspace-feature-page-tabs"><span class="pv-skel-line"></span><span class="pv-skel-line"></span><span class="pv-skel-line"></span><span class="pv-skel-line"></span></div>'
+                    + '<div class="workspace-feature-page-banner"><span class="pv-skel-icon"></span>' + window.PiSkeleton.html('lines', { rows: 2, decorative: true }) + '</div>'
+                    + '<div class="workspace-feature-page-toolbar"><span class="pv-skel-line"></span><span class="pv-skel-line"></span></div>'
+                    + window.PiSkeleton.html('cards', { rows: 6, decorative: true });
+                page.append(header, skeleton); featureState.append(page);
+                return;
+            }
             const card = document.createElement('div');
             card.className = 'workspace-feature-card';
             const badge = document.createElement('span');

@@ -10120,7 +10120,15 @@
         ["来自已绑定的微信私聊", "From bound WeChat DM"],
         ["微信通知", "WeChat notification"],
         ["已启用（推送至已绑定微信）", "Enabled (send to bound WeChat)"],
-        ["未启用", "Disabled"],
-        ["完成后推送至目标线程已绑定的微信私聊", "Send result to bound WeChat DM on completion"]);
+        ["完成后推送至目标线程已绑定的微信私聊", "Send result to bound WeChat DM on completion"],
+        ["对话媒体卡片自动生成", "Auto-run in-chat media cards"],
+        ["当 Agent 在对话中调用媒体生成时，开启的类型将直接开始生成并保留卡片记录（微信私聊中完成后会自动发回图片或音频）；未开启的类型（如视频）仍需在卡片或通过微信 /confirm 确认后才生成。", "When the Agent prepares media in a conversation, enabled types start generating immediately while keeping the card record (completed images or audio are also sent back in WeChat DMs); disabled types (such as video) still wait for card confirmation or /confirm in WeChat."],
+        ["图像（生图 / 图生图）自动开始生成", "Automatically start image generation (text-to-image / image edit)"],
+        ["语音（TTS 合成）自动开始生成", "Automatically start speech (TTS) generation"],
+        ["视频自动开始生成（建议保持关闭以先核对参数）", "Automatically start video generation (recommended off to review parameters first)"],
+        ["对话媒体自动生成策略已保存", "In-chat media auto-generation policy saved"],
+        ["聊天媒体执行策略参数无效", "Invalid in-chat media execution policy parameters"],
+        ["聊天媒体执行策略需要布尔值", "In-chat media execution policy requires boolean values"],
+        ["聊天媒体执行策略已变化，请刷新后再保存", "In-chat media execution policy changed; refresh before saving"]);
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

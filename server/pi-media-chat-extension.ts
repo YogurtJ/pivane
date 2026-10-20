@@ -136,8 +136,13 @@ function compactModel(model: any) {
         parameters: Object.fromEntries(Object.entries(model.parameters || {}).map(([key, value]) => [key, field(value)])) };
 }
 
+const MAX_AUTO_PER_TURN = 4;
+
 export function registerMediaChat(pi: ExtensionAPI) {
+    let turnAutoCount = 0;
+    pi.on('turn_start', () => { turnAutoCount = 0; });
     pi.on('session_start', (_event, ctx) => {
+        turnAutoCount = 0;
         if (!enabled(ctx)) return;
         pi.registerTool({
             name: 'media_models', label: 'Media models',
@@ -177,13 +182,13 @@ export function registerMediaChat(pi: ExtensionAPI) {
         });
         pi.registerTool({
             name: 'media_generate', label: 'Generate media',
-            description: 'Prepare one image, video or speech generation with a configured model (ids from media_models), including image editing / image-to-image with a reference image. Pivane validates the parameters and shows the user a card in this chat; nothing is generated or charged until the user confirms that card. The user can edit parameters and regenerate in the card. ' + REFERENCE_HELP,
-            promptSnippet: 'Generate images, videos or speech; the user confirms a card in this chat',
+            description: 'Prepare one image, video or speech generation with a configured model (ids from media_models), including image editing / image-to-image with a reference image. Pivane validates the parameters, shows a card in this chat, and starts generation automatically when auto-execution is enabled for that media kind (enabled by default for image and speech; video requires card confirmation by default). The user can inspect parameters, edit and regenerate in the card. ' + REFERENCE_HELP,
+            promptSnippet: 'Generate images, videos or speech; shows a chat card and runs automatically when enabled for that media kind',
             promptGuidelines: [
                 'When the user asks for an image, video or spoken audio, call media_models, then media_generate with that model\'s declared parameters. Keep a model the user named. One call per output; several calls may be made together. Call it directly (not inside codemode) so the card appears.',
                 'To edit or transform an image (image-to-image), pick a model with an image parameter (often an edit variant) and pass a reference such as "chat-image:-1" (latest image the user attached) or "chat-result:-1" (latest image a card generated); never base64. The card shows the reference thumbnail.',
-                'For image-to-video, first/last frames, reference images/videos or video editing, use the selected model’s declared image/video fields, roles, multiple flag and limits. Call media_results to identify completed assets by summary/prompt, then use their stable references; do not guess frame order from completion time. A multi-stage workflow prepares images first; only prepare the video after the user confirms those cards and the results exist. Video generation can take hours; report card status honestly and do not repeatedly submit or poll tools in a loop.',
-                'media_generate does not run the generation. After calling it, tell the user briefly what the card will generate and that they confirm it in the card. Never claim media was generated, and never repeat a call to retry; the card handles edits, failures and regeneration.',
+                'For image-to-video, first/last frames, reference images/videos or video editing, use the selected model’s declared image/video fields, roles, multiple flag and limits. Call media_results to identify completed assets by summary/prompt, then use their stable references; do not guess frame order from completion time. A multi-stage workflow prepares images first; only prepare the video after those images exist. Video generation can take hours; report card status honestly and do not repeatedly submit or poll tools in a loop.',
+                'Inspect the tool result of media_generate to see whether generation already completed, is running/queued, or is waiting for confirmation in the card (or via /confirm in WeChat). Never claim unverified media was generated, and never repeat a call to retry; the card handles edits, failures and regeneration.',
             ],
             parameters: Type.Object({
                 modelId: Type.String({ maxLength: 300 }),
@@ -200,13 +205,25 @@ export function registerMediaChat(pi: ExtensionAPI) {
                 }
                 if (!model) throw new Error('Media model is unavailable');
                 const references = await resolveReferences(input.parameters, model.parameters || {}, ctx, signal);
+                const allowAuto = turnAutoCount < MAX_AUTO_PER_TURN;
                 const data = await internal('/api/media-agent/validate', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ kind: '', plan: { ...input, parameters: references.parameters } }), signal });
+                    body: JSON.stringify({ kind: '', plan: { ...input, parameters: references.parameters }, ...(allowAuto ? { autoExecute: true } : {}) }), signal });
                 const plan = data.plan;
+                const auto = data.autoExecution;
+                if (auto && ['done', 'running', 'queued', 'failed', 'uncertain'].includes(auto.status)) turnAutoCount++;
                 const warnings = Array.isArray(plan.warnings) && plan.warnings.length ? ` Notes: ${plan.warnings.join(' ')}` : '';
                 const used = references.notes.length ? ` References: ${references.notes.join('; ')}.` : '';
-                return { content: [{ type: 'text', text: `Card ready for the user to confirm: ${plan.summary} (${plan.modelId}). Nothing has been generated yet.${used}${warnings}` }],
-                    details: { plan } };
+                let statusText = `Card ready for the user to confirm: ${plan.summary} (${plan.modelId}). Nothing has been generated yet.`;
+                if (auto?.status === 'done' && auto.asset?.url) {
+                    const ref = ['image', 'video'].includes(plan.kind) && auto.state?.attempts?.at(-1)?.id ? ` Reference: media-result:${plan.id}/${auto.state.attempts.at(-1).id}.` : '';
+                    statusText = `Media generated automatically and shown on the card: ${plan.summary} (${plan.modelId}) -> ${auto.asset.url}.${ref}`;
+                } else if (auto?.status === 'running' || auto?.status === 'queued') {
+                    statusText = `Card created and generation started automatically (${auto.status}): ${plan.summary} (${plan.modelId}). It is still processing in the background.`;
+                } else if (auto?.status === 'failed' || auto?.status === 'uncertain') {
+                    statusText = `Card created and automatic generation ${auto.status}: ${plan.summary} (${plan.modelId})${auto.error ? ` — ${auto.error}` : ''}. Do not retry automatically; the user can inspect the card.`;
+                }
+                return { content: [{ type: 'text', text: `${statusText}${used}${warnings}` }],
+                    details: { plan, ...(auto ? { autoExecution: auto } : {}) } };
             }
         });
     });

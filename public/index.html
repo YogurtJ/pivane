@@ -683,6 +683,19 @@
                         </div>
                         <p class="settings-help"><!--i18n:s1520-->选择常用服务，填写地址、Key 和模型 ID。高级参数可按需展开，也可让 Agent 根据 API 文档填写接入草稿。</p>
                         <p class="settings-help"><!--i18n:s1521-->同一服务的模型共用 Key。保存接入后，在实验室检查清单并确认生成；回复朗读默认模型在“使用偏好”中选择。</p>
+                        <section id="settings-media-chat-execution" class="settings-feature-card" aria-labelledby="settings-media-chat-execution-title">
+                            <div class="settings-feature-title">
+                                <span class="settings-model-icon"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i></span>
+                                <div>
+                                    <h4 id="settings-media-chat-execution-title">对话媒体卡片自动生成</h4>
+                                    <p class="settings-feature-description">当 Agent 在对话中调用媒体生成时，开启的类型将直接开始生成并保留卡片记录（微信私聊中完成后会自动发回图片或音频）；未开启的类型（如视频）仍需在卡片或通过微信 /confirm 确认后才生成。</p>
+                                </div>
+                            </div>
+                            <label class="settings-toggle-line" for="settings-media-auto-image"><strong>图像（生图 / 图生图）自动开始生成</strong><input id="settings-media-auto-image" type="checkbox" checked></label>
+                            <label class="settings-toggle-line" for="settings-media-auto-tts"><strong>语音（TTS 合成）自动开始生成</strong><input id="settings-media-auto-tts" type="checkbox" checked></label>
+                            <label class="settings-toggle-line" for="settings-media-auto-video"><strong>视频自动开始生成（建议保持关闭以先核对参数）</strong><input id="settings-media-auto-video" type="checkbox"></label>
+                            <p id="settings-media-chat-execution-status" role="status" aria-live="polite"></p>
+                        </section>
                         <section id="settings-subagents"></section>
                     </section>
                     <section class="workspace-settings-panel" data-settings-panel="profiles" id="pi-profiles-panel">

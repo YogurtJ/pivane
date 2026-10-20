@@ -14,6 +14,12 @@ const DEFAULT_MEDIA_AGENT = Object.freeze({
     modelId: ''
 });
 
+const DEFAULT_MEDIA_CHAT_EXECUTION = Object.freeze({
+    image: true,
+    tts: true,
+    video: false
+});
+
 function cleanReferencePart(value, label) {
     const text = String(value || '').trim();
     if (!text || text.length > 300 || /[\u0000-\u001f\u007f]/.test(text)) {
@@ -316,6 +322,40 @@ class WorkspacePreferencesService {
         return { ...mediaAgent };
     }
 
+    getMediaChatExecution() {
+        const current = this.readDocument().mediaChatExecution || {};
+        return {
+            image: typeof current.image === 'boolean' ? current.image : DEFAULT_MEDIA_CHAT_EXECUTION.image,
+            tts: typeof current.tts === 'boolean' ? current.tts : DEFAULT_MEDIA_CHAT_EXECUTION.tts,
+            video: typeof current.video === 'boolean' ? current.video : DEFAULT_MEDIA_CHAT_EXECUTION.video,
+            revision: Number.isSafeInteger(current.revision) && current.revision >= 0 ? current.revision : 0
+        };
+    }
+
+    setMediaChatExecution(input = {}) {
+        if (!input || typeof input !== 'object' || Array.isArray(input)
+            || Object.keys(input).some(key => !['image', 'tts', 'video', 'expectedRevision'].includes(key))) {
+            throw Object.assign(new Error('聊天媒体执行策略参数无效'), { statusCode: 400 });
+        }
+        const patch = {};
+        for (const kind of ['image', 'tts', 'video']) {
+            if (!Object.hasOwn(input, kind)) continue;
+            if (typeof input[kind] !== 'boolean') throw Object.assign(new Error('聊天媒体执行策略需要布尔值'), { statusCode: 400 });
+            patch[kind] = input[kind];
+        }
+        if (!Object.keys(patch).length || input.expectedRevision !== undefined
+            && (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0)) {
+            throw Object.assign(new Error('聊天媒体执行策略参数无效'), { statusCode: 400 });
+        }
+        const current = this.getMediaChatExecution();
+        if (input.expectedRevision !== undefined && input.expectedRevision !== current.revision) {
+            throw Object.assign(new Error('聊天媒体执行策略已变化，请刷新后再保存'), { statusCode: 409 });
+        }
+        const document = this.readDocument();
+        this.writeDocument({ ...document, mediaChatExecution: { ...document.mediaChatExecution, ...patch, revision: current.revision + 1 } });
+        return this.getMediaChatExecution();
+    }
+
     writeDocument(document) {
         const dir = path.dirname(this.filePath);
         fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -328,5 +368,6 @@ class WorkspacePreferencesService {
 module.exports = {
     WorkspacePreferencesService,
     validateTitleSettings,
-    DEFAULT_MEDIA_AGENT
+    DEFAULT_MEDIA_AGENT,
+    DEFAULT_MEDIA_CHAT_EXECUTION
 };

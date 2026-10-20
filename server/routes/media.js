@@ -36,6 +36,10 @@ function mountMediaRoutes(router, { mediaAgentService, mediaLabService: lab, pre
     const replyTts = new PiReplyTtsService(lab, preferences);
     router.get('/settings/reply-tts', respond(() => replyTts.snapshot()));
     router.put('/settings/reply-tts', respond(req => replyTts.save(req.body)));
+    if (preferences) {
+        router.get('/settings/media-chat-execution', respond(() => preferences.getMediaChatExecution()));
+        router.put('/settings/media-chat-execution', respond(req => preferences.setMediaChatExecution(req.body || {})));
+    }
     router.get('/media/lab', respond(() => lab.catalog()));
     router.get('/media/lab/activity', respond(() => ({ running: lab.inFlight, preparing: lab.chatRequests?.preparing || 0, queued: lab.chatRequests?.waiting.length || 0, connectionMutation: Boolean(lab.providerService?.busy), connectionOperations: lab.providerService?.active || 0 })));
     router.get('/media/lab/execution/:ticket', respond(req => lab.executionStatus(req.params.ticket)));

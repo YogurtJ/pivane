@@ -10,7 +10,7 @@ const { sessionStats } = require('../pi-session-store');
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const same = (a, b) => a?.cwd === b?.cwd && a?.sessionId === b?.sessionId;
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
-const SLASH_COMMANDS = new Set(['/help', '/status', '/stop', '/new', '/reset', '/resume', '/name', '/model', '/thinking', '/compact', '/reload']);
+const SLASH_COMMANDS = new Set(['/help', '/status', '/stop', '/new', '/reset', '/resume', '/name', '/model', '/thinking', '/compact', '/reload', '/confirm']);
 function fmtTokens(n) {
     if (!Number.isFinite(n) || n < 0) return null;
     if (n >= 1000000) return `${(n / 1000000).toFixed(n >= 10000000 ? 0 : 1)}M`;
@@ -26,8 +26,8 @@ function parseSlash(text) {
     return SLASH_COMMANDS.has(cmd) ? { command: cmd, args: (match[2] || '').trim() } : null;
 }
 class ChannelsService {
-    constructor({ store, supervisor, isSuspended = () => false, directory, componentFactory, adapterFactory }) {
-        Object.assign(this, { store, supervisor, isSuspended, directory, componentFactory, adapterFactory });
+    constructor({ store, supervisor, mediaLabService, mediaRoot, isSuspended = () => false, directory, componentFactory, adapterFactory }) {
+        Object.assign(this, { store, supervisor, mediaLabService, mediaRoot: mediaRoot ? path.resolve(mediaRoot) : null, isSuspended, directory, componentFactory, adapterFactory });
         this.deliverables = new DeliverableStore(store);
         this.mutating = false; this.operations = new Set(); this.pollers = new Map(); this.runs = new Map(); this.connections = new Map();
         this.stopping = false; this.stopController = new AbortController(); this.login = null; this.loginFlight = null; this.error = null;
@@ -368,6 +368,7 @@ class ChannelsService {
                 '📋 微信可用指令：',
                 '/status — 查看当前线程详情、上下文用量、模型与统计',
                 '/stop — 停止当前正在运行的任务',
+                '/confirm [卡片ID前缀] — 确认生成当前分支最新的待确认媒体卡片（如视频）',
                 '/new [标题] — 新建线程并切换微信绑定（别名 /reset）',
                 '/resume [序号|关键词|ID] — 查看最近线程列表或切换绑定线程',
                 '/name <新标题> — 重命名当前绑定的线程',
@@ -629,6 +630,66 @@ class ChannelsService {
                 return `❌ 重新加载资源失败：${error.message || '请稍后重试'}`;
             }
         }
+        if (slash.command === '/confirm') {
+            if (!this.mediaLabService?.chatRequests) return '⚠️ 当前实例未启用媒体卡片服务。';
+            if (busyWithOther()) return '⚠️ 当前线程正在运行任务，请等待完成后再确认媒体卡片。';
+            const session = await this.store.getSession(binding.cwd, binding.sessionId);
+            let plans = [];
+            const active = this.supervisor.getActiveWorker(session.path);
+            if (active && !active.isIdle()) return '⚠️ 当前线程正忙，请等待空闲后再确认媒体卡片。';
+            await this.store.withSessionRead(session.cwd, session.id, (_s, read) => {
+                plans = read.manager().getBranch().filter(e => e.type === 'message' && e.message?.role === 'toolResult'
+                    && !e.message.isError && ['media_generate', 'media_plan_request'].includes(e.message.toolName))
+                    .map(e => e.message.details?.plan).filter(p => typeof p?.id === 'string' && /^plan-[0-9a-f-]{36}$/.test(p.id)).slice(-50);
+                read.validate();
+            });
+            if (!plans.length) return 'ℹ️ 当前线程分支没有媒体生成卡片。';
+            const arg = slash.args.trim().toLowerCase();
+            const chatReq = this.mediaLabService.chatRequests;
+            let chosen = null;
+            for (const plan of [...plans].reverse()) {
+                if (arg && !plan.id.toLowerCase().includes(arg) && !(plan.summary || '').toLowerCase().includes(arg)) continue;
+                const state = chatReq.publicState(plan.id);
+                if (!state.attempts?.length) { chosen = plan; break; }
+            }
+            if (!chosen) {
+                const latest = plans.at(-1);
+                const latestState = latest && chatReq.publicState(latest.id)?.attempts?.at(-1);
+                if (latestState?.status === 'running' || latestState?.status === 'queued') {
+                    return `⏳ 媒体卡片「${latest.summary || latest.modelId}」已在${latestState.status === 'queued' ? '排队' : '生成'}中，无需重复确认。`;
+                }
+                if (latestState?.status === 'done') {
+                    const current = this.db.value.jobs.find(j => j.id === job.id);
+                    if (current) current.mediaPlans = [{ id: latest.id, kind: latest.kind, modelId: latest.modelId, summary: latest.summary }];
+                    return `✅ 媒体卡片「${latest.summary || latest.modelId}」已完成生成。`;
+                }
+                return 'ℹ️ 当前线程没有待确认的媒体生成卡片。';
+            }
+            const account = this.db.value.accounts.find(a => a.id === job.accountId);
+            const stopTyping = account ? await this.startTyping(account, job.peerId) : () => Promise.resolve();
+            try {
+                const submitted = await chatReq.run({ key: chosen.id, modelId: chosen.modelId, parameters: chosen.parameters, confirmed: true });
+                if (submitted.status === 'changed') {
+                    return `⚠️ 服务端规范化了部分参数，请打开 Pivane 网页端核对卡片「${chosen.summary || chosen.modelId}」后再确认。`;
+                }
+                const waitMs = chosen.kind === 'video' ? 15000 : 60000;
+                const state = await chatReq.waitFor(chosen.id, waitMs);
+                const last = state?.attempts?.at(-1);
+                const current = this.db.value.jobs.find(j => j.id === job.id);
+                if (current) current.mediaPlans = [{ id: chosen.id, kind: chosen.kind, modelId: chosen.modelId, summary: chosen.summary }];
+                if (last?.status === 'done') {
+                    return `✅ 已确认并完成生成：${chosen.summary || chosen.modelId}（${chosen.modelId}）。`;
+                }
+                if (last?.status === 'running' || last?.status === 'queued') {
+                    return `🎬 已确认并开始生成：${chosen.summary || chosen.modelId}（${chosen.modelId}）。\n当前状态：${last.status === 'queued' ? '排队中' : '后台生成中'}（可在网页查看进度，或稍后发送 /confirm 查看是否完成）。`;
+                }
+                return `❌ 媒体生成未完成（${last?.status || 'failed'}）：${last?.error || '请打开 Pivane 网页端查看卡片详情'}`;
+            } catch (error) {
+                return `❌ 确认媒体卡片失败：${error.message || '请打开 Pivane 网页端处理'}`;
+            } finally {
+                await stopTyping();
+            }
+        }
         return null;
     }
     async run(id, run) {
@@ -710,7 +771,7 @@ class ChannelsService {
                 this.updateJob(id, { status: 'reviewed', reason: 'stop-request', directReply: undefined });
                 return;
             }
-            result = { status: 'completed', body: job.directReply, deliverables: job.deliverables || [] };
+            result = { status: 'completed', body: job.directReply, deliverables: job.deliverables || [], mediaPlans: job.mediaPlans || [] };
         } else {
             const session = await this.store.getSession(job.target.cwd, job.target.sessionId);
             const activeWorker = this.supervisor.getActiveWorker(session.path);
@@ -719,10 +780,14 @@ class ChannelsService {
             catch (error) { if (error.code === 'SESSION_BUSY') return; throw error; }
         }
         if (!result) throw fail('Native reply is unavailable');
-        const text = result.status === 'stopped' ? '任务已停止。已发生的操作不会撤销，请在 Pivane 网页核对。'
+        const mediaSummary = this.summarizeMediaPlans(result.mediaPlans || []);
+        const baseText = result.status === 'stopped' ? '任务已停止。已发生的操作不会撤销，请在 Pivane 网页核对。'
             : result.status === 'error' ? '本次任务未成功完成，请在 Pivane 网页查看。' : result.body || '任务已完成，请在 Pivane 网页查看工具结果。';
+        const text = mediaSummary ? `${baseText}\n\n${mediaSummary}` : baseText;
         const chunks = Array.from(text.matchAll(/[\s\S]{1,1800}/gu), m => m[0]);
-        const mediaFiles = await this.collectDeliverables(result.deliverables || []);
+        const deliverableFiles = await this.collectDeliverables(result.deliverables || []);
+        const generatedMedia = await this.collectMediaAssets(result.mediaPlans || [], 6 - deliverableFiles.length);
+        const mediaFiles = [...deliverableFiles, ...generatedMedia].slice(0, 6);
         this.updateJob(id, { status: 'sending', sendStarted: true, sentChunks: 0, sentMedia: 0 });
         for (let i = 0; i < chunks.length; i++) {
             if (this.stopping || this.isSuspended()) throw fail('Delivery interrupted');
@@ -742,7 +807,46 @@ class ChannelsService {
                 this.updateJob(id, { sentMedia: i + 1, lastPlatformMessageId: receipt?.message_id ? String(receipt.message_id) : null });
             }
         }
-        this.updateJob(id, { status: isStop ? 'reviewed' : 'delivered', reason: isStop ? 'stop-request' : null, directReply: undefined, deliverables: undefined });
+        this.updateJob(id, { status: isStop ? 'reviewed' : 'delivered', reason: isStop ? 'stop-request' : null, directReply: undefined, deliverables: undefined, mediaPlans: undefined });
+    }
+    summarizeMediaPlans(plans) {
+        if (!Array.isArray(plans) || !plans.length || !this.mediaLabService?.chatRequests) return '';
+        const lines = [];
+        for (const plan of plans.slice(0, 6)) {
+            const state = this.mediaLabService.chatRequests.publicState(plan.id);
+            const last = state?.attempts?.at(-1);
+            if (!last) {
+                const icon = plan.kind === 'video' ? '🎬' : plan.kind === 'tts' ? '🔊' : '🎨';
+                lines.push(`${icon} 待确认媒体卡片：${plan.summary || plan.modelId}（${plan.modelId}）\n💡 在微信回复 /confirm 即可直接确认生成，或打开 Pivane 网页端修改参数后确认。`);
+            }
+        }
+        return lines.join('\n\n');
+    }
+    async collectMediaAssets(plans, maxCount = 6) {
+        if (!Array.isArray(plans) || !plans.length || maxCount <= 0 || !this.mediaLabService?.chatRequests || !this.mediaRoot) return [];
+        const items = [];
+        const root = path.join(this.mediaRoot, 'public');
+        const { readVerifiedFile } = require('../pi-file-bytes');
+        const { withinCanonical } = require('../pi-platform-path');
+        for (const plan of plans) {
+            if (items.length >= maxCount) break;
+            try {
+                const state = this.mediaLabService.chatRequests.publicState(plan.id);
+                const last = state?.attempts?.at(-1);
+                const url = last?.status === 'done' && typeof last.asset?.url === 'string' ? last.asset.url.split('?')[0] : '';
+                const match = /^\/(images|videos|audio)\/([A-Za-z0-9._-]+)$/.exec(url);
+                if (!match) continue;
+                const [, folder, filename] = match;
+                const target = path.join(root, folder, filename);
+                const canonicalRoot = require('node:fs').realpathSync.native(root);
+                const verified = await readVerifiedFile(target, { maxBytes: 16 * 1024 * 1024, check: actual => {
+                    if (!withinCanonical(canonicalRoot, actual)) throw new Error('outside media root');
+                } });
+                const type = require('../pi-file-types').classify(verified.bytes, filename);
+                items.push({ kind: type.kind === 'image' ? 'image' : 'file', name: filename, mime: last.asset.mimeType || type.mime, bytes: verified.bytes });
+            } catch {}
+        }
+        return items;
     }
     async collectDeliverables(refs) {
         const items = [];
