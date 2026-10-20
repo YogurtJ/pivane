@@ -66,6 +66,15 @@ const server = http.createServer((req, res) => {
             await page.evaluate(() => { failure = false; });
             await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
             assert.equal(await page.getByRole('button', { name: 'Save allowed users', exact: true }).isDisabled(), false);
+            await page.evaluate(() => {
+                data.typing = [{ accountId: data.accounts[0].id, peerId: 'owner', status: 'degraded', failures: 2, reason: 'typing-failed' }];
+                data.jobs = [{ id: 'partial-fixture', kind: 'cron', accountId: data.accounts[0].id, peerId: 'owner', status: 'partial', at: Date.now(), reason: 'attachments-incomplete', sentChunks: 1, sentMedia: 1, deliveryIssues: [{ name: '<img src=x onerror=alert(1)>.pdf', reason: 'size' }] }];
+            });
+            await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
+            await page.getByText('Partially delivered', { exact: true }).waitFor();
+            await page.getByText('Typing feedback is unavailable.', { exact: false }).waitFor();
+            assert.match(await page.locator('.channel-job').innerText(), /Exceeds 16 MiB/);
+            assert.equal(await page.locator('[onerror]').count(), 0, 'diagnostic file names use safe text');
             const overflow = await page.evaluate(() => [...document.querySelectorAll('input,select,textarea,button,canvas,.channel-card')].filter(n => n.getBoundingClientRect().right > innerWidth + 1).map(n => n.outerHTML));
             assert.deepEqual(overflow, []);
             assert.equal(await page.getByLabel('WeChat user ID', { exact: true }).evaluate(n => getComputedStyle(n).fontSize), '16px');

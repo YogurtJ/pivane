@@ -45,7 +45,7 @@ test('authenticated optional channel connects, binds and delivers once through t
         let body = ''; for await (const part of req) body += part; const input = JSON.parse(body); calls.push(input);
         if (hold) await hold;
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-        if (deliverTool && !input.messages.some(m => m.role === 'tool')) {
+        if (deliverTool && input.messages.at(-1)?.role !== 'tool') {
             const call = { role: 'assistant', tool_calls: [{ index: 0, id: `deliver-${calls.length}`, type: 'function', function: { name: 'deliver_files', arguments: JSON.stringify({ requestId: `req-${calls.length}`, title: 'Channel deliverables', files: ['report.md', 'chart.png'] }) } }] };
             for (const [delta, finish] of [[call, null], [{}, 'tool_calls']]) res.write(`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: input.model, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`);
             return res.end('data: [DONE]\n\n');
@@ -119,6 +119,23 @@ test('authenticated optional channel connects, binds and delivers once through t
         assert.equal(entries.filter(e => e.customType === 'pivane-channel-message').length, 1);
         assert.ok(entries.some(e => e.customType === 'pivane-channel-turn' && e.data.status === 'completed'));
         await worker.request('prompt', { message: 'web-only message' }); await wait(() => worker.isIdle()); assert.equal(sends.length, 1, 'web turns do not leak into the channel');
+        // A completed channel turn can wait for delivery while a later web turn publishes private artifacts.
+        fs.writeFileSync(path.join(cwd, 'report.md'), '# Web-only fixture report\n');
+        fs.writeFileSync(path.join(cwd, 'chart.png'), onePixelPng);
+        const originalReadOutcome = service.readOutcome.bind(service);
+        let announceOutcome, releaseOutcome;
+        const outcomeStarted = new Promise(resolve => { announceOutcome = resolve; });
+        const outcomeGate = new Promise(resolve => { releaseOutcome = resolve; });
+        service.readOutcome = async job => { announceOutcome(); await outcomeGate; return originalReadOutcome(job); };
+        service.receive('bot-one', { msgs: [incoming('delayed-outgoing', 'Reply without files')] }); service.pump();
+        const delayedJob = service.db.value.jobs.at(-1); await outcomeStarted;
+        deliverTool = true;
+        await worker.request('prompt', { message: 'Publish files only for the web conversation' });
+        await wait(() => worker.isIdle()); deliverTool = false;
+        releaseOutcome(); await wait(() => service.job(delayedJob.id).status === 'delivered');
+        service.readOutcome = originalReadOutcome;
+        assert.equal(mediaSends.length, 0, 'later web files must not be sent with a delayed channel result');
+        assert.deepEqual((await service.readOutcome(delayedJob)).deliverables, []);
         // Slash commands: /help, /status, /model, /new
         const callsBeforeSlash = calls.length;
         service.receive('bot-one', { msgs: [incoming('slash-help', '/help')] }); service.pump();
@@ -184,14 +201,27 @@ test('authenticated optional channel connects, binds and delivers once through t
         // Proactive scheduled task notification to bound WeChat DM
         const cronJob = await gateway.cron.save({
             id: '11111111-1111-4111-8111-111111111111', name: 'Daily digest', prompt: 'Digest prompt',
-            enabled: false, notifyWeixin: true, mode: 'text',
+            enabled: false, notifyWeixin: true, mode: 'work',
             target: { kind: 'thread', cwd, sessionId: session.id },
             schedule: { kind: 'cron', expression: '0 9 * * *', timeZone: 'Asia/Shanghai' }
         });
+        deliverTool = true;
+        const beforeCronMedia = mediaSends.length;
         replyText = 'Scheduled morning digest body';
         const cronRun = await gateway.cron.action(cronJob.id, { action: 'run', revision: cronJob.revision, requestId: '22222222-2222-4222-8222-222222222222' });
         await wait(async () => { await gateway.cron.tick(); return gateway.cron.db.run(cronRun.id)?.status === 'completed'; });
         await wait(() => sends.some(s => s.text.includes('Scheduled morning digest body')));
+        await wait(() => service.db.value.jobs.some(j => j.kind === 'cron' && j.status === 'delivered'));
+        deliverTool = false;
+        assert.equal(mediaSends.length, beforeCronMedia + 2, 'scheduled notification includes its own published files');
+        assert.equal(gateway.cron.db.run(cronRun.id).channelNotify.status, 'accepted');
+        const cronEvent = gateway.cron.db.run(cronRun.id).channelNotify.event;
+        const jobsBeforeDuplicate = service.db.value.jobs.length;
+        const sendsBeforeDuplicate = sends.length;
+        assert.equal((await service.notifyScheduledRun(cronEvent)).status, 'accepted');
+        service.pump(); await delay(40);
+        assert.equal(service.db.value.jobs.length, jobsBeforeDuplicate, 'lost local admission acknowledgement cannot duplicate a channel job');
+        assert.equal(sends.length, sendsBeforeDuplicate);
         // /new command creates and rebinds to a fresh thread, then /resume lists and switches back by index or keyword
         service.receive('bot-one', { msgs: [incoming('slash-new', '/new 新建的微信会话')] }); service.pump();
         await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
@@ -206,6 +236,26 @@ test('authenticated optional channel connects, binds and delivers once through t
         assert.match(sends.at(-1).text, /已切换微信绑定到线程：重命名后的主线程/);
         assert.equal(service.db.value.bindings[0].sessionId, session.id);
         replyText = 'Native channel reply';
+        const { SessionManager: AuditSessionManager } = await import('@earendil-works/pi-coding-agent');
+        const management = await gateway.store.createSession(cwd, 'Managed helper');
+        AuditSessionManager.open(management.path).appendCustomEntry('pivane-extension-assistant', {});
+        service.receive('bot-one', { msgs: [incoming('resume-management', '/resume ' + management.id)] }); service.pump();
+        await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
+        assert.equal(service.db.value.bindings[0].sessionId, session.id);
+        assert.match(sends.at(-1).text, /管理助手线程不能绑定/);
+        const nativeGetWorker = gateway.supervisor.getWorker.bind(gateway.supervisor);
+        let announceCommand, releaseCommand;
+        const commandStarted = new Promise(resolve => { announceCommand = resolve; });
+        const commandGate = new Promise(resolve => { releaseCommand = resolve; });
+        gateway.supervisor.getWorker = async input => { announceCommand(); await commandGate; return nativeGetWorker(input); };
+        service.receive('bot-one', { msgs: [incoming('revoke-command', '/model normal')] }); service.pump(); await commandStarted;
+        await action('account', { accountId: 'bot-one', enabled: false, allowedUsers: ['owner'] });
+        assert.equal(service.db.value.jobs.at(-1).status, 'cancelled');
+        releaseCommand(); await wait(() => service.runs.size === 0);
+        gateway.supervisor.getWorker = nativeGetWorker;
+        assert.equal((await worker.request('get_state')).model.id, 'vision', 'a cancelled command cannot mutate the real native model');
+        assert.equal(service.db.value.jobs.at(-1).status, 'cancelled');
+        await action('account', { accountId: 'bot-one', enabled: true, allowedUsers: ['owner'] });
         replyText = 'Long reply '.repeat(500);
         sendHold = new Promise(resolve => { releaseSend = resolve; });
         const beforeRevoke = sends.length;

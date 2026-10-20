@@ -128,14 +128,14 @@ class AgentWorker extends EventEmitter {
         return this.readyPromise;
     }
 
-    async request(type, payload = {}, timeoutMs, operationToken) {
+    async request(type, payload = {}, timeoutMs, operationToken, beforeSend) {
         if (this.disposed || this.restarting || this.exited) throw new Error('Pi runtime 已关闭或正在重新打开');
         if (!type.startsWith('get_')) this.assertReferenceWritable();
         if (['bash', 'abort_bash', 'set_steering_mode', 'set_follow_up_mode'].includes(type)) throw new Error('请使用受控运行入口');
         if (this.cronRun && (!this.operation || operationToken !== this.operation) && !type.startsWith('get_') && type !== 'abort') throw new Error('定时任务正在运行或恢复设置，请等待结束或在定时任务页核对');
         if (this.shell.busy && !type.startsWith('get_')) throw new Error('Shell 正在执行，请等待命令终态');
         if (this.controlPending && !type.startsWith('get_')) throw new Error('正在停止或取回队列，请等待状态确认');
-        if (this.operation && operationToken !== this.operation && !type.startsWith('get_') && !(type === 'abort' && this.channelRun)) throw new Error('会话操作进行中，请稍后重试');
+        if (this.operation && operationToken !== this.operation && !type.startsWith('get_') && !(type === 'abort' && (this.channelRun || this.channelCommandId))) throw new Error('会话操作进行中，请稍后重试');
         const controlGeneration = this.controlGeneration;
         const checkingUncertainControl = this.controlUncertain;
         this.lastUsedAt = Date.now();
@@ -169,6 +169,8 @@ class AgentWorker extends EventEmitter {
             // Map one get_entries response synchronously at its stdout boundary so
             // later events cannot be acknowledged by an older transcript snapshot.
             const transcriptSdk = type === 'get_messages' && this.managed ? await require('./pi-session-store').getSdk() : null;
+            // Channel controls revalidate authorization at the last synchronous boundary before RPC submission.
+            beforeSend?.();
             const data = await this.client.request(transcriptSdk ? 'get_entries' : type, transcriptSdk ? {} : payload, timeoutMs, undefined, value => {
                 if (transcriptSdk) {
                     // webAnchors maps each native message entry of the current context to the
@@ -391,7 +393,7 @@ class AgentWorker extends EventEmitter {
         }
         const token = Symbol('session-operation');
         this.operation = token;
-        const rpc = (type, payload = {}, timeout) => this.request(type, payload, timeout, token);
+        const rpc = (type, payload = {}, timeout, beforeSend) => this.request(type, payload, timeout, token, beforeSend);
         try {
             const runtime = await rpc('get_state');
             if (idle && (runtime.isStreaming || runtime.isCompacting || runtime.pendingMessageCount || this.pendingUi.size)) {
@@ -562,9 +564,10 @@ class AgentWorker extends EventEmitter {
         } finally { this.resourceResults.delete(id); }
     }
 
-    async reloadResources() {
+    async reloadResources({ rpc: reservedRpc } = {}) {
         if (this.contextCapture || this.resourceResults.size) throw new Error('正在读取侧聊背景或资源，请稍后重新加载资源');
-        return this.exclusive(async rpc => {
+        if (reservedRpc && !this.operation) throw new Error('Resource reload requires an active operation');
+        const reload = async rpc => {
             const extensionPath = path.join(__dirname, 'pi-web-session-extension.ts');
             const find = data => data.commands.find(item => item.source === 'extension'
                 && (item.sourceInfo?.path || item.path) === extensionPath
@@ -589,7 +592,8 @@ class AgentWorker extends EventEmitter {
                 }
                 throw error;
             }
-        });
+        };
+        return reservedRpc ? reload(reservedRpc) : this.exclusive(reload);
     }
 
     async subagentRequest(input) {

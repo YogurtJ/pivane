@@ -22,9 +22,14 @@ class ChannelStore {
             || new Set(value.accounts.map(a => a.id)).size !== value.accounts.length
             || value.bindings.some(b => !b || !id(b.id) || !id(b.accountId) || !id(b.peerId) || !id(b.sessionId)
                 || typeof b.cwd !== 'string' || !path.isAbsolute(b.cwd) || b.cwd.length > 4096)
-            || value.jobs.some(j => !j || typeof j.id !== 'string' || typeof j.status !== 'string')
+            || value.jobs.some(j => !j || typeof j.id !== 'string' || typeof j.status !== 'string'
+                || j.commandSubmitted !== undefined && typeof j.commandSubmitted !== 'boolean'
+                || j.deliveryIssues !== undefined && (!Array.isArray(j.deliveryIssues) || j.deliveryIssues.length > 20
+                    || j.deliveryIssues.some(i => !i || typeof i.name !== 'string' || i.name.length > 120 || typeof i.reason !== 'string' || i.reason.length > 64)))
             || value.peers.some(p => !p || !id(p.accountId) || !id(p.peerId) || typeof p.contextToken !== 'string' || p.contextToken.length > 8192
                 || p.typingTicket !== undefined && (typeof p.typingTicket !== 'string' || p.typingTicket.length > 4096)
+                || p.resumeCwd !== undefined && (typeof p.resumeCwd !== 'string' || !path.isAbsolute(p.resumeCwd) || p.resumeCwd.length > 4096)
+                || p.resumeListedAt !== undefined && (!Number.isFinite(p.resumeListedAt) || p.resumeListedAt < 0)
                 || p.resumeCandidates !== undefined && (!Array.isArray(p.resumeCandidates) || p.resumeCandidates.length > 20 || p.resumeCandidates.some(c => !id(c)))))
             throw new Error('消息渠道账号或绑定记录无效');
         this.value = value; this.diskHash = hash(bytes);

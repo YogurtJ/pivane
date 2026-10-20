@@ -220,7 +220,10 @@ function createPiAgentGateway(options = {}) {
         mediaLabService: options.mediaLabService, mediaRoot: options.artifactMediaRoot,
         isSuspended: () => maintenance.locked || maintenance.referenceLocked || Boolean(store.sessionMoves?.running),
         ...options.channelsOptions });
-    cron.onChannelNotify = event => channels.notifyScheduledRun(event);
+    cron.captureChannelNotify = event => channels.captureScheduledRecipients(event);
+    cron.onChannelNotify = event => channels.track(channels.notifyScheduledRun(event));
+    channels.canNotifyScheduled = id => Boolean(cron.db?.job(id)?.notifyWeixin);
+    channels.scheduledAdmissionPending = id => cron.db?.run(id)?.channelNotify?.status === 'pending';
     require('./channels/service').mountChannels(router, channels);
 
     router.get('/status', async (req, res) => {

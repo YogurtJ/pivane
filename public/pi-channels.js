@@ -25,9 +25,9 @@
         control.setAttribute('aria-label', name);
         return l;
     };
-    const labels = () => ({ queued: t('等待线程空闲', 'Waiting for thread'), dispatching: t('正在投递', 'Submitting'), running: t('运行中', 'Running'), ready: t('回复待发送', 'Reply pending'), sending: t('正在发送回复', 'Sending reply'), delivered: t('已送达', 'Delivered'), uncertain: t('需要核对', 'Needs review'), reviewed: t('已核对', 'Reviewed'), ignored: t('未进入线程', 'Not submitted'), failed: t('失败', 'Failed'), cancelled: t('已取消', 'Cancelled') });
-    const jobKind = status => status === 'delivered' || status === 'reviewed' ? 'on' : ['running', 'dispatching', 'sending', 'queued', 'ready'].includes(status) ? 'info' : ['uncertain', 'failed'].includes(status) ? 'error' : 'off';
-    const reasons = () => ({ unbound: t('尚未绑定线程', 'No thread binding'), 'reply-context-missing': t('缺少微信回复上下文，请在微信再发一条消息', 'Reply context is missing; send another WeChat message'), 'unsupported-message': t('当前支持文字私聊，请用文字重发', 'Text DMs are supported; resend as text'), 'queue-full': t('待处理消息已满', 'Pending queue is full'), restart: t('服务重启，未自动重试', 'Service restarted; no automatic retry'), 'execution-or-delivery-uncertain': t('执行或发送结果不确定，请查看线程', 'Execution or delivery is uncertain; inspect the thread'), 'binding-changed': t('绑定已变化', 'Binding changed') });
+    const labels = () => ({ queued: t('等待线程空闲', 'Waiting for thread'), dispatching: t('正在投递', 'Submitting'), running: t('运行中', 'Running'), ready: t('回复待发送', 'Reply pending'), sending: t('正在发送回复', 'Sending reply'), delivered: t('已送达', 'Delivered'), partial: t('部分送达', 'Partially delivered'), uncertain: t('需要核对', 'Needs review'), reviewed: t('已核对', 'Reviewed'), ignored: t('未进入线程', 'Not submitted'), failed: t('失败', 'Failed'), cancelled: t('已取消', 'Cancelled') });
+    const jobKind = status => status === 'delivered' || status === 'reviewed' ? 'on' : ['running', 'dispatching', 'sending', 'queued', 'ready'].includes(status) ? 'info' : ['uncertain', 'failed', 'partial'].includes(status) ? 'error' : 'off';
+    const reasons = () => ({ unbound: t('尚未绑定线程', 'No thread binding'), 'reply-context-missing': t('缺少微信回复上下文，请在微信再发一条消息', 'Reply context is missing; send another WeChat message'), 'unsupported-message': t('当前支持文字私聊，请用文字重发', 'Text DMs are supported; resend as text'), 'queue-full': t('待处理消息已满', 'Pending queue is full'), restart: t('服务重启，未自动重试', 'Service restarted; no automatic retry'), 'execution-or-delivery-uncertain': t('执行或发送结果不确定，请查看线程', 'Execution or delivery is uncertain; inspect the thread'), 'binding-changed': t('绑定已变化', 'Binding changed'), 'attachments-incomplete': t('部分附件尚未发送，请查看下方说明或打开线程。', 'Some attachments were not sent. See details below or open the thread.'), 'admission-changed': t('执行前权限或绑定已变化', 'Permission or binding changed before execution'), 'delivery-revoked': t('回复权限已撤销', 'Reply permission was revoked'), 'notification-revoked': t('定时通知已关闭', 'Scheduled notification was disabled') });
     function create(host) {
         const root = el('section', null, 'workspace-settings-panel channel-panel'); root.dataset.settingsPanel = 'channels';
         const header = el('header', null, 'settings-panel-header channel-header');
@@ -158,7 +158,7 @@
         function render() {
             if (!snapshot) return;
             component.hidden = false;
-            const nextSignature = JSON.stringify([snapshot.revision, snapshot.component, snapshot.login, snapshot.accounts]);
+            const nextSignature = JSON.stringify([snapshot.revision, snapshot.component, snapshot.login, snapshot.accounts, snapshot.typing?.filter(row => ['degraded', 'unavailable'].includes(row.status))]);
             if (signature !== nextSignature) {
                 signature = nextSignature;
                 const installed = snapshot.component.installed && !snapshot.component.broken;
@@ -230,6 +230,8 @@
                     const names = { connected: t('已连接', 'Connected'), disabled: t('已停用', 'Disabled'), starting: t('连接中', 'Connecting'), error: t('连接异常', 'Connection error') };
                     const connKind = account.connection === 'connected' ? 'on' : account.connection === 'error' ? 'error' : account.connection === 'starting' ? 'info' : 'off';
                     card.append(cardHead('fa-user-check', account.id, account.userId ? t('扫码用户：', 'Scanner ID: ') + account.userId : '', badge(names[account.connection] || account.connection, connKind)));
+                    const typingIssues = (snapshot.typing || []).filter(row => row.accountId === account.id && ['degraded', 'unavailable'].includes(row.status));
+                    if (typingIssues.length) card.append(el('p', t('正在输入状态暂不可用；消息处理仍会继续，下次任务会重新获取状态票据。', 'Typing feedback is unavailable. Message processing continues; the next task will request a fresh ticket.'), 'channel-inline-alert'));
                     if (accountDrafts.has(account.id)) {
                         const saved = el('details', null, 'channel-saved-users'); saved.append(el('summary', t('查看服务器已保存的允许用户', 'View saved allowed users')), el('p', account.allowedUsers.join('\n'))); card.append(saved);
                     }
@@ -302,6 +304,8 @@
                 if (sent.length) row.append(el('small', t('已发送：', 'Sent: ') + sent.join(' · '), 'channel-job-sent'));
                 if (job.waiting) row.append(el('p', t('正在等待交互确认，请打开 Pivane 线程处理。', 'Waiting for confirmation. Open the Pivane thread to respond.'), 'channel-job-alert'));
                 if (job.reason && reasons()[job.reason]) row.append(el('p', reasons()[job.reason], 'channel-job-reason'));
+                const issueLabels = { size: t('超过 16 MiB', 'Exceeds 16 MiB'), limit: t('超过附件数量限制', 'Attachment limit exceeded'), unreadable: t('读取或校验失败', 'Read or verification failed'), unavailable: t('发送组件不可用', 'Delivery unavailable'), pending: t('尚在生成', 'Still generating'), failed: t('生成未完成', 'Generation incomplete') };
+                for (const issue of (job.deliveryIssues || []).slice(0, 20)) row.append(el('p', `${issue.name}：${issueLabels[issue.reason] || issueLabels.unreadable}`, 'channel-job-reason'));
                 const actions = el('div', null, 'channel-actions');
                 if (['running', 'dispatching'].includes(job.status)) actions.append(button(t('停止任务', 'Stop task'), () => write('stop', { jobId: job.id }), 'danger'));
                 if (job.canRecover) actions.append(button(t('核对并发送原生回复', 'Check and send native reply'), () => write('recover', { jobId: job.id }), 'primary'));

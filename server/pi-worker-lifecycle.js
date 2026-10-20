@@ -19,6 +19,7 @@ function workerLifecycle(worker) {
     if (worker.contextCapture) operations.push('context');
     if (worker.documentReads) operations.push('document-read');
     if (worker.channelRun) operations.push('message-channel');
+    if (worker.channelCommandId) operations.push('message-channel-command');
     if (worker.cronRun) operations.push('scheduled-task');
     const blockers = [...operations];
     if (activity.busy) blockers.push('agent');

@@ -31,14 +31,14 @@ async function check(browser, base, width, language, scenario = 'normal') {
         if (url.pathname === '/api/pi/sessions') return send({ sessions: url.searchParams.get('cwd') === cwd
             ? [{ id: sessionId, cwd, name: 'Main conversation', agentProfile: { id: profileId } }] : [] });
         if (url.pathname === '/api/pi/activity') return send({ runtimes: [], replyNotices: [] });
-        if (url.pathname === '/api/pi/cron') return new Promise(resolve => setTimeout(() => { send({ jobs, homes, limits, today: { runs: 0, tokens: 0, cost: 0 } }); resolve(); }, scenario === 'slow' ? 350 : 0));
+        if (url.pathname === '/api/pi/cron') return new Promise(resolve => setTimeout(() => { send({ jobs, homes, limits, today: { runs: 0, tokens: 0, cost: 0 }, channelNotifications: { pending: 2, failed: 1, lastError: 'channel-admission-pending' } }); resolve(); }, scenario === 'slow' ? 350 : 0));
         if (url.pathname === '/api/pi/cron/preview') return send({ times: Array.from({ length: 5 }, (_, i) => now + (i + 1) * 86400000) });
         if (url.pathname === '/api/pi/cron/jobs') { jobs.push({ ...body, revision: 1, nextAt: now + 86400000 }); return send(jobs.at(-1)); }
         if (url.pathname === `/api/pi/cron/homes/${profileId}`) {
             const home = { profileId, revision: 1, status: 'ready', cwd: body.cwd, sessionId: body.sessionId, name: 'Main conversation' };
             homes.push(home); return send(home);
         }
-        if (url.pathname.endsWith('/runs')) return send({ runs: [] });
+        if (url.pathname.endsWith('/runs')) return send({ runs: [{ id: 'notice-fixture', status: 'completed', scheduledAt: now, channelNotify: { status: 'pending', lastError: 'channel-admission-pending' } }] });
         if (url.pathname.includes('history') || url.pathname === '/api/prompts') return send([]);
         return send({ configured: false });
     });
@@ -48,6 +48,7 @@ async function check(browser, base, width, language, scenario = 'normal') {
         assert.equal(await page.evaluate(() => window.__cronLoadingSeen), true, 'initial task loading should have a visible placeholder');
         await page.locator('#cron-tab .pv-skeleton').first().waitFor({ state: 'detached', timeout: 1500 });
     }
+    await page.locator('.cron-notice').filter({ hasText: zh ? '微信通知待处理 2' : 'WeChat notifications pending 2' }).waitFor();
     await page.getByRole('button', { name: zh ? '新建任务' : 'New task', exact: true }).click();
     await page.getByLabel(zh ? '任务名称' : 'Task name').fill('Daily briefing <img src=x onerror=alert(1)>');
     await page.getByLabel(zh ? '工作目录' : 'Working directory', { exact: false }).fill(cwd);
@@ -65,6 +66,7 @@ async function check(browser, base, width, language, scenario = 'normal') {
     await page.screenshot({ path: `/tmp/pivane-cron-form-${width}-${language}.png`, fullPage: true });
     await page.getByRole('button', { name: zh ? '保存任务' : 'Save task', exact: true }).click();
     await page.locator('.cron-detail-head').waitFor();
+    await page.getByText(zh ? '微信通知等待投递入队' : 'WeChat notification awaiting admission', { exact: true }).waitFor();
     assert.match(jobs[0].id, /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/);
     assert.equal(jobs[0].schedule.expression, '0 17 * * *');
     assert.equal(jobs[0].target.sessionId, sessionId);

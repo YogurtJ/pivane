@@ -85,7 +85,10 @@
                 if (version !== epoch || !visible) return;
                 snapshot = data; profiles = profileData.profiles;
                 if (data.schedulerError) message(data.schedulerError, true);
-                else message();
+                else if (data.channelNotifications?.pending || data.channelNotifications?.failed) {
+                    const notice = data.channelNotifications;
+                    message(`${t('微信通知待处理')} ${notice.pending || 0} · ${t('无法建立通知')} ${notice.failed || 0}`, Boolean(notice.lastError));
+                } else message();
                 renderList(); if (!draft) await renderDetail();
             } catch (error) {
                 if (version !== epoch || !visible) return;
@@ -161,6 +164,11 @@
                     const row = node('div', 'cron-run'), copy = node('div');
                     copy.append(node('strong', `cron-status ${run.status}`, t(statusNames[run.status] || run.status)), node('small', '', date(run.scheduledAt, job.schedule.timeZone)));
                     if (run.reason) copy.append(node('p', 'cron-muted', reason(run.reason)));
+                    if (run.channelNotify) {
+                        const names = { pending: '微信通知等待投递入队', accepted: '微信通知已进入投递队列', skipped: '微信通知已跳过' };
+                        const captureFailed = run.channelNotify.reason === 'capture-error';
+                        copy.append(node('p', 'cron-muted', t(captureFailed ? '无法建立微信通知，请检查渠道状态' : names[run.channelNotify.status] || '微信通知状态待核对')));
+                    }
                     if (run.usage) copy.append(node('small', '', `${run.usage.tokens?.toLocaleString() || '—'} tokens · ${run.usage.cost == null ? t('费用未知') : `$${run.usage.cost.toFixed(4)}`}`));
                     row.append(copy); const buttons = node('div', 'cron-actions');
                     if (run.target) buttons.append(button('查看线程', 'fa-arrow-up-right-from-square', () => openThread(run.target)));

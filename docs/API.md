@@ -4,11 +4,15 @@
 
 `GET /api/pi/status.messageChannels=true` 表示消息渠道接口可用，不表示微信组件已安装或账号已连接。以下接口沿用工作台身份、Origin/CSRF、维护准入与 no-store；worker 内部凭据不能管理渠道。
 
-- `GET /api/pi/channels`：返回配置 `revision`、组件 installed/version/availableVersion/sources、脱敏 accounts、bindings、已允许 peers、最近 60 条 jobs（含 `sentChunks`、`sentMedia`、`waiting`、`kind`）、当前登录的二维码布尔矩阵/status/expiresAt 和 capabilities（`text`、`images`、`files`、`slashCommands`、`typing`、`proactive`）。没有账号 token、微信 context token、登录验证码或消息正文。
+- `GET /api/pi/channels`：返回配置 `revision`、组件 installed/version/availableVersion/sources、脱敏 accounts、bindings、已允许 peers、最近 60 条 jobs（含 `sentChunks`、`sentMedia`、`waiting`、`kind`、有界 `deliveryIssues:[{name,reason}]`）、当前登录的二维码布尔矩阵/status/expiresAt 和 capabilities（`text`、`images`、`files`、`slashCommands`、`typing`、`proactive`）。没有账号 token、微信 context token、登录验证码或消息正文。
 - `POST /api/pi/channels/weixin/actions`：共同字段 `{action, confirmed:true, expectedRevision}`。操作在 await 前预占互斥；冲突 409，其他失败 400，结果不确定不自动重放。当前支持 `install`、`uninstall`、`login`、`cancel-login`、`verify-login`、`account`、`bind`、`unbind`、`stop`、`recover`、`acknowledge`。
 - `cancel-login` 需要 loginId；`verify-login` 需要 loginId/code（1–12 位数字）；登录最多五分钟，通过 GET 查询进度，不由浏览器重复提交登录请求。
 - `account` 需要 accountId/enabled/allowedUsers（最多 100 个 1–256 字符 ID）；启用必须有非空允许列表。`bind` 需要 accountId/peerId/cwd 和 sessionId，或显式 newSession=true。`unbind` 需要 accountId/peerId。最多 10 个账号、200 条绑定、500 个已允许聊天；临时及管理助手线程不接受绑定。
 - `stop`、`recover`、`acknowledge` 需要 jobId。stop 仅请求中止所属微信运行；recover 仅在未开始微信发送且原生当前分支存在已完成结果时恢复发送；acknowledge 不重跑、不补发。
+
+`jobs.status=partial` 表示文字或部分文件已送达，但有附件因 `size`、`limit`、`unreadable`、`unavailable`、`pending` 或 `failed` 未发送；不会自动补发。`typing` 返回最多 100 个脱敏运行诊断 `{accountId,peerId,status,failures,reason}`，不包含票据或上游错误正文。修改指令在提交前持久化为 `dispatching`；重启或未知结果转 `uncertain`，Slash Command 不提供 `recover` 自动补运行入口。
+
+`GET /api/pi/cron` 新增 `channelNotifications:{pending,failed,lastError}`；`lastError` 仅为 `channel-admission-pending`、`channel-capture-failed` 或 null。运行记录的 `channelNotify.status` 为 `pending`、`accepted` 或 `skipped`；accepted 仅表示渠道持久入队，实际微信送达以渠道 jobs 为准。
 
 状态、队列预算、组件来源与存储见[消息渠道](MESSAGE_CHANNELS.md)。原生私有命令标记 `channels-v1` 不加入公开 RPC 命令白名单；`pivane-channel-message` 是唯一聊天正文，`pivane-channel-turn` 记录运行状态和回复条目 ID。浏览器只按真实回执显示送达，不以模型输出结束推断微信收到。
 
