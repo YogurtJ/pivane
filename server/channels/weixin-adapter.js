@@ -31,11 +31,21 @@ function createTransport(stoppingSignal, getLoginSignal = () => undefined) {
             const response = await require('node-fetch')(url, { ...options, redirect: 'error', size: maxSize, agent,
                 signal: AbortSignal.any([...stopping, AbortSignal.timeout(isCdn ? 60000 : 40000), ...(options.signal ? [options.signal] : []), ...(loginSignal ? [loginSignal] : [])]) });
             const buffer = await response.buffer();
+            // sendTyping discards the API response. Inspect only this endpoint
+            // here so upstream still builds its own request/base_info unchanged.
+            if (!isCdn && pathname === '/ilink/bot/sendtyping') {
+                try { checkTypingResponse(JSON.parse(buffer.toString('utf8'))); }
+                catch { throw new Error('微信输入状态请求失败'); }
+            }
             return { ok: response.ok, status: response.status, statusText: response.statusText || '', headers: response.headers,
                 text: async () => buffer.toString('utf8'),
                 arrayBuffer: async () => buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) };
         } finally { agent?.destroy(); }
     };
+}
+function checkTypingResponse(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)
+        || ['ret', 'errcode'].some(key => value[key] !== undefined && value[key] !== 0)) throw new Error('微信输入状态请求失败');
 }
 function validId(value) { return typeof value === 'string' && value.length > 0 && value.length <= 256 && !/[\x00-\x1f]/.test(value); }
 class WeixinAdapter {
@@ -71,13 +81,19 @@ class WeixinAdapter {
     }
     async typingTicket(account, peer) {
         if (!peer?.contextToken || typeof this.api.getConfig !== 'function') return '';
-        const resp = await this.api.getConfig({ baseUrl: account.baseUrl, token: account.token, ilinkUserId: peer.peerId, contextToken: peer.contextToken, timeoutMs: 5000 });
-        return resp?.ret === 0 && typeof resp.typing_ticket === 'string' && resp.typing_ticket.length <= 4096 ? resp.typing_ticket : '';
+        let resp;
+        try { resp = await this.api.getConfig({ baseUrl: account.baseUrl, token: account.token, ilinkUserId: peer.peerId, contextToken: peer.contextToken, timeoutMs: 5000 }); }
+        catch { throw new Error('微信输入状态票据请求失败'); }
+        checkTypingResponse(resp);
+        return typeof resp.typing_ticket === 'string' && resp.typing_ticket.length <= 4096 ? resp.typing_ticket : '';
     }
     async typing(account, peer, ticket, active = true) {
         if (!ticket || typeof this.api.sendTyping !== 'function') return;
-        await this.api.sendTyping({ baseUrl: account.baseUrl, token: account.token, timeoutMs: 5000,
-            body: { ilink_user_id: peer.peerId, typing_ticket: ticket, status: active ? 1 : 2 } });
+        try {
+            const result = await this.api.sendTyping({ baseUrl: account.baseUrl, token: account.token, timeoutMs: 5000,
+                body: { ilink_user_id: peer.peerId, typing_ticket: ticket, status: active ? 1 : 2 } });
+            if (result !== undefined) checkTypingResponse(result);
+        } catch { throw new Error('微信输入状态请求失败'); }
     }
     message(raw) {
         if (raw.group_id || raw.room_id || raw.message_type !== 1 || raw.message_state !== undefined && raw.message_state !== 2 || !validId(raw.from_user_id)
