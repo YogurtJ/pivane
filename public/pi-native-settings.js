@@ -302,9 +302,10 @@
             const title = node('div', undefined, { class: 'native-item-title' });
             title.append(node('strong', name));
             for (const badge of badges) {
-                const [label, kind] = Array.isArray(badge) ? badge : [badge, ''];
+                const [label, kind, hint] = Array.isArray(badge) ? badge : [badge, ''];
                 const span = node('span', label, { class: 'native-item-badge' });
                 if (kind) span.dataset.kind = kind;
+                if (hint) span.title = hint;
                 title.append(span);
             }
             main.append(title);
@@ -360,11 +361,19 @@
             heading.append(node('h3', translateUi("已安装")), node('p', translateUi("用 Packages 扩展 Pi 的工具、Skills、提示词与主题。")));
             const refresh = withIcon(button(translateUi("刷新"), 'native-installed-refresh', () => void loadInstalled(n, cwd, $('native-installed-scope')?.value || scope).catch(e => { if (valid(n, cwd) && refresh.isConnected) status('native-resource-status', e.message); })), 'fa-rotate');
             refresh.className = 'settings-header-refresh';
-            header.append(icon('fa-box-open'), heading, refresh);
+            const checkUpdates = withIcon(button(translateUi("检查更新"), 'native-installed-check-updates', () => void runUpdateCheck(checkUpdates)), 'fa-cloud-arrow-down');
+            checkUpdates.className = 'settings-header-refresh';
+            checkUpdates.title = translateUi("联网查询 npm 与 Git 远端的新版本，不会自动安装");
+            const headerActions = node('div', undefined, { class: 'settings-header-actions' });
+            headerActions.append(checkUpdates, refresh);
+            header.append(icon('fa-box-open'), heading, headerActions);
             const choice = select(availableScopes(), scope, 'native-installed-scope');
             choice.addEventListener('change', () => void loadInstalled(n, cwd, choice.value).catch(e => { if (valid(n, cwd) && choice.isConnected) status('native-resource-status', e.message); }));
             const scopeBar = node('div', undefined, { class: 'native-package-scope' });
-            scopeBar.append(label(translateUi("管理范围"), choice), node('p', translateUi("保存配置后，在会话空闲时重新加载资源。")));
+            const updateSummary = node('small', '', { id: 'native-update-summary', class: 'native-update-summary' });
+            const scopeHint = node('div', undefined, { class: 'native-package-scope-hint' });
+            scopeHint.append(node('p', translateUi("保存配置后，在会话空闲时重新加载资源。")), updateSummary);
+            scopeBar.append(label(translateUi("管理范围"), choice), scopeHint);
             const filters = node('div', undefined, { class: 'native-installed-filters', role: 'group', 'aria-label': translateUi("类型") });
             const totals = { all: snapshot.packages.length + snapshot.resources.length, packages: snapshot.packages.length };
             for (const resource of snapshot.resources) totals[resource.type] = (totals[resource.type] || 0) + 1;
@@ -382,6 +391,33 @@
             const list = node('div', undefined, { class: 'native-resource-list' });
             installedPanel.replaceChildren(header, assistantEntry(cwd, scope), scopeBar, filters, searchBar, node('p', '', { id: 'native-resource-status', role: 'status', 'aria-live': 'polite' }), list);
             if (disabled) { const notice = node('div', undefined, { class: 'native-package-notice' }); notice.append(node('p', translateUi("当前项目未信任，项目写入已禁用；可切换所有项目或管理信任。")), trustLink(cwd)); installedPanel.insertBefore(notice, filters); }
+            checkUpdates.disabled = disabled;
+            // Update results are display metadata from an explicit check; they never trigger an install.
+            const updateTime = value => { const date = new Date(value); return Number.isFinite(date.getTime()) ? date.toLocaleString(globalThis.PiI18n?.locale === 'en' ? 'en-US' : 'zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : ''; };
+            const hasUpdate = pkg => Boolean(snapshot.updates?.available?.some(item => item.source === pkg.source && item.scope === pkg.scope));
+            const packageVersions = new Map(snapshot.packages.filter(pkg => pkg.version).map(pkg => [pkg.source, pkg]));
+            function paintUpdateSummary() {
+                const result = snapshot.updates;
+                updateSummary.dataset.kind = result?.available?.length ? 'update' : '';
+                updateSummary.textContent = !result ? translateUi("尚未检查更新。检查会联网查询 npm 与 Git 远端，不会自动安装。")
+                    : result.offline ? translateUi("上次检查：{0} · 离线模式，未联网检查。", updateTime(result.checkedAt))
+                    : translateUi("上次检查：{0} · {1} 个扩展包有可用更新。", updateTime(result.checkedAt), result.available.length);
+            }
+            async function runUpdateCheck(control) {
+                const requestScope = scope;
+                control.disabled = true;
+                status('native-resource-status', translateUi("正在检查更新，可能需要一些时间…"));
+                try {
+                    const result = await apiFetch('/api/pi/settings/native/packages/updates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd, scope: requestScope }) });
+                    if (!active() || $('native-installed-scope')?.value !== requestScope) return;
+                    snapshot.updates = result; paintUpdateSummary(); render();
+                    status('native-resource-status', result.offline ? translateUi("离线模式（PI_OFFLINE）下不联网检查更新。")
+                        : result.available.length ? translateUi("{0} 个扩展包有可用更新，可在对应行点击“更新”。", result.available.length)
+                        : translateUi("未发现可用更新。固定版本、本地路径和 Pivane 内置组件不参与检查；查询失败的包同样不会显示更新。"));
+                } catch (error) { if (active()) status('native-resource-status', error.message); }
+                finally { if (control.isConnected) control.disabled = disabled; }
+            }
+            paintUpdateSummary();
             function setFilter(value) {
                 installedFilter = value;
                 for (const item of filters.querySelectorAll('button')) {
@@ -400,7 +436,8 @@
                 }
             }
             async function packageAction(control, action, source) {
-                if (!confirm(translateUi("{0} {1}（{2}）？包操作可能执行代码；失败后请核对配置，不自动重试。", action, source, scope === 'global' ? translateUi("全局") : translateUi("项目")))) return;
+                const verb = { update: translateUi("更新"), remove: translateUi("移除"), install: translateUi("安装") }[action] || action;
+                if (!confirm(translateUi("{0} {1}（{2}）？包操作可能执行代码；失败后请核对配置，不自动重试。", verb, source, scope === 'global' ? translateUi("全局") : translateUi("项目")))) return;
                 await act(control, async () => {
                     await send('/api/pi/settings/native/packages', 'POST', { cwd, scope, source, action, expectedRevision: snapshot.revision, confirmed: true });
                     if (!valid(n, cwd) || $('native-installed-scope')?.value !== scope) return;
@@ -435,17 +472,30 @@
             }
             function packageRow(pkg) {
                 const name = pkg.name || packageName(pkg.source);
-                const menu = [];
-                if (!pkg.managedBy && pkg.scope === (scope === 'global' ? 'user' : 'project')) {
-                    if (pkg.installed) menu.push({ label: translateUi("更新"), icon: 'fa-arrows-rotate', disabled, action: () => packageAction(null, 'update', pkg.source) });
+                const menu = [], owned = !pkg.managedBy && pkg.scope === (scope === 'global' ? 'user' : 'project');
+                const update = hasUpdate(pkg);
+                let primary = null;
+                if (owned && pkg.installed && update) {
+                    primary = withIcon(button(translateUi("更新"), '', () => void packageAction(primary, 'update', pkg.source)), 'fa-arrows-rotate');
+                    primary.className = 'native-item-update'; primary.disabled = disabled;
+                    primary.setAttribute('aria-label', `${translateUi("更新")} ${name}`);
+                }
+                if (owned) {
+                    if (pkg.installed && !update) menu.push({ label: translateUi("更新"), icon: 'fa-arrows-rotate', disabled, action: () => packageAction(null, 'update', pkg.source) });
                     menu.push({ label: translateUi("移除"), icon: 'fa-trash', danger: true, disabled, action: () => packageAction(null, 'remove', pkg.source) });
                 }
+                const badges = [[pkg.managedBy === 'pivane' ? translateUi("Pivane 内置") : resourceScopeLabel(pkg.scope), 'scope', pkg.managedBy === 'pivane' ? translateUi("随 Pivane 更新") : '']];
+                if (pkg.version) badges.push(['v' + pkg.version, 'version']);
+                badges.push([pkg.installed ? translateUi("已安装") : translateUi("尚未安装"), pkg.installed ? 'on' : 'off']);
+                if (update) badges.push([translateUi("有可用更新"), 'update']);
+                else if (pkg.updateMode === 'pinned') badges.push([translateUi("固定版本"), 'muted', translateUi("来源指定了版本或 Git 引用，检查更新时跳过")]);
+                else if (pkg.updateMode === 'check' && snapshot.updates && !snapshot.updates.offline && pkg.installed) badges.push([translateUi("未发现更新"), 'muted', translateUi("上次检查：{0}", updateTime(snapshot.updates.checkedAt))]);
                 const row = resourceRow({
-                    icon: 'fa-box', name,
-                    badges: [[pkg.managedBy === 'pivane' ? 'Pivane · ' + pkg.version : resourceScopeLabel(pkg.scope), 'scope'], [pkg.installed ? translateUi("已安装") : translateUi("尚未安装"), pkg.installed ? 'on' : 'off']],
+                    icon: 'fa-box', name, badges,
                     origin: { summary: translateUi("查看来源"), lines: [['code', pkg.source]] },
-                    menu, extra: [itemHelp(cwd, scope, { kind: 'package', name, source: pkg.source, resourceScope: pkg.scope })]
+                    primary, menu, extra: [itemHelp(cwd, scope, { kind: 'package', name, source: pkg.source, resourceScope: pkg.scope })]
                 });
+                if (update) row.dataset.update = 'true';
                 row.dataset.packageSource = pkg.source;
                 return row;
             }
@@ -461,10 +511,12 @@
                 primary.setAttribute('aria-label', `${resource.enabled ? translateUi("停用") : translateUi("启用")} ${name}`);
                 const menu = [];
                 if (scope === 'project' && resource.override !== 'inherit') menu.push({ label: translateUi("恢复继承"), icon: 'fa-rotate-left', disabled, action: () => changeResource(resource, 'inherit', primary) });
+                const owner = packageVersions.get(resource.source);
+                const version = resource.version ? ['v' + resource.version, 'version'] : owner ? ['v' + owner.version, 'version', translateUi("随扩展包 {0}", owner.name || packageName(owner.source))] : null;
                 const row = resourceRow({
                     icon: type?.[2] || 'fa-layer-group', name, description: names.get(resource.path)?.description,
                     off: !resource.enabled,
-                    badges: [[resourceScopeLabel(resource.scope), 'scope'], [resource.enabled ? translateUi("已启用") : translateUi("已停用"), resource.enabled ? 'on' : 'off']],
+                    badges: [[resourceScopeLabel(resource.scope), 'scope'], ...(version ? [version] : []), [resource.enabled ? translateUi("已启用") : translateUi("已停用"), resource.enabled ? 'on' : 'off']],
                     origin: { summary: translateUi("查看来源"), lines: [['code', resource.path], ['small', resource.source]] },
                     primary, menu,
                     extra: resource.type === 'skills' ? [itemHelp(cwd, scope, { kind: 'skill', name, path: resource.path, source: resource.source, resourceScope: resource.scope })] : []

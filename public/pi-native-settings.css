@@ -243,3 +243,20 @@
     #native-installed .native-section-more { margin-left: 0; min-height: 44px; }
     #native-installed .native-item-toggle { min-height: 40px; }
 }
+
+/* Versions and explicit update checks on installed packages and resources. */
+.native-item-badge[data-kind="version"] { background: transparent; border: 1px solid var(--line); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+.native-item-badge[data-kind="update"] { background: color-mix(in srgb, var(--amber) 16%, transparent); color: var(--amber); font-weight: 600; }
+.native-item-badge[data-kind="muted"] { background: transparent; border: 1px dashed var(--line); }
+.native-item-row[data-update="true"] .native-item-icon { background: color-mix(in srgb, var(--amber) 16%, transparent); color: var(--amber); }
+#native-installed .native-item-update { min-width: 76px; gap: 6px; border-color: #4d9a76; background: #347c5b; color: #fff; font-weight: 600; }
+#native-installed .native-item-update:hover:not(:disabled) { border-color: #4d9a76; background: #3d8d69; }
+.native-package-scope-hint { display: grid; gap: 2px; min-width: 0; }
+#native-installed .native-package-scope-hint p { padding-bottom: 0; }
+.native-update-summary { color: var(--text-muted); font-size: .74rem; line-height: 1.55; overflow-wrap: anywhere; }
+.native-update-summary[data-kind="update"] { color: var(--amber); font-weight: 600; }
+#native-installed .settings-panel-header > .settings-header-actions { display: flex; gap: 8px; }
+@media (max-width: 680px) {
+    #native-installed .native-item-update { min-height: 40px; }
+    #native-installed .settings-panel-header > .settings-header-actions button { min-height: 44px; }
+}

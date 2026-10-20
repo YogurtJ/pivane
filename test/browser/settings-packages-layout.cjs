@@ -8,15 +8,21 @@ const model = { provider, id: 'model/' + 'identifier-'.repeat(15), name: 'Planni
 async function run(browser, width, locale, theme) {
     const context = await browser.newContext({ viewport: { width, height: 960 }, locale, isMobile: width < 900, hasTouch: width < 900 });
     const page = await context.newPage(), errors = [], writes = [];
-    let revision = 'r1', empty = false, conflict = false, accept = true, held = false, release, failRead = false;
+    let revision = 'r1', empty = false, conflict = false, accept = true, held = false, release, failRead = false, updates = null;
+    const updateChecks = [];
     const resources = Array.from({ length: 46 }, (_, i) => ({ id: String(i), path: '/fixture/' + 'long-folder/'.repeat(12) + `resource-${i}.md`, source: 'npm:fixture', type: ['extensions', 'skills', 'prompts', 'themes'][i % 4], scope: 'user', enabled: i % 3 !== 0, override: 'inherit' }));
-    const packages = [{ source: 'npm:fixture@1.0.0', scope: 'user', installed: true }, { source: 'git:https://example.com/' + 'long-repository-'.repeat(14), scope: 'project', installed: false }];
+    const packages = [{ source: 'npm:fixture@1.0.0', scope: 'user', installed: true, version: '1.0.0' }, { source: 'git:https://example.com/' + 'long-repository-'.repeat(14), scope: 'project', installed: false }];
     page.on('pageerror', e => errors.push(e.message));
     page.on('dialog', d => accept ? d.accept() : d.dismiss());
     await page.addInitScript(({cwd, theme}) => { localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem('pi.workspace.theme', theme); }, {cwd, theme});
     if (process.env.PI_PREFERENCES_BASELINE_CSS) await page.route('**/workspace.css', r => r.fulfill({ contentType: 'text/css', body: fs.readFileSync(process.env.PI_PREFERENCES_BASELINE_CSS) }));
     await page.route('**/api/**', async route => {
         const req = route.request(), url = new URL(req.url()), path = url.pathname;
+        if (path.endsWith('/native/packages/updates')) {
+            updateChecks.push(req.postDataJSON());
+            updates = { checkedAt: '2026-10-20T08:30:00.000Z', offline: false, available: [{ source: 'npm:fixture@1.0.0', scope: 'user', type: 'npm' }] };
+            return route.fulfill({ json: updates });
+        }
         if (req.method() !== 'GET') {
             const body = req.postDataJSON(); writes.push({ path, body });
             if (conflict) return route.fulfill({ status: 409, json: { error: 'fixture conflict' } });
@@ -38,7 +44,7 @@ async function run(browser, width, locale, theme) {
             if (failRead) { failRead = false; return route.fulfill({ status: 503, json: { error: 'fixture read failure' } }); }
             const scope = url.searchParams.get('scope');
             if (held && scope === 'project') await new Promise(r => { release = r; });
-            return route.fulfill({ json: { cwd, scope, revision, trust: { effective: false }, packages: empty ? [] : packages, resources: empty ? [] : resources } });
+            return route.fulfill({ json: { cwd, scope, revision, trust: { effective: false }, updates: scope === 'global' ? updates : null, packages: empty ? [] : packages, resources: empty ? [] : resources } });
         }
         return route.fulfill({ json: path.includes('history') ? [] : {} });
     });
@@ -138,6 +144,22 @@ async function run(browser, width, locale, theme) {
     await card.locator('.native-item-menu > summary').click();
     await card.locator('.native-item-menu-list button').last().click(); await page.waitForFunction(() => document.querySelectorAll('[data-package-source]').length === 2);
     assert.equal(writes.at(-1).body.action, 'remove');
+    // Update checks are explicit reads; an available update promotes Update to the row.
+    const fixtureRow = page.locator('[data-package-source="npm:fixture@1.0.0"]');
+    assert.equal(await fixtureRow.locator('.native-item-badge[data-kind="version"]').textContent(), 'v1.0.0');
+    assert.equal(await fixtureRow.locator('.native-item-update').count(), 0);
+    const writesBeforeCheck = writes.length;
+    await page.locator('#native-installed-check-updates').click();
+    await fixtureRow.locator('.native-item-update').waitFor();
+    assert.deepEqual(updateChecks.at(-1), { cwd, scope: 'global' });
+    assert.equal(writes.length, writesBeforeCheck, 'checking for updates writes nothing');
+    assert.match(await page.locator('#native-update-summary').textContent(), /1/);
+    assert.equal(await fixtureRow.locator('.native-item-badge[data-kind="update"]').count(), 1);
+    await check();
+    await fixtureRow.locator('.native-item-update').click();
+    await page.waitForFunction(() => document.getElementById('native-resource-status').textContent.length > 0);
+    assert.deepEqual(writes.at(-1).body, { cwd, scope: 'global', source: 'npm:fixture@1.0.0', action: 'update', expectedRevision: revision.slice(0, -1), confirmed: true });
+    updates = null;
     const row = page.locator('[data-resource-id="0"]'); await row.locator('.native-item-toggle').click();
     await page.waitForFunction(() => document.getElementById('native-resource-status').textContent.length > 0);
     assert.equal(writes.at(-1).body.resourceId, '0'); assert.equal(writes.at(-1).body.state, 'on');

@@ -214,6 +214,78 @@ test('Skills can be disabled and restored through native filters without deletin
     assert.ok(fs.existsSync(pkgFile));
 });
 
+test('package and skill versions are display metadata; update checks are explicit, scoped and cached per revision', async () => {
+    const { PiNativeService } = require('../server/pi-native-service');
+    const { PiResourceService, updateMode } = require('../server/pi-resource-service');
+    const native = new PiNativeService(store), service = new PiResourceService(native);
+    for (const [source, mode] of [['npm:pkg', 'check'], ['npm:@scope/pkg@^1.2.0', 'check'], ['npm:pkg@1.2.3', 'pinned'], ['npm:@scope/pkg@2.0.0-beta.1', 'pinned'],
+        ['git:github.com/user/repo', 'check'], ['git:github.com/user/repo@v1.0', 'pinned'], ['https://github.com/user/repo#main', 'pinned'], ['git@github.com:user/repo', 'check'], ['./local', 'local'], ['/abs/path', 'local']]) {
+        assert.equal(updateMode(source, false), mode, source);
+    }
+    assert.equal(updateMode('npm:pkg', true), 'managed');
+    const pkg = path.join(root, 'version-package'), pkgSkill = path.join(pkg, 'skills/version-skill/SKILL.md');
+    fs.mkdirSync(path.dirname(pkgSkill), { recursive: true });
+    fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: 'version-package', version: '2.3.4', pi: { skills: ['skills'] } }));
+    fs.writeFileSync(pkgSkill, '---\nname: version-skill\ndescription: Fixture\nversion: 1.1.0\n---\nFixture');
+    const metaDir = path.join(root, 'agent/skills/meta-version'), badDir = path.join(root, 'agent/skills/bad-version');
+    fs.mkdirSync(metaDir, { recursive: true }); fs.mkdirSync(badDir, { recursive: true });
+    fs.writeFileSync(path.join(metaDir, 'SKILL.md'), '---\nname: meta-version\ndescription: Fixture\nmetadata:\n  version: "6.6.0"\n---\nFixture');
+    fs.writeFileSync(path.join(badDir, 'SKILL.md'), '---\nname: bad-version\ndescription: Fixture\nversion: "<img src=x onerror=alert(1)>"\n---\nFixture');
+    const savedOffline = process.env.PI_OFFLINE, originalContext = service.context;
+    let snap = await service.snapshot(cwd, 'global');
+    await service.packageAction({ cwd, scope: 'global', action: 'install', source: pkg, confirmed: true, expectedRevision: snap.revision });
+    try {
+        snap = await service.snapshot(cwd, 'global');
+        const entry = snap.packages.find(item => item.source === '../version-package');
+        assert.equal(entry.version, '2.3.4'); assert.equal(entry.updateMode, 'local');
+        const versionOf = file => snap.resources.find(item => item.path === file)?.version;
+        assert.equal(versionOf(pkgSkill), '1.1.0');
+        assert.equal(versionOf(path.join(metaDir, 'SKILL.md')), '6.6.0');
+        assert.equal(versionOf(path.join(badDir, 'SKILL.md')), undefined, 'unsafe version text is omitted');
+        assert.equal(snap.updates, null, 'no update information before an explicit check');
+        fs.writeFileSync(path.join(metaDir, 'SKILL.md'), '---\nname: meta-version\ndescription: Fixture\nversion: 6.7.0\n---\nFixture changed');
+        assert.equal((await service.snapshot(cwd, 'global')).resources.find(item => item.path === path.join(metaDir, 'SKILL.md')).version, '6.7.0', 'changed files are reread');
+        process.env.PI_OFFLINE = '1';
+        const offlineResult = await service.checkUpdates({ cwd, scope: 'global' });
+        assert.equal(offlineResult.offline, true); assert.deepEqual(offlineResult.available, []);
+        assert.deepEqual((await service.snapshot(cwd, 'global')).updates, offlineResult);
+        delete process.env.PI_OFFLINE;
+        let calls = 0, release;
+        service.context = async (...args) => {
+            const ctx = await originalContext.apply(service, args);
+            const sdk = { ...ctx.sdk, DefaultPackageManager: class {
+                constructor(options) { assert.equal(options.cwd, ctx.agentDir, 'global checks do not run from the project directory'); }
+                async checkForAvailableUpdates() {
+                    calls++; await new Promise(resolve => { release = resolve; });
+                    return [{ source: 'npm:global-one', scope: 'user', type: 'npm', displayName: 'global-one' }, { source: 'npm:project-one', scope: 'project', type: 'npm', displayName: 'project-one' }];
+                }
+            } };
+            return { ...ctx, sdk };
+        };
+        const first = service.checkUpdates({ cwd, scope: 'global' }), second = service.checkUpdates({ cwd, scope: 'global' });
+        while (!release) await new Promise(resolve => setImmediate(resolve));
+        release();
+        const [a, b] = await Promise.all([first, second]);
+        assert.equal(calls, 1, 'concurrent checks share one native check');
+        assert.deepEqual(a, b);
+        assert.deepEqual(a.available, [{ source: 'npm:global-one', scope: 'user', type: 'npm' }], 'global checks report only global packages');
+        service.context = originalContext;
+        assert.deepEqual((await service.snapshot(cwd, 'global')).updates.available, a.available);
+        assert.equal((await service.snapshot(cwd, 'project')).updates, null, 'results belong to the checked scope');
+        await assert.rejects(service.checkUpdates({ cwd, scope: 'elsewhere' }), /范围/);
+        snap = await service.snapshot(cwd, 'global');
+        const resource = snap.resources.find(item => item.path === pkgSkill);
+        await service.toggle({ cwd, scope: 'global', resourceId: resource.id, state: 'off', confirmed: true, expectedRevision: snap.revision });
+        assert.equal((await service.snapshot(cwd, 'global')).updates, null, 'a configuration change invalidates earlier results');
+    } finally {
+        service.context = originalContext;
+        if (savedOffline === undefined) delete process.env.PI_OFFLINE; else process.env.PI_OFFLINE = savedOffline;
+        snap = await service.snapshot(cwd, 'global');
+        await service.packageAction({ cwd, scope: 'global', action: 'remove', source: '../version-package', confirmed: true, expectedRevision: snap.revision });
+        fs.rmSync(metaDir, { recursive: true, force: true }); fs.rmSync(badDir, { recursive: true, force: true });
+    }
+});
+
 test('advanced models save compatibility, sampling and prices without dropping unknown fields or accepting request overrides', async () => {
     const { PiSettingsService } = require('../server/pi-settings-service');
     const service = new PiSettingsService({ cwd });

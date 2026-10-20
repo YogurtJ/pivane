@@ -11,8 +11,88 @@ const target = value => /^[!+-]/.test(value) ? value.slice(1) : value;
 const sourceText = pkg => typeof pkg === 'string' ? pkg : pkg.source;
 const local = source => path.isAbsolute(source) || source.startsWith('.') || source.startsWith('~');
 const normalized = (source, base) => local(source) ? path.resolve(base, source.startsWith('~') ? require('node:os').homedir() + source.slice(1) : source) : source;
+// Display-only metadata: short, printable version labels; anything else is omitted rather than echoed.
+const cleanVersion = value => {
+    const text = typeof value === 'number' && Number.isFinite(value) ? String(value) : value;
+    return typeof text === 'string' && /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,39}$/.test(text.trim()) ? text.trim() : null;
+};
+const offline = () => ['1', 'true', 'yes'].includes(String(process.env.PI_OFFLINE || '').toLowerCase());
+const UPDATE_RESULT_TTL = 24 * 60 * 60 * 1000;
+const SKILL_VERSION_LIMIT = 500;
+// How the native update check treats a configured source. Mirrors the public update semantics:
+// local paths and exact npm versions / git refs are never checked; Pivane components update with Pivane.
+function updateMode(source, managed) {
+    if (managed) return 'managed';
+    if (source.startsWith('npm:')) {
+        const spec = source.slice(4).trim(), at = spec.lastIndexOf('@');
+        const version = at > 0 ? spec.slice(at + 1) : '';
+        return /^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version) ? 'pinned' : 'check';
+    }
+    if (local(source)) return 'local';
+    const rest = source.replace(/^git\+/, '').replace(/^git:/, '').replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/^[^@/]+@(?=[^/]+:)/, '');
+    return /[@#]/.test(rest.split(/[/:]/).at(-1) || '') ? 'pinned' : 'check';
+}
 class PiResourceService {
-    constructor(native) { this.native = native; }
+    constructor(native) { this.native = native; this.skillVersions = new Map(); this.updateChecks = new Map(); this.updateResults = new Map(); }
+    async packageVersion(installedPath) {
+        if (!installedPath) return null;
+        try {
+            const root = await fs.promises.realpath(installedPath);
+            const within = filename => { if (path.relative(root, filename) !== 'package.json') throw fail('包清单位置无效'); };
+            const { bytes } = await readVerifiedFile(path.join(root, 'package.json'), { check: within, maxBytes: 256 * 1024 });
+            return cleanVersion(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes).replace(/^\uFEFF/, '')).version);
+        } catch { return null; /* Missing or unreadable manifests simply have no version label. */ }
+    }
+    async skillVersion(ctx, filename) {
+        if (path.basename(filename) !== 'SKILL.md') return null;
+        try {
+            const stat = await fs.promises.stat(filename, { bigint: true });
+            const key = `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}`;
+            const cached = this.skillVersions.get(filename);
+            if (cached?.key === key) return cached.version;
+            const { bytes } = await readVerifiedFile(filename, { check: file => { if (path.basename(file) !== 'SKILL.md') throw fail('技能文件位置无效'); }, maxBytes: 64 * 1024 });
+            const { frontmatter } = ctx.sdk.parseFrontmatter(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+            const version = cleanVersion(frontmatter?.version) || cleanVersion(frontmatter?.metadata?.version);
+            if (this.skillVersions.size >= 2000) this.skillVersions.delete(this.skillVersions.keys().next().value);
+            this.skillVersions.set(filename, { key, version });
+            return version;
+        } catch { return null; }
+    }
+    updateKey(ctx, scope) { return `${ctx.cwd}\0${scope}`; }
+    updateSnapshot(ctx, scope) {
+        const result = this.updateResults.get(this.updateKey(ctx, scope));
+        if (!result || result.revision !== ctx.revision || Date.now() - Date.parse(result.checkedAt) > UPDATE_RESULT_TTL) return null;
+        return { checkedAt: result.checkedAt, offline: result.offline, available: result.available };
+    }
+    // Explicit, read-only check through the public PackageManager API. Results are kept in memory for the
+    // same configuration revision so Discover and Installed agree; nothing is installed or persisted.
+    async checkUpdates(input) {
+        if (!input || !['global', 'project'].includes(input.scope)) throw fail('资源范围无效');
+        const ctx = await this.context(input.cwd, input.scope);
+        if (input.scope === 'project' && !ctx.trust.effective) throw fail('请先信任项目');
+        const key = this.updateKey(ctx, input.scope);
+        if (!this.updateChecks.has(key)) {
+            const run = (async () => {
+                const isOffline = offline();
+                let available = [];
+                if (!isOffline) {
+                    // Global checks run from the identity directory so an untrusted project's npm configuration is not read.
+                    const manager = input.scope === 'project' ? ctx.manager : new ctx.sdk.DefaultPackageManager({ cwd: ctx.agentDir, agentDir: ctx.agentDir,
+                        settingsManager: require('./pi-bundled-resources').settingsView(ctx.settings, ctx.cwd, ctx.agentDir) });
+                    const wanted = input.scope === 'project' ? ['user', 'project'] : ['user'];
+                    available = (await manager.checkForAvailableUpdates()).filter(item => wanted.includes(item.scope)).slice(0, 500)
+                        .map(item => ({ source: item.source, scope: item.scope, type: item.type === 'git' ? 'git' : 'npm' }));
+                }
+                const result = { checkedAt: new Date().toISOString(), offline: isOffline, available, revision: ctx.revision };
+                this.updateResults.set(key, result);
+                return result;
+            })();
+            this.updateChecks.set(key, run);
+            run.finally(() => this.updateChecks.delete(key)).catch(() => {});
+        }
+        const result = await this.updateChecks.get(key);
+        return { checkedAt: result.checkedAt, offline: result.offline, available: result.available };
+    }
     async context(cwd, scope) {
         if (!['global', 'project'].includes(scope)) throw fail('资源范围无效');
         const ctx = await this.native.context(cwd);
@@ -54,7 +134,8 @@ class PiResourceService {
                 const { bytes } = await readVerifiedFile(item.path, { check: within, maxBytes: 64 * 1024 });
                 const { frontmatter } = ctx.sdk.parseFrontmatter(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
                 if (frontmatter.name === 'ppt-master' && frontmatter.metadata?.official_repository === 'https://github.com/hugohe3/ppt-master') {
-                    found.push({ id: 'ppt-master', scope: item.metadata.scope, enabled: item.enabled });
+                    const version = cleanVersion(frontmatter.version) || cleanVersion(frontmatter.metadata?.version);
+                    found.push({ id: 'ppt-master', scope: item.metadata.scope, enabled: item.enabled, ...(version ? { version } : {}) });
                 } else needsReview = true;
             } catch { needsReview = true; /* Unreadable/changed metadata cannot establish provenance. */ }
         }
@@ -63,14 +144,24 @@ class PiResourceService {
     async snapshot(cwd, scope = 'project') {
         const ctx = await this.context(cwd, scope);
         const { found: featuredSkills, needsReview: featuredSkillNeedsReview } = await this.featuredSkills(ctx);
-        return { cwd: ctx.cwd, scope, revision: ctx.revision, trust: ctx.trust, featuredSkills, featuredSkillNeedsReview,
-            packages: ctx.manager.listConfiguredPackages().map(p => ({ source: p.source, scope: p.scope, installed: Boolean(p.installedPath), filtered: p.filtered,
-                ...(managedEntry(p.source) ? { managedBy: 'pivane', name: managedEntry(p.source).name, version: managedEntry(p.source).version } : {}) })),
+        const packages = [];
+        for (const p of ctx.manager.listConfiguredPackages()) {
+            const bundled = managedEntry(p.source);
+            const version = bundled ? bundled.version : await this.packageVersion(p.installedPath);
+            packages.push({ source: p.source, scope: p.scope, installed: Boolean(p.installedPath), filtered: p.filtered, updateMode: updateMode(p.source, Boolean(bundled)),
+                ...(version ? { version } : {}), ...(bundled ? { managedBy: 'pivane', name: bundled.name } : {}) });
+        }
+        const skillVersions = new Map();
+        for (const item of ctx.resources.filter(r => r.type === 'skills').slice(0, SKILL_VERSION_LIMIT)) {
+            const version = await this.skillVersion(ctx, item.path);
+            if (version) skillVersions.set(item.id, version);
+        }
+        return { cwd: ctx.cwd, scope, revision: ctx.revision, trust: ctx.trust, featuredSkills, featuredSkillNeedsReview, packages, updates: this.updateSnapshot(ctx, scope),
             resources: ctx.resources.map(item => {
                 const pattern = item.metadata.origin === 'package' ? path.relative(item.metadata.baseDir, item.path) : item.path;
                 const exact = this.patterns(ctx, item, scope).filter(p => target(p) === pattern || path.resolve(item.metadata.baseDir || ctx.agentDir, target(p)) === item.path).at(-1);
                 return { id: item.id, type: item.type, path: item.path, enabled: item.enabled, source: item.metadata.source, scope: item.metadata.scope,
-                    override: exact ? /^[!-]/.test(exact) ? 'off' : 'on' : 'inherit' };
+                    override: exact ? /^[!-]/.test(exact) ? 'off' : 'on' : 'inherit', ...(skillVersions.has(item.id) ? { version: skillVersions.get(item.id) } : {}) };
             }), compatibility: '工具、命令与标准对话框使用原生 RPC；终端组件、快捷键和自定义渲染不等同于网页组件。扩展会话替换受网站管理限制。' };
     }
     async toggle(input) {
@@ -165,6 +256,8 @@ class PiResourceService {
             const options = { local: input.scope === 'project' };
             if (input.action === 'install') await ctx.manager.installAndPersist(input.source, options);
             if (input.action === 'remove') await ctx.manager.removeAndPersist(input.source, options);
+            // Earlier update-check results no longer describe the installed files.
+            this.updateResults.clear();
             if (input.action === 'update') await ctx.manager.update(input.source);
             const file = input.scope === 'project' ? ctx.projectFile : ctx.globalFile;
             if (fs.existsSync(file)) privateFiles.privateFileMode(file);
@@ -204,4 +297,4 @@ class PiResourceService {
         } finally { this.native.busy = false; }
     }
 }
-module.exports = { PiResourceService };
+module.exports = { PiResourceService, updateMode };

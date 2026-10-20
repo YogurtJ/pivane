@@ -10149,5 +10149,22 @@
         ['无法建立微信通知，请检查渠道状态', 'WeChat notification could not be created; check channel status'],
         ['微信通知状态待核对', 'WeChat notification needs review']
     );
+    // Installed page: versions and explicit update checks.
+    rows.push(
+        ['联网查询 npm 与 Git 远端的新版本，不会自动安装', 'Query npm and Git remotes for newer versions; nothing is installed automatically'],
+        ['尚未检查更新。检查会联网查询 npm 与 Git 远端，不会自动安装。', 'Not checked for updates yet. Checking queries npm and Git remotes and installs nothing.'],
+        ['上次检查：{0} · 离线模式，未联网检查。', 'Last checked {0} · offline mode, no network check.'],
+        ['上次检查：{0} · {1} 个扩展包有可用更新。', 'Last checked {0} · packages with updates: {1}.'],
+        ['正在检查更新，可能需要一些时间…', 'Checking for updates; this can take a while…'],
+        ['离线模式（PI_OFFLINE）下不联网检查更新。', 'Offline mode (PI_OFFLINE) skips network update checks.'],
+        ['{0} 个扩展包有可用更新，可在对应行点击“更新”。', 'Updates are available for {0} packages. Use Update on each row.', 'An update is available for {0} package. Use Update on its row.'],
+        ['未发现可用更新。固定版本、本地路径和 Pivane 内置组件不参与检查；查询失败的包同样不会显示更新。', 'No updates found. Pinned versions, local paths and Pivane components are not checked; packages whose lookup failed also show no update.'],
+        ['Pivane 内置', 'Bundled with Pivane'],
+        ['随 Pivane 更新', 'Updates with Pivane'],
+        ['固定版本', 'Pinned'],
+        ['来源指定了版本或 Git 引用，检查更新时跳过', 'The source pins a version or Git ref, so update checks skip it'],
+        ['未发现更新', 'No update found'],
+        ['随扩展包 {0}', 'From package {0}']
+    );
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

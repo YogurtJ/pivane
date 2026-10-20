@@ -8,7 +8,7 @@ const model = { provider: 'fixture', id: 'fixture', name: 'Fixture', input: ['te
 async function run(browser, base, width, locale, noProject = false) {
     const ctx = await browser.newContext({ locale, viewport: { width, height: 900 }, isMobile: width < 900, hasTouch: width < 900 });
     const page = await ctx.newPage(), errors = [], sent = [], writes = [], mutations = [];
-    let memoryAdapterInstalled = false, pptSkill = null, pptNeedsReview = false;
+    let memoryAdapterInstalled = false, pptSkill = null, pptNeedsReview = false, channelState = { component: { installed: false }, accounts: [] }, updates = null;
     let hold = false, release, enabled = true, failResources = false, inspected = false, holdInventory = false, releaseInventory, projectTrusted = false;
     const sessions = [{ id: 'original', cwd, name: 'Original', messageCount: 2 }];
     page.on('pageerror', e => errors.push(e.message));
@@ -17,7 +17,8 @@ async function run(browser, base, width, locale, noProject = false) {
     await page.route('**/api/**', async route => {
         const req = route.request(), url = new URL(req.url()), p = url.pathname;
         if (req.method() !== 'GET') mutations.push(p);
-        if (p === '/api/pi/status') return route.fulfill({ json: { ok: true, extensionAssistant: enabled, nativeResources: true, nativeSettings: true, defaultProject: cwd, projectRoots: ['/tmp'], profileMemory: { installed: memoryAdapterInstalled, autoLearn: false } } });
+        if (p === '/api/pi/status') return route.fulfill({ json: { ok: true, version: '1.3.0', extensionAssistant: enabled, nativeResources: true, nativeSettings: true, messageChannels: true, defaultProject: cwd, projectRoots: ['/tmp'], profileMemory: { installed: memoryAdapterInstalled, autoLearn: false } } });
+        if (p === '/api/pi/channels') return route.fulfill({ json: { revision: 'c1', bindings: [], jobs: [], peers: [], ...channelState } });
         if (p === '/api/pi/projects') return route.fulfill({ json: { projects: noProject ? [] : [{ cwd, name: 'Fixture', sessionCount: sessions.length }], roots: ['/tmp'] } });
         if (p === '/api/pi/sessions') return route.fulfill({ json: { sessions } });
         if (p === '/api/pi/activity') return route.fulfill({ json: { runtimes: [], replyNotices: [] } });
@@ -34,9 +35,9 @@ async function run(browser, base, width, locale, noProject = false) {
             await new Promise(resolve => { releaseInventory = resolve; });
         }
         if (p === '/api/pi/settings/native/resources') return route.fulfill({ json: { cwd, revision: 'r1', scope: url.searchParams.get('scope'), trust: { effective: projectTrusted },
-            featuredSkills: pptSkill || [], featuredSkillNeedsReview: pptNeedsReview, packages: [{ source: 'npm:fixture', scope: 'user', installed: true }, { source: 'npm:@example/document-tools@1.2.3', scope: 'user', installed: true },
+            featuredSkills: pptSkill || [], featuredSkillNeedsReview: pptNeedsReview, updates, packages: [{ source: 'npm:fixture', scope: 'user', installed: true }, { source: 'npm:@example/document-tools@1.2.3', scope: 'user', installed: true },
                 { source: '/fixture/pivane/vendor/pi-subagents', scope: 'user', installed: true, managedBy: 'pivane', name: 'pi-subagents', version: '0.74.0' },
-                { source: 'git:github.com/nicobailon/pi-web-access@v1.0', scope: 'user', installed: true },
+                { source: 'git:github.com/nicobailon/pi-web-access@v1.0', scope: 'user', installed: true, version: '1.0.4', updateMode: 'pinned' },
                 { source: 'npm:pi-hermes-memory', scope: 'user', installed: false },
                 { source: 'npm:@other/pi-computer-use', scope: 'user', installed: true },
                 ...(url.searchParams.get('scope') === 'project' && projectTrusted ? [{ source: 'npm:project-fixture', scope: 'project', installed: true }] : [])
@@ -82,8 +83,29 @@ async function run(browser, base, width, locale, noProject = false) {
     assert.equal(await page.locator('.extensions-card').count(), 7);
     assert.equal(await page.locator('#extension-pivane-weixin [data-installation="optional"]').count(), 1, 'messaging connectors use their dedicated optional installation flow');
     await page.locator('#extension-pi-subagents [data-installation="installed"]').waitFor();
-    assert.match(await page.locator('#extension-pi-subagents [data-installation]').textContent(), /Pivane.*0\.74\.0/);
+    assert.match(await page.locator('#extension-pi-subagents [data-installation]').textContent(), /Pivane/);
+    assert.equal(await page.locator('#extension-pi-subagents .extensions-version').textContent(), 'v0.74.0', 'bundled components show their version');
     assert.equal(await page.locator('#extension-pi-web-access [data-installation="installed"]').count(), 1);
+    assert.equal(await page.locator('#extension-pi-web-access .extensions-version').textContent(), 'v1.0.4', 'installed packages show the installed version');
+    assert.equal(await page.locator('#extension-pi-native-mcp .extensions-version').textContent(), 'Pi 1.3.0');
+    assert.equal(await page.locator('#extension-pi-web-access .extensions-update').isVisible(), false, 'updates appear only after an explicit check');
+    updates = { checkedAt: new Date().toISOString(), offline: false, available: [{ source: 'git:github.com/nicobailon/pi-web-access@v1.0', scope: 'user' }] };
+    channelState = { component: { installed: true, version: '2.4.10' }, accounts: [{ id: 'bot', userId: 'owner', enabled: true, allowedUsers: ['owner'], connection: 'connected' }] };
+    await page.locator('#extensions-refresh').click();
+    await page.locator('#extension-pi-web-access .extensions-update').waitFor({ state: 'visible' });
+    await page.locator('#extension-pivane-weixin [data-installation="installed"]').waitFor();
+    assert.equal(await page.locator('#extension-pivane-weixin .extensions-version').textContent(), 'v2.4.10', 'messaging connectors report their own installation');
+    assert.equal(await page.locator('#extension-pivane-weixin .extensions-card-cta').textContent(), locale === 'en' ? 'Manage' : '管理连接');
+    await page.locator('[data-extension-filter="skill"]').click();
+    assert.deepEqual(await page.locator('.extensions-card').evaluateAll(cards => cards.map(c => c.id)), ['extension-ppt-master'], 'type filters narrow the catalog');
+    await page.locator('[data-extension-filter="all"]').click();
+    await page.locator('[data-extension-filter="installed"]').click();
+    assert.ok((await page.locator('.extensions-card').evaluateAll(cards => cards.map(c => c.dataset.installation))).every(state => ['installed', 'configured'].includes(state)));
+    await page.locator('[data-extension-filter="installed"]').click();
+    assert.equal(await page.locator('.extensions-card').count(), 7, 'pressing an active status filter clears it');
+    updates = null; channelState = { component: { installed: false }, accounts: [] };
+    await page.locator('#extensions-refresh').click();
+    await page.locator('#extension-pivane-weixin [data-installation="optional"]').waitFor();
     assert.equal(await page.locator('#extension-pi-hermes-memory [data-installation="configured"]').count(), 1);
     memoryAdapterInstalled = true; await page.locator('#extensions-refresh').click();
     await page.locator('#extension-pi-hermes-memory [data-installation="installed"]').waitFor();
