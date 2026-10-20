@@ -1,50 +1,11 @@
-const STATE = 'pivane-channel-turn';
-const MESSAGE = 'pivane-channel-message';
-const DELIVERABLE_ENTRY = 'pivane-deliverable';
+const { STATE, MESSAGE, DELIVERABLE_ENTRY, stateFor, channelReply, outcome, scheduledOutcome } = require('./turn-results');
 const idPattern = /^[a-f0-9]{64}$/;
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
-function stateFor(manager, id) {
-    return manager.getBranch().findLast(entry => entry.type === 'custom' && entry.customType === STATE
-        && entry.data?.id === id && entry.data.sessionId === manager.getSessionId())?.data || null;
-}
-function outcome(manager, id) {
-    const state = stateFor(manager, id);
-    if (!state) return null;
-    const branch = manager.getBranch();
-    const start = branch.findLastIndex(e => e.type === 'custom' && e.customType === STATE && e.data?.id === id && e.data.status === 'running');
-    const entry = state.replyEntryId && branch.find(e => e.id === state.replyEntryId);
-    const body = entry?.type === 'message' && entry.message?.role === 'assistant'
-        ? (entry.message.content || []).filter(block => block.type === 'text').map(block => block.text).join('\n') : '';
-    const deliverables = [];
-    const mediaPlans = [];
-    if (start >= 0) {
-        const seen = new Set();
-        const seenPlans = new Set();
-        for (const item of branch.slice(start + 1)) {
-            if (item.type === 'custom' && item.customType === DELIVERABLE_ENTRY && item.data?.id && item.data.manifestRevision) {
-                const key = `${item.data.id}:${item.data.manifestRevision}`;
-                if (!seen.has(key)) { seen.add(key); deliverables.push({ id: item.data.id, manifestRevision: item.data.manifestRevision }); }
-            }
-            if (item.type === 'message' && item.message?.role === 'toolResult' && !item.message.isError
-                && ['media_generate', 'media_plan_request'].includes(item.message.toolName)) {
-                const plan = item.message.details?.plan;
-                if (typeof plan?.id === 'string' && /^plan-[0-9a-f-]{36}$/.test(plan.id) && !seenPlans.has(plan.id)) {
-                    seenPlans.add(plan.id);
-                    mediaPlans.push({ id: plan.id, kind: plan.kind || '', modelId: plan.modelId || '', summary: String(plan.summary || '').slice(0, 200),
-                        prompt: String(plan.parameters?.prompt || plan.parameters?.text || '').slice(0, 300) });
-                }
-            }
-        }
-    }
-    return { ...state, deliverables, mediaPlans, body: body.length > 60000 ? body.slice(0, 60000) + '\n\n[回复较长，请在 Pivane 网页查看完整内容。]' : body };
-}
 function registerChannelTurns(pi) {
     let active = null;
     pi.on('agent_settled', (event, ctx) => {
         if (!active) return;
-        const branch = ctx.sessionManager.getBranch();
-        const start = branch.findLastIndex(e => e.type === 'custom' && e.customType === STATE && e.data?.id === active.id && e.data.status === 'running');
-        const reply = branch.slice(start + 1).findLast(e => e.type === 'message' && e.message?.role === 'assistant');
+        const reply = channelReply(ctx.sessionManager, active.id);
         const status = event.aborted || reply?.message?.stopReason === 'aborted' ? 'stopped'
             : !reply || reply.message.stopReason === 'error' ? 'error' : 'completed';
         pi.appendEntry(STATE, { ...active, status, replyEntryId: reply?.id || null, completedAt: Date.now() });
@@ -80,4 +41,4 @@ function registerChannelTurns(pi) {
         return active;
     };
 }
-module.exports = { STATE, MESSAGE, DELIVERABLE_ENTRY, registerChannelTurns, stateFor, outcome };
+module.exports = { STATE, MESSAGE, DELIVERABLE_ENTRY, registerChannelTurns, stateFor, outcome, scheduledOutcome };
