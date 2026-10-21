@@ -410,7 +410,6 @@ button.artifacts-chip.is-add:hover { color: var(--a-accent); border-color: var(-
     .artifacts-detail-header { padding-top: max(16px, env(safe-area-inset-top)); }
 }
 @media (max-width: 680px) {
-    .nav-menu [data-tab="artifacts"] { display: none; }
     .artifacts-shell { padding: 18px 14px 112px; }
     .artifacts-header { align-items: flex-start; gap: 12px; margin-bottom: 14px; }
     .artifacts-title h1 { font-size: 23px; }

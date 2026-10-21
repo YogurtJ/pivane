@@ -170,5 +170,4 @@
     #lab-review-state { width: 100%; }
     #pi-reply-tts-dialog > footer button { flex: 1 1 auto; padding: 9px 8px; white-space: nowrap; min-height: 40px; }
     .lab-dialog > footer .lab-primary, .lab-dialog > footer .lab-secondary { flex: 1; }
-    .nav-menu .nav-btn span { max-width: none; font-size: 11px; }
 }

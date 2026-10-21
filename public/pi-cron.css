@@ -77,7 +77,6 @@
 .cron-mobile-back { display: none; }
 @media (max-width: 1100px) { .cron-page { padding: 20px; } .cron-layout { grid-template-columns: 230px minmax(0, 1fr); } .cron-detail { padding: 18px; } .cron-header { align-items: flex-start; } }
 @media (max-width: 680px) {
-    .nav-menu [data-tab=cron] { display: none; }
     .cron-page { padding: 14px 10px; gap: 12px; }
     .cron-header { flex-direction: column; gap: 12px; }
     .cron-header h1 { font-size: 22px; } .cron-header .cron-actions { width: 100%; } .cron-header .cron-actions > :last-child { margin-left: auto; }

@@ -48,58 +48,69 @@
     <link rel="stylesheet" href="pi-composer-tools.css">
     <link rel="stylesheet" href="pi-selection-actions.css">
     <link rel="stylesheet" href="pi-side-chat.css">
+    <link rel="stylesheet" href="pi-sidebar.css">
     <!-- Optional web font: never block first paint when the font host is slow or unreachable. -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
     <link rel="stylesheet" href="/brand/fontawesome-6.4.0/css/all.min.css">
 </head>
 <body>
     <div class="pv-boot" aria-hidden="true"><div class="pv-boot-mark"><img src="brand/logo-192.png" width="52" height="52" alt=""><div class="pv-boot-bar"></div></div></div>
+    <!-- Sidebar line icons: 24px grid, drawn with the current text colour (styles in pi-sidebar.css). -->
+    <svg class="pv-icon-sprite" aria-hidden="true" focusable="false">
+        <symbol id="pv-icon-chat" viewBox="0 0 24 24"><path d="M6.5 4.5h11a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-5.2L8 20.6v-3.1H6.5a3 3 0 0 1-3-3v-7a3 3 0 0 1 3-3Z"/><path d="m8.5 9 2.2 2-2.2 2"/><path d="M13 13h2.8"/></symbol>
+        <symbol id="pv-icon-assistant" viewBox="0 0 24 24"><path d="M15.5 9.5V7a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 7v4.5A2.5 2.5 0 0 0 6 14h.5v2.5l2.8-2.5"/><path d="M11.5 9.5h7a2 2 0 0 1 2 2v4.3a2 2 0 0 1-2 2h-.3v2.4l-2.8-2.4h-3.9a2 2 0 0 1-2-2v-4.3a2 2 0 0 1 2-2Z"/></symbol>
+        <symbol id="pv-icon-cron" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path d="m9 15 2 2 4-4"/></symbol>
+        <symbol id="pv-icon-artifacts" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1.6"/><path d="M4.8 9v8.5a2.5 2.5 0 0 0 2.5 2.5h9.4a2.5 2.5 0 0 0 2.5-2.5V9"/><path d="M10 13h4"/></symbol>
+        <symbol id="pv-icon-media" viewBox="0 0 24 24"><path d="M9 3.5h6"/><path d="M10 3.5v5.6L5 17.6a2 2 0 0 0 1.7 2.9h10.6a2 2 0 0 0 1.7-2.9L14 9.1V3.5"/><path d="M7.2 14.5h9.6"/></symbol>
+        <symbol id="pv-icon-profiles" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="3"/><circle cx="9" cy="10.5" r="2.2"/><path d="M5.8 16.2a3.4 3.4 0 0 1 6.4 0"/><path d="M14.5 10h3.5M14.5 13.5h2.5"/></symbol>
+        <symbol id="pv-icon-extensions" viewBox="0 0 24 24"><path d="M4.5 9.5a1 1 0 0 1 1-1h3V7.2a2.2 2.2 0 1 1 4.4 0v1.3h3a1 1 0 0 1 1 1v3h1.3a2.2 2.2 0 1 1 0 4.4h-1.3v3a1 1 0 0 1-1 1H5.5a1 1 0 0 1-1-1Z"/></symbol>
+        <symbol id="pv-icon-more" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8"/></symbol>
+        <symbol id="pv-icon-theme" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.1 0 1.7-.8 1.7-1.7 0-.5-.2-.9-.5-1.2a1.7 1.7 0 0 1 1.3-2.8h2a4.5 4.5 0 0 0 4.5-4.5c0-3.9-4-6.8-9-6.8Z"/><circle cx="7.6" cy="11.6" r="1.1" fill="currentColor" stroke="none"/><circle cx="10" cy="7.6" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.6" cy="7.8" r="1.1" fill="currentColor" stroke="none"/></symbol>
+        <symbol id="pv-icon-settings" viewBox="0 0 24 24"><path d="M10.31 5.21L10.71 2.79A9.3 9.3 0 0 1 13.29 2.79L13.69 5.21A7 7 0 0 1 15.61 6L17.6 4.57A9.3 9.3 0 0 1 19.43 6.4L18 8.39A7 7 0 0 1 18.79 10.31L21.21 10.71A9.3 9.3 0 0 1 21.21 13.29L18.79 13.69A7 7 0 0 1 18 15.61L19.43 17.6A9.3 9.3 0 0 1 17.6 19.43L15.61 18A7 7 0 0 1 13.69 18.79L13.29 21.21A9.3 9.3 0 0 1 10.71 21.21L10.31 18.79A7 7 0 0 1 8.39 18L6.4 19.43A9.3 9.3 0 0 1 4.57 17.6L6 15.61A7 7 0 0 1 5.21 13.69L2.79 13.29A9.3 9.3 0 0 1 2.79 10.71L5.21 10.31A7 7 0 0 1 6 8.39L4.57 6.4A9.3 9.3 0 0 1 6.4 4.57L8.39 6A7 7 0 0 1 10.31 5.21Z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+    </svg>
     <div class="app-container">
         <!-- Sidebar -->
         <aside id="workspace-sidebar" class="sidebar">
             <div class="logo">
                 <button id="workspace-brand-toggle" class="sidebar-brand-toggle" type="button" title="折叠导航" aria-label="折叠导航" aria-expanded="true" aria-controls="workspace-sidebar" data-i18n-title="s1315" data-i18n-aria-label="s1315">
                     <img class="workspace-logo" src="brand/logo-64.png" width="28" height="28" alt="">
+                    <svg class="pv-icon pv-panel-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="3.5"/><path class="pv-panel-side" d="M6.5 4h3v16h-3A3.5 3.5 0 0 1 3 16.5v-9A3.5 3.5 0 0 1 6.5 4Z"/><path class="pv-panel-divider" d="M9.5 4v16"/></svg>
                 </button>
                 <div class="logo-brand">
                     <h2>Pivane</h2>
                 </div>
                 <button id="workspace-sidebar-toggle" class="sidebar-toggle" type="button" title="折叠导航" aria-label="折叠导航" aria-expanded="true" aria-controls="workspace-sidebar" data-i18n-title="s1315" data-i18n-aria-label="s1315">
-                    <svg class="sidebar-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-                        <rect x="3" y="4" width="18" height="16" rx="3"></rect>
-                        <path d="M9 4v16"></path>
-                        <path class="sidebar-toggle-chevron" d="m16 9-3 3 3 3"></path>
-                    </svg>
+                    <svg class="pv-icon pv-panel-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="3.5"/><path class="pv-panel-side" d="M6.5 4h3v16h-3A3.5 3.5 0 0 1 3 16.5v-9A3.5 3.5 0 0 1 6.5 4Z"/><path class="pv-panel-divider" d="M9.5 4v16"/></svg>
                 </button>
             </div>
 
             <nav class="nav-menu" aria-label="工作区" data-i18n-aria-label="s1317">
                 <span class="workspace-nav-heading"><!--i18n:s2546-->工作</span>
                 <button class="nav-btn active" data-tab="chat" title="Pi Agent">
-                    <i class="fa-solid fa-comment" aria-hidden="true"></i><span>Pi Agent</span>
+                    <svg class="pv-icon" aria-hidden="true" focusable="false"><use href="#pv-icon-chat"/></svg><span>Pi Agent</span>
                 </button>
-                <button class="nav-btn" id="workspace-assistant-toggle" data-tab="assistant" type="button" title="助手对话" data-i18n-title="s2547"><i class="fa-solid fa-comments" aria-hidden="true"></i><span><!--i18n:s2547-->助手对话</span></button>
-                <button class="nav-btn" data-tab="cron" type="button"><i class="fa-regular fa-calendar-check" aria-hidden="true"></i><span data-cron-nav>定时任务</span></button>
-                <button class="nav-btn workspace-more-toggle" id="workspace-more-toggle" type="button" title="更多功能" aria-label="更多功能" aria-haspopup="menu" aria-expanded="false" aria-controls="workspace-more-menu" data-i18n-title="s2651" data-i18n-aria-label="s2651"><i class="fa-solid fa-layer-group" aria-hidden="true"></i><span><!--i18n:s2651-->更多功能</span></button>
+                <button class="nav-btn" id="workspace-assistant-toggle" data-tab="assistant" type="button" title="助手对话" data-i18n-title="s2547"><svg class="pv-icon" aria-hidden="true" focusable="false"><use href="#pv-icon-assistant"/></svg><span><!--i18n:s2547-->助手对话</span></button>
+                <button class="nav-btn" data-tab="cron" type="button"><svg class="pv-icon" aria-hidden="true" focusable="false"><use href="#pv-icon-cron"/></svg><span data-cron-nav>定时任务</span></button>
+                <button class="nav-btn workspace-more-toggle" id="workspace-more-toggle" type="button" title="更多功能" aria-label="更多功能" aria-haspopup="menu" aria-expanded="false" aria-controls="workspace-more-menu" data-i18n-title="s2651" data-i18n-aria-label="s2651"><svg class="pv-icon" aria-hidden="true" focusable="false"><use href="#pv-icon-more"/></svg><span><!--i18n:s2651-->更多功能</span></button>
                 <div id="workspace-more-menu" class="workspace-more-menu" role="menu" aria-label="更多功能" data-i18n-aria-label="s2651" hidden>
-                    <button type="button" role="menuitem" data-more-tab="cron"><i class="fa-regular fa-calendar-check" aria-hidden="true"></i><span data-cron-nav>定时任务</span></button>
-                    <button type="button" role="menuitem" data-more-tab="artifacts"><i class="fa-solid fa-box-archive" aria-hidden="true"></i><span data-artifacts-label>成果中心</span></button>
-                    <button type="button" role="menuitem" data-more-tab="media"><i class="fa-solid fa-flask" aria-hidden="true"></i><span><!--i18n:s1318-->多媒体实验室</span></button>
-                    <button type="button" role="menuitem" data-more-tab="profiles"><i class="fa-solid fa-user-gear" aria-hidden="true"></i><span><!--i18n:s2468-->助手身份</span></button>
-                    <button type="button" role="menuitem" data-more-tab="extensions"><i class="fa-solid fa-puzzle-piece" aria-hidden="true"></i><span><!--i18n:s530-->扩展</span></button>
+                    <button type="button" role="menuitem" data-more-tab="cron"><svg class="pv-icon" aria-hidden="true" focusable="false"><use href="#pv-icon-cron"/></svg><span data-cron-nav>定时任务</span></button>
+                    <button type="button" role="menuitem" data-more-tab="artifacts"><svg class="pv-icon" aria-hidden="true" focusable="false"><use href="#pv-icon-artifacts"/></svg><span data-artifacts-label>成果中心</span></button>
+                    <button type="button" role="menuitem" data-more-tab="media"><svg class="pv-icon" aria-hidden="true" focusable="false"><use href="#pv-icon-media"/></svg><span><!--i18n:s1318-->多媒体实验室</span></button>
+                    <button type="button" role="menuitem" data-more-tab="profiles"><svg class="pv-icon" aria-hidden="true" focusable="false"><use href="#pv-icon-profiles"/></svg><span><!--i18n:s2468-->助手身份</span></button>
+                    <button type="button" role="menuitem" data-more-tab="extensions"><svg class="pv-icon" aria-hidden="true" focusable="false"><use href="#pv-icon-extensions"/></svg><span><!--i18n:s530-->扩展</span></button>
                 </div>
-                <button class="nav-btn" data-tab="artifacts" type="button"><i class="fa-solid fa-box-archive" aria-hidden="true"></i><span data-artifacts-label>成果中心</span></button>
+                <button class="nav-btn" data-tab="artifacts" type="button"><svg class="pv-icon" aria-hidden="true" focusable="false"><use href="#pv-icon-artifacts"/></svg><span data-artifacts-label>成果中心</span></button>
                 <button class="nav-btn" data-tab="media" title="多媒体实验室" data-i18n-title="s1318">
-                    <i class="fa-solid fa-flask" aria-hidden="true"></i><span><!--i18n:s1318-->多媒体实验室</span>
+                    <svg class="pv-icon" aria-hidden="true" focusable="false"><use href="#pv-icon-media"/></svg><span><!--i18n:s1318-->多媒体实验室</span>
                 </button>
                 <span class="workspace-nav-heading"><!--i18n:s2548-->管理</span>
-                <button class="nav-btn" id="workspace-profiles-toggle" data-tab="profiles" type="button" title="助手身份" data-i18n-title="s2468"><i class="fa-solid fa-user-gear" aria-hidden="true"></i><span><!--i18n:s2468-->助手身份</span></button>
-                <button class="nav-btn" id="workspace-extensions-toggle" data-tab="extensions" type="button" title="扩展" data-i18n-title="s530"><i class="fa-solid fa-puzzle-piece" aria-hidden="true"></i><span><!--i18n:s530-->扩展</span></button>
+                <button class="nav-btn" id="workspace-profiles-toggle" data-tab="profiles" type="button" title="助手身份" data-i18n-title="s2468"><svg class="pv-icon" aria-hidden="true" focusable="false"><use href="#pv-icon-profiles"/></svg><span><!--i18n:s2468-->助手身份</span></button>
+                <button class="nav-btn" id="workspace-extensions-toggle" data-tab="extensions" type="button" title="扩展" data-i18n-title="s530"><svg class="pv-icon" aria-hidden="true" focusable="false"><use href="#pv-icon-extensions"/></svg><span><!--i18n:s530-->扩展</span></button>
             </nav>
             <div class="sidebar-footer">
                 <div class="theme-picker">
                     <button id="workspace-theme-toggle" class="sidebar-tool-button" type="button" title="选择主题" aria-label="选择主题" aria-haspopup="menu" aria-expanded="false" data-i18n-title="s1319" data-i18n-aria-label="s1319">
-                        <i class="fa-solid fa-palette"></i><span><!--i18n:s1320-->主题</span>
+                        <svg class="pv-icon" aria-hidden="true" focusable="false"><use href="#pv-icon-theme"/></svg><span><!--i18n:s1320-->主题</span>
                     </button>
                     <div id="workspace-theme-menu" class="theme-menu hidden" role="menu" aria-label="主题颜色" data-i18n-aria-label="s1321">
                         <button type="button" data-theme="system" role="menuitemradio" aria-checked="true">
@@ -123,11 +134,10 @@
                     </div>
                 </div>
                 <button id="workspace-settings-toggle" class="sidebar-tool-button" type="button" title="工作台设置" aria-label="工作台设置" data-i18n-title="s1330" data-i18n-aria-label="s1330">
-                    <i class="fa-solid fa-gear"></i><span><!--i18n:s1331-->设置</span>
+                    <svg class="pv-icon" aria-hidden="true" focusable="false"><use href="#pv-icon-settings"/></svg><span><!--i18n:s1331-->设置</span>
                 </button>
                 <div class="status-panel">
-                    <h4><i class="fa-solid fa-server"></i><span>WORKSPACE</span></h4>
-                    <div class="status-item"><span id="workspace-host"></span><span class="status-dot green"></span></div>
+                    <div class="status-item"><span class="status-dot green" aria-hidden="true"></span><span id="workspace-host"></span></div>
                 </div>
             </div>
         </aside>

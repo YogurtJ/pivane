@@ -62,6 +62,32 @@ async function run(browser, base, viewport, preferences = {}) {
     if (viewport.width <= 680) assert.ok(await page.locator('#pi-input').evaluate(node => parseFloat(getComputedStyle(node).fontSize) >= 16));
     if (viewport.width <= 900) assert.equal(await page.locator('#pi-session-pane').evaluate(node => node.inert), true, 'closed drawer cannot receive keyboard focus');
     if (viewport.width > 900) assert.equal(before.nav.width, preferences['pi.workspace.sidebarCollapsed'] === false ? 184 : 72);
+    // Sidebar: one reachable collapse control per layout, focus follows it, tablets always use the rail
+    // without overwriting the desktop choice, and the phone bar has five equal cells.
+    const sidebar = () => page.evaluate(() => ({ collapsed: document.querySelector('.app-container').classList.contains('sidebar-collapsed'),
+        brand: document.querySelector('#workspace-brand-toggle').tabIndex, toggle: getComputedStyle(document.querySelector('#workspace-sidebar-toggle')).display,
+        saved: localStorage.getItem('pi.workspace.sidebarCollapsed'), focus: document.activeElement.id, width: document.querySelector('#workspace-sidebar').getBoundingClientRect().width }));
+    if (viewport.width > 900) {
+        const initial = await sidebar();
+        assert.ok(initial.brand === (initial.collapsed ? 0 : -1) && (initial.toggle === 'none') === initial.collapsed, JSON.stringify(initial));
+        for (let step = 0; step < 2; step++) {
+            const current = await sidebar();
+            await page.locator(current.collapsed ? '#workspace-brand-toggle' : '#workspace-sidebar-toggle').focus();
+            await page.keyboard.press('Enter');
+            const next = await sidebar();
+            assert.ok(next.collapsed === !current.collapsed && next.saved === String(next.collapsed) && next.width === (next.collapsed ? 72 : 184), JSON.stringify(next));
+            assert.equal(next.focus, next.collapsed ? 'workspace-brand-toggle' : 'workspace-sidebar-toggle', 'focus stays on the visible toggle');
+        }
+        await page.waitForTimeout(250);
+    } else if (viewport.width > 680) {
+        const rail = await sidebar();
+        const saved = 'pi.workspace.sidebarCollapsed' in preferences ? String(preferences['pi.workspace.sidebarCollapsed']) : null;
+        assert.ok(rail.collapsed && rail.width === 72 && rail.saved === saved && await page.locator('#workspace-brand-toggle').isDisabled(), JSON.stringify(rail));
+    } else {
+        const cells = await page.evaluate(() => [...document.querySelectorAll('#workspace-sidebar .nav-btn, #workspace-sidebar .sidebar-tool-button')].filter(node => node.offsetParent)
+            .map(node => ({ width: Math.round(node.getBoundingClientRect().width), font: getComputedStyle(node).fontSize })));
+        assert.ok(cells.length === 5 && cells.every(cell => Math.abs(cell.width - cells[0].width) <= 1 && cell.font === cells[0].font), JSON.stringify(cells));
+    }
     // Desktop merges project/context into the conversation header; smaller screens keep the command bar.
     const header = await page.evaluate(() => ({
         bar: getComputedStyle(document.querySelector('.pi-command-bar')).display,

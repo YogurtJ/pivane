@@ -1,20 +1,7 @@
 /* First-screen workspace composition. Feature-specific viewers keep their own styles. */
 :root { --workspace-reading-width: 800px; --workspace-tool-width: 48px; }
-/* Theme tokens live in workspace.css; this file only lays out the workbench. */
-.workspace-nav-short { display: none; }
-.sidebar { background: var(--surface-sidebar); }
-.logo { margin-bottom: 14px; }
-.nav-btn { font-size: .81rem; min-height: 44px; }
-.sidebar .status-panel { border: 0; padding: 8px 2px; margin-top: 8px; }
-.sidebar .status-panel h4 { display: none; }
-.app-container.sidebar-collapsed .sidebar { width: 72px; flex-basis: 72px; padding-top: 20px; }
-.app-container.sidebar-collapsed .nav-menu, .app-container.sidebar-collapsed .sidebar-footer { padding-inline: 7px; }
-.app-container.sidebar-collapsed .nav-btn { min-height: 54px; padding: 8px 2px; flex-direction: column; gap: 5px; font-size: .65rem; border-radius: 8px; }
-.app-container.sidebar-collapsed .nav-btn span { display: none; }
-.app-container.sidebar-collapsed .nav-btn .workspace-nav-short { display: block; font-size: .65rem; line-height: 1.25; }
-.app-container.sidebar-collapsed .nav-btn i { font-size: 1rem; }
-.app-container.sidebar-collapsed .logo { margin-bottom: 22px; }
-.nav-btn.active { box-shadow: inset 2px 0 0 var(--green); }
+/* Theme tokens live in workspace.css and the navigation sidebar in pi-sidebar.css;
+   this file only lays out the workbench. */
 .pi-command-bar { height: 64px; min-height: 64px; flex-basis: 64px; padding-inline: 20px; background: var(--surface-transcript); }
 .pi-project-mark { width: 30px; height: 30px; border: 0; background: transparent; }
 .pi-project-button { gap: 8px; }
@@ -235,12 +222,6 @@
     .pi-transcript-content { padding-inline: 20px; }
 }
 @media (max-width: 680px) {
-    .app-container.sidebar-collapsed .sidebar { padding-top: 0; width: 100%; flex-basis: calc(62px + env(safe-area-inset-bottom)); }
-    .app-container.sidebar-collapsed .nav-menu, .app-container.sidebar-collapsed .sidebar-footer { padding-inline: 3px; }
-    .nav-btn .workspace-nav-short, .app-container.sidebar-collapsed .nav-btn .workspace-nav-short { display: none; }
-    .app-container.sidebar-collapsed .nav-btn span { display: block; }
-    .app-container.sidebar-collapsed .nav-btn { font-size: .62rem; min-height: 54px; padding: 5px 2px; }
-    .app-container.sidebar-collapsed .nav-btn .workspace-nav-short { display: none; }
     .pi-command-bar { height: 52px; min-height: 52px; flex-basis: 52px; }
     .pi-command-bar .pi-context-button { display: none; }
     .pi-connection-banner { height: 36px; flex-basis: 36px; padding-inline: 14px; }
@@ -279,7 +260,7 @@
     .pi-recovery-notice { margin-inline: 12px; }
     .pi-composer-chips > .pi-status-chip > summary { gap: 5px; padding-inline: 9px; font-size: .72rem; }
 }
-@media (prefers-reduced-motion: reduce) { .sidebar, .pi-composer { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .pi-composer { transition: none; } }
 
 /* Thread hover card: shown only for a deliberate mouse pause, never on touch. */
 .pi-session-hover { position: fixed; z-index: 90; max-width: min(340px, calc(100vw - 16px)); padding: 12px 14px; border: 1px solid var(--line-strong); border-radius: 12px;
