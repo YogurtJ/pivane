@@ -1,6 +1,6 @@
 {
   "name": "pivane",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "Pivane: a personal AI workspace powered by Pi Coding Agent with a media laboratory",
   "main": "server.js",
   "private": true,
