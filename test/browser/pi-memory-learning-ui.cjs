@@ -520,6 +520,7 @@ async function runWave2(browser, base, width, locale) {
     await detail.getByRole('button', {name:say('删除','Delete'),exact:true}).click();
     await page.locator('.pi-profile-confirm .settings-primary-button').click();
     await page.waitForFunction(() => window.calls.some(call => call.body?.operation === 'delete'));
+    await page.waitForFunction(() => !window.manager.busy());
     const removal = state.mutations.at(-1);
     assert.deepEqual(Object.keys(removal).sort(), ['expectedRevision', 'itemId', 'itemRevision', 'kind', 'operation', 'requestId', 'scope', 'sessionId']);
     assert.equal(removal.scope, 'project'); assert.equal(removal.sessionId, 'thread-one');

@@ -222,6 +222,7 @@ async function run(browser, viewport) {
     assert.equal(await toggle.isVisible(), false, 'one recent needs no expansion');
     await page.locator('#pi-session-search').fill('no-such-thread');
     assert.equal(await page.locator('#pi-session-list [data-session-id]').count(), 0);
+    await page.waitForFunction(() => document.querySelector('.pi-filter-empty')?.textContent === '没有匹配的工作会话');
     assert.equal(await page.locator('.pi-filter-empty').innerText(), '没有匹配的工作会话');
     await page.locator('#pi-session-search').press('Escape');
 

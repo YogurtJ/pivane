@@ -24,6 +24,9 @@
             this.button.setAttribute('aria-haspopup', 'dialog'); this.button.setAttribute('aria-controls', this.dialog.id);
             this.button.addEventListener('click', () => { this.renderDialog(); this.dialog.showModal(); });
             this.dialog.addEventListener('close', () => {
+                // Respect focus explicitly moved before the queued close event.
+                const active = document.activeElement;
+                if (active && active !== document.body && active !== this.button && !this.dialog.contains(active)) return;
                 if (!document.getElementById('pi-queue').hidden) this.button.focus();
                 else document.getElementById('pi-input')?.focus();
             });

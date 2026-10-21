@@ -135,7 +135,7 @@ async function main() {
     }
     // Exercise cancellation, custom input, timeout and stopping through real form responses.
     for (const scenario of ['CUSTOM', 'CANCEL', 'TIMEOUT', 'STOP', 'FAIL']) {
-        const session = await gateway.store.createSession(cwd, 'Question ' + scenario), context = await browser.newContext({ viewport: { width: 393, height: 852 } });
+        const session = await gateway.store.createSession(cwd, 'Question ' + scenario), context = await browser.newContext({ viewport: { width: 393, height: 852 }, locale: 'en-US' });
         await context.request.post(base + '/api/access/login', { headers: { Origin: base, 'X-Pi-Access': '1' }, data: { token: 'synthetic-browser-token' } });
         await context.addInitScript(({ cwd, id }) => { localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem('pi.web.session:' + cwd, id); }, { cwd, id: session.id });
         const page = await context.newPage(); page.setDefaultTimeout(30000);

@@ -71,6 +71,10 @@ node.exe scripts/install-service.cjs
 
 恢复时先停机，将实际 Pi 身份目录、data、projects和启动配置整批恢复到原绝对路径，启动前比较文件SHA256，启动后核对会话、模型、搜索、用量与暂停预约。备份时不能确认预约已暂停的，首次恢复须隔离出站网络后先核对队列。详细数据清单和回退要求见[安装与恢复](INSTALL_RECOVERY.md)，其中Bash命令需使用本页的Windows原生等价操作。
 
+## 长路径导入限制
+
+当身份数据路径与项目路径较长时，会话导入所需的临时目录可能触及 Windows 普通路径限制，返回 `ENOENT` 或 `ENAMETOOLONG`。此项既有限制尚未修复；新安装优先使用较短的数据和项目目录，准确验收范围见发布附件。已有实例调整路径须按备份和恢复流程维护，不通过替换 JSONL 正文搬迁会话。
+
 ## 实现边界
 
 - 文件最终路径通过 Node 导出的公开 libuv fd/HANDLE 转换和 `GetFinalPathNameByHandleW` 查询，避免不同 CRT 描述符表。组件不自带 CRT；仅导入 Node、Kernel32、Advapi32 API。

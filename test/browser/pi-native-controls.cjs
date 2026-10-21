@@ -123,6 +123,13 @@ async function run(browser, viewport) {
     assert.equal(await page.locator('.pi-queue-help').getAttribute('open'), null);
     assert.equal(await page.locator('.pi-queue-group[data-kind="steering"]').count(), 1);
     assert.equal(await page.locator('.pi-queue-group[data-kind="followUp"]').count(), 1);
+    const focusAfterClose = await page.evaluate(() => new Promise(resolve => {
+        const dialog = document.querySelector('#pi-queue-dialog'), input = document.querySelector('#pi-input');
+        dialog.addEventListener('close', () => resolve(document.activeElement === input), { once: true });
+        dialog.close(); input.focus();
+    }));
+    assert.equal(focusAfterClose, true, 'queued dialog close must preserve explicitly moved focus');
+    await page.locator('#pi-queue-open').click();
     for (const theme of ['daylight', 'mint', 'dark']) {
         await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
         assert.deepEqual(await page.locator('#pi-queue-dialog, #pi-queue-dialog .pi-native-body, .pi-queued-message').evaluateAll(nodes => nodes.filter(node => node.scrollWidth > node.clientWidth + 1).map(node => node.className)), []);

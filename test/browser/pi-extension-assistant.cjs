@@ -106,6 +106,7 @@ async function run(browser, base, width, locale, noProject = false) {
     updates = null; channelState = { component: { installed: false }, accounts: [] };
     await page.locator('#extensions-refresh').click();
     await page.locator('#extension-pivane-weixin [data-installation="optional"]').waitFor();
+    await page.locator('#extension-pi-subagents [data-installation="installed"]').waitFor();
     assert.equal(await page.locator('#extension-pi-hermes-memory [data-installation="configured"]').count(), 1);
     memoryAdapterInstalled = true; await page.locator('#extensions-refresh').click();
     await page.locator('#extension-pi-hermes-memory [data-installation="installed"]').waitFor();
