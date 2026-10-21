@@ -10210,5 +10210,20 @@
         ['不发送微信通知', 'Do not send WeChat notifications'],
         ['默认跟随线程；绑定为接收全部结果时自动推送，静默任务不发送。', 'Follow the thread by default. All-results bindings receive completed tasks; silent tasks stay silent.']
     );
+    rows.push(
+        ['消息队列', 'Message queue'],
+        ['待执行', 'Queued'],
+        ['已取回', 'Recovered'],
+        ['待执行 {0} 条，取回记录 {1} 组', '{0} queued messages, {1} recovery records'],
+        ['正在取回队列，请稍候…', 'Recovering queued messages…'],
+        ['取回后可编辑，不会停止当前任务。', 'Recover messages to edit them. The current task keeps running.'],
+        ['本轮工具执行后', 'After this round of tools'],
+        ['当前任务完成后', 'After the current task'],
+        ['取回记录 {0} 组', 'Recovery records · {0}'],
+        ['追加到草稿后，由你确认发送。', 'Append to your draft, then send when ready.'],
+        ['可能已经执行，请先核对会话再追加。', 'This may already have run. Check the conversation before appending.'],
+        ['取回与保存说明', 'Recovery and storage details'],
+        ['取回仅包含文字；如原消息含图片，请重新添加图片。', 'Only text is recovered. Add any original images again.']
+    );
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

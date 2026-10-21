@@ -118,7 +118,16 @@ async function run(browser, viewport) {
     }
     await page.locator('#pi-close-inspector').click();
     controls.queue = { steering: ['First queued '.repeat(40)], followUp: ['Follow-up 中文'] }; update();
+    assert.equal(await page.locator('#pi-composer-chips > #pi-queue').count(), 1);
     await page.locator('#pi-queue-open').click();
+    assert.equal(await page.locator('.pi-queue-help').getAttribute('open'), null);
+    assert.equal(await page.locator('.pi-queue-group[data-kind="steering"]').count(), 1);
+    assert.equal(await page.locator('.pi-queue-group[data-kind="followUp"]').count(), 1);
+    for (const theme of ['daylight', 'mint', 'dark']) {
+        await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+        assert.deepEqual(await page.locator('#pi-queue-dialog, #pi-queue-dialog .pi-native-body, .pi-queued-message').evaluateAll(nodes => nodes.filter(node => node.scrollWidth > node.clientWidth + 1).map(node => node.className)), []);
+        await page.screenshot({ path: `/tmp/pi-queue-${viewport.width}-${theme}.png` });
+    }
     assert.match(await page.locator('#pi-queue-dialog').textContent(), /重新添加图片/);
     assert.match(await page.locator('#pi-queue-dialog').textContent(), /Follow-up 中文/);
     await page.locator('#pi-queue-take').click();
@@ -182,6 +191,7 @@ async function run(browser, viewport) {
     assert.doesNotMatch(await page.title(), /Fixture mode|LATE/);
     assert.equal(await page.locator('#pi-input').inputValue(), '');
     assert.equal(await page.locator('#pi-extension-state').isVisible(), false);
+    assert.equal(await page.locator('#pi-queue').isVisible(), false, 'switching to an empty thread hides the queue chip');
     assert.equal(await page.evaluate(() => document.body.scrollWidth > document.body.clientWidth), false);
     assert.deepEqual(errors, []); assert.deepEqual(writes, []);
     console.log(`PASS ${viewport.width}: diff/patch, three themes, extension state, queue recovery/draft/ack, stop/compaction, reload and late thread results`);

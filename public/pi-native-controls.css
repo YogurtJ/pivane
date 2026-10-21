@@ -39,10 +39,44 @@
 .pi-native-help { color: var(--text-muted); font-size: .8rem; line-height: 1.5; margin-bottom: 12px; }
 .pi-native-dialog button, .pi-queue .pi-queue-open, .pi-diff-heading button { border: 1px solid var(--line); background: var(--surface-2); color: var(--text-main); border-radius: 6px; padding: 7px 10px; cursor: pointer; font: inherit; font-size: .8rem; }
 .pi-native-dialog button:disabled { opacity: .5; cursor: default; }
-.pi-recovery-card { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin: 12px 0; min-width: 0; }
-.pi-recovery-card pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; margin: 8px 0; font: inherit; font-size: .85rem; }
-.pi-recovery-card button { margin: 4px 6px 0 0; }
-.pi-queue .pi-queue-open { white-space: normal; text-align: left; overflow-wrap: anywhere; }
+/* Queue dialog: message content first, contextual actions, optional help below. */
+#pi-queue-dialog { width: min(640px, calc(100vw - 24px)); border-radius: 18px; box-shadow: 0 24px 80px color-mix(in srgb, var(--shadow-tint, #000) 24%, transparent); overflow: hidden; }
+#pi-queue-dialog .pi-native-heading { padding: 18px 20px; }
+#pi-queue-title { font-size: 1rem; letter-spacing: .01em; }
+#pi-queue-dialog .pi-native-body { padding: 18px 20px; max-height: calc(80dvh - 84px); overscroll-behavior: contain; }
+#pi-queue-dialog button { border-radius: 8px; min-height: 34px; transition: background-color .15s; }
+#pi-queue-dialog button:hover:not(:disabled) { background: var(--surface-3, var(--surface-2)); border-color: var(--line-strong); }
+#pi-queue-dialog button:focus-visible, .pi-queue-help > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.pi-queue-section + .pi-queue-section { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 20px; }
+.pi-queue-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pi-queue-section-heading h3 { margin: 0; font-size: .85rem; font-weight: 600; }
+.pi-queue-caption { color: var(--text-muted); font-size: .75rem; line-height: 1.6; margin: 6px 0 12px; overflow-wrap: anywhere; }
+.pi-queue-group { margin-top: 18px; }
+.pi-queue-group-heading { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; font-size: .75rem; }
+.pi-queue-group-heading strong { color: var(--primary); font-weight: 600; }
+.pi-queue-group-heading span { color: var(--text-muted); }
+.pi-recovery-card { border: 1px solid var(--line); background: var(--surface-2); border-radius: 12px; padding: 14px; margin: 10px 0; min-width: 0; }
+.pi-recovery-card pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; overscroll-behavior: contain; margin: 10px 0; font: inherit; font-size: .85rem; line-height: 1.65; }
+.pi-queued-message { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; margin: 6px 0; }
+.pi-queued-message pre { margin: 0; }
+.pi-queue-position { color: var(--text-muted); font-size: .7rem; font-variant-numeric: tabular-nums; line-height: 2; }
+.pi-recovery-status { display: inline-flex; border-radius: 6px; padding: 3px 7px; background: var(--surface-1); color: var(--text-muted); font-size: .7rem; }
+.pi-recovery-card[data-status="uncertain"] .pi-recovery-status { color: var(--amber); }
+.pi-recovery-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+#pi-queue-dialog .pi-queue-primary { color: var(--primary); background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 30%, var(--line)); }
+#pi-queue-dialog .pi-queue-dismiss { margin-left: auto; background: transparent; color: var(--text-muted); border-color: transparent; }
+.pi-queue-notice { padding: 10px 12px; margin: 10px 0; border-radius: 8px; background: var(--surface-2); color: var(--text-muted); font-size: .75rem; line-height: 1.6; overflow-wrap: anywhere; }
+.pi-queue-notice.is-warning { border-left: 3px solid var(--amber); background: color-mix(in srgb, var(--amber) 9%, var(--surface-1)); color: var(--text-main); }
+.pi-queue-help { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--text-muted); font-size: .75rem; line-height: 1.6; }
+.pi-queue-help > summary { cursor: pointer; width: fit-content; padding: 4px 0; }
+.pi-queue-help p { margin: 10px 0 0; overflow-wrap: anywhere; }
+.pi-queue-empty { text-align: center; padding: 30px 8px; color: var(--text-muted); font-size: .85rem; }
+@media (max-width: 600px) {
+    #pi-queue-dialog .pi-native-heading { padding: 14px; }
+    #pi-queue-dialog .pi-native-body { padding: 14px; }
+    #pi-queue-dialog button, .pi-queue-help > summary { min-height: 40px; }
+    .pi-recovery-card { padding: 12px; }
+}
 .pi-extension-state > summary { cursor: pointer; color: var(--text-main); font-size: .85rem; }
 .pi-extension-item, .pi-extension-widget { margin-top: 12px; min-width: 0; }
 .pi-extension-item strong, .pi-extension-widget summary { font-size: .75rem; color: var(--text-muted); overflow-wrap: anywhere; }

@@ -2585,8 +2585,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.mcpAuthorization = null; renderMcpAuthorization();
         state.controlRequested = false;
         state.controlsStopping = false;
-        elements.queue.classList.add('hidden');
-        elements.queue.replaceChildren();
+        elements.queue.hidden = true;
         window.PiReplyTts.reset();
         selectionActions.hide();
         state.compactRequested = false;
@@ -3834,18 +3833,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderQueue(event) {
         if (nativeControls.enabled) return;
-        const steering = event.steering || [];
-        const followUp = event.followUp || [];
-        if (!steering.length && !followUp.length) {
-            elements.queue.classList.add('hidden');
-            elements.queue.innerHTML = '';
-            return;
-        }
-        elements.queue.classList.remove('hidden');
-        elements.queue.innerHTML = [
-            ...steering.map(text => `<span><i class="fa-solid fa-turn-up"></i>${escapeHtml(truncate(text, 60))}</span>`),
-            ...followUp.map(text => `<span><i class="fa-solid fa-clock"></i>${escapeHtml(truncate(text, 60))}</span>`)
-        ].join('');
+        nativeControls.renderLegacyQueue(event.steering || [], event.followUp || []);
     }
 
     function closeRequestDialog() {

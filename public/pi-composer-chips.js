@@ -9,6 +9,10 @@
     for (const chip of chips()) {
         chip.addEventListener('toggle', () => { if (chip.open) close(chip); });
     }
+    // Button chips open dialogs; dismiss any status popover before opening one.
+    row.addEventListener('click', event => {
+        if (event.target.closest('.pi-status-chip > button')) close();
+    });
     // Dialogs opened from a popover (logs, steering, cost) live outside the row.
     document.addEventListener('pointerdown', event => {
         if (!chips().some(chip => chip.open) || row.contains(event.target) || event.target.closest?.('dialog, .pi-toast')) return;
