@@ -22,6 +22,6 @@
 
 ## 验证入口
 
-统一的 [验证矩阵](WORKFLOW.md#验证矩阵) 区分局部功能本机部署、共享基础能力部署和公开发布，覆盖源码交付与累计集成检查；[结果复用](WORKFLOW.md#验证结果复用与失效) 定义证据和失效条件；[Node 测试入口](WORKFLOW.md#node-测试入口与计时) 提供定向运行、清单与耗时报告。
+统一的 [验证矩阵](WORKFLOW.md#验证矩阵) 区分本机部署（只跑相关测试）和公开发布（全量与准确包验收）；[结果复用](WORKFLOW.md#验证结果复用与失效) 定义证据和失效条件；[Node 测试入口](WORKFLOW.md#node-测试入口与计时) 提供定向运行、清单与耗时报告。
 
 Node 用例递归发现 `test/` 下的 `.test.js`；浏览器回归位于 `test/browser/`（`npm run test:browser`），归档演练位于 `test/release/`，两者不由 `npm test` 执行。依赖、手动脚本和隔离要求见 [浏览器与重型专项](WORKFLOW.md#浏览器与重型专项)。
