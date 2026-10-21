@@ -5,6 +5,7 @@ const { ChannelStore, pending } = require('./store');
 const { WeixinComponent } = require('./weixin-component');
 const { WeixinAdapter, createTransport, validId } = require('./weixin-adapter');
 const { outcome } = require('./runtime');
+const { bindingBoundary, threadOutcome } = require('./thread-results');
 const { DeliverableStore } = require('../pi-deliverables');
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const same = (a, b) => a?.cwd === b?.cwd && a?.sessionId === b?.sessionId;
@@ -25,6 +26,11 @@ class ChannelsService {
         this.mutating = false; this.operations = new Set(); this.pollers = new Map(); this.runs = new Map(); this.connections = new Map();
         this.stopping = false; this.stopController = new AbortController(); this.login = null; this.loginFlight = null; this.error = null;
         this.initializing = true;
+        this.onThreadResult = event => {
+            try { this.admitThreadResult(event); }
+            catch { this.error = '线程结果投递意图无法保存，已停止后续投递，请核对消息渠道。'; }
+        };
+        this.supervisor.on?.('thread-result', this.onThreadResult);
         this.ready = this.initialize().catch(() => { this.error = '消息渠道记录或组件无法读取，已停止连接，请检查安装与数据。'; }).finally(() => { this.initializing = false; });
     }
     async initialize() {
@@ -61,14 +67,14 @@ class ChannelsService {
             jobs: (this.db?.value.jobs || []).slice(-60).reverse().map(({ id, accountId, peerId, target, status, reason, at, sentChunks, sentMedia, waiting, sendStarted, kind, deliveryIssues }) => ({ id, accountId, peerId, target, status, reason, at, sentChunks, sentMedia, waiting, kind, deliveryIssues, canRecover: status === 'uncertain' && !sendStarted && kind !== 'slash' })),
             login: this.login ? { id: this.login.id, matrix: this.login.matrix, status: this.login.status, expiresAt: this.login.expiresAt } : null,
             typing: require('./typing').typingSnapshot(this),
-            capabilities: { text: true, images: true, files: true, slashCommands: true, typing: true, groups: false, proactive: true } };
+            capabilities: { text: true, images: true, files: true, slashCommands: true, typing: true, groups: false, proactive: true, threadResults: true } };
     }
     claim() { this.db.claim(); }
     async action(input) {
         await this.ready; this.healthy();
         if (this.mutating) throw fail('渠道配置正在处理，请刷新核对', 409);
         if (!input || input.confirmed !== true || typeof input.action !== 'string' || input.expectedRevision !== this.db.value.revision) throw fail('配置已变化或操作未确认，请刷新核对', 409);
-        const fields = ['action', 'confirmed', 'expectedRevision', 'accountId', 'enabled', 'allowedUsers', 'peerId', 'cwd', 'sessionId', 'newSession', 'jobId', 'loginId', 'code'];
+        const fields = ['action', 'confirmed', 'expectedRevision', 'accountId', 'enabled', 'allowedUsers', 'peerId', 'cwd', 'sessionId', 'newSession', 'replyMode', 'jobId', 'loginId', 'code'];
         if (Object.keys(input).some(key => !fields.includes(key))) throw fail('未知渠道参数');
         this.mutating = true;
         try {
@@ -105,17 +111,19 @@ class ChannelsService {
             } else if (action === 'bind') {
                 const account = this.db.value.accounts.find(a => a.id === input.accountId);
                 if (!account || !validId(input.peerId) || !account.allowedUsers.includes(input.peerId)) throw fail('请先将此微信用户加入允许列表');
+                if (!['all', 'wechat'].includes(input.replyMode ?? 'all')) throw fail('无效的微信接收方式');
                 if (this.db.value.bindings.length >= 200) throw fail('绑定数量超过限制');
                 this.assertPeerIdle(account.id, input.peerId);
                 const cwd = this.store.resolveProject(input.cwd);
                 let session;
                 if (input.newSession === true) session = await this.store.createSession(cwd, '微信对话');
                 else session = await this.store.getSession(cwd, input.sessionId);
-                await this.withBindingTarget(cwd, session.id, target => {
+                await this.withBindingTarget(cwd, session.id, (target, boundary) => {
                     this.healthy();
                     this.db.change(v => {
                         v.bindings = v.bindings.filter(b => !(b.accountId === account.id && b.peerId === input.peerId));
-                        v.bindings.push({ id: randomUUID(), accountId: account.id, peerId: input.peerId, cwd: target.cwd, sessionId: target.id, name: target.name || '微信对话' });
+                        v.bindings.push({ id: randomUUID(), accountId: account.id, peerId: input.peerId, cwd: target.cwd, sessionId: target.id,
+                            name: target.name || '微信对话', replyMode: input.replyMode ?? 'all', ...boundary });
                     }, { config: true, revision: input.expectedRevision });
                 });
             } else if (action === 'unbind') {
@@ -147,7 +155,7 @@ class ChannelsService {
             }
             read.validate();
             // The caller's synchronous commit shares this validated file snapshot.
-            return commit(session);
+            return commit(session, bindingBoundary(read.manager()));
         });
     }
     assertPeerIdle(accountId, peerId) {
@@ -254,9 +262,30 @@ class ChannelsService {
             this.trimJobs(v);
         });
     }
+    admitThreadResult(event) {
+        if (!this.db?.owner || this.error || this.stopping || !event?.target || event.source?.kind === 'cron') return;
+        const original = event.source?.kind === 'channel' ? this.job(event.source.id) : null;
+        const recipients = this.db.value.bindings.filter(b => same(b, event.target) && b.replyMode !== 'wechat'
+            && event.completedAt >= (b.boundAt || 0) && event.id !== b.excludedTurnId
+            && !(original && original.accountId === b.accountId && original.peerId === b.peerId)
+            && this.db.value.accounts.some(a => a.id === b.accountId && a.enabled && a.allowedUsers.includes(b.peerId)));
+        if (!recipients.length) return;
+        this.db.change(v => {
+            for (const b of recipients) {
+                const id = digest(['weixin-thread', event.id, b.accountId, b.peerId]);
+                if (v.jobs.some(j => j.id === id)) continue;
+                const peer = v.peers.find(p => p.accountId === b.accountId && p.peerId === b.peerId);
+                v.jobs.push({ id, kind: 'thread', turnId: event.id, accountId: b.accountId, peerId: b.peerId,
+                    target: { cwd: b.cwd, sessionId: b.sessionId }, bindingId: b.id, at: event.completedAt,
+                    status: peer?.contextToken ? 'ready' : 'ignored', reason: peer?.contextToken ? null : 'reply-context-missing' });
+            }
+            this.trimJobs(v);
+        });
+    }
     captureScheduledRecipients(event) {
         if (!this.db || this.error) throw fail('渠道状态尚不可读取');
         return this.db.value.bindings.filter(b => same(b, event.target)
+            && (event.notificationMode !== 'inherit' || b.replyMode !== 'wechat')
             && this.db.value.accounts.some(a => a.id === b.accountId && a.enabled && a.allowedUsers.includes(b.peerId)))
             .map(b => ({ bindingId: b.id, accountId: b.accountId, peerId: b.peerId, cwd: b.cwd, sessionId: b.sessionId }));
     }
@@ -265,7 +294,8 @@ class ChannelsService {
         const binding = this.db.value.bindings.find(b => b.id === ref.bindingId && b.accountId === ref.accountId
             && b.peerId === ref.peerId && same(b, ref));
         const account = this.db.value.accounts.find(a => a.id === ref.accountId);
-        return binding && account?.enabled && account.allowedUsers.includes(ref.peerId) ? binding : null;
+        return binding && (event.notificationMode !== 'inherit' || binding.replyMode !== 'wechat')
+            && account?.enabled && account.allowedUsers.includes(ref.peerId) ? binding : null;
     }
     async notifyScheduledRun(event) {
         await this.ready;
@@ -300,7 +330,7 @@ class ChannelsService {
                 if (v.jobs.some(j => j.id === id)) continue;
                 const peer = v.peers.find(p => p.accountId === binding.accountId && p.peerId === binding.peerId);
                 const reason = !peer?.contextToken ? 'reply-context-missing' : null;
-                v.jobs.push({ id, kind: 'cron', cronRunId: event.runId, cronJobId: event.jobId,
+                v.jobs.push({ id, kind: 'cron', followsThread: event.notificationMode === 'inherit', cronRunId: event.runId, cronJobId: event.jobId,
                     accountId: binding.accountId, peerId: binding.peerId,
                     target: { cwd: binding.cwd, sessionId: binding.sessionId }, bindingId: binding.id,
                     status: reason ? 'ignored' : 'ready', reason, at: Date.now(),
@@ -345,7 +375,8 @@ class ChannelsService {
         }
     }
     bindingFor(job) {
-        return this.db.value.bindings.find(b => b.id === job.bindingId && b.accountId === job.accountId && b.peerId === job.peerId && same(b, job.target));
+        const binding = this.db.value.bindings.find(b => b.id === job.bindingId && b.accountId === job.accountId && b.peerId === job.peerId && same(b, job.target));
+        return binding && (!(job.kind === 'thread' || job.followsThread) || binding.replyMode !== 'wechat') ? binding : null;
     }
     canAdmit(job) {
         const account = this.db.value.accounts.find(a => a.id === job?.accountId);
@@ -575,12 +606,17 @@ class ChannelsService {
     async readOutcome(job) {
         const session = await this.store.getSession(job.target.cwd, job.target.sessionId);
         const worker = this.supervisor.getActiveWorker(session.path);
-        if (worker) return worker.exclusive(rpc => worker.navigate(rpc, { mode: 'channel', input: { action: 'status', id: job.id, sessionId: session.id } }));
-        return this.store.withSessionRead(session.cwd, session.id, async (_s, read) => { const result = outcome(read.manager(), job.id); read.validate(); return result; });
+        const input = { action: job.kind === 'thread' ? 'thread-status' : 'status', id: job.turnId || job.id, sessionId: session.id };
+        if (worker) return worker.exclusive(rpc => worker.navigate(rpc, { mode: 'channel', input }));
+        return this.store.withSessionRead(session.cwd, session.id, async (_s, read) => {
+            const result = job.kind === 'thread' ? threadOutcome(read.manager(), job.turnId) : outcome(read.manager(), job.id);
+            read.validate(); return result;
+        });
     }
     async dispose() {
         if (this.disposal) return this.disposal;
-        this.stopping = true; this.login = null; clearInterval(this.timer); this.stopController.abort();
+        this.stopping = true; this.supervisor.removeListener?.('thread-result', this.onThreadResult);
+        this.login = null; clearInterval(this.timer); this.stopController.abort();
         const notices = [];
         for (const [id, p] of this.pollers) {
             p.controller.abort();

@@ -10204,5 +10204,11 @@
         ['向你提问', 'Asking you'],
         ['交付文件 · {0}', 'Deliver files · {0}']
     );
+    rows.push(
+        ['跟随线程的微信接收设置', 'Follow thread WeChat settings'],
+        ['推送至已绑定微信', 'Send to bound WeChat'],
+        ['不发送微信通知', 'Do not send WeChat notifications'],
+        ['默认跟随线程；绑定为接收全部结果时自动推送，静默任务不发送。', 'Follow the thread by default. All-results bindings receive completed tasks; silent tasks stay silent.']
+    );
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

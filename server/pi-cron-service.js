@@ -9,6 +9,8 @@ const number = (value, min, max) => Number.isSafeInteger(value) && value >= min 
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const TERMINAL = new Set(['completed', 'silent', 'skipped', 'stopped', 'error', 'failed', 'cancelled']);
 const notificationReason = value => String(value || 'Channel admission failed').slice(0, 500);
+// Legacy false was the editor default, not an explicit thread subscription opt-out.
+const weixinNotification = job => job?.weixinNotification || (job?.notifyWeixin ? 'on' : 'inherit');
 function limits(value, defaults = { maxRunsPerDay: 8, maxTokensPerDay: 200000, maxCostPerDay: null }) {
     const result = Object.fromEntries(Object.keys(defaults).map(key => [key, value?.[key] === undefined ? defaults[key] : value[key]]));
     if (!number(result.maxRunsPerDay, 1, 1000) || !number(result.maxTokensPerDay, 1000, 10000000)
@@ -20,6 +22,7 @@ function validateJob(input, now) {
         || typeof input.prompt !== 'string' || !input.prompt.trim() || input.prompt.length > 40000
         || typeof input.enabled !== 'boolean' || !['text', 'work'].includes(input.mode)) fail('Invalid scheduled task');
     if (input.notifyWeixin !== undefined && typeof input.notifyWeixin !== 'boolean') fail('Invalid WeChat notification setting');
+    if (input.weixinNotification !== undefined && !['inherit', 'on', 'off'].includes(input.weixinNotification)) fail('Invalid WeChat notification mode');
     if (!input.target || !['thread', 'profile'].includes(input.target.kind)) fail('Choose a target thread or profile');
     const target = input.target.kind === 'thread' ? { kind: 'thread', cwd: input.target.cwd, sessionId: input.target.sessionId }
         : { kind: 'profile', profileId: input.target.profileId };
@@ -44,7 +47,9 @@ function validateJob(input, now) {
     }
     const condition = input.condition || null;
     if (condition && (condition.kind !== 'no-user-since' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(condition.time))) fail('Invalid activity condition');
-    return { name: input.name.trim(), prompt: input.prompt, enabled: input.enabled, mode: input.mode, notifyWeixin: Boolean(input.notifyWeixin), target, schedule, startsAt, model,
+    const notification = input.weixinNotification ?? (input.notifyWeixin === undefined ? 'inherit' : input.notifyWeixin ? 'on' : 'off');
+    return { name: input.name.trim(), prompt: input.prompt, enabled: input.enabled, mode: input.mode,
+        weixinNotification: notification, notifyWeixin: notification !== 'off', target, schedule, startsAt, model,
         condition: condition ? { kind: condition.kind, time: condition.time } : null,
         misfire: { policy: misfire.policy, graceMinutes: misfire.graceMinutes }, execution, budget: limits(input.budget) };
 }
@@ -332,8 +337,8 @@ class CronService {
             const complete = ['completed', 'silent', 'skipped', 'stopped', 'error'].includes(status);
             completed = complete && status !== 'silent' && status !== 'skipped';
             const job = run.job || this.db.job(run.jobId);
-            const channelNotify = completed && job?.notifyWeixin ? this.captureNotification({
-                runId: run.id, jobId: job.id, name: job.name, status, target: run.target,
+            const channelNotify = completed && job && weixinNotification(job) !== 'off' ? this.captureNotification({
+                runId: run.id, jobId: job.id, name: job.name, status, target: run.target, notificationMode: weixinNotification(job),
                 replyEntryId: result.replyEntryId || null, scheduledAt: run.scheduledAt
             }) : null;
             this.db.saveRun({ ...run, status, reason: result.reason, model: result.model, thinkingLevel: result.thinkingLevel,
@@ -350,7 +355,7 @@ class CronService {
             for (const run of this.db.pendingChannelNotifications()) {
                 if (this.stopping || this.isSuspended() || this.mutating) break;
                 const notification = run.channelNotify, job = this.db.job(run.jobId);
-                if (!job || job.deleted || job.notifyWeixin === false) {
+                if (!job || job.deleted || weixinNotification(job) === 'off') {
                     this.db.updateChannelNotification(run.id, notification.attempts, { ...notification,
                         status: 'skipped', reason: 'configuration-revoked', resolvedAt: this.now() });
                     continue;
@@ -433,4 +438,4 @@ function mountCron(router, service) {
     router.put('/cron/homes/:id', route(req => service.home(req.params.id, req.body)));
     router.get('/cron/models', route(req => service.catalog(service.store.resolveProject(req.query.cwd))));
 }
-module.exports = { CronService, mountCron, validateJob, limits };
+module.exports = { CronService, mountCron, validateJob, limits, weixinNotification };

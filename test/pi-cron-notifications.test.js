@@ -190,7 +190,7 @@ test('silent, skipped and opt-out completions never capture or admit notificatio
     for (const status of ['silent', 'skipped', 'completed']) {
         const f = await fixture(t, { captureChannelNotify: () => { throw new Error('must not capture'); } });
         if (status === 'completed') {
-            f.run.job.notifyWeixin = false;
+            f.run.job.weixinNotification = 'off';
             f.service.db.saveRun(f.run);
         }
         f.complete(status); await f.service.tick();
@@ -198,12 +198,21 @@ test('silent, skipped and opt-out completions never capture or admit notificatio
         assert.equal(f.admissions.length, 0);
     }
 });
+test('legacy default-false jobs inherit thread delivery while explicit new opt-out remains off', async t => {
+    const f = await fixture(t);
+    f.run.job.notifyWeixin = false;
+    f.service.db.saveRun(f.run);
+    f.service.db.saveJob(f.run.job);
+    f.complete(); await f.service.tick();
+    assert.equal(f.admissions.length, 1);
+    assert.equal(f.admissions[0].notificationMode, 'inherit');
+});
 test('explicit notification opt-out or deletion revokes pending admission; disabled one-shot tasks still notify', async t => {
-    for (const change of [{ notifyWeixin: false }, { deleted: true }, { enabled: false }]) {
+    for (const change of [{ weixinNotification: 'off' }, { deleted: true }, { enabled: false }]) {
         const f = await fixture(t);
         f.complete(); f.service.db.saveJob({ ...f.job, ...change }); await f.service.tick();
         const notification = f.service.db.run(f.run.id).channelNotify;
-        const revoked = change.notifyWeixin === false || change.deleted;
+        const revoked = change.weixinNotification === 'off' || change.deleted;
         assert.equal(notification.status, revoked ? 'skipped' : 'accepted');
         assert.equal(f.admissions.length, revoked ? 0 : 1);
         if (revoked) assert.equal(notification.reason, 'configuration-revoked');

@@ -82,8 +82,11 @@
         const accounts = el('div', null, 'channel-accounts');
         const lowerGrid = el('div', null, 'channel-lower-grid');
         const binding = el('section', null, 'channel-card channel-binding-card');
-        const accountSelect = el('select'), peer = el('select'), project = el('select'), session = el('select');
-        const bindButton = button(t('绑定线程', 'Bind thread'), () => write('bind', { accountId: accountSelect.value, peerId: peer.value, cwd: project.value,
+        const accountSelect = el('select'), peer = el('select'), project = el('select'), session = el('select'), replyMode = el('select');
+        for (const [value, caption] of [['all', t('接收该线程的全部最终结果', 'All final results from this thread')], ['wechat', t('仅回复微信发起的消息', 'Only replies to WeChat messages')]]) {
+            const option = el('option', caption); option.value = value; replyMode.append(option);
+        }
+        const bindButton = button(t('绑定线程', 'Bind thread'), () => write('bind', { accountId: accountSelect.value, peerId: peer.value, cwd: project.value, replyMode: replyMode.value,
             ...(session.value === '__new__' ? { newSession: true } : { sessionId: session.value }) }), 'primary');
         bindButton.prepend(icon('fa-link'));
         const bindForm = el('div', null, 'channel-bind-grid');
@@ -91,20 +94,21 @@
             label(t('微信账号', 'WeChat account'), accountSelect),
             label(t('微信用户', 'WeChat user'), peer),
             label(t('项目', 'Project'), project),
-            label(t('线程', 'Thread'), session)
+            label(t('线程', 'Thread'), session),
+            label(t('接收方式', 'Receive'), replyMode)
         );
         const bindHint = el('span', '', 'channel-bind-hint');
         const bindFooter = el('div', null, 'channel-bind-footer');
         bindFooter.append(bindHint, bindButton);
         const bindingList = el('div', null, 'channel-bindings');
         binding.append(
-            cardHead('fa-link', t('线程绑定', 'Thread bindings'), t('选择允许的微信用户和目标线程，绑定从之后的消息开始生效。', 'Choose an allowed WeChat user and a target thread. The binding applies to future messages.')),
+            cardHead('fa-link', t('线程绑定', 'Thread bindings'), t('默认接收网页、微信与定时任务的最终结果，包括绑定时尚未完成的任务。已完成的历史不补发。', 'Receive final results from web, WeChat and scheduled tasks, including work still running when bound. Completed history is not sent.')),
             bindForm, bindFooter, bindingList
         );
         const jobs = el('section', null, 'channel-card channel-jobs-card');
         const jobFilters = el('div', null, 'channel-job-filters'); jobFilters.setAttribute('role', 'group'); jobFilters.setAttribute('aria-label', t('筛选消息', 'Filter messages'));
         const jobList = el('div', null, 'channel-job-list'); jobList.setAttribute('role', 'list');
-        const jobEmpty = el('p', t('绑定后，在微信发送第一条消息。', 'After binding, send your first message in WeChat.'), 'channel-empty-note');
+        const jobEmpty = el('p', t('绑定后，网页或微信发起任务即可在这里查看结果投递。', 'After binding, run a task from the web or WeChat to see result delivery here.'), 'channel-empty-note');
         const jobPager = el('div', null, 'channel-job-pager');
         const jobRange = el('span', '', 'channel-job-range');
         const jobPrevious = button(t('上一页', 'Previous'), () => changeJobPage(-1));
@@ -172,7 +176,7 @@
             bindHint.textContent = !snapshot?.accounts.length ? t('先扫码连接微信账号。', 'Connect a WeChat account first.')
                 : !users.length ? t('先在账号卡片里添加允许的微信用户并保存。', 'Add and save an allowed WeChat user on the account card first.')
                 : bound ? t(`此用户当前绑定到“${bound.name || bound.sessionId}”，绑定新线程会替换它。`, `This user is bound to “${bound.name || bound.sessionId}”. Binding again replaces it.`)
-                : t('绑定后，该微信用户发来的新消息会进入所选线程。', 'New messages from this WeChat user will route to the chosen thread.');
+                : t('绑定后可从微信继续提问，也能接收线程的最终结果。首次接收前，请先在微信发一条消息。', 'Continue in WeChat and receive final results after binding. Send a WeChat message first to enable delivery.');
             bindButton.dataset.unavailable = String(!snapshot?.accounts.length || !users.length || Boolean(snapshot?.error));
         }
         function focusBinding() {
@@ -464,12 +468,17 @@
                         const info = el('div', null, 'channel-binding-info');
                         const route = el('p', null, 'channel-binding-route');
                         route.append(el('span', b.peerId, 'channel-binding-peer'), icon('fa-arrow-right-long'), el('strong', b.name || b.sessionId));
-                        info.append(route, el('small', b.cwd));
+                        info.append(route, el('small', b.cwd), el('small', b.replyMode === 'wechat'
+                            ? t('仅微信问答', 'WeChat replies only') : t('接收全部最终结果 · 定时任务默认跟随', 'All final results · scheduled tasks follow by default')));
                         const actions = el('div', null, 'channel-binding-actions');
                         if (typeof window.PiChatNavigation?.openSession === 'function') {
                             const open = button(t('打开线程', 'Open thread'), () => window.PiChatNavigation.openSession({ cwd: b.cwd, sessionId: b.sessionId }).catch(error => setStatus(error.message, 'error')));
                             open.dataset.channelReadOnly = 'true'; open.prepend(icon('fa-arrow-up-right-from-square')); actions.append(open);
                         }
+                        actions.append(button(t('接收设置', 'Receive settings'), () => {
+                            accountSelect.value = b.accountId; updatePeers(); peer.value = b.peerId; updatePeers();
+                            project.value = b.cwd; replyMode.value = b.replyMode || 'all'; void loadSessions(b.sessionId); focusBinding();
+                        }));
                         actions.append(button(t('解除绑定', 'Unbind'), () => write('unbind', { accountId: b.accountId, peerId: b.peerId }), 'danger'));
                         row.append(info, actions);
                         bindingList.append(row);
@@ -500,7 +509,7 @@
             jobPage = Math.max(0, Math.min(jobPage, Math.ceil(total / jobPageSize) - 1));
             const start = jobPage * jobPageSize, visible = filtered.slice(start, start + jobPageSize);
             jobEmpty.hidden = total > 0; jobList.hidden = total === 0; jobPager.hidden = total === 0;
-            jobEmpty.textContent = snapshot.jobs.length === 0 ? t('绑定后，在微信发送第一条消息。', 'After binding, send your first message in WeChat.')
+            jobEmpty.textContent = snapshot.jobs.length === 0 ? t('绑定后，网页或微信发起任务即可在这里查看结果投递。', 'After binding, run a task from the web or WeChat to see result delivery here.')
                 : jobFilter === 'attention' ? t('没有需要处理的消息。', 'Nothing needs attention.') : t('没有进行中的消息。', 'No messages in progress.');
             jobRange.textContent = t(`共 ${total} 条 · ${start + 1}–${start + visible.length}`, `${total} total · ${start + 1}–${start + visible.length}`);
             jobPageButtons.hidden = total <= jobPageSize;
@@ -515,7 +524,7 @@
                 if (needsAttention(job)) row.dataset.attention = 'true';
                 const top = el('div', null, 'channel-job-top');
                 const kind = el('strong', null, 'channel-job-kind');
-                const kinds = { cron: ['fa-clock', t('定时通知', 'Scheduled notification')], slash: ['fa-terminal', t('斜杠指令', 'Slash command')], notice: ['fa-circle-info', t('系统提示', 'Notice')] };
+                const kinds = { thread: ['fa-check', t('线程最终结果', 'Thread final result')], cron: ['fa-clock', t('定时通知', 'Scheduled notification')], slash: ['fa-terminal', t('斜杠指令', 'Slash command')], notice: ['fa-circle-info', t('系统提示', 'Notice')] };
                 const [kindIcon, kindName] = kinds[job.kind] || ['fa-message', t('微信消息', 'WeChat message')];
                 kind.append(icon(kindIcon), document.createTextNode(kindName));
                 top.append(kind, badge(labels()[job.status] || job.status, jobKind(job.status)));

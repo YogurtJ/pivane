@@ -10,6 +10,8 @@
         return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
     }
     const node = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+    const notificationMode = job => job.weixinNotification || (job.notifyWeixin ? 'on' : 'inherit');
+    const notificationNames = { inherit: '跟随线程的微信接收设置', on: '推送至已绑定微信', off: '不发送微信通知' };
     const statusNames = { waiting: '等待线程空闲', dispatching: '正在提交', running: '运行中', completed: '已完成', silent: '静默完成',
         skipped: '已跳过', failed: '执行失败', error: '执行失败', stopped: '已停止', cancelled: '已取消', uncertain: '需要核对' };
     const date = (value, zone) => value ? new Intl.DateTimeFormat(globalThis.PiI18n?.locale || 'zh-CN',
@@ -142,7 +144,7 @@
             const card = node('div', 'cron-card'), grid = node('dl', 'cron-facts');
             const target = job.target.kind === 'profile' ? profiles.find(p => p.id === job.target.profileId)?.name || job.target.profileId : job.target.cwd;
             for (const [label, value] of [['调度', job.schedule.kind === 'cron' ? job.schedule.expression : date(job.schedule.at, job.schedule.timeZone)], ['目标', target],
-                ['执行方式', t(job.mode === 'text' ? '文字问候' : '执行工作')], ['微信通知', t(job.notifyWeixin ? '已启用（推送至已绑定微信）' : '未启用')], ['模型', job.model ? `${job.model.provider}/${job.model.modelId} · ${job.model.thinkingLevel}` : t('跟随目标线程')],
+                ['执行方式', t(job.mode === 'text' ? '文字问候' : '执行工作')], ['微信通知', t(notificationNames[notificationMode(job)])], ['模型', job.model ? `${job.model.provider}/${job.model.modelId} · ${job.model.thinkingLevel}` : t('跟随目标线程')],
                 ['错过执行', t(job.misfire.policy === 'skip' ? '直接跳过' : '宽限期内补最近一次')], ['生效时间', job.startsAt ? date(job.startsAt, job.schedule.timeZone) : t('立即生效')], ['下次执行', date(job.enabled ? job.nextAt : null, job.schedule.timeZone)]]) {
                 grid.append(node('dt', '', t(label)), node('dd', '', value));
             }
@@ -297,14 +299,16 @@
             const money = field(grid, '每日估算美元预算', 'number', draft.budget.maxCostPerDay ?? '', { min: 0.01, max: 10000, step: 'any' });
             advanced.append(node('p', 'cron-muted', t('预算按 UTC 日累计。Token 在模型调用之间检查，已发出的请求可能超出预算；工具额外费用不包含在估算内。金额限制启用后，价格未知时不执行。')));
             const enabled = field(form, '保存后启用', 'checkbox', draft.enabled);
-            const notifyWeixin = field(form, '完成后推送至目标线程已绑定的微信私聊', 'checkbox', draft.notifyWeixin);
+            const notifyWeixin = field(form, '微信通知', 'select', notificationMode(draft), {
+                choices: Object.entries(notificationNames).map(([value, caption]) => [value, t(caption)]),
+                hint: '默认跟随线程；绑定为接收全部结果时自动推送，静默任务不发送。' });
             const footer = node('div', 'cron-form-footer'); footer.append(node('span', 'cron-muted', t('启用后，服务将在计划时间自动执行。')));
             const save = button('保存任务', 'fa-check', () => {}, 'primary'); save.type = 'submit';
             footer.append(button('取消', null, async () => { if (!await leave()) return; draft = null; dirty = false; await renderDetail(); }), save); form.append(footer);
             form.oninput = () => { dirty = true; };
             form.onsubmit = async event => {
                 event.preventDefault();
-                const input = { ...draft, name: name.value, prompt: prompt.value, enabled: enabled.checked, notifyWeixin: notifyWeixin.checked, mode: mode.value,
+                const input = { ...draft, name: name.value, prompt: prompt.value, enabled: enabled.checked, weixinNotification: notifyWeixin.value, notifyWeixin: notifyWeixin.value !== 'off', mode: mode.value,
                     target: kind.value === 'profile' ? { kind: 'profile', profileId: profile.value } : { kind: 'thread', cwd: cwd.value, sessionId: sessions.value },
                     schedule: scheduleValue(), startsAt: startsAt.value ? new Date(startsAt.value).getTime() : null, model: modelMode.value === 'fixed' && modelSelect.value ? { provider: JSON.parse(modelSelect.value)[0], modelId: JSON.parse(modelSelect.value)[1], thinkingLevel: thinking.value } : null,
                     misfire: { policy: misfire.value, graceMinutes: Number(grace.value) }, condition: condition.value ? { kind: 'no-user-since', time: condition.value } : null,

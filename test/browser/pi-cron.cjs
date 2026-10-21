@@ -64,6 +64,7 @@ async function check(browser, base, width, language, scenario = 'normal') {
     assert.deepEqual(overflow, []);
     if (width < 680) assert.ok(await page.locator('.cron-page textarea').evaluate(n => parseFloat(getComputedStyle(n).fontSize) >= 16));
     await page.screenshot({ path: `/tmp/pivane-cron-form-${width}-${language}.png`, fullPage: true });
+    assert.equal(await page.getByLabel(zh ? '微信通知' : 'WeChat notification', { exact: true }).inputValue(), 'inherit');
     await page.getByRole('button', { name: zh ? '保存任务' : 'Save task', exact: true }).click();
     await page.locator('.cron-detail-head').waitFor();
     await page.getByText(zh ? '微信通知等待投递入队' : 'WeChat notification awaiting admission', { exact: true }).waitFor();
@@ -71,6 +72,7 @@ async function check(browser, base, width, language, scenario = 'normal') {
     assert.equal(jobs[0].schedule.expression, '0 17 * * *');
     assert.equal(jobs[0].target.sessionId, sessionId);
     assert.equal(jobs[0].enabled, false);
+    assert.equal(jobs[0].weixinNotification, 'inherit');
     assert.ok(jobs[0].startsAt > now);
     assert.equal(await page.locator('#cron-tab [onerror]').count(), 0);
     await page.screenshot({ path: `/tmp/pivane-cron-detail-${width}-${language}.png`, fullPage: true });

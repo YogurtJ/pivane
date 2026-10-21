@@ -1,4 +1,5 @@
 const { STATE, MESSAGE, DELIVERABLE_ENTRY, stateFor, channelReply, outcome, scheduledOutcome } = require('./turn-results');
+const { threadOutcome } = require('./thread-results');
 const idPattern = /^[a-f0-9]{64}$/;
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 function registerChannelTurns(pi) {
@@ -13,6 +14,7 @@ function registerChannelTurns(pi) {
     });
     return (ctx, input) => {
         if (!input || !idPattern.test(input.id) || input.sessionId !== ctx.sessionManager.getSessionId()) throw new Error('Invalid channel turn');
+        if (input.action === 'thread-status') return threadOutcome(ctx.sessionManager, input.id);
         if (input.action === 'status') return outcome(ctx.sessionManager, input.id);
         if (input.action !== 'start' || active || !ctx.isIdle() || ctx.hasPendingMessages()) throw new Error('Channel target is busy');
         if (stateFor(ctx.sessionManager, input.id)) return { ...outcome(ctx.sessionManager, input.id), reused: true };

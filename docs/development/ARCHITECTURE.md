@@ -84,7 +84,7 @@ Pi 1.1.0 原生 MCP/Codemode 经 `pi-native-mcp.mjs` 和受管 ResourceLoader �
 
 `channels/service` 在服务端维护一个账号一个轮询连接，与 `channels/store` 的私有配置、游标、待发送意图及回执配合；消息正文在进入原生会话后移除，不建立平行聊天历史。`channels/weixin-component` 仅在用户安装时获取锁定哈希的上游归档，在有界内存解析后装配审查过的模块；账户、私密日志和受限网络边界由 Pivane 提供，上游原件与许可保留。默认用户不创建渠道数据或周期任务。
 
-`channels/turn-results` 从原生分支证明任务开始、输入、最终回复和结算边界，共用微信和定时结果收集；只识别已有生产者的非新输入通知，不扫描后续轮次。`channels/commands` 与 `command-control` 管理指令的持久占位、提交前权限重验及原生互斥；worker 的可选 `beforeSend` 在最后同步 RPC 边界检查准入。`channels/typing` 管理本次运行票据和单飞心跳，诊断为有界内存投影。
+`channels/turn-results` 从原生分支证明任务开始、输入、最终回复和结算边界，共用微信和定时结果收集；只识别已有生产者的非新输入通知，不扫描后续轮次。`channels/thread-results` 为全部受管轮次追加原生起止标记，通过带 worker nonce 的私有结算事件让渠道同步固定接收绑定及持久原生引用；普通网页结果不复制正文，延迟发送和恢复重读原生边界。原微信发送者沿用原 job，定时结果沿用 cron 的持久通知，其他全部结果绑定各自去重。绑定记录生效时间与最近完成轮次，包含当前未结束任务而不补发历史。`channels/commands` 与 `command-control` 管理指令的持久占位、提交前权限重验及原生互斥；worker 的可选 `beforeSend` 在最后同步 RPC 边界检查准入。`channels/typing` 管理本次运行票据和单飞心跳，诊断为有界内存投影。
 
 cron 将终态和固定收件绑定的通知意图原子保存在同一 run 行，单飞重试本地入队并使用稳定 runId；渠道层原子去重、读取原生结果并重新验证固定绑定。未收到 cron 入队确认的回执不被常规渠道历史裁剪；网络不确定记录仍只允许核对。
 

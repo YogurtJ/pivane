@@ -21,7 +21,10 @@ class ChannelStore {
             || !Array.isArray(a.allowedUsers) || a.allowedUsers.length > 100 || !a.allowedUsers.every(id))
             || new Set(value.accounts.map(a => a.id)).size !== value.accounts.length
             || value.bindings.some(b => !b || !id(b.id) || !id(b.accountId) || !id(b.peerId) || !id(b.sessionId)
-                || typeof b.cwd !== 'string' || !path.isAbsolute(b.cwd) || b.cwd.length > 4096)
+                || typeof b.cwd !== 'string' || !path.isAbsolute(b.cwd) || b.cwd.length > 4096
+                || b.replyMode !== undefined && !['all', 'wechat'].includes(b.replyMode)
+                || b.boundAt !== undefined && (!Number.isFinite(b.boundAt) || b.boundAt < 0)
+                || b.excludedTurnId != null && !/^[a-f0-9]{64}$/.test(b.excludedTurnId))
             || value.jobs.some(j => !j || typeof j.id !== 'string' || typeof j.status !== 'string'
                 || j.commandSubmitted !== undefined && typeof j.commandSubmitted !== 'boolean'
                 || j.deliveryIssues !== undefined && (!Array.isArray(j.deliveryIssues) || j.deliveryIssues.length > 20

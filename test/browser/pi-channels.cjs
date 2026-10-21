@@ -66,6 +66,13 @@ const server = http.createServer((req, res) => {
             assert.equal(await page.evaluate(() => writes.at(-1).sessionId), 'thread-two');
             assert.equal(await page.evaluate(() => writes.at(-1).peerId), 'owner');
             assert.equal(await page.evaluate(() => writes.at(-1).expectedRevision), 'r1');
+            assert.equal(await page.evaluate(() => writes.at(-1).replyMode), 'all');
+            await page.getByRole('button', { name: 'Receive settings', exact: true }).click();
+            assert.equal(await page.getByLabel('Receive', { exact: true }).inputValue(), 'all');
+            await page.getByLabel('Receive', { exact: true }).selectOption('wechat');
+            await page.getByRole('button', { name: 'Bind thread', exact: true }).click();
+            assert.equal(await page.evaluate(() => writes.at(-1).replyMode), 'wechat');
+            await page.getByText('WeChat replies only', { exact: true }).waitFor();
             await page.locator('.channel-ready').waitFor();
             const chips = () => page.locator('.channel-chip-name').allTextContents();
             await addUser.fill('other');
@@ -98,10 +105,11 @@ const server = http.createServer((req, res) => {
             await page.getByRole('button', { name: 'Allow owner', exact: true }).click();
             assert.equal(await page.getByRole('button', { name: 'Save allowed users', exact: true }).isVisible(), false, 'restoring the saved list clears the draft');
             await page.evaluate(() => {
-                data.jobs = Array.from({ length: 12 }, (_, i) => ({ id: 'job-' + i, peerId: 'wechat-user-with-a-long-identifier@im.wechat', at: Date.UTC(2026, 9, 20, 8, 30 - i), status: i === 5 ? 'uncertain' : i === 0 ? 'running' : 'delivered', sentChunks: i === 0 ? 0 : 2, sentMedia: i === 1 ? 1 : 0, canRecover: i === 5, kind: i === 2 ? 'cron' : undefined }));
+                data.jobs = Array.from({ length: 12 }, (_, i) => ({ id: 'job-' + i, peerId: 'wechat-user-with-a-long-identifier@im.wechat', at: Date.UTC(2026, 9, 20, 8, 30 - i), status: i === 5 ? 'uncertain' : i === 0 ? 'running' : 'delivered', sentChunks: i === 0 ? 0 : 2, sentMedia: i === 1 ? 1 : 0, canRecover: i === 5, kind: i === 2 ? 'cron' : i === 3 ? 'thread' : undefined }));
             });
             await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
             assert.equal(await page.locator('.channel-job').count(), 5);
+            await page.getByText('Thread final result', { exact: true }).waitFor();
             assert.equal(await page.getByRole('button', { name: 'Previous', exact: true }).isDisabled(), true);
             const beforePaging = await page.evaluate(() => writes.length);
             await page.getByRole('button', { name: 'Next', exact: true }).click();

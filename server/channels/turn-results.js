@@ -116,4 +116,4 @@ function scheduledOutcome(manager, event) {
     if (!reply && (state.replyEntryId || state.status === 'completed')) return null;
     return collect(state, entries, reply);
 }
-module.exports = { STATE, MESSAGE, DELIVERABLE_ENTRY, stateFor, channelReply, outcome, scheduledOutcome };
+module.exports = { STATE, MESSAGE, CRON_MESSAGE, DELIVERABLE_ENTRY, stateFor, channelReply, outcome, scheduledOutcome, collect, isTurnNotice };

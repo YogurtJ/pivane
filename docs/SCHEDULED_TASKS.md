@@ -11,7 +11,8 @@
 3. 可指定“生效时间”，自动执行只会安排在该时刻及以后；留空立即生效。此字段按当前设备时区输入，预览按任务时区显示。手动“运行一次”仍可提前执行。
 4. 填写任务说明。文字模式只允许生成文字和使用静默结束工具；工作模式使用原线程的工具与权限。任务会使用目标线程的现有上下文。首版不提供自动媒体生成或跨线程委派。
 5. 可展开执行策略：跟随目标线程模型，或固定供应商、模型和该模型支持的思考等级；设置错过策略、用户活动条件和预算。
-6. 新任务默认停用。勾选“保存后启用”或保存后点击“启用”，服务才会自动执行。“运行一次”会实际调用模型，也受预算和互斥限制。
+6. 微信通知默认 **跟随线程的微信接收设置**：目标线程绑定为接收全部最终结果时，该任务完成后自动推送。已有任务也按此规则执行，无需逐个开启；旧配置中的默认 `notifyWeixin:false` 视为跟随，原先主动开启的任务保持推送。可单独选择 **推送至已绑定微信** 或 **不发送微信通知**；静默结束始终不发送。
+7. 新任务默认停用。勾选“保存后启用”或保存后点击“启用”，服务才会自动执行。“运行一次”会实际调用模型，也受预算和互斥限制。
 
 暂停阻止后续触发并取消尚未提交的排队运行，不等于中止正在执行的工作；正在运行的一次需单独点击“停止”。删除任务保留已有线程、回复与执行记录，不撤销工作产生的副作用。
 
@@ -53,13 +54,15 @@
 | 接口 | 参数与行为 |
 |---|---|
 | `GET /api/pi/cron` | 任务、主线程、实例预算、今日占用、最后运行与容量；有调度故障时包含 `schedulerError` |
-| `PUT /api/pi/cron/jobs` | 稳定 UUID `id`；更新带 `revision`；`name,prompt,enabled,mode,target,schedule,model,misfire,condition,execution,budget` |
+| `PUT /api/pi/cron/jobs` | 稳定 UUID `id`；更新带 `revision`；`name,prompt,enabled,mode,weixinNotification,target,schedule,model,misfire,condition,execution,budget` |
 | `POST /api/pi/cron/jobs/:id/actions` | `revision,action`；`pause/resume/delete/run/stop/acknowledge`；run 必须带稳定 UUID `requestId`，stop/acknowledge 带 `runId` |
 | `GET /api/pi/cron/jobs/:id/runs` | 最近 100 项，包含原生结果 entry ID、实际目标、模型和用量，不复制回复 |
 | `POST /api/pi/cron/preview` | `{schedule}`，返回最多五个毫秒时间戳 |
 | `GET/PUT /api/pi/cron/limits` | GET 返回 `{limits,revision}`；PUT 带相同 revision 和新 limits |
 | `PUT /api/pi/cron/homes/:profileId` | `{revision,cwd,sessionId}` 指定线程；或 `{revision,cwd,create:true,requestId,language?}` 创建并指定 |
 | `GET /api/pi/cron/models?cwd` | 真实可用模型、思考等级及默认值 |
+
+`weixinNotification:'inherit'|'on'|'off'` 分别为跟随线程（默认）、推送至已绑定微信、关闭通知。兼容旧客户端显式提交的 `notifyWeixin:true|false`，分别转换为 on/off；已存旧任务无新字段时，true 保持 on，false／缺失按 inherit。通知只面向任务完成时有效的绑定，不补发绑定前已完成的历史。
 
 `target` 为 `{kind:'thread',cwd,sessionId}` 或 `{kind:'profile',profileId}`。`schedule` 为 `{kind:'cron',expression,timeZone}` 或 `{kind:'once',at,timeZone}`。`startsAt:null|毫秒时间戳` 指定自动执行的最早生效时刻，允许未来八年内；保存、启用和预览均应用该下限。`model:null` 跟随线程，否则为 `{provider,modelId,thinkingLevel}`。`misfire:{policy:'skip'|'latest',graceMinutes}`；`condition:null` 或 `{kind:'no-user-since',time:'HH:mm'}`；`execution:{maxCalls,maxTokens,maxDurationSeconds}`；`budget/limits:{maxRunsPerDay,maxTokensPerDay,maxCostPerDay:null|number}`。
 

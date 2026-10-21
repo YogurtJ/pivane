@@ -322,6 +322,20 @@ class AgentWorker extends EventEmitter {
 
     async recoverQueue(stop) {
         this.assertReferenceWritable();
+        // Channel turns retain exclusive ownership through native settlement.
+        // Their web stop must not inject a queue-clear prompt into that turn.
+        if (stop && this.operation && (this.channelRun || this.channelCommandId)
+            && !this.controlPending && !this.disposed && !this.exited && !this.shell.busy) {
+            this.controlPending = true;
+            this.controls.stopping = true; this.controls.changed(); this.broadcastControls();
+            try { await this.client.request('abort', {}, 120000); this.finishControl(); }
+            catch (error) {
+                if (error.code === 'RPC_TIMEOUT') this.controlUncertain = true;
+                else this.finishControl();
+                throw error;
+            }
+            return this.controls.snapshot();
+        }
         if (this.shell.busy || this.disposed || this.exited || this.operation || this.controlPending || this.promptPending) throw new Error('会话正在处理其他操作，请稍后重试');
         const release = this.queueStore?.beginOperation();
         let recovery, operation;
@@ -753,6 +767,15 @@ class AgentWorker extends EventEmitter {
             try {
                 const result = privateReply(JSON.parse(event.message));
                 if (this.modelCatalog.handle(result) || this.mcpControl.handle(result) || this.modelSpeed.handle(result)) return;
+                if (result && Object.hasOwn(result, 'pivaneThreadResult')) {
+                    const state = result.pivaneThreadResult;
+                    if (this.managed && !this.noSession && result.token === this.navigationToken && state?.sessionId === this.sessionId
+                        && /^[a-f0-9]{64}$/.test(state.id) && ['completed', 'stopped', 'error'].includes(state.status)
+                        && ['thread', 'channel', 'cron'].includes(state.source?.kind) && Number.isFinite(state.completedAt)) {
+                        this.emit('thread-result', { ...state, target: { cwd: this.cwd, sessionId: this.sessionId } });
+                    }
+                    return;
+                }
                 if (result && Object.hasOwn(result, 'pivaneAgentProfileLoaded')) {
                     if (this.managed && !this.noSession && result.sessionId === this.sessionId
                         && (result.pivaneAgentProfileLoaded === null && result.profileRevision === null
@@ -1032,6 +1055,7 @@ class PiAgentSupervisor extends EventEmitter {
             this.assertReferenceWritable();
             const worker = new AgentWorker({ cwd, sessionPath, sessionId, env, queueStore, referenceGuard: () => this.referenceGuard, startupTimeoutMs: this.startupTimeoutMs });
             worker.on('completion', notice => this.emit('completion', notice, worker));
+            worker.on('thread-result', result => this.emit('thread-result', result, worker));
             worker.on('attention', event => this.emit('attention', event));
             worker.on('exit', () => {
                 if (this.workers.get(sessionPath) === worker) void this.stopSession(sessionPath).catch(() => {});

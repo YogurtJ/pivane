@@ -118,7 +118,23 @@ test('authenticated optional channel connects, binds and delivers once through t
         const entries = (await worker.request('get_entries')).entries;
         assert.equal(entries.filter(e => e.customType === 'pivane-channel-message').length, 1);
         assert.ok(entries.some(e => e.customType === 'pivane-channel-turn' && e.data.status === 'completed'));
-        await worker.request('prompt', { message: 'web-only message' }); await wait(() => worker.isIdle()); assert.equal(sends.length, 1, 'web turns do not leak into the channel');
+        await worker.request('prompt', { message: 'web-only message' });
+        await wait(() => service.db.value.jobs.some(j => j.kind === 'thread' && j.status === 'delivered'));
+        assert.equal(sends.length, 2, 'bound web turns deliver their final result exactly once');
+        await wait(() => service.runs.size === 0);
+        await action('bind', { accountId: 'bot-one', peerId: 'owner', cwd, sessionId: session.id, replyMode: 'wechat' });
+        const beforeWechatOnly = calls.length;
+        await worker.request('prompt', { message: 'web turn with WeChat-only routing' });
+        await wait(() => calls.length > beforeWechatOnly && worker.isIdle());
+        assert.equal(sends.length, 2, 'WeChat-only mode excludes web results');
+        hold = new Promise(resolve => { releaseModel = resolve; });
+        const beforeBindingRun = calls.length;
+        await worker.request('prompt', { message: 'bind while this web task is running' });
+        await wait(() => calls.length > beforeBindingRun);
+        await action('bind', { accountId: 'bot-one', peerId: 'owner', cwd, sessionId: session.id });
+        releaseModel(); hold = null;
+        await wait(() => sends.length === 3 && service.runs.size === 0);
+        assert.equal(service.db.value.jobs.filter(j => j.kind === 'thread').length, 2, 'binding includes the unfinished turn without backfilling completed turns');
         // A completed channel turn can wait for delivery while a later web turn publishes private artifacts.
         fs.writeFileSync(path.join(cwd, 'report.md'), '# Web-only fixture report\n');
         fs.writeFileSync(path.join(cwd, 'chart.png'), onePixelPng);
@@ -130,12 +146,14 @@ test('authenticated optional channel connects, binds and delivers once through t
         service.receive('bot-one', { msgs: [incoming('delayed-outgoing', 'Reply without files')] }); service.pump();
         const delayedJob = service.db.value.jobs.at(-1); await outcomeStarted;
         deliverTool = true;
+        const beforeWebFiles = calls.length;
         await worker.request('prompt', { message: 'Publish files only for the web conversation' });
-        await wait(() => worker.isIdle()); deliverTool = false;
+        await wait(() => calls.length >= beforeWebFiles + 2 && worker.isIdle()); deliverTool = false;
         releaseOutcome(); await wait(() => service.job(delayedJob.id).status === 'delivered');
         service.readOutcome = originalReadOutcome;
-        assert.equal(mediaSends.length, 0, 'later web files must not be sent with a delayed channel result');
-        assert.deepEqual((await service.readOutcome(delayedJob)).deliverables, []);
+        await wait(() => mediaSends.length === 2 && service.runs.size === 0);
+        assert.deepEqual((await service.readOutcome(delayedJob)).deliverables, [], 'delayed channel result never borrows later web files');
+        mediaSends.length = 0;
         // Slash commands: /help, /status, /model, /new
         const callsBeforeSlash = calls.length;
         service.receive('bot-one', { msgs: [incoming('slash-help', '/help')] }); service.pump();
@@ -201,7 +219,7 @@ test('authenticated optional channel connects, binds and delivers once through t
         // Proactive scheduled task notification to bound WeChat DM
         const cronJob = await gateway.cron.save({
             id: '11111111-1111-4111-8111-111111111111', name: 'Daily digest', prompt: 'Digest prompt',
-            enabled: false, notifyWeixin: true, mode: 'work',
+            enabled: false, weixinNotification: 'inherit', mode: 'work',
             target: { kind: 'thread', cwd, sessionId: session.id },
             schedule: { kind: 'cron', expression: '0 9 * * *', timeZone: 'Asia/Shanghai' }
         });
@@ -292,6 +310,17 @@ test('authenticated optional channel connects, binds and delivers once through t
         await action('acknowledge', { jobId: service.db.value.jobs.at(-1).id });
         await action('account', { accountId: 'bot-one', enabled: true, allowedUsers: ['owner'] });
         replyText = 'Native channel reply';
+        hold = new Promise(resolve => { releaseModel = resolve; });
+        const beforeWebStop = calls.length;
+        service.receive('bot-one', { msgs: [incoming('web-stop-target')] }); service.pump();
+        await wait(() => calls.length > beforeWebStop);
+        await assert.rejects(worker.recoverQueue(false), /其他操作/, 'queue recovery remains exclusive while a channel turn runs');
+        const stoppedControls = await worker.recoverQueue(true);
+        assert.equal(stoppedControls.stopping, false, 'web stop waits for native abort acknowledgement');
+        await wait(() => service.db.value.jobs.at(-1).status === 'delivered' && service.runs.size === 0);
+        assert.match(sends.at(-1).text, /任务已停止/);
+        assert.equal(calls.length, beforeWebStop + 1, 'web stop does not submit a new prompt or repeat the task');
+        releaseModel(); hold = null;
         hold = new Promise(resolve => { releaseModel = resolve; });
         const beforeStop = calls.length;
         service.receive('bot-one', { msgs: [incoming('stop-target')] }); service.pump(); await wait(() => calls.length === beforeStop + 1);
