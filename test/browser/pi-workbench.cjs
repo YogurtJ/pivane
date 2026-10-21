@@ -14,8 +14,8 @@ const session = { id: 'empty', cwd, name: 'Synthetic workbench', modified: new D
     stats: { messages: 42, context: 12, compactions: 2, contextTokens: 172000, model: { provider: 'fixture', id: 'model-x' } } };
 const model = { provider: 'fixture', id: 'model', name: 'A deliberately long model name for layout checks', input: ['text'], contextWindow: 32000 };
 const plan = id => ({ version: 1, id, explanation: '', plan: [{ step: 'Inspect the workspace', status: 'in_progress' }, { step: 'Verify controls', status: 'pending' }] });
-async function run(browser, base, viewport, preferences = {}) {
-    const context = await browser.newContext({ viewport, reducedMotion: 'reduce', locale: 'en-US', isMobile: viewport.width <= 680, hasTouch: viewport.width <= 680 });
+async function run(browser, base, viewport, preferences = {}, { touch = viewport.width <= 680 } = {}) {
+    const context = await browser.newContext({ viewport, reducedMotion: 'reduce', locale: 'en-US', isMobile: viewport.width <= 680, hasTouch: touch });
     const page = await context.newPage(), errors = [], writes = [], commands = [];
     let socket, streaming = false, progress = null, sequence = 0;
     page.on('pageerror', error => { errors.push(error.message); console.error('pageerror:', error.stack); });
@@ -79,6 +79,24 @@ async function run(browser, base, viewport, preferences = {}) {
             assert.equal(next.focus, next.collapsed ? 'workspace-brand-toggle' : 'workspace-sidebar-toggle', 'focus stays on the visible toggle');
         }
         await page.waitForTimeout(250);
+        // The collapsed logo becomes the expand glyph on real hover only. Touch browsers keep :hover
+        // on the last tap, which must not leave a blank logo after collapsing with it.
+        const logo = () => page.evaluate(() => { const button = document.querySelector('#workspace-brand-toggle');
+            return { collapsed: document.querySelector('.app-container').classList.contains('sidebar-collapsed'), hover: button.matches(':hover'),
+                opacity: getComputedStyle(button.querySelector('.workspace-logo')).opacity, hoverNone: matchMedia('(hover: none)').matches }; });
+        if (touch) {
+            await page.tap('#workspace-brand-toggle'); await page.tap('#workspace-brand-toggle');
+            const tapped = await logo();
+            assert.ok(tapped.hoverNone && tapped.collapsed && tapped.hover && tapped.opacity === '1', JSON.stringify(tapped));
+            // This run covers only the touch sidebar; the hover-driven checks below need a mouse.
+            assert.deepEqual(errors, []); await context.close();
+            return { viewport, preferences, touch, before, errors };
+        } else if ((await sidebar()).collapsed) {
+            await page.hover('#workspace-brand-toggle');
+            const hovered = await logo();
+            assert.ok(hovered.hover && hovered.opacity === '0', JSON.stringify(hovered));
+            await page.mouse.move(0, 0);
+        }
     } else if (viewport.width > 680) {
         const rail = await sidebar();
         const saved = 'pi.workspace.sidebarCollapsed' in preferences ? String(preferences['pi.workspace.sidebarCollapsed']) : null;
@@ -312,6 +330,7 @@ async function run(browser, base, viewport, preferences = {}) {
             results.push(await run(browser, base, { width, height })); console.log(`PASS workbench ${width}x${height}`);
         }
         results.push(await run(browser, base, { width: 1440, height: 900 }, { 'pi.workspace.sidebarCollapsed': false, 'pi.workspace.split:agent-sessions': 320, 'pi.workspace.split:agent-inspector': 400 }));
+        results.push(await run(browser, base, { width: 1180, height: 820 }, {}, { touch: true })); console.log('PASS touch tablet 1180x820');
         await fs.writeFile(path.join(evidence, 'measurements.json'), JSON.stringify(results, null, 2));
         console.log(`PASS saved preferences; evidence: ${evidence}`);
     } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }

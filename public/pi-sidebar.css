@@ -379,16 +379,32 @@
         height: 40px;
     }
 
-    .app-container.sidebar-collapsed .sidebar-brand-toggle:not(:disabled):is(:hover, :focus-visible) { background: var(--pv-nav-hover); }
-    .app-container.sidebar-collapsed .sidebar-brand-toggle:not(:disabled):is(:hover, :focus-visible) .workspace-logo {
+    /* Logo turns into the expand glyph on keyboard focus, and on hover only where a pointer
+       can really hover: touch browsers keep :hover on the last tap, which would hide the logo
+       after collapsing with it. */
+    .app-container.sidebar-collapsed .sidebar-brand-toggle:not(:disabled):focus-visible { background: var(--pv-nav-hover); }
+    .app-container.sidebar-collapsed .sidebar-brand-toggle:not(:disabled):focus-visible .workspace-logo {
         opacity: 0;
         transform: scale(0.8);
     }
-    .app-container.sidebar-collapsed .sidebar-brand-toggle:not(:disabled):is(:hover, :focus-visible) .pv-panel-icon {
+    .app-container.sidebar-collapsed .sidebar-brand-toggle:not(:disabled):focus-visible .pv-panel-icon {
         opacity: 1;
         transform: none;
     }
-    .app-container.sidebar-collapsed .sidebar-brand-toggle:not(:disabled):is(:hover, :focus-visible) :is(.pv-panel-side, .pv-panel-divider) { transform: none; }
+    .app-container.sidebar-collapsed .sidebar-brand-toggle:not(:disabled):focus-visible :is(.pv-panel-side, .pv-panel-divider) { transform: none; }
+
+    @media (hover: hover) {
+        .app-container.sidebar-collapsed .sidebar-brand-toggle:not(:disabled):hover { background: var(--pv-nav-hover); }
+        .app-container.sidebar-collapsed .sidebar-brand-toggle:not(:disabled):hover .workspace-logo {
+            opacity: 0;
+            transform: scale(0.8);
+        }
+        .app-container.sidebar-collapsed .sidebar-brand-toggle:not(:disabled):hover .pv-panel-icon {
+            opacity: 1;
+            transform: none;
+        }
+        .app-container.sidebar-collapsed .sidebar-brand-toggle:not(:disabled):hover :is(.pv-panel-side, .pv-panel-divider) { transform: none; }
+    }
 
     .app-container.sidebar-collapsed .nav-menu {
         gap: 4px;
