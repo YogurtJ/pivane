@@ -2,9 +2,9 @@
 
 本页概括用户可见变化与升级要点。安装步骤见[安装与恢复](docs/INSTALL_RECOVERY.md)；每版完整说明和验收附件见 [Releases](https://github.com/YogurtJ/pivane/releases)。历史行为不代表当前功能，当前用法以[用户指南](docs/USER_GUIDE.md)为准。
 
-## 1.9.0（Pi 1.3.0，发布候选）
+## 1.9.0（Pi 1.3.0）
 
-[版本说明](docs/releases/1.9.0.md) · [平台验收进度](docs/RELEASE_INSTALL_VALIDATION.md)。准确包正在准备验收，当前公开正式版仍为1.8.0。
+[版本说明](docs/releases/1.9.0.md) · [Release](https://github.com/YogurtJ/pivane/releases/tag/v1.9.0) · [准确包验证](docs/RELEASE_INSTALL_VALIDATION.md)。2026-10-21正式发布，六附件公开回下载与冻结字节一致。三平台准确包验收完成，原始失败、平台跳过和有界补验分别保留。
 
 - 成组绑定官方Pi1.3.0，档案记忆更新至pi-hermes-memory0.9.10，pi-subagents保持0.78.0；保留原生会话、任务、用量与MCP边界，模型控制按运行时定义读取，记忆检索显示命中数量。
 

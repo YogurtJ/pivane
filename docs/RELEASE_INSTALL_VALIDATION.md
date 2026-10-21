@@ -2,11 +2,27 @@
 
 本页是版本验收索引。**结果只适用于对应归档**：准确 SHA256、测试明细和失败尝试见各 [Release](https://github.com/YogurtJ/pivane/releases) 的 `pivane-<版本>.validation.json`。源码、浏览器模拟和旧版结果不能替代新包的实机验收。
 
-## 1.9.0 发布候选
+## 当前正式版 1.9.0
 
-[1.9.0说明](releases/1.9.0.md)。准确包正在准备独立验收；最终结果将绑定归档SHA256，完成前不宣称Linux、macOS或Windows已通过。下列1.8.0及更早结果只适用于其各自归档。
+[1.9.0说明](releases/1.9.0.md) · [Release](https://github.com/YogurtJ/pivane/releases/tag/v1.9.0) · [验收JSON](https://github.com/YogurtJ/pivane/releases/download/v1.9.0/pivane-1.9.0.validation.json) · [验收说明](https://github.com/YogurtJ/pivane/releases/download/v1.9.0/pivane-1.9.0.validation.md)
 
-## 当前正式版 1.8.0
+2026-10-21正式发布，准确归档SHA256：`44e27335b84e7a542c60b7bff69eba814921b63a947ef416fbcd36f1b114f620`，冻结源码：`5b9e93c937d2f90afdc7e8e2671c3f612843d9a1`。六附件公开无鉴权回下载逐字节一致，标签和包未改写。
+
+| 实机 | Node首次与专项 | 浏览器首次与最终覆盖 | 安装／正式1.8升级／原路径恢复 |
+|---|---|---|---|
+| Linux arm64 / Node22.23.3 / Chromium142.0.7444.175 | 1088/1088；Node24.13.1另1088/1088 | 首次114/114 | 17/17 |
+| Apple M1 / macOS15.5 / Node22.23.1 / Chrome155.0.8059.85 | 1060通过、28平台跳过 | 首次110/114，4个脚本有界完成，最终覆盖114 | 17/17 |
+| Windows11 x64 / Node22.23.2 / Chrome155.0.8059.85 | 原1057通过、3失败、28跳过；3项完整路径专项补齐 | 首次111/114，3个脚本12场景有界完成，最终覆盖114 | 17/17组合 |
+
+所有平台在独立锁定安装后核对2314发行文件、准确归档、lock及实际依赖，前后字节不变；语法、文档、生产audit和平台打包通过，2026-10-21刷新生产audit仍零漏洞。Playwright1.58.2、平台原生Chrome/Chromium、回退字体和DPR保留，阻止可选Google Fonts。Linux locale为已安装的en_GB.UTF-8。28项跳过包括26个显式Linux描述符删除边界及2个Linux-only保留/清理用例，不把跳过计作通过。
+
+Windows两个临时路径用例按原源码和原断言在native TEMP环境完成；版本包完整场景只在包外把两处POSIX路径字面量改为原生相对路径构造，保留全部断言、操作和期限。原全量Node/接受任务退出1保留；13项续接检查与已完成安装/Node专项/普通token核心组成17项，不宣称原全量一次退出0。
+
+浏览器首次非零退出、原错误和补验分别保存。扩展清单尚在加载、独立记忆fixture绕过生产关闭guard而未等待变更结算、知识合并尚在busy时即跨视图检查，均由实际失败状态归因，再加入就绪或结算前提；Mac启动页5/4另由加载Back按钮被误认作Retry导致，经受控正负时序验证。原断言和期限不变，已通过的独立场景不重跑；最终114是原始运行与有界完成合成的原场景覆盖，不称两平台首次全绿。Windows首次完整浏览器原作业及外层退出恢复收取，观察中断未触发重启或重放。
+
+每台17项检查按原路径恢复20文件；真实1.8 SDK另创建双分支、书签、会话ID和二进制附件，1.9只读打开，变更后4文件原路径恢复并由新旧SDK核对语义。Windows完整文件系统/浏览器使用提升权限；真实Limited token另证明独立安装、1440/393 onboarding、SDK/RPC/runtime及正常退出，不能称普通token完整114。所有模型/媒体请求使用合成服务，零付费产品请求。Chromium手机视口不证明真实手机键盘/麦克风/后台行为；Safari、Firefox、IntelMac、WindowsARM64及真实用户供应商/GPU未验收。
+
+## 历史正式版 1.8.0
 
 [1.8.0 说明](releases/1.8.0.md) · [验收附件](https://github.com/YogurtJ/pivane/releases/download/v1.8.0/pivane-1.8.0.validation.json)
 

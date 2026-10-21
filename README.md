@@ -30,7 +30,7 @@ Subagents, scheduled tasks, MCP, long-term memory, rich file previews and a buil
 - **Run many agents from one workspace.** You can use subagents, task threads that agents create for themselves, messages between threads, side chats and cron-scheduled tasks. A live view shows what each one is doing.
 - **Your models, your keys, your machine.** You can use any provider Pi supports, including Anthropic, OpenAI, Google Gemini, GitHub Copilot, OpenRouter, DeepSeek, Qwen, Kimi, MiniMax, xAI and Mistral. Sign in with an API key or OAuth, or add your own OpenAI-compatible endpoint. Credentials and history stay on your machine.
 - **Extends the same way Pi does.** Pi packages, skills, prompt templates and MCP servers can be installed from the browser. You can also ask the built-in extension assistant to find and set them up for you.
-- **Media generation and voice are built in.** Connect your own image, video and speech services. An agent turns your idea into parameters you can edit, and nothing runs until you confirm. You can also dictate messages and have replies read aloud.
+- **Media generation and voice are built in.** Connect your own image, video and speech services. An agent turns your idea into parameters you can edit; per-type settings control automatic execution in chat, while video asks for confirmation by default. You can also dictate messages and have replies read aloud.
 
 ### See it in action
 
@@ -70,9 +70,14 @@ After a task finishes, its tool trace folds into one line. Review the changed fi
 
 ### Assistants with memory
 
-- Assistant profiles each have their own persona, notes about you and long-term memory, powered by [pi-hermes-memory](https://pi.dev/packages/pi-hermes-memory?name=memory).
+- Assistant profiles each have their own persona, notes about you and long-term memory, powered by [pi-hermes-memory](https://pi.dev/packages/pi-hermes-memory?name=memory). Overview, Settings, Memories, Skills and Learning have separate pages for reviewing changes and budgets.
 - Optional background learning picks up your corrections and preferences. It runs within daily budgets, and every memory and learned skill can be reviewed, edited or undone.
 - Several logical projects with their own instructions can point to the same directory.
+
+### Messaging channels
+
+- Install the optional WeChat connector when needed, sign in with a QR code, allow specific users and bind a private chat to a Pivane thread.
+- Exchange text, images and delivered files, use common slash commands, and receive scheduled notifications. Connection status and delivery receipts are available in the browser.
 
 ### Files and rendering
 
@@ -83,9 +88,11 @@ After a task finishes, its tool trace folds into one line. Review the changed fi
 
 ### Extensions and MCP
 
+<p align="center"><img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/extensions-en.webp" alt="Extension discovery on a phone: scope and installation filters, optional WeChat messaging, requirements and examples" width="393"></p>
+
 - You can manage Pi packages, skills, extensions, prompt templates and themes globally or for a single project.
 - MCP uses Pi's native support, including Codemode and tool search. Servers and OAuth sign-ins are managed in the browser.
-- A discovery page lists recommended packages. An extension assistant checks their sources and installs them only after you ask.
+- A discovery page filters recommended packages by type and installation state, with requirements and examples inside each card. An extension assistant checks sources and installs them only after you ask. Installed packages and skills show versions and offer explicit update checks.
 - You can edit the system prompt and inspect the full prompt that any thread receives.
 
 ### Media lab and voice
@@ -93,7 +100,7 @@ After a task finishes, its tool trace folds into one line. Review the changed fi
 <img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/media-en.webp" alt="A media generation card in Pivane chat, with editable parameters and a completed synthetic image" width="100%">
 
 - You can add image, video, text-to-speech and speech-to-text services. Presets cover OpenAI, Google Gemini, Volcengine Ark (Seedream and Seedance) and Alibaba Cloud Model Studio, and any compatible HTTP API can be added manually.
-- An agent drafts editable parameters from a plain-language request in chat or the lab. Each generation runs only after you confirm it; busy requests queue, and the same status returns after a refresh. Reference images or videos can be attached when the model supports them.
+- An agent drafts editable parameters from a plain-language request in chat or the lab. Per-type chat preferences decide whether a card executes automatically or asks for confirmation; video requires confirmation by default. Busy requests queue, and the same status returns after a refresh. Reference images or videos can be attached when the model supports them.
 - Generation history lets you preview, reuse and download earlier results.
 - You can dictate messages into the composer and have replies or selected text read aloud.
 
@@ -158,7 +165,7 @@ flowchart LR
 
 - Pivane is meant for **personal, single-user** instances. Everyone who has the access token shares the same instance, and there are no separate user accounts.
 - Project roots limit which folders you can browse, but they are **not a sandbox**. The agent, shell, packages and extensions all run with the permissions of the server's user account, so install only extensions you trust.
-- Media generation and other paid actions run only after you explicitly confirm them. Pivane never retries failed or uncertain requests automatically.
+- Media execution follows your per-type chat settings and confirmation policy. Pivane never automatically replays failed or uncertain submissions.
 
 ## FAQ
 

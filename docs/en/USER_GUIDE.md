@@ -158,14 +158,14 @@ Select message text to add a quote to the main draft, ask in side chat or read t
 
 ## Generate images, video and speech in chat
 
-Configure a media model, then ask “draw a cover for this report” or “read this paragraph aloud.” The Agent prepares a card; **nothing is generated or charged until you confirm it**.
+Configure a media model, then ask “draw a cover for this report” or “read this paragraph aloud.” The Agent prepares a card. **Settings → Models & capabilities → Automatic generation in chat** controls execution by media type: image and speech cards can run automatically when enabled; video asks for confirmation by default. Automatic execution can incur the same provider charges as confirming a card.
 
-- For a staged video workflow, first ask for opening/ending frames or reference images, confirm those cards, and wait for them to finish. In the next turn, ask the Agent to use those images for a video. It reads current-branch results and uses stable asset references; the card shows frame roles and reference order. Finished videos can be played, downloaded and reused as video references.
+- For a staged video workflow, first ask for opening/ending frames or reference images and wait for those cards to finish, confirming them when required. In the next turn, ask the Agent to use those images for a video. It reads current-branch results and uses stable asset references; the card shows frame roles and reference order. Finished videos can be played, downloaded and reused as video references.
 - Video requests default to a two-hour wait, configurable up to 24 hours; existing saved values are preserved. For accepted asynchronous jobs, Continue querying original task retrieves the same job after a timeout or restart without creating another generation. Synchronous requests without a task ID need checking at the provider.
 - To edit an image, upload a PNG/JPEG/WebP in Pi Agent or an assistant conversation and describe the changes. The Agent selects a model with image inputs and shows the reference on the confirmation card. You can also ask to edit a completed card image, or replace the reference under Edit parameters. Available inputs depend on the model.
-- Edit parameters before confirming. Server-normalized changes return for another review.
+- Use Edit parameters to review or change a card. When confirmation is required, server-normalized changes return for another review.
 - Results appear in the card and lab history, including after reconnecting or changing devices. The same card is not submitted twice. Status refreshes preserve unsaved parameter edits on the page and playback progress for unchanged results; switching threads releases the old cards. Status queries and generation jobs have separate timeout limits.
-- Multiple confirmed cards queue for available slots and can be cancelled before starting. Remote services allow 4 concurrent items (2 videos); local backends allow 1.
+- Multiple accepted cards queue for available slots and can be cancelled before starting. Remote services allow 4 concurrent items (2 videos); local backends allow 1.
 - A timeout may mean the provider is still processing and charging. Check history and the remote task first. Failures and uncertain results are not retried automatically; another generation needs confirmation.
 
 Side chat does not provide generation cards. See [the media lab](../MEDIA_LAB.md).
