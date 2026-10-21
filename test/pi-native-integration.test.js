@@ -236,7 +236,7 @@ test('package and skill versions are display metadata; update checks are explici
     await service.packageAction({ cwd, scope: 'global', action: 'install', source: pkg, confirmed: true, expectedRevision: snap.revision });
     try {
         snap = await service.snapshot(cwd, 'global');
-        const entry = snap.packages.find(item => item.source === '../version-package');
+        const entry = snap.packages.find(item => item.source === path.relative(path.join(root, 'agent'), pkg));
         assert.equal(entry.version, '2.3.4'); assert.equal(entry.updateMode, 'local');
         const versionOf = file => snap.resources.find(item => item.path === file)?.version;
         assert.equal(versionOf(pkgSkill), '1.1.0');
@@ -281,7 +281,7 @@ test('package and skill versions are display metadata; update checks are explici
         service.context = originalContext;
         if (savedOffline === undefined) delete process.env.PI_OFFLINE; else process.env.PI_OFFLINE = savedOffline;
         snap = await service.snapshot(cwd, 'global');
-        await service.packageAction({ cwd, scope: 'global', action: 'remove', source: '../version-package', confirmed: true, expectedRevision: snap.revision });
+        await service.packageAction({ cwd, scope: 'global', action: 'remove', source: path.relative(path.join(root, 'agent'), pkg), confirmed: true, expectedRevision: snap.revision });
         fs.rmSync(metaDir, { recursive: true, force: true }); fs.rmSync(badDir, { recursive: true, force: true });
     }
 });

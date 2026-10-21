@@ -194,7 +194,7 @@ test('Pi 1.2 images from read retain private temporary paths and classifier imag
         assert.equal(result.content.filter(item => item.type === 'image').length, 2);
         const paths = [...text(result).matchAll(/\[Image saved to ([^\n]+?) \(image\/png,/g)].map(match => match[1]);
         assert.equal(paths.length, 2); assert.equal(paths[0], paths[1], 'same image is saved once'); files.push(paths[0]);
-        assert.equal(path.dirname(paths[0]), os.tmpdir());
+        assert.equal(path.dirname(paths[0]), path.normalize(os.tmpdir()));
         assert.deepEqual(fs.readFileSync(paths[0]), Buffer.from(block.data, 'base64'));
         if (process.platform !== 'win32') assert.equal(fs.statSync(paths[0]).mode & 0o777, 0o600);
         assert.deepEqual(calls, [{ name: 'read', args: { path: 'synthetic.png' } }]);
@@ -254,7 +254,7 @@ test('large text integration keeps native truncation, private full output, conso
             .map((value, i) => value + (i % 2 ? '\n' : '')).join('')
             + '==> text 301/301 <==\n{"last":true}\n<console_output>\ntail-one\ntail-two\n</console_output>';
         assert.equal(full, expected);
-        assert.equal(path.dirname(file), os.tmpdir());
+        assert.equal(path.dirname(file), path.normalize(os.tmpdir()));
         if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
     } finally { if (file) fs.rmSync(file, { force: true }); }
     assert.equal(f.runtime.calls.filter(call => call.method === 'classify').length, 1);

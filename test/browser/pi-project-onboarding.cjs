@@ -1,16 +1,20 @@
 // pivane-browser: manual — needs an isolated live server with PI_ONBOARDING_TEST_URL and PI_ONBOARDING_PROJECT.
 const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const os=require('node:os');
+const path=require('node:path');
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base=process.env.PI_ONBOARDING_TEST_URL;
-const project=process.env.PI_ONBOARDING_PROJECT;
+const project=fs.realpathSync.native(process.env.PI_ONBOARDING_PROJECT);
 assert.ok(/^http:\/\/127\.0\.0\.1:\d+$/.test(base||'')&&!base.endsWith(':3001'));
-assert.match(project||'',/^\/tmp\/pi-onboarding-[^/]+\/project$/);
+assert.ok(path.isAbsolute(project));assert.equal(path.basename(project),'project');
+assert.match(path.basename(path.dirname(project)),/^pi-onboarding-.+$/);
 (async()=>{
  const get=async route=>{const r=await fetch(base+route);assert.ok(r.ok,route);return r.json()};
- const status=await get('/api/pi/status');assert.deepEqual(status.projectRoots,['/']);assert.ok(status.defaultProject.startsWith('/'));
+ const status=await get('/api/pi/status');assert.deepEqual(status.projectRoots,[path.parse(project).root]);assert.ok(path.isAbsolute(status.defaultProject));
  const marker=await get('/api/pi/files/content?'+new URLSearchParams({cwd:project,path:'marker.txt'}));assert.equal(marker.content,'pi-onboarding-fixture\n');
  const models=await get('/api/pi/settings/models');assert.ok(models.providers.every(p=>!p.configured));
- const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true});const results=[];
+ const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH || '/usr/bin/chromium',headless:true});const results=[];
  try{for(const width of [1440,393,320]){
   const context=await browser.newContext({ locale: 'zh-CN',viewport:{width,height:1000}});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route(/https:\/\/(fonts\.googleapis\.com|fonts\.gstatic\.com)\//,r=>r.abort());
@@ -37,12 +41,12 @@ assert.match(project||'',/^\/tmp\/pi-onboarding-[^/]+\/project$/);
   await page.locator('#pi-project-input').fill(project);await page.locator('#pi-project-form [type=submit]').click();
   await page.waitForFunction(p=>localStorage.getItem('pi.web.cwd')===p,project);
   await openProjectPicker();await page.waitForFunction(p=>document.querySelector('#pi-directory-current').textContent===p,project);
-  await page.locator('#pi-directory-up').click();const parent=project.slice(0,project.lastIndexOf('/'));
+  await page.locator('#pi-directory-up').click();const parent=path.dirname(project);
   await page.waitForFunction(p=>document.querySelector('#pi-project-input').value===p,parent);
-  await page.locator('#pi-directory-list [data-path="'+project+'"]').click();
+  await page.locator('#pi-directory-list [data-path='+JSON.stringify(project)+']').click();
   await page.waitForFunction(p=>document.querySelector('#pi-project-input').value===p,project);
   for(const selector of ['body','#pi-project-dialog .project-dialog','#pi-project-form','#pi-directory-list']){const m=await page.locator(selector).evaluate(e=>({width:e.clientWidth,scroll:e.scrollWidth}));assert.ok(m.scroll<=m.width+1,selector+JSON.stringify(m));}
-  await page.screenshot({path:`/tmp/pi-onboarding-${width}.png`});assert.deepEqual(errors,[]);results.push({width,globalSettingsWithoutSelection:true,absolutePathAndParent:true,pageerrors:0});await context.close();
+  await page.screenshot({path:path.join(os.tmpdir(),`pi-onboarding-${width}.png`)});assert.deepEqual(errors,[]);results.push({width,globalSettingsWithoutSelection:true,absolutePathAndParent:true,pageerrors:0});await context.close();
  }}finally{await browser.close()}
  console.log(JSON.stringify({status:'passed',results}));
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -47,7 +47,7 @@ function fixture(t, text) {
         store: { sessionLists: new Map(),
             getSession: async (_cwd, id) => { if (!sessions.has(id)) throw Error('missing'); return sessions.get(id); },
             listSessions: async () => [...sessions.values()],
-            withSessionRead: async (dir, id, fn) => fn(await s.store.getSession(dir, id), { manager: () => ({ getEntries: () => sessions.get(id).entries || [] }), validate() {} }),
+            withSessionRead: async (dir, id, fn) => fn(await s.store.getSession(dir, id), { manager: () => ({ getEntries: () => sessions.get(id).entries || [], getBranch: () => sessions.get(id).entries || [] }), validate() {} }),
             createSession: async () => { const created = { id: 'new', cwd, path: path.join(cwd, 'new.jsonl'), name: 'New' }; sessions.set('new', created); return created; }
         }, supervisor: { getActiveWorker: () => worker, getWorker: async () => worker },
         collectDeliverables: async () => [], collectMediaAssets: async () => [], readOutcome: async () => ({ status: 'completed', body: 'reply', deliverables: [] }) });

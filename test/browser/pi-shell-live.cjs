@@ -1,8 +1,11 @@
-// pivane-browser: manual — needs an isolated live server with userShell and the /tmp/pi-web-shell-preview/project root.
+// pivane-browser: manual — needs an isolated live server with userShell and PI_SHELL_LIVE_PROJECT (defaults to the temporary pi-web-shell-preview/project fixture).
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.PI_SHELL_LIVE_URL || 'http://127.0.0.1:3131';
-const cwd = '/tmp/pi-web-shell-preview/project';
+const cwd = fs.realpathSync.native(process.env.PI_SHELL_LIVE_PROJECT || path.join(os.tmpdir(), 'pi-web-shell-preview', 'project'));
 (async () => {
     const url = new URL(base);
     assert.equal(url.hostname, '127.0.0.1'); assert.notEqual(url.port, '3001');
@@ -10,7 +13,7 @@ const cwd = '/tmp/pi-web-shell-preview/project';
     assert.equal(status.userShell, true); assert.deepEqual(status.projectRoots, [cwd]);
     const response = await fetch(base + '/api/pi/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd, name: 'Isolated shell smoke' }) });
     assert.equal(response.status, 201); const session = await response.json();
-    const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
+    const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
     const errors = [], sent = [];
     try {
         const pages = [];
@@ -35,6 +38,7 @@ const cwd = '/tmp/pi-web-shell-preview/project';
         await mobile.waitForFunction(() => document.querySelector('.pi-shell-output')?.textContent.includes('CANCEL_SMOKE'));
         await mobile.locator('.pi-shell-live button').click();
         await desktop.waitForFunction(() => document.querySelectorAll('.pi-bash-message').length === 2 && !document.querySelector('.pi-shell-live'));
+        await mobile.waitForFunction(() => document.querySelectorAll('.pi-bash-message').length === 2 && !document.querySelector('.pi-shell-live'));
         assert.match(await desktop.locator('.pi-bash-message').last().textContent(), /已停止/);
         assert.match(await mobile.locator('.pi-bash-message').last().textContent(), /不加入模型上下文/);
         await desktop.locator('#pi-input').fill('!exit 7'); await desktop.locator('#pi-send-button').click();
