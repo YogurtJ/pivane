@@ -16,16 +16,16 @@
 /* The login form owns its spacing and controls; legacy .token-dialog rules
    apply text-field dimensions to every input, including checkboxes. */
 #pi-token-dialog {
-    --login-accent: #2563eb;
-    --login-on-accent: #fff;
+    --login-accent: var(--primary, #1d6bde);
+    --login-on-accent: var(--primary-contrast, #fff);
     padding: 24px;
     overflow-y: auto;
     overscroll-behavior: contain;
 }
 .workspace-access-locked #pi-token-dialog {
     z-index: 10000;
-    background: radial-gradient(ellipse at 25% 10%, rgba(70, 128, 236, .09), transparent 55%),
-        radial-gradient(ellipse at 90% 90%, rgba(70, 128, 236, .05), transparent 45%), var(--surface-0);
+    background: radial-gradient(ellipse at 25% 10%, color-mix(in srgb, var(--login-accent) 9%, transparent), transparent 55%),
+        radial-gradient(ellipse at 90% 90%, color-mix(in srgb, var(--login-accent) 5%, transparent), transparent 45%), var(--surface-0);
 }
 #pi-token-form {
     display: flex;
@@ -42,7 +42,7 @@
     border-radius: 22px;
     background: var(--surface-1);
     color: var(--text-main);
-    box-shadow: 0 20px 64px -28px rgba(23, 43, 77, .25);
+    box-shadow: 0 20px 64px -28px color-mix(in srgb, var(--shadow-tint, #1b2a42) 26%, transparent);
     overflow: visible;
     font-size: 14px;
     line-height: 1.6;
@@ -73,7 +73,6 @@
 #pi-token-form .workspace-login-help p { margin-top: 10px; font-size: 12px; line-height: 1.8; }
 #pi-token-form :is(button, summary, input[type="checkbox"]):focus-visible { outline: 2px solid var(--login-accent); outline-offset: 3px; }
 #workspace-access-nav[hidden], #pi-token-form .workspace-access-remember[hidden] { display: none; }
-:root[data-theme="dark"] #pi-token-dialog { --login-accent: #83b3ff; --login-on-accent: #101c30; }
 @media (max-width: 480px) {
     #pi-token-dialog { padding: 20px 16px; }
     #pi-token-form { padding: 28px 24px; border-radius: 18px; }

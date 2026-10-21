@@ -37,8 +37,8 @@
 .mcp-settings button:hover:not(:disabled) { border-color: var(--mcp-accent); background: var(--mcp-surface-2); }
 .mcp-settings button:disabled { opacity: .5; cursor: default; }
 .mcp-settings :is(button, input, select, textarea):focus-visible { outline: 2px solid var(--mcp-accent); outline-offset: 2px; }
-.mcp-settings .mcp-button-primary { border-color: #4d9a76; background: #347c5b; color: #fff; font-weight: 600; }
-.mcp-settings .mcp-button-primary:hover:not(:disabled) { border-color: #4d9a76; background: #3d8d69; }
+.mcp-settings .mcp-button-primary { border-color: var(--primary); background: var(--primary); color: var(--primary-contrast); font-weight: 600; }
+.mcp-settings .mcp-button-primary:hover:not(:disabled) { border-color: var(--primary-hover); background: var(--primary-hover); }
 .mcp-settings .mcp-button-quiet { border-color: transparent; background: transparent; color: var(--mcp-muted); }
 .mcp-settings .mcp-button-quiet:hover:not(:disabled) { color: var(--mcp-text); }
 .mcp-settings .mcp-button-danger { border-color: transparent; background: transparent; color: var(--mcp-muted); }

@@ -15,7 +15,7 @@
 .sa-run-state { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; padding: 2px 8px; border-radius: 999px; font-size: 11px; background: var(--surface-3); color: var(--text-muted); }
 .sa-run[data-tone="active"] .sa-run-state { color: var(--blue); background: color-mix(in srgb, var(--blue) 14%, transparent); }
 .sa-run[data-tone="active"] .sa-run-state .fa-circle-notch { animation: sa-spin 1.4s linear infinite; }
-.sa-run[data-tone="done"] .sa-run-state { color: var(--green); background: var(--green-soft); }
+.sa-run[data-tone="done"] .sa-run-state { color: var(--success, var(--green)); background: var(--success-soft, var(--green-soft)); }
 .sa-run[data-tone="attention"] .sa-run-state { color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); }
 .sa-run[data-tone="error"] .sa-run-state { color: var(--danger); background: var(--danger-soft); }
 .sa-run-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
@@ -26,7 +26,7 @@
 .sa-run-children li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 7px; align-items: baseline; min-width: 0; font-size: 12px; }
 .sa-run-children li > i { color: var(--text-muted); }
 .sa-run-children li[data-tone="active"] > i { color: var(--blue); }
-.sa-run-children li[data-tone="done"] > i { color: var(--green); }
+.sa-run-children li[data-tone="done"] > i { color: var(--success, var(--green)); }
 .sa-run-children li[data-tone="attention"] > i { color: var(--amber); }
 .sa-run-children li[data-tone="error"] > i { color: var(--danger); }
 .sa-child-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -55,7 +55,7 @@
 .sa-model-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .sa-model-state { flex-shrink: 0; width: 14px; text-align: center; color: var(--text-muted); font-size: 12px; }
 .sa-model-state[data-tone="active"] { color: var(--blue); }
-.sa-model-state[data-tone="done"] { color: var(--green); }
+.sa-model-state[data-tone="done"] { color: var(--success, var(--green)); }
 .sa-model-state[data-tone="attention"] { color: var(--amber); }
 .sa-model-state[data-tone="error"] { color: var(--danger); }
 .sa-model-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }

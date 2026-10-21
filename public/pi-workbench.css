@@ -1,15 +1,6 @@
 /* First-screen workspace composition. Feature-specific viewers keep their own styles. */
 :root { --workspace-reading-width: 800px; --workspace-tool-width: 48px; }
-html[data-theme="daylight"] {
-    --surface-0: #edf1ee; --surface-1: #f5f7f5; --surface-2: #fff; --surface-3: #eaf0eb;
-    --surface-sidebar: #f3f6f3; --surface-transcript: #fff; --surface-code: #f3f6f4; --surface-code-strong: #e7eee9;
-    --text-main: #27352f; --text-muted: #627268; --text-soft: #69796f;
-    --primary: #247458; --accent: #247458; --green: #247458; --primary-hover: #1d654b;
-    --green-soft: #e1eee5; --line: #dce4dd; --line-strong: #bdcec1; --glass-border: #dce4dd;
-}
-html[data-theme="slate"] { --text-muted: #586b80; --text-soft: #718399; --surface-transcript: #fff; --surface-sidebar: #eaf0f8; --surface-1: #f6f8fc; --surface-2: #fff; --surface-3: #e9eff7; }
-html[data-theme="violet"] { --text-muted: #6c607c; --text-soft: #887c98; --surface-transcript: #fff; --surface-sidebar: #f1ecf8; --surface-1: #f9f7fc; --surface-2: #fff; --surface-3: #f0eaf7; }
-html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface-transcript: #151b17; --surface-sidebar: #111914; --surface-1: #18201b; --surface-2: #1c261f; --surface-3: #253229; }
+/* Theme tokens live in workspace.css; this file only lays out the workbench. */
 .workspace-nav-short { display: none; }
 .sidebar { background: var(--surface-sidebar); }
 .logo { margin-bottom: 14px; }
@@ -123,7 +114,7 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
 .pi-composer-chips:has(> .pi-subagent-runs[data-state="attention"]) { flex-wrap: wrap; }
 .pi-subagent-runs[data-state="attention"] .sa-runs-count { white-space: normal; overflow-wrap: anywhere; }
 .pi-tool-rail button:disabled { opacity: .45; cursor: default; }
-.pi-composer { display: grid; grid-template-columns: 36px minmax(0,1fr) auto; gap: 3px 6px; padding: 9px 10px; border-radius: 14px; border-color: var(--line-strong); box-shadow: 0 3px 14px rgb(20 50 30 / 5%); }
+.pi-composer { display: grid; grid-template-columns: 36px minmax(0,1fr) auto; gap: 3px 6px; padding: 9px 10px; border-radius: 14px; border-color: var(--line-strong); box-shadow: 0 3px 14px color-mix(in srgb, var(--shadow-tint) 6%, transparent); }
 .pi-composer #pi-input { grid-column: 1 / -1; grid-row: 1; width: 100%; min-height: 48px; font-size: .94rem; padding: 7px 7px 10px; }
 .pi-composer textarea::placeholder { color: var(--text-muted); }
 .pi-composer-add { grid-column: 1; grid-row: 2; }
@@ -158,7 +149,7 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
 .pi-empty-state p { max-width: 100%; margin-top: 10px; font-family: inherit; font-size: .86rem; line-height: 1.75; color: var(--text-muted); overflow-wrap: anywhere; }
 .pi-empty-state h2 { color: var(--text-main); font-size: clamp(1.35rem, 2.1vw, 1.8rem); line-height: 1.35; font-weight: 650; letter-spacing: -.02em; }
 .pi-start-hero { display: flex; flex-direction: column; align-items: center; text-align: center; }
-.pi-start-logo { width: 44px; height: 44px; margin-bottom: 18px; border-radius: 12px; box-shadow: 0 6px 18px rgb(30 60 45 / 12%); }
+.pi-start-logo { width: 44px; height: 44px; margin-bottom: 18px; border-radius: 12px; box-shadow: 0 6px 18px color-mix(in srgb, var(--shadow-tint) 14%, transparent); }
 .pi-start-scope { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; margin-top: 14px; padding: 4px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); color: var(--text-muted); font-size: .72rem; }
 .pi-start-scope span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pi-start-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%; margin-top: 30px; }
@@ -194,12 +185,12 @@ html[data-theme="dark"] { --text-muted: #a1afa6; --text-soft: #96a49b; --surface
 .pi-inspector .inspector-heading > div { display: none; }
 .pi-inspector-overlay > .pi-inspector { position: absolute; inset: 0 var(--workspace-tool-width) 0 auto; z-index: 36; width: min(var(--split-size, 336px), calc(100% - var(--workspace-tool-width) - 12px)); max-width: none; box-shadow: var(--shadow-float); }
 .pi-inspector-overlay > #pi-inspector-split { display: none; }
-.pi-drawer-scrim { position: absolute; inset: 0; z-index: 35; border: 0; background: rgb(20 35 26 / 20%); display: block; }
+.pi-drawer-scrim { position: absolute; inset: 0; z-index: 35; border: 0; background: color-mix(in srgb, var(--shadow-tint) 22%, transparent); display: block; }
 .pi-drawer-scrim.hidden { display: none; }
 /* Keep the reader's own saved offset when an expanded split crosses viewports. */
 .pi-inspector.files-expanded #pi-file-body { overflow-anchor: none; }
 .pi-tools-dialog { position: fixed; inset: 0; margin: auto; width: min(400px, calc(100vw - 28px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); color: var(--text-main); box-shadow: var(--shadow-float); }
-.pi-tools-dialog::backdrop { background: rgb(20 35 26 / 30%); }
+.pi-tools-dialog::backdrop { background: color-mix(in srgb, var(--shadow-tint, #1b2a42) 32%, transparent); }
 .pi-tools-dialog header { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 12px; }
 .pi-tools-dialog > button { display: flex; gap: 12px; align-items: center; width: 100%; min-height: 48px; padding: 10px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--text-main); text-align: left; cursor: pointer; }
 .pi-tools-dialog > button:hover { background: var(--surface-3); }

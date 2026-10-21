@@ -8,7 +8,7 @@
 .pi-edit-file:focus-visible, .pi-edits-more > summary:focus-visible, .pi-edits-collapse:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
 .pi-edit-path { flex: 1; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .pi-edit-count { flex-shrink: 0; color: var(--text-muted); font-size: .7rem; white-space: nowrap; }
-.pi-edit-added { color: var(--green); }
+.pi-edit-added { color: var(--success); }
 .pi-edit-removed { color: var(--danger); }
 .pi-edits-more > summary, .pi-edits-collapse { padding: 10px 12px; font: inherit; font-size: .75rem; color: var(--text-muted); border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; cursor: pointer; }
 .pi-edits-more[open] > summary { display: none; }

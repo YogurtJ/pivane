@@ -525,7 +525,7 @@ async function run(browser, base, width, locale, theme) {
     const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
     const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true });
     try {
-        for (const [width, locale, theme] of [[1440, 'zh-CN', 'mint'], [393, 'zh-CN', 'mint'], [320, 'en-US', 'dark'], [1440, 'en-US', 'dark'], [393, 'en-US', 'violet'], [900, 'en-US', 'mint']])
+        for (const [width, locale, theme] of [[1440, 'zh-CN', 'mint'], [393, 'zh-CN', 'mint'], [320, 'en-US', 'dark'], [1440, 'en-US', 'dark'], [393, 'en-US', 'graphite'], [900, 'en-US', 'mint']])
             await run(browser, `http://127.0.0.1:${server.address().port}`, width, locale, theme);
     } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

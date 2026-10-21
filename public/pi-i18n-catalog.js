@@ -10166,5 +10166,12 @@
         ['未发现更新', 'No update found'],
         ['随扩展包 {0}', 'From package {0}']
     );
+    // Workspace themes: warm and neutral palettes.
+    rows.push(
+        ['燕麦', 'Oat'],
+        ['温润舒适', 'Warm and cozy'],
+        ['石墨', 'Graphite'],
+        ['极简中性', 'Minimal and neutral']
+    );
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

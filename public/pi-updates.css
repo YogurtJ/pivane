@@ -49,8 +49,8 @@
 .pi-update-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
 .pi-update-card button { font-family: inherit; cursor: pointer; transition: background .15s, border-color .15s; }
 .pi-update-card .pi-update-action { min-width: 0; min-height: 36px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--text-main); font-size: 12px; font-weight: 500; line-height: 1.45; white-space: normal; }
-.pi-update-card .pi-update-open { background: #247a68; border-color: #247a68; color: #fff; font-weight: 600; }
-.pi-update-card .pi-update-open:hover { background: #1c6556; border-color: #1c6556; }
+.pi-update-card .pi-update-open { background: var(--primary); border-color: var(--primary); color: var(--primary-contrast); font-weight: 600; }
+.pi-update-card .pi-update-open:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
 .pi-update-card .pi-update-snooze:hover { background: var(--surface-2); border-color: var(--text-muted); }
 .pi-update-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; color: var(--text-muted); font-size: 11px; }
 .pi-update-card .pi-update-ignore { flex-shrink: 0; min-height: 32px; padding: 5px 0 5px 8px; border: 0; border-radius: 4px; color: var(--text-muted); font-size: 11px; }

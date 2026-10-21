@@ -115,7 +115,7 @@
 .pi-memory-hint-fallback .pi-memory-hint-icon { color: var(--text-muted); }
 
 .pi-health-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
-.pi-health-ok { background: #1f9d55; }
+.pi-health-ok { background: var(--success, #1f9d55); }
 .pi-health-off { background: #9aa0a6; }
 .pi-health-warn { background: #d98a00; }
 .pi-health-bad { background: #c0392b; }

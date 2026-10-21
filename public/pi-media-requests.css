@@ -17,7 +17,7 @@
 .pi-media-request-state { flex: 0 0 auto; padding: 2px 9px; border-radius: 999px; font-size: 12px; line-height: 1.6; background: var(--surface-3); color: var(--text-muted); }
 .pi-media-request-state.running, .pi-media-request-state.queued { background: color-mix(in srgb, var(--primary) 16%, transparent); color: var(--primary); }
 .pi-media-request-state.cancelled { background: color-mix(in srgb, var(--text-muted, #777) 14%, transparent); color: var(--text-muted, #777); }
-.pi-media-request-state.done { background: color-mix(in srgb, var(--green, #1f9d55) 16%, transparent); color: var(--green, #1f9d55); }
+.pi-media-request-state.done { background: color-mix(in srgb, var(--success, #1f9d55) 16%, transparent); color: var(--success, #1f9d55); }
 .pi-media-request-state.failed, .pi-media-request-state.uncertain { background: color-mix(in srgb, var(--amber, #c27c0e) 18%, transparent); color: var(--amber, #c27c0e); }
 .pi-media-request-params { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .pi-media-request-text {

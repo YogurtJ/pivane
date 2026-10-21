@@ -24,7 +24,7 @@
 .pi-tree-chevron { display: inline-grid; place-items: center; flex: 0 0 10px; color: var(--text-muted); font-size: .58rem; }
 .pi-tree-file-icon { flex: 0 0 15px; text-align: center; font-size: .88rem; }
 .pi-tree-file-icon[data-kind="folder"] { color: var(--amber); }
-.pi-tree-file-icon[data-kind="document"] { color: var(--green); }
+.pi-tree-file-icon[data-kind="document"] { color: var(--success, var(--green)); }
 .pi-tree-file-icon[data-kind="code"] { color: var(--blue); }
 .pi-tree-name { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .pi-file-tree-row > .fa-link { font-size: .6rem; color: var(--text-muted); }
@@ -103,7 +103,7 @@
 .pi-roots-directory > .fa-chevron-right { color: var(--text-muted); font-size: .6rem; }
 .pi-roots-feedback { font-size: .76rem; line-height: 1.6; margin: 0; padding: 0 22px 12px; color: var(--text-muted); overflow-wrap: anywhere; }
 .pi-roots-feedback:empty { display: none; }
-.pi-roots-feedback[data-error=true] { color: var(--red, #b84646); }
+.pi-roots-feedback[data-error=true] { color: var(--danger, #b84646); }
 .pi-roots-footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 14px 22px; border-top: 1px solid var(--line); background: var(--surface-2); }
 .pi-roots-footer:empty { display: none; }
 .pi-roots-external { display: grid; grid-template-columns: 24px 1fr; gap: 8px; padding: 16px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 14px; }

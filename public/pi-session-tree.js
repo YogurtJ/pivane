@@ -18,7 +18,7 @@
     function fillHeading(heading, row) {
         heading.replaceChildren(); heading.classList.add('pi-tree-heading');
         heading.dataset.replyStage = row.kind === 'assistant' && stages[row.replyStage] ? row.replyStage : 'unknown';
-        heading.style.setProperty('--tree-accent', row.kind === 'user' ? 'var(--blue)' : row.kind === 'assistant' ? 'var(--green)' : 'var(--text-muted)');
+        heading.style.setProperty('--tree-accent', row.kind === 'user' ? 'var(--blue)' : row.kind === 'assistant' ? 'var(--success, var(--green))' : 'var(--text-muted)');
         const role = el('span'); role.className = 'pi-tree-role';
         const label = row.kind === 'user' ? translateUi("用户问题") : row.kind === 'tool' ? translateUi("工具记录")
             : row.kind === 'summary' ? row.summaryType === 'compaction' ? translateUi("上下文压缩") : row.summaryType === 'branch_summary' ? translateUi("分支摘要") : translateUi("摘要") : 'AI';

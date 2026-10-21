@@ -6,7 +6,7 @@
 .pi-progress-body ol { list-style: none; padding: 0; margin: 0; }
 .pi-progress-body li { display: flex; align-items: baseline; gap: 10px; padding: 6px 0; min-width: 0; }
 .pi-progress-body li > i { flex: 0 0 16px; color: var(--text-muted); }
-.pi-progress-body li[data-status="completed"] > i { color: var(--green); }
+.pi-progress-body li[data-status="completed"] > i { color: var(--success, var(--green)); }
 .pi-progress-body li[data-status="completed"] .pi-progress-step { color: var(--text-muted); }
 .pi-progress-body li[data-status="in_progress"] > i { color: var(--blue); }
 .pi-progress-body li[data-status="in_progress"] .pi-progress-step { font-weight: 600; }

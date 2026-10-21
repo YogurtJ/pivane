@@ -85,15 +85,18 @@
     const THEME_KEY = 'pi.workspace.theme';
     const SIDEBAR_KEY = 'pi.workspace.sidebarCollapsed';
     const SPLIT_PREFIX = 'pi.workspace.split:';
-    const THEMES = new Set(['system', 'daylight', 'mint', 'slate', 'violet', 'dark']);
+    const THEMES = new Set(['system', 'daylight', 'mint', 'oat', 'graphite', 'dark']);
+    // Retired palettes keep working as the nearest current theme until the user picks again.
+    const RETIRED_THEMES = Object.freeze({ slate: 'daylight', violet: 'daylight' });
     const FONT_SIZE_KEY = 'pi.workspace.fontSize';
     const FONT_SIZES = Object.freeze({ small: '15px', default: '16px', large: '18px', xlarge: '20px' });
+    // Browser chrome follows the conversation header (--surface-transcript).
     const THEME_COLORS = {
-        daylight: '#edf1ee',
-        mint: '#eaf2ed',
-        slate: '#edf2f8',
-        violet: '#f3f0fa',
-        dark: '#0d0f10'
+        daylight: '#ffffff',
+        mint: '#fdfefe',
+        oat: '#fefcf9',
+        graphite: '#ffffff',
+        dark: '#18191d'
     };
 
     function storedNumber(key, fallback) {
@@ -409,7 +412,8 @@
         }
 
         function setTheme(theme, persist = true) {
-            const preference = THEMES.has(theme) ? theme : 'system';
+            const current = RETIRED_THEMES[theme] || theme;
+            const preference = THEMES.has(current) ? current : 'system';
             const selected = preference === 'system'
                 ? (systemThemeMedia.matches ? 'dark' : 'daylight')
                 : preference;

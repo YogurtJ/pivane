@@ -25,7 +25,7 @@
 html[data-theme="dark"] #artifacts-tab, html[data-theme="dark"] .artifacts-detail, html[data-theme="dark"] .artifacts-manage-dialog, html[data-theme="dark"] .artifacts-toasts {
     --a-accent-soft: color-mix(in srgb, var(--a-accent) 16%, transparent);
     --a-star: #f5c542;
-    --a-bar: #2a332e;
+    --a-bar: #2c2e33;
     --a-shadow-sm: 0 1px 2px rgb(0 0 0 / .3);
     --a-shadow-md: 0 16px 36px -14px rgb(0 0 0 / .6), 0 2px 8px rgb(0 0 0 / .25);
     --a-shadow-lg: 0 28px 70px -18px rgb(0 0 0 / .7), 0 6px 18px rgb(0 0 0 / .3);

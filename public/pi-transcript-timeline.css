@@ -78,7 +78,7 @@
     border-radius: 14px;
     background: var(--surface-2);
     color: var(--text-main);
-    box-shadow: 0 1px 2px rgb(20 32 26 / 6%), 0 14px 36px -10px rgb(20 32 26 / 22%);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow-tint) 6%, transparent), 0 14px 36px -10px color-mix(in srgb, var(--shadow-tint) 22%, transparent);
     opacity: 0;
     transform: translateX(-4px);
     transition: opacity 120ms ease, transform 160ms cubic-bezier(.2, .8, .3, 1), top 110ms ease-out;

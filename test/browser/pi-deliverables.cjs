@@ -110,7 +110,7 @@ async function run(browser, base, width, locale = 'zh-CN') {
     assert.notEqual(await page.locator('.pi-file-image-viewport img').evaluate(n => n.style.transform), beforePan, 'drag pans zoomed image');
     if (width < 900) await pinch(context, page);
     await page.getByRole('button', { name: t('适应窗口', 'Fit window'), exact: true }).last().click();
-    for (const theme of ['daylight', 'dark', 'slate']) {
+    for (const theme of ['daylight', 'dark', 'oat']) {
         await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme); await assertFullscreen(page);
     }
     await page.screenshot({ path: path.join(os.tmpdir(), `pivane-reading-${locale}-${width}-image.png`) });

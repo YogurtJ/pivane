@@ -358,14 +358,14 @@
     background: var(--channel-surface);
 }
 .channel-panel .channel-btn-primary {
-    border-color: #4d9a76;
-    background: #347c5b;
-    color: #fff;
+    border-color: var(--primary);
+    background: var(--primary);
+    color: var(--primary-contrast);
     font-weight: 600;
 }
 .channel-panel .channel-btn-primary:hover:not(:disabled) {
-    border-color: #4d9a76;
-    background: #3d8d69;
+    border-color: var(--primary-hover);
+    background: var(--primary-hover);
 }
 .channel-panel .channel-btn-danger:hover:not(:disabled) {
     border-color: var(--channel-danger);

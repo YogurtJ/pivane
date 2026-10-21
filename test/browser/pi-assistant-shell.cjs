@@ -279,15 +279,15 @@ async function main() {
             await page.locator('[data-settings-tab="models"]').click();
             assert.equal(await page.locator('[data-appearance-theme="system"]').getAttribute('aria-pressed'), 'true');
             assert.equal(await page.locator('[data-font-size="default"]').getAttribute('aria-pressed'), 'true');
-            await page.locator('[data-appearance-theme="slate"]').click();
-            assert.equal(await page.locator('html').getAttribute('data-theme'), 'slate');
-            assert.equal(await page.locator('#workspace-theme-menu [data-theme="slate"]').getAttribute('aria-checked'), 'true');
-            await page.locator('[data-appearance-theme="violet"]').click();
+            await page.locator('[data-appearance-theme="oat"]').click();
+            assert.equal(await page.locator('html').getAttribute('data-theme'), 'oat');
+            assert.equal(await page.locator('#workspace-theme-menu [data-theme="oat"]').getAttribute('aria-checked'), 'true');
+            await page.locator('[data-appearance-theme="graphite"]').click();
             await page.locator('[data-font-size="xlarge"]').click();
             assert.equal(await page.locator('html').evaluate(el => getComputedStyle(el).fontSize), '20px');
             const appearance = await page.evaluate(() => ({ theme: localStorage.getItem('pi.workspace.theme'), font: localStorage.getItem('pi.workspace.fontSize'),
                 width: document.querySelector('.appearance-card').scrollWidth, client: document.querySelector('.appearance-card').clientWidth }));
-            assert.deepEqual([appearance.theme, appearance.font], ['violet', 'xlarge']);
+            assert.deepEqual([appearance.theme, appearance.font], ['graphite', 'xlarge']);
             assert.ok(appearance.width <= appearance.client + 1, `${width} appearance overflow: ${JSON.stringify(appearance)}`);
             const sizing = await page.evaluate(() => ({ viewport: innerWidth, body: document.body.scrollWidth,
                 input: getComputedStyle(document.querySelector('#pi-input')).fontSize }));
@@ -296,8 +296,14 @@ async function main() {
             if (width === 1440 || width === 393) await page.screenshot({ path: path.join(evidence, `appearance-${width}.png`) });
             const reopened = await context.newPage();
             await reopened.goto(`http://127.0.0.1:${server.address().port}/`, { waitUntil: 'domcontentloaded' });
-            assert.equal(await reopened.locator('html').getAttribute('data-theme'), 'violet');
+            assert.equal(await reopened.locator('html').getAttribute('data-theme'), 'graphite');
             assert.equal(await reopened.locator('html').evaluate(el => getComputedStyle(el).fontSize), '20px');
+            // Retired palettes from older versions open as daylight without rewriting the stored choice.
+            await reopened.evaluate(() => localStorage.setItem('pi.workspace.theme', 'violet'));
+            await reopened.reload({ waitUntil: 'domcontentloaded' });
+            assert.equal(await reopened.locator('html').getAttribute('data-theme'), 'daylight');
+            await reopened.waitForFunction(() => document.querySelector('#workspace-theme-menu [data-theme="daylight"]')?.getAttribute('aria-checked') === 'true');
+            assert.equal(await reopened.evaluate(() => localStorage.getItem('pi.workspace.theme')), 'violet');
             await reopened.close();
             await page.locator('[data-appearance-theme="system"]').click();
             assert.equal(await page.locator('[data-appearance-theme="system"]').getAttribute('aria-pressed'), 'true');

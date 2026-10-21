@@ -32,7 +32,7 @@
 .pi-file-target-line { background: color-mix(in srgb, var(--amber) 16%, transparent); }
 .pi-file-code .hljs-comment, .pi-file-code .hljs-quote { color: var(--text-muted); font-style: italic; }
 .pi-file-code .hljs-keyword, .pi-file-code .hljs-selector-tag, .pi-file-code .hljs-type { color: var(--blue); }
-.pi-file-code .hljs-string, .pi-file-code .hljs-attr, .pi-file-code .hljs-addition { color: var(--green); }
+.pi-file-code .hljs-string, .pi-file-code .hljs-attr, .pi-file-code .hljs-addition { color: var(--success, var(--green)); }
 .pi-file-code .hljs-number, .pi-file-code .hljs-literal, .pi-file-code .hljs-built_in { color: var(--amber); }
 .pi-file-code .hljs-title, .pi-file-code .hljs-name, .pi-file-code .hljs-deletion { color: var(--danger); }
 .pi-file-markdown { padding: 14px; overflow-wrap: anywhere; min-width: 0; }

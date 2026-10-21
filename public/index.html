@@ -3,17 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="theme-color" content="#f7f9fc">
+    <meta name="theme-color" content="#ffffff">
     <title>Pivane</title>
     <link rel="icon" href="brand/favicon.ico" sizes="16x16 32x32 48x48">
     <link rel="icon" type="image/png" href="brand/logo-192.png" sizes="192x192">
     <link rel="apple-touch-icon" href="brand/apple-touch-icon.png" sizes="180x180">
     <link rel="manifest" href="site.webmanifest">
     <script>
+        // Keep in step with workspace-ui.js; retired slate/violet choices open as daylight.
         const savedTheme = localStorage.getItem('pi.workspace.theme') || 'system';
         document.documentElement.dataset.theme = savedTheme === 'system'
             ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'daylight')
-            : (['daylight', 'mint', 'slate', 'violet', 'dark'].includes(savedTheme) ? savedTheme : 'daylight');
+            : (['daylight', 'mint', 'oat', 'graphite', 'dark'].includes(savedTheme) ? savedTheme : 'daylight');
         const savedFontSize = localStorage.getItem('pi.workspace.fontSize');
         document.documentElement.style.fontSize = ({ small: '15px', default: '16px', large: '18px', xlarge: '20px' })[savedFontSize] || '16px';
         // Cover the first paint until body stylesheets and the workbench layout are applied (removed at DOMContentLoaded).
@@ -108,11 +109,11 @@
                         <button type="button" data-theme="mint" role="menuitemradio" aria-checked="false">
                             <span class="theme-swatch mint"></span><span><strong><!--i18n:s1326-->薄荷</strong><small><!--i18n:s1327-->柔和自然</small></span><i class="fa-solid fa-check"></i>
                         </button>
-                        <button type="button" data-theme="slate" role="menuitemradio" aria-checked="false">
-                            <span class="theme-swatch slate"></span><span><strong><!--i18n:s3260-->雾蓝</strong><small><!--i18n:s3261-->沉静柔和</small></span><i class="fa-solid fa-check"></i>
+                        <button type="button" data-theme="oat" role="menuitemradio" aria-checked="false">
+                            <span class="theme-swatch oat"></span><span><strong><!--i18n:s4305-->燕麦</strong><small><!--i18n:s4306-->温润舒适</small></span><i class="fa-solid fa-check"></i>
                         </button>
-                        <button type="button" data-theme="violet" role="menuitemradio" aria-checked="false">
-                            <span class="theme-swatch violet"></span><span><strong><!--i18n:s3262-->丁香</strong><small><!--i18n:s3263-->清透雅致</small></span><i class="fa-solid fa-check"></i>
+                        <button type="button" data-theme="graphite" role="menuitemradio" aria-checked="false">
+                            <span class="theme-swatch graphite"></span><span><strong><!--i18n:s4307-->石墨</strong><small><!--i18n:s4308-->极简中性</small></span><i class="fa-solid fa-check"></i>
                         </button>
                         <button type="button" data-theme="dark" role="menuitemradio" aria-checked="false">
                             <span class="theme-swatch dark"></span><span><strong><!--i18n:s1328-->夜间</strong><small><!--i18n:s1329-->低光环境</small></span><i class="fa-solid fa-check"></i>
@@ -723,12 +724,12 @@
                             <div class="appearance-heading"><strong id="appearance-title"><!--i18n:s3264-->外观</strong><span><!--i18n:s1535-->当前浏览器</span></div>
                             <div class="appearance-group"><strong id="appearance-theme-title"><!--i18n:s3265-->主题与配色</strong>
                                 <div id="appearance-themes" class="appearance-grid appearance-themes" role="group" aria-labelledby="appearance-theme-title">
-                                    <button type="button" data-appearance-theme="system" aria-pressed="false"><span class="appearance-preview system" aria-hidden="true"><i class="fa-solid fa-circle-half-stroke"></i></span><span><!--i18n:s1322-->跟随系统</span></button>
-                                    <button type="button" data-appearance-theme="daylight" aria-pressed="false"><span class="appearance-preview daylight" aria-hidden="true"><i class="fa-regular fa-sun"></i></span><span><!--i18n:s1324-->晴空</span></button>
-                                    <button type="button" data-appearance-theme="mint" aria-pressed="false"><span class="appearance-preview mint" aria-hidden="true"><i class="fa-solid fa-leaf"></i></span><span><!--i18n:s1326-->薄荷</span></button>
-                                    <button type="button" data-appearance-theme="slate" aria-pressed="false"><span class="appearance-preview slate" aria-hidden="true"><i class="fa-solid fa-cloud"></i></span><span><!--i18n:s3260-->雾蓝</span></button>
-                                    <button type="button" data-appearance-theme="violet" aria-pressed="false"><span class="appearance-preview violet" aria-hidden="true"><i class="fa-solid fa-star"></i></span><span><!--i18n:s3262-->丁香</span></button>
-                                    <button type="button" data-appearance-theme="dark" aria-pressed="false"><span class="appearance-preview dark" aria-hidden="true"><i class="fa-regular fa-moon"></i></span><span><!--i18n:s1328-->夜间</span></button>
+                                    <button type="button" data-appearance-theme="system" aria-pressed="false"><span class="appearance-preview system" aria-hidden="true"></span><span><!--i18n:s1322-->跟随系统</span></button>
+                                    <button type="button" data-appearance-theme="daylight" aria-pressed="false"><span class="appearance-preview daylight" aria-hidden="true"></span><span><!--i18n:s1324-->晴空</span></button>
+                                    <button type="button" data-appearance-theme="mint" aria-pressed="false"><span class="appearance-preview mint" aria-hidden="true"></span><span><!--i18n:s1326-->薄荷</span></button>
+                                    <button type="button" data-appearance-theme="oat" aria-pressed="false"><span class="appearance-preview oat" aria-hidden="true"></span><span><!--i18n:s4305-->燕麦</span></button>
+                                    <button type="button" data-appearance-theme="graphite" aria-pressed="false"><span class="appearance-preview graphite" aria-hidden="true"></span><span><!--i18n:s4307-->石墨</span></button>
+                                    <button type="button" data-appearance-theme="dark" aria-pressed="false"><span class="appearance-preview dark" aria-hidden="true"></span><span><!--i18n:s1328-->夜间</span></button>
                                 </div>
                             </div>
                             <div class="appearance-group"><strong id="appearance-font-title"><!--i18n:s3266-->字体大小</strong>

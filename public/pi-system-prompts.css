@@ -75,8 +75,8 @@
 .system-prompt-preview a { color: var(--accent); }
 .system-prompt-preview code { white-space: pre-wrap; overflow-wrap: anywhere; }
 .system-prompt-diff span { display: block; }
-.prompt-removed { background: #e8565620; }
-.prompt-added { background: #46b67a20; }
+.prompt-removed { background: color-mix(in srgb, var(--danger) 13%, transparent); }
+.prompt-added { background: color-mix(in srgb, var(--success) 14%, transparent); }
 #system-prompt-dialog { position: fixed; inset: 0; margin: auto; box-sizing: border-box; width: min(1040px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: calc(100dvh - 48px); padding: 26px; background: var(--surface-1); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 24px 80px #0003; overflow: auto; overscroll-behavior: contain; }
 #system-prompt-dialog::backdrop { background: #0007; backdrop-filter: blur(3px); }
 #system-prompt-dialog header { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }

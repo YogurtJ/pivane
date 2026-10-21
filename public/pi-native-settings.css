@@ -207,8 +207,8 @@
 .native-assistant-copy { display: grid; gap: 3px; min-width: 0; }
 .native-assistant-copy strong { font-size: .9rem; font-weight: 650; color: var(--text-main); }
 #native-installed .native-assistant-copy small { color: var(--text-muted); font-size: .78rem; line-height: 1.55; }
-#native-installed .native-assistant-start { min-height: 40px; padding: 9px 16px; border-color: #4d9a76; background: #347c5b; color: #fff; font-weight: 600; white-space: nowrap; }
-#native-installed .native-assistant-start:hover:not(:disabled) { border-color: #4d9a76; background: #3d8d69; }
+#native-installed .native-assistant-start { min-height: 40px; padding: 9px 16px; border-color: var(--primary); background: var(--primary); color: var(--primary-contrast); font-weight: 600; white-space: nowrap; }
+#native-installed .native-assistant-start:hover:not(:disabled) { border-color: var(--primary-hover); background: var(--primary-hover); }
 #native-installed .native-assistant-start i { font-size: .78rem; transition: transform .15s ease; }
 #native-installed .native-assistant-start:hover i { transform: translateX(2px); }
 #native-installed > .native-installed-search { display: grid; grid-template-columns: auto minmax(0, 1fr); flex-direction: row; align-items: center; gap: 0; margin-bottom: 8px; padding: 0 0 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-1); color: var(--text-muted); }
@@ -231,8 +231,8 @@
 .native-item-row.is-off .native-item-title > strong { color: var(--text-muted); }
 .native-item-badge[data-kind="off"] { background: transparent; border: 1px solid var(--line); }
 #native-installed .native-item-toggle { min-width: 84px; gap: 6px; font-weight: 600; }
-#native-installed .native-item-toggle[data-action="on"] { border-color: #4d9a76; background: #347c5b; color: #fff; }
-#native-installed .native-item-toggle[data-action="on"]:hover:not(:disabled) { border-color: #4d9a76; background: #3d8d69; }
+#native-installed .native-item-toggle[data-action="on"] { border-color: var(--primary); background: var(--primary); color: var(--primary-contrast); }
+#native-installed .native-item-toggle[data-action="on"]:hover:not(:disabled) { border-color: var(--primary-hover); background: var(--primary-hover); }
 #native-installed .native-item-toggle[data-action="off"] { border-color: var(--line); background: transparent; color: var(--text-muted); }
 #native-installed .native-item-toggle[data-action="off"]:hover:not(:disabled) { border-color: var(--danger); background: var(--danger-soft, var(--surface-2)); color: var(--danger); }
 @media (max-width: 680px) {
@@ -249,8 +249,8 @@
 .native-item-badge[data-kind="update"] { background: color-mix(in srgb, var(--amber) 16%, transparent); color: var(--amber); font-weight: 600; }
 .native-item-badge[data-kind="muted"] { background: transparent; border: 1px dashed var(--line); }
 .native-item-row[data-update="true"] .native-item-icon { background: color-mix(in srgb, var(--amber) 16%, transparent); color: var(--amber); }
-#native-installed .native-item-update { min-width: 76px; gap: 6px; border-color: #4d9a76; background: #347c5b; color: #fff; font-weight: 600; }
-#native-installed .native-item-update:hover:not(:disabled) { border-color: #4d9a76; background: #3d8d69; }
+#native-installed .native-item-update { min-width: 76px; gap: 6px; border-color: var(--primary); background: var(--primary); color: var(--primary-contrast); font-weight: 600; }
+#native-installed .native-item-update:hover:not(:disabled) { border-color: var(--primary-hover); background: var(--primary-hover); }
 .native-package-scope-hint { display: grid; gap: 2px; min-width: 0; }
 #native-installed .native-package-scope-hint p { padding-bottom: 0; }
 .native-update-summary { color: var(--text-muted); font-size: .74rem; line-height: 1.55; overflow-wrap: anywhere; }

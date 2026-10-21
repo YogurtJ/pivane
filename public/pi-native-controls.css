@@ -53,7 +53,7 @@
 .pi-diff-heading > span { color: var(--text-muted); font-size: .75rem; white-space: nowrap; }
 .pi-tool-detail .pi-diff-code { padding: 8px 0; white-space: pre; max-height: 480px; overflow: auto; color: var(--text-main); font-size: .75rem; tab-size: 4; }
 .pi-diff-line { display: block; width: max-content; min-width: 100%; padding-right: 12px; }
-.pi-diff-line.added { background: color-mix(in srgb, var(--green) 14%, transparent); }
+.pi-diff-line.added { background: color-mix(in srgb, var(--success) 14%, transparent); }
 .pi-diff-line.removed { background: color-mix(in srgb, var(--danger) 13%, transparent); }
 .pi-diff-line.hunk { color: var(--blue); background: var(--surface-2); }
 .pi-diff-gutter { user-select: none; color: var(--text-muted); }

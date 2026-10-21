@@ -259,7 +259,7 @@ async function run(browser, base, { width, locale, theme, behaviors }) {
             { width: 320, locale: 'zh-CN', theme: 'mint' },
             { width: 1440, locale: 'en-US', theme: 'dark' },
             { width: 393, locale: 'en-US', theme: 'dark' },
-            { width: 900, locale: 'en-US', theme: 'violet' },
+            { width: 900, locale: 'en-US', theme: 'oat' },
         ]) await run(browser, base, options);
     } finally { await browser?.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

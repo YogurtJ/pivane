@@ -21,7 +21,7 @@
 .cron-loading-line:last-child { width: 55%; }
 @keyframes cron-pulse { from { opacity: .55; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .cron-loading-line { animation: none; } }
-.cron-page .error { color: var(--red, #bd4c4c); }
+.cron-page .error { color: var(--danger, #bd4c4c); }
 .cron-stats { display: flex; gap: 10px; flex-shrink: 0; }
 .cron-stat { display: flex; align-items: baseline; gap: 18px; border: 1px solid var(--border-color); border-radius: 11px; padding: 12px 18px; background: var(--surface-1); }
 .cron-stat span { font-size: 12px; color: var(--text-muted); }
@@ -38,8 +38,9 @@
 .cron-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
 .cron-dot.on { background: var(--green); }
 .cron-status { display: inline-block; font-size: 11px; color: var(--text-muted); }
-.cron-status.running, .cron-status.completed { color: var(--green); }
-.cron-status.failed, .cron-status.error, .cron-status.uncertain { color: var(--red, #bd4c4c); }
+.cron-status.running { color: var(--blue); }
+.cron-status.completed { color: var(--success, var(--green)); }
+.cron-status.failed, .cron-status.error, .cron-status.uncertain { color: var(--danger, #bd4c4c); }
 .cron-detail { overflow: auto; padding: 26px; min-width: 0; min-height: 0; overscroll-behavior: contain; }
 .cron-detail-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 22px; }
 .cron-detail h2 { font-size: 21px; margin: 0 0 8px; overflow-wrap: anywhere; }
