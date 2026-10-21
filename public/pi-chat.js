@@ -510,6 +510,23 @@ document.addEventListener('DOMContentLoaded', () => {
         showPane: mode => sideChat.showPane(mode), copy: copyTextToClipboard, notify: toast,
         api: apiFetch, context: () => ({ cwd: state.cwd, sessionId: state.session?.id || null, key: JSON.stringify([state.cwd, state.session?.id]), generation: state.socketGeneration })
     });
+    const deliveryCards = window.PiDeliveryCards.create({ context: filesPanel.host.context, downloads: filesPanel.downloads, api: apiFetch,
+        open: target => filesPanel.openDelivery(target), notify: toast });
+    // ask_user_question requests are answered in a panel above the composer; other
+    // extension requests keep the generic dialog.
+    const userQuestions = window.PiUserQuestion.create({
+        calls: () => [...state.toolRows].reverse()
+            .filter(([, row]) => row.dataset.toolName === 'ask_user_question' && row._piToolArgs && typeof row._piToolArgs === 'object')
+            .map(([id, row]) => ({ id, args: row._piToolArgs })),
+        respond: payload => sendExtensionResponse(payload),
+        sessionKey: () => JSON.stringify([state.cwd, state.session?.id || null]),
+        transcript: elements.transcript,
+        focusComposer: () => { if (!elements.input.disabled) elements.input.focus({ preventScroll: true }); },
+        changed: () => renderPendingBanner()
+    });
+    document.querySelector('.pi-composer-wrap > .pi-composer')?.before(userQuestions.element);
+    const questionReceipts = window.PiUserQuestion.receipts();
+    const resultCards = message => [deliveryCards.render(message), questionReceipts.render(message)].filter(Boolean);
     const turnEdits = new window.PiTurnEdits({
         transcript: elements.transcript, showPane: () => filesPanel.showHistory(), copy: copyTextToClipboard, notify: toast,
         viewer: filesPanel.viewer, context: () => ({ cwd: state.cwd, key: JSON.stringify([state.cwd, state.session?.id]), generation: state.socketGeneration })
@@ -925,7 +942,7 @@ document.addEventListener('DOMContentLoaded', () => {
             historyView.setCapabilities(status);
             filesPanel.viewer.setEnabled(status.fileViewer === true);
             filesPanel.setEnabled(status.fileBrowser === true);
-            filesPanel.setCapabilities({ previews: status.filePreviews === true, deliverables: status.deliverables === true, roots: status.fileRoots === true });
+            filesPanel.setCapabilities({ previews: status.filePreviews === true, deliverables: status.deliverables === true, roots: status.fileRoots === true, downloads: status.fileDownloads === true, limits: status.fileLimits });
             composer.setEnabled(status.composerTools === true);
             state.composerTools = status.composerTools === true;
             voice?.setEnabled(status.transcription === true);
@@ -3242,13 +3259,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const mediaCard = mediaRequests?.render(messages[index]);
             if (mediaCard) { elements.transcript.appendChild(mediaCard); records[index].nodes.push(mediaCard); changed.push(mediaCard); }
+            for (const card of resultCards(messages[index])) { elements.transcript.appendChild(card); records[index].nodes.push(card); changed.push(card); }
             if (editCards.has(index)) {
                 const card = editCards.get(index);
                 elements.transcript.appendChild(card); records[index].nodes.push(card); changed.push(card);
             }
         }
         state.renderedTranscript = { context, records };
-        if (removed.length) mediaRequests?.prune();
+        if (removed.length) { mediaRequests?.prune(); deliveryCards.prune(); questionReceipts.prune(); }
         state.dirtyTranscriptIndex = Infinity;
         state.lastAssistantText = '';
         for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === 'assistant' && messageText(messages[i].content).trim()) {
@@ -3350,6 +3368,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function clearSessionView() {
         mediaRequests?.reset();
+        deliveryCards.reset();
+        questionReceipts.reset();
         state.recoveryNotice = null;
         transcriptActivity?.reset();
         renderRecoveryNotice();
@@ -3397,6 +3417,7 @@ document.addEventListener('DOMContentLoaded', () => {
             button.innerHTML = '<i class="fa-regular fa-copy"></i>';
             pre.appendChild(button);
         });
+        deliveryCards.decorateLinks(root);
     }
 
     function handlePiEvent(event) {
@@ -3744,7 +3765,9 @@ document.addEventListener('DOMContentLoaded', () => {
             markTranscriptDirty(old);
             const row = createToolResultElement(message);
             if (row) elements.transcript.appendChild(row);
-            transcriptView.refreshChanged([row || old]);
+            const cards = resultCards(message);
+            for (const card of cards) elements.transcript.appendChild(card);
+            transcriptView.refreshChanged([row || old, ...cards]);
             scrollTranscript();
             return;
         }
@@ -3791,6 +3814,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (result) setToolOutput(row, event.type === 'tool_execution_end' && event.durationMs !== undefined
             ? { ...result, durationMs: event.durationMs } : result);
         else window.PiToolLabels?.update(row);
+        if (event.type === 'tool_execution_end') {
+            for (const card of resultCards({ ...event.result, toolName: event.toolName, toolCallId: event.toolCallId, isError: event.isError })) {
+                elements.transcript.appendChild(card); transcriptView.schedule(card);
+            }
+        }
         transcriptView.schedule(row);
         scrollTranscript();
     }
@@ -3841,16 +3869,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderPendingUi() {
-        const banner = $('pi-pending-ui-banner');
-        banner.classList.toggle('hidden', !state.pendingUi.size || !state.connected);
-        $('pi-pending-ui-count').textContent = translateUi("{0} 项等待确认", state.pendingUi.size);
+        userQuestions.sync(state.pendingUi, state.connected);
+        renderPendingBanner();
         renderActivityBadges();
         setStreaming(state.streaming);
     }
 
+    // Questions shown in their own panel are not repeated in the confirmation banner.
+    function renderPendingBanner() {
+        const others = [...state.pendingUi.values()].filter(event => !userQuestions.owns(event)).length;
+        $('pi-pending-ui-banner').classList.toggle('hidden', !others || !state.connected);
+        $('pi-pending-ui-count').textContent = translateUi("{0} 项等待确认", others);
+    }
+
     function openPendingRequest() {
         if (!isViewingSession() || !state.pendingUi.size) return;
-        const event = state.pendingUi.values().next().value;
+        const event = [...state.pendingUi.values()].find(item => !userQuestions.owns(item));
+        if (!event) { userQuestions.focus(); return; }
         state.shownUiId = event.id;
         elements.requestTitle.textContent = event.title || translateUi("等待确认");
         elements.requestFields.replaceChildren();
@@ -3904,7 +3939,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.pendingUi.set(event.id, event);
         renderPendingUi();
         void refreshActivity();
-        if (isViewingSession() && !elements.requestDialog.open) openPendingRequest();
+        if (isViewingSession() && !elements.requestDialog.open && !userQuestions.owns(event)) openPendingRequest();
     }
 
     async function reconcileSession() {

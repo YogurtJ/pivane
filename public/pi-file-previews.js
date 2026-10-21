@@ -179,9 +179,13 @@
         return imageViewer(body, context.blob(new XMLSerializer().serializeToString(sanitized), 'image/svg+xml'), context);
     }
     function audio(body, data, context) {
-        const player = node('audio'); player.controls = true; player.preload = 'metadata'; player.className = 'pi-file-audio';
+        const video = data.kind === 'video';
+        const player = node(video ? 'video' : 'audio'); player.controls = true; player.preload = 'metadata'; player.className = video ? 'pi-file-video' : 'pi-file-audio';
+        if (video) player.playsInline = true;
         player.setAttribute('aria-label', context.name); player.src = context.blob(context.bytes(), data.mime);
-        player.addEventListener('error', () => note(body, tr('浏览器无法播放此音频编码，可下载原文件', 'This audio codec cannot be played in your browser; download the original')), { once: true });
+        player.addEventListener('error', () => note(body, video
+            ? tr('浏览器无法播放此视频编码，可下载原文件', 'This video codec cannot be played in your browser; download the original')
+            : tr('浏览器无法播放此音频编码，可下载原文件', 'This audio codec cannot be played in your browser; download the original')), { once: true });
         body.append(player);
         return () => { player.pause(); player.removeAttribute('src'); player.load(); };
     }
@@ -289,7 +293,7 @@
             if (data.kind === 'table') table(body, data, context);
             else if (data.kind === 'image') return imageViewer(body, context.blob(context.bytes(), data.mime), context);
             else if (data.kind === 'svg') return svg(body, data, context);
-            else if (data.kind === 'audio') return audio(body, data, context);
+            else if (data.kind === 'audio' || data.kind === 'video') return audio(body, data, context);
             else if (data.kind === 'pdf') return pdf(body, data, context);
         } catch (error) { note(body, error.message); }
         return () => {};

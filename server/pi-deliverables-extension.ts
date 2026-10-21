@@ -9,9 +9,10 @@ export function registerDeliverables(pi: ExtensionAPI) {
     pi.on('session_start', (_event, ctx) => {
         if (!enabled(ctx)) return;
         objects ||= new DeliverableStore(new PiSessionStore());
+        const limits = objects.limits;
         pi.registerTool({
             name: 'deliver_files', label: 'Deliver files',
-            description: 'Publish explicitly requested task deliverables as immutable, private Pivane snapshots and return browser-openable links. Up to 20 files, 16 MiB each, 64 MiB total. Preserves originals. Supply a stable requestId; retry only that same ID after an uncertain response. Defaults to current project; sourceRoot is an explicit allowed external source directory for authorized task outputs, never for credentials or unrelated files.',
+            description: `Publish explicitly requested task deliverables as immutable, private Pivane snapshots and return browser-openable links. Up to 20 files, ${limits.deliveryFileBytes / 1024 / 1024} MiB each, ${limits.deliveryTotalBytes / 1024 / 1024} MiB total. Preserves originals. Supply a stable requestId; retry only that same ID after an uncertain response. Defaults to current project; sourceRoot is an explicit allowed external source directory for authorized task outputs, never for credentials or unrelated files. Preview is limited to 16 MiB; larger files remain downloadable within the server download limit.`,
             promptSnippet: 'Publish task deliverables with stable browser preview and download links',
             promptGuidelines: [
                 'When handing over generated documents, images or self-contained HTML, use deliver_files and include its returned links in the final reply. Server paths alone are not downloadable links.',

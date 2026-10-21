@@ -276,10 +276,13 @@ test('duplicate reply IDs preserve the original batch choice through discovery, 
             assert.equal((await f.catalog.reply(f.cwd, 'child', 'other')).text, 'OTHER');
             assert.deepEqual(f.catalog.replyLocations.get(key), chosen, 'scanning for another entry does not select same');
             assert.equal((await f.catalog.reply(f.cwd, 'child', 'same')).text, expected.slice(0, 8000));
-            f.catalog.limits.replyLocationBytes = 512;
+            // Force one hint to fit and two to exceed the budget independently
+            // of temporary-path length and platform-specific identity size.
+            const evictionBudget = Math.max(...[...f.catalog.replyLocations.values()].map(location => location.bytes));
+            f.catalog.limits.replyLocationBytes = evictionBudget;
             await f.catalog.reply(f.cwd, 'child', 'other');
             assert.equal(f.catalog.replyLocations.has(key), false, 'another selected entry evicts the bounded hint');
-            assert.ok(f.catalog.replyLocationBytes <= 512);
+            assert.ok(f.catalog.replyLocationBytes <= evictionBudget);
             f.catalog.projects.clear(); await complete(f.catalog, f.cwd);
             const resumed = await f.catalog.reply(f.cwd, 'child', 'same', 8000);
             assert.equal(resumed.text, expected.slice(8000, 16000)); assert.equal(resumed.totalCharacters, expected.length);

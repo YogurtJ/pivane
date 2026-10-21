@@ -1,0 +1,73 @@
+/* Delivered-file receipt in the transcript: a compact file list, one row per file. */
+.pi-delivery-receipt {
+    --pi-receipt-hover: color-mix(in srgb, var(--text-main) 5%, transparent);
+    width: 100%; max-width: 560px; min-width: 0; box-sizing: border-box; margin: 2px 0 22px;
+    border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); overflow: hidden;
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow-tint, #000) 5%, transparent);
+}
+.pi-delivery-receipt-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 10px 14px 8px; color: var(--text-muted); font-size: .78rem; }
+.pi-delivery-receipt-head > i { font-size: .82rem; }
+.pi-delivery-receipt-title { flex: 1; min-width: 0; color: var(--text-main); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pi-delivery-receipt-count { flex: none; font-variant-numeric: tabular-nums; }
+.pi-delivery-receipt-list { margin: 0; padding: 0 5px 5px; list-style: none; }
+.pi-delivery-receipt-file { display: flex; align-items: center; gap: 2px; min-width: 0; border-radius: 10px; transition: background-color .12s ease; }
+.pi-delivery-receipt-file[hidden] { display: none; }
+.pi-delivery-receipt-open { display: flex; flex: 1; align-items: center; gap: 12px; min-width: 0; padding: 7px 8px; border: 0; border-radius: 10px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transform: none; }
+.pi-delivery-receipt-open:hover { background: transparent; transform: none; }
+.pi-delivery-receipt-icon {
+    display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 9px; overflow: hidden;
+    color: var(--pi-kind); background: color-mix(in srgb, var(--pi-kind) 11%, transparent); font-size: 1rem;
+}
+.pi-delivery-receipt-icon.has-thumbnail { background: var(--surface-1); box-shadow: inset 0 0 0 1px var(--line); }
+.pi-delivery-receipt-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pi-delivery-receipt-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pi-delivery-receipt-name strong { color: var(--text-main); font-size: .86rem; font-weight: 550; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pi-delivery-receipt-name small { color: var(--text-muted); font-size: .72rem; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.pi-delivery-receipt-download {
+    display: grid; place-items: center; flex: none; width: 34px; height: 34px; margin-right: 4px; padding: 0;
+    border: 0; border-radius: 8px; background: transparent; color: var(--text-muted); font-size: .86rem; cursor: pointer; transform: none;
+}
+.pi-delivery-receipt-download.is-busy i { animation: pi-delivery-busy 1s ease-in-out infinite; }
+.pi-delivery-receipt-download:disabled { cursor: progress; }
+.pi-delivery-receipt-more { display: block; width: 100%; padding: 9px 16px; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--primary); font: inherit; font-size: .78rem; text-align: left; cursor: pointer; transform: none; }
+.pi-delivery-receipt-open:focus-visible, .pi-delivery-receipt-download:focus-visible, .pi-delivery-receipt-more:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+/* Touch screens keep :hover after a tap; only real pointers get hover styling. */
+@media (hover: hover) {
+    .pi-delivery-receipt-file:hover { background: var(--pi-receipt-hover); }
+    .pi-delivery-receipt-open:hover strong { color: var(--primary); }
+    .pi-delivery-receipt-download:hover { background: color-mix(in srgb, var(--text-main) 8%, transparent); color: var(--text-main); transform: none; }
+    .pi-delivery-receipt-more:hover { background: var(--pi-receipt-hover); transform: none; }
+}
+@keyframes pi-delivery-busy { 0%, 100% { transform: translateY(-2px); opacity: .5; } 50% { transform: translateY(2px); opacity: 1; } }
+
+/* File-type tint for receipt rows; text and unknown files stay neutral. */
+.pi-delivery-receipt-file { --pi-kind: var(--text-muted); }
+.pi-delivery-receipt-file[data-file-kind="image"] { --pi-kind: #2f74d0; }
+.pi-delivery-receipt-file[data-file-kind="pdf"] { --pi-kind: #d0453a; }
+.pi-delivery-receipt-file[data-file-kind="video"] { --pi-kind: #7b55d0; }
+.pi-delivery-receipt-file[data-file-kind="audio"] { --pi-kind: #c0721a; }
+.pi-delivery-receipt-file[data-file-kind="archive"] { --pi-kind: #8a6d3b; }
+.pi-delivery-receipt-file[data-file-kind="sheet"] { --pi-kind: #1f8a4c; }
+.pi-delivery-receipt-file[data-file-kind="doc"] { --pi-kind: #2b5fc4; }
+.pi-delivery-receipt-file[data-file-kind="slides"] { --pi-kind: #d0612a; }
+.pi-delivery-receipt-file[data-file-kind="code"] { --pi-kind: #0f7c74; }
+html[data-theme="dark"] .pi-delivery-receipt-file[data-file-kind="image"] { --pi-kind: #7fb0f5; }
+html[data-theme="dark"] .pi-delivery-receipt-file[data-file-kind="pdf"] { --pi-kind: #f08a80; }
+html[data-theme="dark"] .pi-delivery-receipt-file[data-file-kind="video"] { --pi-kind: #b59cf2; }
+html[data-theme="dark"] .pi-delivery-receipt-file[data-file-kind="audio"] { --pi-kind: #e9ad62; }
+html[data-theme="dark"] .pi-delivery-receipt-file[data-file-kind="archive"] { --pi-kind: #cdb07a; }
+html[data-theme="dark"] .pi-delivery-receipt-file[data-file-kind="sheet"] { --pi-kind: #6fcf97; }
+html[data-theme="dark"] .pi-delivery-receipt-file[data-file-kind="doc"] { --pi-kind: #86a9ee; }
+html[data-theme="dark"] .pi-delivery-receipt-file[data-file-kind="slides"] { --pi-kind: #f09a6c; }
+html[data-theme="dark"] .pi-delivery-receipt-file[data-file-kind="code"] { --pi-kind: #5fc9bf; }
+
+/* File links written by the agent in replies. */
+.pi-markdown a.pi-file-link { text-decoration: none; color: var(--primary); }
+.pi-markdown a.pi-file-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.pi-file-link-icon { display: inline-block; margin-right: .32em; font-size: .92em; opacity: .85; }
+
+@media (max-width: 600px) {
+    .pi-delivery-receipt { max-width: 100%; }
+    .pi-delivery-receipt-open { min-height: 52px; }
+    .pi-delivery-receipt-download { width: 42px; height: 42px; }
+}

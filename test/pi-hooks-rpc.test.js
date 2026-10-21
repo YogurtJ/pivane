@@ -280,7 +280,11 @@ test('reviewed Pi native RPC preserves owned hook payloads across task/message/c
     assert.equal(assistant.starts.at(-1).sections[0], 'pivane_extension_assistant');
     assert.match(JSON.stringify(payloads), /Do not bypass its rejection via the shell/);
     assert.equal(assistant.starts.at(-1).sections.includes('assistant_profile_soul'), false);
-    assert.equal(calls.some(body => JSON.stringify(body).includes('/srv/pivane/')), false, 'metadata must stay on the isolated Pi package');
+    // The checkout may itself be /srv/pivane. Native documentation paths must
+    // name the verified SDK package; only that exact prefix is permitted here.
+    const packagePrefix = JSON.stringify(sdk.getPackageDir() + path.sep).slice(1, -1);
+    assert.equal(calls.some(body => JSON.stringify(body).split(packagePrefix).join('<verified-pi-package>/').includes('/srv/pivane/')), false,
+        'metadata outside the verified SDK package must stay on the isolated fixture');
     if (process.env.PI_HOOK_TEST_EVIDENCE) fs.writeFileSync(process.env.PI_HOOK_TEST_EVIDENCE, JSON.stringify({
         piVersion: sdk.VERSION, piPackageDir: sdk.getPackageDir(), starts: clients.map((client, index) => ({
             kind: ['task', 'authoring', 'assistant'][index], starts: [target, authoring, assistant][index].starts })),

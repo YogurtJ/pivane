@@ -40,6 +40,15 @@ function dimensions(bytes) {
     return null;
 }
 function classify(bytes, filename) {
+    if (bytes.length >= 16 && bytes.toString('ascii', 4, 8) === 'ftyp') {
+        const size = bytes.readUInt32BE(0), brands = [];
+        if (size >= 16 && size <= Math.min(bytes.length, 4096) && size % 4 === 0) {
+            brands.push(bytes.toString('ascii', 8, 12));
+            for (let offset = 16; offset + 4 <= size; offset += 4) brands.push(bytes.toString('ascii', offset, offset + 4));
+            if (brands.some(brand => ['isom', 'iso2', 'iso3', 'iso4', 'iso5', 'iso6', 'mp41', 'mp42', 'avc1', 'M4V '].includes(brand)))
+                return { kind: 'video', mime: 'video/mp4' };
+        }
+    }
     if (/^%PDF-\d\.\d(?:\s|$)/.test(bytes.toString('ascii', 0, 9))) return { kind: 'pdf', mime: 'application/pdf' };
     if (bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WAVE') return { kind: 'audio', mime: 'audio/wav' };
     if (bytes.length >= 10 && (bytes.toString('ascii', 0, 3) === 'ID3' && bytes[3] >= 2 && bytes[3] <= 4 && bytes.subarray(6, 10).every(b => b < 128)

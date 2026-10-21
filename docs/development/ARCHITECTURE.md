@@ -106,7 +106,11 @@ POSIX 私密权限和目录刷盘、Windows 受保护 DACL 和写透替换分别
 
 项目全文读取与目录浏览共用 `pi-file-scope` 的项目范围和私密根规则。`pi-file-browser` 只枚举受控元数据，父目录与返回条目分别验证打开描述符；文件名搜索有扫描、结果、时间与并发预算，不维护持久文件索引，不调用模型。
 
-`pi-file-bytes` 统一普通文本、类型化预览和交付快照的有界描述符读取证明；`pi-file-types` 只负责 UTF-8/签名/像素预算及 JSON 表示。`DeliverableStore` 在身份私有目录保存不可变字节与原子清单，受管 `deliver_files` 工具独占追加原生 `pivane-deliverable` 引用；`DeliverableService` 从当前原生分支证明读取资格，活动会话走唯一 worker，关闭会话只读原生文件。快照不是聊天事实源，无引用不对网页开放；新工具仍属原生工具生命周期，不增加 worker 工作类型。来源路径别名仅匹配当前分支已登记成果，不改变项目读取范围。文件查看器用受认证 JSON 创建图片/下载 Blob；`pi-file-previews` 拥有按需 PDF.js 单页解析、分页表格、清理后的 SVG 图片和原生音频组件，查看器在切文件／线程／关闭面板时释放任务、播放器和对象 URL。PDF 依赖仅从本地静态入口加载，不在服务端运行转换。HTML 在无 same-origin 的 iframe 中默认静态展示，脚本需显式启用，CSP 限制资源/API 但不宣称对恶意脚本全网络隔离。
+`pi-file-bytes` 统一普通文本、类型化预览、交付快照与分块传输的描述符证明；`withVerifiedFile` 在同一打开对象上提供有界分块遍历，最后一块须在完整身份、路径、修订及可选资格复核后交给消费者。`pi-file-download` 拥有两次校验的 attachment 下载和排他私有复制；`pi-file-limits` 区分预览、下载、交付单文件及组预算，合法历史清单不受当前发布额度降低影响。`pi-file-types` 只负责 UTF-8/签名/像素预算及 JSON 表示。`DeliverableStore` 在身份私有目录保存不可变字节与原子清单，受管 `deliver_files` 工具独占追加原生 `pivane-deliverable` 引用；`DeliverableService` 从当前原生分支证明读取资格，活动会话走唯一 worker，关闭会话只读原生文件。快照不是聊天事实源，无引用不对网页开放；新工具仍属原生工具生命周期，不增加 worker 工作类型。来源路径别名仅匹配当前分支已登记成果，不改变项目读取范围。新后端文件下载使用受认证的独立流式 attachment；文件查看器仍用有界 JSON 创建预览 Blob，兼容旧后端的快照下载。`pi-file-previews` 拥有按需 PDF.js 单页解析、分页表格、清理后的 SVG 图片和原生音视频组件，查看器在切文件／线程／关闭面板时释放任务、播放器和对象 URL。PDF 依赖仅从本地静态入口加载，不在服务端运行转换。HTML 在无 same-origin 的 iframe 中默认静态展示，脚本需显式启用，CSP 限制资源/API 但不宣称对恶意脚本全网络隔离。
+
+`pi-delivery-cards` 只消费成功原生 `deliver_files` 结果中的有界 receipt，在实时与历史路径渲染独立聊天文件列表卡片，并为回复中的文件链接加类型图标；图片缩略图经现有交付预览接口按需读取并在卡片移除时释放 Blob URL；安全 DOM 和固定交付标识不替代服务端权限，卡片在简洁模式保持可见。`pi-file-downloads` 负责带当前线程代次的 HEAD 校验和使用 HttpOnly Cookie 的浏览器下载，不把 Bearer 放入 URL，不缓存整份下载数据。
+
+`pi-user-question-extension` 注册模型专用 `ask_user_question`；`server/pi-user-question` 拥有 1–4 题的输入校验和一次调用的全程截止时间，每题按顺序发出一个原生 select/input。网页 `public/pi-user-question` 用运行中工具调用的参数精确匹配这些请求（标题与选项集合一致），在输入框上方的面板中收集全部答案，最后一题提交后才按顺序回应各请求；select 可直接回填自写文字，空字符串表示跳过。无法匹配的请求仍走通用确认对话框，后者保留“其他 / Other”再输入的路径。不增加 RPC 命令、worker 工作类型或独立聊天／提问存储；交互复用 pendingUi 和工具取消 signal。仅 answered 带回答，取消、超时、停止和无 UI 各有终态。
 
 `DocumentUploads` 保存办公/PDF 原件与私有清单，聊天只保留原生用户消息中的规范文件引用；不复制聊天或全文入上下文。活动线程由唯一 worker 证明当前分支，关闭线程只读原生 SessionManager；受管 `read_document` 经限定的内部接口使用网关共享解析池。解析器在无凭据的独立 Node 进程读取验证后的字节，不打开压缩路径，不执行宏，不自动 OCR 或调用 LibreOffice。并发、V8 堆、时间、展开量和输出有界；取消/超时等待实际退出，活动读取加入 worker 生命周期，上传/解析参与维护及关闭等待。上传下载接口另行返回受认证的 attachment 原字节；项目文件预览不因此获得 Office 在线编辑能力。
 

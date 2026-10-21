@@ -4,12 +4,14 @@ const io = require('./pi-file-io');
 const { descriptorPath } = require('./pi-file-descriptor');
 const { fail } = require('./pi-file-scope');
 const fields = ['dev', 'ino', 'mode', 'size', 'mtimeNs', 'ctimeNs'];
+const CHUNK_BYTES = 256 * 1024;
 
-// The caller owns scope policy. Both ordinary project reads and immutable
-// deliverables retain the same kernel-path, identity and complete-read proof.
-async function readVerifiedFile(requested, { check, maxBytes }) {
+// Every pass retains the same opened object and the complete native identity
+// proof. The final chunk is withheld until EOF, revision and path checks pass.
+async function withVerifiedFile(requested, { check, maxBytes, signal }, action) {
     let handle;
     try {
+        signal?.throwIfAborted();
         check(requested, true);
         const resolved = await fs.realpath(requested); check(resolved);
         handle = await io.openRead(resolved);
@@ -22,23 +24,53 @@ async function readVerifiedFile(requested, { check, maxBytes }) {
         const before = await handle.stat({ bigint: true });
         if (!before.isFile()) throw fail('只支持普通文件', 415, 'FILE_TYPE');
         if (before.size > BigInt(maxBytes)) throw fail(`文件超过 ${maxBytes / 1024 / 1024} MiB 限制`, 413, 'FILE_SIZE');
-        const buffer = Buffer.alloc(Number(before.size) + 1);
-        let total = 0;
-        while (total < buffer.length) {
-            const { bytesRead } = await handle.read(buffer, total, buffer.length - total, total);
-            if (!bytesRead) break;
-            total += bytesRead;
-        }
-        const after = await handle.stat({ bigint: true });
-        await checkPath();
-        const named = await fs.lstat(resolved, { bigint: true });
-        if (!io.sameIdentityAtPath(resolved, identity) || total !== Number(before.size)
-            || fields.some(key => before[key] !== after[key] || after[key] !== named[key])) {
-            throw fail('文件正在变化，请稍后刷新', 409, 'FILE_CHANGED');
-        }
-        const bytes = buffer.subarray(0, total);
-        return { bytes, absolutePath: resolved, size: total, modifiedAt: new Date(Number(after.mtimeMs)).toISOString(),
-            readAt: new Date().toISOString(), revision: createHash('sha256').update(bytes).digest('hex') };
+        const size = Number(before.size);
+        const validate = async () => {
+            signal?.throwIfAborted();
+            const after = await handle.stat({ bigint: true });
+            await checkPath();
+            const named = await fs.lstat(resolved, { bigint: true });
+            if (!io.sameIdentityAtPath(resolved, identity) || fields.some(key => before[key] !== after[key] || after[key] !== named[key]))
+                throw fail('文件正在变化，请稍后刷新', 409, 'FILE_CHANGED');
+        };
+        const metadata = { absolutePath: resolved, size, modifiedAt: new Date(Number(before.mtimeMs)).toISOString() };
+        const transfer = async (consume, { expectedRevision, beforeComplete } = {}) => {
+            await validate();
+            const hash = createHash('sha256');
+            let total = 0, pending;
+            while (total < size) {
+                signal?.throwIfAborted();
+                const buffer = Buffer.allocUnsafe(Math.min(CHUNK_BYTES, size - total));
+                const { bytesRead } = await handle.read(buffer, 0, buffer.length, total);
+                if (!bytesRead) throw fail('文件正在变化，请稍后刷新', 409, 'FILE_CHANGED');
+                const bytes = buffer.subarray(0, bytesRead);
+                hash.update(bytes); total += bytesRead;
+                if (pending) await consume(pending);
+                pending = bytes;
+            }
+            const extra = await handle.read(Buffer.alloc(1), 0, 1, total);
+            if (extra.bytesRead) throw fail('文件正在变化，请稍后刷新', 409, 'FILE_CHANGED');
+            await validate();
+            const result = { ...metadata, readAt: new Date().toISOString(), revision: hash.digest('hex') };
+            if (expectedRevision && result.revision !== expectedRevision) throw fail('文件内容已变化，拒绝下载', 409, 'FILE_CHANGED');
+            await beforeComplete?.(result);
+            // Authorization checks may await native state. Revalidate afterward.
+            await validate();
+            if (pending) await consume(pending);
+            return result;
+        };
+        return await action({ ...metadata, transfer, validate });
     } finally { await handle?.close(); }
 }
-module.exports = { readVerifiedFile };
+
+async function readVerifiedFile(requested, options) {
+    return withVerifiedFile(requested, options, async file => {
+        const chunks = [];
+        const metadata = await file.transfer(bytes => { chunks.push(bytes); });
+        return { ...metadata, bytes: Buffer.concat(chunks, metadata.size) };
+    });
+}
+async function scanVerifiedFile(requested, options) {
+    return withVerifiedFile(requested, options, file => file.transfer(() => {}, { expectedRevision: options.expectedRevision }));
+}
+module.exports = { readVerifiedFile, scanVerifiedFile, withVerifiedFile };

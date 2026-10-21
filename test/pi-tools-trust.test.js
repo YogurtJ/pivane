@@ -46,7 +46,7 @@ test('default tools preserve empty, inherited and native defaults, with actual n
         assert.ok((await active(original)).includes('bash'), 'saving cannot alter an existing worker');
         await original.dispose();
         const empty = await supervisor.createEphemeralWorker(cwd);
-        assert.deepEqual(await active(empty), ['bg_wait', 'contact_supervisor', 'fixture_custom', 'subagent', 'subagent_supervisor', 'update_plan'], 'extension tools survive the empty built-in list; auto activation is eager without a dynamic-tool model');
+        assert.deepEqual(await active(empty), ['ask_user_question', 'bg_wait', 'contact_supervisor', 'fixture_custom', 'subagent', 'subagent_supervisor', 'update_plan'], 'extension tools survive the empty built-in list; auto activation is eager without a dynamic-tool model');
         const { topLevelSupervisorTool, TOP_LEVEL_SUPERVISOR_REFUSAL } = await import('../vendor/pi-subagents/src/intercom/native-supervisor-channel.js');
         const refusing = topLevelSupervisorTool(), notifications = [];
         assert.equal(refusing.name, 'contact_supervisor', 'the active parent declaration is the native refusing tool');
@@ -64,7 +64,7 @@ test('default tools preserve empty, inherited and native defaults, with actual n
         assert.deepEqual(snap.settings.defaultTools.value, []);
         await save({ defaultTools: ['ls'] }, 'project');
         const projectWorker = await supervisor.createEphemeralWorker(cwd);
-        assert.deepEqual(await active(projectWorker), ['bg_wait', 'contact_supervisor', 'fixture_custom', 'ls', 'subagent', 'subagent_supervisor', 'update_plan']);
+        assert.deepEqual(await active(projectWorker), ['ask_user_question', 'bg_wait', 'contact_supervisor', 'fixture_custom', 'ls', 'subagent', 'subagent_supervisor', 'update_plan']);
         await projectWorker.dispose();
         await save({ defaultTools: null }, 'project');
         snap = await service.snapshot(cwd);

@@ -10173,5 +10173,36 @@
         ['石墨', 'Graphite'],
         ['极简中性', 'Minimal and neutral']
     );
+    // Delivered-file receipts and the structured question panel.
+    rows.push(
+        ['Agent 提问', 'Agent question'],
+        ['上一题', 'Previous question'],
+        ['下一题', 'Next question'],
+        ['收起提问', 'Collapse question'],
+        ['展开提问', 'Expand question'],
+        ['不回答并关闭', 'Close without answering'],
+        ['{0} 秒后自动关闭', 'Closes automatically in {0}s'],
+        ['正在提交回答…', 'Submitting answers…'],
+        ['按数字键 1–{0} 快速选择', 'Press 1–{0} to choose'],
+        ['问题', 'Question'],
+        ['或自行撰写回复', 'Or write your own answer'],
+        ['输入你的回答', 'Type your answer'],
+        ['提交', 'Submit'],
+        ['下一步', 'Next'],
+        ['提问与回答', 'Question and answer'],
+        ['已回答 {0} / {1} 个问题', 'Answered {0} of {1} questions'],
+        ['已回答', 'Answered'],
+        ['提问已超时，未作答', 'Question timed out without an answer'],
+        ['提问已随任务停止', 'Question stopped with the task'],
+        ['当前界面无法提问', 'Questions are unavailable in this interface'],
+        ['已关闭提问，未作答', 'Question closed without an answer'],
+        ['{0} 个文件', '{0} files', '{0} file'],
+        ['打开预览', 'Open preview'],
+        ['打开后下载', 'Open to download'],
+        ['显示其余 {0} 个文件', 'Show {0} more files', 'Show {0} more file'],
+        ['向你提问 · {0} 个问题', 'Asking you · {0} questions'],
+        ['向你提问', 'Asking you'],
+        ['交付文件 · {0}', 'Deliver files · {0}']
+    );
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

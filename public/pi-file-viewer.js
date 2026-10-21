@@ -216,7 +216,14 @@
         }
         blob(bytes, mime) { const url = URL.createObjectURL(new Blob([bytes], { type: mime })); this.objectUrls.push(url); return url; }
         bytes() { return this.data?.encoding === 'base64' ? Uint8Array.from(atob(this.data.base64), c => c.charCodeAt(0)) : new TextEncoder().encode(this.data?.content || ''); }
-        download() {
+        async download() {
+            if (!this.data && this.source === 'current' && this.host.downloads?.enabled && this.file) {
+                this.downloadButton.disabled = true;
+                try { await this.host.downloads.download(this.file); }
+                catch (error) { if (error.name !== 'AbortError') this.host.notify(error.message, 'error'); }
+                finally { this.controls(); }
+                return;
+            }
             if (!this.data) return;
             const url = URL.createObjectURL(new Blob([this.bytes()], { type: 'application/octet-stream' }));
             const link = document.createElement('a'); link.href = url; link.download = this.data.name || this.file.path.split(/[\\/]/).at(-1) || 'download';
@@ -225,7 +232,7 @@
         clear() {
             this.closeFullscreen(false); this.previewState = {}; this.previewKey = null;
             this.previewSuspended = false;
-            this.cancel(); this.releaseUrls(); this.file = null; this.data = null; this.current = null; this.positions = new Map(); this.restoreTop = null;
+            this.cancel(); this.releaseUrls(); this.file = null; this.data = null; this.current = null; this.downloadTooLarge = false; this.positions = new Map(); this.restoreTop = null;
             this.runHtml = false; this.actualSize = false;
             $('pi-file-tabs').hidden = true; $('pi-file-viewer').hidden = true; $('pi-file-body').replaceChildren();
         }
@@ -247,7 +254,7 @@
             }
             this.closeFullscreen(false); this.rememberPosition(); this.previewState = {}; this.previewKey = null;
             this.previewSuspended = false;
-            this.cancel(); this.releaseUrls(); this.file = file; this.data = null; this.current = null; this.jumped = false;
+            this.cancel(); this.releaseUrls(); this.file = file; this.data = null; this.current = null; this.downloadTooLarge = false; this.jumped = false;
             this.runHtml = false; this.actualSize = false;
             const position = this.positions.get(file.identity);
             this.defaultPreview = !position && !file.line;
@@ -289,7 +296,7 @@
             $('pi-file-copy').disabled = !this.data?.content?.length;
             $('pi-file-preview').hidden = !['markdown', 'html', 'table', 'svg'].includes(kind);
             this.downloadButton.hidden = !this.previewsEnabled && !this.file?.deliveryId;
-            this.downloadButton.disabled = !this.data;
+            this.downloadButton.disabled = !this.data && !(this.source === 'current' && this.downloadTooLarge && this.host.downloads?.enabled);
             this.fullscreenButton.hidden = this.fullscreen.open || kind === 'audio' || kind === 'binary';
             this.fullscreenButton.disabled = !this.data || this.loading;
             this.imageSizeButton.hidden = !['image', 'svg'].includes(kind) || kind === 'svg' && !this.preview; this.imageSizeButton.textContent = this.actualSize ? translateUi('适应窗口') : translateUi('原尺寸');
@@ -306,7 +313,7 @@
         }
         async load() {
             if (!this.file || this.mode !== 'full') return;
-            this.cancel(); this.releaseUrls(); this.runHtml = false; this.data = null; $('pi-file-body').replaceChildren();
+            this.cancel(); this.releaseUrls(); this.runHtml = false; this.data = null; this.downloadTooLarge = false; $('pi-file-body').replaceChildren();
             if (!this.file.deliveryId && window.PiFilePolicy.restricted(this.file.path)) { this.status(translateUi("此文件不提供网页预览"), true); this.controls(); return; }
             if (this.source !== 'current') {
                 const write = this.file.writes.find(w => `write:${w.id}` === this.source);
@@ -334,7 +341,8 @@
             } catch (error) {
                 if (sequence === this.sequence && error.name !== 'AbortError') {
                     const outside = error.data?.code === 'FILE_OUTSIDE';
-                    this.status(outside ? translateUi('文件位于当前项目外。请让 Agent 使用 deliver_files 登记为交付物；不会自动扩大访问范围。') : error.message || translateUi("文件读取失败"), true);
+                    this.downloadTooLarge = error.data?.code === 'FILE_SIZE' && this.host.downloads?.enabled;
+                    this.status(this.downloadTooLarge ? label('文件超过预览限制，仍可下载原文件。', 'This file exceeds the preview limit. You can still download the original.') : outside ? translateUi('文件位于当前项目外。请让 Agent 使用 deliver_files 登记为交付物；不会自动扩大访问范围。') : error.message || translateUi("文件读取失败"), true);
                 }
             }
             finally {
@@ -353,14 +361,14 @@
             this.status(this.file.deliveryId ? translateUi('交付快照 · {0} · SHA256 {1}', new Date(this.data.createdAt).toLocaleString(globalThis.PiI18n?.locale), this.data.revision)
                 : translateUi("当前文件快照{0}，点击刷新更新{1}", Number.isNaN(readAt.getTime()) ? '' : translateUi(" · 读取于 {0}", readAt.toLocaleTimeString(globalThis.PiI18n?.locale)), Number.isNaN(modifiedAt.getTime()) ? '' : translateUi(" · 文件修改于 {0}", modifiedAt.toLocaleString(globalThis.PiI18n?.locale))));
             if (this.file.deliveryId && this.data.name) { this.file.path = this.data.name; $('pi-changes-title').textContent = this.data.name; $('pi-file-path').textContent = this.data.absolutePath; this.host.selected?.(this.file); }
-            if (this.defaultPreview && this.data.kind) { this.preview = ['markdown', 'html', 'image', 'table', 'svg', 'pdf', 'audio'].includes(this.data.kind); this.defaultPreview = false; }
+            if (this.defaultPreview && this.data.kind) { this.preview = ['markdown', 'html', 'image', 'table', 'svg', 'pdf', 'audio', 'video'].includes(this.data.kind); this.defaultPreview = false; }
             this.renderContent();
         }
         renderContent() {
             const body = $('pi-file-body'), oldTop = body.scrollTop;
             this.releaseUrls(); body.replaceChildren(); this.controls();
             if (!this.data) return;
-            if (['image', 'pdf', 'audio'].includes(this.data.kind) || this.preview && ['table', 'svg'].includes(this.data.kind)) {
+            if (['image', 'pdf', 'audio', 'video'].includes(this.data.kind) || this.preview && ['table', 'svg'].includes(this.data.kind)) {
                 if (!this.isVisible()) { this.previewSuspended = true; return; }
                 this.previewCleanup = window.PiFilePreviews.render(body, this.data, {
                     name: this.data.name || this.file.path, bytes: () => this.bytes(), blob: (bytes, mime) => this.blob(bytes, mime),

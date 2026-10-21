@@ -3,10 +3,11 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { getSdk } = require('./pi-session-store');
 const { fileScope, fileError, fail } = require('./pi-file-scope');
-const { readVerifiedFile } = require('./pi-file-bytes');
+const { readVerifiedFile, scanVerifiedFile } = require('./pi-file-bytes');
+const { copyVerifiedFile, sendVerifiedFile } = require('./pi-file-download');
+const { fileLimits, MAX_STORED_FILE_BYTES } = require('./pi-file-limits');
 const { MAX_FILE_BYTES, representation } = require('./pi-file-types');
 const { privateDir, atomicJson } = require('./pi-maintenance-files');
-const { writePrivateFileSync } = require('./pi-private-files');
 const { withinCanonical, windowsPath } = require('./pi-platform-path');
 const { activeBranch } = require('./pi-message-payload');
 const ENTRY = 'pivane-deliverable';
@@ -34,7 +35,7 @@ function references(branch) {
     return [...found.values()].reverse();
 }
 class DeliverableStore {
-    constructor(store) { this.store = store; this.jobs = new Set(); }
+    constructor(store) { this.store = store; this.jobs = new Set(); this.limits = fileLimits(); }
     async root(create = false) {
         const { getAgentDir } = await getSdk();
         const root = path.join(fs.realpathSync.native(getAgentDir()), 'pivane-deliverables');
@@ -55,7 +56,7 @@ class DeliverableStore {
         if (expected && file.revision !== expected) throw fail('交付清单已变化', 409, 'DELIVERY_CHANGED');
         const manifest = JSON.parse(file.bytes.toString('utf8'));
         if (manifest.version !== 1 || manifest.id !== id || !Array.isArray(manifest.files) || !manifest.files.length || manifest.files.length > 20
-            || manifest.files.some((f, i) => f.index !== i || !idPattern.test(f.revision) || !Number.isSafeInteger(f.size) || f.size < 0 || f.size > MAX_FILE_BYTES
+            || manifest.files.some((f, i) => f.index !== i || !idPattern.test(f.revision) || !Number.isSafeInteger(f.size) || f.size < 0 || f.size > MAX_STORED_FILE_BYTES
                 || typeof f.name !== 'string' || typeof f.sourcePath !== 'string')) throw fail('交付清单无效', 409, 'DELIVERY_CHANGED');
         return { manifest, revision: file.revision };
     }
@@ -74,7 +75,7 @@ class DeliverableStore {
                 const existing = await this.manifest(id);
                 if (existing.manifest.requestHash !== requestHash) throw fail('requestId 已用于不同交付，请核对原记录', 409, 'DELIVERY_CONFLICT');
                 // Idempotence never silently republishes damaged/missing objects.
-                for (const file of existing.manifest.files) await this.content({ id, manifestRevision: existing.revision }, file.index);
+                for (const file of existing.manifest.files) await this.verify(existing.manifest, file, signal);
                 return this.receipt(existing);
             } catch (error) { if (error.code !== 'ENOENT') throw error; }
             const scope = await fileScope(this.store, input.sourceRoot || cwd);
@@ -85,9 +86,9 @@ class DeliverableStore {
                 if (process.platform !== 'win32' && source.includes('\\')) throw invalid();
                 let native; try { native = windowsPath(source); } catch { throw invalid(); }
                 const requested = path.resolve(scope.cwd, native);
-                const file = await readVerifiedFile(requested, { check: scope.check, maxBytes: MAX_FILE_BYTES });
+                const file = await scanVerifiedFile(requested, { check: scope.check, maxBytes: this.limits.deliveryFileBytes, signal });
                 total += file.size;
-                if (total > 64 * 1024 * 1024) throw fail('一组交付超过 64 MiB 限制', 413, 'DELIVERY_LIMIT');
+                if (total > this.limits.deliveryTotalBytes) throw fail(`一组交付超过 ${this.limits.deliveryTotalBytes / 1024 / 1024} MiB 限制`, 413, 'DELIVERY_LIMIT');
                 files.push({ ...file, requested });
             }
             signal?.throwIfAborted();
@@ -100,7 +101,9 @@ class DeliverableStore {
             const manifest = { version: 1, id, requestHash, title: input.title, cwd, sessionId: context.sessionId,
                 createdAt: new Date().toISOString(), files: files.map((file, index) => ({ index, name: path.basename(file.absolutePath),
                     sourcePath: file.absolutePath, requestedPath: file.requested, size: file.size, revision: file.revision, modifiedAt: file.modifiedAt })) };
-            files.forEach((file, i) => writePrivateFileSync(path.join(directory, `${i}.bin`), file.bytes, true));
+            for (const [index, file] of files.entries()) await copyVerifiedFile(file.requested, path.join(directory, `${index}.bin`), {
+                check: scope.check, maxBytes: this.limits.deliveryFileBytes, signal, expectedRevision: file.revision
+            });
             atomicJson(path.join(directory, 'manifest.json'), manifest);
             return this.receipt(await this.manifest(id));
         } catch (error) { throw error.status ? error : fileError(error); }
@@ -110,6 +113,27 @@ class DeliverableStore {
         return { reference: { version: 1, id: manifest.id, manifestRevision: revision }, title: manifest.title,
             files: manifest.files.map(file => ({ name: file.name, size: file.size, revision: file.revision,
                 href: `#pi-delivery=${manifest.id}/${file.index}` })) };
+    }
+    async verify(manifest, item, signal) {
+        const root = await this.root();
+        const file = await scanVerifiedFile(path.join(root, manifest.id, `${item.index}.bin`), {
+            check: actual => { if (!withinCanonical(root, actual)) throw fail('交付文件位置已变化', 409, 'DELIVERY_CHANGED'); },
+            maxBytes: MAX_STORED_FILE_BYTES, expectedRevision: item.revision, signal
+        });
+        if (file.size !== item.size) throw fail('交付文件已变化', 409, 'DELIVERY_CHANGED');
+    }
+    async download(reference, index, res, options) {
+        const { manifest } = await this.manifest(reference.id, reference.manifestRevision), item = manifest.files[index];
+        if (!item || item.index !== index) throw fail('交付文件不存在', 404, 'DELIVERY_MISSING');
+        const root = await this.root();
+        return sendVerifiedFile(res, path.join(root, reference.id, `${index}.bin`), {
+            ...options, name: item.name, maxBytes: this.limits.downloadBytes, expectedRevision: item.revision, expectedSize: item.size,
+            check: actual => { if (!withinCanonical(root, actual)) throw fail('交付文件位置已变化', 409, 'DELIVERY_CHANGED'); },
+            authorize: async () => {
+                await this.manifest(reference.id, reference.manifestRevision);
+                await options.authorize?.();
+            }
+        });
     }
     async content(reference, index) {
         const { manifest } = await this.manifest(reference.id, reference.manifestRevision);
@@ -139,9 +163,10 @@ class DeliverableService {
         const manager = this.store.profileManager(session, SessionManager);
         return { session, refs: references(manager.getBranch()) };
     }
-    async request(input) {
+    async request(input, download) {
         if (!input || Object.keys(input).some(k => !['cwd', 'sessionId', 'id', 'index', 'path'].includes(k))
-            || (input.id === undefined) !== (input.index === undefined) || input.id !== undefined && input.path !== undefined) throw invalid();
+            || (input.id === undefined) !== (input.index === undefined) || input.id !== undefined && input.path !== undefined
+            || download && input.id === undefined) throw invalid();
         if (this.reading >= 4) throw fail('交付读取正在进行，请稍后再试', 429, 'FILE_BUSY');
         this.reading++;
         try {
@@ -155,10 +180,15 @@ class DeliverableService {
                 const proof = await require('./pi-session-fork-access').deliveryProof(this.store, initial.session);
                 const allowed = proof.get(saved.manifest.cwd);
                 if (allowed !== null && !allowed?.has(ref.id + ':' + ref.manifestRevision)) throw fail('交付不属于当前项目', 403, 'DELIVERY_SCOPE');
+                const verifyContext = async () => {
+                    await download?.authorize?.();
+                    await require('./pi-session-fork-access').checkForkAccess(this.store, initial.session, proof.forkRevision);
+                    const current = await this.branch(input);
+                    if (current.session.path !== initial.session.path || !current.refs.some(r => r.id === ref.id && r.manifestRevision === ref.manifestRevision)) throw fail('会话分支已变化', 409, 'DELIVERY_CONTEXT');
+                };
+                if (download) return await this.objects.download(ref, index, download.res, { ...download, authorize: verifyContext });
                 const result = await this.objects.content(ref, index);
-                await require('./pi-session-fork-access').checkForkAccess(this.store, initial.session, proof.forkRevision);
-                const current = await this.branch(input);
-                if (current.session.path !== initial.session.path || !current.refs.some(r => r.id === ref.id && r.manifestRevision === ref.manifestRevision)) throw fail('会话分支已变化', 409, 'DELIVERY_CONTEXT');
+                await verifyContext();
                 return result;
             }
             const items = [];

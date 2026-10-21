@@ -4,8 +4,8 @@
     const { node, icon, button } = window.PiFileElements;
     class PiFilesPanel {
         constructor(host) {
-            this.host = host; this.mode = 'project'; this.browsing = true; this.enabled = false;
-            this.viewer = new window.PiFileViewer({ ...host, selected: file => this.selected(file), readerLayoutChanged: () => {
+            this.host = host; this.downloads = new window.PiFileDownloads(host); this.mode = 'project'; this.browsing = true; this.enabled = false;
+            this.viewer = new window.PiFileViewer({ ...host, downloads: this.downloads, selected: file => this.selected(file), readerLayoutChanged: () => {
                 if (this.mode === 'project' && !this.wide && this.viewer.file) this.browsing = false;
                 this.sync();
             } });
@@ -91,7 +91,9 @@
             else this.openProject(true);
         }
         setEnabled(value) { this.enabled = value; this.sync(); }
-        setCapabilities({ previews, deliverables, roots }) {
+        setCapabilities({ previews, deliverables, roots, downloads, limits }) {
+            this.downloads.enabled = Boolean(downloads);
+            this.downloads.maxBytes = Number.isSafeInteger(limits?.downloadBytes) && limits.downloadBytes > 0 ? limits.downloadBytes : null;
             this.roots.setEnabled(Boolean(roots));
             this.viewer.previewsEnabled = Boolean(previews); this.deliverablesEnabled = Boolean(deliverables);
             this.viewer.deliverablesEnabled = Boolean(deliverables); this.deliveriesButton.hidden = !deliverables; this.sync();
@@ -169,6 +171,7 @@
             } catch (error) { if (this.sameContext(context, sequence) && error.name !== 'AbortError') { this.deliveriesList.replaceChildren(node('p', 'pi-file-large-note', error.message)); } }
         }
         reset() {
+            this.downloads.reset();
             this.cancelOpen(); this.paneContext = null; this.deliveriesList.replaceChildren();
             this.viewer.clear(); this.roots.reset(); this.browser.reset(); this.mode = 'project'; this.browsing = true; this.returnLink = null;
             $('pi-changes-content').hidden = true;
@@ -263,6 +266,8 @@
             this.deliveriesButton.setAttribute('aria-pressed', String(['deliveries', 'delivery'].includes(this.mode)));
             this.projectButton.setAttribute('aria-pressed', String(this.mode === 'project'));
             this.historyButton.setAttribute('aria-pressed', String(this.mode === 'history'));
+            // Each reply already ends with its own turn-files card; this tab only labels a record opened from one.
+            this.historyButton.hidden = this.enabled && this.mode !== 'history';
             this.browseButton.setAttribute('aria-pressed', String(this.mode === 'project' && this.browsing));
             this.expandButton.setAttribute('aria-pressed', String($('pi-inspector').classList.contains('files-expanded')));
             this.expandButton.title = this.expandButton.ariaLabel = $('pi-inspector').classList.contains('files-expanded') ? translateUi("收起阅读区") : translateUi("展开阅读");

@@ -4,6 +4,7 @@ import { registerCron } from './pi-cron-runtime.js';
 import { registerChannelTurns } from './channels/runtime.js';
 import { registerTaskProgress } from './pi-task-progress-extension.ts';
 import { registerDeliverables } from './pi-deliverables-extension.ts';
+import { registerUserQuestion } from './pi-user-question-extension.ts';
 import { registerDocuments } from './pi-document-extension.ts';
 import { registerMediaChat } from './pi-media-chat-extension.ts';
 import { registerToolProvenance } from './pi-tool-provenance.js';
@@ -50,6 +51,7 @@ export default async function (pi: ExtensionAPI) {
     registerAgentMessages(pi);
     registerTaskProgress(pi);
     registerDeliverables(pi);
+    registerUserQuestion(pi);
     registerDocuments(pi);
     registerMediaChat(pi);
     registerSubagentHost(pi);

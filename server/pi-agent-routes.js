@@ -153,7 +153,7 @@ function createPiAgentGateway(options = {}) {
         maintenance, preferences, idle: () => workbenchIdle(),
         pause: () => deferred.pauseAll()
     });
-    require('./pi-file-routes').mountFilePreviews(router, { files, store, supervisor });
+    require('./pi-file-routes').mountFilePreviews(router, { files, store, supervisor, access });
     require('./pi-file-roots').mountFileRoots(router, fileRoots);
     const artifacts = require('./pi-artifacts-routes').mountArtifacts(router, { store, supervisor, preferences, mediaRoot: options.artifactMediaRoot,
         isSuspended: () => maintenance.locked || maintenance.referenceLocked || Boolean(store.sessionMoves?.running) || Boolean(sessionTransfer.running) });
@@ -286,6 +286,8 @@ function createPiAgentGateway(options = {}) {
             fileBrowser: descriptorBackendAvailable(),
             fileRoots: descriptorBackendAvailable(),
             filePreviews: descriptorBackendAvailable(),
+            fileDownloads: descriptorBackendAvailable(),
+            fileLimits: { previewBytes: require('./pi-file-types').MAX_FILE_BYTES, ...files.limits },
             deliverables: descriptorBackendAvailable(),
             artifacts: descriptorBackendAvailable(),
             usageStats: descriptorBackendAvailable(),
