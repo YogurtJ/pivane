@@ -45,7 +45,11 @@ Codemode 输出直接使用官方 executor／sandbox，已移除旧的输出合�
 
 公开 prompt/sendCustomMessage 适配在原生调用前保留带 UUID、会话身份与导航 nonce 的启动所有权，通过原生串行 stdout 发送私有开始／完成帧。真实 Promise 完成或进程退出释放；原生 settled、读取快照及超时不能提前释放。命名 prompt section 保留普通用户／custom wake 的组合顺序和更早的 forceSystemPrompt。Pi 升级须重新验证这些公开方法的完成语义及内部 transport／theme seam。
 
-pi-subagents 使用官方 child factory 与原生包解析；0.80 的选定 MCP／Codemode wrapper 负责就绪等待，Pivane 经 SDK seam 注入受过滤的 factory，不另设轮询。主扩展 wrapper 通过公开注册、事件和工具 API 保持 Pi 原生工具选择：惰性委派工具不因注册取得默认激活，已有分支在绑定／导航前的原生当前选择优先于上游的卸载猜测；明确启用工具的执行保留独立异步调用范围，待答请求不取得恢复委派的权限。不写额外的工具选择状态或迁移 JSONL。销毁代次检查使启动期间已排队的创建失效；精确 MCP selector、工具 gate、授权与媒体限制仍由 Pivane 保留。单一精确 import 重定向仅用于直接工具 selector 解析，不扩大为通用 alias。官方 calendar 模块需要根锁定的 Temporal polyfill；不安装 vendor 的开发依赖。记忆绑定 0.9.10：上游把 pi-tui 改为 peer，根依赖与独立 recipe 均直接提供宿主 TUI；数据库追加列、搜索只读与技能描述上限见[记忆适配](../PROFILE_MEMORY.md#upstream-0910-adaptation)。
+pi-subagents 使用官方 child factory 与原生包解析；0.80 的选定 MCP／Codemode wrapper 负责就绪等待，Pivane 经 SDK seam 注入受过滤的 factory，不另设轮询。主扩展 wrapper 通过公开注册、事件和工具 API 保持 Pi 原生工具选择：惰性委派工具不因注册取得默认激活，已有分支在绑定／导航前的原生当前选择优先于上游的卸载猜测；明确启用工具的执行保留独立异步调用范围，待答请求不取得恢复委派的权限。不持久化额外的工具选择状态或迁移 JSONL。真正的 eager 工厂保留原定义默认注册，让 Pi 1.4 按原生 new-tools 规则启用从未提及的默认委派；已有 active 保持，明确 removed 不因配置转换恢复，未选中的监督回复工具也不因转换新增。
+
+Pi 的 reload 会重新激活扩展默认工具。wrapper 只在公开 `session_shutdown(reason=reload)` 保存一次原生当前选择，以 SessionManager 弱身份、session ID 与 leaf ID 校验，在下一次启动消费并清除；结合公开 `getCurrentTools()` 和原生 mentioned 信息阻止默认重加覆盖撤销，不实现另一套会话回放。冷 loader 转 eager 可增加从未提及的默认工具；其余 live reload 保留已经完成的选择。已在 reload 前完成的公开选择、已持久化重新启用、reload 后的 `setActiveTools`／`subagents_enable` 与新进程 `--tools` 继续有效。自定义 SDK 宿主若在同次 `beforeSessionStart` 中新增工具，且该集合与自动默认重加无法区分，wrapper 保守保持撤销；应在 reload 完成后明确选择，或在 reload 前选择并持久化。Pivane 生产服务不通过该回调重选工具。
+
+销毁代次检查使启动期间已排队的创建失效；精确 MCP selector、工具 gate、授权与媒体限制仍由 Pivane 保留。单一精确 import 重定向仅用于直接工具 selector 解析，不扩大为通用 alias。官方 calendar 模块需要根锁定的 Temporal polyfill；不安装 vendor 的开发依赖。记忆绑定 0.9.10：上游把 pi-tui 改为 peer，根依赖与独立 recipe 均直接提供宿主 TUI；数据库追加列、搜索只读与技能描述上限见[记忆适配](../PROFILE_MEMORY.md#upstream-0910-adaptation)。
 
 ## 验证与交付
 

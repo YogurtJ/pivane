@@ -142,8 +142,10 @@ test('new CLI process --tools and explicit post-unload selection recover tools w
         current.paths.length = 0; await current.session.reload();
         assert.equal(current.session.getAllTools().some(tool => tool.name === 'subagent'), false);
         current.paths.push(wrapper);
-        await current.session.reload({ beforeSessionStart: () => current.session.setActiveToolsByName(['read', 'subagent', 'subagents_enable']) });
-        assert.deepEqual(sorted(current.session), ['read', 'subagent', 'subagents_enable'], 'explicit positive selection after real unload restores supported tools');
+        await current.session.reload();
+        assert.deepEqual(sorted(current.session), ['read']);
+        current.session.setActiveToolsByName(['read', 'subagent', 'subagents_enable']);
+        assert.deepEqual(sorted(current.session), ['read', 'subagent', 'subagents_enable'], 'explicit selection after real unload and completed reload restores supported tools');
     } finally { await current.close(); }
     for (const extra of [{ excludeTools: ['subagent', 'contact_supervisor', 'subagent_supervisor', 'bg_wait', 'subagents_enable'] }, { noTools: 'all' }]) {
         const restricted = await open(sdk.SessionManager.open(fixture.file), extra);
@@ -231,4 +233,152 @@ test('excluding only the loader keeps fresh delegation available while recorded 
             assert.equal(restricted.session.getAllTools().some(tool => tool.name === 'subagents_enable'), false);
         } finally { await restricted.close(); }
     }
+});
+
+test('persisted cold dynamic selection changes to eager without activating an unselected supervisor', async () => {
+    const configuration = path.join(agentDir, 'extensions/subagent/config.json');
+    fs.mkdirSync(path.dirname(configuration), { recursive: true });
+    const effects = executions.length;
+    fs.writeFileSync(configuration, JSON.stringify({ toolActivation: 'dynamic' }));
+    const manager = sdk.SessionManager.create(cwd, path.join(root, 'dynamic-to-eager'));
+    const cold = await open(manager);
+    try {
+        assert.deepEqual(sorted(cold.session), ['read', 'subagents_enable']);
+        await cold.session.prompt('Persist cold dynamic selection without delegation.');
+        const changes = manager.getBranch().filter(entry => entry.type === 'message' && entry.message.role === 'system');
+        assert.ok(changes.some(entry => entry.message.toolsAdded?.some(tool => tool.name === 'subagents_enable')));
+        assert.ok(changes.every(entry => [...(entry.message.toolsAdded || []), ...(entry.message.toolsRemoved || [])].every(tool => tool.name !== 'subagent')));
+    } finally { await cold.close(); }
+    const file = manager.getSessionFile(), original = fs.readFileSync(file), count = requests.length;
+    fs.writeFileSync(configuration, JSON.stringify({ toolActivation: 'eager' }));
+    const eager = await open(sdk.SessionManager.open(file));
+    try {
+        assert.deepEqual(sorted(eager.session), ['read', 'subagent', 'contact_supervisor', 'bg_wait'].sort());
+        assert.equal(eager.session.getAllTools().some(tool => tool.name === 'subagents_enable'), false);
+        assert.deepEqual(fs.readFileSync(file), original);
+        assert.equal(requests.length, count);
+        assert.equal(executions.length, effects);
+    } finally { await eager.close(); fs.rmSync(configuration); }
+});
+
+const modeConfiguration = path.join(agentDir, 'extensions/subagent/config.json');
+const configureMode = mode => {
+    fs.mkdirSync(path.dirname(modeConfiguration), { recursive: true });
+    fs.writeFileSync(modeConfiguration, JSON.stringify({ toolActivation: mode }));
+};
+const directDelegation = ['subagent', 'contact_supervisor', 'bg_wait'];
+async function modeFixture(mode, state, name) {
+    configureMode(mode);
+    const manager = sdk.SessionManager.create(cwd, path.join(root, name));
+    const current = await open(manager);
+    const names = state === 'never-mentioned' ? ['read', ...(mode === 'eager' ? [] : ['subagents_enable'])]
+        : ['read', ...directDelegation, ...(state === 'removed' ? ['subagent_supervisor'] : [])];
+    current.session.setActiveToolsByName(names);
+    await current.session.prompt('Persist the chosen native loadout.');
+    if (state === 'removed') {
+        current.session.setActiveToolsByName(['read']);
+        await current.session.prompt('Persist explicit delegation removal.');
+    }
+    const changes = manager.getBranch().filter(entry => entry.type === 'message' && entry.message.role === 'system').map(entry => entry.message);
+    const mentions = changes.flatMap(message => [...(message.toolsAdded || []), ...(message.toolsRemoved || [])]);
+    if (state === 'never-mentioned') assert.ok(mentions.every(tool => tool.name !== 'subagent'));
+    if (state === 'active') assert.ok(changes.some(message => message.toolsAdded?.some(tool => tool.name === 'subagent')));
+    if (state === 'removed') assert.ok(changes.some(message => message.toolsRemoved?.some(tool => tool.name === 'subagent')));
+    return { ...current, manager, original: fs.readFileSync(manager.getSessionFile()) };
+}
+
+test('native mode matrix preserves recorded choices and activates only never-mentioned eager defaults', async t => {
+    const modes = ['auto', 'dynamic', 'eager'], states = ['never-mentioned', 'active', 'removed'];
+    try {
+        for (const source of modes) for (const target of modes) for (const state of states) for (const lifecycle of ['reopen', 'reload']) {
+            await t.test(`${source} -> ${target}; ${state}; ${lifecycle}`, async () => {
+                const fixture = await modeFixture(source, state, `matrix-${source}-${target}-${state}-${lifecycle}`);
+                let current = fixture;
+                try {
+                    const count = requests.length, effects = executions.length;
+                    if (lifecycle === 'reopen') {
+                        await fixture.close(); configureMode(target);
+                        current = await open(sdk.SessionManager.open(fixture.manager.getSessionFile()));
+                    } else { configureMode(target); await current.session.reload(); }
+                    const eagerDefaults = target === 'eager' && (lifecycle === 'reopen' || source !== 'eager');
+                    const expected = state === 'removed' ? ['read'] : state === 'active' || eagerDefaults
+                        ? ['read', ...directDelegation] : ['read', ...(source === 'eager' ? [] : ['subagents_enable'])];
+                    assert.deepEqual(sorted(current.session), expected.sort());
+                    assert.equal(current.session.getAllTools().some(tool => tool.name === 'subagents_enable'), target !== 'eager');
+                    assert.equal(sorted(current.session).includes('subagent_supervisor'), false, 'mode changes do not select the reply tool');
+                    assert.deepEqual(fs.readFileSync(fixture.manager.getSessionFile()), fixture.original);
+                    assert.equal(requests.length, count, 'mode transition makes no provider request');
+                    assert.equal(executions.length, effects, 'mode transition executes no tools');
+                } finally { await current.close(); }
+            });
+        }
+    } finally { fs.rmSync(modeConfiguration, { force: true }); }
+});
+
+test('eager reload preserves completed native selections and conservatively rejects indistinguishable in-reload additions', async () => {
+    const fixture = await modeFixture('eager', 'removed', 'reload-authority');
+    try {
+        await fixture.session.reload({ beforeSessionStart: () => fixture.session.setActiveToolsByName(['read', ...directDelegation]) });
+        assert.deepEqual(sorted(fixture.session), ['read'], 'an in-reload callback is not observable authority to reverse the same automatic default additions');
+        fixture.session.setActiveToolsByName(['read', ...directDelegation]);
+        assert.deepEqual(sorted(fixture.session), ['read', ...directDelegation].sort(), 'selection after reload is explicit and supported');
+        await fixture.session.reload();
+        assert.deepEqual(sorted(fixture.session), ['read', ...directDelegation].sort(), 'a completed native selection before reload is retained even before a prompt persists it');
+        fixture.session.setActiveToolsByName(['read']);
+        await fixture.session.reload();
+        assert.deepEqual(sorted(fixture.session), ['read'], 'the consumed handoff cannot reuse the previous enabled selection');
+        assert.deepEqual(fs.readFileSync(fixture.manager.getSessionFile()), fixture.original);
+    } finally { await fixture.close(); fs.rmSync(modeConfiguration, { force: true }); }
+});
+
+test('representative native mode transitions retain exclusion, allowlist, hidden and noTools precedence', async t => {
+    const hiddenEntry = path.join(root, 'matrix-hidden-subagent.mjs');
+    fs.writeFileSync(hiddenEntry, `import bundled from ${JSON.stringify(require('node:url').pathToFileURL(wrapper).href)};export default function(pi){return bundled(new Proxy(pi,{get(target,key){if(key==='registerTool')return tool=>pi.registerTool(tool.name==='subagent'?{...tool,exposure:'hidden'}:tool);return Reflect.get(target,key);}}));}`);
+    const cases = [
+        { name: 'cold dynamic -> eager; loader excluded', source: 'dynamic', target: 'eager', state: 'never-mentioned', extra: { excludeTools: ['subagents_enable'] }, expected: ['read', ...directDelegation] },
+        { name: 'active auto -> dynamic; loader excluded', source: 'auto', target: 'dynamic', state: 'active', extra: { excludeTools: ['subagents_enable'] }, expected: ['read', ...directDelegation] },
+        { name: 'removed eager -> auto; loader excluded', source: 'eager', target: 'auto', state: 'removed', extra: { excludeTools: ['subagents_enable'] }, expected: ['read'] },
+        { name: 'cold dynamic -> eager; read allowlist', source: 'dynamic', target: 'eager', state: 'never-mentioned', extra: { tools: ['read'] }, expected: ['read'] },
+        { name: 'active eager -> auto; read allowlist', source: 'eager', target: 'auto', state: 'active', extra: { tools: ['read'] }, expected: ['read'] },
+        { name: 'removed auto -> eager; read allowlist', source: 'auto', target: 'eager', state: 'removed', extra: { tools: ['read'] }, expected: ['read'] },
+        { name: 'removed dynamic -> eager; explicit subagent allowlist', source: 'dynamic', target: 'eager', state: 'removed', extra: { tools: ['read', 'subagent'] }, expected: ['read', 'subagent'] },
+        { name: 'cold dynamic -> eager; hidden subagent', source: 'dynamic', target: 'eager', state: 'never-mentioned', extra: { entry: hiddenEntry }, expected: ['read', 'contact_supervisor', 'bg_wait'] },
+        { name: 'active eager -> eager; hidden subagent', source: 'eager', target: 'eager', state: 'active', extra: { entry: hiddenEntry }, expected: ['read', 'contact_supervisor', 'bg_wait'] },
+        { name: 'removed auto -> eager; hidden subagent', source: 'auto', target: 'eager', state: 'removed', extra: { entry: hiddenEntry }, expected: ['read'] },
+        { name: 'cold dynamic -> eager; noTools', source: 'dynamic', target: 'eager', state: 'never-mentioned', extra: { noTools: 'all' }, expected: [] },
+        { name: 'active eager -> auto; noTools', source: 'eager', target: 'auto', state: 'active', extra: { noTools: 'all' }, expected: [] },
+        { name: 'removed auto -> eager; noTools', source: 'auto', target: 'eager', state: 'removed', extra: { noTools: 'all' }, expected: [] },
+    ];
+    try {
+        for (const [index, item] of cases.entries()) await t.test(item.name, async () => {
+            const fixture = await modeFixture(item.source, item.state, `permissions-${index}`);
+            await fixture.close(); configureMode(item.target);
+            const current = await open(sdk.SessionManager.open(fixture.manager.getSessionFile()), item.extra);
+            try {
+                const count = requests.length, effects = executions.length;
+                assert.deepEqual(sorted(current.session), [...item.expected].sort());
+                await current.session.reload();
+                assert.deepEqual(sorted(current.session), [...item.expected].sort());
+                assert.deepEqual(fs.readFileSync(fixture.manager.getSessionFile()), fixture.original);
+                assert.equal(requests.length, count);
+                assert.equal(executions.length, effects);
+            } finally { await current.close(); }
+        });
+    } finally { fs.rmSync(modeConfiguration, { force: true }); }
+});
+
+test('recorded supervisor selection remains usable across eager reopen and reload', async () => {
+    const fixture = await modeFixture('dynamic', 'active', 'selected-supervisor');
+    fixture.session.setActiveToolsByName(['read', ...directDelegation, 'subagent_supervisor']);
+    await fixture.session.prompt('Persist explicit supervisor selection.');
+    const original = fs.readFileSync(fixture.manager.getSessionFile());
+    await fixture.close(); configureMode('eager');
+    const current = await open(sdk.SessionManager.open(fixture.manager.getSessionFile()));
+    try {
+        const expected = ['read', ...directDelegation, 'subagent_supervisor'].sort();
+        assert.deepEqual(sorted(current.session), expected);
+        await current.session.reload();
+        assert.deepEqual(sorted(current.session), expected);
+        assert.deepEqual(fs.readFileSync(fixture.manager.getSessionFile()), original);
+    } finally { await current.close(); fs.rmSync(modeConfiguration, { force: true }); }
 });
