@@ -669,7 +669,7 @@ Gateway 在响应或 timeout 时向订阅者发送 `{ "type": "gateway_ui_resolv
 
 ### 3.9 事件
 
-除 gateway 自定义 `gateway_error`、`gateway_ui_resolved` 外，服务端原样转发 Pi RPC 事件。当前前端处理：
+服务端透传 Pi RPC 事件，并提供 `gateway_` 开头的网关事件。当前前端处理：
 
 - `agent_start`, `agent_settled`
 - `message_start`, `message_update`, `message_end`
@@ -683,6 +683,7 @@ Gateway 在响应或 timeout 时向订阅者发送 `{ "type": "gateway_ui_resolv
 - `extension_error`（保留原生扩展错误，不冒充普通回复或执行成功）
 - `gateway_controls`（主会话运行队列、取回列表和扩展状态的有修订内存快照）
 - `gateway_error`
+- `gateway_runtime_ended`：`{type:'gateway_runtime_ended',reason:'quit',cwd,sessionId,webRuntimeId,webSequence}`。显式退出在Shell与RPC实际结束后，通知该持久线程其余仍在订阅的连接，并以4006（Session runtime ended）关闭；客户端清除运行展示、保留本页草稿/附件且不因该终态自动重连。主动退出的连接仍接收`quit_session`成功响应。其他重启、移动、删除及断线恢复沿用其原有关闭协议，停机未完成或失败不发送此确认。
 
 新增 Pi event 支持时，优先保持透传，在 `pi-chat.js` 增加渲染分支。
 

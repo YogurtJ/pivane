@@ -147,8 +147,35 @@ async function run(browser, width, legacy = false) {
     assert.equal(await page.locator('.pi-bash-message').count(), 0);
     assert.equal(await page.locator('.pi-shell-live').count(), 0);
     try { emit(oldSocket, { type: 'gateway_shell', shell: { ...shellStates.get('a'), revision: 999, busy: true } }); } catch {}
+    try { emit(oldSocket, { type: 'gateway_runtime_ended', reason: 'quit', sessionId: 'a', cwd }); } catch {}
     await page.waitForTimeout(100);
     assert.equal(await page.locator('.pi-shell-live').count(), 0, 'old session output cannot reappear');
+    assert.equal(await page.locator('#pi-input').isEnabled(), true, 'a late terminal event from an old socket cannot end the current session');
+    // A peer quit clears live controls without clearing this page's draft/files.
+    await page.locator('#pi-input').fill('!peer-quit-fixture'); await page.locator('#pi-send-button').click();
+    await page.waitForFunction(() => document.querySelector('.pi-shell-live')?.dataset.state === 'running');
+    await page.locator('#pi-input').fill('退出后仍保留的草稿');
+    await page.locator('#pi-file-input').setInputFiles({ name: 'quit-draft.txt', mimeType: 'text/plain', buffer: Buffer.from('preserve this local draft attachment') });
+    await page.waitForFunction(() => document.querySelector('.pi-attachment-chip'));
+    const opensBeforeQuit = requests.filter(r => r.type === 'open_session').length;
+    if (width === 320) active.ws.close({ code: 4006, reason: 'Session runtime ended' });
+    else emit(active, { type: 'gateway_runtime_ended', reason: 'quit', cwd, sessionId: 'b' });
+    await page.waitForFunction(() => document.querySelector('#pi-composer-status').textContent.includes('已退出'));
+    assert.equal(await page.locator('.pi-shell-live').count(), 0);
+    assert.equal(await page.locator('#pi-stop-button').isVisible(), false);
+    assert.equal(await page.locator('#pi-input').isDisabled(), true);
+    assert.equal(await page.locator('#pi-input').inputValue(), '退出后仍保留的草稿');
+    assert.equal(await page.locator('.pi-attachment-chip').count(), 1);
+    await page.waitForTimeout(2000);
+    assert.equal(requests.filter(r => r.type === 'open_session').length, opensBeforeQuit, 'confirmed peer quit must not automatically restart the runtime');
+    await page.screenshot({ path: `/tmp/pi-shell-${width}-peer-quit.png` });
+    const endedShell = shellStates.get('b'); endedShell.busy = false; endedShell.job = null; endedShell.revision++;
+    if (width < 900) await page.locator('#pi-toggle-sessions').click();
+    await page.locator('[data-session-id="b"] .pi-session-main').click();
+    await page.waitForFunction(() => !document.querySelector('#pi-input').disabled);
+    assert.equal(await page.locator('#pi-input').inputValue(), '退出后仍保留的草稿');
+    assert.equal(await page.locator('.pi-attachment-chip').count(), 1);
+    assert.equal(await page.locator('.pi-shell-live').count(), 0);
     const overflow = await page.evaluate(() => ['body', '#pi-transcript', '#pi-transcript-content', '#pi-inspector'].filter(s => { const el = document.querySelector(s); return el.clientWidth && el.scrollWidth > el.clientWidth + 1; }));
     assert.deepEqual(overflow, []); assert.deepEqual(errors, []); assert.deepEqual(writes, []);
     assert.equal(requests.filter(r => ['prompt', 'steer', 'follow_up'].includes(r.type)).length, 0);

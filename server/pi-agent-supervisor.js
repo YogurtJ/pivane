@@ -430,8 +430,12 @@ class AgentWorker extends EventEmitter {
         // process. In-flight prompt/clear operations retain their journal proof.
         const token = Symbol('session-shutdown');
         this.operation = token;
+        this.shutdownToken = token;
         try { return await callback(); }
-        finally { if (this.operation === token) this.operation = null; }
+        finally {
+            if (this.operation === token) this.operation = null;
+            if (this.shutdownToken === token) this.shutdownToken = null;
+        }
     }
 
     // Keep the existing exclusive operation until the native turn settles or its
@@ -964,11 +968,18 @@ class AgentWorker extends EventEmitter {
     dispose() {
         if (this.disposal) return this.disposal;
         this.disposed = true;
+        const explicitQuit = Boolean(this.shutdownToken);
         this.disposal = Promise.resolve().then(async () => {
             for (const id of this.pendingUi.keys()) this.resolveUi(id);
-            this.subscribers.clear();
+            // Quit subscribers must see the observed terminal state, not just
+            // the last running Shell snapshot. Unsubscribing during the await
+            // still removes that subscriber; other disposal flows keep their
+            // existing navigation/reconnect protocol.
+            if (!explicitQuit) this.subscribers.clear();
             await this.shell.dispose();
             await this.client.dispose();
+            if (explicitQuit) this._broadcast({ type: 'gateway_runtime_ended', reason: 'quit', cwd: this.cwd, sessionId: this.sessionId });
+            this.subscribers.clear();
             this.runStartupCalls.clear();
             this.historyResults.clear(); this.historyWriting = null;
             this.emit('disposed');

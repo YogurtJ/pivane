@@ -849,7 +849,10 @@ function createPiAgentGateway(options = {}) {
                     }
                     unsubscribe = worker.subscribe(event => {
                         if (event.type === 'gateway_reconnect') socket.close(1012, 'Session runtime changed');
-                        else safeSend(socket, event);
+                        else if (event.type === 'gateway_runtime_ended') {
+                            const closing = { code: 4006, reason: 'Session runtime ended' };
+                            safeSend(socket, event, closing); socket.close(closing.code, closing.reason);
+                        } else safeSend(socket, event);
                     });
                     const snapshot = await buildSnapshot(session);
                     if (socketClosed) {

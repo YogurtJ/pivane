@@ -2522,6 +2522,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             socket.addEventListener('close', event => {
                 if (generation !== state.socketGeneration) return resolve(false);
+                if (event.code === 4006) { finishRuntimeExit(Boolean(state.session?.ephemeral)); resolve(false); return; }
                 if (event.code === 4005) { resolve(false); return; }
                 if (event.code === 4004) {
                     forgetDeletedSession(session, session.cwd || state.cwd);
@@ -2655,7 +2656,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             return;
         }
-        if (['gateway_session_deleted', 'gateway_session_removing', 'gateway_session_moving', 'gateway_session_moved'].includes(record.type)) {
+        if (['gateway_session_deleted', 'gateway_session_removing', 'gateway_session_moving', 'gateway_session_moved', 'gateway_runtime_ended'].includes(record.type)) {
             handlePiEvent(record); return;
         }
         if (state.bootstrapEvents) {
@@ -3425,6 +3426,9 @@ document.addEventListener('DOMContentLoaded', () => {
             void refreshActivity();
         }
         switch (event.type) {
+            case 'gateway_runtime_ended':
+                if (event.reason === 'quit') finishRuntimeExit(Boolean(state.session?.ephemeral));
+                break;
             case 'gateway_session_classified':
                 sessionClassified(event.session);
                 break;
@@ -4175,29 +4179,36 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function finishRuntimeExit(wasEphemeral) {
+        // End only the runtime connection; the current draft, attachments and
+        // persisted transcript remain available when the user reopens it.
+        disconnectSocket(true);
+        if (wasEphemeral) state.session = null;
+        elements.input.disabled = true;
+        elements.sendButton.disabled = true;
+        elements.compactButton.disabled = true;
+        modelPicker.setDisabled(true);
+        elements.thinkingSelect.disabled = true;
+        elements.currentThreadMenu.disabled = true;
+        elements.composerStatus.textContent = translateUi("Pi runtime 已退出");
+        setConnection('idle', translateUi("Pi runtime 已退出"));
+        setAgentState('idle', translateUi("已退出"), wasEphemeral ? translateUi("临时会话已销毁") : translateUi("重新打开会话可继续"));
+        renderSessions();
+        updateSessionMeta();
+        void refreshActivity();
+    }
+
     async function quitRuntime() {
         if (!state.connected) return toast(translateUi("当前没有运行中的 Pi runtime"), 'error');
-        const wasEphemeral = Boolean(state.session?.ephemeral);
+        const generation = state.socketGeneration, wasEphemeral = Boolean(state.session?.ephemeral);
         try {
             await requestRpc('quit_session', {}, 30000);
-            disconnectSocket(true);
-            if (wasEphemeral) state.session = null;
-            state.streaming = false;
-            elements.input.disabled = true;
-            elements.sendButton.disabled = true;
-            elements.compactButton.disabled = true;
-            modelPicker.setDisabled(true);
-            elements.thinkingSelect.disabled = true;
-            elements.currentThreadMenu.disabled = true;
-            elements.composerStatus.textContent = translateUi("Pi runtime 已退出");
-            setConnection('idle', translateUi("Pi runtime 已退出"));
-            setAgentState('idle', translateUi("已退出"), wasEphemeral ? translateUi("临时会话已销毁") : translateUi("重新打开会话可继续"));
-            renderSessions();
-            updateSessionMeta();
+            if (generation !== state.socketGeneration) return false;
+            finishRuntimeExit(wasEphemeral);
             toast(wasEphemeral ? translateUi("临时会话已销毁") : translateUi("Pi runtime 已退出，会话记录已保留"), 'success');
             return true;
         } catch (error) {
-            toast(error.message, 'error');
+            if (generation === state.socketGeneration) toast(error.message, 'error');
             return false;
         }
     }

@@ -22,6 +22,8 @@
 
 Shell状态参与activity.busy、空闲回收、工作流互斥和空闲部署判断。`agent_settled`、`get_state.isStreaming=false` 或停止请求成功均不解除Shell占用。执行结果未知保持占用，用户仍可在输入框发送`/quit`显式退出运行实例；worker退出/重建后的不可恢复部分不冒充完整日志。期间扩展的正常站内确认仍可响应。
 
+同一持久线程在其他已连接页面执行 `/quit` 后，服务端等到 Shell/RPC 实际结束才发送退出终态。页面随之移除运行卡片和停止按钮，不因这次确认退出自动重连；本页草稿和附件保留，显式重新打开线程后可继续编辑。刷新或离开页面仍需先保存这些未发送内容。
+
 打开/重连快照及get_state提供有runtimeId/revision的webShell；页面拒绝旧修订和旧socket代次结果。持久会话刷新恢复当前状态和输出尾部，临时会话遵循原断线结束契约。完成事件独立触发get_messages/state/stats同步，不等待agent_settled；历史由原生BashExecutionMessage渲染接替临时卡片，避免双份记录。
 
 历史卡片增强取消、退出码、是否排除上下文、原生截断及fullOutputPath展示。fullOutputPath只作纯文本路径，没有新增任意文件读取/下载。最终输出采用Pi原生结果，可能比直播期间看到的输出更短；显示预算与Pi原生截断分开标注。只展示原生记录，不推算命令修改了哪些文件，不纳入本轮edit/write差异汇总。
@@ -35,6 +37,7 @@ Shell状态参与activity.busy、空闲回收、工作流互斥和空闲部署�
 - `bash`：`{id,type:'bash',command,excludeFromContext?:boolean}`。成功data是接收时的Shell快照，表示已提交，不是命令完成。原生底层RPC仍等待最终BashResult；此差异只在Web网关边界。
 - `abort_bash`：`{id,type:'abort_bash',executionId}`。仅接受当前running执行ID，旧ID、重复停止或已结束拒绝。成功data为当前快照，不表示进程已结束。
 - `get_state`：增加`webShell`及`webQueueModes`。
+- `gateway_runtime_ended`：显式退出已确认完成，含`reason:'quit'`、cwd/sessionId及既有webRuntimeId/webSequence；其余已订阅连接以4006关闭。未完成或失败的停机不会发送成功终态；普通重启、移动和删除沿用各自协议。
 - `gateway_shell`：`{type:'gateway_shell',shell:{runtimeId,revision,busy,job}}`；job为null或当前执行，含id/command/excludeFromContext/status/startedAt/output/displayTruncated，终态可含finishedAt/exitCode/cancelled/truncated/fullOutputPath/recorded/error。
 - status为starting/running/stopping/uncertain/completed/failed/cancelled/rejected；前四项busy。rejected是提交前拒绝；failed不代表没有副作用；recorded=true表示原生已记录结果，持久性遵循会话类型。
 

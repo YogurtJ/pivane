@@ -38,6 +38,7 @@ JSON body：`{ cwd, content, requestId }`。
 - content 为 JSONL 文本，最多 16 MiB；单记录最多 8 MiB，最多 50000 条 entries，JSON 嵌套最多 64 层。仍受全局 32 MB JSON 请求体限制。
 - 校验 header/version、消息/内容块类型、记录字段、唯一 entry ID、父节点顺序及摘要引用；拒绝循环、重复和断裂父链。未知格式明确拒绝。
 - 项目必须经过 realpath/PI_PROJECT_ROOTS 校验，导入只写原生 sessions 目录，新文件权限 0600。先在同文件系统的随机 0700 私有目录中完成原生迁移/复制，设为0600后以不覆盖目标的硬链接原子发布完整文件，再清理临时目录；没有半写入的可见线程、平行聊天历史或长期上传原件。
+- Windows 暂存创建和硬链接发布在文件系统调用边界使用长路径命名空间，原生 forkFrom 仍接收 native realpath 返回的规范路径。会话头中的 cwd/parentSession、ID、条目和返回路径不通过截短或正文替换改变；目标已存在时继续拒绝覆盖，失败清理暂存且保留不确定请求状态。
 - 原生 forkFrom 会在新 header 的 parentSession 留下已清理的临时源路径；它仅是来源 metadata，不是可恢复的原文件或跨实例链接。原生 JSONL 的分支外 label target 可能缺失，保留 metadata，不补造外部分支。
 - requestId 为 16–80 位字母/数字/连字符。单进程最多保留 100 个、30 分钟的 hash/状态/新线程结果，不保存上传正文。相同 ID 和相同文件/目标成功后返回原结果；相同 ID 改参数、正在执行或不确定拒绝。不构成跨进程/重启后的持久幂等。
 - 成功 HTTP 201：`{ session: <标准 session object> }`。失败 HTTP 400。上传后不自动重试；网页移除此次提交按钮，断线/超时先刷新目标项目核对，重新导入必须是新的显式操作。

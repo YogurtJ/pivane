@@ -112,10 +112,24 @@ test('Web Shell: native execution, single worker, streaming, cancellation, histo
     await wait(() => JSON.parse(fs.readFileSync(path.join(process.env.PI_CODING_AGENT_DIR, 'settings.json'), 'utf8')).followUpMode === 'all');
     assert.ok(b.events.some(e => e.type === 'gateway_queue_modes' && e.modes.steeringMode === 'all'));
     // Reopen the same native file with no parallel writer.
+    const idlePeerClosed = once(b.socket, 'close');
     await c.call('quit_session');
+    assert.equal((await idlePeerClosed)[0], 4006);
+    assert.equal(b.events.filter(event => event.type === 'gateway_runtime_ended' && event.reason === 'quit').length, 1);
     const d = await connect(url, session); sockets.push(d.socket);
     assert.equal(d.snapshot.messages.messages.filter(m => m.role === 'bashExecution').length, 4);
     assert.equal(d.snapshot.state.steeringMode, 'all');
+    // A second subscribed page receives an observed quit even during Shell.
+    const observer = await connect(url, session); sockets.push(observer.socket);
+    const running = await d.call('bash', { command: "printf 'QUIT_SYNC'; sleep 30" });
+    await wait(() => observer.events.some(event => event.type === 'gateway_shell' && event.shell.job?.id === running.job.id && event.shell.job.output.includes('QUIT_SYNC')));
+    const busyPeerClosed = once(observer.socket, 'close');
+    await d.call('quit_session');
+    assert.equal((await busyPeerClosed)[0], 4006);
+    const ended = observer.events.filter(event => event.type === 'gateway_runtime_ended');
+    assert.equal(ended.length, 1); assert.equal(ended[0].reason, 'quit');
+    assert.equal(ended[0].sessionId, session.id);
+    assert.equal(gateway.supervisor.getActiveWorker(session.path), undefined);
     // Ephemeral disconnect aborts foreground subprocesses before destroying the worker.
     const ephemeral = await connect(url, null, 'open_ephemeral'); sockets.push(ephemeral.socket);
     const sentinel = path.join(root, 'must-not-exist');

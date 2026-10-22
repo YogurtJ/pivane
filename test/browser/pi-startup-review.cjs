@@ -160,10 +160,11 @@ async function messageFocus(browser, width, leave, failure = false) {
     const open = async () => { await page.locator('#pi-current-thread-menu').click(); await page.getByRole('menuitem', { name: /消息显示…|Message display…/ }).click(); };
     await open(); await held;
     if (failure) {
-        await page.locator('#workspace-feature-state button').waitFor({ state: 'visible' });
+        const retry = page.locator('#workspace-feature-state[aria-busy="false"]').getByRole('button', { name: /^(?:Retry|重试)$/ });
+        await retry.waitFor({ state: 'visible' });
         const revision = await page.evaluate(() => PiWorkspaceRoute.revision());
         if (leave) {
-            await page.evaluate(() => { window.oldSettingsRetry = document.querySelector('#workspace-feature-state button'); PiWorkspaceRoute.navigate('chat'); });
+            await retry.evaluate(button => { window.oldSettingsRetry = button; PiWorkspaceRoute.navigate('chat'); });
             const nextRevision = await page.evaluate(() => PiWorkspaceRoute.revision());
             await page.evaluate(() => oldSettingsRetry.click());
             assert.equal(await page.evaluate(() => PiWorkspaceRoute.revision()), nextRevision, 'stale retry cannot change the next navigation revision');
@@ -174,7 +175,7 @@ async function messageFocus(browser, width, leave, failure = false) {
             assert.equal(await page.evaluate(() => Boolean(document.activeElement?.closest('#pi-transcript-modes'))), false);
             await page.evaluate(() => PiWorkspaceRoute.navigate('chat'));
         } else {
-            await page.locator('#workspace-feature-state button').click();
+            await retry.click();
             await page.waitForFunction(() => PiFeatures.ready('settings'));
             assert.equal(await page.evaluate(() => PiWorkspaceRoute.revision()), revision, 'explicit retry keeps the same opening intent revision');
         }

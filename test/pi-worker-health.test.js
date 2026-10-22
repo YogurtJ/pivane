@@ -41,12 +41,46 @@ test('repeated worker disposal waits for the same Shell and RPC termination', as
     const gate = Promise.withResolvers(); let shellStops = 0;
     t.after(async () => { gate.resolve(); await supervisor.dispose(); });
     const worker = await supervisor.getWorker(target), originalShellDispose = worker.shell.dispose.bind(worker.shell);
+    const events = []; worker.subscribe(event => events.push(event));
     worker.shell.dispose = async () => { shellStops++; await gate.promise; await originalShellDispose(); };
     const pid = worker.client.child.pid, first = worker.dispose(), second = worker.dispose();
     assert.equal(first, second); await Promise.resolve(); assert.equal(shellStops, 1);
     assert.equal(worker.lifecycle().activity.busy, true);
     gate.resolve(); await Promise.all([first, second]);
     assert.equal(alive(pid), false); assert.equal(shellStops, 1);
+    assert.equal(events.some(event => event.type === 'gateway_runtime_ended'), false, 'ordinary disposal retains its existing navigation/reconnect semantics');
+});
+
+test('explicit quit notifies remaining subscribers only after Shell and RPC actually end', async t => {
+    const supervisor = new PiAgentSupervisor(), target = session();
+    const gate = Promise.withResolvers(), entered = Promise.withResolvers(), rpcGate = Promise.withResolvers(), rpcEntered = Promise.withResolvers();
+    t.after(async () => { gate.resolve(); rpcGate.resolve(); await supervisor.dispose(); });
+    const worker = await supervisor.getWorker(target), originalShellDispose = worker.shell.dispose.bind(worker.shell), originalRpcDispose = worker.client.dispose.bind(worker.client);
+    const events = [], detached = [];
+    worker.subscribe(event => events.push(event));
+    const unsubscribe = worker.subscribe(event => detached.push(event));
+    worker.shell.dispose = async () => { entered.resolve(); await gate.promise; await originalShellDispose(); };
+    worker.client.dispose = async () => { rpcEntered.resolve(); await rpcGate.promise; return originalRpcDispose(); };
+    const pid = worker.client.child.pid;
+    const closing = worker.shutdown(() => supervisor.stopSession(target.sessionPath));
+    await entered.promise;
+    assert.equal(alive(pid), true);
+    assert.equal(events.some(event => event.type === 'gateway_runtime_ended'), false, 'stopping is not an observed terminal state');
+    assert.equal(supervisor.getActiveWorker(target.sessionPath), worker);
+    unsubscribe();
+    gate.resolve(); await rpcEntered.promise;
+    assert.equal(alive(pid), true);
+    assert.equal(events.some(event => event.type === 'gateway_runtime_ended'), false, 'Shell completion alone does not confirm RPC exit');
+    assert.equal(supervisor.getActiveWorker(target.sessionPath), worker);
+    rpcGate.resolve(); await closing;
+    assert.equal(alive(pid), false);
+    const ended = events.filter(event => event.type === 'gateway_runtime_ended');
+    assert.equal(ended.length, 1);
+    assert.equal(ended[0].reason, 'quit');
+    assert.equal(ended[0].cwd, target.cwd); assert.equal(ended[0].sessionId, target.sessionId);
+    assert.equal(ended[0].webRuntimeId, worker.live.runtimeId);
+    assert.equal(detached.some(event => event.type === 'gateway_runtime_ended'), false, 'a subscriber that left during shutdown is not notified');
+    assert.equal(worker.subscribers.size, 0);
 });
 
 test('explicit shutdown can terminate an unresponsive uncertain runtime without asking it for another state reply', async t => {
