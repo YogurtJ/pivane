@@ -17,7 +17,7 @@ node scripts/install-bundled-capabilities.cjs
 
 没有可用 SQLite 二进制的目标会在就绪检查时明确失败；若要自行支持该目标，需准备 Python 与该平台的 C/C++ 工具链，并执行上游的 `npm --prefix node_modules/better-sqlite3 run build-release`，再重新运行内置组件准备。应用更新和 Pi 受管更新也执行上述组件准备，再进行隔离探测。旧 `PI_SKIP_DEFAULT_CAPABILITIES` 和身份中的安装尝试记录不控制内置组件；`PI_OFFLINE` 不代替 npm 的依赖准备。
 
-- 子 Agent 默认可用，模型与角色覆盖继续保存在原生 `settings.json` 的 `subagents` 字段。安装和保存设置不启动子任务。扩展页可以逐项启用、停用内置扩展、技能和提示词；开关保存为 `pivaneBuiltins.subagents` 的资源过滤，不写入版本目录绝对路径。
+- 子 Agent 默认可用，模型与角色覆盖继续保存在原生 `settings.json` 的 `subagents` 字段。安装和保存设置不启动子任务。原生会话明确撤销的委派工具在重开、重载和树导航后保持撤销；后续显式工具选择或当前可用的 `subagents_enable` 可重新启用。待答监督请求不自动恢复被撤销的委派，已选择的回复工具仍可使用。扩展页可以逐项启用、停用内置扩展、技能和提示词；开关保存为 `pivaneBuiltins.subagents` 的资源过滤，不写入版本目录绝对路径。
 - 档案记忆默认使用当前应用目录的 `server/profile-memory/upstream-bundle.mjs`。仍需在相应助手身份启用记忆或学习技能；后台学习模型和开关沿用原规则。无身份和临时会话不会因此获得记忆工具。
 - Packages 中的内置子 Agent 显示 Pivane 与版本，不提供独立更新或移除。内置包的安装、更新、移除 API 请求返回管理说明。升级整个 Pivane 才会切换组件版本。
 

@@ -45,7 +45,7 @@ Codemode 输出直接使用官方 executor／sandbox，已移除旧的输出合�
 
 公开 prompt/sendCustomMessage 适配在原生调用前保留带 UUID、会话身份与导航 nonce 的启动所有权，通过原生串行 stdout 发送私有开始／完成帧。真实 Promise 完成或进程退出释放；原生 settled、读取快照及超时不能提前释放。命名 prompt section 保留普通用户／custom wake 的组合顺序和更早的 forceSystemPrompt。Pi 升级须重新验证这些公开方法的完成语义及内部 transport／theme seam。
 
-pi-subagents 使用官方 child factory 与原生包解析；0.80 的选定 MCP／Codemode wrapper 负责就绪等待，Pivane 经 SDK seam 注入受过滤的 factory，不另设轮询。销毁代次检查使启动期间已排队的创建失效；精确 MCP selector、工具 gate、授权与媒体限制仍由 Pivane 保留。单一精确 import 重定向仅用于直接工具 selector 解析，不扩大为通用 alias。官方 calendar 模块需要根锁定的 Temporal polyfill；不安装 vendor 的开发依赖。记忆绑定 0.9.10：上游把 pi-tui 改为 peer，根依赖与独立 recipe 均直接提供宿主 TUI；数据库追加列、搜索只读与技能描述上限见[记忆适配](../PROFILE_MEMORY.md#upstream-0910-adaptation)。
+pi-subagents 使用官方 child factory 与原生包解析；0.80 的选定 MCP／Codemode wrapper 负责就绪等待，Pivane 经 SDK seam 注入受过滤的 factory，不另设轮询。主扩展 wrapper 通过公开注册、事件和工具 API 保持 Pi 原生工具选择：惰性委派工具不因注册取得默认激活，已有分支在绑定／导航前的原生当前选择优先于上游的卸载猜测；明确启用工具的执行保留独立异步调用范围，待答请求不取得恢复委派的权限。不写额外的工具选择状态或迁移 JSONL。销毁代次检查使启动期间已排队的创建失效；精确 MCP selector、工具 gate、授权与媒体限制仍由 Pivane 保留。单一精确 import 重定向仅用于直接工具 selector 解析，不扩大为通用 alias。官方 calendar 模块需要根锁定的 Temporal polyfill；不安装 vendor 的开发依赖。记忆绑定 0.9.10：上游把 pi-tui 改为 peer，根依赖与独立 recipe 均直接提供宿主 TUI；数据库追加列、搜索只读与技能描述上限见[记忆适配](../PROFILE_MEMORY.md#upstream-0910-adaptation)。
 
 ## 验证与交付
 
