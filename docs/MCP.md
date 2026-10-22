@@ -48,7 +48,7 @@
 
 官方 Codemode executor／sandbox 保留单个脚本输出限制：16 Mi 个字符或 100000 次 text/image/console 调用。超过任一上限会令脚本失败；此前已完成的工具操作不回滚，不自动重试脚本。成功脚本的 store 写入沿用原生分支语义。文本分隔、console、返回值、截断、图片顺序与私有完整输出文件由原生实现处理，Pivane 已移除旧的输出合并适配。
 
-Pi 1.3 取消或超时会结束脚本调用并请求 VM 停止，VM 真实退出可能稍晚；单 Pi 进程最多有两个存活的 Codemode VM，取消后仍占用额度至退出，满额时新脚本直接失败。这个限制不跨 Pivane 的不同 RPC 进程共享。失败或取消的 store 写入不提交，已有工具操作不回滚，不自动重放脚本。
+Pi 1.4 取消或超时会结束脚本调用并请求 VM 停止，VM 真实退出可能稍晚；单 Pi 进程默认最多有两个存活的 Codemode VM，`PI_CODEMODE_MAX_WORKERS` 可设为正整数并按调用读取。满额时新脚本按 FIFO 等待，最长 60 秒或更短的调用期限；等待计入执行期限，取消后仍占用额度至 VM 退出。这个限制不跨 Pivane 的不同 RPC 进程共享。失败或取消的 store 写入不提交，已有工具操作不回滚，不自动重放脚本。
 
 `autoEnableCodemode` 写在 `mcp.json`，不是 `settings.json`；是否实际启用仍以该 worker 的工具目录为准。关闭扩展、侧聊隔离和子任务授权边界保持不变。
 
@@ -64,7 +64,7 @@ Pi 1.3 取消或超时会结束脚本调用并请求 VM 停止，VM 真实退出
 
 Pivane 保留 pi-subagents 的任务生命周期，用适配边界把 `mcp:server/tool` 选择器解析到 **父会话已连接、由 Pi 注册的原生工具名**。不读取旧 `mcp-cache.json`。父会话先连接服务器，再启动需要该工具的子任务；配置或项目变化、未连接、隐藏工具、缺失名字均失败关闭。仅运行时注册且未持久配置的服务器暂不能交给子任务。当前父会话工具授权快照为 16 KiB／至多 1024 项，超过预算的 MCP 选择器失败关闭，不降级到旧缓存；工具连接前有 10 秒就绪窗口，超时不发送模型请求。
 
-pi-subagents 0.78.0 的原生 MCP launch plan 使用同一经过校验的工具快照；子会话仅加载一份 Pivane 过滤后的 MCP／Codemode 工厂，并保留父会话传入的项目信任；未受信项目的上下文指令不进入子会话，身份级全局指令仍保留。严格子任务 `tools` 和 capability ceiling 同时限制直接调用与 Codemode 嵌套调用，授权列表只接受已解析的精确工具名，不把 `*` 或 `+/-` 当作新增授权。Pivane 主线程显式 `--tools` 白名单也隐藏未授权的 MCP 工具；普通列表可使用原生 `*` 匹配，但不会像上游 CLI 默认行为那样保留名单外的间接 MCP 工具。`+/-` 仅修改默认选择，不是授权。仅准许 `codemode` 不等于准许它调用所有服务器。拒绝扩展的子任务不获得 MCP。后台子任务的连接由自身会话管理，并在结束时关闭；前台子任务默认仍不加载父会话环境扩展。
+pi-subagents 0.80.0 的原生 MCP launch plan 使用同一经过校验的工具快照；上游选定 MCP／Codemode wrapper 负责就绪等待，Pivane 注入受过滤的工厂，子会话只创建一份 MCP 连接，并保留父会话传入的项目信任；未受信项目的上下文指令不进入子会话，身份级全局指令仍保留。严格子任务 `tools` 和 capability ceiling 同时限制直接调用与 Codemode 嵌套调用，授权列表只接受已解析的精确工具名，不把 `*` 或 `+/-` 当作新增授权。Pivane 主线程显式 `--tools` 白名单也隐藏未授权的 MCP 工具；普通列表可使用原生 `*` 匹配，但不会像上游 CLI 默认行为那样保留名单外的间接 MCP 工具。`+/-` 仅修改默认选择，不是授权。仅准许 `codemode` 不等于准许它调用所有服务器。拒绝扩展的子任务不获得 MCP。后台子任务的连接由自身会话管理，并在结束时关闭；前台子任务默认仍不加载父会话环境扩展。
 
 ## 从 pi-mcp-adapter 迁移
 
@@ -99,4 +99,4 @@ Pi 1.2.0 的 `tools.read()` 在图片文件上返回可传给 `image()` 的图�
 
 结构化 MCP 结果使用原生 any-JSON 语义：对象、数组、标量和 null 均可保留，是否声明 output schema、是否为错误结果不改变该值；协议元数据不混入工具内容。取消涵盖等待 OAuth token 和 401 恢复阶段，不派发或重放已取消的工具请求。原生握手支持到 2025-11-25，不宣称支持后续协议版本。
 
-上游参考：[MCP](https://github.com/earendil-works/pi/blob/v1.3.0/packages/coding-agent/docs/mcp.md)、[Codemode](https://github.com/earendil-works/pi/blob/v1.3.0/packages/coding-agent/docs/codemode.md)、[虚拟模型](https://github.com/earendil-works/pi/blob/v1.3.0/packages/coding-agent/docs/virtual-models.md)。
+上游参考：[MCP](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/mcp.md)、[Codemode](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/codemode.md)、[虚拟模型](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/virtual-models.md)。

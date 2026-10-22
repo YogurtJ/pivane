@@ -33,17 +33,19 @@ Pivane 使用未打包的 Pi SDK／RPC 入口；Pi 自带 `dist/bundle` 中的�
 
 Pi 1.3 审查新增：默认工具从 transcript 恢复与显式选择的优先级、Kimi Coding Chat Completions 及官方地址 `/v1`、最终工具参数 `argumentsError`、Responses 的 `providerThinkingLevel` 和模型范围歧义诊断。原生 JSONL 管理格式不迁移；字段往返、跨模型上下文和工具权限通过 SDK/RPC 验证。`pi-reviewed-host.js` 保存显式审查版本，主题门禁与独立记忆 recipe 复用它，并核对 package/lock。更改该常量仍须审查适配边界，不自动兼容任意版本。
 
-模型高级 compat 控件直接投影 `@earendil-works/pi-ai/providers/compat-schema` 的有效 API schema，只开放布尔和字面量选项；复杂对象保留在原生配置，删除覆盖保留未知或其他 API 字段。
+Pi 1.4 审查新增：Codemode FIFO 准入、按调用读取的容量覆盖、等待期限和迟到启动保护；恢复尝试与工具结果成对省略并保留原生 JSONL；压缩的分段自定义重点、先前 checkpoint 和模型输出预算；原生扩展默认工具与显式选择优先级。MCP 迁移只在解析时去除首个 UTF-8 BOM，私有备份保持原始字节。双向会话读取须在独立 fixture 上核对完整树、custom entries 和原文件不变，不通过正文替换实现兼容。
+
+模型高级 compat 控件直接投影 `@earendil-works/pi-ai/providers/compat-schema` 公开的 `CompatSchemasByApi[api]`，只开放布尔和字面量选项；复杂对象保留在原生配置，删除覆盖保留未知或其他 API 字段。
 
 ## 原生 Codemode 与 SDK 启动适配
 
-Codemode 输出直接使用官方 executor／sandbox，已移除旧的输出合并子类与精确 import 重定向。原生沙箱拥有 16 Mi 字符／100000 条输出限制、取消及 store；官方 executor 拥有目录／嵌套权限、用量、截断与私有完整输出文件。Pi 1.3 的结果、finished 或 close 完成只表示已请求 VM 停止，真实退出可更晚；官方两个存活 VM 额度按单 Pi 进程共享，取消后仍占额度至实际退出。Pivane 不把它描述为整个工作台的并发上限。Node 专项通过公开 acquireWorker/onWorkerStarted 观测实际退出，并覆盖官方工厂间容量；RPC 进程退出、已派发工具和维护生命周期继续由各自所有者核实。Pivane 工厂继续约束模型注册表与媒体确认权限。验证覆盖 100001 条压力、文本／console／返回值及图片顺序、完整输出文件、失败 store、取消与不重放。
+Codemode 输出直接使用官方 executor／sandbox，已移除旧的输出合并子类与精确 import 重定向。原生沙箱拥有 16 Mi 字符／100000 条输出限制、取消及 store；官方 executor 拥有目录／嵌套权限、用量、截断与私有完整输出文件。Pi 1.4 的结果、finished 或 close 完成只表示已请求 VM 停止，真实退出可更晚；官方工厂默认两个存活 VM 额度按单 Pi 进程共享，`PI_CODEMODE_MAX_WORKERS` 可设为正整数并按调用读取。容量耗尽时 FIFO 等待，最多 60 秒或更短的调用期限，等待计入执行期限；取消后仍占额度至实际退出。Pivane 不把它描述为整个工作台的并发上限。Node 专项通过公开 acquireWorker/onWorkerStarted 观测实际退出，并覆盖官方工厂间 FIFO、取消、等待超时与迟到启动保护；RPC 进程退出、已派发工具和维护生命周期继续由各自所有者核实。Pivane 工厂继续约束模型注册表与媒体确认权限。验证覆盖 100001 条压力、文本／console／返回值及图片顺序、完整输出文件、失败 store、取消与不重放。
 
 受管主会话在资源发现前初始化原生主题 schema validator；这一内部模块导出路径绑定已审查的 Pi 版本，不复制 schema。模型选择预检在保存的模型或新线程默认不可用时保留原生未选模型状态，完整目录和显式 set_model 仍可恢复；仅在 SDK 初始选择期间隐藏可用候选，真实目录与认证不变。
 
 公开 prompt/sendCustomMessage 适配在原生调用前保留带 UUID、会话身份与导航 nonce 的启动所有权，通过原生串行 stdout 发送私有开始／完成帧。真实 Promise 完成或进程退出释放；原生 settled、读取快照及超时不能提前释放。命名 prompt section 保留普通用户／custom wake 的组合顺序和更早的 forceSystemPrompt。Pi 升级须重新验证这些公开方法的完成语义及内部 transport／theme seam。
 
-pi-subagents 使用官方 child factory 与原生包解析；已移除旧 host alias 兼容层，Pivane 精确 MCP selector／授权仍保留。官方 calendar 模块需要根锁定的 Temporal polyfill；不安装 vendor 的开发依赖。记忆绑定 0.9.10：上游把 pi-tui 改为 peer，根依赖与独立 recipe 均直接提供宿主 TUI；数据库追加列、搜索只读与技能描述上限见[记忆适配](../PROFILE_MEMORY.md#upstream-0910-adaptation)。
+pi-subagents 使用官方 child factory 与原生包解析；0.80 的选定 MCP／Codemode wrapper 负责就绪等待，Pivane 经 SDK seam 注入受过滤的 factory，不另设轮询。销毁代次检查使启动期间已排队的创建失效；精确 MCP selector、工具 gate、授权与媒体限制仍由 Pivane 保留。单一精确 import 重定向仅用于直接工具 selector 解析，不扩大为通用 alias。官方 calendar 模块需要根锁定的 Temporal polyfill；不安装 vendor 的开发依赖。记忆绑定 0.9.10：上游把 pi-tui 改为 peer，根依赖与独立 recipe 均直接提供宿主 TUI；数据库追加列、搜索只读与技能描述上限见[记忆适配](../PROFILE_MEMORY.md#upstream-0910-adaptation)。
 
 ## 验证与交付
 
