@@ -127,6 +127,7 @@
                     }
                     field.name = key; field.dataset.initial = JSON.stringify(saved); field.disabled = scope === 'project' && !snapshot.trust.effective;
                     const row = tool ? tool.wrapper : label(translateUi(spec.label), field);
+                    if (spec.description) row.append(node('small', translateUi(spec.description)));
                     const value = key === 'defaultProjectTrust' ? ({ ask: translateUi("询问"), always: translateUi("默认信任"), never: translateUi("默认不信任") }[current.value] || current.value) : spec.type === 'tools' ? current.value?.join('、') || translateUi("未启用任何内置工具") : typeof current.value === 'boolean' ? current.value ? translateUi("开启") : translateUi("关闭") : Array.isArray(current.value) ? current.value.join('、') || translateUi("未限定") : current.value ?? translateUi("默认");
                     row.append(node('small', translateUi("当前配置：{0} · {1}", value, { project: translateUi("项目"), global: translateUi("全局"), default: translateUi("Pi 默认") }[current.source]))); grid.append(row);
                 }

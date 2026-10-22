@@ -6485,8 +6485,12 @@
         "Model connection method"
     ],
     [
-        "压缩预留 Token",
-        "Tokens reserved for compaction"
+        "压缩触发余量 Token",
+        "Compaction threshold headroom tokens"
+    ],
+    [
+        "仅用于自动压缩触发阈值：上下文窗口减去此余量。摘要输出使用模型的输出与上下文限制。",
+        "Used only for the automatic compaction threshold: the context window minus this headroom. Summary output uses the model's output and context limits."
     ],
     [
         "保留近期 Token",

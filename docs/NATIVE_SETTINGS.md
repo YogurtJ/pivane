@@ -148,7 +148,9 @@ GET 快照只投影允许字段，分别返回 global、project、配置有效�
 
 支持 defaultTools、codemode.mode/inlineBudget、仅全局的 defaultProjectTrust，以及 steeringMode/followUpMode、transport、compaction.enabled/reserveTokens/keepRecentTokens、retry.enabled/maxRetries/baseDelayMs/provider.timeoutMs/provider.maxRetryDelayMs、HTTP 流空闲超时、WebSocket 连接超时、图片自动缩放/阻止图片、enabledModels，以及仅全局的 enableInstallTelemetry。
 
-保存只提交修改的字段。null 移除当前范围覆盖；项目保存要求明确配置为可信。未知字段、非法枚举和范围拒绝。网页数值预算由响应 schema 提供：压缩预留/保留各 1024–1000000、Agent 重试 0–20、基础等待 100–600000ms、Provider 请求超时 1000–3600000ms、最大等待/HTTP idle 0–3600000ms、WS connect 0–600000ms。enabledModels 最多 200 项、每项 500 字符。没有改变 Pi 默认值。
+压缩触发余量 `compaction.reserveTokens` 只用于自动压缩的触发阈值：当估算上下文超过“模型上下文窗口减去此余量”时触发。Pi 1.4 的摘要请求按模型的输出与上下文限制生成，不再用该余量限制摘要输出。已有保存值保留；`compaction.keepRecentTokens` 仍控制保留的近期内容。
+
+保存只提交修改的字段。null 移除当前范围覆盖；项目保存要求明确配置为可信。未知字段、非法枚举和范围拒绝。网页数值预算由响应 schema 提供：压缩触发余量/近期保留各 1024–1000000、Agent 重试 0–20、基础等待 100–600000ms、Provider 请求超时 1000–3600000ms、最大等待/HTTP idle 0–3600000ms、WS connect 0–600000ms。enabledModels 最多 200 项、每项 500 字符。没有改变 Pi 默认值。
 
 配置修订涵盖 cwd、全局/项目 settings、trust 文件及启动 trust 覆盖。写入前比较，409 不自动覆盖。普通设置写入与原生 settings.json.lock 目录锁协作，保留未知 JSON，0600 备份和原子 rename；只管理原生位置，拒绝符号链接/非普通文件/损坏 JSON，单文件 1 MiB。文件内容不进入 API 错误或模型提示。
 

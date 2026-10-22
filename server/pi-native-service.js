@@ -15,7 +15,7 @@ const schema = {
     followUpMode: { label: '后续消息投递', type: 'select', choices: ['one-at-a-time', 'all'] },
     transport: { label: '模型连接方式', type: 'select', choices: ['auto', 'sse', 'websocket', 'websocket-cached'] },
     'compaction.enabled': { label: '自动压缩', type: 'boolean' },
-    'compaction.reserveTokens': { label: '压缩预留 Token', type: 'number', min: 1024, max: 1000000 },
+    'compaction.reserveTokens': { label: '压缩触发余量 Token', description: '仅用于自动压缩触发阈值：上下文窗口减去此余量。摘要输出使用模型的输出与上下文限制。', type: 'number', min: 1024, max: 1000000 },
     'compaction.keepRecentTokens': { label: '保留近期 Token', type: 'number', min: 1024, max: 1000000 },
     'retry.enabled': { label: '自动重试', type: 'boolean' },
     'retry.maxRetries': { label: 'Agent 最大重试次数', type: 'number', min: 0, max: 20 },

@@ -3,15 +3,7 @@ let nativeCompat;
 // boolean and literal controls; nested routing/request objects stay native-only.
 async function compatSchema(api) {
     const schemas = await (nativeCompat ||= import('@earendil-works/pi-ai/providers/compat-schema'));
-    const name = {
-        'openai-completions': 'OpenAICompletionsCompatSchema',
-        'openai-responses': 'OpenAIResponsesCompatSchema',
-        'azure-openai-responses': 'OpenAIResponsesCompatSchema',
-        'anthropic-messages': 'AnthropicMessagesCompatSchema',
-        'bedrock-converse-stream': 'BedrockCompatSchema',
-        'mistral-conversations': 'MistralConversationsCompatSchema'
-    }[api];
-    return projectCompatSchema(schemas[name]);
+    return projectCompatSchema(schemas.CompatSchemasByApi[api]);
 }
 function projectCompatSchema(native) {
     return Object.fromEntries(Object.entries(native?.properties || {}).flatMap(([key, field]) => {
