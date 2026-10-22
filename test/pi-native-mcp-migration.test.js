@@ -63,3 +63,25 @@ test('unsupported legacy transports and authorization policies fail before writi
         assert.throws(() => convert({ mcpServers: { fixture: server } }), /Unsupported/);
     }
 });
+
+test('UTF-8 BOM configs migrate through the native schema with byte-exact private backups', async t => {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-mcp-bom-')));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const originals = {
+        'mcp.json': Buffer.from('\uFEFF' + JSON.stringify({ unknown: '保留', mcpServers: { fixture: { requestTimeoutMs: 2000 } } })),
+        'settings.json': Buffer.from('\uFEFF' + JSON.stringify({ packages: ['npm:pi-mcp-adapter@2.33.0'], sentinel: '保留' })),
+        'defaults.json': Buffer.from('\uFEFF' + JSON.stringify({ mcpServers: { fixture: { command: 'synthetic-command' } } })),
+    };
+    for (const [name, bytes] of Object.entries(originals)) fs.writeFileSync(path.join(root, name), bytes);
+    const options = { agentDir: root, defaultsFile: path.join(root, 'defaults.json') };
+    assert.equal((await migrate(options)).applied, false);
+    for (const [name, bytes] of Object.entries(originals)) assert.deepEqual(fs.readFileSync(path.join(root, name)), bytes);
+    const result = await migrate({ ...options, apply: true });
+    for (const name of ['mcp.json', 'settings.json']) assert.deepEqual(fs.readFileSync(path.join(result.backup, name)), originals[name]);
+    const config = JSON.parse(fs.readFileSync(path.join(root, 'mcp.json'), 'utf8'));
+    assert.equal(config.unknown, '保留'); assert.equal(config.mcpServers.fixture.timeout, 2);
+    assert.equal(config.mcpServers.fixture.command, 'synthetic-command');
+    assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'settings.json'), 'utf8')).sentinel, '保留');
+    assert.deepEqual(fs.readFileSync(options.defaultsFile), originals['defaults.json']);
+    assert.equal((await migrate({ agentDir: root, apply: true })).applied, false);
+});

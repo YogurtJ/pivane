@@ -13,7 +13,7 @@ function read(file, optional = false) {
     if (optional && !fs.existsSync(file)) return { bytes: null, value: {} };
     const stat = fs.lstatSync(file);
     if (!stat.isFile() || stat.isSymbolicLink() || fs.realpathSync.native(file) !== path.resolve(file) || stat.size > 1024 * 1024) throw new Error('Migration requires bounded regular config files without symlinks');
-    const bytes = readSafe(file, 1024 * 1024); const value = JSON.parse(bytes.toString('utf8'));
+    const bytes = readSafe(file, 1024 * 1024); const value = JSON.parse(bytes.toString('utf8').replace(/^\uFEFF/, ''));
     if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error('Invalid configuration object');
     return { bytes, value };
 }

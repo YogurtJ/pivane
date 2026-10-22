@@ -28,9 +28,9 @@ async function loopback(t, respond) {
     const server = http.createServer(async (req, res) => {
         let raw = ''; for await (const chunk of req) raw += chunk;
         const body = JSON.parse(raw); requests.push(body);
-        const delta = respond(body, requests.length);
+        const { fixtureFinishReason, ...delta } = respond(body, requests.length);
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-        res.end(`data: ${JSON.stringify({ id: 'synthetic', choices: [{ index: 0, delta, finish_reason: delta.tool_calls ? 'tool_calls' : 'stop' }],
+        res.end(`data: ${JSON.stringify({ id: 'synthetic', choices: [{ index: 0, delta, finish_reason: fixtureFinishReason || (delta.tool_calls ? 'tool_calls' : 'stop') }],
             usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 } })}\n\ndata: [DONE]\n\n`);
     });
     server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -38,17 +38,18 @@ async function loopback(t, respond) {
     return { requests, model: { ...model, baseUrl: `http://127.0.0.1:${server.address().port}/v1` } };
 }
 async function session(t, selected, extra = {}) {
+    const { extensionFactories = [], settingsOverrides = {}, ...sessionOptions } = extra;
     const settings = sdk.SettingsManager.inMemory({ defaultTools: ['read', 'write'], enableInstallTelemetry: false,
-        compaction: { enabled: false }, retry: { enabled: false } });
+        compaction: { enabled: false }, retry: { enabled: false }, ...settingsOverrides });
     const loader = new sdk.DefaultResourceLoader({ cwd, agentDir, settingsManager: settings, noExtensions: true,
-        noSkills: true, noPromptTemplates: true, noContextFiles: true, noThemes: true });
+        noSkills: true, noPromptTemplates: true, noContextFiles: true, noThemes: true, extensionFactories });
     await loader.reload();
     const runtime = await sdk.ModelRuntime.create({ authPath: path.join(agentDir, 'auth.json'), modelsPath: null,
         modelsStorePath: path.join(agentDir, 'catalog.json'), allowModelNetwork: false });
     runtime.registerProvider('fixture', { api: 'openai-completions', baseUrl: selected.baseUrl, apiKey: 'synthetic', models: [selected] });
     await runtime.refresh({ allowNetwork: false });
     const created = await sdk.createAgentSession({ cwd, agentDir, modelRuntime: runtime, model: runtime.getModel('fixture', 'model'),
-        resourceLoader: loader, settingsManager: settings, sessionManager: sdk.SessionManager.inMemory(cwd), ...extra });
+        resourceLoader: loader, settingsManager: settings, sessionManager: sdk.SessionManager.inMemory(cwd), ...sessionOptions });
     await created.session.bindExtensions({ mode: 'print' });
     t.after(() => created.session.dispose());
     return created.session;
@@ -194,4 +195,112 @@ test('managed RPC reports native ambiguous scope diagnostics while keeping an ex
     assert.equal((await client.request('get_state')).model.provider, 'fixture_a');
     assert.match(client.stderrTail, /Pattern "same" matches several providers: fixture_a, fixture_b/);
     assert.doesNotMatch(client.stderrTail, /Bearer|apiKey/);
+});
+
+test('new extension tools join resumed native loadouts while hidden, inactive, removed and explicit selections remain authoritative', async t => {
+    const remote = await loopback(t, () => ({ content: 'Synthetic loadout.' }));
+    const { Type } = await import('typebox');
+    const definition = (name, extra = {}) => ({ name, label: name, description: 'Synthetic extension tool', parameters: Type.Object({}),
+        execute: async () => ({ content: [{ type: 'text', text: 'ok' }], details: {} }), ...extra });
+    const extension = pi => {
+        pi.registerTool(definition('fixture_new'));
+        pi.registerTool(definition('fixture_inactive', { defaultActive: false }));
+        pi.registerTool(definition('fixture_hidden', { exposure: 'hidden' }));
+        pi.registerTool(definition('fixture_removed'));
+        pi.on('session_start', () => { pi.registerTool(definition('fixture_late')); });
+    };
+    const manager = sdk.SessionManager.create(cwd, path.join(root, 'extension-sessions'));
+    manager.appendMessage({ role: 'user', content: 'Before upgrade.', timestamp: 1 });
+    manager.appendMessage(assistant([{ type: 'text', text: 'Saved branch.' }]));
+    manager.appendMessage({ role: 'system', content: '', toolsAdded: [definition('read'), definition('fixture_removed')], timestamp: 3 });
+    manager.appendMessage({ role: 'system', content: '', toolsRemoved: [definition('fixture_removed')], timestamp: 4 });
+    const kept = manager.appendMessage({ role: 'user', content: 'Retained after checkpoint.', timestamp: 5 });
+    manager.appendCompaction('Synthetic checkpoint', kept, 100);
+    const file = manager.getSessionFile(), original = fs.readFileSync(file);
+    const cases = [
+        [{}, ['fixture_late', 'fixture_new', 'read']],
+        [{ tools: ['read'] }, ['read']],
+        [{ tools: ['+fixture_inactive', '-read'] }, ['fixture_inactive', 'fixture_late', 'fixture_new']],
+        [{ excludeTools: ['fixture_new', 'fixture_late'] }, ['read']],
+        [{ noTools: 'all' }, []],
+        [{ noTools: 'builtin' }, ['fixture_late', 'fixture_new', 'fixture_removed']],
+    ];
+    for (const [options, expected] of cases) {
+        const current = await session(t, remote.model, { sessionManager: sdk.SessionManager.open(file), extensionFactories: [extension], ...options });
+        assert.deepEqual(current.getActiveToolNames().sort(), expected, JSON.stringify(options));
+        current.dispose();
+    }
+    const fresh = await session(t, remote.model, { extensionFactories: [extension] });
+    assert.deepEqual(fresh.getActiveToolNames().sort(), ['fixture_late', 'fixture_new', 'fixture_removed', 'read', 'write']);
+    assert.deepEqual(fs.readFileSync(file).subarray(0, original.length), original, 'loading appends native selection metadata without rewriting the saved branch');
+});
+
+test('length recovery omits paired tool results from outgoing context and keeps raw JSONL intact across resume', async t => {
+    const remote = await loopback(t, () => ({ content: 'Recovered synthetic reply.' }));
+    for (const resumed of [false, true]) {
+        const manager = sdk.SessionManager.create(cwd, path.join(root, 'length-sessions'));
+        const callId = `truncated-${resumed}`;
+        manager.appendMessage({ role: 'user', content: 'Check synthetic status.', timestamp: 1 });
+        const truncated = { ...assistant([{ type: 'toolCall', id: callId, name: 'read', arguments: { path: 'synthetic' } }]), stopReason: 'length' };
+        const callEntry = manager.appendMessage(truncated);
+        const resultEntry = manager.appendMessage({ role: 'toolResult', toolCallId: callId, toolName: 'read', isError: true,
+            content: [{ type: 'text', text: 'Not executed: output token limit reached.' }], timestamp: 3 });
+        const file = manager.getSessionFile(), original = fs.readFileSync(file);
+        const extension = pi => pi.on('session_before_compact', event => ({ compaction: {
+            summary: 'Synthetic recovery checkpoint', firstKeptEntryId: event.preparation.firstKeptEntryId,
+            tokensBefore: event.preparation.tokensBefore, details: {},
+        } }));
+        const current = await session(t, remote.model, { sessionManager: resumed ? sdk.SessionManager.open(file) : manager,
+            extensionFactories: [extension], settingsOverrides: { compaction: { enabled: true, reserveTokens: 1024, keepRecentTokens: 256 } } });
+        const offset = remote.requests.length;
+        await current.prompt('Continue after truncated response.');
+        const requests = remote.requests.slice(offset);
+        assert.ok(requests.length > 0);
+        for (const request of requests) assert.doesNotMatch(JSON.stringify(request.messages), new RegExp(callId));
+        current.dispose();
+        const raw = fs.readFileSync(file);
+        assert.deepEqual(raw.subarray(0, original.length), original, 'recovery appends edits without rewriting raw messages');
+        const loaded = sdk.SessionManager.open(file);
+        assert.deepEqual(loaded.getEntry(callEntry).message, truncated);
+        assert.equal(loaded.getEntry(resultEntry).message.toolCallId, callId);
+        const omitted = loaded.getEntries().filter(entry => entry.type === 'context_edit' && entry.replacement === null).map(entry => entry.targetId);
+        assert.ok(omitted.includes(callEntry)); assert.ok(omitted.includes(resultEntry));
+        assert.equal(loaded.buildSessionContext().messages.some(message => message.role === 'toolResult' && message.toolCallId === callId), false);
+        const reopened = await session(t, remote.model, { sessionManager: loaded });
+        await reopened.prompt('Check resumed projection.');
+        assert.doesNotMatch(JSON.stringify(remote.requests.at(-1).messages), new RegExp(callId));
+        reopened.dispose();
+    }
+});
+
+test('a fresh length-truncated tool call executes no effect and sends a paired failure to the provider', async t => {
+    const callId = 'fresh-truncated-call';
+    const remote = await loopback(t, (_body, count) => count === 1 ? { fixtureFinishReason: 'length',
+        tool_calls: [{ index: 0, id: callId, type: 'function', function: { name: 'fixture_effect', arguments: '{}' } }] }
+        : { content: 'Recovered from the fresh length stop.' });
+    const { Type } = await import('typebox');
+    const manager = sdk.SessionManager.create(cwd, path.join(root, 'fresh-length-sessions'));
+    let executed = 0;
+    const extension = pi => pi.on('session_before_compact', event => ({ compaction: {
+        summary: 'Synthetic checkpoint', firstKeptEntryId: event.preparation.firstKeptEntryId,
+        tokensBefore: event.preparation.tokensBefore, details: {},
+    } }));
+    const current = await session(t, remote.model, { sessionManager: manager, extensionFactories: [extension],
+        settingsOverrides: { compaction: { enabled: true, reserveTokens: 1024, keepRecentTokens: 256 } },
+        customTools: [{ name: 'fixture_effect', label: 'Effect', description: 'Counted synthetic effect', parameters: Type.Object({}),
+            execute: async () => { executed++; return { content: [], details: {} }; } }] });
+    await current.prompt('Exercise native length recovery.');
+    assert.equal(executed, 0);
+    assert.equal(remote.requests.length, 2);
+    const outgoing = remote.requests[1].messages;
+    assert.ok(outgoing.some(message => message.tool_calls?.some(call => call.id === callId)));
+    assert.ok(outgoing.some(message => message.role === 'tool' && message.tool_call_id === callId));
+    current.dispose();
+    const loaded = sdk.SessionManager.open(manager.getSessionFile());
+    const entries = loaded.getEntries();
+    const call = entries.find(entry => entry.message?.role === 'assistant' && entry.message.stopReason === 'length');
+    const result = entries.find(entry => entry.message?.role === 'toolResult' && entry.message.toolCallId === callId);
+    assert.ok(call); assert.ok(result); assert.equal(result.message.isError, true);
+    assert.match(JSON.stringify(loaded.buildSessionContext().messages), new RegExp(callId));
+    assert.equal(loaded.getEntries().some(entry => entry.type === 'context_edit'), false, 'successful native continuation keeps its valid call/result pair');
 });
