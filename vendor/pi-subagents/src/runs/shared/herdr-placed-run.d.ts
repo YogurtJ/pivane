@@ -265,4 +265,3 @@ export declare function reconnectHerdrPiSession(session: HerdrPiSession, launch:
 }): Promise<void>;
 export declare function createHerdrPiSession(launch: ChildSessionLaunch): Promise<ChildSession>;
 export declare function createPlacementAwareChildSessionFactory(local: ChildSessionFactory, createRemote?: (launch: ChildSessionLaunch) => Promise<ChildSession>): ChildSessionFactory;
-//# sourceMappingURL=herdr-placed-run.d.ts.map

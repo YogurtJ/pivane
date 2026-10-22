@@ -349,4 +349,3 @@ export function syncMissionFromAsyncCompletion(value) {
         ...(summary ? { summary } : {}),
     });
 }
-//# sourceMappingURL=lifecycle.js.map

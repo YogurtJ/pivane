@@ -14,4 +14,3 @@ export interface ChildToolDiagnostic {
 export declare function formatChildToolDiagnostic(diagnostic: ChildToolDiagnostic, options?: {
     host?: "parent" | "runner";
 }): string;
-//# sourceMappingURL=tool-availability.d.ts.map

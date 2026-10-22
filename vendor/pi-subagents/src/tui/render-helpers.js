@@ -98,4 +98,3 @@ export function renderFooter(text, width, theme) {
         theme.fg("dim", text) +
         theme.fg("border", "─".repeat(padRight) + "╯"));
 }
-//# sourceMappingURL=render-helpers.js.map

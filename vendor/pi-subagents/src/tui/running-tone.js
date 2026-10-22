@@ -20,4 +20,3 @@ export function runningTone(theme, childLevel) {
     const level = childLevel ?? mainThinkingLevelSource();
     return level ? theme.getThinkingBorderColor(level) : (text) => theme.fg("accent", text);
 }
-//# sourceMappingURL=running-tone.js.map

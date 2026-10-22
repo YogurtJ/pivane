@@ -18,4 +18,3 @@ export declare function grantSpawnBudget(state: SubagentState, config: Extension
     snapshot: SpawnBudgetSnapshot;
     error?: string;
 };
-//# sourceMappingURL=spawn-budget.d.ts.map

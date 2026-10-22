@@ -52,4 +52,3 @@ interface MissionActionContext {
 export declare function validateMissionLaunch(value: unknown): MissionLaunchInput;
 export declare function handleMissionAction(action: MissionAction, params: MissionActionParams, ctx: MissionActionContext): AgentToolResult<Details>;
 export {};
-//# sourceMappingURL=actions.d.ts.map

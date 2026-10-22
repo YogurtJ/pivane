@@ -6,4 +6,3 @@ export function currentCompletionOwnerId() {
     runtime[COMPLETION_OWNER_KEY] ??= randomUUID();
     return runtime[COMPLETION_OWNER_KEY];
 }
-//# sourceMappingURL=completion-owner.js.map

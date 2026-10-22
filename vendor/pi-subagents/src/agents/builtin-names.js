@@ -14,4 +14,3 @@ export const BUILTIN_AGENT_NAMES = [
     "scout",
     "worker",
 ];
-//# sourceMappingURL=builtin-names.js.map

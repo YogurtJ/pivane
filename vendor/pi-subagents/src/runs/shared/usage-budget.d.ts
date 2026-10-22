@@ -5,4 +5,3 @@ export declare function validateUsageBudgetConfig(value: unknown, label?: string
 };
 export declare function usageBudgetState(config: UsageBudgetConfig | undefined, totals: CostSummary | undefined): UsageBudgetState | undefined;
 export declare function usageBudgetExceededMessage(state: UsageBudgetState): string;
-//# sourceMappingURL=usage-budget.d.ts.map

@@ -32,4 +32,3 @@ export function createFileCoalescer(handler, defaultDelayMs, timerApi = defaultT
         },
     };
 }
-//# sourceMappingURL=file-coalescer.js.map

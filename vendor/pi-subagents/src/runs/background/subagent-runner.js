@@ -29,12 +29,13 @@ import { runSetupCommand } from "../shared/worktree-setup-command.js";
 import { DEFAULT_MAX_OUTPUT, SUBAGENT_LIFECYCLE_ARTIFACT_VERSION, truncateOutput, } from "../../shared/types.js";
 import { DEFAULT_CONTROL_CONFIG, buildControlEvent, deriveActivityState, claimControlNotification, formatControlIntercomMessage, formatControlNoticeMessage, shouldEmitOpenToolAttention, } from "../shared/subagent-control.js";
 import { isDynamicRunnerGroup, isParallelGroup, flattenSteps, mapConcurrent, aggregateParallelOutputs, MAX_PARALLEL_CONCURRENCY, DEFAULT_GLOBAL_CONCURRENCY_LIMIT, Semaphore, } from "../shared/parallel-utils.js";
-import { applyThinkingSuffix, projectLaunchResolvedChildExtensions, resolvePiLaunchToolPlan } from "../shared/child-tool-plan.js";
+import { applyThinkingSuffix, projectLaunchResolvedChildExtensions, resolvePiLaunchToolPlan, supervisorChannelDir } from "../shared/child-tool-plan.js";
+import { retainsChildCommand } from "../shared/child-commands.js";
 import { buildRunnerChildLaunch } from "./runner-child-launch.js";
 import { normalizeExtensionBindings } from "../shared/extension-bindings.js";
 import { runChildSession } from "./run-child-session.js";
 import { loadRunnerChildSessionFactory } from "./runner-child-sessions.js";
-import { SUBAGENT_CHILD_ENV } from "../shared/child-runtime-config.js";
+import { SUBAGENT_CHILD_ENV, SUBAGENT_RUNNER_PID_ENV } from "../shared/child-runtime-config.js";
 import { deriveChildSessionName } from "../../shared/child-session-name.js";
 import { alignForkedSessionCwd } from "../../shared/fork-session-cwd.js";
 import { outputEntryFromAsyncResult, resolveOutputReferences } from "../shared/chain-outputs.js";
@@ -85,6 +86,7 @@ const INTERCOM_DETACH_RECEIPT = "Detached for intercom coordination before task 
 // into one of them must register nothing; the variable marks the process as a
 // child host.
 process.env[SUBAGENT_CHILD_ENV] = "1";
+process.env[SUBAGENT_RUNNER_PID_ENV] = String(process.pid);
 function persistStepArtifacts(input) {
     const errors = {};
     if (input.artifactConfig?.includeOutput !== false) {
@@ -1689,6 +1691,7 @@ export async function runSubagent(config, childSessions) {
         ...(config.launchResolvedExtensions ? { launchResolvedExtensions: config.launchResolvedExtensions } : {}),
         ...(config.capabilityCeiling ? { capabilityCeiling: config.capabilityCeiling } : {}),
         ...(config.runFanoutBudget ? { runFanoutBudget: getRunFanoutBudgetSnapshot(config.runFanoutBudget) } : {}),
+        ...(config.revivalLease ? { revivedFrom: config.revivalLease.sourceRunId } : {}),
         ...(config.parentWorkflowRunId ? { parentWorkflowRunId: config.parentWorkflowRunId } : {}),
         ...(config.workflowKey ? { workflowKey: config.workflowKey } : {}),
         ...(config.lane ? { lane: config.lane } : {}),
@@ -2469,6 +2472,7 @@ export async function runSubagent(config, childSessions) {
         step.activityState = "needs_attention";
         statusPayload.activityState = "needs_attention";
         const toolDurationMs = Math.max(0, now - target.startedAt);
+        const toolCallId = target.key.startsWith("id:") ? target.key.slice(3) : undefined;
         appendControlEvent(buildControlEvent(omitUndefinedProperties({
             type: "needs_attention",
             from: previous,
@@ -2483,7 +2487,8 @@ export async function runSubagent(config, childSessions) {
             tokens: step.tokens?.total,
             toolCount: step.toolCount,
             currentTool: target.tool,
-            toolCallId: target.key.startsWith("id:") ? target.key.slice(3) : undefined,
+            toolCallId,
+            hasCommandController: Boolean(toolCallId && retainsChildCommand(supervisorChannelDir(id, step.agent, flatIndex), toolCallId)),
             currentToolDurationMs: toolDurationMs,
             currentPath: target.path,
         })));
@@ -2861,14 +2866,16 @@ export async function runSubagent(config, childSessions) {
             const resultToolName = event.message.toolName;
             const blockedTool = (typeof resultToolName === "string" && resultToolName.length > 0 ? resultToolName : undefined) ?? toolSnapshot?.tool;
             const configuredToolBudget = flatSteps[flatIndex]?.toolBudget;
-            if (configuredToolBudget && isToolBudgetBlockedMessage(configuredToolBudget, resultText, blockedTool)) {
+            const budgetBlocked = configuredToolBudget !== undefined && isToolBudgetBlockedMessage(configuredToolBudget, resultText, blockedTool);
+            if (budgetBlocked) {
                 step.toolBudget = toolBudgetState(configuredToolBudget, step.toolCount ?? 0, blockedTool);
                 step.toolBudgetBlocked = true;
                 statusPayload.toolBudget = step.toolBudget;
                 statusPayload.toolBudgetBlocked = true;
             }
             appendRecentStepOutput(step, resultText.split("\n").slice(-10));
-            if (toolSnapshot?.mutates && didMutatingToolFail(resultText)) {
+            // A budget block has its own signal; it is not a failing mutation.
+            if (toolSnapshot?.mutates && !budgetBlocked && didMutatingToolFail(event.message)) {
                 const state = mutatingFailureStates[flatIndex];
                 recordMutatingFailure(state, omitUndefinedProperties({
                     tool: toolSnapshot.tool,
@@ -2918,6 +2925,9 @@ export async function runSubagent(config, childSessions) {
                     step.model = observedModel;
                 }
             }
+            const { provider, model } = event.message;
+            if (typeof provider === "string" && provider && typeof model === "string" && model)
+                step.resolvedModel = { provider, model };
             const usage = event.message.usage;
             if (config.usageBudget) {
                 const known = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0;
@@ -4916,4 +4926,3 @@ export async function runConfiguredSubagentExecution(config, options) {
         }
     }
 }
-//# sourceMappingURL=subagent-runner.js.map

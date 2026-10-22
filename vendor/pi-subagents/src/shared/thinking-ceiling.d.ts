@@ -11,4 +11,3 @@ export interface ThinkingCeilingCheck {
     runId?: string;
 }
 export declare function assertThinkingWithinCeiling(input: ThinkingCeilingCheck): void;
-//# sourceMappingURL=thinking-ceiling.d.ts.map

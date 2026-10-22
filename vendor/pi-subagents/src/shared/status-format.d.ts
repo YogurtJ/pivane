@@ -7,4 +7,3 @@ export declare function formatParallelOutcome(steps: StepStatusLike[], total: nu
     showRunning?: boolean;
 }): string;
 export {};
-//# sourceMappingURL=status-format.d.ts.map

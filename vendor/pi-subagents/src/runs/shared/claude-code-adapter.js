@@ -253,4 +253,3 @@ export function resolveClaudeCodeLaunch(input) {
         parser: createClaudeCodeJsonlParser(),
     };
 }
-//# sourceMappingURL=claude-code-adapter.js.map

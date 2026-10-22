@@ -167,4 +167,3 @@ export interface ParallelTaskResult {
 }
 export declare function aggregateParallelOutputs(results: ParallelTaskResult[], headerFormat?: (index: number, agent: string) => string): string;
 export declare const MAX_PARALLEL_CONCURRENCY = 4;
-//# sourceMappingURL=parallel-utils.d.ts.map

@@ -137,4 +137,3 @@ export function getExternalJobProvider(name) {
     const safeName = validateString(name, "External-job provider name", MAX_PROVIDER_NAME_LENGTH);
     return listExternalJobProviders().find((provider) => provider.name === safeName);
 }
-//# sourceMappingURL=external-job-provider.js.map

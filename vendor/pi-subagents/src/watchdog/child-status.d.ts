@@ -51,4 +51,3 @@ export declare function acceptChildWatchdogEvent(input: {
 export declare function applyChildWatchdogMessage(current: ChildWatchdogStateSnapshot | undefined, message: unknown): ChildWatchdogStateSnapshot | undefined;
 export declare function unresolvedChildWatchdogBlockers(progress: Pick<ChildWatchdogProgress, "warnings"> | undefined): ChildWatchdogWarningSummary[];
 export declare function childWatchdogProgressForModel(progress: ChildWatchdogProgress | undefined): ChildWatchdogProgress | undefined;
-//# sourceMappingURL=child-status.d.ts.map

@@ -6,4 +6,3 @@ export const SUBAGENT_DELEGATION_STARTED_EVENT = "prompt-template:subagent:start
 export const SUBAGENT_DELEGATION_UPDATE_EVENT = "prompt-template:subagent:update";
 export const SUBAGENT_DELEGATION_RESPONSE_EVENT = "prompt-template:subagent:response";
 export const SUBAGENT_DELEGATION_CANCEL_EVENT = "prompt-template:subagent:cancel";
-//# sourceMappingURL=delegation.js.map

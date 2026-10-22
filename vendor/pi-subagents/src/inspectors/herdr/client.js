@@ -127,4 +127,3 @@ export async function detectHerdr(client, signal) {
         return error("HERDR_UNSUPPORTED_VERSION", `Herdr ${versionText} does not support raw inspector panes. Upgrade to Herdr 0.7.5 or newer.`);
     return { ok: true, data: { version, versionText } };
 }
-//# sourceMappingURL=client.js.map

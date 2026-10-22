@@ -17,4 +17,3 @@ export declare function buildSubagentToolPromptMetadata(config?: Pick<ExtensionC
 };
 export declare function resolveToolDescriptionMode(config: Pick<ExtensionConfig, "toolDescriptionMode">, options?: ToolDescriptionOptions): ToolDescriptionMode;
 export declare function buildSubagentToolDescription(config?: Pick<ExtensionConfig, "toolDescriptionMode">, options?: ToolDescriptionOptions): string;
-//# sourceMappingURL=tool-description.d.ts.map

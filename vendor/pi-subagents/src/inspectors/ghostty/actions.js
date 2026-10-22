@@ -60,4 +60,3 @@ export async function openGhosttyInspector(context, launch, params, runner = def
         return result(`Ghostty inspector error: ${message}. ${failureHint}`, true);
     }
 }
-//# sourceMappingURL=actions.js.map

@@ -2745,4 +2745,3 @@ export function discoverAgents(cwd, scope, preferredModelProvider, options = {})
 export function discoverAgentsAll(cwd, preferredModelProvider, options = {}) {
     return discoverAgentSnapshot(cwd, "both", preferredModelProvider, options).all;
 }
-//# sourceMappingURL=agents.js.map

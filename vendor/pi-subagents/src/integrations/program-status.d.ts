@@ -28,4 +28,3 @@ export interface ProgramStatusReporter {
     dispose(shutdownReason?: string): void;
 }
 export declare function registerProgramStatusReporter(options: ProgramStatusReporterOptions): ProgramStatusReporter;
-//# sourceMappingURL=program-status.d.ts.map

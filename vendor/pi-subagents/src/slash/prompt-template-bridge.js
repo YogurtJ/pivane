@@ -390,4 +390,3 @@ export function registerPromptTemplateDelegationBridge(options) {
         },
     };
 }
-//# sourceMappingURL=prompt-template-bridge.js.map

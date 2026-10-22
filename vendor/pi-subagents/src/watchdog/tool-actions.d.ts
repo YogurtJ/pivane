@@ -15,4 +15,3 @@ export declare function handleWatchdogToolAction(action: string, params: Watchdo
 export declare const WATCHDOG_TOOL_ACTIONS: readonly ["watchdog.status", "watchdog.check", "watchdog.configure", "watchdog.recommend-model"];
 export declare const WATCHDOG_THINKING_VALUES: readonly ["inherit", "off", "minimal", "low", "medium", "high", "xhigh", "max"];
 export {};
-//# sourceMappingURL=tool-actions.d.ts.map

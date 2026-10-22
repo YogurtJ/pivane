@@ -97,4 +97,3 @@ export function resolveCursorAgentLaunch(input) {
         parser: createCursorAgentJsonlParser(),
     };
 }
-//# sourceMappingURL=cursor-agent-adapter.js.map

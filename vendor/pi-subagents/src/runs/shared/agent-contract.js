@@ -33,4 +33,3 @@ export function attachContractProjections(result) {
         result.effects = {};
     return result;
 }
-//# sourceMappingURL=agent-contract.js.map

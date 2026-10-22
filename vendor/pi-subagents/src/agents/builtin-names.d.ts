@@ -1,2 +1,1 @@
 export declare const BUILTIN_AGENT_NAMES: readonly ["advisor", "claude-code", "claude-code-writer", "codex-exec", "codex-exec-writer", "cursor-agent", "cursor-agent-writer", "delegate", "evidence-auditor", "oracle", "researcher", "reviewer", "scout", "worker"];
-//# sourceMappingURL=builtin-names.d.ts.map

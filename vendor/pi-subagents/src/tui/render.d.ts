@@ -58,4 +58,3 @@ export declare function renderSubagentResult(result: AgentToolResult<Details>, o
     expanded: boolean;
 }, theme: Theme, frame?: number, rendererConfig?: MainWindowRendererConfig, foregroundDetachShortcut?: string): Component;
 export {};
-//# sourceMappingURL=render.d.ts.map

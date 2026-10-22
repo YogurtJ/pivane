@@ -124,4 +124,3 @@ export function validateAsyncStatusLaneMetadata(status, label = "async status") 
             normalizeWorktreeStatusReference({ worktreePath: step.worktreePath, branch: step.branch, ...(step.provider ? { provider: step.provider } : {}), ...(step.naming ? { naming: step.naming } : {}) }, `${label}.steps[${index}]`);
     }
 }
-//# sourceMappingURL=lane-metadata.js.map

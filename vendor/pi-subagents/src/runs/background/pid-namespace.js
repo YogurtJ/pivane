@@ -17,4 +17,3 @@ export function currentPidNamespaceScope() {
     }
     return cachedScope;
 }
-//# sourceMappingURL=pid-namespace.js.map

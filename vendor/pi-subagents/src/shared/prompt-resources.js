@@ -8,4 +8,3 @@ export function getPromptDirectories(cwd) {
         project: path.join(getProjectConfigDir(cwd), "prompts"),
     };
 }
-//# sourceMappingURL=prompt-resources.js.map

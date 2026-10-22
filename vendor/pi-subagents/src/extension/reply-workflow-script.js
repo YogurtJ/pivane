@@ -67,4 +67,3 @@ function workflowBlocks(text) {
     }
     return { tagged, plain, unclosed: fence?.kind === "tagged" || (fence?.kind === "plain" && tagged.length === 0) };
 }
-//# sourceMappingURL=reply-workflow-script.js.map

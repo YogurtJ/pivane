@@ -45,4 +45,3 @@ export declare function unregisterExternalRun(sessionId: string, id: string): bo
 export declare function snapshotExternalRuns(sessionId: string, options?: ExternalRunSnapshotOptions): readonly ExternalRun[];
 /** Alias for callers that prefer list terminology. */
 export declare const listExternalRuns: typeof snapshotExternalRuns;
-//# sourceMappingURL=external-runs.d.ts.map

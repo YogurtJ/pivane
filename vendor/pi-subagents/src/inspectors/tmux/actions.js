@@ -179,4 +179,3 @@ export async function closeTmuxInspector(context, client) {
     fs.rmSync(bindingPath(context.target.asyncDir, context.target.index), { force: true });
     return result(`Closed tmux inspector pane ${binding.paneId} for async run ${context.target.runId}. The subagent run was not stopped.`);
 }
-//# sourceMappingURL=actions.js.map

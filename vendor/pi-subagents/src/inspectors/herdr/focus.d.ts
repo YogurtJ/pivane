@@ -22,4 +22,3 @@ export declare function herdrPaneFocusTarget(value: unknown): {
     workspaceId?: string;
 };
 export declare function focusHerdrPane(client: HerdrClient, paneId: string, signal?: AbortSignal): Promise<HerdrPaneFocusResult>;
-//# sourceMappingURL=focus.d.ts.map

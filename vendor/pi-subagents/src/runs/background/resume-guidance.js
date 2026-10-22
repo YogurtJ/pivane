@@ -1,10 +1,11 @@
 import * as fs from "node:fs";
 import { readAsyncRecoveryDescriptor } from "./async-resume.js";
+import { errorWithoutReplyText } from "../shared/model-resolution.js";
 const INTERCOM_DETACH_ERROR = "detached for intercom coordination";
 function isIntercomDetached(run) {
     return run.steps.some((step) => step.execution?.status === "detached"
-        || step.error?.toLowerCase().includes(INTERCOM_DETACH_ERROR) === true)
-        || run.error?.toLowerCase().includes(INTERCOM_DETACH_ERROR) === true;
+        || errorWithoutReplyText(step.error)?.toLowerCase().includes(INTERCOM_DETACH_ERROR) === true)
+        || errorWithoutReplyText(run.error)?.toLowerCase().includes(INTERCOM_DETACH_ERROR) === true;
 }
 function formatIntercomDetachGuidance(run) {
     if (!isIntercomDetached(run))
@@ -54,4 +55,3 @@ export function formatResumeFirstFailedRunsNote(runs) {
             : ` Resume-first: ${resumable.length} failed runs have persisted child sessions. Inspect status and revive each original run before reporting failure or launching a replacement. Launch a replacement only if revive fails or the user explicitly asks for one.`;
     return `${detachGuidance.length > 0 ? ` ${detachGuidance.join(" ")}` : ""}${resumeGuidance}`;
 }
-//# sourceMappingURL=resume-guidance.js.map

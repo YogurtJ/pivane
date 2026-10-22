@@ -127,4 +127,3 @@ export function buildWorkflowChatProgressRows(trace, preflight) {
     }
     return [...rows.values()];
 }
-//# sourceMappingURL=chat-progress.js.map

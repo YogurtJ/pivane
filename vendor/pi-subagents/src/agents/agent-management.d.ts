@@ -25,4 +25,3 @@ export declare function handleCreate(params: ManagementParams, ctx: ManagementCo
 export declare function handleUpdate(params: ManagementParams, ctx: ManagementContext): AgentToolResult<Details>;
 export declare function handleManagementAction(action: string, params: ManagementParams, ctx: ManagementContext): AgentToolResult<Details>;
 export {};
-//# sourceMappingURL=agent-management.d.ts.map

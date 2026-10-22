@@ -350,4 +350,3 @@ export async function runExternalJob(input) {
         input.registerStop?.(undefined);
     }
 }
-//# sourceMappingURL=external-job-runner.js.map

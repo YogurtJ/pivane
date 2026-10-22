@@ -33,6 +33,10 @@ export interface AsyncStatusSnapshotNode {
     updatedAt?: number;
     endedAt?: number;
     activity?: AsyncStatusSnapshotActivity;
+    /** Step nodes only: the agent the child runs as, and the model and thinking level it reports. */
+    agent?: string;
+    model?: string;
+    thinking?: ThinkingLevel;
     hostStep?: AsyncStatusSnapshotHostStep;
     children?: AsyncStatusSnapshotNode[];
 }
@@ -94,4 +98,3 @@ export interface AsyncStatusWorkflowRow {
 export declare function projectAsyncWorkflowRows(steps: readonly AsyncJobStep[] | undefined, hostStepsOrPreflight?: readonly HostStepNode[] | WorkflowGraphSnapshot | WorkflowPreflight, preflightOverride?: WorkflowPreflight): AsyncStatusWorkflowRow[];
 /** Project already-loaded async status facts into the bounded public snapshot shape. */
 export declare function projectAsyncStatusSnapshot(jobs: Iterable<AsyncJobState>, options?: AsyncStatusSnapshotOptions): AsyncStatusSnapshot;
-//# sourceMappingURL=async-status-projection.d.ts.map

@@ -68,4 +68,3 @@ export declare function connectHerdrMachine(machine: HerdrMachineReference, opti
     sshBin?: string;
     env?: NodeJS.ProcessEnv;
 }): Promise<HerdrForwardedConnection>;
-//# sourceMappingURL=herdr-connection.d.ts.map

@@ -256,4 +256,3 @@ export function formatRunFanoutBudget(snapshot) {
 function formatRunFanoutRejection(rejection) {
     return `Run fan-out limit reached at ${rejection.path} (${rejection.used}/${rejection.limit} used; ${rejection.requested} requested, ${rejection.remaining} remaining). No children from this admission group were started. Start a new top-level run or raise config.maxSubagentSpawnsPerRun.`;
 }
-//# sourceMappingURL=run-fanout-budget.js.map

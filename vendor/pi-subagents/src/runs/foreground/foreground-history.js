@@ -163,4 +163,3 @@ export function restoreForegroundRunHistory(state, options = {}) {
     }
     return restored;
 }
-//# sourceMappingURL=foreground-history.js.map

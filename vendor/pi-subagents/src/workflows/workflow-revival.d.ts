@@ -29,4 +29,3 @@ export declare function formatWorkflowKeyRevival(revival: WorkflowKeyRevival): s
 export declare function withWorkflowRevivals<T extends WorkflowScriptChildResult>(asyncDirRoot: string, workflowRunId: string, children: T[]): Array<T & {
     revival?: WorkflowKeyRevival;
 }>;
-//# sourceMappingURL=workflow-revival.d.ts.map

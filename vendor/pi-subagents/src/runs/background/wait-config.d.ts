@@ -6,4 +6,3 @@ export interface ResolvedWaitToolConfig {
     defaultTimeoutMs?: number;
 }
 export declare function resolveWaitToolConfig(config?: WaitToolConfig, env?: Record<string, string | undefined>): ResolvedWaitToolConfig;
-//# sourceMappingURL=wait-config.d.ts.map

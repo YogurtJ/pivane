@@ -10,4 +10,3 @@ export declare function resolvePermissionRules(globalConfig?: PermissionConfig, 
 export declare function permissionDecision(rules: PermissionRules | undefined, toolName: string): PermissionDecision;
 export declare function permissionArgsPreview(input: unknown): string;
 export declare function appendPermissionAudit(filePath: string | undefined, record: Record<string, unknown>): void;
-//# sourceMappingURL=permissions.d.ts.map

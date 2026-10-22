@@ -136,4 +136,3 @@ export function finishForegroundChild(control, index) {
     }
     control.updatedAt = Date.now();
 }
-//# sourceMappingURL=foreground-control.js.map

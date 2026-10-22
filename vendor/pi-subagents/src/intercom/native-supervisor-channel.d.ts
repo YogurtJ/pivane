@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { ChildSupervisorMetadata } from "../runs/shared/child-runtime-config.ts";
+import type { ParentWake } from "../shared/parent-wake.ts";
 import { type ControlEvent, type SubagentState } from "../shared/types.ts";
 import { type SupervisorReason } from "./supervisor-ui.ts";
 export declare const NATIVE_SUPERVISOR_TOOL_NAME = "subagent_supervisor";
@@ -36,7 +37,7 @@ interface NativeSupervisorChannelDeps {
     };
     /** Retained scheduled states for the current runtime owner, never foreign owners. */
     getCurrentOwnerStates?: () => Iterable<SubagentState>;
-    parentWake?: Pick<ExtensionAPI, "sendMessage">;
+    parentWake?: Pick<ParentWake, "sendMessage">;
     platform?: NodeJS.Platform;
     watch?: SupervisorWatch;
     timers?: Pick<typeof globalThis, "setInterval" | "clearInterval" | "setImmediate" | "clearImmediate">;
@@ -77,4 +78,3 @@ export declare function createNativeSupervisorChannel(pi: ExtensionAPI, state: S
     getSupervisorRequestState: (event: ControlEvent) => SupervisorRequestState;
 };
 export {};
-//# sourceMappingURL=native-supervisor-channel.d.ts.map

@@ -66,4 +66,3 @@ export function buildAdvertisedAgentPrompt(agents, capabilityCeiling) {
     const body = buildAdvertisedAgentCatalog(agents, capabilityCeiling);
     return body === undefined ? undefined : wrapAdvertisedAgentCatalog(body);
 }
-//# sourceMappingURL=advertised-agent-prompt.js.map

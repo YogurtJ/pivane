@@ -10,7 +10,7 @@ import { ensureArtifactsDir, formatOutputArtifactContent, getArtifactPaths, writ
 import { createChildTranscriptWriter } from "../../shared/child-transcript.js";
 import { DEFAULT_MAX_OUTPUT, INTERCOM_DETACH_REQUEST_EVENT, INTERCOM_DETACH_RESPONSE_EVENT, truncateOutput, } from "../../shared/types.js";
 import { DEFAULT_CONTROL_CONFIG, buildControlEvent, claimControlNotification, deriveActivityState, shouldEmitOpenToolAttention, shouldNotifyControlEvent, } from "../shared/subagent-control.js";
-import { getFinalOutput, findLatestSessionFile, detectSubagentError, hasEmptyTerminalAssistantResponse, formatEmptyTerminalAssistantResponseError, extractToolArgsPreview, extractTextFromContent, MAX_STREAMED_RECENT_TOOLS, boundStreamedRecentTools, boundStreamedRecentOutput, boundStreamedToolCalls, } from "../../shared/utils.js";
+import { getFinalOutput, findLatestSessionFile, detectSubagentError, hasEmptyTerminalAssistantResponse, formatEmptyTerminalAssistantResponseError, extractToolArgsPreview, assistantMessageError, extractTextFromContent, MAX_STREAMED_RECENT_TOOLS, boundStreamedRecentTools, boundStreamedRecentOutput, boundStreamedToolCalls, } from "../../shared/utils.js";
 import { resolveSkillsWithFallback } from "../../agents/skills.js";
 import { createPartialOutputTracker, formatPartialOutput } from "../shared/partial-output.js";
 import { effectiveToolTimeoutMs, formatToolTimeoutMessage, resolveToolTimeoutMs, toolTimeoutCallKey, toolTimeoutFromEnv } from "../shared/tool-timeout.js";
@@ -18,7 +18,8 @@ import { preflightLaunchCwd } from "../shared/launch-cwd.js";
 import { createJsonlWriter } from "../../shared/jsonl-writer.js";
 import { createOrcaProgressTab } from "../shared/orca-progress-tabs.js";
 import { resolvePermissionRules } from "../shared/permissions.js";
-import { applyThinkingSuffix, deriveForkPromptCacheKey } from "../shared/child-tool-plan.js";
+import { applyThinkingSuffix, deriveForkPromptCacheKey, supervisorChannelDir } from "../shared/child-tool-plan.js";
+import { retainsChildCommand } from "../shared/child-commands.js";
 import { deriveChildSessionName } from "../../shared/child-session-name.js";
 import { assertAgentAllowedByCapabilityCeiling, intersectSubagentCapabilityCeilings, resolveCurrentSubagentCapabilityCeiling } from "../shared/capability-ceiling.js";
 import { qualifyModelWithProvider, resolveEffectiveThinking } from "../../shared/model-info.js";
@@ -485,8 +486,12 @@ async function runSingleAttempt(runtimeCwd, agent, task, model, options, shared)
                 timeoutHardFinishTimer = undefined;
             }
         };
+        const startup = new AbortController();
         const abortChild = () => {
-            if (!session || sessionSettled || lifecycleFinished)
+            if (sessionSettled || lifecycleFinished)
+                return;
+            startup.abort();
+            if (!session)
                 return;
             void session.abort().catch(() => {
                 // The session settles through its prompt promise; abort failures are not separately actionable.
@@ -795,6 +800,7 @@ async function runSingleAttempt(runtimeCwd, agent, task, model, options, shared)
                 toolCount: progress.toolCount,
                 currentTool: input.currentTool ?? progress.currentTool,
                 toolCallId: input.toolCallId,
+                hasCommandController: input.hasCommandController,
                 currentToolDurationMs: input.currentToolDurationMs ?? currentToolDurationMs(now),
                 currentPath: input.currentPath ?? progress.currentPath,
                 recentFailureSummary: input.recentFailureSummary,
@@ -849,11 +855,13 @@ async function runSingleAttempt(runtimeCwd, agent, task, model, options, shared)
             if (toolAttentionTarget) {
                 toolAttentionTarget.attentionEmitted = true;
                 const durationMs = Math.max(0, now - toolAttentionTarget.startedAt);
+                const toolCallId = toolAttentionTarget.key.startsWith("id:") ? toolAttentionTarget.key.slice(3) : undefined;
                 return emitNeedsAttention(now, {
                     message: `${agent.name} has had tool '${toolAttentionTarget.tool}' open for ${Math.floor(durationMs / 1000)}s`,
                     reason: "tool_open_threshold",
                     currentTool: toolAttentionTarget.tool,
-                    toolCallId: toolAttentionTarget.key.startsWith("id:") ? toolAttentionTarget.key.slice(3) : undefined,
+                    toolCallId,
+                    hasCommandController: Boolean(toolCallId && retainsChildCommand(supervisorChannelDir(options.runId, agent.name, options.index ?? 0), toolCallId)),
                     currentPath: toolAttentionTarget.path,
                     currentToolDurationMs: durationMs,
                 });
@@ -1048,7 +1056,7 @@ async function runSingleAttempt(runtimeCwd, agent, task, model, options, shared)
                         }
                     }
                     if (evt.message.errorMessage)
-                        assistantError = evt.message.errorMessage;
+                        assistantError = assistantMessageError(evt.message);
                     else if (hasToolCall && evt.message.stopReason === "toolUse") {
                         // A recovered request can finish via a terminating tool, without a text stop.
                         assistantError = undefined;
@@ -1081,12 +1089,14 @@ async function runSingleAttempt(runtimeCwd, agent, task, model, options, shared)
                     // The result message's own tool name is authoritative; the pending snapshot is only a fallback.
                     const resultToolName = evt.message.toolName;
                     const blockedTool = (typeof resultToolName === "string" && resultToolName.length > 0 ? resultToolName : undefined) ?? toolSnapshot?.tool;
-                    if (options.toolBudget && isToolBudgetBlockedMessage(options.toolBudget, resultText, blockedTool)) {
+                    const budgetBlocked = Boolean(options.toolBudget && isToolBudgetBlockedMessage(options.toolBudget, resultText, blockedTool));
+                    if (options.toolBudget && budgetBlocked) {
                         result.toolBudgetBlocked = true;
                         result.toolBudget = toolBudgetState(options.toolBudget, Math.max(progress.toolCount, options.toolBudget.hard + 1), blockedTool);
                     }
                     appendRecentOutput(progress, resultText.split("\n").slice(-10));
-                    if (toolSnapshot?.mutates && didMutatingToolFail(resultText)) {
+                    // A budget block has its own signal; it is not a failing mutation.
+                    if (toolSnapshot?.mutates && !budgetBlocked && didMutatingToolFail(evt.message)) {
                         recordMutatingFailure(mutatingFailures, {
                             tool: toolSnapshot.tool,
                             path: toolSnapshot.path,
@@ -1348,6 +1358,7 @@ async function runSingleAttempt(runtimeCwd, agent, task, model, options, shared)
         void (async () => {
             try {
                 const input = createReportedChildSessionInput(launch, shared.transcriptWriter);
+                input.signal = startup.signal;
                 const created = await childSessions.create(input);
                 if (lifecycleFinished) {
                     void created.dispose();
@@ -2178,4 +2189,3 @@ export async function runSync(runtimeCwd, agents, agentName, task, options) {
     });
     return Promise.race([authoritativeCompletion, receipt]);
 }
-//# sourceMappingURL=execution.js.map

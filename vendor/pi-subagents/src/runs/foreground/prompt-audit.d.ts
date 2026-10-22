@@ -30,4 +30,3 @@ export declare function registerLivePromptAudit(control: ForegroundRunControl, i
 export declare function updateLiveEffectivePrompt(control: ForegroundRunControl, index: number, effectivePrompt: string): void;
 export declare function getLivePromptAudit(control: ForegroundRunControl, index: number): LivePromptAudit | undefined;
 export declare function removeLivePromptAudit(control: ForegroundRunControl, index: number): void;
-//# sourceMappingURL=prompt-audit.d.ts.map

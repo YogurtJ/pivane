@@ -341,4 +341,3 @@ export declare function discoverAgentSnapshot(cwd: string, scope: AgentScope, pr
 }): AgentDiscoverySnapshot;
 export declare function discoverAgents(cwd: string, scope: AgentScope, preferredModelProvider?: string, options?: AgentDiscoveryOptions): AgentDiscoveryResult;
 export declare function discoverAgentsAll(cwd: string, preferredModelProvider?: string, options?: AgentDiscoveryOptions): AgentDiscoveryAllResult;
-//# sourceMappingURL=agents.d.ts.map

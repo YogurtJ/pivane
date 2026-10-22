@@ -1,6 +1,6 @@
-// Version-reviewed pi-subagents child-session injection seam. Upstream owns
+// Pi 1.4.0 / pi-subagents 0.80.0 child-session injection seam. Upstream owns
 // launch, storage, ownership, cancellation, notifications and disposal; this
-// adapter only supplies a Pi SDK ResourceLoader with Pivane's package selection.
+// adapter supplies the resource selection and authorized native tool factories.
 import './pi-subagent-native-loader.mjs';
 import path from 'node:path';
 import networkTransport from './workspace-network-transport.js';
@@ -10,13 +10,24 @@ import { createPlacementChildSessionFactory } from '../vendor/pi-subagents/src/r
 import resources from './pi-bundled-resources.js';
 import { managedLoaderOptions } from './pi-bundled-loader.mjs';
 import { childNativeExtensions, nativeBuiltins } from './pi-native-mcp.mjs';
+import { wrapCodemodeExtension } from './pi-codemode-policy.mjs';
 
 class ChildResourceLoader {
     constructor(input) {
         const policy = childPolicy;
         const nativeFactories = childNativeExtensions({ cwd: input.cwd, agentDir: input.agentDir, settings: input.settingsManager,
             allowedTools: policy?.tools, excludeTools: policy?.excludeTools,
-            ambientExtensions: policy?.ambientExtensions, denyExtensions: policy?.runtime?.capabilityCeiling?.denyExtensions, captureApi: pi => { if (policy) policy.nativeApi = pi; } });
+            ambientExtensions: policy?.ambientExtensions, denyExtensions: policy?.runtime?.capabilityCeiling?.denyExtensions });
+        if (policy) policy.nativeMcp = nativeFactories.find(entry => entry.name === 'mcp');
+        // 0.80 owns readiness through its MCP wrapper and Codemode metadata.
+        // Its SDK factory below supplies our filtered MCP implementation; keep
+        // those two wrappers for selected tools without loading a second transport.
+        const readiness = Boolean(policy?.builtinMcpTools?.length && policy.nativeMcp);
+        // Upstream appends these wrappers after launch.hooks. Preserve their exact
+        // entries, not a same-named hook that the previous adapter also filtered.
+        const upstreamFactories = new Set(readiness ? ['mcp', 'codemode'].map(name =>
+            (input.extensionFactories || []).findLast(entry => entry.name === name)) : []);
+        const upstreamBuiltin = entry => readiness && ['mcp', 'codemode'].includes(entry.name);
         const arrays = { additionalExtensionPaths: [], additionalSkillPaths: [], additionalPromptTemplatePaths: [], additionalThemePaths: [] };
         const loader = new sdk.DefaultResourceLoader({ ...input, ...arrays,
             settingsManager: resources.settingsView(input.settingsManager, input.cwd, input.agentDir),
@@ -28,10 +39,10 @@ class ChildResourceLoader {
                 return input.settingsManager.isProjectTrusted() ? resolved : { ...resolved,
                     agentsFiles: resolved.agentsFiles.filter(entry => path.dirname(entry.path) === input.agentDir) };
             },
-            // The upstream native-MCP/Codemode factories use the same names. Keep
-            // Pivane's filtered factories, including the nested-call permission gate.
-            extensionFactories: [...nativeFactories, pi => registerModelSpeed(pi, { agentDir: input.agentDir, preserveExisting: false }),
-                ...(input.extensionFactories || []).filter(entry => !nativeBuiltins.includes(entry.name) && !nativeFactories.some(native => native.name === entry.name))] });
+            extensionFactories: [...nativeFactories.filter(entry => !upstreamBuiltin(entry)),
+                pi => registerModelSpeed(pi, { agentDir: input.agentDir, preserveExisting: false }),
+                ...(input.extensionFactories || []).filter(entry => upstreamFactories.has(entry)
+                    || (!nativeBuiltins.includes(entry.name) && !nativeFactories.some(native => native.name === entry.name)))] });
         return new Proxy(loader, { get(target, prop) {
             if (prop === 'reload') return async () => {
                 await input.settingsManager.reload();
@@ -52,27 +63,32 @@ class ChildResourceLoader {
 let childPolicy;
 let creating = Promise.resolve();
 export default function childFactory() {
-    const upstream = createPlacementChildSessionFactory({ loadPiCodingAgent: async () => ({ ...sdk, DefaultResourceLoader: ChildResourceLoader }) });
+    const upstream = createPlacementChildSessionFactory({ loadPiCodingAgent: async () => {
+        const policy = childPolicy;
+        return { ...sdk, DefaultResourceLoader: ChildResourceLoader,
+            createMcpExtension: () => pi => {
+                if (!policy?.nativeMcp) throw new Error('Selected native MCP tools are outside this child\'s authorized extensions.');
+                return policy.nativeMcp.factory(pi);
+            },
+            createCodemodeExtension: () => wrapCodemodeExtension(sdk.createCodemodeExtension()) };
+    } });
+    let disposals = 0;
     return { create(launch) {
+        const generation = disposals;
+        const checkDisposal = () => {
+            if (generation !== disposals) throw new Error('The child session factory was disposed before this launch started.');
+        };
         // The vendor factory serializes env/loading internally. Also serialize
         // policy capture so concurrently created children cannot borrow tools.
         const task = creating.catch(() => {}).then(async () => {
+            checkDisposal();
             await networkTransport.initializeSdkNetwork();
+            checkDisposal();
             const policy = { ...launch };
             childPolicy = policy;
-            try {
-                const child = await upstream.create(launch);
-                // Native MCP connects asynchronously. Ensure granted tools exist
-                // before the vendor's agent_start strict-registry check runs.
-                const required = (launch.tools || []).filter(name => name.startsWith('mcp__'));
-                const deadline = Date.now() + 10000;
-                while (required.length && required.some(name => !policy.nativeApi?.getAllTools().some(tool => tool.name === name && tool.exposure !== 'hidden'))) {
-                    if (Date.now() >= deadline) { await child.dispose(); throw new Error('Authorized native MCP child tools did not connect; no model request was sent.'); }
-                    await new Promise(resolve => setTimeout(resolve, 25));
-                }
-                return child;
-            } finally { childPolicy = undefined; }
+            try { return await upstream.create(launch); }
+            finally { childPolicy = undefined; }
         });
         creating = task; return task;
-    }, dispose: () => upstream.dispose() };
+    }, dispose() { disposals += 1; return upstream.dispose(); } };
 }

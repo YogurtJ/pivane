@@ -125,4 +125,3 @@ export declare function formatWorkflowChecklistBottleneck(item: WorkflowChecklis
 export declare function formatWorkflowChecklistText(projection: WorkflowChecklistProjection, indent?: string, options?: {
     includeItems?: boolean;
 }): string[];
-//# sourceMappingURL=workflow-checklist.d.ts.map

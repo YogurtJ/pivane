@@ -21,7 +21,7 @@ import { openSubagentsAdmin } from "./subagents-admin.js";
 import { SUBAGENT_GUIDE_TOPICS } from "../extension/subagent-guide.js";
 import { getInspectorPlugins } from "../inspectors/plugins.js";
 import { applySlashUpdate, buildSlashInitialResult, failSlashResult, finalizeSlashResult, } from "./slash-live-state.js";
-import { SLASH_RESULT_TYPE, SLASH_TEXT_RESULT_TYPE, SLASH_SUBAGENT_CANCEL_EVENT, SLASH_SUBAGENT_REQUEST_EVENT, SLASH_SUBAGENT_RESPONSE_EVENT, SLASH_SUBAGENT_STARTED_EVENT, SLASH_SUBAGENT_UPDATE_EVENT, DIRS, } from "../shared/types.js";
+import { SLASH_RESULT_TYPE, SLASH_TEXT_RESULT_TYPE, SLASH_TEXT_VIEW_ONLY_DETAILS, SLASH_SUBAGENT_CANCEL_EVENT, SLASH_SUBAGENT_REQUEST_EVENT, SLASH_SUBAGENT_RESPONSE_EVENT, SLASH_SUBAGENT_STARTED_EVENT, SLASH_SUBAGENT_UPDATE_EVENT, DIRS, } from "../shared/types.js";
 const parseInlineConfig = (raw) => {
     const config = {};
     for (const part of raw.split(",")) {
@@ -120,7 +120,7 @@ const makeProviderCompletions = (state) => (prefix) => {
         .map((provider) => ({ value: provider, label: provider }));
 };
 function sendSlashText(pi, text) {
-    pi.sendMessage({ customType: SLASH_TEXT_RESULT_TYPE, content: text, display: true });
+    pi.sendMessage({ customType: SLASH_TEXT_RESULT_TYPE, content: text, display: true, details: SLASH_TEXT_VIEW_ONLY_DETAILS });
 }
 async function withSlashStatus(ctx, text, run) {
     if (ctx.hasUI)
@@ -359,7 +359,7 @@ async function requestSlashRun(pi, ctx, requestId, params, signal) {
                 const tool = update.currentTool ? ` ${update.currentTool}` : "";
                 const count = update.toolCount ?? 0;
                 const liveDetailKey = keyText("app.tools.expand");
-                ctx.ui.setStatus("subagent-slash", `${count} tools${tool} | ${liveDetailKey} live detail`);
+                ctx.ui.setStatus("subagent-slash", `${count} tools${tool}${liveDetailKey ? ` | ${liveDetailKey} live detail` : ""}`);
             }
             catch (error) {
                 if (isStaleExtensionContextError(error)) {
@@ -1057,4 +1057,3 @@ export function registerSlashCommands(pi, state, options = {}) {
         },
     };
 }
-//# sourceMappingURL=slash-commands.js.map

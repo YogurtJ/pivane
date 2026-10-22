@@ -3,4 +3,3 @@ export declare function agentStreamOptions(streamFn: StreamFn): {
     streamFunction: StreamFn;
     streamFn: StreamFn;
 };
-//# sourceMappingURL=agent-stream-options.d.ts.map

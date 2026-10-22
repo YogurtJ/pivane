@@ -62,4 +62,3 @@ export function createTmuxClient(options = {}) {
         },
     };
 }
-//# sourceMappingURL=client.js.map

@@ -3,4 +3,3 @@ export function shouldUseNativeFsWatch(_purpose, platform = process.platform) {
         return false;
     return platform !== "darwin";
 }
-//# sourceMappingURL=watch-strategy.js.map

@@ -23,4 +23,3 @@ export declare function readTmuxInspectorBindingForTarget(target: InspectorTarge
 export declare function openTmuxInspector(context: InspectorContext, launch: InspectorLaunch, focus: boolean, client: TmuxClient): Promise<AgentToolResult<Details>>;
 export declare function statusTmuxInspector(context: InspectorContext, client: TmuxClient): Promise<AgentToolResult<Details>>;
 export declare function closeTmuxInspector(context: InspectorContext, client: TmuxClient): Promise<AgentToolResult<Details>>;
-//# sourceMappingURL=actions.d.ts.map

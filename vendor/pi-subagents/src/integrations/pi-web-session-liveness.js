@@ -51,4 +51,3 @@ export function registerPiWebSessionLiveness(registration) {
     }
     return { registered: false, release: () => { } };
 }
-//# sourceMappingURL=pi-web-session-liveness.js.map

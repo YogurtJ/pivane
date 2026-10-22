@@ -61,4 +61,3 @@ export declare function mergeRuntimeAgents<T extends {
     agents: AgentConfig[];
     agentDiagnostics?: AgentDiscoveryDiagnostic[];
 }>(pi: RuntimeAgentOwner, discovered: T, configuredAgents?: readonly AgentConfig[], settings?: RuntimeAgentSettingsContext): T;
-//# sourceMappingURL=runtime-agent-registry.d.ts.map

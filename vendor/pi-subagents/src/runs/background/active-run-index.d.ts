@@ -10,4 +10,3 @@ export declare function updateActiveRunIndex(asyncDir: string, state: AsyncStatu
 export declare function activeRunMarkerAgeMs(asyncDir: string, now?: number): number | undefined;
 export declare function readActiveRunIndex(asyncDirRoot: string): string[] | undefined;
 export declare function readActiveRunToolCallIndex(asyncDirRoot: string, toolCallId: string): string[];
-//# sourceMappingURL=active-run-index.d.ts.map

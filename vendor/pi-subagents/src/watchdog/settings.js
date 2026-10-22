@@ -478,4 +478,3 @@ export function resolveWatchdogConfig(cwd, options = {}) {
         sources,
     };
 }
-//# sourceMappingURL=settings.js.map

@@ -25,4 +25,3 @@ export declare function createTmuxClient(options?: {
     exec?: ExecTmux;
 }): TmuxClient;
 export {};
-//# sourceMappingURL=client.d.ts.map

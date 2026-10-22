@@ -53,4 +53,3 @@ export declare function resolveStructuredWorkflowResource(input: {
 }): WorkflowResourceResolution;
 /** Resolve only extension-owned resources so policy can distinguish them from raw scripts; caller-provided script text is never consulted. */
 export declare function resolveWorkflowResource(nameValue: unknown, argsValue?: unknown, sessionId?: string): WorkflowResourceResolution;
-//# sourceMappingURL=workflow-resources.d.ts.map

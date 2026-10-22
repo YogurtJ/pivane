@@ -56,4 +56,3 @@ export declare function readAsyncRecoveryDescriptor(asyncDir: string | undefined
 export declare function resolveAsyncResumeTarget(params: AsyncResumeParams, deps?: AsyncResumeDeps, options?: AsyncResumeOptions): AsyncResumeTarget;
 export declare function applySteeringRecoveryAgentConfig(agentConfig: AgentConfig, descriptor: SteeringRecoveryDescriptor): AgentConfig;
 export declare function buildRevivedAsyncTask(target: AsyncResumeTarget, message: string): string;
-//# sourceMappingURL=async-resume.d.ts.map

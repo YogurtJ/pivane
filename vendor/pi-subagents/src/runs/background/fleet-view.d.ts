@@ -61,4 +61,3 @@ export declare function formatAsyncResultTranscript(data: {
     }>;
 }, resultPath: string, options?: TranscriptOptions): string;
 export {};
-//# sourceMappingURL=fleet-view.d.ts.map

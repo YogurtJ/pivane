@@ -717,4 +717,3 @@ export function createPlacementAwareChildSessionFactory(local, createRemote = cr
     return { async create(launch) { if (!launch.machine)
             return local.create(launch); serializeHerdrPiLaunch(launch); const child = await createRemote(launch); remote.add(child); return child; }, async dispose() { await Promise.allSettled([...remote].map((child) => child.dispose())); remote.clear(); await local.dispose(); } };
 }
-//# sourceMappingURL=herdr-placed-run.js.map

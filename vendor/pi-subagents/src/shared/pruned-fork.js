@@ -432,4 +432,3 @@ export async function createPrunedForkSessionWriter(ctx, config, signal) {
         await pruneForkSessionFile(sessionFile, summarize);
     };
 }
-//# sourceMappingURL=pruned-fork.js.map

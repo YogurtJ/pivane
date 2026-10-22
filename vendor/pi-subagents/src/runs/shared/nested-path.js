@@ -32,4 +32,3 @@ export function sanitizeNestedPath(value) {
         };
     }).filter((part) => Boolean(part)).slice(0, MAX_NESTED_PATH_ENTRIES);
 }
-//# sourceMappingURL=nested-path.js.map

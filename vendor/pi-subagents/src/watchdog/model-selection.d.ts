@@ -22,4 +22,3 @@ export declare function recommendStrongWatchdogModel(ctx: ExtensionContext): Wat
 export declare function recommendWatchdogModel(ctx: ExtensionContext, configured: WatchdogEndpointConfig): WatchdogModelRecommendation;
 export declare function formatWatchdogRecommendation(recommendation: WatchdogModelRecommendation): string;
 export {};
-//# sourceMappingURL=model-selection.d.ts.map

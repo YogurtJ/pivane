@@ -20,4 +20,3 @@ export function mergeAgentsForScope(scope, userAgents, projectAgents, builtinAge
     }
     return Array.from(agentMap.values());
 }
-//# sourceMappingURL=agent-selection.js.map

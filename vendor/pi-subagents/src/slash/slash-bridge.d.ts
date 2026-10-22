@@ -28,4 +28,3 @@ export declare function registerSlashSubagentBridge(options: SlashBridgeOptions)
     dispose: () => void;
 };
 export {};
-//# sourceMappingURL=slash-bridge.d.ts.map

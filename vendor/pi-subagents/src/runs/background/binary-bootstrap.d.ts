@@ -6,4 +6,3 @@
  * Derived from xz-dev's PR #2049, commit 910807bfefcf9ee41d73fa25ec86dcd75ab8f4b2.
  */
 export default function runBinaryBootstrap(): Promise<never>;
-//# sourceMappingURL=binary-bootstrap.d.ts.map

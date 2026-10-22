@@ -169,4 +169,3 @@ export function parseModelScopeConfig(value, meta) {
     }
     return Object.keys(config).length > 0 ? config : undefined;
 }
-//# sourceMappingURL=model-scope.js.map

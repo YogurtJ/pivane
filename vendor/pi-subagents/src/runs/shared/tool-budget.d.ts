@@ -19,4 +19,3 @@ export declare function toolBudgetBlockedMessage(budget: ResolvedToolBudget, too
  * occurrences of the phrase inside ordinary tool output are rejected.
  */
 export declare function isToolBudgetBlockedMessage(budget: ResolvedToolBudget, resultText: string, blockedTool: string | undefined): boolean;
-//# sourceMappingURL=tool-budget.d.ts.map

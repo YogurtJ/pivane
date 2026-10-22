@@ -41,4 +41,3 @@ export declare function steerWorkflowForegroundTarget(input: {
     mode?: SteerDeliveryMode;
     index?: number;
 }): Promise<AgentToolResult<Details>>;
-//# sourceMappingURL=workflow-foreground-steering.d.ts.map

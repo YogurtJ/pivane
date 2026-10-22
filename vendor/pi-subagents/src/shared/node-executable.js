@@ -18,4 +18,3 @@ export function resolveNodeExecutable(execPath = process.execPath) {
         return execPath;
     return process.platform === "win32" ? "node.exe" : "node";
 }
-//# sourceMappingURL=node-executable.js.map

@@ -32,4 +32,3 @@ export declare function resolveWorkflowReceiptResume(input: {
     asyncDirRoot: string;
     assertResumable?: (runId: string) => void;
 }): string;
-//# sourceMappingURL=workflow-receipt.d.ts.map

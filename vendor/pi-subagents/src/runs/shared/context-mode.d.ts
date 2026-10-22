@@ -10,4 +10,3 @@ export declare function contextModeBadge(theme: {
 export declare function contextModePrefix(theme: {
     fg(name: string, text: string): string;
 }, mode: ContextMode | ContextSummary | undefined): string;
-//# sourceMappingURL=context-mode.d.ts.map

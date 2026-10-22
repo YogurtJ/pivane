@@ -31,4 +31,3 @@ export function formatWatchdogWarningRenderText(warning) {
         lines.push("This warning arrived after the watchdog catch-up timeout.");
     return lines.join("\n");
 }
-//# sourceMappingURL=render.js.map

@@ -19,4 +19,3 @@ export declare class HerdrPiFrameDecoder {
     push(chunk: Buffer): HerdrPiFrame[];
     end(): void;
 }
-//# sourceMappingURL=herdr-pi-protocol.d.ts.map

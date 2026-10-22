@@ -8,4 +8,3 @@ import { type RunSyncOptions, type SingleResult } from "../../shared/types.ts";
  * receipt. Detachment is same-runtime only: it does not adopt or daemonize work.
  */
 export declare function runSync(runtimeCwd: string, agents: AgentConfig[], agentName: string, task: string, options: RunSyncOptions): Promise<SingleResult>;
-//# sourceMappingURL=execution.d.ts.map

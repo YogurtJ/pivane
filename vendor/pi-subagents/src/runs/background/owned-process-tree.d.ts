@@ -8,4 +8,3 @@ export declare function createOwnedProcessTreeController(pid: number, options?: 
     termGraceMs?: number;
     killVerifyMs?: number;
 }): OwnedProcessTreeController;
-//# sourceMappingURL=owned-process-tree.d.ts.map

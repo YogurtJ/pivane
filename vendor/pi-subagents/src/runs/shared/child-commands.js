@@ -21,6 +21,10 @@ export function readChildCommandState(channelDir) {
         throw error;
     }
 }
+/** True when the child's native command controller manages `toolCallId`, so command controls can target that call. */
+export function retainsChildCommand(channelDir, toolCallId) {
+    return readChildCommandState(channelDir)?.commands.some((command) => command.toolCallId === toolCallId) === true;
+}
 function active(job) { return job.snapshot.endedAt === undefined; }
 function text(result) {
     return Buffer.from(result.content.filter((part) => part.type === "text").map((part) => part.text).join("\n")).subarray(-MAX_OUTPUT_BYTES).toString("utf8");
@@ -139,7 +143,8 @@ export function createChildCommandRuntime(channelDir) {
                             onUpdate?.(update);
                     }, ctx)).then((result) => {
                         job.snapshot.output = text(result);
-                        job.snapshot.state = "completed";
+                        // Pi 1.2 reports a non-zero exit as an isError result instead of throwing.
+                        job.snapshot.state = result.isError ? "failed" : "completed";
                         const fullOutputPath = result.details?.fullOutputPath;
                         if (fullOutputPath)
                             job.snapshot.fullOutputPath = fullOutputPath;
@@ -247,4 +252,3 @@ export async function controlChildCommand(channelDir, operation, toolCallId, sig
         fs.rmSync(replyPath, { force: true });
     }
 }
-//# sourceMappingURL=child-commands.js.map

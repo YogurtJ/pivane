@@ -5,4 +5,3 @@ export interface GhosttyPluginDeps {
     runner?: GhosttyRunner;
 }
 export declare function createGhosttyInspectorPlugin(deps?: GhosttyPluginDeps): InspectorPlugin;
-//# sourceMappingURL=plugin.d.ts.map

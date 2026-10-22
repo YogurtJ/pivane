@@ -84,4 +84,3 @@ export function createCapacityResilientJsonWriter(options = {}) {
         },
     };
 }
-//# sourceMappingURL=capacity-resilient-json.js.map

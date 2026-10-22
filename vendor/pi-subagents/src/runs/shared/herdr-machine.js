@@ -244,4 +244,3 @@ export function formatHerdrMachineHint(machine, text) {
             return hint(machine);
     return undefined;
 }
-//# sourceMappingURL=herdr-machine.js.map

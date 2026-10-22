@@ -67,4 +67,3 @@ export declare function sessionLeaseDir(sessionFile: string, rootDir?: string): 
 export declare function inspectSessionLease(sessionFile: string, rootDir?: string): SessionLeaseState;
 export declare function acquireSessionLease(request: SessionLeaseRequest, options?: SessionLeaseOptions): SessionLeaseHandle;
 export {};
-//# sourceMappingURL=session-lease.d.ts.map

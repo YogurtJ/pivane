@@ -162,4 +162,3 @@ export function snapshotBackgroundWork(sessionId, nowMs = Date.now()) {
         items,
     };
 }
-//# sourceMappingURL=background-work.js.map

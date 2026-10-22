@@ -145,4 +145,3 @@ export declare function prepareInternalHerdrExternalAdapter(input: {
     machine: HerdrMachineReference;
     runId: string;
 }, launch: Omit<Parameters<typeof createHerdrExternalAdapterLaunch>[0], "adapter" | "remoteRuntimeDir" | "cwd">, createOwner?: typeof HerdrPlacedRunOwner.create): Promise<HerdrExternalSession>;
-//# sourceMappingURL=herdr-external-adapters.d.ts.map

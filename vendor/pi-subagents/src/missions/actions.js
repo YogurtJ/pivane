@@ -393,4 +393,3 @@ export function handleMissionAction(action, params, ctx) {
         return missionRecordPath(location, missionId);
     }
 }
-//# sourceMappingURL=actions.js.map

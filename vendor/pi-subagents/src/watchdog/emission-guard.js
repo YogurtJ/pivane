@@ -95,4 +95,3 @@ export class WatchdogEmissionGuard {
         return { accepted: true, identity, underlyingIdentity, escalation };
     }
 }
-//# sourceMappingURL=emission-guard.js.map

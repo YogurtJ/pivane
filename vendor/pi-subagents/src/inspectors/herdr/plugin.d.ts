@@ -4,4 +4,3 @@ export interface HerdrPluginDeps {
     client?: HerdrClient;
 }
 export declare function createHerdrInspectorPlugin(deps?: HerdrPluginDeps): InspectorPlugin;
-//# sourceMappingURL=plugin.d.ts.map

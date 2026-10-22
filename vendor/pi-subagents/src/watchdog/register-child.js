@@ -126,4 +126,3 @@ export function registerChildWatchdog(pi, childConfig, writeStatus, structuredTe
     });
     return runtime;
 }
-//# sourceMappingURL=register-child.js.map

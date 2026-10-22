@@ -15,4 +15,3 @@ export declare class WatchdogLspDiagnosticsLedger {
 export declare function formatWatchdogLspDiagnosticsBlock(result: WatchdogLspResult): string;
 export declare function watchdogWarningFromLspDiagnostics(result: WatchdogLspResult): WatchdogWarning | undefined;
 export declare function collectWatchdogLspDiagnostics(request: WatchdogLspRequest): Promise<WatchdogLspResult>;
-//# sourceMappingURL=lsp-diagnostics.d.ts.map

@@ -32,6 +32,7 @@ export declare function buildControlEvent(input: {
     toolCount?: number;
     currentTool?: string;
     toolCallId?: string;
+    hasCommandController?: boolean;
     currentToolDurationMs?: number;
     currentPath?: string;
     elapsedMs?: number;
@@ -47,4 +48,3 @@ export declare function claimControlNotification(config: ResolvedControlConfig, 
 export declare function formatControlNudge(event: ControlEvent): string;
 export declare function formatControlNoticeMessage(event: ControlEvent, childIntercomTarget?: string): string;
 export declare function formatControlIntercomMessage(event: ControlEvent, childIntercomTarget?: string): string;
-//# sourceMappingURL=subagent-control.d.ts.map

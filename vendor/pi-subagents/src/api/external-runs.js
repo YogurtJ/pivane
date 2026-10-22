@@ -243,4 +243,3 @@ export function snapshotExternalRuns(sessionId, options = {}) {
 }
 /** Alias for callers that prefer list terminology. */
 export const listExternalRuns = snapshotExternalRuns;
-//# sourceMappingURL=external-runs.js.map

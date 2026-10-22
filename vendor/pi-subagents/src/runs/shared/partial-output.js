@@ -33,4 +33,3 @@ export function formatPartialOutput(text, cause) {
 export function timedOutRunSummary(message, summary, results) {
     return results.some((result) => result.outputPartial === true) ? `${message}\n\n${summary}` : message;
 }
-//# sourceMappingURL=partial-output.js.map

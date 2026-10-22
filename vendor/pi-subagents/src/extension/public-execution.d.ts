@@ -20,6 +20,7 @@ export interface PublicSubagentExecutionParams {
     config?: unknown;
     workflow?: unknown;
     args?: unknown;
+    reuseFrom?: unknown;
     workflowScript?: unknown;
     workflowScriptPath?: unknown;
     sessionOnly?: unknown;
@@ -68,4 +69,3 @@ export declare function validateWorkflowCapacityOverrides(params: PublicSubagent
 export declare function normalizePublicSubagentExecution<T extends PublicSubagentExecutionParams>(params: T, options?: {
     structuredWorkflows?: boolean;
 }): PublicSubagentExecutionNormalization<T>;
-//# sourceMappingURL=public-execution.d.ts.map

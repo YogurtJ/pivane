@@ -21,4 +21,3 @@ export function alignForkedSessionCwd(sessionFile, cwd) {
     header.cwd = effectiveCwd;
     fs.writeFileSync(sessionFile, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`, "utf-8");
 }
-//# sourceMappingURL=fork-session-cwd.js.map

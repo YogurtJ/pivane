@@ -1,4 +1,4 @@
-import { SUBAGENT_STOPPED_MESSAGE, SUBAGENT_TIMED_OUT_MESSAGE, extractTextFromContent, extractToolArgsPreview, getFinalOutput, hasEmptyTerminalAssistantResponse } from "../../shared/utils.js";
+import { SUBAGENT_STOPPED_MESSAGE, SUBAGENT_TIMED_OUT_MESSAGE, assistantMessageError, extractTextFromContent, extractToolArgsPreview, getFinalOutput, hasEmptyTerminalAssistantResponse } from "../../shared/utils.js";
 import { qualifyModelWithProvider } from "../../shared/model-info.js";
 import { acceptChildWatchdogEvent, applyChildWatchdogMessage, childWatchdogIsActive, isChildWatchdogStatusEvent, } from "../../watchdog/child-status.js";
 import { projectChildLifecycle } from "../shared/child-lifecycle.js";
@@ -119,11 +119,13 @@ export function runChildSession(input) {
                 activeToolKeysByName.delete(active.tool);
             refreshCurrentTool();
         };
+        const startup = new AbortController();
         const abortChild = () => {
             if (settled || promptSettled)
                 return;
-            // A hung session creation has no session to abort yet; the settle timer below is the only
-            // thing that ends the run, and a session created afterwards is disposed by the launch block.
+            startup.abort();
+            // MCP startup can now stop before a session is returned. The timer still bounds
+            // other creation work that does not observe the startup signal.
             void session?.abort().catch(() => {
                 // The run settles through its prompt promise; abort failures are not separately actionable.
             });
@@ -407,7 +409,7 @@ export function runChildSession(input) {
                     }
                 }
                 if (event.message.errorMessage)
-                    assistantError = event.message.errorMessage;
+                    assistantError = assistantMessageError(event.message);
                 else if (hasToolCall && event.message.stopReason === "toolUse") {
                     // A recovered request can finish via a terminating tool, without a text stop.
                     assistantError = undefined;
@@ -563,6 +565,7 @@ export function runChildSession(input) {
         void (async () => {
             try {
                 const createInput = createReportedChildSessionInput(input.launch, input.transcriptWriter);
+                createInput.signal = startup.signal;
                 const created = await input.factory.create(createInput);
                 if (settled) {
                     await created.dispose().catch(() => undefined);
@@ -623,4 +626,3 @@ export function runChildSession(input) {
         })();
     });
 }
-//# sourceMappingURL=run-child-session.js.map

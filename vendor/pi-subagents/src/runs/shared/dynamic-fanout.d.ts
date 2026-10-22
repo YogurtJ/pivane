@@ -47,4 +47,3 @@ export declare function collectDynamicResults(step: DynamicParallelStep, items: 
     finalOutput?: string;
 }>): DynamicCollectedResult[];
 export declare function validateDynamicCollection(schema: JsonSchemaObject | undefined, value: DynamicCollectedResult[]): Promise<void>;
-//# sourceMappingURL=dynamic-fanout.d.ts.map

@@ -308,4 +308,3 @@ export function formatSubagentCostReport(report) {
     lines.push("────────────────────────────", formatCostUsage("Children", report.childTotal), formatCostUsage("Total", report.total));
     return lines.join("\n");
 }
-//# sourceMappingURL=subagent-cost.js.map

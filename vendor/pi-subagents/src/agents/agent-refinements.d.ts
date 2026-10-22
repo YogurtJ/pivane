@@ -97,4 +97,3 @@ export declare function handleRefinementAction(action: RefinementAction, params:
     agent?: string;
 }, ctx: RefinementActionContext): Promise<AgentToolResult<Details>>;
 export {};
-//# sourceMappingURL=agent-refinements.d.ts.map

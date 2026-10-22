@@ -6,4 +6,3 @@ export function rewriteFastModeProviderRequest(event) {
 export default function registerSubagentFastModeExtension(pi) {
     pi.on("before_provider_request", rewriteFastModeProviderRequest);
 }
-//# sourceMappingURL=fast-mode-extension.js.map

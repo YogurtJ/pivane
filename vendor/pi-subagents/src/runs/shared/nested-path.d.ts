@@ -6,4 +6,3 @@ export type NestedPathEntry = {
 };
 export declare function isSafeNestedPathId(value: unknown): value is string;
 export declare function sanitizeNestedPath(value: unknown): NestedPathEntry[];
-//# sourceMappingURL=nested-path.d.ts.map

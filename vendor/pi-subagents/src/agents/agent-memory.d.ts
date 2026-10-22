@@ -46,4 +46,3 @@ export declare function readMemoryFile(memoryDir: string): MemoryFileResult;
  */
 export declare function buildAgentMemoryInjection(agent: AgentConfig, cwd: string): string;
 export {};
-//# sourceMappingURL=agent-memory.d.ts.map

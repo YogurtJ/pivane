@@ -148,4 +148,3 @@ export function handleWatchdogToolAction(action, params, ctx, runtime) {
 }
 export const WATCHDOG_TOOL_ACTIONS = ["watchdog.status", "watchdog.check", "watchdog.configure", "watchdog.recommend-model"];
 export const WATCHDOG_THINKING_VALUES = ["inherit", ...THINKING_LEVELS];
-//# sourceMappingURL=tool-actions.js.map

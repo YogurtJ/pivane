@@ -42,4 +42,3 @@ export class WatchdogScopeArtifact {
         }
     }
 }
-//# sourceMappingURL=scope.js.map

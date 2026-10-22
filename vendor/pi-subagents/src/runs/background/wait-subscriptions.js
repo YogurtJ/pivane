@@ -5,8 +5,11 @@ import { listAsyncRuns } from "./async-status.js";
 import { formatResumeFirstFailedRunDetail } from "./resume-guidance.js";
 import { readCompletionReplay } from "./completion-replay.js";
 import { writeAtomicJson } from "../../shared/atomic-json.js";
+import { COMPLETION_ACTION, STATUS_ACTION } from "../../shared/parent-wake.js";
 import { DIRS, INTERCOM_DETACH_REQUEST_EVENT, SUBAGENT_ASYNC_COMPLETE_EVENT, SUBAGENT_CONTROL_EVENT, SUBAGENT_CONTROL_INTERCOM_EVENT, SUBAGENT_FOREGROUND_COMPLETE_EVENT, SUBAGENT_RESULT_INTERCOM_EVENT, } from "../../shared/types.js";
 const SUBSCRIPTION_VERSION = 1;
+// Outcomes that report no saved results, so the notice points the parent at the run status instead.
+const STATUS_OUTCOMES = new Set(["timed out", "could not be reconciled", "needs attention", "reconciliation failed"]);
 const RECONCILE_INTERVAL_MS = 1_000;
 /**
  * How often the subscriptions directory is re-scanned for expired records left
@@ -156,7 +159,7 @@ export function createWaitSubscriptionManager(pi, state, options = {}) {
         try {
             pi.sendMessage({
                 customType: "subagent-wait-subscription",
-                content: `Wait subscription ${record.token} fired for run ${record.runId}: ${outcome}. ${detail}`,
+                content: `Wait subscription ${record.token} fired for run ${record.runId}: ${outcome}. ${detail}\n\nParent action: ${STATUS_OUTCOMES.has(outcome) ? STATUS_ACTION : COMPLETION_ACTION}`,
                 display: true,
                 details: {
                     token: record.token,
@@ -334,4 +337,3 @@ export function createWaitSubscriptionManager(pi, state, options = {}) {
         },
     };
 }
-//# sourceMappingURL=wait-subscriptions.js.map

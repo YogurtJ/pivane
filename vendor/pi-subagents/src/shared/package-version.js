@@ -12,4 +12,3 @@ export function readInstalledPackageVersion() {
 // Node keeps an imported module for the life of the process, so this stays the
 // version first loaded even after an in-place update and /reload.
 export const loadedPackageVersion = readInstalledPackageVersion();
-//# sourceMappingURL=package-version.js.map

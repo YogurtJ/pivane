@@ -144,4 +144,3 @@ export declare function resolveParallelBehaviors(tasks: ParallelTaskItem[], agen
 export declare function createParallelDirs(chainDir: string, stepIndex: number, taskCount: number, agentNames: string[]): void;
 export type { ParallelTaskResult } from "../runs/shared/parallel-utils.ts";
 export { aggregateParallelOutputs } from "../runs/shared/parallel-utils.ts";
-//# sourceMappingURL=settings.d.ts.map

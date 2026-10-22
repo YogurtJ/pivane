@@ -664,4 +664,3 @@ export function formatAsyncResultTranscript(data, resultPath, options = {}) {
     appendTranscriptBody(lines, "Result transcript tail", transcriptLines.filter((line) => line.trim()), output.split(/\r?\n/).length > lineLimit);
     return safeTranscriptLines(lines);
 }
-//# sourceMappingURL=fleet-view.js.map

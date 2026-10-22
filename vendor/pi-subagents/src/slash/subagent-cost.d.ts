@@ -27,4 +27,3 @@ export declare const SUBAGENT_COST_REPORT_VERSION: 1;
 export declare function collectSubagentCost(ctx: ExtensionContext, state: Pick<SubagentState, "baseCwd" | "artifactDirPreference">): SubagentCostReport;
 /** The `/subagent-cost` text rendering of a collected report. */
 export declare function formatSubagentCostReport(report: SubagentCostReport): string;
-//# sourceMappingURL=subagent-cost.d.ts.map

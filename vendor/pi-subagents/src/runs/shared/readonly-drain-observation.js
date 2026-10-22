@@ -48,4 +48,3 @@ export class ReadonlyDrainObservation {
     }
     settled() { return this.check() && this.state === "empty"; }
 }
-//# sourceMappingURL=readonly-drain-observation.js.map

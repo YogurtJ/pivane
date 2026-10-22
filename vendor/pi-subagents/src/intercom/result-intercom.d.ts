@@ -33,4 +33,3 @@ export declare function formatSubagentResultReceipt(input: {
     payload: SubagentResultIntercomPayload;
 }): string;
 export {};
-//# sourceMappingURL=result-intercom.d.ts.map

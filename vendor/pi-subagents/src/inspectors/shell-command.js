@@ -14,4 +14,3 @@ export function formatShellCommand(exe, args, platform = process.platform) {
     const invocation = isBareExecutable(exe) ? exe : `sh -c 'exec "$0" "$@"' ${shellQuote(exe, platform)}`;
     return [invocation, ...quotedArgs].join(" ");
 }
-//# sourceMappingURL=shell-command.js.map

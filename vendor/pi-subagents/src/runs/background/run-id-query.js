@@ -4,4 +4,3 @@ const FULL_ASYNC_RUN_ID_LENGTH = 36;
 export function canScanAsyncRunPrefix(id) {
     return id.length >= MIN_SAFE_ASYNC_RUN_PREFIX_LENGTH && id.length < FULL_ASYNC_RUN_ID_LENGTH;
 }
-//# sourceMappingURL=run-id-query.js.map

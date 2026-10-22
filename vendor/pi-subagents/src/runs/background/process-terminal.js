@@ -225,4 +225,3 @@ export function finalizeProcessTerminal(asyncDir, runId, runnerClose) {
     }
     return durable ? proof : unknownProof(runId, runnerClose.processInstanceId, "proof-write-failed", "Failed to persist process-terminal proof.");
 }
-//# sourceMappingURL=process-terminal.js.map

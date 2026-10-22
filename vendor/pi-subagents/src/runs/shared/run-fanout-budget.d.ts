@@ -12,4 +12,3 @@ export declare function getRunFanoutBudgetSnapshot(descriptor: RunFanoutBudgetDe
 export declare function claimRunFanoutBatch(descriptor: RunFanoutBudgetDescriptor, paths: string[]): RunFanoutBudgetSnapshot;
 export declare function claimRunFanoutBatchWithCommit<T>(descriptor: RunFanoutBudgetDescriptor, paths: string[], commit: () => T): T;
 export declare function formatRunFanoutBudget(snapshot: RunFanoutBudgetSnapshot): string;
-//# sourceMappingURL=run-fanout-budget.d.ts.map

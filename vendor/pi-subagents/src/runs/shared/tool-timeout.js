@@ -71,4 +71,3 @@ export function resolveToolTimeoutMs(input) {
 export function toolTimeoutFromEnv(env = process.env) {
     return env[TOOL_TIMEOUT_ENV];
 }
-//# sourceMappingURL=tool-timeout.js.map

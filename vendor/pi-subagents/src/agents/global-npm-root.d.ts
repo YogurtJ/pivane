@@ -4,4 +4,3 @@ export declare function resolveGlobalNpmRoot(options?: {
     platform?: NodeJS.Platform;
     timeoutMs?: number;
 }): Promise<string | null>;
-//# sourceMappingURL=global-npm-root.d.ts.map

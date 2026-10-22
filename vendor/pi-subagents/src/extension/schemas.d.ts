@@ -53,6 +53,7 @@ export declare const SubagentFlatParams: Type.TObject<{
     config: Type.TOptional<Type.TUnsafe<unknown>>;
     workflow: Type.TOptional<Type.TUnsafe<string | true>>;
     args: Type.TOptional<Type.TUnsafe<unknown>>;
+    reuseFrom: Type.TOptional<Type.TString>;
     globalConcurrencyLimit: Type.TOptional<Type.TInteger>;
     maxSubagentSpawnsPerRun: Type.TOptional<Type.TInteger>;
     preflight: Type.TOptional<Type.TObject<{
@@ -176,6 +177,7 @@ export declare const SubagentOptionParams: Type.TObject<{
     runStatus: Type.TOptional<Type.TString>;
     summary: Type.TOptional<Type.TString>;
     config: Type.TOptional<Type.TUnsafe<unknown>>;
+    reuseFrom: Type.TOptional<Type.TString>;
     globalConcurrencyLimit: Type.TOptional<Type.TInteger>;
     maxSubagentSpawnsPerRun: Type.TOptional<Type.TInteger>;
     preflight: Type.TOptional<Type.TObject<{
@@ -272,4 +274,3 @@ export declare const SubagentWaitParams: Type.TObject<{
     timeoutMs: Type.TOptional<Type.TInteger>;
     stopOnAttention: Type.TOptional<Type.TBoolean>;
 }>;
-//# sourceMappingURL=schemas.d.ts.map

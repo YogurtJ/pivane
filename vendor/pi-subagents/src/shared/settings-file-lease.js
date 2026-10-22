@@ -36,4 +36,3 @@ export function withSettingsFileLease(filePath, action) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     return withFileLease(resolveSettingsWriteTarget(filePath), action);
 }
-//# sourceMappingURL=settings-file-lease.js.map

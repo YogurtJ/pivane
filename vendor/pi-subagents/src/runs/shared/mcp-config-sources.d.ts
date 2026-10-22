@@ -31,4 +31,3 @@ export interface McpServerDefinition {
 export declare function isMcpServerDefinition(value: unknown): value is McpServerDefinition;
 export declare function loadPackageMcpServers(cwd: string): Record<string, McpServerDefinition>;
 export declare function loadAgentPluginMcpServers(paths: unknown, cwd: string): Record<string, McpServerDefinition>;
-//# sourceMappingURL=mcp-config-sources.d.ts.map

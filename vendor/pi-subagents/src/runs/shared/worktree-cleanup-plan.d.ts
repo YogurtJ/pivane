@@ -82,4 +82,3 @@ export declare function worktreeCleanupPlanPath(repoRoot: string, planId: string
 export declare function createWorktreeCleanupPlan(input: BuildWorktreeCleanupPlanInput): CreatedWorktreeCleanupPlan;
 export declare function formatWorktreeCleanupPlan(created: CreatedWorktreeCleanupPlan): string;
 export {};
-//# sourceMappingURL=worktree-cleanup-plan.d.ts.map

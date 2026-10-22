@@ -47,4 +47,3 @@ export function parseSupervisorReplyData(value) {
         createdAt: value.createdAt,
     };
 }
-//# sourceMappingURL=supervisor-ui.js.map

@@ -15,4 +15,3 @@ export function workflowAsyncChildSteeringGuidance(status, state) {
         ...[...ids].map((id) => `  subagent({ action: "steer", id: "${id}", message: "...", options: { mode: "follow_up" } })`),
     ];
 }
-//# sourceMappingURL=workflow-async-child-guidance.js.map

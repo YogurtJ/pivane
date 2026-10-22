@@ -35,4 +35,3 @@ export function assertThinkingWithinCeiling(input) {
         .join(" ");
     throw new Error(`Thinking level '${requestedLevel}' exceeds configured maximum '${input.ceiling}'${subject ? ` for ${subject}` : ""}.`);
 }
-//# sourceMappingURL=thinking-ceiling.js.map

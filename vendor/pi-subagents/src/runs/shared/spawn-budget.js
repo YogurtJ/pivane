@@ -91,4 +91,3 @@ export function grantSpawnBudget(state, config, sessionId, additional, now = Dat
     ].slice(-MAX_GRANT_HISTORY);
     return { snapshot: getSpawnBudgetSnapshot(state, config, sessionId) };
 }
-//# sourceMappingURL=spawn-budget.js.map

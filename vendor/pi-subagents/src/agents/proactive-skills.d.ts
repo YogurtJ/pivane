@@ -33,4 +33,3 @@ export declare function buildProactiveSkillSubagentRecommendationLines(input: {
     config?: ProactiveSkillSubagentsConfig | false;
     discoverAvailableSkills: () => AvailableSkill[];
 }): string[];
-//# sourceMappingURL=proactive-skills.d.ts.map

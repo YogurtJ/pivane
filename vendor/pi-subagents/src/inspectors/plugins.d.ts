@@ -6,4 +6,3 @@ export declare function getInspectorPlugins(pi: InspectorOwner): readonly Inspec
 /** Registrations live while any owner runtime listens on this bus; child runtimes use their own bus. */
 export declare function registerInspectorEventListener(pi: InspectorOwner): () => void;
 export {};
-//# sourceMappingURL=plugins.d.ts.map

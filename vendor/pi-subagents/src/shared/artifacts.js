@@ -270,4 +270,3 @@ export function cleanupAllArtifactDirs(maxAgeDays) {
         }
     }
 }
-//# sourceMappingURL=artifacts.js.map

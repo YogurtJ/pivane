@@ -19,4 +19,3 @@ export declare function canRenderComponents(ctx: ExtensionContext): boolean;
 export declare function isUnboundExtensionRuntimeError(error: unknown): boolean;
 /** Run a synchronous operation against a cached UI context without leaking replacement errors. */
 export declare function withCachedUiContext<T>(ctx: ExtensionContext | null | undefined, onStale: () => void, run: (ctx: ExtensionContext) => T): T | undefined;
-//# sourceMappingURL=extension-context.d.ts.map

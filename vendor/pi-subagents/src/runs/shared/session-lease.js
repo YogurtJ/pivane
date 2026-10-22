@@ -248,4 +248,3 @@ export function acquireSessionLease(request, options = {}) {
     const existingOwner = readLeaseOwner(leaseDir);
     throw new SessionLeaseConflictError(conflictMessage(canonicalSessionFile, existingOwner), existingOwner);
 }
-//# sourceMappingURL=session-lease.js.map

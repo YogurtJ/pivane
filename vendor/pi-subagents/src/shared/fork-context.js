@@ -1,9 +1,14 @@
-// Forking a parent transcript into a child must drop Anthropic's signed and redacted
-// thinking blocks: a thinking signature is bound to the session that produced it and
-// cannot be replayed into a branch. Stripping them is required; disabling the child's
-// thinking is not. Pi >= 0.85.0 recovers from signed-thinking mismatches on the
-// transport, so a sanitized transcript is safe to resume with thinking enabled and the
-// child keeps the level it asked for, reasoning fresh from its first turn.
+// Forking a parent transcript into a child copies the parent's assistant messages verbatim, signed
+// Anthropic thinking included. A signature covers its block's content, not a session, so a
+// verbatim copy stays valid in the branch, and keeping it lets the child's first request start
+// with its parent's prompt-cached bytes. pi-ai replays a signed block only to the model that
+// signed it and turns it into text or drops it for any other model, and Pi >= 0.85.0 recovers
+// from signed-thinking mismatches on the transport. Two kinds of block are still dropped: raw
+// `redacted_thinking` blocks, which are not Pi's own transcript shape, and signed thinking in a
+// `context_edit` replacement, whose content no longer has to match its signature. A pruned fork
+// rewrites inherited content, thinking included, so it still drops every signed or redacted
+// Anthropic thinking block. Dropping them never disables the child's thinking: it keeps the level
+// it asked for.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -35,9 +40,11 @@ export function canPreferForkFromSnapshot(input) {
         return false;
     }
 }
-function isUnsafeAnthropicThinkingBlock(message, block) {
+function isUnsafeAnthropicThinkingBlock(message, block, verbatim) {
     if (!message || !block || typeof block !== "object" || !("type" in block))
         return false;
+    if (verbatim)
+        return block.type === "redacted_thinking";
     const provider = typeof message.provider === "string" ? message.provider.toLowerCase() : "";
     const api = typeof message.api === "string" ? message.api.toLowerCase() : "";
     const model = typeof message.model === "string" ? message.model.toLowerCase() : "";
@@ -50,7 +57,7 @@ function isUnsafeAnthropicThinkingBlock(message, block) {
     const signature = "thinkingSignature" in record ? record.thinkingSignature : "signature" in record ? record.signature : undefined;
     return record.redacted === true || (typeof signature === "string" && signature.length > 0);
 }
-function sanitizeUnsafeThinkingBlocks(entries) {
+function sanitizeUnsafeThinkingBlocks(entries, rewritten) {
     let sanitized = false;
     const entriesById = new Map(entries.flatMap((entry) => entry.id ? [[entry.id, entry]] : []));
     for (const entry of entries) {
@@ -60,7 +67,8 @@ function sanitizeUnsafeThinkingBlocks(entries) {
         const contentOwner = entry.type === "context_edit" ? entry.replacement : targetMessage;
         if (targetMessage?.role !== "assistant" || !contentOwner || !Array.isArray(contentOwner.content))
             continue;
-        const filtered = contentOwner.content.filter((block) => !isUnsafeAnthropicThinkingBlock(targetMessage, block));
+        const verbatim = !rewritten && entry.type !== "context_edit";
+        const filtered = contentOwner.content.filter((block) => !isUnsafeAnthropicThinkingBlock(targetMessage, block, verbatim));
         if (filtered.length === contentOwner.content.length)
             continue;
         contentOwner.content = filtered;
@@ -80,7 +88,7 @@ function readSessionEntries(sessionFile) {
         }
     });
 }
-export function createForkContextResolver(sessionManager, requestedContext, options = {}) {
+export function createForkContextResolver(sessionManager, requestedContext, options) {
     if (resolveSubagentContext(requestedContext) !== "fork") {
         return {
             prepareSessionForIndex: async () => { },
@@ -110,7 +118,7 @@ export function createForkContextResolver(sessionManager, requestedContext, opti
     // loose next to run-N/ result directories. Derived from the file path
     // rather than getSessionDir() so it also works when the manager cannot
     // report its directory.
-    const sessionDir = path.join(path.dirname(parentSessionFile), path.basename(parentSessionFile, ".jsonl"), "forks");
+    const forksDir = path.join(path.dirname(parentSessionFile), path.basename(parentSessionFile, ".jsonl"), "forks");
     const cachedSessionFiles = new Map();
     const preparedIndexes = new Set();
     const preparationPromises = new Map();
@@ -122,6 +130,8 @@ export function createForkContextResolver(sessionManager, requestedContext, opti
             if (!fs.existsSync(parentSessionFile)) {
                 throw new Error(`Parent session file does not exist: ${parentSessionFile}. Pi has not persisted enough history to fork yet.`);
             }
+            // Nested resume accepts a session file only under a directory named by the run's id.
+            const sessionDir = path.join(forksDir, options.runDirName());
             const sourceManager = openSession(parentSessionFile, sessionDir);
             const sessionFile = sourceManager.createBranchedSession(leafId);
             if (!sessionFile) {
@@ -133,13 +143,13 @@ export function createForkContextResolver(sessionManager, requestedContext, opti
                 if (!header || !entries) {
                     throw new Error(`Session manager returned a forked session file that does not exist and cannot be persisted by fallback: ${sessionFile}`);
                 }
-                sanitizeUnsafeThinkingBlocks(entries);
+                sanitizeUnsafeThinkingBlocks(entries, Boolean(options.pruneSession));
                 fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
                 fs.writeFileSync(sessionFile, `${[header, ...entries].map((entry) => JSON.stringify(entry)).join("\n")}\n`, "utf-8");
             }
             else {
                 const entries = readSessionEntries(sessionFile);
-                if (sanitizeUnsafeThinkingBlocks(entries)) {
+                if (sanitizeUnsafeThinkingBlocks(entries, Boolean(options.pruneSession))) {
                     fs.writeFileSync(sessionFile, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`, "utf-8");
                 }
             }
@@ -173,4 +183,3 @@ export function createForkContextResolver(sessionManager, requestedContext, opti
         },
     };
 }
-//# sourceMappingURL=fork-context.js.map

@@ -7,4 +7,3 @@ export declare function resolveAuthorityDecision(input: {
     policy?: AuthorityPolicyConfig;
 }): AuthorityDecision;
 export declare function validateAuthorityPolicy(value: unknown, label?: string): AuthorityPolicyConfig | undefined;
-//# sourceMappingURL=authority.d.ts.map

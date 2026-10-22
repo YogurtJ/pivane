@@ -1,5 +1,22 @@
 import type { AsyncStatus, ProcessTerminal, WorkflowChildSummary, WorkflowTerminalProof } from "../../shared/types.ts";
-export declare function isTerminalAsyncState(state: AsyncStatus["state"]): boolean;
+export declare function isTerminalAsyncState(state: AsyncStatus["state"]): state is Exclude<AsyncStatus["state"], "queued" | "running" | "paused">;
+/**
+ * The model an async workflow child reports for itself. Workflow lane records keep only
+ * launch identity, so display projections fall back to the child's own status step.
+ */
+export declare function readWorkflowChildRunModel(workflowAsyncDir: string, step: {
+    async?: boolean;
+    runId?: string;
+}): {
+    model?: string;
+    thinking?: string;
+} | undefined;
+/** Fill a workflow child roster row from the child's own reported model. */
+export declare function withWorkflowChildRunModel<T extends {
+    runId?: string;
+    model?: string;
+    thinking?: string;
+}>(workflowAsyncDir: string, child: T): T;
 export type WorkflowChildProcessEvidence = {
     state: "observed";
     children: ProcessTerminal[];
@@ -28,4 +45,3 @@ export declare function readWorkflowChildProcessEvidence(workflowAsyncDir: strin
 export declare function readWorkflowChildEvidence(workflowAsyncDir: string, step: NonNullable<AsyncStatus["steps"]>[number]): WorkflowChildEvidence | undefined;
 /** A persistent workflow host is terminal only after dispatch closes and every async child has process evidence. */
 export declare function readWorkflowTerminalProof(asyncDir: string, steps: AsyncStatus["steps"], summary: WorkflowChildSummary, hostCommandCount: number, closedAt: number): WorkflowTerminalProof;
-//# sourceMappingURL=workflow-terminal-proof.d.ts.map

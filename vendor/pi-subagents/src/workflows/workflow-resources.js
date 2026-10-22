@@ -152,7 +152,7 @@ function resolveRunCi(args) {
 function resolveParallel(args) {
     const unsupported = Object.keys(args).filter((key) => key !== "tasks");
     if (unsupported.length > 0)
-        return { error: `workflow 'parallel' args contain unsupported fields: ${unsupported.join(", ")}. Pass args.tasks: [{ agent, task }, ...].` };
+        return { error: `workflow 'parallel' args contain unsupported fields: ${unsupported.join(", ")}. Pass args.tasks: [{ agent, task, cwd?, model? }, ...].` };
     try {
         return { script: buildStructuredWorkflowScript("tasks", args.tasks, undefined) };
     }
@@ -269,4 +269,3 @@ function issueWorkflowResource(name, version, script, hostCommands) {
     });
     return { script, permit, provenance };
 }
-//# sourceMappingURL=workflow-resources.js.map

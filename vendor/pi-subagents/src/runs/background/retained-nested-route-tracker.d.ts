@@ -10,4 +10,3 @@ export declare function createRetainedNestedRouteTracker(state: Pick<SubagentSta
     clear: () => void;
 };
 export {};
-//# sourceMappingURL=retained-nested-route-tracker.d.ts.map

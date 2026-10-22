@@ -1614,4 +1614,3 @@ export function acceptanceFailureMessage(ledger) {
         return "Acceptance review found blockers.";
     return "Acceptance rejected.";
 }
-//# sourceMappingURL=acceptance.js.map

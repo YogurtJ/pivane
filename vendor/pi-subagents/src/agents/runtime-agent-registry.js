@@ -392,4 +392,3 @@ export function mergeRuntimeAgents(pi, discovered, configuredAgents = discovered
     const runtimeAgents = settings ? applyRuntimeAgentSettings(registered, settings) : registered;
     return { ...discovered, agents: [...discovered.agents, ...runtimeAgents] };
 }
-//# sourceMappingURL=runtime-agent-registry.js.map

@@ -24,4 +24,3 @@ interface WaitSubscriptionManagerOptions {
 export declare function formatWaitSubscriptions(state: Pick<SubagentState, "waitSubscriptions">, now?: number): string | undefined;
 export declare function createWaitSubscriptionManager(pi: Pick<ExtensionAPI, "events" | "sendMessage">, state: SubagentState, options?: WaitSubscriptionManagerOptions): WaitSubscriptionManager;
 export {};
-//# sourceMappingURL=wait-subscriptions.d.ts.map

@@ -15,4 +15,3 @@ export interface EffectiveSystemPromptInput {
  * appended later and stays outside launch identity.
  */
 export declare function buildEffectiveSystemPrompt(input: EffectiveSystemPromptInput): string;
-//# sourceMappingURL=effective-system-prompt.d.ts.map

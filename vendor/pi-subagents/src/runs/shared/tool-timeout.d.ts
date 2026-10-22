@@ -29,4 +29,3 @@ export declare function resolveToolTimeoutMs(input: ToolTimeoutResolutionInput):
 };
 /** Read the environment override without requiring callers to know the name. */
 export declare function toolTimeoutFromEnv(env?: NodeJS.ProcessEnv): string | undefined;
-//# sourceMappingURL=tool-timeout.d.ts.map

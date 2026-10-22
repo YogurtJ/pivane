@@ -10,4 +10,3 @@ import type { Api, Model, ProviderHeaders } from "@earendil-works/pi-ai";
  * provider so non-OpenCode requests stay byte-identical.
  */
 export declare function opencodeSessionHeaders(model: Pick<Model<Api>, "provider" | "baseUrl">, sessionId: string | undefined): ProviderHeaders | undefined;
-//# sourceMappingURL=opencode-session-headers.d.ts.map

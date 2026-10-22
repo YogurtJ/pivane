@@ -7,4 +7,3 @@ export { buildAsyncStatusSnapshot };
 export declare function asyncStatusSnapshotJobsForState(state: SubagentState | undefined, sessionId: string | null | undefined): AsyncJobState[];
 export declare function buildAsyncStatusSnapshotForState(state: SubagentState | undefined, sessionId: string | null | undefined, options?: AsyncStatusSnapshotOptions): AsyncStatusSnapshot;
 export declare function encodeAsyncStatusSnapshotWidget(jobs: Iterable<AsyncJobState>, options?: AsyncStatusSnapshotOptions): string[];
-//# sourceMappingURL=async-status-snapshot.d.ts.map

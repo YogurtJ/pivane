@@ -186,4 +186,3 @@ export function registerProgramStatusReporter(options) {
         },
     };
 }
-//# sourceMappingURL=program-status.js.map

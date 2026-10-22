@@ -5,4 +5,3 @@ import type { AsyncJobState } from "../shared/types.ts";
  * Task text is not available here: launch events carry it redacted.
  */
 export declare function buildActiveRunsSection(jobs: Iterable<AsyncJobState>, sessionId: string | null | undefined): string | undefined;
-//# sourceMappingURL=active-runs-prompt.d.ts.map

@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 export const MAX_INDEX_SEGMENT_BYTES = 255;
 const HASHED_INDEX_SEGMENT_PREFIX = "~sha256-";
 const WINDOWS_RESERVED_NAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
-function hashedSegment(value) {
+export function hashedSegment(value) {
     return `${HASHED_INDEX_SEGMENT_PREFIX}${createHash("sha256").update(value).digest("hex")}`;
 }
 function isPortableSegment(value) {
@@ -56,4 +56,3 @@ export function indexSegmentAliases(value, maxBytes = MAX_INDEX_SEGMENT_BYTES) {
     const historical = historicallyReadableSegment(value, maxBytes);
     return historical && historical !== current ? [current, historical] : [current];
 }
-//# sourceMappingURL=index-segment.js.map

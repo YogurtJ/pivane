@@ -29,4 +29,3 @@ export declare function createCapturedChildHooks(config: ChildRuntimeConfig): {
     runtimeAcknowledgedExtensions: () => import("../../shared/types.ts").RuntimeAcknowledgedChildExtensions | undefined;
     finalDrainHeld: () => boolean;
 };
-//# sourceMappingURL=child-hooks.d.ts.map

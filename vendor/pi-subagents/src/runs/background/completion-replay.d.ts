@@ -45,4 +45,3 @@ export declare function readCompletionArchive(archivePath: string): CompletionAr
 export declare function cleanupCompletionReplayIfDue(resultsDir: string, now: number, maxAgeMs: number, intervalMs?: number): boolean;
 /** Opportunistically remove expired replay and orphan archive files without affecting delivery. */
 export declare function cleanupCompletionReplay(resultsDir: string, now: number, maxAgeMs: number): void;
-//# sourceMappingURL=completion-replay.d.ts.map

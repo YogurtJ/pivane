@@ -746,4 +746,3 @@ export async function waitForSubagents(params, signal, deps) {
         : `${finishedCount} of ${initialCount} ${subject} finished`;
     return result(`Waited ${elapsed}; ${progress}.${outcome}${recoveryNote}${resumeGuidance}${attentionNote}${remainder} Relevant completion/control events have been observed; inspect status if a notification is not visible yet.`, (deps.failOnFailedRuns === true && failedAsyncCount > 0) || (deps.failOnAttention === true && relevantAttention.length > 0), completions);
 }
-//# sourceMappingURL=subagent-wait.js.map

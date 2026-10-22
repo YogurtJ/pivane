@@ -59,4 +59,3 @@ export function createAtomicJsonWriter(options = {}) {
 }
 export const writeAtomicJson = createAtomicJsonWriter();
 export const writePrivateAtomicJson = createAtomicJsonWriter({ mode: 0o600 });
-//# sourceMappingURL=atomic-json.js.map

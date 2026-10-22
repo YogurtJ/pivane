@@ -23,4 +23,3 @@ export type RawDrainStatusObserver = (status: {
     sessionId?: unknown;
     state?: unknown;
 } | null) => void;
-//# sourceMappingURL=readonly-drain-observation.d.ts.map

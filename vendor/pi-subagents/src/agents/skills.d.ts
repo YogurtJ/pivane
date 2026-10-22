@@ -32,4 +32,3 @@ export declare function discoverAvailableSkills(cwd: string): Array<{
 }>;
 export declare function clearSkillCache(): void;
 export {};
-//# sourceMappingURL=skills.d.ts.map

@@ -78,4 +78,3 @@ export declare function resolveClaudeCodeLaunch(input: {
     preflight: ExternalCliPreflightSpec;
     parser: ExternalCliParser;
 };
-//# sourceMappingURL=claude-code-adapter.d.ts.map

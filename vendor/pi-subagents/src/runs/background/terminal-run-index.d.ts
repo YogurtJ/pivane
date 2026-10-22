@@ -6,4 +6,3 @@ export declare function readRecentTerminalRunIndex(asyncDirRoot: string, options
     sessionId?: string;
     limit?: number;
 }): string[];
-//# sourceMappingURL=terminal-run-index.d.ts.map

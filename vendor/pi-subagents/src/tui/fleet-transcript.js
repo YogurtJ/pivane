@@ -499,4 +499,3 @@ export function renderFleetTranscript(transcript, width, theme, markdownTheme, o
         lines.pop();
     return lines;
 }
-//# sourceMappingURL=fleet-transcript.js.map

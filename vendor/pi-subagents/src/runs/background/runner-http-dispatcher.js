@@ -113,4 +113,3 @@ export function installRunnerHttpDispatcher(options) {
         console.error(`[pi-subagents] proxy-aware HTTP dispatcher not installed: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
-//# sourceMappingURL=runner-http-dispatcher.js.map

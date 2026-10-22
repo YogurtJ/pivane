@@ -35,4 +35,3 @@ export interface ChildTranscriptWriter {
 }
 export declare function createChildTranscriptWriter(input: ChildTranscriptWriterInput): ChildTranscriptWriter;
 export {};
-//# sourceMappingURL=child-transcript.d.ts.map

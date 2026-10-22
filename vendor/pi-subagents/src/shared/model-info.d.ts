@@ -53,4 +53,3 @@ export declare function qualifyModelWithProvider(model: string | undefined, prov
 export declare function findModelInfo(model: string | undefined, availableModels: ModelInfo[] | undefined, preferredProvider?: string): ModelInfo | undefined;
 export declare function getSupportedThinkingLevels(model: ModelInfo | undefined): ThinkingLevel[];
 export {};
-//# sourceMappingURL=model-info.d.ts.map

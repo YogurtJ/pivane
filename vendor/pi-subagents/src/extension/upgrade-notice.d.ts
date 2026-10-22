@@ -4,4 +4,3 @@ export declare function showUpgradeNotice(ctx: {
         notify(message: string, type: "info"): void;
     };
 }, stateDir?: string, changelogPath?: string, version?: string): Promise<void>;
-//# sourceMappingURL=upgrade-notice.d.ts.map

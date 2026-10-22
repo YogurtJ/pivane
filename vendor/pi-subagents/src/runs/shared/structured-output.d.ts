@@ -63,4 +63,3 @@ export declare function createStructuredOutputFileCapture(runtime: StructuredOut
 export declare function clearStructuredOutputCaptures(runtime: StructuredOutputRuntime): string | undefined;
 export declare function cleanupStructuredOutputRuntime(runtime: StructuredOutputRuntime | undefined): void;
 export {};
-//# sourceMappingURL=structured-output.d.ts.map

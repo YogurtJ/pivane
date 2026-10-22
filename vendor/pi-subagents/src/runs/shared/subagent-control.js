@@ -123,6 +123,7 @@ export function buildControlEvent(input) {
         ...(input.toolCount !== undefined ? { toolCount: input.toolCount } : {}),
         ...(input.currentTool ? { currentTool: input.currentTool } : {}),
         ...(input.toolCallId ? { toolCallId: input.toolCallId } : {}),
+        ...(input.hasCommandController !== undefined ? { hasCommandController: input.hasCommandController } : {}),
         ...(input.currentToolDurationMs !== undefined ? { currentToolDurationMs: input.currentToolDurationMs } : {}),
         ...(input.currentPath ? { currentPath: input.currentPath } : {}),
         ...(elapsedMs !== undefined ? { elapsedMs } : {}),
@@ -210,7 +211,7 @@ export function formatControlNoticeMessage(event, childIntercomTarget) {
             ...head("Subagent needs attention"),
             "Hint: Inspect the running command and recent output before nudging. A queued steer does not cancel an in-flight bash call. A dev server or watch command may intentionally never return. Elapsed time alone does not prove the command is stuck.",
             "Recovery: For a local Pi child explicitly granted subagent_command, yield a needed persistent command or cancel the exact incorrect command, then steer the child. Query command.status to confirm the result. If command controls are unavailable, inspect partial changes and interruption scope before interrupt/resume; interrupt is run-scoped and may affect siblings.",
-            ...(event.toolCallId ? [command("Command", "command.status"), command("Yield", "command.yield"), command("Cancel", "command.cancel")] : []),
+            ...(event.toolCallId && event.hasCommandController ? [command("Command", "command.status"), command("Yield", "command.yield"), command("Cancel", "command.cancel")] : []),
             status,
             `Transcript: subagent({ action: "status", id: "${runTarget}", options: { view: "transcript"${event.index !== undefined ? `, index: ${event.index}` : ""} } })`,
         ]);
@@ -244,4 +245,3 @@ export function formatControlIntercomMessage(event, childIntercomTarget) {
         formatControlNoticeMessage(event, childIntercomTarget),
     ].join("\n");
 }
-//# sourceMappingURL=subagent-control.js.map

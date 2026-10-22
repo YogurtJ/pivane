@@ -24,4 +24,3 @@ export declare function latestCalendarOccurrence(rule: CalendarRule, now: number
 export declare function calendarDateAfter(rule: CalendarRule, consumedAt: number, pendingDate: string): string;
 /** Re-resolve the pending date using current timezone data, without consulting its UTC cache. */
 export declare function restoreCalendarTrigger(input: CalendarTrigger): CalendarTrigger;
-//# sourceMappingURL=calendar-schedule.d.ts.map

@@ -115,4 +115,3 @@ export interface InProcessChildLaunch {
 /** Actual host create-input boundary. Evidence remains explicitly opt-in and dormant in production. */
 export declare function createReportedChildSessionInput(launch: InProcessChildLaunch, transcriptWriter?: ChildTranscriptWriter): ChildSessionLaunch;
 export declare function buildInProcessChildLaunch(input: BuildInProcessChildLaunchInput): InProcessChildLaunch;
-//# sourceMappingURL=child-launch.d.ts.map

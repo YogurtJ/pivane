@@ -1,2 +1,1 @@
 export { registerRequiredChildExtensions, type RegisterRequiredChildExtensionsInput, type RequiredChildExtension, type RequiredChildExtensionRegistration, } from "../shared/required-child-extensions.ts";
-//# sourceMappingURL=required-child-extensions.d.ts.map

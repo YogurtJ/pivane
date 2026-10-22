@@ -102,5 +102,8 @@ export declare function resolveModelOrigin(input: {
 }): ModelOrigin;
 export declare function inheritsParentModel(explicitModel: string | boolean | undefined, agentModel: string | boolean | undefined, parentModel: ParentModel | undefined): boolean;
 export declare function resolveModelSelection(model: string | undefined, availableModels: AvailableModelInfo[] | undefined, preferredProvider?: string, options?: ResolveModelSelectionOptions): ModelSelectionEvidence;
-export declare function isContextOverflow(error: string | undefined): boolean;
-//# sourceMappingURL=model-resolution.d.ts.map
+/** Separates an error from the reply text appended to it; classification reads only the part before it. */
+export declare const ERROR_REPLY_TEXT_SEPARATOR = "\nReply text: ";
+/** The part of a child error that a classifier may read: everything before any appended reply text. */
+export declare function errorWithoutReplyText(error: string | undefined): string | undefined;
+export declare function isContextOverflow(fullError: string | undefined): boolean;

@@ -242,4 +242,3 @@ export function hostStepReportName(reportPath) {
         return undefined;
     return reportPath.split(/[\\/]/).filter(Boolean).at(-1);
 }
-//# sourceMappingURL=host-step-status.js.map

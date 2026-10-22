@@ -19,4 +19,3 @@ export declare function applyWatchdogLaunchRules(input: {
 }): string | undefined;
 /** For launch paths without a main watchdog runtime (background chain steps). */
 export declare function sendRuleViolationWarning(pi: Pick<ExtensionAPI, "sendMessage">, violation: WatchdogRuleViolation): void;
-//# sourceMappingURL=rules.d.ts.map

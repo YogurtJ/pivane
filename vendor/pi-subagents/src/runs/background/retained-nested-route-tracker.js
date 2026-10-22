@@ -88,4 +88,3 @@ export function createRetainedNestedRouteTracker(state, options = {}) {
     };
     return { track, clear };
 }
-//# sourceMappingURL=retained-nested-route-tracker.js.map

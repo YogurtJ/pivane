@@ -5,4 +5,3 @@ interface SerializeAgentOptions {
 }
 export declare function serializeAgent(config: AgentConfig, options?: SerializeAgentOptions): string;
 export {};
-//# sourceMappingURL=agent-serializer.d.ts.map

@@ -8,4 +8,3 @@ export declare function readMainThinkingLevel(read: () => ThinkingLevel): Thinki
 /** The running tone of a glyph: Pi's prompt-box color for the recorded level of the one child it stands for, else for the main session's current level, else accent. */
 export declare function runningTone(theme: Theme, childLevel?: ThinkingLevel): (text: string) => string;
 export {};
-//# sourceMappingURL=running-tone.d.ts.map

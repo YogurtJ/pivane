@@ -297,4 +297,3 @@ export function appendRunnerStepsToStatus(input) {
     input.status.lastUpdate = input.now ?? Date.now();
     return { addedChainSteps, addedFlatSteps };
 }
-//# sourceMappingURL=chain-append.js.map

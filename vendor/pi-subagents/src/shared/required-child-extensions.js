@@ -103,4 +103,3 @@ export function readRetainedRequiredChildExtensions(asyncDir) {
         return undefined;
     return snapshotRequiredChildExtensions(JSON.parse(fs.readFileSync(filePath, "utf-8")), "Retained required child extensions");
 }
-//# sourceMappingURL=required-child-extensions.js.map

@@ -57,4 +57,3 @@ export function createWatchdogWarningMessage(warning, options = {}) {
         details,
     };
 }
-//# sourceMappingURL=warning-format.js.map

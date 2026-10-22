@@ -480,4 +480,3 @@ export function cleanupStructuredOutputRuntime(runtime) {
         // Best-effort temp cleanup.
     }
 }
-//# sourceMappingURL=structured-output.js.map

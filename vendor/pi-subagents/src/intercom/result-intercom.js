@@ -370,4 +370,3 @@ export function formatSubagentResultReceipt(input) {
     lines.push("Full grouped output was sent over intercom.");
     return lines.join("\n");
 }
-//# sourceMappingURL=result-intercom.js.map

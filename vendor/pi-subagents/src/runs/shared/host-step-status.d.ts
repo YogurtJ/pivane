@@ -31,4 +31,3 @@ export declare function upsertHostStep(input: {
 }): AsyncStatus;
 export declare function hostStepVerdictLabel(state: HostStepState, verdict: HostStepVerdict | undefined): string;
 export declare function hostStepReportName(reportPath: string | undefined): string | undefined;
-//# sourceMappingURL=host-step-status.d.ts.map

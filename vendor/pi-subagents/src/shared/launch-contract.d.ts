@@ -61,4 +61,3 @@ export interface LaunchBinding {
  */
 export declare function resolveLaunchBinding(source: LaunchBindingSource): LaunchBinding;
 export {};
-//# sourceMappingURL=launch-contract.d.ts.map

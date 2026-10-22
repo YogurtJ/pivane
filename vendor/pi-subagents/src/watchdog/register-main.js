@@ -1,5 +1,5 @@
 import { resolveEffectiveThinking, splitKnownThinkingSuffix, THINKING_LEVELS } from "../shared/model-info.js";
-import { SLASH_TEXT_RESULT_TYPE } from "../shared/types.js";
+import { SLASH_TEXT_RESULT_TYPE, SLASH_TEXT_VIEW_ONLY_DETAILS } from "../shared/types.js";
 import { startWatchdogDiffBaselineCapture } from "./diff-tool.js";
 import { formatWatchdogRecommendation, recommendWatchdogModel, resolveWatchdogModelInput, parseWatchdogThinkingInput } from "./model-selection.js";
 import { createMainWatchdogReview } from "./review.js";
@@ -8,7 +8,7 @@ import { getWatchdogUserSettingsPath, writeUserWatchdogEnabled, writeWatchdogMod
 import { SUBAGENT_WATCHDOG_WARNING_TYPE, } from "./types.js";
 import { createWatchdogWarningMessage } from "./warning-format.js";
 function sendSlashText(pi, text) {
-    pi.sendMessage({ customType: SLASH_TEXT_RESULT_TYPE, content: text, display: true });
+    pi.sendMessage({ customType: SLASH_TEXT_RESULT_TYPE, content: text, display: true, details: SLASH_TEXT_VIEW_ONLY_DETAILS });
 }
 function messageFromError(error) {
     return error instanceof Error ? error.message : String(error);
@@ -358,13 +358,14 @@ export function registerMainWatchdog(pi, options = {}) {
         displayUserWarning: (details) => pi.appendEntry(SUBAGENT_WATCHDOG_WARNING_TYPE, details),
         displayClarification: (content) => pi.sendMessage({ customType: "subagent_watchdog_clarification", content, display: true }, { deliverAs: "steer", triggerTurn: true }),
     });
-    pi.registerCommand("subagents-watchdog", {
-        description: "Show or toggle the default-off subagent watchdog",
-        handler: (args, ctx) => {
-            rememberContext(ctx);
-            return handleWatchdogCommand(pi, runtime, args, ctx);
-        },
-    });
+    if (options.slashCommand !== false)
+        pi.registerCommand("subagents-watchdog", {
+            description: "Show or toggle the default-off subagent watchdog",
+            handler: (args, ctx) => {
+                rememberContext(ctx);
+                return handleWatchdogCommand(pi, runtime, args, ctx);
+            },
+        });
     pi.on("session_start", (_event, ctx) => {
         rememberContext(ctx);
         diffBaseline = startWatchdogDiffBaselineCapture(ctx.cwd);
@@ -397,4 +398,3 @@ export function registerMainWatchdog(pi, options = {}) {
     });
     return runtime;
 }
-//# sourceMappingURL=register-main.js.map

@@ -151,7 +151,14 @@ export default function registerHerdrPiBridge(pi) {
     };
     pi.registerCommand("pi-subagents-bridge", { description: "Internal pane-native request dispatch", handler: (args, ctx) => execute(args.trim(), ctx) });
     const on = pi.on;
-    on("before_agent_start", (event) => resolvedSystemPrompt && resolvedContextPolicy ? { systemPrompt: `${rewriteSubagentPrompt(typeof event.systemPrompt === "string" ? event.systemPrompt : "", { inheritProjectContext: resolvedContextPolicy.inheritProjectContext, inheritGlobalContext: resolvedContextPolicy.inheritGlobalContext, inheritSkills: resolvedContextPolicy.inheritSkills })}\n\n<active_agent name=${JSON.stringify(resolvedContextPolicy.agent)}/>\n\n${resolvedSystemPrompt}` } : undefined);
+    on("before_agent_start", (event) => {
+        // The remote Pi fills its append slot from the remote operator's APPEND_SYSTEM.md; it is not the child's
+        // prompt, as for local children. Cleared before event.systemPrompt renders from these options.
+        const options = event.systemPromptOptions;
+        if (typeof options?.appendSystemPrompt === "string")
+            options.appendSystemPrompt = "";
+        return resolvedSystemPrompt && resolvedContextPolicy ? { systemPrompt: `${rewriteSubagentPrompt(typeof event.systemPrompt === "string" ? event.systemPrompt : "", { inheritProjectContext: resolvedContextPolicy.inheritProjectContext, inheritGlobalContext: resolvedContextPolicy.inheritGlobalContext, inheritSkills: resolvedContextPolicy.inheritSkills })}\n\n<active_agent name=${JSON.stringify(resolvedContextPolicy.agent)}/>\n\n${resolvedSystemPrompt}` } : undefined;
+    });
     on("session_start", (_event, ctx) => {
         context = ctx;
         nativeSessionId = sessionId(ctx);
@@ -242,4 +249,3 @@ export default function registerHerdrPiBridge(pi) {
     });
     server.listen(socketPath, () => { fs.chmodSync(socketPath, 0o600); });
 }
-//# sourceMappingURL=herdr-pi-bridge.js.map

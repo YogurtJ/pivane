@@ -67,4 +67,3 @@ export default async function runBinaryBootstrap() {
         process.exit(1);
     }
 }
-//# sourceMappingURL=binary-bootstrap.js.map

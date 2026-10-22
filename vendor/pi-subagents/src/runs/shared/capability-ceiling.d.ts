@@ -55,4 +55,3 @@ export declare function assertAgentAllowedByCapabilityCeiling(agentName: string,
 export declare function capabilityCeilingAgentRestrictionSources(ceiling: ResolvedSubagentCapabilityCeiling | undefined): string[] | undefined;
 export declare function encodeSubagentCapabilityCeiling(ceiling: ResolvedSubagentCapabilityCeiling | undefined): string | undefined;
 export declare function decodeSubagentCapabilityCeiling(value: string | undefined): ResolvedSubagentCapabilityCeiling | undefined;
-//# sourceMappingURL=capability-ceiling.d.ts.map

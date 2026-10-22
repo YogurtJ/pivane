@@ -5,4 +5,3 @@ export declare function createWatchdogWarningMessage(warning: WatchdogWarning, o
     display?: boolean;
     details?: Partial<WatchdogWarningDetails>;
 }): WatchdogWarningMessage;
-//# sourceMappingURL=warning-format.d.ts.map

@@ -165,4 +165,3 @@ export interface MissionUpdateInput {
     };
     addReceipts?: Array<Omit<MissionReceipt, "createdAt">>;
 }
-//# sourceMappingURL=types.d.ts.map

@@ -27,4 +27,3 @@ export function buildActiveRunsSection(jobs, sessionId) {
         ...lines,
     ].join("\n");
 }
-//# sourceMappingURL=active-runs-prompt.js.map

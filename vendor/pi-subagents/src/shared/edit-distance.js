@@ -30,4 +30,3 @@ export function closestMatch(requested, candidates) {
         .filter(({ candidate, distance }) => distance <= Math.max(1, Math.floor(candidate.length / 4)) || hasSingleAdjacentTransposition(lower, candidate.toLowerCase()))
         .sort((left, right) => left.distance - right.distance || left.candidate.localeCompare(right.candidate))[0]?.candidate;
 }
-//# sourceMappingURL=edit-distance.js.map

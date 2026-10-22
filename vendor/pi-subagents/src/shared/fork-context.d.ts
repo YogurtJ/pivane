@@ -32,6 +32,8 @@ interface ForkContextResolverOptions {
     openSession?: (path: string, sessionDir?: string) => BranchSessionManager;
     /** Rewrite a created fork before its path can be used to spawn a child. */
     pruneSession?: (sessionFile: string) => Promise<void>;
+    /** Run id that names this launch's fork directory, read when the first fork is created. */
+    runDirName: () => string;
 }
 interface ForkContextResolver {
     prepareSessionForIndex(index?: number): Promise<void>;
@@ -58,6 +60,5 @@ export declare function resolveSubagentLaunchContext(input: SubagentLaunchContex
  * Explicit `context: "fork"` stays strict and does not use this preference. */
 export declare function canPreferFork(sessionManager: PreferredForkAvailability): boolean;
 export declare function canPreferForkFromSnapshot(input: PreferredForkSnapshot): boolean;
-export declare function createForkContextResolver(sessionManager: ForkableSessionManager, requestedContext: unknown, options?: ForkContextResolverOptions): ForkContextResolver;
+export declare function createForkContextResolver(sessionManager: ForkableSessionManager, requestedContext: unknown, options: ForkContextResolverOptions): ForkContextResolver;
 export {};
-//# sourceMappingURL=fork-context.d.ts.map

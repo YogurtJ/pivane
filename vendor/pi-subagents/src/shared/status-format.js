@@ -58,4 +58,3 @@ export function formatParallelOutcome(steps, total, options = {}) {
         parts.push(`${paused} paused`);
     return parts.join(" · ");
 }
-//# sourceMappingURL=status-format.js.map

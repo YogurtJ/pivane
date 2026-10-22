@@ -23,4 +23,3 @@ interface RunStatusDeps {
 }
 export declare function inspectSubagentStatus(params: RunStatusParams, deps?: RunStatusDeps): AgentToolResult<Details>;
 export {};
-//# sourceMappingURL=run-status.d.ts.map

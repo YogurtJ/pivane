@@ -36,4 +36,3 @@ export function contextModePrefix(theme, mode) {
         return `${theme.fg("warning", label)} `;
     return `${theme.fg("dim", label)} `;
 }
-//# sourceMappingURL=context-mode.js.map

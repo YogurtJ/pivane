@@ -21,29 +21,56 @@ type ChildBoundaryOptions = {
 export declare function rewriteSubagentPrompt(prompt: string, options: InheritedPromptOptions & ChildBoundaryOptions): string;
 /** Installed after every other extension: a returned prompt freezes out sections added after it. */
 export declare function registerSubagentPromptBoundary(pi: ExtensionAPI, config: ChildRuntimeConfig): void;
-type DeclaredTool = {
-    name: string;
+/** The system messages older than `forkedAt`: the prompt and tool state a fork inherited. */
+export declare function systemMessagesBefore<T extends {
+    role: string;
+}>(messages: readonly T[], forkedAt: number): T[];
+/** The model that wrote a fork's inherited history. */
+export type InheritedModel = {
+    provider: string;
+    api: string;
+    model: string;
 };
-/** The tools the system messages older than `forkedAt` declare, replayed in order as Pi does. */
-export declare function toolsDeclaredBefore(messages: readonly {
+/** The provider, API and model of the last assistant message older than `forkedAt`. */
+export declare function modelBefore(messages: readonly {
     role: string;
-}[], forkedAt: number): DeclaredTool[];
+}[], forkedAt: number): InheritedModel | undefined;
 /**
- * A forked child starts with its parent's history, whose system messages declare the parent's
- * tools, and its own first system message removes the tools this child may not use. Providers
- * cache the tool list before everything else, so that removal made every request of a fork miss
- * the parent's prompt cache. Requests now keep declaring every `inherited` tool, in its order,
- * before the tools the child adds: the child's own system messages (written at or after
- * `forkedAt`) lose their removals of those tools. When a `context` handler changed the
- * conversation, Pi sends one leading system message holding the current tools instead, and that
- * message's tools are set to the same list. The child still does not register the tools it may
- * not use, so a call to one gets Pi's "not found" error and runs nothing. Only what a request
- * sends changes; the session keeps Pi's own record. Once a compaction in the child left no
- * inherited message in the request, there is no parent prefix to match, and nothing changes.
+ * A forked child starts with its parent's history, and Anthropic-style providers cache a request
+ * as one prefix: tools, then the system prompt, then the messages. The child's own prompt (its
+ * role, tool list and boundary) and its own tools changed that prefix right after the tools, so
+ * every fork re-read the parent's whole conversation without the prompt cache.
+ *
+ * A fork's request now starts exactly as its parent's last one did:
+ * - The system messages it inherited (`inherited`, older than `forkedAt`) are sent as they are,
+ *   and the child's own ones are dropped. When a `context` handler made Pi collapse the request
+ *   into one leading system message, that message is rebuilt from `inherited`.
+ * - Every tool the parent declared stays declared, with the parent's definition. A tool only the
+ *   child has, or one the child defines differently under the parent's name (a `structured_output`
+ *   with its own schema, for example), is declared by one system message at the fork point, so the
+ *   model sees the definition the child's tool checks.
+ * - The child's instructions (its role sections, the boundary, the tools it can call) go first in
+ *   its first own user message, after the inherited history.
+ *
+ * Only what a request sends changes; the session keeps Pi's own record. Once a compaction in the
+ * child left no inherited message, there is no parent prefix to match: the child's own prompt is
+ * sent, with the boundary added as a section.
  */
-export declare function keepInheritedToolDeclarations<T extends {
+export declare function projectForkRequest<T extends {
     role: string;
-}>(messages: T[], inherited: readonly DeclaredTool[], forkedAt: number): T[];
+}>(messages: T[], inherited: readonly T[], forkedAt: number, options?: {
+    boundary?: string;
+}): T[];
+/**
+ * Pi sends the session id in a session-affinity header to Anthropic-style endpoints that ask for
+ * one (`compat.sendSessionAffinityHeaders`), and routers use it to keep a session on the upstream
+ * that holds its prompt cache. A fork's request starts with its parent's whole cached prefix, so it
+ * names its parent's session to be routed to that cache; otherwise a router with several upstreams
+ * may send it to one that never saw the parent. Only the header Pi itself sends is changed, and only
+ * when the child runs on the model that wrote its inherited history (`parentModel`, the last
+ * inherited assistant message): any other model holds no cache of that prefix.
+ */
+export declare function applyForkSessionAffinity(headers: Record<string, string | null | undefined> | undefined, model: ExtensionContext["model"] | undefined, parentSessionId: string | undefined, parentModel: InheritedModel | undefined): void;
 export declare function rewriteForkCacheProviderRequest(event: BeforeProviderRequestEvent, ctx: Pick<ExtensionContext, "model"> | undefined, forkCacheKey: string | undefined): unknown;
 /**
  * `inheritedBefore`, set in a forked child to the fork's time, keeps the history the child
@@ -61,4 +88,3 @@ export declare function registerPermissionGate(pi: ExtensionAPI, permissions: Ch
 /** Register every child-side hook the prompt runtime owns for one child session. */
 export default function registerSubagentPromptRuntime(pi: ExtensionAPI, config?: ChildRuntimeConfig, drainObservation?: import("./readonly-drain-observation.ts").ReadonlyDrainObservation): void;
 export {};
-//# sourceMappingURL=subagent-prompt-runtime.d.ts.map

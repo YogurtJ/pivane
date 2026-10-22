@@ -36,4 +36,3 @@ export declare function listBackgroundWorkProviders(): readonly BackgroundWorkPr
 export declare function listBackgroundWorkWakeChannels(): readonly string[];
 /** Reconcile and snapshot active provider work owned by one exact Pi session. */
 export declare function snapshotBackgroundWork(sessionId: string, nowMs?: number): BackgroundWorkSnapshot;
-//# sourceMappingURL=background-work.d.ts.map

@@ -166,4 +166,3 @@ export function readRecentTerminalRunIndex(asyncDirRoot, options = {}) {
     }
     return runIds;
 }
-//# sourceMappingURL=terminal-run-index.js.map

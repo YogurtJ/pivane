@@ -241,4 +241,3 @@ export function eventIndicatesRepoEdit(event) {
         return messageIndicatesRepoEdit({ role: "toolResult", ...input });
     return false;
 }
-//# sourceMappingURL=change-signature.js.map

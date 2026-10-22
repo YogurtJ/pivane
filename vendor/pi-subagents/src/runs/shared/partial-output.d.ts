@@ -22,4 +22,3 @@ export declare function formatPartialOutput(text: string, cause: PartialOutputCa
 export declare function timedOutRunSummary(message: string, summary: string, results: ReadonlyArray<{
     outputPartial?: boolean;
 }>): string;
-//# sourceMappingURL=partial-output.d.ts.map

@@ -21,4 +21,3 @@ export declare function resolveAsyncStatusChild(status: Pick<AsyncStatus, "runId
 }): AsyncStatusChildResolution;
 export declare function isStoppableAsyncStatusStep(step: AsyncStatusStep): boolean;
 export declare function stopStoppableAsyncStatusChildren(status: Pick<AsyncStatus, "steps">, stopChild: ((childId: string, message?: string) => boolean) | undefined, message: string): void;
-//# sourceMappingURL=child-identity.d.ts.map

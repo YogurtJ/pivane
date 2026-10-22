@@ -27,4 +27,3 @@ export interface SupervisorReplyEntryData {
 export declare function supervisorReplyHint(requestId: string): string;
 export declare function parseSupervisorRequestDetails(value: unknown): SupervisorRequestMessageDetails | undefined;
 export declare function parseSupervisorReplyData(value: unknown): SupervisorReplyEntryData | undefined;
-//# sourceMappingURL=supervisor-ui.d.ts.map

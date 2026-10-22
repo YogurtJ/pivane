@@ -112,4 +112,3 @@ export declare function transferActiveAsyncCapacity(input: {
     asyncDir: string;
 }, options?: CapacityOptions): ActiveAsyncCapacityHandle | undefined;
 export {};
-//# sourceMappingURL=active-async-capacity.d.ts.map

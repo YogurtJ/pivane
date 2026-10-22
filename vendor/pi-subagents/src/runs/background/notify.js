@@ -11,6 +11,7 @@ import { buildCompletionKey, markSeenWithTtl } from "./completion-dedupe.js";
 import { createCompletionBatcher, resolveCompletionBatchConfig, } from "./completion-batcher.js";
 import { SUBAGENT_ASYNC_COMPLETE_EVENT, SUBAGENT_FOREGROUND_COMPLETE_EVENT } from "../../shared/types.js";
 import { safeTerminalText } from "../../shared/display-text.js";
+import { COMPLETION_ACTION } from "../../shared/parent-wake.js";
 import { resolveSubagentResultStatus } from "../../intercom/result-intercom.js";
 import { isUnexplainedProcessSignal } from "../shared/process-signal.js";
 import { capSummaryOutputs } from "../shared/single-output.js";
@@ -438,9 +439,25 @@ function notifyRunDetails({ resultPreview: _preview, childOutputs, ...run }) {
         ...(childOutputs ? { childOutputs: childOutputs.map(({ preview: _childPreview, previewTruncated: _truncated, previewUnavailableReason: _reason, ...child }) => child) } : {}),
     };
 }
-const COMPLETION_ACTION = "Read the saved results above and resume the already-authorized parent task, or report completion. If approval is required, explicitly ask the user. Do not silently yield, rerun completed work, or infer new authorization.";
+/** Session entry holding a notice whose wake Pi never started before the session ended. */
+export const PENDING_NOTICE_ENTRY = "subagent-notify-pending";
+/** Pending notices recorded at shutdown that no later subagent-notify message in the session carries. */
+export function unreplayedPendingNotices(entries) {
+    const pending = new Map();
+    for (const entry of entries) {
+        if (entry.type === "custom" && entry.customType === PENDING_NOTICE_ENTRY) {
+            const message = entry.data?.message;
+            if (message?.customType === "subagent-notify" && typeof message.content === "string")
+                pending.set(message.content, message);
+        }
+        else if (entry.type === "custom_message" && entry.customType === "subagent-notify" && typeof entry.content === "string") {
+            pending.delete(entry.content);
+        }
+    }
+    return [...pending.values()];
+}
 const HELD_COMPLETION_ACTION = "The user stopped the parent turn. Report these results at the user's next prompt and do not resume the stopped task unless asked.";
-function sendCompletion(pi, items, unstartedWakes, unansweredCompletions, updateSettleSubscription) {
+function sendCompletion(pi, items, unstartedWakes, unansweredCompletions, updateSettleSubscription, queuedNotices) {
     if (items.length === 0)
         return true;
     const details = items.map((item) => item.details);
@@ -451,29 +468,35 @@ function sendCompletion(pi, items, unstartedWakes, unansweredCompletions, update
     const display = details.some((detail) => detail.source === "foreground" || detail.status !== "completed" || detail.scheduleOrigin !== undefined);
     // A held notice starts no wake, so the silent-wake reminder must not later tell the model to resume the stopped task.
     const tracked = triggerTurn && !held;
+    const message = {
+        customType: "subagent-notify",
+        content,
+        display,
+        // Pi does not send details to the model. Hosts match runs by id; the text previews stay in content only.
+        details: { runs: details.map(notifyRunDetails) },
+    };
     // Pi can queue an accepted wake behind the current turn or past agent_settled.
     // Recorded before sending in case Pi starts the message synchronously.
     if (tracked) {
         unstartedWakes.push(content);
+        queuedNotices.set(content, message);
         unansweredCompletions.set(content, { reminded: false });
         updateSettleSubscription();
     }
     try {
-        const appended = pi.sendMessage({
-            customType: "subagent-notify",
-            content,
-            display,
-            // Pi does not send details to the model. Hosts match runs by id; the text previews stay in content only.
-            details: { runs: details.map(notifyRunDetails) },
-        }, { triggerTurn });
-        // An idle parent's appended notice gets no message_start; its wake prompt holds liveness instead.
+        const appended = pi.sendMessage(message, { triggerTurn });
+        // A notice only appended (held, or joining another extension's starting wake) gets no message_start.
         if (appended && tracked)
             unstartedWakes.splice(unstartedWakes.lastIndexOf(content), 1);
+        if (tracked && !unstartedWakes.includes(content))
+            queuedNotices.delete(content);
         return true;
     }
     catch {
         if (tracked) {
             unstartedWakes.splice(unstartedWakes.lastIndexOf(content), 1);
+            if (!unstartedWakes.includes(content))
+                queuedNotices.delete(content);
             unansweredCompletions.delete(content);
             updateSettleSubscription();
         }
@@ -646,8 +669,11 @@ export default function registerSubagentNotify(pi, state, options = {}) {
     const batchConfig = resolveCompletionBatchConfig(options.batchConfig);
     const batchers = new Map();
     let unstartedWakes = [];
+    // The notice behind each unstarted wake, so shutdown can still put it in the session.
+    let queuedNotices = new Map();
     let unansweredCompletions = new Map();
     let bound = false;
+    let boundSessionId;
     let disposed = false;
     let unsubscribeSettle;
     const ownsResult = options.ownership?.owns
@@ -687,7 +713,7 @@ export default function registerSubagentNotify(pi, state, options = {}) {
             void claim.outcome.then((outcome) => settle([item], outcome, outcome ? undefined : "send_failed"));
         }
         const claimedItems = claimed.map(({ item }) => item);
-        const sent = sendCompletion(pi, claimedItems, unstartedWakes, unansweredCompletions, updateSettleSubscription);
+        const sent = sendCompletion(pi, claimedItems, unstartedWakes, unansweredCompletions, updateSettleSubscription, queuedNotices);
         for (const { claim } of claimed)
             claim.settle?.(sent);
         settle(claimedItems, sent, sent ? "send_accepted" : "send_failed");
@@ -767,6 +793,40 @@ export default function registerSubagentNotify(pi, state, options = {}) {
         batcher.push(item);
         return completion;
     };
+    // Resend notices a previous process recorded at shutdown; the wake is tracked like any other.
+    const replayNotices = (sessionId, messages) => {
+        if (disposed || boundSessionId !== sessionId)
+            return;
+        for (const message of messages) {
+            if (unstartedWakes.includes(message.content))
+                continue;
+            const tracked = !pi.isHeld();
+            if (tracked) {
+                unstartedWakes.push(message.content);
+                unansweredCompletions.set(message.content, { reminded: false });
+                queuedNotices.set(message.content, message);
+                updateSettleSubscription();
+            }
+            traceNotification("replayed");
+            const release = () => {
+                unstartedWakes.splice(unstartedWakes.lastIndexOf(message.content), 1);
+                if (!unstartedWakes.includes(message.content))
+                    queuedNotices.delete(message.content);
+            };
+            try {
+                if (pi.sendMessage(message, { triggerTurn: true }) && tracked)
+                    release();
+            }
+            catch (error) {
+                console.error("Failed to resend a subagent completion notice recorded at the last shutdown; the next start retries it:", error);
+                if (tracked) {
+                    release();
+                    unansweredCompletions.delete(message.content);
+                    updateSettleSubscription();
+                }
+            }
+        }
+    };
     const handleBeforeSettle = (event) => {
         if (disposed || event.outcome !== "completed" || event.continue || event.context.pendingMessages.length)
             return;
@@ -839,6 +899,8 @@ export default function registerSubagentNotify(pi, state, options = {}) {
             const index = unstartedWakes.indexOf(message.content);
             if (index !== -1)
                 unstartedWakes.splice(index, 1);
+            if (!unstartedWakes.includes(message.content))
+                queuedNotices.delete(message.content);
         },
         bindSession(sessionManager) {
             if (disposed)
@@ -849,20 +911,50 @@ export default function registerSubagentNotify(pi, state, options = {}) {
             const unanswered = retained?.sessionId === sessionId && retained.unansweredCompletions instanceof Map
                 ? retained.unansweredCompletions
                 : new Map(wakes.map(content => [content, { reminded: false }]));
+            const notices = retained?.sessionId === sessionId && retained.notices instanceof Map
+                ? retained.notices
+                : new Map();
             // Before the first bind, local wakes belong to this session; after it, to the previous one.
             if (!bound) {
                 wakes.push(...unstartedWakes);
                 for (const [content, notice] of unansweredCompletions)
                     unanswered.set(content, notice);
+                for (const [content, notice] of queuedNotices)
+                    notices.set(content, notice);
             }
             bound = true;
+            boundSessionId = sessionId;
             unstartedWakes = wakes;
             unansweredCompletions = unanswered;
-            queuedWakes.set(sessionManager, { sessionId, wakes, unansweredCompletions });
+            queuedNotices = notices;
+            const firstBind = retained?.sessionId !== sessionId;
+            queuedWakes.set(sessionManager, { sessionId, wakes, unansweredCompletions, notices });
             updateSettleSubscription();
+            // A new process on this session: resend notices the previous one recorded at shutdown.
+            // Deferred past session_start so the resend starts its run after Pi has finished binding the session.
+            // Only the active branch: a resend recorded on an abandoned branch never reached this one.
+            if (firstBind && typeof sessionManager.getBranch === "function") {
+                const pendingNotices = unreplayedPendingNotices(sessionManager.getBranch());
+                if (pendingNotices.length)
+                    (options.timers?.setTimeout ?? setTimeout)(() => replayNotices(sessionId, pendingNotices), 0);
+            }
         },
         sessionShutdown(reason) {
             if (reason !== "reload") {
+                // The result file is already gone and Pi drops its queued steers with the session, so a wake
+                // that never started would lose its notice. Record it in the session; the next start resends it.
+                for (const content of new Set(unstartedWakes)) {
+                    const message = queuedNotices.get(content) ?? { customType: "subagent-notify", content, display: true, details: { runs: [] } };
+                    try {
+                        pi.appendEntry?.(PENDING_NOTICE_ENTRY, { message });
+                        traceNotification(pi.appendEntry ? "shutdown_persisted" : "shutdown_persist_failed");
+                    }
+                    catch (error) {
+                        traceNotification("shutdown_persist_failed");
+                        console.error("Failed to record an undelivered subagent completion notice in the session; it is lost:", error);
+                    }
+                }
+                queuedNotices.clear();
                 unstartedWakes.length = 0;
                 unansweredCompletions.clear();
             }
@@ -894,4 +986,3 @@ export default function registerSubagentNotify(pi, state, options = {}) {
         },
     };
 }
-//# sourceMappingURL=notify.js.map

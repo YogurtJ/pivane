@@ -110,4 +110,3 @@ export interface SubagentDelegationInvalidResponse {
 export type SubagentDelegationResponse = SubagentDelegationTerminalResponse | SubagentDelegationInvalidResponse;
 export interface SubagentDelegationCancel extends SubagentDelegationStarted {
 }
-//# sourceMappingURL=delegation.d.ts.map

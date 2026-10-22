@@ -275,4 +275,3 @@ export default function registerFanoutChildSubagentExtension(pi, childConfig) {
     const inboxState = previous?.state ?? createNestedControlInboxState();
     listenerCleanups.set(routeKey, { state: inboxState, cleanup: startNestedControlInboxListener(pi, state, route, inboxState) });
 }
-//# sourceMappingURL=fanout-child.js.map

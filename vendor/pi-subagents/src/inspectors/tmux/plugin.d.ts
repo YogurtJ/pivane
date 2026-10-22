@@ -5,4 +5,3 @@ export interface TmuxPluginDeps {
     client?: TmuxClient;
 }
 export declare function createTmuxInspectorPlugin(deps?: TmuxPluginDeps): InspectorPlugin;
-//# sourceMappingURL=plugin.d.ts.map

@@ -267,4 +267,3 @@ export function renderSubagentEntry(entry, options, theme) {
     const view = ENTRY_VIEWS.get(entry.customType)?.(entry);
     return view ? new SubagentMessageBlock(entry, view, options.expanded, theme) : undefined;
 }
-//# sourceMappingURL=subagent-messages.js.map

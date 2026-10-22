@@ -17,4 +17,3 @@ export declare function retainLiveForegroundNestedRoute(state: Pick<SubagentStat
 export declare function hasLiveSubagentWork(state: LiveWorkState): boolean;
 export declare function registerPiWebSessionLiveness(registration: SessionLivenessRegistration): PiWebSessionLivenessHandle;
 export {};
-//# sourceMappingURL=pi-web-session-liveness.d.ts.map

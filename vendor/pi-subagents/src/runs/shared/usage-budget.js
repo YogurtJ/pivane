@@ -72,4 +72,3 @@ export function usageBudgetExceededMessage(state) {
         return `Usage budget exhausted: reported cost $${state.costUsd.used.toFixed(6)} reached hard limit $${state.costUsd.hard.toFixed(6)}.`;
     return "Usage budget exhausted.";
 }
-//# sourceMappingURL=usage-budget.js.map

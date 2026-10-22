@@ -4,4 +4,3 @@ export function resolveCurrentSessionId(sessionManager) {
         throw new Error("Current session identity is unavailable.");
     return sessionId;
 }
-//# sourceMappingURL=session-identity.js.map

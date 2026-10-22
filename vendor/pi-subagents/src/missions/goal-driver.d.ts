@@ -14,4 +14,3 @@ export declare function collectGoalContinuationNotices(input: {
     now?: number;
     onError?: (missionId: string, error: unknown) => void;
 }): GoalContinuationNotice[];
-//# sourceMappingURL=goal-driver.d.ts.map

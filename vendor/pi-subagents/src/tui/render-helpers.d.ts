@@ -21,4 +21,3 @@ export declare function renderHeader(text: string, width: number, theme: Theme):
 export declare function formatPath(filePath: string): string;
 export declare function formatScrollInfo(above: number, below: number): string;
 export declare function renderFooter(text: string, width: number, theme: Theme): string;
-//# sourceMappingURL=render-helpers.d.ts.map

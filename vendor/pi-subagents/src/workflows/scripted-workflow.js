@@ -2727,4 +2727,3 @@ export async function runWorkflowScript(options) {
         worker.postMessage({ type: "start", script: options.script, ...(options.args ? { args: options.args } : {}), stateEnabled: options.state !== undefined });
     });
 }
-//# sourceMappingURL=scripted-workflow.js.map

@@ -134,4 +134,3 @@ export declare function closeProjectPane(options: CloseProjectPaneOptions): Prom
 export declare function focusProjectPane(options: GetProjectPaneStatusOptions): Promise<ProjectPaneResult<FocusProjectPaneData>>;
 export declare function handleHerdrProjectPaneAction(action: HerdrProjectPaneAction, params: ProjectPaneParams, deps: ProjectPaneDeps): Promise<AgentToolResult<Details>>;
 export {};
-//# sourceMappingURL=project-panes.d.ts.map

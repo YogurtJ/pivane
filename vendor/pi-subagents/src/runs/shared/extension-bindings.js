@@ -80,4 +80,3 @@ export function omitExtensionBindingsEnv(env) {
     const { [PI_SUBAGENT_EXTENSION_BINDINGS_ENV]: _extensionBindings, ...sanitized } = env;
     return sanitized;
 }
-//# sourceMappingURL=extension-bindings.js.map

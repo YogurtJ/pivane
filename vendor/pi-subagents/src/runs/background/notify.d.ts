@@ -9,7 +9,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type CompletionBatchConfig } from "./completion-batcher.ts";
 import { type ChildWatchdogProgress, type ChildWatchdogWarningSummary, type ParallelHandoffReference, type ScheduleOrigin, type SubagentState } from "../../shared/types.ts";
-import type { ParentWake } from "../../shared/parent-wake.ts";
+import { type ParentWake } from "../../shared/parent-wake.ts";
 import type { ResultDeliveryOwnership } from "./result-delivery-ownership.ts";
 export interface SubagentNotifyChildOutput {
     workflowKey?: string;
@@ -152,8 +152,8 @@ export interface CompletionNotifier {
     /** Releases a completion wake once Pi starts it (native message_start). */
     messageStarted(message: AgentMessage): void;
     /** Adopts wakes a reloaded notifier left queued for the same session manager and session UUID. */
-    bindSession(sessionManager: Pick<ExtensionContext["sessionManager"], "getSessionId">): void;
-    /** Drops queued wakes unless the session is only reloading extensions. */
+    bindSession(sessionManager: Pick<ExtensionContext["sessionManager"], "getSessionId"> & Partial<Pick<ExtensionContext["sessionManager"], "getBranch">>): void;
+    /** Unless the session is only reloading extensions, records the notices of wakes Pi never started in the session (resent on its next start) and drops the wakes. */
     sessionShutdown(reason: string | undefined): void;
     /** Send every batched completion now instead of waiting for its batch timer. */
     flush(): void;
@@ -186,7 +186,27 @@ export interface CompletionSendRegistry {
 }
 /** A fresh registry is injectable so tests and separately scoped runtimes stay isolated. */
 export declare function createCompletionSendRegistry(ttlMs?: number, cap?: number): CompletionSendRegistry;
+type SubagentNotifyMessage = {
+    customType: "subagent-notify";
+    content: string;
+    display: boolean;
+    details: {
+        runs: NotifyRunDetails[];
+    };
+};
+type NotifyRunDetails = Omit<SubagentNotifyDetails, "resultPreview" | "childOutputs"> & {
+    childOutputs?: Array<Omit<SubagentNotifyChildOutput, "preview" | "previewTruncated" | "previewUnavailableReason">>;
+};
+/** Session entry holding a notice whose wake Pi never started before the session ended. */
+export declare const PENDING_NOTICE_ENTRY = "subagent-notify-pending";
+type NotifyEntry = {
+    type: string;
+    customType?: string;
+    content?: unknown;
+    data?: unknown;
+};
+/** Pending notices recorded at shutdown that no later subagent-notify message in the session carries. */
+export declare function unreplayedPendingNotices(entries: readonly NotifyEntry[]): SubagentNotifyMessage[];
 export declare function buildCompletionDetails(result: CompletionNotification): SubagentNotifyDetails;
-export default function registerSubagentNotify(pi: Pick<ExtensionAPI, "events"> & Partial<Pick<ExtensionAPI, "on">> & Pick<ParentWake, "sendMessage" | "isHeld">, state: Pick<SubagentState, "currentSessionId" | "completionOwnerId">, options?: RegisterSubagentNotifyOptions): CompletionNotifier;
+export default function registerSubagentNotify(pi: Pick<ExtensionAPI, "events"> & Partial<Pick<ExtensionAPI, "on" | "appendEntry">> & Pick<ParentWake, "sendMessage" | "isHeld">, state: Pick<SubagentState, "currentSessionId" | "completionOwnerId">, options?: RegisterSubagentNotifyOptions): CompletionNotifier;
 export {};
-//# sourceMappingURL=notify.d.ts.map

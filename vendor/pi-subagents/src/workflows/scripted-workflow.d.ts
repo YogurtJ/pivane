@@ -60,7 +60,7 @@ export interface WorkflowScriptChildResult {
     };
     artifactPaths: string[];
     results?: SingleResult[];
-    /** Came from a runtime-replaced run of the same script and args (its saved result, or its still-running child re-attached); this run launched nothing. */
+    /** Came from a runtime-replaced run of the same script (and args, unless named by options.reuseFrom): its saved result, or its still-running child re-attached; this run launched nothing. */
     reused?: boolean;
 }
 export interface WorkflowScriptTraceEntry {
@@ -202,4 +202,3 @@ export declare function workflowRunParamsFingerprint(params: Record<string, unkn
 /** Parse a workflowScript and apply only rules that are decidable from its local syntax. */
 export declare function validateWorkflowScript(script: string, options?: WorkflowScriptValidationOptions): WorkflowScriptValidationResult;
 export declare function runWorkflowScript(options: RunWorkflowScriptOptions): Promise<WorkflowScriptResult>;
-//# sourceMappingURL=scripted-workflow.d.ts.map

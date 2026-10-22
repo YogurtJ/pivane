@@ -3,4 +3,3 @@ export declare function utf8Tail(value: string, maxBytes: number): {
     text: string;
     truncated: boolean;
 };
-//# sourceMappingURL=utf8.d.ts.map

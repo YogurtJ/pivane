@@ -11,4 +11,3 @@ export declare function projectChildLifecycle(event: {
     type?: string;
     willRetry?: unknown;
 }, terminalAssistantStop?: boolean, state?: ChildLifecycleState): ChildLifecycleAction;
-//# sourceMappingURL=child-lifecycle.d.ts.map

@@ -202,4 +202,3 @@ export declare function runSubagent(config: SubagentRunConfig, childSessions: Ch
 /** Heavy execution entry loaded by the bootstrap only after startup commits. */
 export declare function runConfiguredSubagentExecution(config: SubagentRunConfig, options?: DefaultChildSessionFactoryOptions): Promise<void>;
 export {};
-//# sourceMappingURL=subagent-runner.d.ts.map

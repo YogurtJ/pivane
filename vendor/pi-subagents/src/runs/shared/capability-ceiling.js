@@ -176,4 +176,3 @@ export function decodeSubagentCapabilityCeiling(value) {
     }
     return parseSubagentCapabilityCeiling(parsed, "inherited capability ceiling");
 }
-//# sourceMappingURL=capability-ceiling.js.map

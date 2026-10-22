@@ -90,4 +90,3 @@ export function appendPermissionAudit(filePath, record) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
     fs.appendFileSync(filePath, `${JSON.stringify(record)}\n`, { encoding: "utf-8", mode: 0o600 });
 }
-//# sourceMappingURL=permissions.js.map

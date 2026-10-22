@@ -18,4 +18,3 @@ export interface WatchdogPermissionArbiterOptions {
 }
 export declare function createWatchdogPermissionArbiter(options?: WatchdogPermissionArbiterOptions): (request: WatchdogPermissionRequest) => Promise<WatchdogPermissionResult>;
 export declare const requestWatchdogPermission: (request: WatchdogPermissionRequest) => Promise<WatchdogPermissionResult>;
-//# sourceMappingURL=permission-arbiter.d.ts.map

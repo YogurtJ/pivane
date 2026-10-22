@@ -157,4 +157,3 @@ function resourceNameToToolName(name) {
         result = `resource${result ? `_${result}` : ""}`;
     return result;
 }
-//# sourceMappingURL=mcp-direct-tool-grant.js.map

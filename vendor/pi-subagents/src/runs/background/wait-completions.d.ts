@@ -26,4 +26,3 @@ export declare function recordWaitCompletion(state: SubagentState, runId: string
  * the watcher owns notification and cleanup.
  */
 export declare function collectWaitCompletions(terminal: AsyncRunSummary[], state: SubagentState, resultsDir: string, onReference?: (text: string) => void): WaitCompletion[] | undefined;
-//# sourceMappingURL=wait-completions.d.ts.map

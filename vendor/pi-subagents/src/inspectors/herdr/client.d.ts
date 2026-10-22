@@ -39,4 +39,3 @@ export declare function detectHerdr(client: HerdrClient, signal?: AbortSignal): 
     versionText: string;
 }>>;
 export {};
-//# sourceMappingURL=client.d.ts.map

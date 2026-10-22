@@ -1,6 +1,7 @@
 import { readStatus } from "../../shared/utils.js";
 import { supervisorChannelDir } from "../shared/child-tool-plan.js";
 import { controlChildCommand } from "../shared/child-commands.js";
+import { ownsRun } from "../shared/run-ownership.js";
 function commandChildren(state, target) {
     if (!state.currentSessionId)
         throw new Error("Command controls require an owning parent session.");
@@ -18,7 +19,7 @@ function commandChildren(state, target) {
         return retained?.children.map(({ index, agent }) => ({ index, agent })) ?? [];
     }
     const status = target.location.asyncDir ? readStatus(target.location.asyncDir) : undefined;
-    if (status?.sessionId !== state.currentSessionId)
+    if (!status || !ownsRun(state.currentSessionId, status.sessionId))
         throw new Error("Run is not owned by this session.");
     return status.steps?.map((step, index) => ({ index, agent: step.agent })) ?? [];
 }
@@ -35,4 +36,3 @@ export async function commandAction(input) {
         details: { mode: "management", results: [], commands: result.commands },
     };
 }
-//# sourceMappingURL=command-action.js.map

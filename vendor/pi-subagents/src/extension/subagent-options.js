@@ -49,4 +49,3 @@ export function flattenSubagentToolOptions(params, disabled) {
         throw new Error(`subagent: ${conflicts.join(", ")} given both at the top level and in options with different values; give each once.`);
     return { ...topLevel, ...options };
 }
-//# sourceMappingURL=subagent-options.js.map

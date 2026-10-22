@@ -42,4 +42,3 @@ export interface AsyncRetentionResult {
     durationMs: number;
 }
 export declare function cleanupAsyncRetention(options: AsyncRetentionOptions): Promise<AsyncRetentionResult>;
-//# sourceMappingURL=async-retention.d.ts.map

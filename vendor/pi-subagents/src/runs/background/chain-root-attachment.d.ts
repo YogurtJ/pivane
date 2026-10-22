@@ -49,4 +49,3 @@ export declare function waitForImportedAsyncRoot(root: ImportedAsyncRoot, option
     abortedAsStopped?: boolean;
 }): Promise<ImportedAsyncRootResult>;
 export declare function resolveAsyncRootResultPath(resultsDir: string, runId: string): string;
-//# sourceMappingURL=chain-root-attachment.d.ts.map

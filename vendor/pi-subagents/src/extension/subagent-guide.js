@@ -113,4 +113,3 @@ export function readSubagentGuide(topic = "overview", root = packageRoot) {
         return `Unknown section '${topic}'. No files were changed.\n\n${tableOfContents(name, sections)}`;
     return sectionText(lines, section);
 }
-//# sourceMappingURL=subagent-guide.js.map

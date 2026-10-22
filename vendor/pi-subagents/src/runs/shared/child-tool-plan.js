@@ -383,4 +383,3 @@ function legacyUnderscoreMcpToolName(selection) {
     const prefix = selection.name.slice(0, -suffix.length);
     return `${prefix.replace(/-/g, "_")}${suffix}`;
 }
-//# sourceMappingURL=child-tool-plan.js.map

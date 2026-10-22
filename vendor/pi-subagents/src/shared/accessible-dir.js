@@ -34,4 +34,3 @@ export function ensureAccessibleDir(dirPath, options = {}) {
         return fallbackPath();
     }
 }
-//# sourceMappingURL=accessible-dir.js.map

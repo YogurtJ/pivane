@@ -12,4 +12,3 @@ export interface MissionWorkflowStateOptions {
 }
 export declare function missionStatePath(location: MissionStoreLocation, missionId: string): string;
 export declare function createMissionWorkflowState(location: MissionStoreLocation, missionId: string, options?: MissionWorkflowStateOptions): MissionWorkflowState;
-//# sourceMappingURL=workflow-state.d.ts.map

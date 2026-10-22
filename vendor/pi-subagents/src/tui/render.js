@@ -45,16 +45,16 @@ function capCompactMainWindowResult(component, layout, theme, enabled) {
             return lines;
         const visibleRows = maxLines === 1 ? 1 : maxLines - 1;
         const hiddenCount = lines.length - visibleRows;
-        const hint = theme.fg("accent", `… ${hiddenCount} rows hidden · ${expandKeyHint("to expand", "to view them")}`);
+        const hint = theme.fg("accent", `… ${hiddenCount} rows hidden · ${expandKeyHint("to expand")}`);
         if (maxLines === 1)
             return [truncLine(`${lines[0] ?? ""} ${hint}`, width)];
         return [...lines.slice(0, visibleRows), truncLine(hint, width)];
     };
     return capped;
 }
-function expandKeyHint(action, unconfiguredAction = action) {
-    const shortcut = keyText("app.tools.expand");
-    return shortcut ? `Press ${shortcut} ${action}` : `Configure the expand key ${unconfiguredAction}`;
+function expandKeyHint(action) {
+    // keyText is empty wherever Pi's app keybindings are not loaded (RPC, print mode), even when the key is bound.
+    return `Press ${keyText("app.tools.expand") || "the expand key"} ${action}`;
 }
 export function liveDetailHintText() {
     return expandKeyHint("for live detail");
@@ -2422,13 +2422,39 @@ function widgetHeaderCounts(jobs) {
         stopped: jobs.filter((job) => job.status === "stopped"),
     };
 }
-function buildSingleLineWidgetLines(jobs, theme, width, frame) {
+const roundStateByUi = new WeakMap();
+function trackSubagentsRound(ui, jobs, now) {
+    const running = jobs.filter((job) => job.status === "running");
+    if (running.length > 0) {
+        // Seed from the oldest running job so a round restored after a session resume matches the job rows.
+        if (!roundStateByUi.has(ui))
+            roundStateByUi.set(ui, { startedAt: Math.min(now, ...running.map((job) => job.startedAt ?? now)) });
+        return;
+    }
+    roundStateByUi.delete(ui);
+}
+function roundElapsedSuffix(ui, now) {
+    const state = roundStateByUi.get(ui);
+    return state ? ` ${formatRoundElapsed(now - state.startedAt)}` : "";
+}
+function formatRoundElapsed(ms) {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = total % 60;
+    if (hours > 0)
+        return `${hours}h${minutes}m${seconds}s`;
+    if (minutes > 0)
+        return `${minutes}m${seconds}s`;
+    return `${seconds}s`;
+}
+function buildSingleLineWidgetLines(jobs, theme, width, frame, elapsedSuffix = "") {
     const counts = widgetHeaderCounts(jobs);
     const hasActive = counts.running.length > 0 || counts.queued.length > 0;
     const glyph = counts.running.length > 0 ? runningGlyph(animatedSeed(widgetJobsRunningSeed(counts.running), frame)) : hasActive ? "●" : "○";
     const parts = [];
     if (counts.running.length > 0)
-        parts.push(`${counts.running.length}/${jobs.length} running`);
+        parts.push(`${counts.running.length}/${jobs.length} running${elapsedSuffix}`);
     if (counts.queued.length > 0)
         parts.push(`${counts.queued.length} queued`);
     if (counts.failed.length > 0)
@@ -2582,10 +2608,10 @@ function progressiveHiddenLine(hiddenJobs, theme, width) {
         parts.push(`${finished} finished`);
     return truncLine(theme.fg("dim", `  +${hiddenJobs.length} more${parts.length ? ` (${parts.join(", ")})` : ""}`), width);
 }
-function buildProgressiveWidgetLines(jobs, theme, width, lockedRows, previousKeys, frame, projectionFor = workflowWidgetProjectionLookup()) {
+function buildProgressiveWidgetLines(jobs, theme, width, lockedRows, previousKeys, frame, projectionFor = workflowWidgetProjectionLookup(), elapsedSuffix = "") {
     const rowCount = Math.max(1, lockedRows);
     if (rowCount === 1)
-        return { lines: buildSingleLineWidgetLines(jobs, theme, width, frame), visibleJobKeys: [], contentRows: 1 };
+        return { lines: buildSingleLineWidgetLines(jobs, theme, width, frame, elapsedSuffix), visibleJobKeys: [], contentRows: 1 };
     const bodyRows = rowCount - 1;
     let visibleJobKeys = selectProgressiveJobKeys(jobs, previousKeys, bodyRows);
     const jobsByKey = new Map(jobs.map((job) => [progressiveJobKey(job), job]));
@@ -2638,10 +2664,10 @@ function fitWidgetLineBudget(lines, theme, width, expanded) {
     const hiddenCount = lines.length - visibleLines;
     const hint = expanded
         ? `… ${hiddenCount} live-detail lines hidden`
-        : `… ${hiddenCount} lines hidden · ${expandKeyHint("to expand", "to view them")}`;
+        : `… ${hiddenCount} lines hidden · ${expandKeyHint("to expand")}`;
     return [...lines.slice(0, visibleLines), truncLine(theme.fg("dim", hint), width)];
 }
-function fitAdaptiveWidgetLines(jobs, buildLines, theme, width, expanded, frame, projectionFor, layout = "adaptive") {
+function fitAdaptiveWidgetLines(jobs, buildLines, theme, width, expanded, frame, projectionFor, layout = "adaptive", elapsedSuffix = "") {
     if (expanded) {
         resetWidgetLayoutSession();
         return fitWidgetLineBudget(buildLines(), theme, width, true);
@@ -2651,17 +2677,17 @@ function fitAdaptiveWidgetLines(jobs, buildLines, theme, width, expanded, frame,
     const columns = currentTerminalColumns();
     const availableRows = estimateAvailableWidgetRows();
     if (hasMatchingSession && widgetLayoutSession?.tier === "single-line") {
-        return buildSingleLineWidgetLines(jobs, theme, width, frame);
+        return buildSingleLineWidgetLines(jobs, theme, width, frame, elapsedSuffix);
     }
     if (hasMatchingSession && widgetLayoutSession?.tier === "progressive" && widgetLayoutSession.lockedRows !== undefined) {
         const session = widgetLayoutSession;
         const lockedRows = widgetLayoutSession.lockedRows;
-        let rendered = buildProgressiveWidgetLines(jobs, theme, width, lockedRows, session.visibleJobKeys, frame, projectionFor);
+        let rendered = buildProgressiveWidgetLines(jobs, theme, width, lockedRows, session.visibleJobKeys, frame, projectionFor, elapsedSuffix);
         // The height stays fixed across content-only updates (#186). It grows when a new job would be hidden while the cap
         // has room, and shrinks to content only when root jobs leave, so finished jobs leave no blank rows.
         const capRows = Math.min(availableRows, collapsedWidgetLineBudget(rows));
         if (rendered.visibleJobKeys.length < jobs.length && lockedRows < capRows) {
-            rendered = buildProgressiveWidgetLines(jobs, theme, width, capRows, session.visibleJobKeys, frame, projectionFor);
+            rendered = buildProgressiveWidgetLines(jobs, theme, width, capRows, session.visibleJobKeys, frame, projectionFor, elapsedSuffix);
             session.lockedRows = Math.max(lockedRows, rendered.contentRows);
         }
         else if (jobs.length < (session.rootJobCount ?? 0)) {
@@ -2684,10 +2710,10 @@ function fitAdaptiveWidgetLines(jobs, buildLines, theme, width, expanded, frame,
     }
     if (availableRows <= 2) {
         widgetLayoutSession = { expanded, rows, columns, tier: "single-line", visibleJobKeys: [] };
-        return buildSingleLineWidgetLines(jobs, theme, width, frame);
+        return buildSingleLineWidgetLines(jobs, theme, width, frame, elapsedSuffix);
     }
     // Lock to the rows the content fills so the fixed-height card has no blank padding.
-    const rendered = buildProgressiveWidgetLines(jobs, theme, width, Math.min(availableRows, collapsedWidgetLineBudget(rows)), [], frame, projectionFor);
+    const rendered = buildProgressiveWidgetLines(jobs, theme, width, Math.min(availableRows, collapsedWidgetLineBudget(rows)), [], frame, projectionFor, elapsedSuffix);
     const lockedRows = rendered.contentRows;
     widgetLayoutSession = { expanded, rows, columns, tier: "progressive", lockedRows, rootJobCount: jobs.length, visibleJobKeys: rendered.visibleJobKeys };
     return rendered.lines.slice(0, lockedRows);
@@ -2829,6 +2855,7 @@ function buildWidgetComponent(jobs, ui, initiallyCollapsed = false, layout) {
         container.render = (renderWidth) => {
             const now = Date.now();
             const frame = Math.floor(now / WIDGET_ANIMATION_INTERVAL_MS);
+            trackSubagentsRound(ui, jobs, now);
             const expanded = ui.getToolsExpanded?.() ?? false;
             const coverage = inlineWorkflowCoverage.get(ui);
             const covered = new Set();
@@ -2869,9 +2896,10 @@ function buildWidgetComponent(jobs, ui, initiallyCollapsed = false, layout) {
             cachedRenderWidth = renderWidth;
             cachedFrame = frame;
             cachedExpanded = expanded;
+            const elapsedSuffix = roundElapsedSuffix(ui, now);
             cachedLines = (collapsed
-                ? buildSingleLineWidgetLines(jobs, theme, width, frame)
-                : fitAdaptiveWidgetLines(roots, buildLines, theme, width, expanded, frame, projectionFor, layout)).map((line) => paddedWidgetLine(line, renderWidth));
+                ? buildSingleLineWidgetLines(jobs, theme, width, frame, elapsedSuffix)
+                : fitAdaptiveWidgetLines(roots, buildLines, theme, width, expanded, frame, projectionFor, layout, elapsedSuffix)).map((line) => paddedWidgetLine(line, renderWidth));
             return cachedLines;
         };
         return component;
@@ -2973,6 +3001,9 @@ export function buildWidgetLines(jobs, theme, width = getTermWidth(), expanded =
  * Render the async jobs widget
  */
 export function renderWidget(ctx, jobs, initiallyCollapsed = false, layout = "adaptive") {
+    // Advance round tracking on every widget update, including the empty-jobs
+    // cleanup path below, which never reaches container.render.
+    trackSubagentsRound(ctx.ui, jobs, Date.now());
     if (jobs.length === 0) {
         resetWidgetLayoutSession();
         asyncWidgetUpdates.delete(ctx.ui);
@@ -3674,4 +3705,3 @@ export function renderSubagentResult(result, options, theme, frame, rendererConf
     }
     return c;
 }
-//# sourceMappingURL=render.js.map

@@ -32,4 +32,3 @@ export declare function hasMandatoryRequiredChildExtensions(snapshot: RequiredCh
 /** Persist a run's mandatory snapshot so append-step admits against it; writes nothing without a mandatory entry. */
 export declare function writeRetainedRequiredChildExtensions(asyncDir: string, snapshot: RequiredChildExtensionSnapshot): void;
 export declare function readRetainedRequiredChildExtensions(asyncDir: string): RequiredChildExtensionSnapshot | undefined;
-//# sourceMappingURL=required-child-extensions.d.ts.map

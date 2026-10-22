@@ -475,4 +475,3 @@ function stableStringify(value) {
     const obj = value;
     return `{${Object.keys(obj).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(obj[key])}`).join(",")}}`;
 }
-//# sourceMappingURL=mcp-direct-tool-allowlist.js.map

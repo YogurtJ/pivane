@@ -348,4 +348,3 @@ export function registerHerdrStatusBridge(options) {
         },
     };
 }
-//# sourceMappingURL=herdr-status.js.map

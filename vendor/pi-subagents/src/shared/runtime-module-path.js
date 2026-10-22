@@ -14,4 +14,3 @@ export function resolveRuntimeModuleExtension(dir, basename) {
 export function resolveRuntimeModulePath(dir, basename) {
     return path.normalize(path.join(dir, `${basename}${resolveRuntimeModuleExtension(dir, basename)}`));
 }
-//# sourceMappingURL=runtime-module-path.js.map

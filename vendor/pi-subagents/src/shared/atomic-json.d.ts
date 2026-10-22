@@ -17,4 +17,3 @@ export declare function createAtomicJsonWriter(options?: AtomicJsonWriterOptions
 export declare const writeAtomicJson: (filePath: string, payload: object, beforeRename?: () => void) => void;
 export declare const writePrivateAtomicJson: (filePath: string, payload: object, beforeRename?: () => void) => void;
 export {};
-//# sourceMappingURL=atomic-json.d.ts.map

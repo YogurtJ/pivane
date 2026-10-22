@@ -139,4 +139,3 @@ export interface WatchdogSettingsResult {
     errors: WatchdogSettingsError[];
     sources: WatchdogSettingsSource[];
 }
-//# sourceMappingURL=types.d.ts.map

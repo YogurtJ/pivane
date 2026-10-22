@@ -84,4 +84,3 @@ export declare function formatUnresolvedBuiltinMcpSelectors(agentName: string | 
 export declare function extensionOnlyMcpServers(selections: readonly ResolvedMcpDirectToolSelection[], host: McpRuntimeSnapshotHost, cwd: string, projectTrusted: boolean): string[];
 export declare function resolveMcpDirectToolNames(mcpDirectTools: string[] | undefined, cwd?: string): string[];
 export declare function computeMcpServerHash(definition: ServerEntry): string;
-//# sourceMappingURL=mcp-direct-tool-allowlist.d.ts.map

@@ -8,4 +8,3 @@ export declare function registerSlashCommands(pi: ExtensionAPI, state: SubagentS
 }): {
     dispose: () => void;
 };
-//# sourceMappingURL=slash-commands.d.ts.map

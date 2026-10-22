@@ -3,4 +3,3 @@ export declare function getPromptDirectories(cwd: string): {
     user: string;
     project: string;
 };
-//# sourceMappingURL=prompt-resources.d.ts.map

@@ -24,4 +24,3 @@ export declare function resolveCursorAgentLaunch(input: {
     preflight: ExternalCliPreflightSpec;
     parser: ExternalCliParser;
 };
-//# sourceMappingURL=cursor-agent-adapter.d.ts.map

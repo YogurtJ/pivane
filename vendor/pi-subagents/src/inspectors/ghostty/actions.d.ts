@@ -9,4 +9,3 @@ export type GhosttyRunner = (args: readonly string[], options: ExecFileOptionsWi
     stderr: string;
 }>;
 export declare function openGhosttyInspector(context: InspectorContext, launch: InspectorLaunch, params: InspectorParams, runner?: GhosttyRunner): Promise<AgentToolResult<Details>>;
-//# sourceMappingURL=actions.d.ts.map

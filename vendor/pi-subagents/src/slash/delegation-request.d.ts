@@ -10,4 +10,3 @@ export type SubagentDelegationParseResult = {
     error: string;
 };
 export declare function parseSubagentDelegationRequest(data: unknown): SubagentDelegationParseResult;
-//# sourceMappingURL=delegation-request.d.ts.map

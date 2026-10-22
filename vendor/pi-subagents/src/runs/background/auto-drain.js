@@ -70,4 +70,3 @@ export async function drainOutstandingWork(deps, observation) {
         throw error;
     }
 }
-//# sourceMappingURL=auto-drain.js.map

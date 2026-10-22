@@ -18,4 +18,3 @@ export interface InspectorRegistrationRequest {
 }
 /** Register with the installed owner, even when each extension has its own module root. */
 export declare function registerInspector(pi: Pick<ExtensionAPI, "events">, plugin: InspectorPlugin): InspectorRegistration;
-//# sourceMappingURL=inspectors.d.ts.map

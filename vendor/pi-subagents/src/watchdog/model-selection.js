@@ -165,4 +165,3 @@ export function recommendWatchdogModel(ctx, configured) {
 export function formatWatchdogRecommendation(recommendation) {
     return `${recommendation.source === "configured" ? "Keep configured watchdog" : "Recommended strong watchdog"}: ${recommendation.model}:${recommendation.thinking}`;
 }
-//# sourceMappingURL=model-selection.js.map

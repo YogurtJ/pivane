@@ -1,3 +1,4 @@
+import { hashedSegment } from "../runs/background/index-segment.js";
 const KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const TERMINAL_STATES = new Set(["completed", "failed", "paused", "stopped", "rejected", "detached"]);
 const MAX_REQUIRED_ID_BYTES = 4_096;
@@ -45,6 +46,12 @@ function requiredId(value, label) {
     if (!id)
         throw new Error(`${label} must be a non-empty identifier of at most ${MAX_REQUIRED_ID_BYTES} UTF-8 bytes.`);
     return id;
+}
+/** Provider tool-call ids can be multi-kilobyte; the verbatim id stays in AsyncStatus.toolCallId, so an oversize id is recorded as its digest. */
+function parentToolCallId(value, label) {
+    if (typeof value === "string" && value.trim() && Buffer.byteLength(value, "utf8") > MAX_REQUIRED_ID_BYTES)
+        return hashedSegment(value);
+    return requiredId(value, label);
 }
 export function workflowChildSummary(input) {
     const rows = new Map();
@@ -112,6 +119,16 @@ export function workflowChildSummary(input) {
                 rows.set(key, { ...row, state: input.workflowState === "stopped" ? "stopped" : "failed" });
         }
     }
+    for (const [key, launch] of input.launches ?? []) {
+        const row = rows.get(key);
+        if (!row || row.state !== "running")
+            continue;
+        rows.set(key, {
+            ...row,
+            ...(!row.runId && bounded(launch.runId, 256) ? { runId: launch.runId } : {}),
+            ...(!row.agent && bounded(launch.agent, 256) ? { agent: launch.agent } : {}),
+        });
+    }
     for (const [key, progress] of input.progress ?? []) {
         const row = rows.get(key);
         if (!row || row.state !== "running")
@@ -127,7 +144,7 @@ export function workflowChildSummary(input) {
     }
     return {
         version: 1,
-        parentToolCallId: requiredId(input.parentToolCallId, "parentToolCallId"),
+        parentToolCallId: parentToolCallId(input.parentToolCallId, "parentToolCallId"),
         workflowRunId: requiredId(input.workflowRunId, "workflowRunId"),
         inventoryComplete: input.inventoryComplete,
         workflowState: input.workflowState,
@@ -174,6 +191,5 @@ export function parseWorkflowChildSummary(value) {
         throw new Error("workflowChildren.parentToolCallId is invalid.");
     if (typeof input.workflowRunId !== "string")
         throw new Error("workflowChildren.workflowRunId is invalid.");
-    return { version: 1, parentToolCallId: requiredId(input.parentToolCallId, "workflowChildren.parentToolCallId"), workflowRunId: requiredId(input.workflowRunId, "workflowChildren.workflowRunId"), inventoryComplete: input.inventoryComplete, workflowState, children };
+    return { version: 1, parentToolCallId: parentToolCallId(input.parentToolCallId, "workflowChildren.parentToolCallId"), workflowRunId: requiredId(input.workflowRunId, "workflowChildren.workflowRunId"), inventoryComplete: input.inventoryComplete, workflowState, children };
 }
-//# sourceMappingURL=workflow-child-summary.js.map

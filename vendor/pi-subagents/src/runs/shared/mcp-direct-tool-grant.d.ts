@@ -40,4 +40,3 @@ export declare function parseMcpDirectToolSelectors(selectors: readonly string[]
 export declare function planMcpDirectToolGrant(input: McpDirectToolGrantInput): McpDirectToolGrant;
 export declare function normalizeMcpToolPrefix(value: unknown): McpToolPrefix;
 export declare function formatUnresolvedMcpDirectToolSelectors(selectors: readonly string[]): string;
-//# sourceMappingURL=mcp-direct-tool-grant.d.ts.map

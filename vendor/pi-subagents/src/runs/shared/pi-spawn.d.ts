@@ -2,7 +2,11 @@ export declare const PI_CODING_AGENT_PACKAGE = "@earendil-works/pi-coding-agent"
 export declare const PI_SUBAGENT_PI_BINARY_ENV = "PI_SUBAGENT_PI_BINARY";
 export declare function findPiPackageRootFromEntry(entryPoint: string): string | undefined;
 export declare function resolveInstalledPiPackageRoot(): string | undefined;
-export declare function resolvePiPackageRoot(): string | undefined;
+export declare function resolvePiPackageRoot(entry?: string | undefined): string | undefined;
+/** Resolve only the canonical host entry's local dependency graph, not NODE_PATH/global stores. */
+export declare function resolveHostDependencyPiPackageRoot(entry?: string | undefined): string | undefined;
+/** One SDK root for foreground imports and detached peer aliases; never retry a selected root. */
+export declare function resolveHostPiPackageRoot(deps?: PiSpawnDeps): string | undefined;
 export interface PiSpawnDeps {
     platform?: NodeJS.Platform;
     execPath?: string;
@@ -25,4 +29,3 @@ interface PiSpawnCommand {
 export declare function resolvePiCliScript(deps?: PiSpawnDeps): string | undefined;
 export declare function getPiSpawnCommand(args: string[], deps?: PiSpawnDeps): PiSpawnCommand;
 export {};
-//# sourceMappingURL=pi-spawn.d.ts.map

@@ -6,4 +6,3 @@ export declare function deriveChildSessionName(input: {
     /** Workflow node label; preferred over the task excerpt when present. */
     label?: string;
 }): string | undefined;
-//# sourceMappingURL=child-session-name.d.ts.map

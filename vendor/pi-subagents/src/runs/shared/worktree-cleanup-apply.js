@@ -176,4 +176,3 @@ export function formatCleanupReceipt(result) {
     const { receipt } = result;
     return [`Worktree cleanup ${receipt.planId}: ${receipt.state}${result.reused ? " (previous receipt; plan not replayed)" : ""}`, "Local branches retained.", ...receipt.entries.map((entry) => `- ${entry.path}: ${entry.state}; ${entry.reason}`), ...(receipt.error ? [receipt.error] : []), `Receipt: ${result.receiptPath}`].join("\n");
 }
-//# sourceMappingURL=worktree-cleanup-apply.js.map

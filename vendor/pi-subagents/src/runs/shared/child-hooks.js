@@ -171,4 +171,3 @@ function childHooks(config, capture, holdFinalDrain) {
     }
     return hooks;
 }
-//# sourceMappingURL=child-hooks.js.map

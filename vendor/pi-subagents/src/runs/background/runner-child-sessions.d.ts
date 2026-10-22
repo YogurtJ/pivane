@@ -4,4 +4,3 @@ export interface RunnerChildSessionConfig {
     childSessionFactoryModule?: string;
 }
 export declare function loadRunnerChildSessionFactory(config: RunnerChildSessionConfig, options?: DefaultChildSessionFactoryOptions): Promise<ChildSessionFactory>;
-//# sourceMappingURL=runner-child-sessions.d.ts.map

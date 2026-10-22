@@ -32,4 +32,3 @@ export declare function prunedForkRecoveryPath(sessionFile: string): string;
 export declare function pruneForkSessionFile(sessionFile: string, summarize: SummaryFunction, options?: PruneForkOptions): Promise<boolean>;
 export declare function createPrunedForkSessionWriter(ctx: Pick<ExtensionContext, "modelRegistry" | "model" | "sessionManager">, config: ForkContextConfig | undefined, signal?: AbortSignal): Promise<(sessionFile: string) => Promise<void>>;
 export {};
-//# sourceMappingURL=pruned-fork.d.ts.map

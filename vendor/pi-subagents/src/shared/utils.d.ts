@@ -17,6 +17,17 @@ export declare function resolveChildCwd(baseCwd: string, childCwd: string | unde
 export declare function readStatus(asyncDir: string): AsyncStatus | null;
 export declare function getLastActivity(outputFile: string | undefined): string;
 export declare function findLatestSessionFile(sessionDir: string): string | null;
+/**
+ * The error to report for an assistant message. When the provider ended the turn with an error stop
+ * (`rawStopReason` is set, e.g. `content_filter`), the reply text rides along with the bare stop code: a
+ * policy refusal usually puts its explanation there. The text may also be the model's own partial reply,
+ * so it is labelled as reply text, not as the provider's message.
+ */
+export declare function assistantMessageError(message: {
+    errorMessage?: string;
+    rawStopReason?: string;
+    content?: unknown;
+}): string | undefined;
 export declare function getFinalOutput(messages: Message[]): string;
 export declare function getSingleResultOutput(result: Pick<SingleResult, "finalOutput" | "messages">): string;
 /**
@@ -70,4 +81,3 @@ export declare function extractToolArgsPreview(args: Record<string, unknown>): s
  */
 export declare function extractTextFromContent(content: unknown): string;
 export { mapConcurrent } from "../runs/shared/parallel-utils.ts";
-//# sourceMappingURL=utils.d.ts.map

@@ -18,4 +18,3 @@ interface JsonlWriter {
 }
 export declare function createJsonlWriter(filePath: string | undefined, source: DrainableSource, deps?: JsonlWriterDeps): JsonlWriter;
 export {};
-//# sourceMappingURL=jsonl-writer.d.ts.map

@@ -76,4 +76,3 @@ declare function discardPreservedWorktreesUnlocked(manifestPath: string, authori
     text: string;
 };
 export {};
-//# sourceMappingURL=parallel-handoff.d.ts.map

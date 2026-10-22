@@ -19,4 +19,3 @@ export declare function readMission(location: MissionStoreLocation, missionId: s
 export declare function listMissions(location: MissionStoreLocation): MissionListResult;
 export declare function updateMission(location: MissionStoreLocation, missionId: string, update: MissionUpdateInput, now?: Date, retainTerminal?: number): MissionRecord;
 export declare function listGlobalMissions(globalIndexDir: string): GlobalMissionListResult;
-//# sourceMappingURL=store.d.ts.map

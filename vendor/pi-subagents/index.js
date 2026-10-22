@@ -12,4 +12,3 @@ export default function registerSubagentExtension(pi) {
     }
     registerExtension?.(pi);
 }
-//# sourceMappingURL=index.js.map

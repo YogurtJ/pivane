@@ -5,4 +5,3 @@
  * import `src/inspectors/herdr/*` directly.
  */
 export { PROJECT_PANES_API_VERSION, PROJECT_PANE_TRUST_STATUS, createProjectPaneManager, openProjectPane, getProjectPaneStatus, focusProjectPane, closeProjectPane, readProjectPaneBinding, projectPaneBindingPath, } from "../inspectors/herdr/project-panes.js";
-//# sourceMappingURL=project-panes.js.map

@@ -45,4 +45,3 @@ export declare function prepareHerdrMachineExternalCliRun(input: RunExternalCliI
 }): PreparedHerdrMachineExternalCliRun;
 /** One-line operator hint for a predictable remote failure, matched against error text and the stderr tail. */
 export declare function formatHerdrMachineHint(machine: HerdrMachineReference, text: string): string | undefined;
-//# sourceMappingURL=herdr-machine.d.ts.map

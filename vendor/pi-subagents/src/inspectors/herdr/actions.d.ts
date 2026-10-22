@@ -23,4 +23,3 @@ export declare function readHerdrInspectorBindingForTarget(target: InspectorTarg
 export declare function openHerdrInspector(context: InspectorContext, launch: InspectorLaunch, params: InspectorParams, client: HerdrClient): Promise<AgentToolResult<Details>>;
 export declare function statusHerdrInspector(context: InspectorContext, client: HerdrClient): Promise<AgentToolResult<Details>>;
 export declare function closeHerdrInspector(context: InspectorContext, client: HerdrClient): Promise<AgentToolResult<Details>>;
-//# sourceMappingURL=actions.d.ts.map

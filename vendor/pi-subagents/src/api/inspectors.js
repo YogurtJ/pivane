@@ -9,4 +9,3 @@ export function registerInspector(pi, plugin) {
         throw request.result.error;
     return request.result.registration;
 }
-//# sourceMappingURL=inspectors.js.map

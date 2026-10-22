@@ -83,3 +83,42 @@ test('upgraded child factory honors inherited project trust and removes dynamica
         } finally { await child.dispose(); }
     }
 });
+
+test('undelivered completion notices survive native session reopen and replay only on their active branch', async () => {
+    const sdk = await import('@earendil-works/pi-coding-agent');
+    const { default: notify, PENDING_NOTICE_ENTRY, unreplayedPendingNotices } = await import('../vendor/pi-subagents/src/runs/background/notify.js');
+    const manager = sdk.SessionManager.create(cwd, path.join(root, 'notice-sessions'));
+    const base = manager.appendMessage({ role: 'assistant', content: [{ type: 'text', text: 'Synthetic parent reply' }], api: 'openai-completions', provider: 'fixture', model: 'fixture', stopReason: 'stop', timestamp: Date.now(),
+        usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } });
+    const abandoned = { customType: 'subagent-notify', content: 'ABANDONED_BRANCH_NOTICE', display: true, details: { runs: [] } };
+    manager.appendCustomEntry(PENDING_NOTICE_ENTRY, { message: abandoned });
+    manager.branch(base);
+    const message = { customType: 'subagent-notify', content: 'UNDELIVERED_COMPLETION_RESULT', display: true, details: { runs: [] } };
+    manager.appendCustomEntry(PENDING_NOTICE_ENTRY, { message });
+    const replay = session => {
+        const sent = [], callbacks = [];
+        const notifier = notify({ events: { on: () => () => {} }, on: () => () => {}, isHeld: () => false,
+            sendMessage: (value, options) => { sent.push({ value, options }); return false; },
+            appendEntry: (type, data) => session.appendCustomEntry(type, data),
+        }, { currentSessionId: session.getSessionId() }, { timers: { setTimeout: callback => callbacks.push(callback) } });
+        notifier.bindSession(session);
+        assert.deepEqual(sent, [], 'replay waits until session_start has bound the native session');
+        for (const callback of callbacks) callback();
+        return { notifier, sent };
+    };
+    const reopened = sdk.SessionManager.open(manager.getSessionFile());
+    assert.deepEqual(unreplayedPendingNotices(reopened.getBranch()), [message], 'an abandoned native branch does not replay');
+    const first = replay(reopened);
+    assert.deepEqual(first.sent, [{ value: message, options: { triggerTurn: true } }]);
+    assert.equal(first.notifier.hasPendingDelivery(), true, 'an accepted wake retains the parent until message_start');
+    first.notifier.sessionShutdown('quit'); first.notifier.dispose();
+    const next = sdk.SessionManager.open(manager.getSessionFile());
+    assert.deepEqual(unreplayedPendingNotices(next.getBranch()), [message], 'shutdown persists a still-unstarted wake without duplicating it');
+    const second = replay(next);
+    assert.equal(second.sent.length, 1);
+    next.appendCustomMessageEntry(message.customType, message.content, message.display, message.details);
+    second.notifier.messageStarted({ role: 'custom', ...message });
+    assert.equal(second.notifier.hasPendingDelivery(), false);
+    second.notifier.sessionShutdown('quit'); second.notifier.dispose();
+    assert.deepEqual(unreplayedPendingNotices(sdk.SessionManager.open(manager.getSessionFile()).getBranch()), [], 'a persisted delivered notice is not sent twice');
+});

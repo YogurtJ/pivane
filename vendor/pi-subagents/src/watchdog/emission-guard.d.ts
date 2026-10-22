@@ -34,4 +34,3 @@ export declare class WatchdogEmissionGuard {
         allowRepeatOf?: string;
     }): WatchdogEmissionDecision;
 }
-//# sourceMappingURL=emission-guard.d.ts.map

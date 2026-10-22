@@ -39,4 +39,3 @@ export declare function resolveExternalCliSpawn(command: string, args: readonly 
 export declare function preflightExternalCli(command: string, spec: ExternalCliPreflightSpec, env: NodeJS.ProcessEnv, cwd?: string): ExternalCliPreflightResult;
 export declare function invalidateExternalCliPreflight(command: string, spec: ExternalCliPreflightSpec, _reason: ExternalCliPreflightInvalidationReason): void;
 export declare function clearExternalCliPreflightCacheForTests(): void;
-//# sourceMappingURL=external-cli-preflight.d.ts.map

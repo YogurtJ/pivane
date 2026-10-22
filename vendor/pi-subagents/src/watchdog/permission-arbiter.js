@@ -133,4 +133,3 @@ export function createWatchdogPermissionArbiter(options = {}) {
     };
 }
 export const requestWatchdogPermission = createWatchdogPermissionArbiter();
-//# sourceMappingURL=permission-arbiter.js.map

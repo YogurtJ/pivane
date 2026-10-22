@@ -29,4 +29,3 @@ export declare function waitForFileSystemRetry(delayMs: number): void;
 export declare function isRetryableFileSystemError(error: unknown): boolean;
 export declare function isStorageCapacityError(error: unknown): boolean;
 export declare function runFileSystemOperationWithRetry<T>(operation: () => T, options?: FileSystemRetryOptions): T;
-//# sourceMappingURL=file-system-retry.d.ts.map

@@ -11,4 +11,3 @@ import type { AgentConfig } from "./agents.ts";
  */
 export declare function buildAdvertisedAgentCatalog(agents: readonly AgentConfig[], capabilityCeiling?: ResolvedSubagentCapabilityCeiling, recordedCatalog?: string): string | undefined;
 export declare function buildAdvertisedAgentPrompt(agents: readonly AgentConfig[], capabilityCeiling?: ResolvedSubagentCapabilityCeiling): string | undefined;
-//# sourceMappingURL=advertised-agent-prompt.d.ts.map

@@ -23,4 +23,3 @@ export declare function createWatchdogDiffTool(baseline: WatchdogDiffBaseline | 
     chars: number;
 }>;
 export {};
-//# sourceMappingURL=diff-tool.d.ts.map

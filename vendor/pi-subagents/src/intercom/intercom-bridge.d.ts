@@ -56,4 +56,3 @@ export declare function resolveIntercomBridge(input: ResolveIntercomBridgeInput)
  */
 export declare function applyIntercomBridgeToAgent(agent: AgentConfig, bridge: IntercomBridgeState): AgentConfig;
 export {};
-//# sourceMappingURL=intercom-bridge.d.ts.map

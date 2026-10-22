@@ -44,4 +44,3 @@ export function flatToLogicalStepIndex(flatIndex, chainStepCount, groups) {
     }
     return Math.max(0, chainStepCount - 1);
 }
-//# sourceMappingURL=parallel-groups.js.map

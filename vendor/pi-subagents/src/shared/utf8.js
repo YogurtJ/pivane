@@ -10,4 +10,3 @@ export function utf8Tail(value, maxBytes) {
         return { text: value, truncated: false };
     return { text: decodeUtf8Tail(bytes.subarray(bytes.length - maxBytes)), truncated: true };
 }
-//# sourceMappingURL=utf8.js.map

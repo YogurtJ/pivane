@@ -65,6 +65,9 @@ export function normalizePublicSubagentExecution(params, options = {}) {
     if (!hasWorkflowInput && params.args !== undefined) {
         return { ok: false, error: "args requires workflow.", mode: "workflow" };
     }
+    if (!hasWorkflowInput && params.reuseFrom !== undefined) {
+        return { ok: false, error: "options.reuseFrom requires a workflow launch.", mode: "workflow" };
+    }
     const hasCapacityOverride = params.globalConcurrencyLimit !== undefined || params.maxSubagentSpawnsPerRun !== undefined;
     if (hasCapacityOverride) {
         const capacityOverrideError = validateWorkflowCapacityOverrides(params);
@@ -209,4 +212,3 @@ export function normalizePublicSubagentExecution(params, options = {}) {
     }
     return { ok: true, params };
 }
-//# sourceMappingURL=public-execution.js.map

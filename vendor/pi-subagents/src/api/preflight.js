@@ -407,4 +407,3 @@ export async function resolveSubagentLaunchContract(input) {
     };
     return { ok: true, contract: { ...contractBase, digest: digestContract(contractBase) } };
 }
-//# sourceMappingURL=preflight.js.map

@@ -18,4 +18,3 @@ export function isTrustedRecordedSessionFile(realPath, recordedFiles, sessionsBa
         return false;
     }
 }
-//# sourceMappingURL=session-file-trust.js.map

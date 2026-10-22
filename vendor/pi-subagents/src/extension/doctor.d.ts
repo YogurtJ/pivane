@@ -32,4 +32,3 @@ interface DoctorReportInput {
 }
 export declare function buildDoctorReport(input: DoctorReportInput): string;
 export {};
-//# sourceMappingURL=doctor.d.ts.map

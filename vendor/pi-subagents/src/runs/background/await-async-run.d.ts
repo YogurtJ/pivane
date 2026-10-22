@@ -24,4 +24,3 @@ export declare function awaitExistingAsyncRun(asyncDir: string, runId: string, s
  */
 export declare function claimWorkflowAwaitedResult(asyncDir: string, claimant: string, read: ResultSnapshot): string | undefined;
 export {};
-//# sourceMappingURL=await-async-run.d.ts.map

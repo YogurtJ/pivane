@@ -76,4 +76,3 @@ export function isToolBudgetBlockedMessage(budget, resultText, blockedTool) {
     const [, blockedToolCount, hard, namedTool] = match;
     return Number(hard) === budget.hard && Number(blockedToolCount) > budget.hard && namedTool === tool;
 }
-//# sourceMappingURL=tool-budget.js.map

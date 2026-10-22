@@ -27,4 +27,3 @@ export declare function externalCliReceiptMetadata(input: {
     externalProcess?: ExternalProcessStatus;
     outputReference?: string;
 }): ExternalCliReceiptMetadata;
-//# sourceMappingURL=external-cli-contract.d.ts.map

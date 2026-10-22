@@ -5,4 +5,3 @@ export declare function saveConfig(config: ExtensionConfig, configPath?: string)
 export declare function updateConfig(updater: (config: ExtensionConfig) => ExtensionConfig): ExtensionConfig;
 export declare function resolveAsyncByDefault(config: Pick<ExtensionConfig, "asyncByDefault">): boolean;
 export declare function loadConfig(): ExtensionConfig;
-//# sourceMappingURL=config.d.ts.map

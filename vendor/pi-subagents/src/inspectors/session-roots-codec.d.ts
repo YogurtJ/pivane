@@ -13,4 +13,3 @@
 export declare function encodeSessionRoots(roots: readonly string[]): string;
 /** Decodes a `--session-roots` argument produced by {@link encodeSessionRoots}. */
 export declare function decodeSessionRoots(raw: string): string[];
-//# sourceMappingURL=session-roots-codec.d.ts.map

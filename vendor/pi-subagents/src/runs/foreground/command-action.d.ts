@@ -10,4 +10,3 @@ export declare function commandAction(input: {
     toolCallId?: string;
     signal?: AbortSignal;
 }): Promise<AgentToolResult<Details>>;
-//# sourceMappingURL=command-action.d.ts.map

@@ -13,6 +13,12 @@ import type { RequiredChildExtensionSnapshot } from "../../shared/required-child
  * pi-subagents loaded into a child session stays inert.
  */
 export declare const SUBAGENT_CHILD_ENV = "PI_SUBAGENT_CHILD";
+/**
+ * Pid of the async runner, set by the runner itself. A session's extensions
+ * can compare it with process.pid to tell that the process outlives the
+ * session. Descendants inherit the value but have their own pid.
+ */
+export declare const SUBAGENT_RUNNER_PID_ENV = "PI_SUBAGENT_RUNNER_PID";
 /** Root parent session id the parent publishes for pi-permission-system ask forwarding. */
 export declare const SUBAGENT_PARENT_SESSION_ENV = "PI_SUBAGENT_PARENT_SESSION";
 export interface ChildNestedRoute {
@@ -103,4 +109,3 @@ export interface ChildRuntimeConfig {
 export declare function childSupervisorMetadata(config: ChildRuntimeConfig): ChildSupervisorMetadata | undefined;
 /** Compute the child tool-availability diagnostic; undefined when every required tool is present. */
 export declare function evaluateChildToolDiagnostic(config: Pick<ChildRuntimeConfig, "agent" | "requiredTools" | "mcpDirectTools">, availableTools: string[]): ChildToolDiagnostic | undefined;
-//# sourceMappingURL=child-runtime-config.d.ts.map

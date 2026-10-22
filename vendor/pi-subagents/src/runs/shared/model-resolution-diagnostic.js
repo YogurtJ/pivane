@@ -89,4 +89,3 @@ export function formatInheritedProviderDiagnostic(diagnostic) {
         `If ${provider} depends on those hooks, run this agent with \`async: true\` (a background child loads the ambient extensions unless the agent sets \`extensions\`), or load the extension for this agent with \`subagentOnlyExtensions\` or \`extensions\` in the agent frontmatter.`,
     ].join("\n");
 }
-//# sourceMappingURL=model-resolution-diagnostic.js.map

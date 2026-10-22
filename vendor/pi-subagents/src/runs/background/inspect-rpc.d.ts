@@ -31,6 +31,11 @@ export interface InspectReply {
     task?: string;
     messages?: InspectReplyMessage[];
     finalOutput?: string;
+    /** Provider and model of the inspected child's latest own assistant reply, as Pi recorded them. */
+    resolvedModel?: {
+        provider: string;
+        model: string;
+    };
     truncated?: {
         task: boolean;
         messages: number;
@@ -57,4 +62,3 @@ export declare function buildInspectReply(request: InspectRequest, deps?: Inspec
 export declare function encodeInspectReply(reply: InspectReply): string[];
 /** Parse the slash-command args and always return a correlated inspect reply. */
 export declare function handleInspectRpcArgs(args: string, deps?: InspectDeps): InspectReply;
-//# sourceMappingURL=inspect-rpc.d.ts.map

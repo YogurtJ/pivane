@@ -11,6 +11,7 @@ import { listAsyncRuns } from "./async-status.js";
 import { EXTERNAL_JOB_BRIDGE_REQUEST_DIR, externalJobBridgeEligibility, serviceExternalJobBridgeRequests } from "../shared/external-job-bridge.js";
 import { shouldUseNativeFsWatch } from "../../shared/watch-strategy.js";
 import { parseWorkflowChildSummary } from "../../workflows/workflow-child-summary.js";
+import { withWorkflowChildRunModel } from "./workflow-terminal-proof.js";
 import { validHostStepNodes } from "../shared/host-step-status.js";
 import { readProcessTerminal } from "./process-terminal.js";
 import { withCachedUiContext } from "../../shared/extension-context.js";
@@ -510,6 +511,8 @@ export function createAsyncJobTracker(pi, state, asyncDirRoot, options = {}) {
                     job.workflowGraph = status.workflowGraph ?? job.workflowGraph;
                 job.hostSteps = validHostStepNodes(status.workflowGraph);
                 const workflowChildren = parseWorkflowChildSummary(status.workflowChildren);
+                if (workflowChildren && status.mode === "workflow")
+                    workflowChildren.children = workflowChildren.children.map((child) => withWorkflowChildRunModel(job.asyncDir, child));
                 if (workflowChildren && workflowChildren.workflowRunId !== status.runId)
                     throw new Error("workflowChildren.workflowRunId does not match async status runId.");
                 job.workflowChildren = workflowChildren ?? job.workflowChildren;
@@ -529,6 +532,11 @@ export function createAsyncJobTracker(pi, state, asyncDirRoot, options = {}) {
                         ? status.steps.slice(activeGroup.start, activeGroup.start + activeGroup.count).map((step, index) => ({ ...step, index: activeGroup.start + index }))
                         : status.steps.map((step, index) => ({ ...step, index }));
                     job.activeParallelGroup = Boolean(activeGroup);
+                    if (status.mode === "workflow") {
+                        for (const step of visibleSteps)
+                            if (step.async === true)
+                                Object.assign(step, withWorkflowChildRunModel(job.asyncDir, step));
+                    }
                     job.agents = visibleSteps.map((step) => step.agent);
                     job.steps = visibleSteps;
                     refreshNestedProjection();
@@ -905,4 +913,3 @@ export function createAsyncJobTracker(pi, state, asyncDirRoot, options = {}) {
     };
     return { ensurePoller, refreshWidget, handleStarted, handleComplete, resetJobs, restoreActiveJobs, dispose };
 }
-//# sourceMappingURL=async-job-tracker.js.map

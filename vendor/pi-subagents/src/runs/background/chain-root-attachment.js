@@ -184,4 +184,3 @@ export async function waitForImportedAsyncRoot(root, options = {}) {
 export function resolveAsyncRootResultPath(resultsDir, runId) {
     return resultFilePath(resultsDir, runId);
 }
-//# sourceMappingURL=chain-root-attachment.js.map

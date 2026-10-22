@@ -27,4 +27,3 @@ export function frontmatterNameForConfig(config) {
     }
     return config.name;
 }
-//# sourceMappingURL=identity.js.map

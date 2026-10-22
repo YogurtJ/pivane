@@ -20,4 +20,3 @@ export interface ResolveSubagentRunIdDeps {
     nested?: NestedRunResolutionScope;
 }
 export declare function resolveSubagentRunId(id: string, deps?: ResolveSubagentRunIdDeps): ResolvedSubagentRunId | undefined;
-//# sourceMappingURL=run-id-resolver.d.ts.map

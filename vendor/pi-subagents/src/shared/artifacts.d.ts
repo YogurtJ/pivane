@@ -20,4 +20,3 @@ export declare function writeMetadata(filePath: string, metadata: object): void;
 export declare function appendJsonl(filePath: string, line: string): void;
 export declare function cleanupOldArtifacts(dir: string, maxAgeDays: number): void;
 export declare function cleanupAllArtifactDirs(maxAgeDays: number): void;
-//# sourceMappingURL=artifacts.d.ts.map

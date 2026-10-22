@@ -9,5 +9,5 @@ export declare function deliverAsyncRunStop(input: Parameters<typeof deliverStop
 export declare function stopAsyncRun(state: SubagentState, runId: string | undefined, kill?: (pid: number, signal?: NodeJS.Signals | 0) => boolean, location?: {
     asyncDir: string | null;
     resolvedId?: string;
+    reattachedRunId?: string;
 }, childId?: string): AgentToolResult<Details> | null;
-//# sourceMappingURL=async-stop-action.d.ts.map

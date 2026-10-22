@@ -21,4 +21,3 @@ export function createGhosttyInspectorPlugin(deps = {}) {
         open: (context, launch, params) => openGhosttyInspector(context, launch, params, deps.runner),
     };
 }
-//# sourceMappingURL=plugin.js.map

@@ -14,4 +14,3 @@ export function finalizeToolResult(result) {
         .trim();
     throw new Error(message || "pi-subagents reported a logical tool failure.");
 }
-//# sourceMappingURL=tool-result.js.map

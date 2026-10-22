@@ -18,4 +18,3 @@ export declare function formatNestedRunStatusLines(children: NestedRunSummary[] 
     maxLines?: number;
     commandHints?: boolean;
 }): string[];
-//# sourceMappingURL=nested-render.d.ts.map

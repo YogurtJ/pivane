@@ -88,4 +88,3 @@ export declare function isSettlementFatalOutputError(resolvedOutput: {
     fatalError?: boolean;
 }, outputMode?: OutputMode): boolean;
 export {};
-//# sourceMappingURL=single-output.d.ts.map

@@ -602,4 +602,3 @@ export function listGlobalMissions(globalIndexDir) {
     entries.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     return { entries, warnings };
 }
-//# sourceMappingURL=store.js.map

@@ -142,4 +142,3 @@ export declare function buildSkippedAcceptanceLedger(acceptance: ResolvedAccepta
 }): AcceptanceLedger;
 export declare function acceptanceFailureMessage(ledger: AcceptanceLedger): string | undefined;
 export {};
-//# sourceMappingURL=acceptance.d.ts.map

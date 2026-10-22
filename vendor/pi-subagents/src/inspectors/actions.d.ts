@@ -22,4 +22,3 @@ export interface InspectorDispatcherDeps {
     leaseWaitMs?: number;
 }
 export declare function handleInspectorAction(action: InspectorAction, params: InspectorParams, deps: InspectorDispatcherDeps): Promise<AgentToolResult<Details>>;
-//# sourceMappingURL=actions.d.ts.map

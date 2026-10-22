@@ -12,4 +12,3 @@ export function createHerdrInspectorPlugin(deps = {}) {
         close: (context) => closeHerdrInspector(context, client),
     };
 }
-//# sourceMappingURL=plugin.js.map

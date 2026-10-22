@@ -8,6 +8,7 @@ import { validateAcceptanceInput } from "../shared/acceptance.js";
 import { validateToolBudgetConfig } from "../shared/tool-budget.js";
 import { intersectSubagentCapabilityCeilings, normalizeCapabilityCeilingAllowedAgents, parseSubagentCapabilityCeiling } from "../shared/capability-ceiling.js";
 import { validateRunFanoutBudgetDescriptor } from "../shared/run-fanout-budget.js";
+import { ownsRun } from "../shared/run-ownership.js";
 import { reconcileAsyncRun } from "./stale-run-reconciler.js";
 import { resultFilePath, resultPayloadPathForIndexedRun } from "./result-files.js";
 import { canScanAsyncRunPrefix, MIN_SAFE_ASYNC_RUN_PREFIX_LENGTH } from "./run-id-query.js";
@@ -494,7 +495,7 @@ export function resolveAsyncResumeTarget(params, deps = {}, options = {}) {
     const result = location.resultPath ? readResultFile(location.resultPath) : undefined;
     const runId = status?.runId ?? result?.runId ?? result?.id ?? location.resolvedId ?? (location.asyncDir ? path.basename(location.asyncDir) : "unknown");
     const mode = resumeTargetMode(status, result);
-    if (options.sessionId && ((status && status.sessionId !== options.sessionId) || (result && result.sessionId !== options.sessionId))) {
+    if (options.sessionId && ((status && !ownsRun(options.sessionId, status.sessionId)) || (result && !ownsRun(options.sessionId, result.sessionId)))) {
         throw new Error(`Async run '${runId}' was not found in the active session.`);
     }
     if (recoveryDescriptor && recoveryDescriptor.sourceRunId !== runId)
@@ -675,4 +676,3 @@ export function buildRevivedAsyncTask(target, message) {
         message,
     ].filter((line) => line !== undefined).join("\n");
 }
-//# sourceMappingURL=async-resume.js.map

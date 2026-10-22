@@ -8,6 +8,8 @@ export interface ResultIndexEntry {
 }
 export declare function resultFileName(runId: string): string;
 export declare function resultFilePath(resultsDir: string, runId: string): string;
+/** Present from publication until an observer acknowledges the payload it handled. */
+export declare function missionObserverIndexPath(resultsDir: string, runId: string): string;
 export declare function writeResultIndexForData(resultPath: string, data: Record<string, unknown>): void;
 export declare function writePendingAsyncResultFile(resultPath: string, data: Record<string, unknown>): void;
 export declare function writeAsyncResultFile(resultPath: string, data: Record<string, unknown>): {
@@ -16,7 +18,7 @@ export declare function writeAsyncResultFile(resultPath: string, data: Record<st
 export declare function removeResultIndex(resultsDir: string, sessionId: string | undefined, runId: string | undefined, toolCallId?: string): void;
 export declare function removeMissionObserverIndex(resultsDir: string, runId: string | undefined): void;
 /** Serializes one run's result publication and retirement across processes. Lookups never take it. */
-export declare function withResultRunLease<T>(resultsDir: string, runId: string, action: () => T): T;
+export declare function withResultRunLease<T>(resultsDir: string, runId: string, action: () => T, waitMs?: number): T;
 /**
  * The exact payload text a consumer read, with the identity its indexes are keyed by.
  * `stalePublic` is what the public path held, read just before `snapshot`, when it differed:
@@ -39,9 +41,9 @@ export declare function resultSnapshotReplaced(publicPath: string, read: ResultS
  * the consumer's own claimed copy goes. A payload that cannot be removed is reported after the
  * indexes are gone.
  */
-export declare function retireResultSnapshot(publicPath: string, read: ResultSnapshot, payloadPath?: string): "retired" | "replaced";
+export declare function retireResultSnapshot(publicPath: string, read: ResultSnapshot, payloadPath?: string, leaseWaitMs?: number): "retired" | "replaced";
 /** Removes the mission observer index for the payload an observer handled, unless a newer payload replaced it. */
-export declare function acknowledgeMissionObserverSnapshot(publicPath: string, read: ResultSnapshot): "acknowledged" | "replaced";
+export declare function acknowledgeMissionObserverSnapshot(publicPath: string, read: ResultSnapshot, leaseWaitMs?: number): "acknowledged" | "replaced";
 export declare function resultPayloadMatchesSessionRun(data: unknown, sessionId: string, runId: string): boolean;
 export declare function promotePendingResultFile(resultsDir: string, sessionId: string, runId: string, file?: string, options?: {
     logFailure?: boolean;
@@ -59,4 +61,3 @@ export declare function resultCandidateFilesForToolCall(resultsDir: string, tool
 export declare function missionObserverResultFiles(resultsDir: string): string[];
 export declare function missionObserverResultCandidateFiles(resultsDir: string): string[];
 export declare function cleanupResultIndexes(resultsDir: string, now?: number, maxAgeMs?: number): number;
-//# sourceMappingURL=result-files.d.ts.map

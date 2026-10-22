@@ -20,4 +20,3 @@ export declare function renderSubagentEntry(entry: SubagentEntry, options: {
     expanded: boolean;
 }, theme: Theme): Component | undefined;
 export {};
-//# sourceMappingURL=subagent-messages.d.ts.map

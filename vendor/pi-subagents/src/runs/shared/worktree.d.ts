@@ -179,4 +179,3 @@ export declare function diffWorktrees(setup: WorktreeSetup, agents: string[], di
 export declare function cleanupWorktrees(setup: WorktreeSetup, intent?: WorktreeCleanupIntent): WorktreeCleanupReport;
 export declare function formatWorktreeDiffSummary(diffs: WorktreeDiff[]): string;
 export {};
-//# sourceMappingURL=worktree.d.ts.map

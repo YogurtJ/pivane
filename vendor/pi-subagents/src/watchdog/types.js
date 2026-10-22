@@ -25,4 +25,3 @@ export const WATCHDOG_WARNING_STATES = [
     "stalemate",
     "suppressed",
 ];
-//# sourceMappingURL=types.js.map

@@ -166,4 +166,3 @@ export declare class SubagentFleetComponent implements Component {
 }
 export declare function openSubagentFleet(ctx: ExtensionContext, state: SubagentState, options?: FleetViewOptions): Promise<void>;
 export {};
-//# sourceMappingURL=fleet.d.ts.map

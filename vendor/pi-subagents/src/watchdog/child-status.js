@@ -185,4 +185,3 @@ export function childWatchdogProgressForModel(progress) {
     const warnings = (progress.warnings ?? []).filter((warning) => warning.importance === "high");
     return { ...progress, warnings: warnings.length ? warnings : undefined };
 }
-//# sourceMappingURL=child-status.js.map

@@ -7,4 +7,3 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
  * retain their return-based error handling.
  */
 export declare function finalizeToolResult<T>(result: AgentToolResult<T>): AgentToolResult<T>;
-//# sourceMappingURL=tool-result.d.ts.map

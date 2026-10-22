@@ -44,4 +44,3 @@ export function resolveWaitToolConfig(config, env = process.env) {
         ...(envDefaultTimeoutMs ?? configured.defaultTimeoutMs !== undefined ? { defaultTimeoutMs: envDefaultTimeoutMs ?? configured.defaultTimeoutMs } : {}),
     };
 }
-//# sourceMappingURL=wait-config.js.map

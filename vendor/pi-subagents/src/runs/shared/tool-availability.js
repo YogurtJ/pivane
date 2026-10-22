@@ -27,4 +27,3 @@ export function formatChildToolDiagnostic(diagnostic, options = {}) {
         "For MCP tools, verify the MCP adapter configuration and selected tool names. For builtin tools, verify the name against the installed Pi version.",
     ].join("\n");
 }
-//# sourceMappingURL=tool-availability.js.map

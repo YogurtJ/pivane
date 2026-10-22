@@ -27,4 +27,3 @@ export declare function writeWatchdogModelSettings(input: WatchdogModelSettingsW
 export declare function resolveWatchdogConfig(cwd: string, options?: {
     session?: Record<string, unknown>;
 }): WatchdogSettingsResult;
-//# sourceMappingURL=settings.d.ts.map

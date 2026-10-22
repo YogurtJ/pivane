@@ -42,4 +42,3 @@ export function sanitizeRuntimeAcknowledgedExtensions(value) {
         : 0;
     return { ...projected, omitted: projected.omitted + omitted };
 }
-//# sourceMappingURL=runtime-acknowledged-extensions.js.map

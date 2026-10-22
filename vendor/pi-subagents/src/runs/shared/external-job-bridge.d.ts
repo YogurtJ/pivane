@@ -22,4 +22,3 @@ export declare function serviceExternalJobBridgeRequests(asyncDir: string): void
 export declare function serviceExternalJobBridgeRequestFile(asyncDir: string, file: string): void;
 export declare function requestExternalJobOperation<T extends ExternalJobHandle | ExternalJobResult>(asyncDir: string, request: Omit<ExternalJobBridgeRequest, "id" | "createdAt">, timeoutMs?: number, cancel?: ExternalJobBridgeCancel): Promise<T>;
 export {};
-//# sourceMappingURL=external-job-bridge.d.ts.map

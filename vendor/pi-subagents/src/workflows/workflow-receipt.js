@@ -452,4 +452,3 @@ export function resolveWorkflowReceiptResume(input) {
     const entry = resolveWorkflowReceiptResumeEntry(input);
     return entry.latestRunId;
 }
-//# sourceMappingURL=workflow-receipt.js.map

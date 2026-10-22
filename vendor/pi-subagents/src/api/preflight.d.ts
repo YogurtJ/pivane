@@ -176,4 +176,3 @@ export type SubagentLaunchContractResult = {
     diagnostics: SubagentLaunchContractDiagnostic[];
 };
 export declare function resolveSubagentLaunchContract(input: SubagentLaunchContractInput): Promise<SubagentLaunchContractResult>;
-//# sourceMappingURL=preflight.d.ts.map

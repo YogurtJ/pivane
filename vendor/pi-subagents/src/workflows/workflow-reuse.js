@@ -7,7 +7,9 @@ import { workflowRunParamsFingerprint } from "./scripted-workflow.js";
 /** Stop cause recorded when the extension runtime that owned the workflow was replaced (/reload, resume, project switch). */
 const WORKFLOW_STOP_CAUSE_RUNTIME_REPLACED = "runtime-replaced";
 const WORKFLOW_CHILD_JOURNAL_FILE = "workflow-children.jsonl";
-export const WORKFLOW_RUNTIME_REPLACED_RELAUNCH_NOTICE = "Async children that were still running keep running; relaunch the same workflow script with the same args to reuse finished children and re-attach to running ones.";
+export function workflowRuntimeReplacedRelaunchNotice(runId) {
+    return `Async children that were still running keep running. Relaunching the same workflow script with the same args from this session reuses finished children and re-attaches to running ones; from another session, add options: { reuseFrom: "${runId}" }.`;
+}
 /** Abort reason for workflow controllers torn down by runtime replacement; carries the cause as data, not text. */
 export function runtimeReplacedAbortReason() {
     return Object.assign(new Error("Workflow stopped because the extension session was replaced or reloaded."), { workflowStopCause: WORKFLOW_STOP_CAUSE_RUNTIME_REPLACED });
@@ -92,6 +94,25 @@ export function findWorkflowReuseSource(asyncDirRoot, sessionId, scriptDigest, a
     }
     return undefined;
 }
+/**
+ * The runtime-replaced workflow run named by `options.reuseFrom`, from any session. Only the script
+ * must match: each child is still reused only when its key and launch params match.
+ */
+export function readNamedWorkflowReuseSource(asyncDirRoot, runId, scriptDigest, cwd) {
+    // A user-supplied id: it must name one run directory, never a path.
+    const status = runId === path.basename(runId) && runId !== "." && runId !== ".." ? readStatus(path.join(asyncDirRoot, runId)) : null;
+    if (!status)
+        throw new Error(`options.reuseFrom: workflow run '${runId}' was not found.`);
+    if (status.mode !== "workflow")
+        throw new Error(`options.reuseFrom: run '${runId}' is not a workflow run.`);
+    if (status.workflow?.stopCause !== WORKFLOW_STOP_CAUSE_RUNTIME_REPLACED)
+        throw new Error(`options.reuseFrom: workflow run '${runId}' did not stop because its session was replaced, so its children cannot be reused.`);
+    if (status.workflow.scriptDigest !== scriptDigest)
+        throw new Error(`options.reuseFrom: workflow run '${runId}' ran a different workflow script.`);
+    if (status.cwd !== cwd)
+        throw new Error(`options.reuseFrom: workflow run '${runId}' ran in '${status.cwd}', not '${cwd}'.`);
+    return readWorkflowChildJournal(runId, path.join(asyncDirRoot, runId));
+}
 /** A settled match is reusable only when that child succeeded; failed or stopped children run again. */
 export function matchWorkflowReuse(source, key, fingerprint) {
     const settled = source.settled.get(key);
@@ -100,4 +121,3 @@ export function matchWorkflowReuse(source, key, fingerprint) {
     const started = source.started.get(key);
     return started?.fingerprint === fingerprint ? { kind: "started", runId: started.runId } : undefined;
 }
-//# sourceMappingURL=workflow-reuse.js.map

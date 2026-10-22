@@ -55,4 +55,3 @@ export async function resolveGlobalNpmRoot(options = {}) {
         return null;
     }
 }
-//# sourceMappingURL=global-npm-root.js.map

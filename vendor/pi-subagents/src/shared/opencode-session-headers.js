@@ -24,4 +24,3 @@ export function opencodeSessionHeaders(model, sessionId) {
         return undefined;
     return { "x-opencode-session": sessionId, "x-opencode-client": "pi" };
 }
-//# sourceMappingURL=opencode-session-headers.js.map

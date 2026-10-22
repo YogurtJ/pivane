@@ -31,4 +31,3 @@ export declare function formatChildModelResolutionDiagnostic(diagnostic: ChildMo
 export declare function formatInheritedProviderDiagnostic(diagnostic: ChildModelResolutionDiagnostic & {
     provider: string;
 }): string;
-//# sourceMappingURL=model-resolution-diagnostic.d.ts.map

@@ -19,4 +19,3 @@ export declare function registerPromptWorkflowCommands(input: {
     run: PromptWorkflowRunner;
 }): void;
 export {};
-//# sourceMappingURL=prompt-workflows.d.ts.map

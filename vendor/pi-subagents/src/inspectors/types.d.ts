@@ -46,4 +46,3 @@ export interface InspectorPlugin {
     status?(context: InspectorContext): Promise<AgentToolResult<Details>>;
     close?(context: InspectorContext): Promise<AgentToolResult<Details>>;
 }
-//# sourceMappingURL=types.d.ts.map

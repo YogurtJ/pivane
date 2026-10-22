@@ -139,4 +139,3 @@ export function parseFrontmatter(content) {
     }
     return { frontmatter, body };
 }
-//# sourceMappingURL=frontmatter.js.map

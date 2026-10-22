@@ -19,4 +19,3 @@ export declare function getSlashRenderableSnapshot(details: SlashMessageDetails)
 export declare function restoreSlashFinalSnapshots(entries: unknown[]): void;
 export declare function clearSlashSnapshots(): void;
 export {};
-//# sourceMappingURL=slash-live-state.d.ts.map

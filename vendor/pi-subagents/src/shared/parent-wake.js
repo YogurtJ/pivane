@@ -1,6 +1,10 @@
-export const PARENT_WAKE_TEXT = "Inspect subagent updates above. Answer pending supervisor requests within your authority. For completed work, read saved results and resume the already-authorized parent task, or report completion. If approval is required, explicitly ask the user. Do not silently yield, rerun completed work, or infer new authorization.";
-// A handled or failed wake prompt emits no agent_start. Past this deadline an idle parent's
-// wake counts as abandoned: its notices are already in the session, only the turn is lost.
+/** Ends a waking notice that reports results. */
+export const COMPLETION_ACTION = "Read the saved results above and resume the already-authorized parent task, or report completion. If approval is required, explicitly ask the user. Do not silently yield, rerun completed work, or infer new authorization.";
+/** Ends a waking notice that reports a problem or a run state rather than results. */
+export const STATUS_ACTION = "Check the run status and details above, then resume the already-authorized parent task or report the problem. If approval is required, explicitly ask the user. Do not silently yield, rerun completed work, or infer new authorization.";
+// A wake whose run never starts emits no agent_start; past this deadline an idle parent's wake counts as abandoned.
+// Pi persists the waking notice only when its run reaches message_end, so a run that never starts loses it;
+// notify.ts records undelivered subagent-notify notices at shutdown and replays them at the next start.
 const WAKE_PENDING_MS = 10_000;
 const reservationsSymbol = Symbol.for("pi.idle-wake.v1");
 const wakeGlobal = globalThis;
@@ -32,22 +36,16 @@ export function createParentWake(pi, now = Date.now) {
                 pi.sendMessage(message, options);
                 return false;
             }
-            if (held) {
+            if (held || (ctx.isIdle() && reserved())) {
                 // Appended now, or at the end of a run still finishing; neither emits an extension message_start.
+                // A reserved wake's run picks the notice up when it starts.
                 pi.sendMessage(message, { triggerTurn: false });
                 return true;
             }
-            if (!ctx.isIdle()) {
-                pi.sendMessage(message, options);
-                return false;
-            }
-            pi.sendMessage(message, { triggerTurn: false });
-            if (!reserved()) {
+            if (ctx.isIdle())
                 reservation().sentAt = now();
-                // Steer queues the wake if another prompt starts the run first.
-                pi.sendUserMessage(PARENT_WAKE_TEXT, { deliverAs: "steer" });
-            }
-            return true;
+            pi.sendMessage(message, options);
+            return false;
         },
         isPending: () => reservation().sentAt !== undefined && (reserved() || !ctx.isIdle()),
         bindSession(context) {
@@ -68,4 +66,3 @@ export function createParentWake(pi, now = Date.now) {
         },
     };
 }
-//# sourceMappingURL=parent-wake.js.map

@@ -24,6 +24,7 @@ import { registerRuntimeAgentEventListener } from "../agents/runtime-agent-event
 import { ensureAccessibleDir } from "../shared/accessible-dir.js";
 import { cleanupAllArtifactDirs, cleanupOldArtifacts, getArtifactsDir } from "../shared/artifacts.js";
 import { resolveCurrentSessionId } from "../shared/session-identity.js";
+import { recordSessionReplacement } from "../shared/session-succession.js";
 import { getAgentDir } from "../shared/utils.js";
 import { isStaleExtensionContextError, MODEL_ONLY_TOOL, withCachedUiContext } from "../shared/extension-context.js";
 import { currentCompletionOwnerId } from "../shared/completion-owner.js";
@@ -229,6 +230,9 @@ export default function registerSubagentExtension(pi) {
     const waitToolConfig = resolveWaitToolConfig(config.waitTool);
     const asyncByDefault = resolveAsyncByDefault(config);
     const fleetViewEnabled = config.fleetView !== false;
+    const slashCommandsEnabled = config.enableSlashCommands !== false;
+    // The detach shortcut is registered with the slash commands; a card must not advertise it when it is not.
+    const foregroundDetachShortcut = slashCommandsEnabled ? config.foregroundDetachShortcut : undefined;
     const fleetViewPlacement = resolveFleetViewPlacement(config.fleetViewPlacement);
     const asyncWidgetEnabled = config.asyncWidget !== false;
     const asyncWidgetCollapsed = config.asyncWidgetCollapsed === true;
@@ -284,14 +288,14 @@ export default function registerSubagentExtension(pi) {
     };
     // Every notice that wakes the parent goes through parentWake; the watchdog wakes only inside a run.
     const parentWake = createParentWake(pi);
-    const wakingPi = { events: pi.events, sendMessage: parentWake.sendMessage, isHeld: parentWake.isHeld, on: pi.on };
+    const wakingPi = { events: pi.events, sendMessage: parentWake.sendMessage, isHeld: parentWake.isHeld, on: pi.on, appendEntry: (customType, data) => pi.appendEntry(customType, data) };
     const supervisorChannel = createNativeSupervisorChannel(pi, state, {
         // Owner states are created only by scheduled execution, which loads the executor first.
         getCurrentOwnerStates: () => executor?.getCurrentSupervisorOwnerStates() ?? [],
         parentWake,
     });
     const waitSubscriptionManager = createWaitSubscriptionManager(wakingPi, state);
-    const mainWatchdog = registerMainWatchdog(pi);
+    const mainWatchdog = registerMainWatchdog(pi, { slashCommand: slashCommandsEnabled });
     const resultDeliveryOwnership = createResultDeliveryOwnership(state);
     const completionNotifier = registerSubagentNotify(wakingPi, state, { batchConfig: config.completionBatch, ownership: resultDeliveryOwnership });
     // Ended async runs whose result has not reached the notifier yet.
@@ -551,8 +555,15 @@ export default function registerSubagentExtension(pi) {
         const details = resolveSlashMessageDetails(message.details);
         if (!details)
             return undefined;
-        return createSlashResultComponent(details, options, theme, config.mainWindowRenderer, config.foregroundDetachShortcut, () => state.lastUiContext?.ui.theme ?? theme);
+        return createSlashResultComponent(details, options, theme, config.mainWindowRenderer, foregroundDetachShortcut, () => state.lastUiContext?.ui.theme ?? theme);
     });
+    // Keep view-only reports in the transcript/RPC stream, but out of model context.
+    // SLASH_RESULT_TYPE carries delegated work and must remain model-visible.
+    pi.on("context", (event) => ({
+        messages: event.messages.filter((message) => message.role !== "custom"
+            || message.customType !== SLASH_TEXT_RESULT_TYPE
+            || message.details?.viewOnly !== true),
+    }));
     pi.registerMessageRenderer(SLASH_TEXT_RESULT_TYPE, (message, _options, _theme) => {
         const content = typeof message.content === "string"
             ? message.content
@@ -624,7 +635,7 @@ export default function registerSubagentExtension(pi) {
             const renderedResult = { ...result, isError: context.isError };
             return summaryInlineToolDisplay
                 ? renderSubagentSummary(renderedResult, options, theme)
-                : renderSubagentResult(renderedResult, options, theme, undefined, config.mainWindowRenderer, config.foregroundDetachShortcut);
+                : renderSubagentResult(renderedResult, options, theme, undefined, config.mainWindowRenderer, foregroundDetachShortcut);
         },
     };
     registerPinnedTool(pi, tool);
@@ -655,7 +666,7 @@ export default function registerSubagentExtension(pi) {
                 parentWake.userAborted();
                 const active = activeAsyncJobCount();
                 if (active > 0)
-                    ctx.ui.notify(`${active} background subagent run${active === 1 ? " is" : "s are"} still active · /subagents-stop`, "info");
+                    ctx.ui.notify(`${active} background subagent run${active === 1 ? " is" : "s are"} still active${slashCommandsEnabled ? " · /subagents-stop" : ""}`, "info");
             }
             // A headless host may dispose the session as soon as this turn settles, so hand
             // finished results to Pi now; Pi runs the queued completion turn after agent_end.
@@ -686,11 +697,11 @@ export default function registerSubagentExtension(pi) {
             }
         }
     });
-    const disposeSlashCommands = registerSlashCommands(pi, state, {
+    const disposeSlashCommands = slashCommandsEnabled ? registerSlashCommands(pi, state, {
         fleetKeybindings: config.fleetKeybindings,
-        foregroundDetachShortcut: config.foregroundDetachShortcut,
+        foregroundDetachShortcut,
         workflowScriptsDisabled: disabledFeatures.features.has("workflow-scripts"),
-    });
+    }) : { dispose: () => { } };
     let visibleControlNotices = new Set();
     const activeHerdrRuns = () => projectActiveHerdrRuns(state);
     const herdrStatusBridge = registerHerdrStatusBridge({
@@ -798,9 +809,10 @@ export default function registerSubagentExtension(pi) {
         state.widgetsSuspended = false;
         state.baseCwd = ctx.cwd;
         goalTurnId = 0;
-        const previousRuntimeSessionId = state.currentSessionId;
-        resultDeliveryOwnership.claimPredecessor(previousSessionFile, previousRuntimeSessionId);
         state.currentSessionId = resolveCurrentSessionId(ctx.sessionManager);
+        // Pi passes previousSessionFile only for new/resume/fork, after tearing that session down in this process.
+        if (previousSessionFile)
+            recordSessionReplacement(state.currentSessionId, previousSessionFile);
         state.supervisorOwnerSessionId = ctx.sessionManager.getSessionId() || null;
         transitionResultDelivery();
         owedResultRunIds.clear();
@@ -904,7 +916,6 @@ export default function registerSubagentExtension(pi) {
             modulePreloadTimer = undefined;
             asyncRetentionAbort.abort();
             stopResultWatcher();
-            resultDeliveryOwnership.clear();
             completionNotifier.dispose();
             mainWatchdog.dispose();
             scheduledRunManager.stop();
@@ -993,7 +1004,12 @@ export default function registerSubagentExtension(pi) {
         herdrStatusBridge.agentStarted();
         programStatus.agentStarted();
     });
-    pi.on("message_start", (event) => completionNotifier.messageStarted(event.message));
+    pi.on("message_start", (event) => {
+        // Pi also compacts between turns of a running loop, with no agent_start after it. A message
+        // starts only once that compaction has finished and its status indicator is cleared.
+        resumeWidgetsAfterCompaction();
+        completionNotifier.messageStarted(event.message);
+    });
     pi.on("agent_settled", () => {
         resumeWidgetsAfterCompaction();
         programStatus.agentSettled();
@@ -1002,9 +1018,9 @@ export default function registerSubagentExtension(pi) {
         if (event.reason !== "manual")
             suspendWidgetsForCompaction();
     });
-    // Pi emits session_compact before it clears its compaction state, and a parent that is still
-    // compacting can only be woken without before_agent_start (earendil-works/pi#5581). Wait for the
-    // parent to go idle so the resume takes parentWake's prompt() path. A run that starts first cancels the pending resume.
+    // Pi emits session_compact before it clears its compaction state. sendMessage's run path has no
+    // compaction guard (only prompt() refuses), so wait for the parent to go idle before the resume notice
+    // starts a run. A run that starts first cancels the pending resume.
     pi.on("session_compact", (event) => {
         if (event.reason !== "manual")
             return;
@@ -1084,10 +1100,11 @@ export default function registerSubagentExtension(pi) {
     pi.on("session_start", (_event, ctx) => beginAdvertisement(ctx));
     registerSubagentToolActivation(pi, {
         mode: config.toolActivation,
+        // The channel's session_start poll already declared the reply tool for these; the replay must not drop it.
+        hasPendingSupervisorRequest: () => [...supervisorChannel.pending.values()].some((request) => request.expectsReply),
         advertisedPrompt: async () => {
             await waitForAdvertisement();
             return buildAdvertisedAgentPrompt(advertisedAgents, resolveCurrentSubagentCapabilityCeiling(state.currentSessionId ?? undefined));
         },
     });
 }
-//# sourceMappingURL=index.js.map

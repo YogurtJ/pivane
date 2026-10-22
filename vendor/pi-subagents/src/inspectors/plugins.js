@@ -80,4 +80,3 @@ export function registerInspectorEventListener(pi) {
             registries.delete(pi.events);
     };
 }
-//# sourceMappingURL=plugins.js.map

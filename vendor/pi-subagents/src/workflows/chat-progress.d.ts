@@ -35,4 +35,3 @@ export interface WorkflowChatProgressRow {
 }
 export declare function buildWorkflowChatProgressRows(trace: NonNullable<Details["workflow"]>["trace"], preflight?: WorkflowPreflight): WorkflowChatProgressRow[];
 export {};
-//# sourceMappingURL=chat-progress.d.ts.map

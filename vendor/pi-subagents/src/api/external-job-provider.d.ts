@@ -55,4 +55,3 @@ export declare function validateExternalJobResult(provider: string, value: unkno
 export declare function registerExternalJobProvider(provider: ExternalJobProvider): () => void;
 export declare function listExternalJobProviders(): readonly ExternalJobProvider[];
 export declare function getExternalJobProvider(name: string): ExternalJobProvider | undefined;
-//# sourceMappingURL=external-job-provider.d.ts.map

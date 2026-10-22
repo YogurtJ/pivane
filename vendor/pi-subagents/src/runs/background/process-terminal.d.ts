@@ -19,4 +19,3 @@ export declare function readProcessTerminal(asyncDir: string, fallback?: {
     runnerProcessInstanceId?: string;
 }): ProcessTerminal | undefined;
 export declare function finalizeProcessTerminal(asyncDir: string, runId: string, runnerClose: RunnerCloseObservation): ProcessTerminal;
-//# sourceMappingURL=process-terminal.d.ts.map

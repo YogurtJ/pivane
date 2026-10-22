@@ -605,4 +605,3 @@ export async function handleHerdrProjectPaneAction(action, params, deps) {
     }
     return toolResult(`Opened Herdr project pane ${opened.data.binding.paneId} for ${opened.data.projectRoot}. The pane runs its own Pi session; subagents launched there belong to that project.`);
 }
-//# sourceMappingURL=project-panes.js.map

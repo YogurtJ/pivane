@@ -14,4 +14,3 @@ export interface NormalizedExtensionBindings {
 export declare function normalizeExtensionBindings(input: unknown): NormalizedExtensionBindings | undefined;
 export declare function encodeExtensionBindings(input: ExtensionBindings | undefined): string | undefined;
 export declare function omitExtensionBindingsEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv;
-//# sourceMappingURL=extension-bindings.d.ts.map

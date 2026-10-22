@@ -56,4 +56,3 @@ export declare function consumeWorkflowResourcePermit(permit: WorkflowResourcePe
 } | string;
 /** Validate a host call against the authority attached to a consumed resource. */
 export declare function authorizeWorkflowResourceHost(permit: WorkflowResourcePermit, key: string, command: string): string | undefined;
-//# sourceMappingURL=workflow-child-permit.d.ts.map

@@ -15,6 +15,8 @@ export interface ChildCommandState {
     commands: ChildCommandSnapshot[];
 }
 export declare function readChildCommandState(channelDir: string): ChildCommandState | undefined;
+/** True when the child's native command controller manages `toolCallId`, so command controls can target that call. */
+export declare function retainsChildCommand(channelDir: string, toolCallId: string): boolean;
 /** Owns command lifetimes, not shell execution. The supplied Pi tool still executes the command. */
 export declare function createChildCommandRuntime(channelDir: string): {
     state: () => ChildCommandState;
@@ -25,4 +27,3 @@ export declare function createChildCommandRuntime(channelDir: string): {
     tool(): ToolDefinition;
 };
 export declare function controlChildCommand(channelDir: string, operation: CommandOperation, toolCallId?: string, signal?: AbortSignal): Promise<ChildCommandState>;
-//# sourceMappingURL=child-commands.d.ts.map

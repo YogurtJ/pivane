@@ -75,6 +75,10 @@ function observerIndexDir(resultsDir, observer) {
 function observerIndexPath(resultsDir, observer, runId) {
     return path.join(observerIndexDir(resultsDir, observer), encodedJsonFileName(runId));
 }
+/** Present from publication until an observer acknowledges the payload it handled. */
+export function missionObserverIndexPath(resultsDir, runId) {
+    return observerIndexPath(resultsDir, MISSION_OBSERVER, runId);
+}
 function toolCallIndexDir(resultsDir, toolCallId) {
     return path.join(resultsDir, RESULT_INDEX_DIR, TOOL_CALL_INDEX_DIR, encodeIndexSegment(toolCallId));
 }
@@ -223,10 +227,10 @@ export function removeMissionObserverIndex(resultsDir, runId) {
     }
 }
 /** Serializes one run's result publication and retirement across processes. Lookups never take it. */
-export function withResultRunLease(resultsDir, runId, action) {
+export function withResultRunLease(resultsDir, runId, action, waitMs) {
     const leaseDir = path.join(resultsDir, RESULT_LEASE_DIR);
     fs.mkdirSync(leaseDir, { recursive: true });
-    return withFileLease(path.join(leaseDir, createHash("sha256").update(runId).digest("hex")), action);
+    return withFileLease(path.join(leaseDir, createHash("sha256").update(runId).digest("hex")), action, waitMs);
 }
 export function readResultPayload(filePath) {
     try {
@@ -261,7 +265,7 @@ export function resultSnapshotReplaced(publicPath, read) {
  * the consumer's own claimed copy goes. A payload that cannot be removed is reported after the
  * indexes are gone.
  */
-export function retireResultSnapshot(publicPath, read, payloadPath = publicPath) {
+export function retireResultSnapshot(publicPath, read, payloadPath = publicPath, leaseWaitMs) {
     const resultsDir = path.dirname(publicPath);
     return withResultRunLease(resultsDir, read.runId, () => {
         // Check every shared path before deleting any: unleased reader promotion can move a newer
@@ -287,10 +291,10 @@ export function retireResultSnapshot(publicPath, read, payloadPath = publicPath)
         if (removalFailure)
             throw removalFailure.error;
         return "retired";
-    });
+    }, leaseWaitMs);
 }
 /** Removes the mission observer index for the payload an observer handled, unless a newer payload replaced it. */
-export function acknowledgeMissionObserverSnapshot(publicPath, read) {
+export function acknowledgeMissionObserverSnapshot(publicPath, read, leaseWaitMs) {
     const resultsDir = path.dirname(publicPath);
     // With no index there is nothing to remove; skipping keeps the lease off runs without a mission.
     if (!fs.existsSync(observerIndexPath(resultsDir, MISSION_OBSERVER, read.runId)))
@@ -300,7 +304,7 @@ export function acknowledgeMissionObserverSnapshot(publicPath, read) {
             return "replaced";
         removeMissionObserverIndex(resultsDir, read.runId);
         return "acknowledged";
-    });
+    }, leaseWaitMs);
 }
 function existingResultFile(resultPath) {
     try {
@@ -623,4 +627,3 @@ export function cleanupResultIndexes(resultsDir, now = Date.now(), maxAgeMs = 24
     visit(root);
     return removed;
 }
-//# sourceMappingURL=result-files.js.map

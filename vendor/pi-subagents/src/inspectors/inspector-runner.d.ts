@@ -21,4 +21,3 @@ export declare function formatInspectorDashboard(input: {
 }): string;
 export declare function submitInspectorControl(options: RunnerOptions, line: string): string;
 export declare function runInspector(argv?: string[]): void;
-//# sourceMappingURL=inspector-runner.d.ts.map

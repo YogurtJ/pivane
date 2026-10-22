@@ -3,4 +3,3 @@ export declare function withRepositoryWorktreeLock<T>(repo: string, action: () =
     signal?: AbortSignal;
     waitMs?: number;
 }): Promise<T>;
-//# sourceMappingURL=worktree-lock.d.ts.map

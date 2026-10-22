@@ -25,4 +25,3 @@ function isGitRoutingVariable(name) {
 export function omitGitRoutingEnv(env) {
     return Object.fromEntries(Object.entries(env).filter(([name]) => !isGitRoutingVariable(name)));
 }
-//# sourceMappingURL=git-environment.js.map

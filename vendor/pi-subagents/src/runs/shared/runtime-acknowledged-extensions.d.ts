@@ -5,4 +5,3 @@ export declare const MAX_RUNTIME_ACKNOWLEDGED_EXTENSION_ID_LENGTH = 128;
 export declare function isRuntimeAcknowledgedExtensionId(value: unknown): value is string;
 export declare function projectRuntimeAcknowledgedExtensions(ids: Iterable<unknown>): RuntimeAcknowledgedChildExtensions | undefined;
 export declare function sanitizeRuntimeAcknowledgedExtensions(value: unknown): RuntimeAcknowledgedChildExtensions | undefined;
-//# sourceMappingURL=runtime-acknowledged-extensions.d.ts.map

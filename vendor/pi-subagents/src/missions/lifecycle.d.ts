@@ -37,4 +37,3 @@ export declare function attachMissionToLaunchResult(input: {
 }): AgentToolResult<Details>;
 export declare function readMissionBinding(asyncDir: string): MissionLaunchBinding | undefined;
 export declare function syncMissionFromAsyncCompletion(value: unknown): MissionRecord | undefined;
-//# sourceMappingURL=lifecycle.d.ts.map

@@ -307,4 +307,3 @@ export function toPromptTemplateResponse(request, result) {
         errorText: result.isError ? contentText : undefined,
     };
 }
-//# sourceMappingURL=delegation-adapters.js.map

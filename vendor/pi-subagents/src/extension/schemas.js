@@ -205,6 +205,7 @@ const SubagentParamProperties = {
         description: "true: run the one ```js workflow block written in this same reply (false invalid). String with '/': script file read from request cwd. Other string: named workflow resource. Raw scripts (true or path) have no runs.host.",
     })),
     args: Type.Optional(Type.Unsafe({ type: "object", maxProperties: MAX_ARGS_FIELDS, additionalProperties: true, description: `Plain-JSON args for workflow; ${MAX_ARGS_FIELDS} fields/object, ${MAX_ARGS_ITEMS} items/array, depth ${MAX_ARGS_DEPTH}, ${MAX_ARGS_BYTES / 1024} KiB total; raw-script args are exposed deeply frozen and persisted, so do not include secrets.` })),
+    reuseFrom: Type.Optional(Type.String({ minLength: 1, description: "Exact id of a workflow run stopped by a session handoff or reload; this async workflow reuses its finished children and re-attaches to its running ones." })),
     globalConcurrencyLimit: Type.Optional(Type.Integer({ minimum: 1 })),
     maxSubagentSpawnsPerRun: Type.Optional(Type.Integer({ minimum: 1 })),
     preflight: Type.Optional(WorkflowPreflightOverride),
@@ -271,7 +272,7 @@ const ModelTopLevelProperties = {
 export const SubagentParams = keepTopLevelParameterDescriptions(Type.Object(ModelTopLevelProperties));
 // Replaces workflow scripts when disabledFeatures lists "workflow-scripts". Kept small because every
 // field is sent on every request; the executor validates step shapes and placeholders strictly.
-const StructuredTask = { type: "object", properties: { agent: { type: "string", minLength: 1 }, task: { type: "string" } }, required: ["agent", "task"], additionalProperties: false };
+const StructuredTask = { type: "object", properties: { agent: { type: "string", minLength: 1 }, task: { type: "string" }, cwd: { type: "string" }, model: { type: "string" } }, required: ["agent", "task"], additionalProperties: false };
 const StructuredWorkflowProperties = {
     action: Type.Optional(Type.String({ minLength: 1, description: "Management/control only; omit for execution. Discover actions with {action:\"guide\",options:{topic:\"tool-reference\"}}." })),
     task: Type.Optional(Type.String({ description: "One-child task with agent, or the original request ({task}) with chain/tasks." })),
@@ -280,8 +281,8 @@ const StructuredWorkflowProperties = {
     chain: Type.Optional(Type.Unsafe({
         type: "array",
         minItems: 1,
-        items: { type: "object", properties: { agent: { type: "string", minLength: 1 }, task: { type: "string" }, as: { type: "string" }, parallel: { type: "array", minItems: 1, items: StructuredTask } }, additionalProperties: false },
-        description: "Sequential steps: {agent,task?,as?} or {parallel:[{agent,task}]}.",
+        items: { type: "object", properties: { agent: { type: "string", minLength: 1 }, task: { type: "string" }, as: { type: "string" }, cwd: { type: "string" }, model: { type: "string" }, parallel: { type: "array", minItems: 1, items: StructuredTask } }, additionalProperties: false },
+        description: "Sequential steps: {agent,task?,as?,cwd?,model?} or {parallel:[{agent,task,cwd?,model?}]}.",
     })),
 };
 export function createSubagentParamsSchema(disabled) {
@@ -308,4 +309,3 @@ const SubagentWaitParamsSchema = Type.Object({
     stopOnAttention: Type.Optional(Type.Boolean({ description: "false: keep waiting through idle or long-thinking attention." })),
 });
 export const SubagentWaitParams = keepTopLevelParameterDescriptions(SubagentWaitParamsSchema);
-//# sourceMappingURL=schemas.js.map

@@ -66,4 +66,3 @@ export declare function resolveModelScopesForAgent(config: ModelScopeConfig | un
 export declare function parseModelScopeConfig(value: unknown, meta: {
     filePath: string;
 }): ModelScopeConfig | undefined;
-//# sourceMappingURL=model-scope.d.ts.map

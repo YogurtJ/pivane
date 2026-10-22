@@ -81,9 +81,13 @@ test('held parent completion and supervisor messages append results without waki
     assert.equal(wake.isHeld(), true);
     wake.agentStarted();
     wake.sendMessage({ customType: 'subagent-notify', content: 'NEXT_RESULT' }, { triggerTurn: true });
-    assert.equal(wakes.length, 1);
+    assert.equal(wakes.length, 0, 'Pi 1.2+ wakes directly from the extension notice');
+    assert.equal(messages.at(-1).options.triggerTurn, true);
+    assert.equal(messages.at(-1).message.content, 'NEXT_RESULT');
+    assert.equal(wake.isPending(), true);
     wake.sendMessage({ customType: 'subagent-notify', content: 'COALESCED_RESULT' }, { triggerTurn: true });
-    assert.equal(wakes.length, 1, 'notices share one pending parent wake');
+    assert.equal(wakes.length, 0);
+    assert.equal(messages.at(-1).options.triggerTurn, false, 'notices share one pending parent wake');
 });
 
 test('timed-out child retains streamed partial output and includes its saved file in completion', async () => {
@@ -211,7 +215,7 @@ test('official activation keeps auto, explicit dynamic and recorded-session sele
     const { registerSubagentToolActivation } = await import('../vendor/pi-subagents/src/extension/tool-activation.js');
     const declaration = name => ({ name, description: name, parameters: { type: 'object', properties: {} } });
     const fixture = (mode, messages = [], compat) => {
-        const handlers = new Map(), tools = new Map(['read', 'subagent', 'contact_supervisor'].map(name => [name, declaration(name)]));
+        const handlers = new Map(), tools = new Map(['read', 'subagent', 'contact_supervisor', 'subagent_supervisor', 'bg_wait'].map(name => [name, declaration(name)]));
         let active = ['read', 'subagent', 'contact_supervisor'];
         const pi = { registerTool: tool => tools.set(tool.name, tool), getAllTools: () => [...tools.values()], getActiveTools: () => active,
             setActiveTools: names => { active = names; }, on: (event, callback) => { if (!handlers.has(event)) handlers.set(event, []); handlers.get(event).push(callback); } };
@@ -221,18 +225,19 @@ test('official activation keeps auto, explicit dynamic and recorded-session sele
         return { pi, ctx, handlers, tools, active: () => active };
     };
     const auto = fixture('auto');
-    assert.deepEqual(auto.active(), ['read', 'subagent', 'contact_supervisor']);
+    const delegationTools = ['subagent', 'contact_supervisor', 'subagent_supervisor', 'bg_wait'];
+    assert.deepEqual(auto.active(), ['read', ...delegationTools]);
     const dynamic = fixture('dynamic');
     assert.deepEqual(dynamic.active(), ['read', 'subagents_enable']);
     const enabled = await dynamic.tools.get('subagents_enable').execute();
     assert.notEqual(enabled.isError, true);
-    assert.deepEqual(dynamic.active(), ['read', 'subagents_enable', 'subagent', 'contact_supervisor']);
+    assert.deepEqual(dynamic.active(), ['read', 'subagents_enable', ...delegationTools]);
     const nativeDynamic = fixture('auto', [], { supportsMidConvoSystemMessages: true, supportsMidConvoToolAdditions: true });
     assert.deepEqual(nativeDynamic.active(), ['read', 'subagents_enable']);
     const recorded = fixture('auto', [{ role: 'system', content: '', toolsAdded: ['read', 'subagent', 'contact_supervisor'].map(declaration), timestamp: 1 }]);
     recorded.ctx.model.compat = { supportsMidConvoSystemMessages: true, supportsMidConvoToolAdditions: true };
     for (const handler of recorded.handlers.get('before_agent_start') || []) handler({ systemPromptOptions: {} }, recorded.ctx);
-    assert.deepEqual(recorded.active(), ['read', 'subagent', 'contact_supervisor'], 'model switching does not change recorded eager tools');
+    assert.deepEqual(recorded.active(), ['read', 'subagent', 'contact_supervisor', 'subagent_supervisor'], 'model switching keeps recorded eager tools without adding unrecorded bg_wait');
     const loaderHistory = fixture('auto', [{ role: 'system', content: '', toolsAdded: ['read', 'subagents_enable'].map(declaration), timestamp: 1 }]);
     assert.deepEqual(loaderHistory.active(), ['read', 'subagents_enable'], 'resumed dynamic transcript stays dynamic on a static-tools model');
 });

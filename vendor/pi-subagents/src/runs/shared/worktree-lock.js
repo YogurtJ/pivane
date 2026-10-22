@@ -38,4 +38,3 @@ export async function withRepositoryWorktreeLock(repo, action, options = {}) {
         await new Promise((resolve) => setTimeout(resolve, 25));
     }
 }
-//# sourceMappingURL=worktree-lock.js.map

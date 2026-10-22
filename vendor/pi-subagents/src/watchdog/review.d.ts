@@ -34,4 +34,3 @@ export declare function buildWatchdogSystemPrompt(ctx: Pick<ExtensionContext, "c
 }): string;
 export declare function createMainWatchdogReview(provider: WatchdogContextProvider, options?: CreateMainWatchdogReviewOptions): WatchdogReviewFunction;
 export {};
-//# sourceMappingURL=review.d.ts.map

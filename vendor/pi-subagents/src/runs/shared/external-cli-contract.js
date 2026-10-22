@@ -143,4 +143,3 @@ export function externalCliReceiptMetadata(input) {
         nonResumableReason: runner.nonResumableReason,
     };
 }
-//# sourceMappingURL=external-cli-contract.js.map

@@ -34,4 +34,3 @@ export declare function formatCleanupReceipt(result: {
     receiptPath: string;
     reused: boolean;
 }): string;
-//# sourceMappingURL=worktree-cleanup-apply.d.ts.map

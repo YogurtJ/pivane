@@ -7,13 +7,17 @@ import { SUBAGENT_ASYNC_COMPLETE_EVENT, } from "../../shared/types.js";
 import { attachNestedChildrenToResultChildren, buildSubagentResultIntercomPayload, compactNestedResultChildren, deliverSubagentResultIntercomEvent, resolveSubagentResultStatus, } from "../../intercom/result-intercom.js";
 import { projectNestedRegistryForRoot, sanitizeSummary } from "../shared/nested-events.js";
 import { resolveWatchPath } from "../../shared/utils.js";
+import { FileLeaseBusyError } from "../../shared/file-lease.js";
 import { recordWaitCompletion } from "./wait-completions.js";
-import { MISSION_BINDING_FILE, syncMissionFromAsyncCompletion } from "../../missions/lifecycle.js";
-import { acknowledgeMissionObserverSnapshot, missionObserverResultCandidateFiles, promotePendingResultFile, readResultPayload, resultCandidateFilesForSession, resultPayloadPathForIndexedRun, resultPayloadPathForMissionObserverRun, resultPayloadPathForSessionRun, resultSnapshotReplaced, retireResultSnapshot, withResultRunLease, writeAsyncResultFile, writeResultIndexForData } from "./result-files.js";
+import { syncMissionFromAsyncCompletion } from "../../missions/lifecycle.js";
+import { acknowledgeMissionObserverSnapshot, missionObserverIndexPath, missionObserverResultCandidateFiles, promotePendingResultFile, readResultPayload, resultCandidateFilesForSession, resultPayloadPathForIndexedRun, resultPayloadPathForMissionObserverRun, resultPayloadPathForSessionRun, resultSnapshotReplaced, retireResultSnapshot, withResultRunLease, writeAsyncResultFile, writeResultIndexForData } from "./result-files.js";
 const WATCHER_RESTART_DELAY_MS = 3000;
 const POLL_INTERVAL_MS = 3000;
 const HEALTHY_SCAN_INTERVAL_MS = 60_000;
 const RETRY_DELAY_MS = 100;
+// Acknowledging and retiring a delivered result are retried after RETRY_DELAY_MS, so they make one
+// lease attempt instead of parking this event loop while a runner publishes the same run.
+const CLEANUP_LEASE_WAIT_MS = 0;
 const SLOW_RESULT_SCAN_MS = 500;
 function jsonStringProperty(raw, property) {
     const matches = raw.matchAll(new RegExp(`"${property}"\\s*:\\s*("(?:\\\\.|[^"\\\\])*")`, "g"));
@@ -35,7 +39,6 @@ function resultFileIdentity(raw, file) {
         sessionId: jsonStringProperty(raw, "sessionId"),
         completionOwnerId: jsonStringProperty(raw, "completionOwnerId"),
         runId: file.replace(/\.json$/i, ""),
-        asyncDir: jsonStringProperty(raw, "asyncDir"),
     };
 }
 function sanitizeNestedResultChildren(value, resultPath, label) {
@@ -222,7 +225,9 @@ export function createResultWatcher(pi, state, resultsDir, completionTtlMs, deps
             return true;
         if (ownsResult(identity.sessionId, identity.completionOwnerId))
             return true;
-        if (identity.asyncDir && fsApi.existsSync(path.join(identity.asyncDir, MISSION_BINDING_FILE)))
+        // Acknowledgment removes the observer index; gating on the mission binding instead
+        // re-ran mission sync for an unowned result on every scan.
+        if (identity.runId && fsApi.existsSync(missionObserverIndexPath(resultsDir, identity.runId)))
             return true;
         if (identity.runId && (observed ?? observedRunIds()).has(identity.runId))
             return true;
@@ -231,13 +236,14 @@ export function createResultWatcher(pi, state, resultsDir, completionTtlMs, deps
     const removeDeliveredResult = (file, triggerTurn, read) => {
         identityCache.delete(file);
         try {
-            if (retireResultSnapshot(publicResultPath(file), read) === "replaced")
+            if (retireResultSnapshot(publicResultPath(file), read, undefined, CLEANUP_LEASE_WAIT_MS) === "replaced")
                 scheduleResult(file, triggerTurn);
         }
         catch (error) {
             if (isAbsentResultCandidate(error))
                 return;
-            console.error(`Failed to remove delivered subagent result '${publicResultPath(file)}'; will retry:`, error);
+            if (!(error instanceof FileLeaseBusyError))
+                console.error(`Failed to remove delivered subagent result '${publicResultPath(file)}'; will retry:`, error);
             scheduleResult(file, triggerTurn, RETRY_DELAY_MS);
         }
     };
@@ -337,12 +343,13 @@ export function createResultWatcher(pi, state, resultsDir, completionTtlMs, deps
             }
             if (observerSucceeded) {
                 try {
-                    if (acknowledgeMissionObserverSnapshot(publicResultPath(file), read) === "replaced")
+                    if (acknowledgeMissionObserverSnapshot(publicResultPath(file), read, CLEANUP_LEASE_WAIT_MS) === "replaced")
                         rereadReplacedPayload = true;
                 }
                 catch (error) {
                     observerSucceeded = false;
-                    console.error(`Failed to acknowledge the mission observer for '${resultPath}'; will retry:`, error);
+                    if (!(error instanceof FileLeaseBusyError))
+                        console.error(`Failed to acknowledge the mission observer for '${resultPath}'; will retry:`, error);
                 }
             }
             const epoch = deliveryEpoch;
@@ -794,4 +801,3 @@ export function createResultWatcher(pi, state, resultsDir, completionTtlMs, deps
     };
     return { startResultWatcher, transitionResultDelivery, primeExistingResults, deliverPendingResults, stopResultWatcher, refreshResultDelivery: () => { primeExistingResults(); startDemandPolling(); } };
 }
-//# sourceMappingURL=result-watcher.js.map

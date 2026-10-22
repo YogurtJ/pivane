@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { previewDisplayText, sanitizeDisplayText, truncateDisplayText } from "./display-text.js";
 import { formatToolCall } from "./formatters.js";
 import { validateAsyncStatusLaneMetadata } from "../runs/shared/lane-metadata.js";
+import { ERROR_REPLY_TEXT_SEPARATOR } from "../runs/shared/model-resolution.js";
 const DEFAULT_CONFIG_DIR_NAME = ".pi";
 const PI_CODING_AGENT_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
 export const PI_CODING_AGENT_PACKAGE_ROOT_ENV = "PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT";
@@ -230,6 +231,22 @@ export function findLatestSessionFile(sessionDir) {
 const PI_TURN_TIMING_FOOTER = /(?:\r?\n)*\x1b\[38;2;136;136;136m✻ Turn took [^()\r\n]+ \(Total time [^·\r\n]+ · \d+ turns?\)\x1b\[0m[ \t]*$/u;
 function stripPiTurnTimingFooter(text) {
     return text.replace(PI_TURN_TIMING_FOOTER, "");
+}
+const PROVIDER_STOP_TEXT_MAX = 500;
+/**
+ * The error to report for an assistant message. When the provider ended the turn with an error stop
+ * (`rawStopReason` is set, e.g. `content_filter`), the reply text rides along with the bare stop code: a
+ * policy refusal usually puts its explanation there. The text may also be the model's own partial reply,
+ * so it is labelled as reply text, not as the provider's message.
+ */
+export function assistantMessageError(message) {
+    const error = message.errorMessage;
+    if (!error || typeof message.rawStopReason !== "string")
+        return error;
+    const text = extractTextFromContent(message.content).trim();
+    if (!text || error.includes(text))
+        return error;
+    return `${error}${ERROR_REPLY_TEXT_SEPARATOR}${text.length > PROVIDER_STOP_TEXT_MAX ? `${text.slice(0, PROVIDER_STOP_TEXT_MAX)}…` : text}`;
 }
 export function getFinalOutput(messages) {
     const validTextParts = [];
@@ -593,4 +610,3 @@ export function extractTextFromContent(content) {
 // Concurrency Utilities
 // ============================================================================
 export { mapConcurrent } from "../runs/shared/parallel-utils.js";
-//# sourceMappingURL=utils.js.map

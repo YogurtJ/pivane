@@ -21,4 +21,3 @@ export function buildEffectiveSystemPrompt(input) {
     prompt = appendAgentRefinementOverlay(prompt, { cwd: input.cwd, agentName: input.agent.name });
     return prompt;
 }
-//# sourceMappingURL=effective-system-prompt.js.map

@@ -131,6 +131,8 @@ export interface SubagentParamsLike {
     /** true = the ```js workflow block in the calling reply; a string containing "/" or "\" = script path; otherwise a named workflow resource. */
     workflow?: string | true;
     args?: Record<string, unknown>;
+    /** Exact id of a runtime-replaced workflow run whose children this async workflow reuses. */
+    reuseFrom?: string;
     scope?: string;
     target?: string;
     focus?: boolean;
@@ -300,4 +302,3 @@ export declare function createSubagentExecutor(deps: ExecutorDeps): {
     /** Scheduled state visible to the current runtime supervisor owner only. */
     getCurrentSupervisorOwnerStates: () => Iterable<SubagentState>;
 };
-//# sourceMappingURL=subagent-executor.d.ts.map

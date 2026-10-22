@@ -416,4 +416,3 @@ function readJson(filePath) {
         throw new Error(`Invalid JSON in '${filePath}': ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }
 }
-//# sourceMappingURL=mcp-config-sources.js.map

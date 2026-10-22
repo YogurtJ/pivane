@@ -198,4 +198,3 @@ export async function runSetupCommand(command, args, options) {
         child.stdin.removeListener("error", fail);
     }
 }
-//# sourceMappingURL=worktree-setup-command.js.map

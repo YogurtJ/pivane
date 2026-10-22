@@ -13,4 +13,3 @@ export declare function formatWatchdogReviewMessage(message: unknown, options?: 
 export declare function formatWatchdogTurnDelta(input: WatchdogTurnDeltaInput): string;
 /** Only completed, exactly paired native orchestration calls are activity evidence. */
 export declare function formatWatchdogOrchestrationActivity(event: unknown): string;
-//# sourceMappingURL=turn-delta.d.ts.map

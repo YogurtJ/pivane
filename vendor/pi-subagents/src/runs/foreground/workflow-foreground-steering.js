@@ -146,4 +146,3 @@ export async function steerWorkflowForegroundTarget(input) {
     }
     return { content: [{ type: "text", text: steeringReceipt(message, `Steering failed for foreground run ${control.runId} (request ${requestId}): ${outcome.reason ?? "unknown error"}`) }], isError: true, details: { mode: "management", results: [], steering } };
 }
-//# sourceMappingURL=workflow-foreground-steering.js.map

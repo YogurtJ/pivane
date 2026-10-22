@@ -132,4 +132,3 @@ export declare function checkSubagentProfile(pi: Pick<ExtensionAPI, "exec"> | {
     exec?: ExtensionAPI["exec"];
 }, ctx: Pick<ExtensionContext, "cwd" | "modelRegistry">, name: string): Promise<ProfileCheckResult>;
 export {};
-//# sourceMappingURL=profiles.d.ts.map

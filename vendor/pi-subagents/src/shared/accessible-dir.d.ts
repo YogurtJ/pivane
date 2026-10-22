@@ -9,4 +9,3 @@ type AccessibleDirOptions = {
 };
 export declare function ensureAccessibleDir(dirPath: string, options?: AccessibleDirOptions): string;
 export {};
-//# sourceMappingURL=accessible-dir.d.ts.map

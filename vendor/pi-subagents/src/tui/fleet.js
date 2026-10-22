@@ -1429,4 +1429,3 @@ export async function openSubagentFleet(ctx, state, options = {}) {
         state.fleetInspectorOpen = wasOpen;
     }
 }
-//# sourceMappingURL=fleet.js.map

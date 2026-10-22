@@ -21,9 +21,10 @@ test('vendor inventory is byte-identical upstream and excludes dependency trees'
     const files = require('../scripts/vendor-files.cjs').vendorFiles(path.resolve(__dirname, '..'));
     const manifest = require('../vendor/manifest.json');
     assert.deepEqual(manifest.packages.map(entry => [entry.name, entry.version, entry.files.length]), [
-        ['pi-subagents', '0.78.0', 1331], ['pi-hermes-memory', '0.9.10', 92],
+        ['pi-subagents', '0.80.0', 693], ['pi-hermes-memory', '0.9.10', 92],
     ]);
-    assert.equal(files.length, 1424); // manifest plus the verified official package inventories
+    assert.equal(files.length, 786); // manifest plus the verified official package inventories
+    assert.equal(manifest.packages[0].files.some(file => file.path.endsWith('.map')), false, '0.80 official npm package omits source maps');
     for (const entry of catalog) assert.equal(entry.version, manifest.packages.find(pkg => pkg.name === entry.name).version);
     assert.equal(files.some(file => file.includes('/node_modules/')), false);
     for (const entry of catalog) assert.ok(files.includes(`${entry.directory}/LICENSE`));

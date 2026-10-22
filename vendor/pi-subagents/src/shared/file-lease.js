@@ -77,7 +77,13 @@ export function tryLease(lockPath) {
             fs.rmSync(lockPath, { recursive: true });
     };
 }
-/** Hold a lease beside `filePath` for a short synchronous update, waiting at most `waitMs` for another owner. */
+/** Another live owner held the lease for the whole wait. */
+export class FileLeaseBusyError extends Error {
+}
+/**
+ * Hold a lease beside `filePath` for a short synchronous update, waiting at most `waitMs` for another owner.
+ * The wait blocks the calling thread; `waitMs: 0` makes one attempt and never waits.
+ */
 export function withFileLease(filePath, action, waitMs = 200) {
     const requested = path.resolve(filePath);
     const absolute = path.join(fs.realpathSync.native(path.dirname(requested)), path.basename(requested));
@@ -87,7 +93,7 @@ export function withFileLease(filePath, action, waitMs = 200) {
     while (!release) {
         const remaining = deadline - performance.now();
         if (remaining <= 0)
-            throw new Error(`Timed out waiting for another process to finish updating ${absolute}.`);
+            throw new FileLeaseBusyError(`Timed out waiting for another process to finish updating ${absolute}.`);
         waitForFileSystemRetry(Math.min(10, remaining));
         release = tryLease(lockPath);
     }
@@ -98,4 +104,3 @@ export function withFileLease(filePath, action, waitMs = 200) {
         release();
     }
 }
-//# sourceMappingURL=file-lease.js.map

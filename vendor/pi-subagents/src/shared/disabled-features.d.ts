@@ -89,4 +89,3 @@ export declare function disabledFeatureUseError(request: object, surface: Disabl
 /** Lists what config disabled, for prepending to static reference docs that describe the full tool. */
 export declare function disabledFeatureNotice(surface: DisabledFeatureSurface): string | undefined;
 export {};
-//# sourceMappingURL=disabled-features.d.ts.map

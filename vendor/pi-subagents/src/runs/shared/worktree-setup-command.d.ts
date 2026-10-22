@@ -36,4 +36,3 @@ export interface SetupCommandResult {
  * this completed command's PID later. Callers own compensation and admission.
  */
 export declare function runSetupCommand(command: string, args: string[], options: SetupCommandOptions): Promise<SetupCommandResult>;
-//# sourceMappingURL=worktree-setup-command.d.ts.map

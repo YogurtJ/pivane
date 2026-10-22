@@ -262,4 +262,3 @@ export function collectWaitCompletions(terminal, state, resultsDir, onReference)
     }
     return completions.length > 0 ? completions : undefined;
 }
-//# sourceMappingURL=wait-completions.js.map

@@ -12,4 +12,3 @@ export declare class WatchdogScopeArtifact {
     render(): string;
     private trim;
 }
-//# sourceMappingURL=scope.d.ts.map

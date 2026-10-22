@@ -30,4 +30,3 @@ export function decodeSessionRoots(raw) {
     }
     throw new Error("--session-roots must be a base64-encoded JSON array of strings.");
 }
-//# sourceMappingURL=session-roots-codec.js.map

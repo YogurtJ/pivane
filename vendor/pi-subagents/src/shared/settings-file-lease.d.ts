@@ -2,4 +2,3 @@
 export declare function resolveSettingsWriteTarget(filePath: string): string;
 /** Hold the physical settings file's lease for a whole read-modify-write. */
 export declare function withSettingsFileLease<T>(filePath: string, action: () => T): T;
-//# sourceMappingURL=settings-file-lease.d.ts.map

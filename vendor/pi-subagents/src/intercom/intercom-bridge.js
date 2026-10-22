@@ -191,4 +191,3 @@ export function applyIntercomBridgeToAgent(agent, bridge) {
         systemPrompt,
     };
 }
-//# sourceMappingURL=intercom-bridge.js.map

@@ -38,4 +38,3 @@ export function deriveChildSessionName(input) {
         return undefined;
     return previewDisplayText(base, CHILD_SESSION_NAME_MAX_CHARS);
 }
-//# sourceMappingURL=child-session-name.js.map

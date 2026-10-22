@@ -135,4 +135,3 @@ export function shortenPath(p) {
     }
     return p;
 }
-//# sourceMappingURL=formatters.js.map

@@ -7,6 +7,33 @@ export function isTerminalAsyncState(state) {
     return state !== "queued" && state !== "running" && state !== "paused";
 }
 /**
+ * The model an async workflow child reports for itself. Workflow lane records keep only
+ * launch identity, so display projections fall back to the child's own status step.
+ */
+export function readWorkflowChildRunModel(workflowAsyncDir, step) {
+    if (step.async !== true || typeof step.runId !== "string" || path.basename(step.runId) !== step.runId)
+        return undefined;
+    try {
+        const child = readStatus(path.join(path.dirname(workflowAsyncDir), step.runId));
+        const first = Array.isArray(child?.steps) ? child.steps[0] : undefined;
+        const model = typeof first?.model === "string" && first.model ? first.model : undefined;
+        const thinking = typeof first?.thinking === "string" && first.thinking ? first.thinking : undefined;
+        return model || thinking ? { model, thinking } : undefined;
+    }
+    catch {
+        return undefined;
+    }
+}
+/** Fill a workflow child roster row from the child's own reported model. */
+export function withWorkflowChildRunModel(workflowAsyncDir, child) {
+    if (child.model && child.thinking)
+        return child;
+    const reported = readWorkflowChildRunModel(workflowAsyncDir, { async: true, runId: child.runId });
+    const model = child.model ?? reported?.model;
+    const thinking = child.thinking ?? reported?.thinking;
+    return { ...child, ...(model ? { model } : {}), ...(thinking ? { thinking } : {}) };
+}
+/**
  * Process evidence for a workflow's async children. Status proofs and capacity
  * release both use this so they cannot disagree about the same workflow.
  */
@@ -87,4 +114,3 @@ export function readWorkflowTerminalProof(asyncDir, steps, summary, hostCommandC
     const observedAt = Math.max(closedAt, ...evidence.children.map((child) => child.state === "observed" ? child.observedAt : 0));
     return { version: 1, kind: "workflow", runId, state: "observed", dispatchClosed: true, observedAt, children: evidence.children };
 }
-//# sourceMappingURL=workflow-terminal-proof.js.map

@@ -15,4 +15,3 @@ export declare function processTerminalCandidatePath(asyncDir: string): string;
 export declare function readProcessTerminalCandidate(asyncDir: string): ProcessTerminalCandidate | undefined;
 export declare function writeProcessTerminalCandidate(asyncDir: string, candidate: ProcessTerminalCandidate): void;
 export declare function markProcessTerminalCandidateLeaseRelease(asyncDir: string, token: string, acknowledged: boolean): void;
-//# sourceMappingURL=process-terminal-candidate.d.ts.map

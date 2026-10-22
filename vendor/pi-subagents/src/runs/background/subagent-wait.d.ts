@@ -121,4 +121,3 @@ export declare function waitRunScopes(deps: Pick<SubagentWaitDeps, "asyncDirRoot
  * human-readable summary either way.
  */
 export declare function waitForSubagents(params: SubagentWaitParams, signal: AbortSignal | undefined, deps: SubagentWaitDeps): Promise<AgentToolResult<Details>>;
-//# sourceMappingURL=subagent-wait.d.ts.map

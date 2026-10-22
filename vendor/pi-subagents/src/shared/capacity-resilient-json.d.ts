@@ -24,4 +24,3 @@ export type CapacityResilientJsonWriter = {
  */
 export declare function createCapacityResilientJsonWriter(options?: CapacityResilientJsonWriterOptions): CapacityResilientJsonWriter;
 export {};
-//# sourceMappingURL=capacity-resilient-json.d.ts.map

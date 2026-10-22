@@ -316,4 +316,3 @@ export function serializeChain(config) {
     }
     return `${lines.join("\n")}\n`;
 }
-//# sourceMappingURL=chain-serializer.js.map

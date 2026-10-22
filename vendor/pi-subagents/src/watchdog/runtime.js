@@ -26,11 +26,9 @@ function promptFromBeforeAgentStart(event) {
     if (!event || typeof event !== "object")
         return undefined;
     const input = event;
-    if (typeof input.prompt === "string")
-        return input.prompt;
-    if (typeof input.systemPrompt === "string")
-        return input.systemPrompt;
-    return undefined;
+    if (input.messageType === "custom")
+        return undefined;
+    return typeof input.prompt === "string" ? input.prompt : undefined;
 }
 function reviewInputSignature(input) {
     return createHash("sha256").update(input).digest("hex");
@@ -864,4 +862,3 @@ export class MainWatchdogRuntime {
         }
     }
 }
-//# sourceMappingURL=runtime.js.map

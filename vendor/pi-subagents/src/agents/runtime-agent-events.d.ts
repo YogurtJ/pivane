@@ -24,4 +24,3 @@ export interface RegisterRuntimeAgentViaEventsInput {
 export declare function registerAgentViaEvents(input: RegisterRuntimeAgentViaEventsInput): RuntimeAgentRegistration;
 /** Install the process-local registration listener for the owning pi-subagents runtime. */
 export declare function registerRuntimeAgentEventListener(pi: ExtensionAPI): () => void;
-//# sourceMappingURL=runtime-agent-events.d.ts.map

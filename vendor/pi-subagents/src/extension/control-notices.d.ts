@@ -16,4 +16,3 @@ export declare function handleSubagentControlNotice(input: {
     visibleControlNotices: Set<string>;
     details: SubagentControlMessageDetails;
 }): void;
-//# sourceMappingURL=control-notices.d.ts.map

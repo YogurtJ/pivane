@@ -11,4 +11,3 @@ export interface RunnerBootstrapOptions extends DefaultChildSessionFactoryOption
 export declare function validateSubagentRunConfig(value: unknown): asserts value is SubagentRunConfig;
 /** Owns startup authorization and any revival lease across dynamically loaded execution. */
 export declare function runConfiguredSubagent(rawConfig: unknown, options?: RunnerBootstrapOptions): Promise<void>;
-//# sourceMappingURL=subagent-runner-bootstrap.d.ts.map

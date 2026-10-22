@@ -39,4 +39,3 @@ export function validateAuthorityPolicy(value, label = "config.authorityPolicy")
     }
     return policy;
 }
-//# sourceMappingURL=authority.js.map

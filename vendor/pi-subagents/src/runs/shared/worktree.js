@@ -1344,4 +1344,3 @@ export function formatWorktreeDiffSummary(diffs) {
     lines.push(`Full patches: ${patchesDir}`);
     return lines.join("\n").trimEnd();
 }
-//# sourceMappingURL=worktree.js.map

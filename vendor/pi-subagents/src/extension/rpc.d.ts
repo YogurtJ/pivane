@@ -82,4 +82,3 @@ export declare function registerSubagentRpcBridge(options: RegisterSubagentRpcBr
     dispose: () => void;
 };
 export {};
-//# sourceMappingURL=rpc.d.ts.map

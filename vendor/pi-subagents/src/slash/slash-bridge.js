@@ -130,4 +130,3 @@ export function registerSlashSubagentBridge(options) {
         },
     };
 }
-//# sourceMappingURL=slash-bridge.js.map

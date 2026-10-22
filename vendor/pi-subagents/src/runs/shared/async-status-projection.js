@@ -1,6 +1,6 @@
 import { sanitizeDisplayText, truncateDisplayText } from "../../shared/display-text.js";
 import { formatModelThinking } from "../../shared/formatters.js";
-import { childThinkingLevel } from "../../shared/model-info.js";
+import { childThinkingLevel, splitKnownThinkingSuffix } from "../../shared/model-info.js";
 import { HOST_STEP_MAX_COUNT, HOST_STEP_MAX_DETAIL_CHARS, HOST_STEP_MAX_LABEL_CHARS, HOST_STEP_MAX_PROVIDER_CHARS, HOST_STEP_MAX_REASON_CHARS, HOST_STEP_MAX_REF_CHARS, HOST_STEP_MAX_ROLE_CHARS, HOST_STEP_MAX_TARGET_CHARS, hostStepReportName, parseHostStepNode, validHostStepNodes } from "./host-step-status.js";
 import { workflowPreflightLaneForRuntimeKey } from "../../workflows/workflow-preflight.js";
 import { workflowGraphStageNodes } from "./workflow-graph.js";
@@ -103,6 +103,20 @@ function activityFor(source, ctx) {
     };
     return Object.keys(activity).length ? activity : undefined;
 }
+/**
+ * The first source that reports a model wins; a lane's own child reports before its roster entry.
+ * A launch model can carry a thinking suffix (`provider/id:low`) until the child's first reply; the
+ * node reports the bare model and keeps the level in `thinking`.
+ */
+function setStepModel(node, ctx, ...sources) {
+    const { baseModel, thinkingSuffix } = splitKnownThinkingSuffix(sources.find((source) => source?.model)?.model ?? "");
+    const model = publicOptionalText(baseModel, ctx.caps.maxStringLength);
+    if (model)
+        node.model = model;
+    const thinking = childThinkingLevel(...sources, { thinking: thinkingSuffix.slice(1) });
+    if (thinking)
+        node.thinking = thinking;
+}
 function appendBoundedChildren(children, source, ctx) {
     const remaining = Math.max(0, ctx.caps.maxChildrenPerNode - children.length);
     children.push(...source.slice(0, remaining));
@@ -122,6 +136,7 @@ function projectStep(step, index, depth, ctx) {
     const updatedAt = endedAt ?? publicTime(step.lastActivityAt) ?? startedAt;
     const activity = activityFor(step, ctx);
     const { id, label } = stepIdentity(step, index, ctx);
+    const agent = publicOptionalText(step.agent, ctx.caps.maxStringLength);
     const node = {
         id,
         kind: "step",
@@ -132,6 +147,9 @@ function projectStep(step, index, depth, ctx) {
         ...(terminalState(state) && endedAt !== undefined ? { endedAt } : {}),
         ...(activity ? { activity } : {}),
     };
+    if (agent)
+        node.agent = agent;
+    setStepModel(node, ctx, step);
     if (depth < ctx.caps.maxDepth && step.children?.length) {
         const nested = step.children.map((child, childIndex) => projectNestedRun(child, childIndex, depth + 1, ctx));
         const bounded = [];
@@ -284,8 +302,12 @@ function projectMaterializedStep(step, index, child, depth, ctx, childrenByParen
     const selfActivity = selfStep ? activityFor(selfStep, ctx) : undefined;
     const activity = laneActivity || selfActivity || live.activity ? { ...laneActivity, ...selfActivity, ...live.activity } : undefined;
     const node = { ...live, id, kind: "step", label };
+    const agent = publicOptionalText(selfStep?.agent || step.agent, ctx.caps.maxStringLength);
+    if (agent)
+        node.agent = agent;
     if (activity)
         node.activity = activity;
+    setStepModel(node, ctx, selfStep, step);
     return node;
 }
 function projectRun(job, ctx, depth, childrenByParent, liveRoots, omitSteps = false) {
@@ -542,4 +564,3 @@ export function projectAsyncStatusSnapshot(jobs, options = {}) {
     enforceByteLimit(snapshot);
     return snapshot;
 }
-//# sourceMappingURL=async-status-projection.js.map

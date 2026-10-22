@@ -15,4 +15,3 @@ export function formatShortcutLabel(shortcut) {
     })
         .join("+");
 }
-//# sourceMappingURL=shortcuts.js.map

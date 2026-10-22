@@ -49,4 +49,3 @@ export interface CompletionBatcher<T> {
  * timers for reload/shutdown without emitting.
  */
 export declare function createCompletionBatcher<T>(options: CompletionBatcherOptions<T>): CompletionBatcher<T>;
-//# sourceMappingURL=completion-batcher.d.ts.map

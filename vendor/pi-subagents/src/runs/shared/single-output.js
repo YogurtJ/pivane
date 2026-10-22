@@ -347,4 +347,3 @@ export function isSettlementFatalOutputError(resolvedOutput, outputMode) {
     return resolvedOutput.fatalError === true
         || (outputMode === "file-only" && !resolvedOutput.savedPath && Boolean(resolvedOutput.saveError));
 }
-//# sourceMappingURL=single-output.js.map

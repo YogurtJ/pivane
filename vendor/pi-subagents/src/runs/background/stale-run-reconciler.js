@@ -11,6 +11,7 @@ import { normalizeParallelGroups } from "./parallel-groups.js";
 import { nestedSummaryFromAsyncStatus, projectNestedEvents, resolveNestedAsyncDir, writeNestedEvent } from "../shared/nested-events.js";
 import { assertWorkflowGraphHostSteps } from "../shared/host-step-status.js";
 import { currentPidNamespaceScope } from "./pid-namespace.js";
+import { isTerminalAsyncState } from "./workflow-terminal-proof.js";
 function getErrorMessage(error) {
     return error instanceof Error ? error.message : String(error);
 }
@@ -180,6 +181,40 @@ function buildStartedStatus(asyncDir, startedRun, now) {
         ...(startedRun.sessionFile ? { sessionFile: startedRun.sessionFile } : {}),
     };
 }
+/**
+ * A dead workflow owner does not say how its detached children ended. A detached child this
+ * workflow owns that already wrote its own terminal status keeps that outcome instead of
+ * inheriting the owner failure.
+ */
+function settledWorkflowChildStatus(asyncDir, workflowRunId, step, now) {
+    const childRunId = step.runId;
+    if (step.async !== true || step.parentWorkflowRunId !== workflowRunId || !childRunId || childRunId === workflowRunId
+        || childRunId !== path.basename(childRunId) || childRunId === "." || childRunId === "..")
+        return undefined;
+    const child = readStatus(path.join(path.dirname(asyncDir), childRunId));
+    if (!child || child.runId !== childRunId || child.parentWorkflowRunId !== workflowRunId || !isTerminalAsyncState(child.state))
+        return undefined;
+    if (step.workflowKey !== undefined && child.workflowKey !== step.workflowKey)
+        return undefined;
+    const state = child.state;
+    const childStep = child.steps?.[0];
+    const endedAt = child.endedAt ?? step.endedAt ?? now;
+    const settled = {
+        ...step,
+        status: state,
+        activityState: undefined,
+        endedAt,
+        durationMs: step.startedAt !== undefined ? Math.max(0, endedAt - step.startedAt) : step.durationMs,
+        exitCode: childStep?.exitCode ?? (state === "complete" ? 0 : 1),
+        error: state === "complete" ? undefined : childStep?.error ?? child.error ?? step.error,
+        stopped: state === "stopped" ? true : step.stopped,
+    };
+    if (settled.error === undefined)
+        delete settled.error;
+    if (settled.stopped === undefined)
+        delete settled.stopped;
+    return settled;
+}
 function buildFailedRepair(status, asyncDir, now, reason) {
     const runId = status.runId || path.basename(asyncDir);
     const pid = typeof status.pid === "number" ? status.pid : "unknown";
@@ -194,17 +229,30 @@ function buildFailedRepair(status, asyncDir, now, reason) {
     const diagnostics = readRunnerStartupDiagnostics(asyncDir);
     const message = diagnostics ? `${baseMessage}\n\nRunner stderr tail:\n${diagnostics}` : baseMessage;
     const steps = status.steps?.length ? status.steps : [{ agent: "subagent", status: "running" }];
-    const repairedSteps = steps.map((step) => step.status === "running" || step.status === "pending"
-        ? {
+    const repairedSteps = steps.map((step) => {
+        if (step.status !== "running" && step.status !== "pending")
+            return step;
+        let settled;
+        let childReadError;
+        try {
+            settled = settledWorkflowChildStatus(asyncDir, runId, step, now);
+        }
+        catch (error) {
+            // An unreadable child status must not block repairing the dead owner.
+            childReadError = error instanceof Error ? error.message : String(error);
+        }
+        if (settled)
+            return settled;
+        return {
             ...step,
             status: "failed",
             activityState: undefined,
             endedAt: step.endedAt ?? now,
             durationMs: step.startedAt !== undefined && step.durationMs === undefined ? Math.max(0, now - step.startedAt) : step.durationMs,
             exitCode: step.exitCode ?? 1,
-            error: step.error ?? message,
-        }
-        : step);
+            error: step.error ?? (childReadError ? `${message} (child status unreadable: ${childReadError})` : message),
+        };
+    });
     const repairedStatus = {
         ...status,
         state: "failed",
@@ -418,4 +466,3 @@ export function reconcileAsyncRun(asyncDir, options = {}, observeStatus) {
     }
     return writeFailedRepair(asyncDir, effectiveStatus, resultPath, now);
 }
-//# sourceMappingURL=stale-run-reconciler.js.map

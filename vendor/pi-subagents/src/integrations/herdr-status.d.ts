@@ -45,4 +45,3 @@ export interface HerdrStatusBridge {
     dispose(): void;
 }
 export declare function registerHerdrStatusBridge(options: HerdrStatusBridgeOptions): HerdrStatusBridge;
-//# sourceMappingURL=herdr-status.d.ts.map

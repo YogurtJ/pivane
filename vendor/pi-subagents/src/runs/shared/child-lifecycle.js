@@ -20,4 +20,3 @@ export function projectChildLifecycle(event, terminalAssistantStop = false, stat
         return "start-drain";
     return "none";
 }
-//# sourceMappingURL=child-lifecycle.js.map

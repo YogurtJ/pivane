@@ -114,4 +114,3 @@ export function createOwnedProcessTreeController(pid, options = {}) {
     };
     return { terminate, finishAfterWriterClose: terminate };
 }
-//# sourceMappingURL=owned-process-tree.js.map

@@ -65,4 +65,3 @@ export function createJsonlWriter(filePath, source, deps = {}) {
         },
     };
 }
-//# sourceMappingURL=jsonl-writer.js.map

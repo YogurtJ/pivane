@@ -46,4 +46,3 @@ Timeout or a user message ends the wait without error; work keeps running.${enab
     };
     registerPinnedTool(pi, primaryTool);
 }
-//# sourceMappingURL=wait-tool.js.map

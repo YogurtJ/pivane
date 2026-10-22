@@ -452,4 +452,3 @@ export async function openSubagentsAdmin(pi, ctx, args = "") {
         sendAdminMessage(pi, `Failed to update '${agent.name}': ${message}`);
     }
 }
-//# sourceMappingURL=subagents-admin.js.map

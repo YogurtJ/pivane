@@ -157,4 +157,3 @@ export function authorizeWorkflowResourceHost(permit, key, command) {
         return `The command for runs.host('${key}') is not allowed for workflow resource '${record.resourceName}'.`;
     return undefined;
 }
-//# sourceMappingURL=workflow-child-permit.js.map

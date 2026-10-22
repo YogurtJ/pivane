@@ -16,4 +16,3 @@ export declare function registerPinnedTool<TParams extends TSchema, TDetails>(pi
  * declared (the default) or gets the current ones. Call before registering any pinned tool.
  */
 export declare function setDeclarationPinning(pi: ExtensionAPI, pinned: boolean): void;
-//# sourceMappingURL=declaration-pinning.d.ts.map

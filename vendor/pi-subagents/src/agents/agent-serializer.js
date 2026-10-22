@@ -203,4 +203,3 @@ export function serializeAgent(config, options = {}) {
     const body = config.systemPrompt ?? "";
     return `${lines.join("\n")}\n\n${body}\n`;
 }
-//# sourceMappingURL=agent-serializer.js.map

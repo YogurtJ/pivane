@@ -487,4 +487,3 @@ export async function collectWatchdogLspDiagnostics(request) {
         };
     }
 }
-//# sourceMappingURL=lsp-diagnostics.js.map

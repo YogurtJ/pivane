@@ -312,4 +312,3 @@ export function formatWorkflowChecklistText(projection, indent = "", options = {
         lines.push(`${indent}  bottleneck · ${bottleneck}`);
     return lines;
 }
-//# sourceMappingURL=workflow-checklist.js.map

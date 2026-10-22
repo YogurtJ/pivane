@@ -22,4 +22,3 @@ export function resolveAgentRunnerLauncher(agent, runnerLaunchers, machine) {
     const launcher = lookupRunnerLauncher(runnerLaunchers, agent.launcher);
     return launcher ? { launcher } : { error: `Agent '${agent.name}' uses launcher '${agent.launcher}', which is not defined in runnerLaunchers in the user subagent config.` };
 }
-//# sourceMappingURL=runner-launcher.js.map

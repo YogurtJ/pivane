@@ -286,4 +286,3 @@ export function formatWorkflowPreflightWarnings(warnings, options = {}) {
     const indent = options.indent ?? "";
     return [`${indent}Preflight warnings:`, ...warnings.map((warning) => `${indent}  - ${warning.replace(/\s+/g, " ").trim()}`)].join("\n");
 }
-//# sourceMappingURL=workflow-preflight.js.map

@@ -777,4 +777,3 @@ function discardPreservedWorktreesUnlocked(manifestPath, authorization) {
     }
     return { manifest, text: lines.join("\n") };
 }
-//# sourceMappingURL=parallel-handoff.js.map

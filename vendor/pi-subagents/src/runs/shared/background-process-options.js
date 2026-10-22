@@ -4,4 +4,3 @@ export function backgroundProcessOptions(platform = process.platform) {
         windowsHide: true,
     };
 }
-//# sourceMappingURL=background-process-options.js.map

@@ -22,7 +22,9 @@ interface MutatingFailureState {
 export declare function resolveCurrentPath(toolName: string | undefined, args: Record<string, unknown> | undefined): string | undefined;
 export declare function isMutatingBashCommand(command: string): boolean;
 export declare function isMutatingTool(toolName: string | undefined, args: Record<string, unknown> | undefined, mutationTools?: readonly string[]): boolean;
-export declare function didMutatingToolFail(text: string): boolean;
+export declare function didMutatingToolFail(result: {
+    isError?: unknown;
+}): boolean;
 export declare function nextLongRunningTrigger(config: ResolvedControlConfig, metrics: LongRunningNoticeMetrics): LongRunningTriggerReason | undefined;
 export declare function resetMutatingFailureState(state: MutatingFailureState): void;
 export declare function createMutatingFailureState(): MutatingFailureState;
@@ -30,4 +32,3 @@ export declare function recordMutatingFailure(state: MutatingFailureState, input
 export declare function shouldEscalateMutatingFailures(state: MutatingFailureState, threshold: number): boolean;
 export declare function summarizeRecentMutatingFailures(state: MutatingFailureState): string | undefined;
 export {};
-//# sourceMappingURL=long-running-guard.d.ts.map

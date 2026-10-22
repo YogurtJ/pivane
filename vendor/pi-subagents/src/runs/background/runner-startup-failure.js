@@ -44,4 +44,3 @@ export function persistRunnerStartupFailure(input) {
         ...(input.candidate?.revivalLeaseToken ? { revivalLeaseToken: input.candidate.revivalLeaseToken } : {}),
     });
 }
-//# sourceMappingURL=runner-startup-failure.js.map

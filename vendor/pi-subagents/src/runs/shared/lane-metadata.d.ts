@@ -21,4 +21,3 @@ export interface WorktreeStatusReference {
 export declare function normalizeWorktreeStatusReference(value: unknown, label?: string): WorktreeStatusReference | undefined;
 /** Validate only the additive lane/worktree fields of a persisted async status. */
 export declare function validateAsyncStatusLaneMetadata(status: Pick<AsyncStatus, "runId" | "workflowKey" | "lane" | "steps">, label?: string): void;
-//# sourceMappingURL=lane-metadata.d.ts.map

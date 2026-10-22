@@ -22,4 +22,3 @@ export declare function buildRunnerChildLaunch(step: RunnerSubagentStep, ctx: Ru
     childWatchdog?: BuildInProcessChildLaunchInput["childWatchdog"];
     watchdogStatus: NonNullable<BuildInProcessChildLaunchInput["watchdogStatus"]>;
 }): import("../shared/child-launch.ts").InProcessChildLaunch;
-//# sourceMappingURL=runner-child-launch.d.ts.map

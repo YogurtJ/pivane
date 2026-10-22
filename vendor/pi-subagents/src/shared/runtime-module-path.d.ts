@@ -8,4 +8,3 @@ export declare const RUNTIME_MODULE_EXTENSIONS: readonly [".js", ".ts"];
 export declare function resolveRuntimeModuleExtension(dir: string, basename: string): string;
 /** Absolute, normalized path to a sibling runtime module that exists on disk. */
 export declare function resolveRuntimeModulePath(dir: string, basename: string): string;
-//# sourceMappingURL=runtime-module-path.d.ts.map

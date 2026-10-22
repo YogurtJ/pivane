@@ -17,4 +17,3 @@ export function loadWatchdogGuidance(cwd, enabled) {
     const sections = [getProjectConfigDir(cwd), getAgentDir()].map((dir) => readOptional(path.join(dir, "WATCHDOG.md"))).filter(Boolean);
     return sections.join("\n\n").slice(0, WATCHDOG_GUIDANCE_MAX_CHARS);
 }
-//# sourceMappingURL=guidance.js.map

@@ -29,4 +29,3 @@ export interface WorkflowGraphBuildInput {
 /** Return displayable workflow stages while hiding structural parallel groups and host monitors. */
 export declare function workflowGraphStageNodes(graph: WorkflowGraphSnapshot | undefined): WorkflowGraphNode[];
 export declare function buildWorkflowGraphSnapshot(input: WorkflowGraphBuildInput): WorkflowGraphSnapshot;
-//# sourceMappingURL=workflow-graph.d.ts.map

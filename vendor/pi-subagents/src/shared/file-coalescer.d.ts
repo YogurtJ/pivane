@@ -9,4 +9,3 @@ interface FileCoalescer {
 }
 export declare function createFileCoalescer(handler: (file: string) => void, defaultDelayMs: number, timerApi?: TimerApi): FileCoalescer;
 export {};
-//# sourceMappingURL=file-coalescer.d.ts.map

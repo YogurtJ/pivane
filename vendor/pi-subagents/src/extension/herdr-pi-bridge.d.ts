@@ -14,4 +14,3 @@ export declare function resolveRemoteHerdrResources(cwd: string, resources: {
     inheritSkills: boolean;
 };
 export default function registerHerdrPiBridge(pi: ExtensionAPI): void;
-//# sourceMappingURL=herdr-pi-bridge.d.ts.map

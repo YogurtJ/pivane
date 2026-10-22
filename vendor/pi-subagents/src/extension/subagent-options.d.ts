@@ -5,4 +5,3 @@ import type { DisabledFeatureSurface } from "../shared/disabled-features.ts";
  * Management fields given at the top level keep working, as in the flat shape older sessions declared.
  */
 export declare function flattenSubagentToolOptions(params: Record<string, unknown>, disabled?: DisabledFeatureSurface): SubagentParamsLike;
-//# sourceMappingURL=subagent-options.d.ts.map

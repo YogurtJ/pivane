@@ -24,4 +24,3 @@ export declare function registerPromptTemplateDelegationBridge<Ctx extends {
     dispose: () => void;
 };
 export {};
-//# sourceMappingURL=prompt-template-bridge.d.ts.map

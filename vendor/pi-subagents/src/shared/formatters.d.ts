@@ -33,4 +33,3 @@ export declare function formatToolCall(name: string, args: Record<string, unknow
  * Shorten a path by replacing home directory with ~
  */
 export declare function shortenPath(p: string): string;
-//# sourceMappingURL=formatters.d.ts.map

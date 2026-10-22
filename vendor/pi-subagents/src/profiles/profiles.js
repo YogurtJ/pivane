@@ -524,4 +524,3 @@ export async function checkSubagentProfile(pi, ctx, name) {
     }
     return { profileName: name, filePath, results };
 }
-//# sourceMappingURL=profiles.js.map

@@ -56,6 +56,8 @@ export interface ChildSessionLaunch {
         name: string;
         selector: string;
     }>;
+    /** Cancels startup before a child exists to receive abort(), including its MCP connection wait. */
+    signal?: AbortSignal;
     excludeTools?: string[];
     /** Extension files loaded for this child in addition to the inline hooks. */
     extensionPaths: string[];
@@ -132,17 +134,15 @@ export interface DefaultChildSessionFactoryOptions {
     loadPiCodingAgent?: () => Promise<PiCodingAgentModule>;
     /** Upper bound on a disposed child's `session_shutdown` handlers before the session is dropped anyway. */
     shutdownTimeoutMs?: number;
-    /** Upper bound on the wait for selected built-in MCP tools to register after the session starts. */
-    builtinMcpToolWaitMs?: number;
 }
 type ModelRuntimeInstance = Awaited<ReturnType<PiCodingAgentModule["ModelRuntime"]["create"]>>;
 export type ParentProviderRegistry = Pick<ModelRuntimeInstance, "getRegisteredProviderIds" | "getRegisteredProviderConfig" | "getRegisteredNativeProvider">;
 /**
  * Load the host-owned pi-coding-agent module by absolute package entry so a
- * child cannot resolve an extension-owned copy. Root precedence is the running
- * host, an explicit override, then the install tree. Once any root is selected,
- * its manifest, package identity, entry, and import must all succeed; the bare
- * specifier is used only when no root resolves.
+ * child cannot resolve an extension-owned copy. SDK and CLI root precedence is
+ * shared through resolveHostPiPackageRoot. Once any root is selected, its manifest,
+ * package identity, entry, and import must all succeed; the bare specifier is used
+ * only when no root resolves.
  */
 export declare function loadHostPiCodingAgent(): Promise<PiCodingAgentModule>;
 /**
@@ -169,4 +169,3 @@ export declare function setChildSessionFactoryModule(modulePath: string | undefi
 /** Abort and dispose every live in-process child and release the shared runtime. */
 export declare function disposeChildSessions(): Promise<void>;
 export {};
-//# sourceMappingURL=child-session.d.ts.map

@@ -566,4 +566,3 @@ export async function handleRefinementAction(action, params, ctx) {
         `Edits: ${validation.proposal.edits.length}`,
     ].join("\n"));
 }
-//# sourceMappingURL=agent-refinements.js.map

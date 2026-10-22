@@ -55,4 +55,3 @@ export class HerdrPiFrameDecoder {
     end() { if (this.#buffer.byteLength)
         throw new Error("Herdr Pi bridge ended with a partial frame."); }
 }
-//# sourceMappingURL=herdr-pi-protocol.js.map

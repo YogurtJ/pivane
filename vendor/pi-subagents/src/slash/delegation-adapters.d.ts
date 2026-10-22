@@ -150,4 +150,3 @@ export declare function toSubagentDelegationUpdate(request: SubagentDelegationRe
 export declare function toSubagentDelegationResponse(request: SubagentDelegationRequest, result: PromptTemplateBridgeResult, aborted: boolean): SubagentDelegationResponse;
 export declare function toPromptTemplateResponse(request: PromptTemplateDelegationRequest, result: PromptTemplateBridgeResult): PromptTemplateDelegationResponse;
 export {};
-//# sourceMappingURL=delegation-adapters.d.ts.map

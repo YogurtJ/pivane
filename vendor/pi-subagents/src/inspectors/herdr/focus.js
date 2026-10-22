@@ -47,4 +47,3 @@ export async function focusHerdrPane(client, paneId, signal) {
         },
     };
 }
-//# sourceMappingURL=focus.js.map

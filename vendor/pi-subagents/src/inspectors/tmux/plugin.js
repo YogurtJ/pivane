@@ -12,4 +12,3 @@ export function createTmuxInspectorPlugin(deps = {}) {
         close: (context) => closeTmuxInspector(context, client),
     };
 }
-//# sourceMappingURL=plugin.js.map

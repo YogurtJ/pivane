@@ -801,4 +801,3 @@ export function formatWorktreeCleanupPlan(created) {
     ];
     return lines.join("\n");
 }
-//# sourceMappingURL=worktree-cleanup-plan.js.map

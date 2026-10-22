@@ -22,4 +22,3 @@ export declare function beginForegroundChild(control: ForegroundRunControl, inpu
 export declare function updateForegroundChild(control: ForegroundRunControl, index: number, progress: AgentProgress | undefined): void;
 export declare function finishForegroundChild(control: ForegroundRunControl, index: number): void;
 export {};
-//# sourceMappingURL=foreground-control.d.ts.map

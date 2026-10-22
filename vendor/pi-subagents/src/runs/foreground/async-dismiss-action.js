@@ -6,6 +6,7 @@ import { readStatus } from "../../shared/utils.js";
 import { updateActiveRunIndex } from "../background/active-run-index.js";
 import { reconcileAsyncRun } from "../background/stale-run-reconciler.js";
 import { resultFilePath } from "../background/result-files.js";
+import { ownsRun } from "../shared/run-ownership.js";
 export function dismissRecoveredWorkflow(state, location) {
     const asyncDir = location.asyncDir;
     const runId = location.resolvedId ?? (asyncDir ? path.basename(asyncDir) : "requested");
@@ -24,7 +25,7 @@ export function dismissRecoveredWorkflow(state, location) {
             details: { mode: "management", results: [] },
         };
     }
-    if (!state.currentSessionId || status.sessionId !== state.currentSessionId) {
+    if (!ownsRun(state.currentSessionId, status.sessionId)) {
         return {
             content: [{ type: "text", text: `Recovered workflow '${runId}' was not found in the active session.` }],
             isError: true,
@@ -79,4 +80,3 @@ export function dismissRecoveredWorkflow(state, location) {
         details: { mode: "management", results: [] },
     };
 }
-//# sourceMappingURL=async-dismiss-action.js.map

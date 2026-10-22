@@ -356,6 +356,8 @@ export interface ControlEvent {
     toolCount?: number;
     currentTool?: string;
     toolCallId?: string;
+    /** True only when the child's native command controller manages `toolCallId`; gates command-control suggestions in notices. */
+    hasCommandController?: boolean;
     currentToolDurationMs?: number;
     currentPath?: string;
     elapsedMs?: number;
@@ -1445,7 +1447,7 @@ export interface Details {
             generatedLaneKey?: string;
             warning?: string;
             error?: string;
-            /** Came from a previous runtime-replaced run of the same script and args; this run launched nothing. */
+            /** Came from a previous runtime-replaced run of the same script (and args, unless named by options.reuseFrom); this run launched nothing. */
             reused?: boolean;
         }>;
         emits: unknown[];
@@ -1549,6 +1551,8 @@ export interface NestedRunSummary extends NestedRunAddress {
     pid?: number;
     sessionId?: string;
     sessionFile?: string;
+    /** Run whose session this resume replacement continues. */
+    revivedFrom?: string;
     intercomTarget?: string;
     ownerIntercomTarget?: string;
     leafIntercomTarget?: string;
@@ -1822,6 +1826,8 @@ export interface AsyncStatus {
     sessionId?: string;
     mode: SubagentRunMode;
     context?: "fresh" | "fork" | "mixed";
+    /** Run whose session this resume replacement continues. */
+    revivedFrom?: string;
     isNested?: boolean;
     state: "queued" | "running" | "complete" | "failed" | "partial" | "paused" | "stopped" | "rejected";
     /** Display-only dismissal marker for a reload-orphaned workflow. */
@@ -1951,6 +1957,11 @@ export interface AsyncStatus {
         model?: string;
         /** Model the child was launched on, recorded when its replies reported a different `model`; revival uses it. */
         launchModel?: string;
+        /** Provider and model recorded on this child's latest own live assistant reply; never the requested model. */
+        resolvedModel?: {
+            provider: string;
+            model: string;
+        };
         thinking?: string;
         contextLimit?: number;
         thinkingCeiling?: ThinkingLevel;
@@ -2601,6 +2612,8 @@ export interface ExtensionConfig {
     toolActivation?: ToolActivationMode;
     /** Keep a resumed session on the pi-subagents tool definitions and prompt text it already declared. Defaults to true. */
     pinToolDeclarations?: boolean;
+    /** Register the pi-subagents slash commands and the foreground-detach shortcut. Defaults to true. */
+    enableSlashCommands?: boolean;
     /** Opt-in feature groups removed from the subagent tool schema and rejected at every execution boundary. */
     disabledFeatures?: SubagentFeature[];
     /** Inline chat rendering for the subagent tool. Defaults to rich. */
@@ -2709,6 +2722,9 @@ export declare const DIRS: {
 export declare const WIDGET_KEY = "subagent-async";
 export declare const SLASH_RESULT_TYPE = "subagent-slash-result";
 export declare const SLASH_TEXT_RESULT_TYPE = "subagent-slash-text-result";
+export declare const SLASH_TEXT_VIEW_ONLY_DETAILS: {
+    readonly viewOnly: true;
+};
 export declare const SLASH_SUBAGENT_REQUEST_EVENT = "subagent:slash:request";
 export declare const SLASH_SUBAGENT_STARTED_EVENT = "subagent:slash:started";
 export declare const SLASH_SUBAGENT_RESPONSE_EVENT = "subagent:slash:response";
@@ -2745,4 +2761,3 @@ export declare function normalizeMaxSubagentSpawnsPerRun(value: unknown): number
 export declare function resolveMaxSubagentSpawnsPerRun(configMaxSpawns?: number): number;
 export declare function truncateOutput(output: string, config: Required<MaxOutputConfig>, artifactPath?: string): TruncationResult;
 export {};
-//# sourceMappingURL=types.d.ts.map

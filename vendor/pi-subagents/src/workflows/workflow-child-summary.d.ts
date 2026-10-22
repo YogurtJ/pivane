@@ -14,7 +14,11 @@ export declare function workflowChildSummary(input: {
     steps?: NonNullable<AsyncStatus["steps"]>;
     /** In-memory snapshots from synchronous child callbacks, keyed by workflow key. */
     progress?: ReadonlyMap<string, WorkflowChildLiveProgress>;
+    /** Agent and run id each child launched with, keyed by workflow key; known before an async child settles. */
+    launches?: ReadonlyMap<string, {
+        agent: string;
+        runId?: string;
+    }>;
 }): WorkflowChildSummary;
 export declare function parseWorkflowChildSummary(value: unknown): WorkflowChildSummary | undefined;
 export {};
-//# sourceMappingURL=workflow-child-summary.d.ts.map

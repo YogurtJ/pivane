@@ -4,4 +4,3 @@ interface SessionIdentityManager {
 }
 export declare function resolveCurrentSessionId(sessionManager: SessionIdentityManager): string;
 export {};
-//# sourceMappingURL=session-identity.d.ts.map

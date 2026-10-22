@@ -272,4 +272,3 @@ export function registerPromptWorkflowCommands(input) {
         },
     });
 }
-//# sourceMappingURL=prompt-workflows.js.map

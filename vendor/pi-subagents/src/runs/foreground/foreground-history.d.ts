@@ -9,4 +9,3 @@ export declare function restoreForegroundRunHistory(state: SubagentState, option
     sessionId?: string | null;
     limit?: number;
 }): number;
-//# sourceMappingURL=foreground-history.d.ts.map

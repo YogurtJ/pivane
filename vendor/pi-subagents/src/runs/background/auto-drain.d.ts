@@ -14,4 +14,3 @@ export interface AutoDrainDeps extends Pick<SubagentWaitDeps, "asyncDirRoot" | "
 }
 /** Drain all work owned by the current headless session, including work added while draining. */
 export declare function drainOutstandingWork(deps: AutoDrainDeps, observation?: ReadonlyDrainObservation): Promise<void>;
-//# sourceMappingURL=auto-drain.d.ts.map

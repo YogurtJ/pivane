@@ -11,4 +11,3 @@ export declare function childResolvedConfig(config: ChildWatchdogConfig): Resolv
 export declare function registerChildWatchdog(pi: ExtensionAPI, childConfig: ChildWatchdogConfig | undefined, writeStatus: ((event: ChildWatchdogStatusEvent) => void) | undefined, structuredTerminal?: {
     captured: boolean;
 }): MainWatchdogRuntime | undefined;
-//# sourceMappingURL=register-child.d.ts.map

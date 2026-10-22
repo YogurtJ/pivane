@@ -56,4 +56,3 @@ export function sendRuleViolationWarning(pi, violation) {
     const warning = ruleViolationWarning(violation);
     pi.sendMessage(createWatchdogWarningMessage(warning, { display: true, details: { state: "displayed", displayedAt: new Date().toISOString() } }), { deliverAs: "steer" });
 }
-//# sourceMappingURL=rules.js.map
