@@ -244,17 +244,20 @@ class PiSessionTransfer {
             migrateSessionEntries(entries);
             const targetCwd = this.store.resolveProject(cwd);
             const sessionDir = SessionManager.create(targetCwd).getSessionDir();
-            temporary = fs.mkdtempSync(path.join(sessionDir, '.pi-import-'));
-            const source = path.join(temporary, 'source.jsonl');
+            // Windows mkdtemp does not add the extended-length prefix itself. Keep it
+            // at the filesystem boundary; Pi's parentSession and paths stay canonical.
+            temporary = fs.mkdtempSync(path.toNamespacedPath(path.join(sessionDir, '.pi-import-')));
+            const importDir = fs.realpathSync.native(temporary);
+            const source = path.join(importDir, 'source.jsonl');
             privateFiles.writePrivateFileSync(source, entries.map(entry => JSON.stringify(entry)).join('\n') + '\n');
             // forkFrom assigns a new native ID and target cwd, retaining every imported tree entry.
             // No runtime is started and no existing session is switched or overwritten.
-            const manager = SessionManager.forkFrom(source, targetCwd, temporary);
+            const manager = SessionManager.forkFrom(source, targetCwd, importDir);
             const staged = manager.getSessionFile();
             privateFiles.privateFileMode(staged);
             // Publish the complete native file atomically, without replacing an existing file.
             // Stage on the same filesystem; before publication its parent directory is private.
-            fs.linkSync(staged, path.join(sessionDir, path.basename(staged)));
+            fs.linkSync(path.toNamespacedPath(staged), path.toNamespacedPath(path.join(sessionDir, path.basename(staged))));
             const session = await this.store.getSession(targetCwd, manager.getSessionId());
             receipt.sessionId = session.id;
             return { session };

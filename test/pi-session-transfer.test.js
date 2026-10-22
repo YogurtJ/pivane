@@ -54,6 +54,69 @@ test('native JSONL import creates independent identities and cwd, retains tree/l
     assert.equal(SessionManager.open(legacyCopy.session.path).getHeader().version, 3);
 });
 
+test('long Windows import paths preserve canonical native paths, full entries and cleanup', { skip: process.platform !== 'win32' }, async () => {
+    const { SessionManager } = await import('@earendil-works/pi-coding-agent');
+    const base = path.join(root, 'long-');
+    const padding = 241 - SessionManager.create(base).getSessionDir().length;
+    assert.ok(padding >= 0, 'fixture requires a short temporary root');
+    const target = base + 'x'.repeat(padding); fs.mkdirSync(target);
+    const directory = SessionManager.create(target).getSessionDir();
+    assert.equal(directory.length, 241);
+    // Same physical directory and spelling: the old plain mkdtemp reaches 259 chars.
+    assert.equal(path.join(directory, '.pi-import-').length + 6, 259);
+    const native = SessionManager.inMemory(root);
+    const first = native.appendMessage(user('long path body ' + target));
+    const branch = native.appendMessage(assistant('branch point'));
+    native.appendMessage(user('abandoned branch'));
+    native.branch(branch); native.appendMessage(user('retained branch'));
+    native.appendLabelChange(first, 'long path bookmark');
+    const content = jsonl([native.getHeader(), ...native.getEntries()]);
+    const store = new PiSessionStore();
+    const transfer = new PiSessionTransfer({ store, supervisor: { getWorker() { throw Error('must not start'); } } });
+    const { session } = await transfer.import(target, content, 'long-path-import-request-0001');
+    assert.equal(session.cwd, fs.realpathSync.native(target));
+    assert.equal(session.path, fs.realpathSync.native(session.path));
+    assert.ok(session.path.length > 260);
+    assert.ok(path.basename(session.path).includes(session.id));
+    const imported = SessionManager.open(session.path);
+    assert.deepEqual(imported.getEntries(), native.getEntries());
+    assert.equal(imported.getLabel(first), 'long path bookmark');
+    assert.equal(imported.getHeader().cwd, session.cwd);
+    const parent = imported.getHeader().parentSession;
+    assert.equal(parent, path.join(directory, path.basename(path.dirname(parent)), 'source.jsonl'));
+    assert.ok(!parent.startsWith('\\\\?\\'), 'native header must not acquire a filesystem namespace');
+    assert.equal(fs.existsSync(parent), false);
+    assert.deepEqual(fs.readdirSync(directory).filter(name => name.startsWith('.pi-import-')), []);
+    require('./private-file-helper.cjs').assertPrivateFile(path.toNamespacedPath(session.path));
+    assert.equal((await transfer.import(target, content, 'long-path-import-request-0001')).session.id, session.id);
+    assert.equal((await store.listSessions(target)).length, 1);
+});
+
+test('import publication refuses an existing destination and cleans staged files after failure', async t => {
+    const { SessionManager } = await import('@earendil-works/pi-coding-agent');
+    const target = path.join(root, 'publication-collision'); fs.mkdirSync(target);
+    const native = SessionManager.inMemory(root); native.appendMessage(user('collision fixture'));
+    const content = jsonl([native.getHeader(), ...native.getEntries()]);
+    const directory = SessionManager.create(target).getSessionDir();
+    const transfer = new PiSessionTransfer({ store: new PiSessionStore(), supervisor: {} });
+    const link = fs.linkSync;
+    let destination, staged;
+    t.mock.method(fs, 'linkSync', (source, output) => {
+        staged = fs.realpathSync.native(source);
+        assert.deepEqual(SessionManager.open(staged).getEntries(), native.getEntries());
+        require('./private-file-helper.cjs').assertPrivateFile(staged);
+        destination = output;
+        require('../server/pi-private-files').writePrivateFileSync(output, 'existing destination');
+        return link(source, output);
+    });
+    await assert.rejects(transfer.import(target, content, 'collision-import-request-0001'), { code: 'EEXIST' });
+    assert.equal(fs.readFileSync(destination, 'utf8'), 'existing destination');
+    assert.equal(fs.existsSync(staged), false);
+    assert.deepEqual(fs.readdirSync(directory).filter(name => name.startsWith('.pi-import-')), []);
+    assert.equal(transfer.running, 0);
+    await assert.rejects(transfer.import(target, content, 'collision-import-request-0001'), /不确定/);
+});
+
 test('strict import rejects malformed lines, foreign logs, trees with cycles/duplicates, oversized and invalid records', async () => {
     const { SessionManager } = await import('@earendil-works/pi-coding-agent');
     const sm = SessionManager.inMemory(root); sm.appendMessage(user('question')); sm.appendMessage(assistant('reply'));
