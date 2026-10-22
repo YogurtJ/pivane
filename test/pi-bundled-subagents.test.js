@@ -203,3 +203,32 @@ test('hidden definitions and eager configuration keep native precedence at the b
     try { assert.ok(sorted(eager.session).includes('subagent')); assert.ok(!eager.session.getAllTools().some(tool => tool.name === 'subagents_enable')); }
     finally { await eager.close(); fs.rmSync(configuration); }
 });
+
+test('excluding only the loader keeps fresh delegation available while recorded removals and native restrictions win', async () => {
+    const exclusion = { excludeTools: ['subagents_enable'] };
+    const effects = executions.length;
+    const fresh = await open(sdk.SessionManager.create(cwd, path.join(root, 'loader-excluded')), exclusion);
+    try {
+        assert.ok(sorted(fresh.session).includes('subagent'), 'fresh default selection exposes delegation when only its loader is excluded');
+        assert.equal(fresh.session.getAllTools().some(tool => tool.name === 'subagents_enable'), false, 'excluded loader is unavailable');
+        await fresh.session.prompt('Record the loader-excluded default selection without launching work.');
+        assert.ok(requests.at(-1).tools.some(tool => tool.function.name === 'subagent'));
+        assert.ok(!requests.at(-1).tools.some(tool => tool.function.name === 'subagents_enable'));
+        assert.equal(executions.length, effects);
+    } finally { await fresh.close(); }
+    const fixture = await disabledFixture('loader-excluded-history');
+    const resumed = await open(sdk.SessionManager.open(fixture.file), exclusion);
+    try {
+        assert.deepEqual(sorted(resumed.session), ['read'], 'excluding the loader cannot undo a recorded revocation');
+        await resumed.session.reload();
+        assert.deepEqual(sorted(resumed.session), ['read']);
+        assert.deepEqual(fs.readFileSync(fixture.file), fixture.original);
+    } finally { await resumed.close(); }
+    for (const extra of [{ ...exclusion, tools: ['read'] }, { ...exclusion, noTools: 'all' }]) {
+        const restricted = await open(sdk.SessionManager.create(cwd, path.join(root, 'loader-excluded-restricted')), extra);
+        try {
+            assert.deepEqual(sorted(restricted.session), extra.noTools ? [] : ['read']);
+            assert.equal(restricted.session.getAllTools().some(tool => tool.name === 'subagents_enable'), false);
+        } finally { await restricted.close(); }
+    }
+});

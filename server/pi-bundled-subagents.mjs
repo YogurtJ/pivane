@@ -11,7 +11,7 @@ export default function bundledSubagents(pi) {
     setChildSessionFactoryModule(fileURLToPath(new URL('./pi-subagent-child-factory.mjs', import.meta.url)));
     const calls = new AsyncLocalStorage();
     const definitions = new Map();
-    let lazy = true, replaySelection;
+    let replaySelection;
     const selected = () => pi.getActiveTools().filter(name => delegationTools.has(name));
     const preserve = (names, selection) => [...names.filter(name => !delegationTools.has(name)), ...selection];
     const capture = (event, ctx) => {
@@ -40,9 +40,9 @@ export default function bundledSubagents(pi) {
             } } : tool;
             // Pi owns restoration and explicit CLI selection. Registration alone
             // must not enable an undeclared sibling on resume or every tool on reload.
-            pi.registerTool(lazy ? { ...definition, defaultActive: false } : definition);
+            pi.registerTool({ ...definition, defaultActive: false });
             const call = calls.getStore();
-            if (lazy && call?.open && call.selection && pi.getActiveTools().includes(tool.name) && !call.selection.includes(tool.name)) {
+            if (call?.open && call.selection && pi.getActiveTools().includes(tool.name) && !call.selection.includes(tool.name)) {
                 // A default-inactive late registration can be active only through
                 // Pi's explicit allowlist or pending native selection.
                 call.selection.push(tool.name);
@@ -66,10 +66,14 @@ export default function bundledSubagents(pi) {
         return Reflect.get(target, key);
     } });
     const result = upstream(guarded);
-    // Eager configuration has no loader and retains its original registration defaults.
-    if (!definitions.has('subagents_enable')) {
-        lazy = false;
-        for (const definition of definitions.values()) pi.registerTool(definition);
-    }
+    // Decide after native filtering: an excluded loader is still a definition,
+    // but a fresh session without an available loader keeps eager delegation.
+    pi.on('session_start', () => {
+        if (replaySelection !== undefined) return;
+        const available = pi.getAllTools();
+        if (available.some(tool => tool.name === 'subagents_enable')) return;
+        const eager = available.filter(tool => delegationTools.has(tool.name) && definitions.get(tool.name)?.defaultActive !== false).map(tool => tool.name);
+        pi.setActiveTools([...new Set([...pi.getActiveTools(), ...eager])]);
+    });
     return result;
 }
