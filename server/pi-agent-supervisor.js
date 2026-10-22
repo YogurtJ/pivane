@@ -928,6 +928,9 @@ class AgentWorker extends EventEmitter {
         // They are internal transcript state and must not enter the browser chat,
         // side-chat event stream, or extension UI history.
         if (event?.message?.role === 'system') return;
+        // Explicit quit retains subscribers for the observed runtime exit.
+        // A Shell terminal snapshot would trigger reads against the retiring RPC.
+        if (this.disposed && this.shutdownToken && event?.type === 'gateway_shell') return;
         event = { ...event, webRuntimeId: this.live.runtimeId, webSequence: ++this.live.sequence };
         for (const subscriber of this.subscribers) {
             try {

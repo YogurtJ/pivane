@@ -65,6 +65,11 @@ async function main() {
         const session = await gateway.store.createSession(cwd, 'Issue workflow ' + width);
         const context = await browser.newContext({ viewport: { width, height: 900 }, acceptDownloads: true, locale: 'en-US' });
         const login = await context.request.post(base + '/api/access/login', { headers: { Origin: base, 'X-Pi-Access': '1' }, data: { token: 'synthetic-browser-token' } }); assert.equal(login.status(), 200);
+        // Keep unrelated upstream reminders out of this synthetic workflow.
+        const reminders = await context.request.post(base + '/api/pi/settings/updates/notifications', { headers: { Origin: base, 'X-Pi-Access': '1' }, data: { enabled: false } });
+        assert.equal(reminders.status(), 200);
+        const reminderState = await reminders.json();
+        assert.deepEqual([reminderState.enabled, reminderState.available, reminderState.eligible], [false, false, false]);
         await context.addInitScript(({ cwd, sessionId }) => { localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem('pi.web.session:' + cwd, sessionId); localStorage.setItem('pi.web.locale', 'en'); }, { cwd, sessionId: session.id });
         const page = await context.newPage(), errors = [];
         page.setDefaultTimeout(30000); page.on('pageerror', error => { errors.push(error.message); console.error('pageerror:', error.message); });

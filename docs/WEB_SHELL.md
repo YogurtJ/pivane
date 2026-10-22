@@ -18,11 +18,11 @@
 
 `server/pi-shell-execution.js` 由每个 AgentWorker 持有，始终复用当前唯一 Pi RPC worker。Shell 在第一个await前预占，原生状态复查后提交一次 `bash`，保留原生user_bash扩展链路。网页得到服务器接收响应；原生最终response由内部长期请求接收。该请求没有普通30秒等待超时，仅在明确终态或worker退出时结束；不会由于浏览器离线自动重新执行。
 
-原生 `bash_execution_update.id` 通过 PiRpcClient 内部回调关联执行ID，Supervisor截获原始片段，发布有界 `gateway_shell` 快照。运行卡片使用文本节点，既不执行HTML也不转为Markdown；无需PTY依赖。每worker仅保留当前/最近一条执行状态与最多65536个UTF-16字符的输出尾部，不切断代理对；原生历史仍由Pi写入。快照最多每150ms广播一次，开始/停止/终态立即广播。单连接Shell推送前若WebSocket待发量超过1MiB，关闭该慢连接，使其重新读取快照；持久命令继续。
+原生 `bash_execution_update.id` 通过 PiRpcClient 内部回调关联执行ID，Supervisor截获原始片段，发布有界 `gateway_shell` 快照。运行卡片使用文本节点，既不执行HTML也不转为Markdown；无需PTY依赖。每worker仅保留当前/最近一条执行状态与最多65536个UTF-16字符的输出尾部，不切断代理对；原生历史仍由Pi写入。快照最多每150ms广播一次，开始/停止/终态立即广播；显式退出期间不向订阅页发送中间Shell快照，统一等待Shell/RPC结束后的退出终态，避免触发对退役运行实例的同步读取。单连接Shell推送前若WebSocket待发量超过1MiB，关闭该慢连接，使其重新读取快照；持久命令继续。
 
 Shell状态参与activity.busy、空闲回收、工作流互斥和空闲部署判断。`agent_settled`、`get_state.isStreaming=false` 或停止请求成功均不解除Shell占用。执行结果未知保持占用，用户仍可在输入框发送`/quit`显式退出运行实例；worker退出/重建后的不可恢复部分不冒充完整日志。期间扩展的正常站内确认仍可响应。
 
-同一持久线程在其他已连接页面执行 `/quit` 后，服务端等到 Shell/RPC 实际结束才发送退出终态。页面随之移除运行卡片和停止按钮，不因这次确认退出自动重连；本页草稿和附件保留，显式重新打开线程后可继续编辑。刷新或离开页面仍需先保存这些未发送内容。
+同一持久线程在其他已连接页面执行 `/quit` 后，服务端等到 Shell/RPC 实际结束才发送退出终态。页面随之移除运行卡片和停止按钮，显式退出销毁期间不会由 Shell 中间快照触发对退役实例的自动同步错误，也不因这次确认退出自动重连；本页草稿和附件保留，显式重新打开线程后可继续编辑。刷新或离开页面仍需先保存这些未发送内容。
 
 打开/重连快照及get_state提供有runtimeId/revision的webShell；页面拒绝旧修订和旧socket代次结果。持久会话刷新恢复当前状态和输出尾部，临时会话遵循原断线结束契约。完成事件独立触发get_messages/state/stats同步，不等待agent_settled；历史由原生BashExecutionMessage渲染接替临时卡片，避免双份记录。
 

@@ -11,6 +11,10 @@ const cwd = fs.realpathSync.native(process.env.PI_SHELL_LIVE_PROJECT || path.joi
     assert.equal(url.hostname, '127.0.0.1'); assert.notEqual(url.port, '3001');
     const status = await (await fetch(base + '/api/pi/status')).json();
     assert.equal(status.userShell, true); assert.deepEqual(status.projectRoots, [cwd]);
+    const reminders = await fetch(base + '/api/pi/settings/updates/notifications', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base, 'X-Pi-Access': '1' }, body: JSON.stringify({ enabled: false }) });
+    assert.equal(reminders.status, 200);
+    const reminderState = await reminders.json();
+    assert.deepEqual([reminderState.enabled, reminderState.available, reminderState.eligible], [false, false, false]);
     const response = await fetch(base + '/api/pi/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd, name: 'Isolated shell smoke' }) });
     assert.equal(response.status, 201); const session = await response.json();
     const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
@@ -69,6 +73,8 @@ const cwd = fs.realpathSync.native(process.env.PI_SHELL_LIVE_PROJECT || path.joi
         await mobile.waitForTimeout(2000);
         assert.equal(sent.filter(record => record.type === 'open_session').length, opensBeforeQuit, 'received quit must not trigger automatic reopening');
         assert.equal((await (await fetch(base + '/api/pi/activity')).json()).runtimes.some(r => r.sessionId === session.id), false);
+        for (const page of pages) assert.equal(await page.locator('.pi-toast').filter({ hasText: /会话同步失败|Session sync failed/ }).count(), 0,
+            'confirmed quit must not leave a reconciliation error from the retiring runtime');
         await mobile.locator('#pi-toggle-sessions').click();
         await mobile.locator(`[data-session-id="${session.id}"] .pi-session-main`).click();
         await mobile.waitForFunction(() => !document.querySelector('#pi-input').disabled, null, { timeout: 60000 });
@@ -76,6 +82,8 @@ const cwd = fs.realpathSync.native(process.env.PI_SHELL_LIVE_PROJECT || path.joi
         assert.equal(await mobile.locator('.pi-attachment-chip').count(), 1);
         assert.equal(await mobile.locator('.pi-shell-live').count(), 0);
         assert.equal((await (await fetch(base + '/api/pi/activity')).json()).runtimes.filter(r => r.sessionId === session.id).length, 1);
+        assert.equal(await mobile.locator('.pi-toast').filter({ hasText: /会话同步失败|Session sync failed/ }).count(), 0,
+            'explicit reopening must not retain a stale reconciliation error');
         assert.deepEqual(errors, []); console.log('Isolated live WebUI / native RPC: two devices, refresh, stop, exclusion, failure and peer quit/draft/attachment/reopen passed; no model prompts');
     } finally {
         await browser.close();

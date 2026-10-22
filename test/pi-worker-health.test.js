@@ -59,7 +59,12 @@ test('explicit quit notifies remaining subscribers only after Shell and RPC actu
     const events = [], detached = [];
     worker.subscribe(event => events.push(event));
     const unsubscribe = worker.subscribe(event => detached.push(event));
-    worker.shell.dispose = async () => { entered.resolve(); await gate.promise; await originalShellDispose(); };
+    worker.shell.job = { id: 'held-quit-shell', command: 'synthetic held Shell', status: 'running', output: '' };
+    worker.shell.changed();
+    worker.shell.dispose = async () => {
+        entered.resolve(); await gate.promise; await originalShellDispose();
+        worker.shell.job.status = 'cancelled'; worker.shell.changed();
+    };
     worker.client.dispose = async () => { rpcEntered.resolve(); await rpcGate.promise; return originalRpcDispose(); };
     const pid = worker.client.child.pid;
     const closing = worker.shutdown(() => supervisor.stopSession(target.sessionPath));
@@ -70,6 +75,9 @@ test('explicit quit notifies remaining subscribers only after Shell and RPC actu
     unsubscribe();
     gate.resolve(); await rpcEntered.promise;
     assert.equal(alive(pid), true);
+    assert.equal(worker.shell.busy, false, 'the internal Shell result is already terminal');
+    assert.equal(events.some(event => event.type === 'gateway_shell' && !event.shell.busy), false,
+        'quit must not invite browser reconciliation against a retiring RPC worker');
     assert.equal(events.some(event => event.type === 'gateway_runtime_ended'), false, 'Shell completion alone does not confirm RPC exit');
     assert.equal(supervisor.getActiveWorker(target.sessionPath), worker);
     rpcGate.resolve(); await closing;
