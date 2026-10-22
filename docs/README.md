@@ -11,9 +11,7 @@
 | 协助用户安装、配置或排障的 Agent | [用户 Agent 操作指南](AGENT_GUIDE.md) |
 | 修改 Pivane 源码的开发者或 Agent | [开发文档](development/README.md) 与根目录 [AGENTS.md](../AGENTS.md) |
 
-当前正式版为 **1.9.0**（Pi 1.3.0），见 [1.9.0 版本说明](releases/1.9.0.md)；下载、校验和准确验收摘要以 [GitHub Releases](https://github.com/YogurtJ/pivane/releases) 为准。新增助手身份五页工作区、可选微信消息渠道、扩展发现与显式更新检查、媒体自动执行偏好，改进加载、长会话、公式和慢连接体验。三平台原始结果与因果补验见[平台验证范围](RELEASE_INSTALL_VALIDATION.md)。公开发布不自动切换已有实例；升级前按[安装与恢复](INSTALL_RECOVERY.md)保存草稿、停机备份并保留数据路径。完整变化见 [CHANGELOG](../CHANGELOG.md)。
-
-正在准备 **1.9.1 发布候选**，包含大文件下载与交付卡片、结构化提问、微信绑定线程结果通知、主题与导航及队列界面更新，见 [1.9.1 版本说明](releases/1.9.1.md)。候选验收和公开发布分别记录。
+当前正式版为 **1.9.1**（Pi 1.3.0），见 [1.9.1 版本说明](releases/1.9.1.md)；下载、校验和准确验收摘要以 [GitHub Releases](https://github.com/YogurtJ/pivane/releases) 为准。新增大文件下载与交付卡片、结构化提问和微信绑定线程结果通知，更新主题、导航与队列界面，修复跨设备显式退出同步与 Windows 长路径导入。三平台准确包验收见[平台验证范围](RELEASE_INSTALL_VALIDATION.md)。公开发布不自动切换已有实例；升级前按[安装与恢复](INSTALL_RECOVERY.md)保存草稿、停机备份并保留数据路径。完整变化见 [CHANGELOG](../CHANGELOG.md)。
 
 下面按主题列出功能文档。每篇前半部分讲使用，后半部分可能包含接口字段和限额，供高级用户、集成者和用户 Agent 查询。模型能力来自实际配置与运行实例；文档中的示例不代表服务已经配置好。
 
@@ -66,7 +64,7 @@
 | 内容 | 文档 |
 |---|---|
 | REST/WebSocket 字段、错误与并发语义 | [API](API.md) |
-| 版本变化 | [CHANGELOG](../CHANGELOG.md) · [1.9.1 候选](releases/1.9.1.md) · [1.9.0](releases/1.9.0.md) · [1.8.0](releases/1.8.0.md) · [1.7.0](releases/1.7.0.md) · [1.6.2](releases/1.6.2.md) · [1.6.1](releases/1.6.1.md) · [1.6.0](releases/1.6.0.md) · [1.5.0](releases/1.5.0.md) · [1.4.0](releases/1.4.0.md) · [1.3.0](releases/1.3.0.md) · [1.2.0](releases/1.2.0.md) · [1.1.0](releases/1.1.0.md) · [1.0.0](releases/1.0.0.md)；RC 版本说明保留在对应 Git 标签 |
+| 版本变化 | [CHANGELOG](../CHANGELOG.md) · [1.9.1](releases/1.9.1.md) · [1.9.0](releases/1.9.0.md) · [1.8.0](releases/1.8.0.md) · [1.7.0](releases/1.7.0.md) · [1.6.2](releases/1.6.2.md) · [1.6.1](releases/1.6.1.md) · [1.6.0](releases/1.6.0.md) · [1.5.0](releases/1.5.0.md) · [1.4.0](releases/1.4.0.md) · [1.3.0](releases/1.3.0.md) · [1.2.0](releases/1.2.0.md) · [1.1.0](releases/1.1.0.md) · [1.0.0](releases/1.0.0.md)；RC 版本说明保留在对应 Git 标签 |
 | 各版本平台验收范围 | [平台验证范围](RELEASE_INSTALL_VALIDATION.md) |
 | 产品方向 | [路线图](ROADMAP.md) |
 

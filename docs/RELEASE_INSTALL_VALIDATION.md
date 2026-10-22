@@ -2,13 +2,21 @@
 
 本页是版本验收索引。**结果只适用于对应归档**：准确 SHA256、测试明细和失败尝试见各 [Release](https://github.com/YogurtJ/pivane/releases) 的 `pivane-<版本>.validation.json`。源码、浏览器模拟和旧版结果不能替代新包的实机验收。
 
-## 1.9.1 发布候选
+## 当前正式版 1.9.1
 
-[1.9.1 说明](releases/1.9.1.md)。候选包须在 Linux ARM64、Apple Silicon macOS 与 Windows x64 完成最终准确归档的独立锁定安装、全量 Node、语法、文档、生产 audit、全量自动浏览器、相关手动专项、正式 1.9.0 升级与原路径恢复。结果随同名 `validation.json` / `validation.md` 附件提供，并绑定包 SHA256；未完成项不引用下方 1.9.0 结果冒充通过。
+[1.9.1说明](releases/1.9.1.md) · [Release](https://github.com/YogurtJ/pivane/releases/tag/v1.9.1) · [验收JSON](https://github.com/YogurtJ/pivane/releases/download/v1.9.1/pivane-1.9.1.validation.json) · [验收说明](https://github.com/YogurtJ/pivane/releases/download/v1.9.1/pivane-1.9.1.validation.md)
 
-当前公开正式版仍为 1.9.0，候选说明不表示已经发布或替换已有实例。
+2026-10-22正式发布，准确归档SHA256：`8a166561cb89947dbd2032a03360709b08b862d76aaaccb363b26b8becf08d9c`，冻结源码：`f0c9d5d5149d5cf2e0972234884788da6acf00a4`。六附件公开无鉴权回下载逐字节一致，标签和包未改写。
 
-## 当前正式版 1.9.0
+| 实机 | Node | 浏览器（115个脚本） | 安装／正式1.9.0升级／原路径恢复 |
+|---|---|---|---|
+| Linux arm64 / Node22.23.3 / Chromium142.0.7444.175 | 1105通过、1项Windows专属跳过 | 首次114/115；失败脚本查明为上游更新提醒遮挡，修复测试夹具后完整通过 | 通过 |
+| Apple M1 / macOS15.5 / Node22.23.1 / Chrome155.0.8059.85 | 1077通过、29项平台跳过 | 首次115/115 | 通过 |
+| Windows11 x64 / Node22.23.2 / Chrome155.0.8059.85 | 1078通过、28项Linux专属跳过 | 首次115/115 | 通过；另在真实普通权限完成安装、运行与会话导入 |
+
+所有平台在独立锁定安装后核对2330发行文件、准确归档、lock及实际依赖；语法、文档和平台打包通过。每台均从正式1.9.0升级并原路径恢复20文件，另用真实新旧SDK验证双分支、书签、会话ID和二进制附件的4文件恢复。首次生产audit遇npm服务端故障（Linux 503/400、macOS 503/520、Windows 400），服务恢复后在准确包安装目录内刷新审计均为零漏洞。Linux浏览器失败的原样复跑仍在同一位置失败，修复只改测试夹具，断言、视口矩阵和时限未改。原始失败、补验和观察器采集限制见验收附件。
+
+## 历史正式版 1.9.0
 
 [1.9.0说明](releases/1.9.0.md) · [Release](https://github.com/YogurtJ/pivane/releases/tag/v1.9.0) · [验收JSON](https://github.com/YogurtJ/pivane/releases/download/v1.9.0/pivane-1.9.0.validation.json) · [验收说明](https://github.com/YogurtJ/pivane/releases/download/v1.9.0/pivane-1.9.0.validation.md)
 
