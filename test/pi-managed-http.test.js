@@ -59,12 +59,27 @@ test('managed launcher performs authenticated backup and restart with paused sch
     const before = fs.readFileSync(path.join(data, 'agent/sessions/sentinel.jsonl'));
     let generation = initial.generation;
     for (const action of ['backup', 'restart']) {
-        const review = await api('/review', 'POST', { action }); assert.equal(review.status, 200);
-        const ticket = await review.json();
+        // Review does not reserve idleness. Only this explicit pre-admission
+        // refusal leaves the ticket unconsumed; pause, transport and stale-ticket
+        // failures must still fail immediately instead of replaying maintenance.
+        const admit = (route, body, expected, ticket) => until(async () => {
+            const response = await api(route, 'POST', body), value = await response.json();
+            if (response.status === 409 && value.error === '实例仍有任务、侧聊、临时会话、配置或请求正在处理，请完成后再试') {
+                const checked = await api('/maintenance'); assert.equal(checked.status, 200);
+                const state = await checked.json();
+                assert.equal(state.generation, ticket?.generation || generation, 'a changed backend cannot reuse this admission');
+                assert.equal(state.busy, false, 'an active or uncertain maintenance operation cannot be retried');
+                if (ticket) assert.notEqual(state.job?.id, ticket.id, 'the rejected ticket must not have created a job');
+                return false;
+            }
+            assert.equal(response.status, expected, JSON.stringify({ action, route, response: value }));
+            return value;
+        });
+        const ticket = await admit('/review', { action }, 200);
         const request = { ticket: ticket.id, confirmed: true, draftsSaved: true, externalWritersStopped: true };
         assert.equal((await api('/execute', 'POST', { ...request, command: 'never run' })).status, 400);
-        const executed = await api('/execute', 'POST', request); assert.equal(executed.status, 202);
-        assert.equal((await executed.json()).id, ticket.id);
+        const executed = await admit('/execute', request, 202, ticket);
+        assert.equal(executed.id, ticket.id);
         const done = await until(async () => {
             try { const response = await api('/maintenance'); if (!response.ok) return false; const value = await response.json(); return value.job?.id === ticket.id && !value.busy && value; }
             catch { return false; }

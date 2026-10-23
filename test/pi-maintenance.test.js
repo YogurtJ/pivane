@@ -64,7 +64,11 @@ test('maintenance confirmation is single-use, version-bound, idle-checked and pr
     const ticket = value.review({ action: 'update', version: '0.85.1' }, () => true);
     assert.throws(() => value.execute({ ...confirmed(ticket.id), version: '9.0.0' }, { idle: () => true, pause() {} }), /确认/);
     assert.throws(() => value.execute(confirmed(ticket.id), { idle: () => false, pause() {} }), /正在处理/);
+    assert.equal(sent.length, 0, 'a pre-admission busy refusal must not submit maintenance');
+    assert.equal(value.tickets.has(ticket.id), true, 'a pre-admission refusal retains the reviewed ticket');
+    assert.equal(value.state.job, undefined);
     const accepted = value.execute(confirmed(ticket.id), { idle: () => true, pause() { paused++; } });
+    assert.equal(sent.length, 1, 'the later admission submits exactly once');
     assert.equal(paused, 1); assert.equal(accepted.id, ticket.id); assert.equal(sent[0].version, '0.85.1'); assert.equal(value.locked, true);
     assert.throws(() => value.enter(), /维护/);
     assert.throws(() => value.execute(confirmed(ticket.id), { idle: () => true, pause() {} }), /失效/);
