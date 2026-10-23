@@ -6,6 +6,22 @@ shared Pi sessions root, migrates global state, and may spawn an unscoped Pi
 child. Native JSONL is the conversation authority. Profile-local `sessions.db`
 is a disposable derived search index, not a parallel chat transcript tree.
 
+## Read by task
+
+This reference describes the current adapter contract. For user operations, start with [assistant profiles](AGENT_PROFILES.md); for module ownership, see the [development guide](development/AGENT_PROFILES.md). Installation state, saved configuration and actual worker loading are separate facts.
+
+| Task | Section |
+|---|---|
+| Bind a profile and isolate physical cwd | [Integration contract](#integration-contract) |
+| Read/write knowledge, revisions, pending repair and receipts | [Unified knowledge management](#unified-knowledge-management-source-candidate) |
+| Compare proposed writes and reject unsafe content | [Write-time comparison](#agent-write-time-comparison) · [Content scan](#content-scan) |
+| Understand learning triggers, model purposes and budgets | [Background learning](#background-learning) |
+| Verify native sources, derived indexes and scan budgets | [Source index and bounds](#source-index-and-bounds) |
+| Install the bundled adapter and inspect upstream compatibility | [Bundled installation](#bundled-installation) · [Upstream adaptation](#upstream-0910-adaptation) |
+| Maintain an existing isolated installation | [Legacy isolated installation](#legacy-isolated-installation) |
+
+REST fields are indexed in [API](API.md#可选助手档案). The legacy installation recipe remains supported; it is not required for a normal bundled installation.
+
 ## Integration contract
 
 Parent mounts `mountProfileMemoryRoutes(router, { profiles, getAgentDir, bundlePath })`
@@ -200,8 +216,9 @@ HTTP project memory edits use `scope:'project', sessionId` with `kind:'memory'`
 and `create|update|delete|undo`. Project skills use the same verified session
 with `kind:'skill'` for `delete|undo` only; create/update remain unavailable
 through this path. A client `projectKey` is still refused. The
-service finds the unique native file `*_<sessionId>.jsonl` under the sessions
-root, streams its header and custom entries (64 MiB budget, 413 beyond it), and
+service finds the unique native JSONL file whose header ID matches `sessionId`
+under the sessions root; the file-name ID is not the session identity. It streams
+the header and custom entries (64 MiB budget, 413 beyond it), and
 requires exactly one current-ID binding to this profile and a canonical header
 cwd. The server derives `projectKey=sha256(cwd)` and repeats the proof (same file
 identity, cwd and binding) immediately before publication, so a session rebound

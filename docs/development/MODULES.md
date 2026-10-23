@@ -1,6 +1,21 @@
 # 模块导航
 
-按任务查阅相关行，再读取对应功能契约。入口文件负责连接模块；状态、持久化和异步互斥由服务或组件本身管理。
+按任务选择下面的职责组，再读取该行的实现、契约和相关测试。入口文件负责连接模块；状态、持久化和异步互斥由服务或组件本身管理。整体依赖见 [架构](ARCHITECTURE.md)，生命周期与缓存细节见 [实现说明](RUNTIME.md)，检查范围见 [开发流程](WORKFLOW.md#验证矩阵)。
+
+- [服务装配与访问](#service)
+- [会话、worker 与历史](#sessions)
+- [任务协作与消息渠道](#collaboration)
+- [模型、扩展与助手记忆](#models)
+- [文件、附件与成果](#files)
+- [媒体与语音](#media)
+- [浏览器与交互](#browser)
+- [安装、兼容与验证工具](#delivery)
+
+表中的用例简称用于搜索；精确文件名用 `rg --files test` 或 `npm test -- --list` 查询，浏览器入口用 `npm run test:browser -- --list`。这里只导航到相关测试，执行范围仍按验证矩阵选择。
+
+<a id="service"></a>
+
+## 服务装配与访问
 
 | 任务 | 实现入口 | 契约与验证入口 |
 |---|---|---|
@@ -8,22 +23,42 @@
 | HTTP 服务、身份和静态入口 | [server.js](../../server.js)、[workspace-access-service](../../server/workspace-access-service.js)、[static assets](../../server/static-assets.js) | [访问控制](../ACCESS_CONTROL.md)、workspace-access 用例 |
 | 主会话 REST/WS 与服务装配 | [pi-agent-routes](../../server/pi-agent-routes.js)、[出站背压](../../server/pi-websocket-send.js) | [API](../API.md)、pi-native-integration、pi-activity-api、pi-websocket-send/backpressure |
 | 已保存的设置与媒体 HTTP 接口 | [settings routes](../../server/routes/settings.js)、[media routes](../../server/routes/media.js) | [模型设置](../PROVIDER_SETTINGS.md)、[媒体实验室](../MEDIA_LAB.md)，对应 HTTP/服务用例 |
+
+<a id="sessions"></a>
+
+## 会话、worker 与历史
+
+| 任务 | 实现入口 | 契约与验证入口 |
+|---|---|---|
 | worker 唯一性、启动、停止与回收 | [supervisor](../../server/pi-agent-supervisor.js)、[worker lifecycle](../../server/pi-worker-lifecycle.js)、[RPC](../../server/pi-rpc-client.js) | [运行控制](../NATIVE_CONTROLS.md)、[启动等待](../NATIVE_COMPLETION.md#启动等待与无响应-worker)、pi-worker-lifecycle、pi-worker-health、pi-worker-retirement、pi-runtime-activity、pi-maintenance |
 | 持久队列意图、原生证据与恢复 | [queue store](../../server/pi-queue-store.js)、[SDK adapter](../../server/pi-queue-adapter.mjs)、[controls](../../server/pi-runtime-controls.js)、[恢复 UI](../../public/pi-runtime-controls.js) | [运行控制](../NATIVE_CONTROLS.md)、pi-queue-store/adapter/rpc、browser/pi-queue-recovery 与 browser/pi-session-durability |
 | 会话身份、列表与悬停统计、分叉和历史导航 | [session store](../../server/pi-session-store.js)、[session metadata](../../server/pi-session-metadata.js)、[workflows](../../server/pi-session-workflows.js)、[fork file access](../../server/pi-session-fork-access.js)、[prefix proof](../../server/pi-session-prefix-proof.js)、[fork requests](../../server/pi-session-fork-requests.js)、[exact navigation](../../server/pi-session-navigation.js)、[history navigation](../../server/pi-history-navigation.js)、[history model](../../server/pi-history-model.js)、[压缩前回看投影](../../server/pi-history-archive.js) | [会话工作流](../SESSION_WORKFLOWS.md)、[历史](../HISTORY.md)、pi-session-workflows、pi-session-workflow-boundaries、pi-session-fork-requests、pi-history、pi-history-archive、pi-session-tree、pi-session-cache、pi-session-metadata-records |
 | 单线程跨项目移动与旧地址解析 | [session moves](../../server/pi-session-moves.js)、[引用分块投影](../../server/pi-session-move-references.js)、[transfer UI](../../public/pi-session-transfer.js) | [会话工作流](../SESSION_WORKFLOWS.md#移动线程到其他项目)、[API](../API.md#会话移动)、pi-session-moves 与 browser/pi-session-moves |
 | 项目路径迁移 | [session relocation](../../server/pi-session-relocation.js) | [命名与迁移](NAMING.md)、pi-session-relocation；真实迁移另做停机验证 |
+
+<a id="collaboration"></a>
+
+## 任务协作与消息渠道
+
+| 任务 | 实现入口 | 契约与验证入口 |
+|---|---|---|
 | 任务线程、侧聊和扩展助手 | [agent threads](../../server/pi-agent-threads.js)、[side chat](../../server/pi-side-chat.js)、[extension assistant](../../server/pi-extension-assistant.js) | [任务线程](../AGENT_THREADS.md)、[侧聊](../SIDE_CHAT.md)、[原生设置](../NATIVE_SETTINGS.md) |
 | 定时任务、主线程与运行预算 | [cron service](../../server/pi-cron-service.js)、[schedule](../../server/pi-cron-schedule.js)、[store](../../server/pi-cron-store.js)、[runtime](../../server/pi-cron-runtime.js)、[page](../../public/pi-cron.js) | [定时任务](../SCHEDULED_TASKS.md)、pi-cron、pi-cron-queue、pi-cron-schedule 和 browser/pi-cron |
 | 微信消息渠道、可选组件与线程绑定 | [渠道服务](../../server/channels/service.js)、[状态存储](../../server/channels/store.js)、[组件安装](../../server/channels/weixin-component.js)、[微信适配](../../server/channels/weixin-adapter.js)、[原生回合](../../server/channels/runtime.js)、[轮次结果](../../server/channels/turn-results.js)、[线程结果订阅](../../server/channels/thread-results.js)、[管理指令](../../server/channels/commands.js)、[指令准入](../../server/channels/command-control.js)、[输入状态](../../server/channels/typing.js)、[管理页](../../public/pi-channels.js) | [消息渠道](../MESSAGE_CHANNELS.md)、pi-channels 与 browser/pi-channels；唯一 worker、私有凭据、去重与不确定投递 |
 | 线程间消息 | [message service](../../server/pi-agent-messages.js)、[record format](../../server/pi-agent-message-format.js)、[tool](../../server/pi-agent-messages-extension.ts)、[cards](../../public/pi-agent-cards.js) | [线程间消息](../AGENT_THREADS.md#线程间消息)、pi-agent-messages、pi-agent-messages-queue、browser/pi-agent-messages |
-| 跨会话成果中心 | [只读来源发现](../../server/pi-artifacts-discovery.js)、[成果服务](../../server/pi-artifacts.js)、[独立存储](../../server/pi-artifacts-library.js)、[管理与导出](../../server/pi-artifacts-management.js)、[路由](../../server/pi-artifacts-routes.js)、[成果库](../../public/pi-artifacts.js)、[整理与确认](../../public/pi-artifacts-manage.js)、[界面组件](../../public/pi-artifacts-ui.js)、[独立详情](../../public/pi-artifacts-preview.js) | [成果中心](../ARTIFACTS.md)、pi-artifacts、pi-artifacts-library 与 browser/pi-artifacts/management |
 | 任务目录与来源结果回执 | [task catalog](../../server/pi-task-catalog.js)、[task returns](../../server/pi-task-returns.js)、[browser results](../../public/pi-task-results.js) | [任务线程](../AGENT_THREADS.md)、pi-task-catalog、pi-task-returns、pi-agent-threads 和对应浏览器用例 |
-| 内置能力与资源选择 | [catalog](../../server/pi-bundled-capabilities.js)、[resources](../../server/pi-bundled-resources.js)、[managed runtime](../../server/pi-managed-runtime.mjs)、[startup adapter](../../server/pi-run-startup-adapter.mjs)、[child factory](../../server/pi-subagent-child-factory.mjs)、[installer](../../scripts/install-bundled-capabilities.cjs) | [内置能力包](../BUNDLED_CAPABILITIES.md)、pi-bundled-capabilities 与安装/运行回归 |
-| Pi 原生 MCP、Codemode 与旧安装迁移 | [native MCP](../../server/pi-native-mcp.mjs)、[command boundary](../../server/pi-native-mcp-control.mjs)、[runtime slots](../../server/pi-mcp-runtime-control.js)、[saved config](../../server/pi-mcp-settings-service.js)、[web panel](../../public/pi-mcp-settings.js)、[child resolver](../../server/pi-subagent-mcp-resolution.mjs)、[exact import seam](../../server/pi-subagent-native-loader.mjs)、[Codemode media policy](../../server/pi-codemode-policy.mjs)、[migration](../../scripts/migrate-native-mcp.cjs) | [原生 MCP](../MCP.md)、pi-native-mcp/control/child/migration、pi-mcp-settings/runtime-control、pi-native-tool-settings 与对应浏览器专项 |
-| 嵌套工具与原生文件归属 | [nested display](../../public/pi-nested-tools.js)、[turn edits](../../public/pi-turn-edits.js)、[live recovery](../../server/pi-live-state.js) | [文件查看](../FILE_VIEWER.md)、pi-nested-tools/live-state 与 browser/pi-nested-tools |
 | pi-subagents 运行适配 | [worker host](../../server/pi-subagent-host.ts)、[projection](../../server/pi-subagent-runtime.js)、[run panel](../../public/pi-subagent-runs.js)、[status chips](../../public/pi-composer-chips.js)、[notices](../../public/pi-subagent-notices.js) | [用户指南](../USER_GUIDE.md#使用子-agent)、[API](../API.md)、pi-subagent-runtime 与 browser/pi-subagent-runs |
 | Agent 计划与进度卡 | [progress extension](../../server/pi-task-progress-extension.ts)、[progress state](../../server/pi-task-progress.js)、[browser card](../../public/pi-task-progress.js) | [用户指南](../USER_GUIDE.md#任务进度卡)、[API](../API.md#任务进度taskprogress)、pi-task-progress 和对应浏览器用例 |
+| 模型结构化提问 | [tool registration](../../server/pi-user-question-extension.ts)、[question execution](../../server/pi-user-question.js)、[question panel and receipt](../../public/pi-user-question.js)、[styles](../../public/pi-user-question.css)、[chat wiring](../../public/pi-chat.js) | [用户指南](../USER_GUIDE.md#对话与工具)、[API](../API.md)、pi-user-question、browser/pi-issue-workflows；复用原生 pendingUi、截止时间与取消 signal，无法匹配的请求回退通用对话框 |
+
+<a id="models"></a>
+
+## 模型、扩展与助手记忆
+
+| 任务 | 实现入口 | 契约与验证入口 |
+|---|---|---|
+| 内置能力与资源选择 | [catalog](../../server/pi-bundled-capabilities.js)、[resources](../../server/pi-bundled-resources.js)、[managed runtime](../../server/pi-managed-runtime.mjs)、[startup adapter](../../server/pi-run-startup-adapter.mjs)、[child factory](../../server/pi-subagent-child-factory.mjs)、[installer](../../scripts/install-bundled-capabilities.cjs) | [内置能力包](../BUNDLED_CAPABILITIES.md)、pi-bundled-capabilities 与安装/运行回归 |
+| Pi 原生 MCP、Codemode 与旧安装迁移 | [native MCP](../../server/pi-native-mcp.mjs)、[command boundary](../../server/pi-native-mcp-control.mjs)、[runtime slots](../../server/pi-mcp-runtime-control.js)、[saved config](../../server/pi-mcp-settings-service.js)、[web panel](../../public/pi-mcp-settings.js)、[child resolver](../../server/pi-subagent-mcp-resolution.mjs)、[exact import seam](../../server/pi-subagent-native-loader.mjs)、[Codemode media policy](../../server/pi-codemode-policy.mjs)、[migration](../../scripts/migrate-native-mcp.cjs) | [原生 MCP](../MCP.md)、pi-native-mcp/control/child/migration、pi-mcp-settings/runtime-control、pi-native-tool-settings 与对应浏览器专项 |
 | Provider、原生配置与资源 | [settings service](../../server/pi-settings-service.js)、[native service](../../server/pi-native-service.js)、[resource service](../../server/pi-resource-service.js)、[theme validation](../../server/pi-theme-validation.mjs)、[reviewed host](../../server/pi-reviewed-host.js)、[compat projection](../../server/pi-model-advanced.js)、[selection preflight](../../server/pi-model-selection-preflight.mjs) | [模型](../PROVIDER_SETTINGS.md)、[原生设置](../NATIVE_SETTINGS.md)，对应 settings/provider/resource 用例 |
 | 可选助手档案与会话归属 | [profile registry](../../server/pi-profile-registry.js)、[profile state](../../server/pi-profile-state.js)、[profile runtime](../../server/pi-profile-runtime.js) | [助手档案](../AGENT_PROFILES.md)、[档案架构](AGENT_PROFILES.md)、pi-profiles 用例 |
 | 同目录助手项目分类 | [project registry](../../server/pi-assistant-project-registry.js)、[project binding](../../server/pi-assistant-project-state.js)、[session classification](../../server/pi-session-classification.js)、[runtime](../../server/pi-assistant-project-runtime.js) | [API](../API.md#逻辑助手项目)、[档案架构](AGENT_PROFILES.md)、pi-assistant-projects 用例 |
@@ -32,24 +67,53 @@
 | 档案历史派生索引与并发刷新 | [事务与游标](../../server/profile-memory/index.js)、[刷新协调](../../server/profile-memory/background-index.js)、[索引线程](../../server/profile-memory/index-worker.js) | [来源与预算](../PROFILE_MEMORY.md#source-index-and-bounds)、pi-profile-memory-background/concurrency/integration |
 | 档案知识日志与逐项管理 | [knowledge service](../../server/profile-memory/knowledge-service.js)、[knowledge guard](../../server/profile-memory/knowledge-guard.js)、[content scan](../../server/profile-memory/content-scan.js)、[native tool adapter](../../server/profile-memory/tool-mutations.js)、[comparison](../../server/profile-memory/knowledge-compare.js)、[source proof](../../server/profile-memory/scope.js)、[knowledge page](../../public/pi-profile-knowledge.js)、[chat card](../../public/pi-chat-knowledge.js) | [记忆适配](../PROFILE_MEMORY.md#unified-knowledge-management-source-candidate)、[API](../API.md#可选助手档案)、pi-profile-knowledge、pi-profile-knowledge-source、pi-profile-learning-tool-mutations 与对应浏览器用例 |
 | 后台学习队列与辅助模型用途 | [learning service](../../server/profile-memory/learning-service.js)、[decision validation](../../server/profile-memory/learning-decision.js)、[learning triggers](../../server/profile-memory/learning-triggers.js)、[gateway wiring](../../server/pi-agent-routes.js)、[auxiliary models](../../server/pi-auxiliary-models-service.js)、[learning page](../../public/pi-profile-learning.js) | [辅助模型](../AUXILIARY_MODELS.md#后台学习-rest-与边界)、[记忆适配](../PROFILE_MEMORY.md#background-learning)、pi-profile-learning-runtime、pi-auxiliary-models、browser/pi-profile-learning |
+| 模型速度能力、原生会话选择与请求计价 | [capabilities](../../server/pi-model-speed.js)、[runtime](../../server/pi-model-speed-runtime.mjs)、[extension](../../server/pi-model-speed-extension.mjs)、[worker control](../../server/pi-model-speed-control.js)、[UI](../../public/pi-model-speed.js) | [模型速度](../PROVIDER_SETTINGS.md#模型速度fast--ultrafast)、pi-model-speed 与 browser/pi-model-speed |
+| 会话模型选择与常用偏好 | [model picker](../../public/pi-model-picker.js)、[workspace preferences](../../server/workspace-preferences-service.js)、[pi-chat](../../public/pi-chat.js) | [模型选择](../PROVIDER_SETTINGS.md#会话模型快速选择)、pi-model-favorites、pi-model-picker、pi-model-onboarding 用例 |
+
+<a id="files"></a>
+
+## 文件、附件与成果
+
+| 任务 | 实现入口 | 契约与验证入口 |
+|---|---|---|
+| 跨会话成果中心 | [只读来源发现](../../server/pi-artifacts-discovery.js)、[成果服务](../../server/pi-artifacts.js)、[独立存储](../../server/pi-artifacts-library.js)、[管理与导出](../../server/pi-artifacts-management.js)、[路由](../../server/pi-artifacts-routes.js)、[成果库](../../public/pi-artifacts.js)、[整理与确认](../../public/pi-artifacts-manage.js)、[界面组件](../../public/pi-artifacts-ui.js)、[独立详情](../../public/pi-artifacts-preview.js) | [成果中心](../ARTIFACTS.md)、pi-artifacts、pi-artifacts-library 与 browser/pi-artifacts/management |
 | 文件、目录浏览、搜索与用量 | [file service](../../server/pi-file-service.js)、[file browser](../../server/pi-file-browser.js)、[file scope](../../server/pi-file-scope.js)、[关联目录](../../server/pi-file-roots.js)（安全目录选择、路径解析与导航偏好）、[根选择 UI](../../public/pi-file-roots.js)、[session search](../../server/pi-session-search.js)、[usage](../../server/pi-usage-service.js) | [文件](../FILE_VIEWER.md)、[用量](../USAGE.md)，相关 descriptor/file-browser/file-roots/search/usage 用例及 browser/pi-file-browser、browser/pi-file-roots、browser/pi-file-viewer |
 | 办公/PDF 与通用原件上传、读取和项目取用 | [取用副本](../../server/pi-attachment-materialize.js)、[存储与路由](../../server/pi-document-uploads.js)、[受管工具](../../server/pi-document-extension.ts)、[解析池](../../server/pi-document-pool.js)、[解析器](../../server/pi-document-parser.js)、[原生引用](../../public/pi-document-references.js)、[附件 UI](../../public/pi-document-attachments.js) | [办公附件](../COMPOSER_TOOLS.md#上传办公文档与-pdf)、[API](../API.md#办公文档附件documentuploads)、pi-document-parser/uploads/runtime 与 browser/pi-document-uploads |
 | 附件容量与显式清理 | [storage](../../server/pi-document-storage.js)、[native references](../../server/pi-document-storage-references.js)、[native scope](../../server/pi-document-native-scope.js)、[cron references](../../server/pi-document-cron-references.js)、[gateway lease](../../server/pi-document-storage-gateway.js)、[管理 UI](../../public/pi-document-storage.js) | [附件清理](../COMPOSER_TOOLS.md#附件用量与清理)、pi-document-storage/gateway、pi-document-native-scope、pi-document-cron-references、pi-reference-lease、pi-deferred-document-protection；browser/pi-document-storage 与 browser/pi-session-durability |
 | 类型化文件、独立下载与交付快照 | [verified bytes](../../server/pi-file-bytes.js)、[download/copy](../../server/pi-file-download.js)、[limits](../../server/pi-file-limits.js)、[file types](../../server/pi-file-types.js)、[deliverables](../../server/pi-deliverables.js)、[managed tool](../../server/pi-deliverables-extension.ts)、[preview/download routes](../../server/pi-file-routes.js)、[browser download](../../public/pi-file-downloads.js)、[chat receipts](../../public/pi-delivery-cards.js)、[receipt styles](../../public/pi-delivery-cards.css) | [文件与交付](../FILE_VIEWER.md)、pi-file-downloads、pi-deliverables/runtime、browser/pi-deliverables 与 browser/pi-issue-workflows |
 | 完整上下文图片检查与兼容 | [字节与模型限制](../../server/pi-image-context.js)、[SDK 请求出口](../../server/pi-image-runtime.mjs) | [图片输入](../COMPOSER_TOOLS.md#图片输入与模型切换)、pi-image-context/runtime；主／侧／子会话复用，转换只作用于出站副本 |
-| 模型结构化提问 | [tool registration](../../server/pi-user-question-extension.ts)、[question execution](../../server/pi-user-question.js)、[question panel and receipt](../../public/pi-user-question.js)、[styles](../../public/pi-user-question.css)、[chat wiring](../../public/pi-chat.js) | [用户指南](../USER_GUIDE.md#对话与工具)、[API](../API.md)、pi-user-question、browser/pi-issue-workflows；复用原生 pendingUi、截止时间与取消 signal，无法匹配的请求回退通用对话框 |
+
+<a id="media"></a>
+
+## 媒体与语音
+
+| 任务 | 实现入口 | 契约与验证入口 |
+|---|---|---|
 | 媒体模型、规划、票据与执行 | [media lab](../../server/media-lab-service.js)、[聊天卡片记录](../../server/media-chat-requests.js)、[会话工具](../../server/pi-media-chat-extension.ts)、[聊天卡片](../../public/pi-media-requests.js)、[provider service](../../server/media-provider-service.js)、[HTTP protocol](../../server/media-http-protocol.js)、[参考素材存储](../../server/media-references.js)、[参考附件校验](../../server/media-attachments.js)、[参数与附件表单](../../public/media-fields.js) | [接入协议](../MEDIA_CONNECTIONS.md)、media-connections、media-lab、media-chat-requests、reply-tts 与 browser/media-lab |
-| 安装、更新、备份和恢复 | [managed launcher](../../server/pi-managed-launcher.js)、[update installer](../../server/pi-update-installer.js)、[maintenance files](../../server/pi-maintenance-files.js)、[retention](../../server/pi-managed-retention.js)、[backup proof](../../server/pi-maintenance-backup.js)、[Linux retention storage](../../server/pi-retention-storage.js) | [更新](../UPDATES.md)、[发布](RELEASING.md)、pi-maintenance、pi-managed-retention、pi-application-update、test/release |
-| 模型速度能力、原生会话选择与请求计价 | [capabilities](../../server/pi-model-speed.js)、[runtime](../../server/pi-model-speed-runtime.mjs)、[extension](../../server/pi-model-speed-extension.mjs)、[worker control](../../server/pi-model-speed-control.js)、[UI](../../public/pi-model-speed.js) | [模型速度](../PROVIDER_SETTINGS.md#模型速度fast--ultrafast)、pi-model-speed 与 browser/pi-model-speed |
+| 输入区录音与 ASR/STT 转录 | [transcription service](../../server/pi-transcription-service.js)、[voice composer](../../public/pi-composer-voice.js)、[转录配置](../../public/pi-transcription-settings.js) 嵌入 [媒体配置弹窗](../../public/media-connections.js) 的 ASR 页签，TTS 页签保留模型管理；服务/凭据由 [provider service](../../server/media-provider-service.js) 统一管理 | [输入与转录](../COMPOSER_TOOLS.md#语音转录)、pi-transcription 与 browser/pi-composer-controls |
+
+<a id="browser"></a>
+
+## 浏览器与交互
+
+| 任务 | 实现入口 | 契约与验证入口 |
+|---|---|---|
+| 嵌套工具与原生文件归属 | [nested display](../../public/pi-nested-tools.js)、[turn edits](../../public/pi-turn-edits.js)、[live recovery](../../server/pi-live-state.js) | [文件查看](../FILE_VIEWER.md)、pi-nested-tools/live-state 与 browser/pi-nested-tools |
 | 回复请求平均速度与显示偏好 | [边界计时](../../server/pi-request-stats-extension.mjs)、[显示](../../public/pi-request-stats.js) | [用户指南](../USER_GUIDE.md#对话与工具)、[API](../API.md)、pi-request-stats、pi-compaction-rpc 与 browser/pi-request-stats |
-| 会话模型选择与常用偏好 | [model picker](../../public/pi-model-picker.js)、[workspace preferences](../../server/workspace-preferences-service.js)、[pi-chat](../../public/pi-chat.js) | [模型选择](../PROVIDER_SETTINGS.md#会话模型快速选择)、pi-model-favorites、pi-model-picker、pi-model-onboarding 用例 |
 | 桌面页面导航与助手对话分类 | [workspace UI](../../public/workspace-ui.js)、[左侧导航栏样式](../../public/pi-sidebar.css)（展开／窄栏／手机底栏与线性图标的唯一样式处，图标精灵在 [index.html](../../public/index.html)）、[project view](../../public/pi-assistant-projects.js)、[profile UI](../../public/pi-agent-profiles.js)、[identity design system](../../public/pi-identity-ui.js)、[SOUL templates](../../public/pi-identity-templates.js)、[extensions shell](../../public/pi-extensions.js)、[installed resources](../../public/pi-native-settings.js)、[settings](../../public/settings.js) | [用户指南](../USER_GUIDE.md#工作区导航)、pi-workbench（导航折叠、焦点与手机底栏）、pi-assistant-shell、pi-assistant-pages 浏览器用例 |
 | 工作台布局、响应式项目／上下文位置、工具入口与输入区状态标签 | [workbench](../../public/pi-workbench.js)、[workbench CSS](../../public/pi-workbench.css)、[composer chips](../../public/pi-composer-chips.js) | [用户指南](../USER_GUIDE.md#工作区导航)，pi-workbench、task-progress、subagent-runs 与相关桌面／手机浏览器场景 |
 | 主题配色与外观偏好 | [主题令牌](../../public/workspace.css)（`/* Workspace themes */` 段，唯一定义处）、[切换与旧值映射](../../public/workspace-ui.js)、[首屏预设](../../public/index.html) | [用户指南](../USER_GUIDE.md#外观与字体大小)。各主题只改 `--surface-*`、`--line*`、`--text-*`、`--primary*` 与语义色；`--green`/`--green-soft` 是强调色旧名，“新增／成功／连接正常”用 `--success`，阴影与遮罩用 `--shadow-tint`。pi-assistant-shell 外观用例及各浏览器场景的主题截图 |
-| 输入区录音与 ASR/STT 转录 | [transcription service](../../server/pi-transcription-service.js)、[voice composer](../../public/pi-composer-voice.js)、[转录配置](../../public/pi-transcription-settings.js) 嵌入 [媒体配置弹窗](../../public/media-connections.js) 的 ASR 页签，TTS 页签保留模型管理；服务/凭据由 [provider service](../../server/media-provider-service.js) 统一管理 | [输入与转录](../COMPOSER_TOOLS.md#语音转录)、pi-transcription 与 browser/pi-composer-controls |
 | 前端线程选择、连接和状态协调 | [pi-chat](../../public/pi-chat.js) | [API](../API.md)、test/browser 中 onboarding、sidebar、live、controls 场景 |
 | 首屏加载与管理页生命周期 | [feature loader](../../public/pi-feature-loader.js)、[路由](../../public/workspace-ui.js)、[设置生命周期](../../public/settings.js)、[共享字段与查看组件](../../public/pi-native-ui.js)、[共享身份状态](../../public/pi-profile-session.js)、[提示词查看](../../public/pi-system-prompt-runtime.js) | [用户指南](../USER_GUIDE.md#工作区导航)、browser/pi-startup-loading、pi-startup-review、pi-performance-integration |
 | 正文、滚动、工具和文件展示 | [transcript view](../../public/pi-transcript-view.js)、[scroll](../../public/pi-transcript-scroll.js)、[对话目录与快捷书签](../../public/pi-transcript-timeline.js)、[压缩前问答回看](../../public/pi-transcript-archive.js)、[首包等待与压缩反馈](../../public/pi-transcript-activity.js)、[tool labels](../../public/pi-tool-labels.js)、[files panel](../../public/pi-files-panel.js)、[file browser](../../public/pi-file-browser.js)、[file viewer](../../public/pi-file-viewer.js)、[typed previews](../../public/pi-file-previews.js)（PDF、表格、SVG、音频及释放） | [历史](../HISTORY.md#对话目录与快捷书签2026-10-11)、[回看](../HISTORY.md#压缩前问答回看2026-10-11)；对应 streaming-markdown、side-chat、transcript、feedback-states、transcript-timeline、transcript-archive、turn-edits、file-viewer、file-browser、extension-assistant 浏览器场景 |
+
+<a id="delivery"></a>
+
+## 安装、兼容与验证工具
+
+| 任务 | 实现入口 | 契约与验证入口 |
+|---|---|---|
+| 安装、更新、备份和恢复 | [managed launcher](../../server/pi-managed-launcher.js)、[update installer](../../server/pi-update-installer.js)、[maintenance files](../../server/pi-maintenance-files.js)、[retention](../../server/pi-managed-retention.js)、[backup proof](../../server/pi-maintenance-backup.js)、[Linux retention storage](../../server/pi-retention-storage.js) | [更新](../UPDATES.md)、[发布](RELEASING.md)、pi-maintenance、pi-managed-retention、pi-application-update、test/release |
 | 旧命名兼容与启动配置 | [pivane compat](../../server/pivane-compat.js)、[local env](../../server/pi-local-env.js) | [命名与迁移](NAMING.md)、pivane-compat、media-connections |
 | Pi 版本与兼容升级专项 | [compatibility tests](../../test/pi-130-compatibility.test.js)、[runtime tests](../../test/pi-130-runtime.test.js) | [依赖契约](DEPENDENCIES.md)，工具恢复、参数校验、缓存、原生元数据、退出与容量 |
 | 检查、测试运行与发行文件发现 | [source files](../../scripts/source-files.cjs)、[Node 测试](../../scripts/run-tests.cjs)、[浏览器回归](../../scripts/run-browser-tests.cjs) | [开发流程](WORKFLOW.md)、source-files、test-runner、public-documentation |

@@ -6,7 +6,7 @@ Pivane 在 macOS 上原生运行，原生组件同时包含 Apple Silicon 与 In
 
 当前源码的 `node scripts/install.cjs` 统一准备内置 pi-subagents 与 pi-hermes-memory，不再向共享 Pi 身份另行安装包；准备失败会返回安装错误。这个入口也避免 npm 对 SQLite 的无谓编译。下文以 1.6.0 为例（安装其他版本时替换版本号），使用统一安装入口；旧归档没有此脚本时仍使用 `npm ci`。默认启用、旧配置兼容和平台依赖见[内置能力包](BUNDLED_CAPABILITIES.md)。
 
-- Node 22.x、npm、系统ripgrep。可以保留已有其他版本Node，为本实例指定独立Node22。
+- Node 22.x（当前锁定依赖要求 22.19.0 或更新的 22.x）、npm、系统ripgrep。可以保留已有其他版本Node，为本实例指定独立Node22。
 - 安装包必须包含`native/pi-darwin-fd.node`、对应C源码与manifest；它们为同一批构建，不需现场编译该组件。缺失或不匹配时不启用全文/搜索/统计，不回退为较弱的路径检查。当前源码内置记忆的 SQLite 依赖另行安装适配当前 Node 的二进制，缺少预构建文件时需要 Python 与 Xcode Command Line Tools，见[内置能力包](BUNDLED_CAPABILITIES.md)。
 - 若缺少rg，可用`brew install ripgrep`；Node 实际版本及平台验收分别核对。
 

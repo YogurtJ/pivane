@@ -50,7 +50,7 @@ Git忽略不删除已经跟踪的内容或历史。新仓库初始化时检查�
 
 ## 可复跑的隔离验收
 
-使用独立Node22、系统Bash/rg/tar，以及自行安装的Playwright 1.58.2和对应平台Chrome/Chromium。Playwright不属于用户安装的必要依赖。下列参数都替换为自己已核对的绝对路径与哈希，output目录必须尚不存在：
+使用独立 Node 22（当前锁定依赖要求 22.19.0 或更新的 22.x）、系统Bash/rg/tar，以及自行安装的Playwright 1.58.2和对应平台Chrome/Chromium。Playwright不属于用户安装的必要依赖。下列参数都替换为自己已核对的绝对路径与哈希，output目录必须尚不存在：
 
 ```sh
 node test/release/acceptance.cjs --archive /path/pivane-VERSION.tar.gz --sha256 SHA256_VALUE --browser /path/to/chrome --playwright /path/to/playwright --output /path/to/new-report-directory

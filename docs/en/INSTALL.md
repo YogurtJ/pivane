@@ -2,7 +2,7 @@
 
 [English home](../../README.md) · [User guide](USER_GUIDE.md) · [中文完整指南](../INSTALL_RECOVERY.md)
 
-Pivane runs natively on Linux, macOS and Windows with **Node.js 22.x** and npm. The environments validated for each release are listed in [platform validation](../RELEASE_INSTALL_VALIDATION.md); if you run into a problem elsewhere, please [open an issue](https://github.com/YogurtJ/pivane/issues).
+Pivane runs natively on Linux, macOS and Windows with **Node.js 22.x (22.19.0 or later)** and npm, as required by the current locked dependencies. The environments validated for each release are listed in [platform validation](../RELEASE_INSTALL_VALIDATION.md); if you run into a problem elsewhere, please [open an issue](https://github.com/YogurtJ/pivane/issues).
 
 The examples below use **1.6.0**; replace it with the version you downloaded from [Releases](https://github.com/YogurtJ/pivane/releases). Use matching archives, checksums and version directories together. Each release's notes and validation attachment describe the checks performed on that archive.
 
@@ -155,7 +155,7 @@ The examples listen only on loopback. `localhost` on a phone means the phone, no
 
 The UI currently cannot change `PI_PROJECT_ROOTS`. If a directory is outside the configured roots, edit the server's actual `.env` or service environment; keep the fixed `instance.env` in sync if you use it. Nonempty process environment values override `.env`. Use absolute paths, not `~` or `$HOME`. Preserve drafts, pause scheduled messages, wait for active operations to finish, and restart through the existing independent management channel. Check the effective `projectRoots` in `/api/pi/status` after authentication. Moving projects or sessions is unnecessary. POSIX roots are colon-separated; Windows roots are semicolon-separated. Server filesystem permissions and macOS privacy controls continue to apply. Project roots are **not a tool sandbox**. For project resources, manage Pi trust through the project menu or `/trust`.
 
-A fresh installation has no executable media service. Configure your own image, video or speech service separately. The lab's planning extension is included in the package and does not require global Package installation; it does require a configured chat model. For planning tools in ordinary Agent conversations, install the bundled `pi-packages/media-workbench` Package explicitly after reviewing its permissions. GPU adapters have additional service-specific prerequisites.
+A fresh installation has no executable media service. Configure your own image, video or speech service separately. The lab's planning extension is included in the package and does not require global Package installation; it does require a configured chat model. Ordinary persistent chats already include `media_models`, `media_results` and `media_generate`; no extra Package is needed. For a standalone CLI or additional compatibility planning tools, install the bundled `pi-packages/media-workbench` from Extensions → Installed after reviewing its permissions. See the [Package tools](../MEDIA_AGENT.md#pi-package). GPU adapters have additional service-specific prerequisites.
 
 ## Backups, upgrades and recovery
 

@@ -17,7 +17,7 @@
 | POST | `/api/pi/settings/subagents/install` | 兼容旧客户端；校验确认与修订后返回 400，说明组件随 Pivane 管理，不另行安装 |
 | POST | `/api/pi/settings/subagents/upgrade` | 同上，组件只能随 Pivane 更新 |
 
-状态为 missing/disabled/unsupported/ready，ready 表示当前内置版本（0.74.0）文件存在且配置启用，不代表当前 worker 已加载。`plugin.managedBy="pivane"`、`canInstall=false`、`upgradeFrom=null`。未就绪时写设置失败。写入复用 nativeSettingsBusy、身份/Origin、修订和配置互斥；设置保存使用原生 settings 锁、私有备份与原子写入，项目写入要求 trust。
+状态为 missing/disabled/unsupported/ready，ready 表示随当前 Pivane 交付的[内置版本](BUNDLED_CAPABILITIES.md)文件存在且配置启用，不代表当前 worker 已加载。`plugin.managedBy="pivane"`、`canInstall=false`、`upgradeFrom=null`。未就绪时写设置失败。写入复用 nativeSettingsBusy、身份/Origin、修订和配置互斥；设置保存使用原生 settings 锁、私有备份与原子写入，项目写入要求 trust。
 
 保存不启动子任务或重启服务，空闲后重开运行实例核对加载。失败或结果不明时先刷新，不自动重放；草稿按项目／范围保留，浏览器刷新会丢失。
 
@@ -65,7 +65,7 @@ Pi 包操作使用 `extensions_inventory` 和 `extensions_package`：读取真�
 
 实际工具调用沿用原执行记录，不为设置页读取或启动加载额外生成聊天条目。`read` 请求 `SKILL.md` 时显示“读取技能文件”；这是文件名提示，不证明技能已加载。内置 read 的请求路径若精确匹配本轮 `before_agent_start.systemPromptOptions.skills` 清单，工具结果携带技能名称和路径，显示“读取技能 · 名称”。读取失败仍显示失败，不声称已读完或已遵循技能。
 
-工具调用前从公开 `pi.getAllTools().sourceInfo` 获取注册来源，工具完成时以可选 `details.pi5ToolProvenance` 保存到原生 toolResult，绑定 toolName/toolCallId。包来源显示为轻量“来自…”标记，独立扩展显示“扩展工具”；展开查看完整来源路径和原始工具名。不复制提示正文、工具参数 schema、凭据或完整资源清单。旧记录不通过当前安装状态补造历史来源，未知来源保持原工具名称。元数据是来源说明，不是防篡改审计凭证。
+工具调用前从公开 `pi.getAllTools().sourceInfo` 获取注册来源，工具完成时以可选 `details.pivaneToolProvenance` 保存到原生 toolResult（浏览器兼容历史 `pi5ToolProvenance`），绑定 toolName/toolCallId。包来源显示为轻量“来自…”标记，独立扩展显示“扩展工具”；展开查看完整来源路径和原始工具名。不复制提示正文、工具参数 schema、凭据或完整资源清单。旧记录不通过当前安装状态补造历史来源，未知来源保持原工具名称。元数据是来源说明，不是防篡改审计凭证。
 
 新增 `pi-tool-provenance.js` 在受管 RPC worker 注册只读事件钩子：暂存最多512个调用；来源/path/name有长度预算；结束或关闭时清理。不读取文件、不改变工具参数、正文、错误或用量；特殊 details 类型及同名字段冲突时跳过，不改变第三方结果结构。skills 仅按内置 read 的已加载路径精确匹配，别名路径或自定义 read 不推定归属。工具结果 details 由 Pi 持久化，元数据不进入模型正文，不建第二套历史。
 

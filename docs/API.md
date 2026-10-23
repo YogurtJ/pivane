@@ -1,79 +1,40 @@
 # API Reference
 
-## 消息渠道（messageChannels）
+本文件描述当前源码的实际接口。基准地址是用户实例自己的 Host/端口；Pi 接口通常以 `/api/pi` 为前缀，访问验证与网络接口使用各节标明的完整路径。能力以运行实例返回值为准，源码文档不表示旧部署已经具备这些接口。
 
-`GET /api/pi/status.messageChannels=true` 表示消息渠道接口可用，不表示微信组件已安装或账号已连接。以下接口沿用工作台身份、Origin/CSRF、维护准入与 no-store；worker 内部凭据不能管理渠道。
+## 按任务查接口
 
-- `GET /api/pi/channels`：返回配置 `revision`、组件 installed/version/availableVersion/sources、脱敏 accounts、bindings、已允许 peers、最近 60 条 jobs（含 `sentChunks`、`sentMedia`、`waiting`、`kind`、有界 `deliveryIssues:[{name,reason}]`）、当前登录的二维码布尔矩阵/status/expiresAt 和 capabilities（`text`、`images`、`files`、`slashCommands`、`typing`、`proactive`、`threadResults`）。没有账号 token、微信 context token、登录验证码或消息正文。
-- `POST /api/pi/channels/weixin/actions`：共同字段 `{action, confirmed:true, expectedRevision}`。操作在 await 前预占互斥；冲突 409，其他失败 400，结果不确定不自动重放。当前支持 `install`、`uninstall`、`login`、`cancel-login`、`verify-login`、`account`、`bind`、`unbind`、`stop`、`recover`、`acknowledge`。
-- `cancel-login` 需要 loginId；`verify-login` 需要 loginId/code（1–12 位数字）；登录最多五分钟，通过 GET 查询进度，不由浏览器重复提交登录请求。
-- `account` 需要 accountId/enabled/allowedUsers（最多 100 个 1–256 字符 ID）；启用必须有非空允许列表。`bind` 需要 accountId/peerId/cwd 和 sessionId，或显式 newSession=true；可带 `replyMode:'all'|'wechat'`（默认 all，旧绑定缺失同样为 all），分别接收全部线程最终结果或仅微信发起的回复。绑定保存生效时间与最近已完成轮次边界，接收尚未结束的任务，不补发历史。`unbind` 需要 accountId/peerId。最多 10 个账号、200 条绑定、500 个已允许聊天；临时及管理助手线程不接受绑定。
-- `stop`、`recover`、`acknowledge` 需要 jobId。stop 仅请求中止所属微信运行；recover 仅在未开始微信发送且原生当前分支存在已完成结果时恢复发送；acknowledge 不重跑、不补发。
+| 任务 | 入口 |
+|---|---|
+| 认证、Origin、通用错误与文件身份 | [通用行为](#1-通用行为) · [访问验证](#工作台访问验证accesscontrol) · [网络](#网络设置) |
+| 查询实际能力、配置与资源接口 | [GET /status](#get-status) · [能力与关联接口](#状态能力与关联接口) |
+| 项目、会话、移动、导入与历史 | [Pi REST](#2-pi-rest-api) · [会话工作流](#会话工作流-rest) |
+| 助手档案、记忆与后台学习 | [可选助手档案](#可选助手档案) · [记忆契约](PROFILE_MEMORY.md) |
+| 任务线程、定时任务与渠道 | [任务线程](#agent-任务线程) · [定时任务](#定时任务) · [消息渠道](#消息渠道messagechannels) |
+| 附件、文件交付与成果 | [原件上传](#办公文档附件documentuploads) · [清理](#附件用量与清理documentstorage) · [成果中心](#成果中心artifacts) · [文件契约](FILE_VIEWER.md) |
+| WebSocket 连接、命令与事件 | [Pi WebSocket](#3-pi-websocket) |
+| 模型、音色与资源设置 | [Web 设置](#4-web-设置-api) |
+| 聊天生成、实验室与兼容媒体接口 | [媒体实验室](#5-多媒体实验室与-media-agent) · [旧媒体 REST](#6-媒体和历史-rest-api) |
+| 已移除的接口边界 | [已删除接口](#7-已删除接口) |
 
-`jobs.status=partial` 表示文字或部分文件已送达，但有附件因 `size`、`limit`、`unreadable`、`unavailable`、`pending` 或 `failed` 未发送；不会自动补发。`typing` 返回最多 100 个脱敏运行诊断 `{accountId,peerId,status,failures,reason}`，不包含票据或上游错误正文。修改指令在提交前持久化为 `dispatching`；重启或未知结果转 `uncertain`，Slash Command 不提供 `recover` 自动补运行入口。
+## 1. 通用行为
 
-`GET /api/pi/cron` 新增 `channelNotifications:{pending,failed,lastError}`；任务的 `weixinNotification:'inherit'|'on'|'off'` 默认为跟随线程；旧任务的默认 false 跟随，原 true 保持推送，显式关闭使用 off。旧客户端提交的布尔 `notifyWeixin` 仍转换为 on/off。`lastError` 仅为 `channel-admission-pending`、`channel-capture-failed` 或 null。运行记录的 `channelNotify.status` 为 `pending`、`accepted` 或 `skipped`；accepted 仅表示渠道持久入队，实际微信送达以渠道 jobs 为准。
+- JSON request body 上限由 Express 设置为 32 MB。
+- 公开静态 JS/CSS 可按 `Accept-Encoding` 返回 Brotli/gzip，设置 `Vary: Accept-Encoding`、表示专属 ETag 和 `Cache-Control: public, max-age=0`；HEAD 与条件 GET 保留。范围／前置条件请求回到原生 identity 表示；客户端禁止 identity 而无可交付压缩表示（包括并发饱和）时返回 406，压缩读取检测到文件变化时返回 409。API、WebSocket、HTML 与媒体不通过此压缩缓存。项目／线程列表字段保持兼容，服务器只复用经文件身份及目录成员核实的可丢弃摘要。
+- 私人 API 检查 Origin 与可选工作台身份；accessControl开启时使用HttpOnly Cookie或Bearer。相同Origin仅通过来源检查，不授予访问权。
+- `PI_ALLOWED_ORIGINS` 是附加跨域白名单，不会取代上述同 Host 规则。
+- `PI_WEB_TOKEN` 非空时，HTTP 使用 `Authorization: Bearer <token>`。
+- WebSocket token 放在第一条 `open_session` 消息中，不放 URL。
+- 错误通常返回 `{ "error": "..." }`。
+- Agent session path 不接受浏览器直接指定，必须通过 `cwd + sessionId` 查找。
 
-状态、队列预算、组件来源与存储见[消息渠道](MESSAGE_CHANNELS.md)。原生私有命令标记 `channels-v1` 不加入公开 RPC 命令白名单；`pivane-channel-message` 是唯一聊天正文，`pivane-channel-turn` 记录运行状态和回复条目 ID。浏览器只按真实回执显示送达，不以模型输出结束推断微信收到。`pivane-thread-turn` 保存普通受管轮次起止、来源及最终回复 ID；`jobs.kind='thread'` 仅持久化原生轮次引用与固定接收绑定，恢复时重读当前原生分支。微信原发起者和定时任务分别沿用既有渠道／调度回执，避免重复投递。网页 `stop_and_recover` 对独占中的微信轮次直接中止，保留其原生结算互斥。
-
-## 成果中心（artifacts）
-
-`GET /api/pi/status.artifacts` 表示成果能力；`GET /api/pi/activity.artifactOperations` 为真实读写操作数量。`GET /api/pi/artifacts` 仍返回有界、来源重验的待保存目录；新增 `/artifacts/library` 独立库分页、`POST /artifacts/batch` 逐文件／批量保存、星标、合集、重命名、项目标签、导出、回收站和永久删除（purge 可从任意视图永久删除已保存的库条目，要求 confirmed=true、精确 library ID 及当前 revision；中断的删除在回收站显示为删除待核对／deletionPending），`GET /artifacts/operations/:requestId` 核对不确定写入。`/artifacts/:key/preview|cover|origin|location` 按来源 key 或稳定 library ID 读取。已独立保存的文件不依赖来源会话；删除会话与删除成果副本分开。原交付链接语义不变，source key 仍不是授权。完整字段、确认／修订、预算和错误见 [成果中心](ARTIFACTS.md#预算资格与接口)。
+### 平台文件身份
 
 平台路径：文件请求接受经过规范化校验的Windows盘符/分隔符路径，返回相对path使用网页斜杠表示；ADS、设备命名空间、保留设备名及盘符相对路径拒绝。fileViewer/sessionSearch/usageStats仍由实际后端可用性决定，Windows原生组件承担私密文件ACL与句柄检查，缺失时配置初始化也可能拒绝。没有增加任意句柄/路径写入REST或绕过已有身份/同源检查。范围见WINDOWS.md。
 
-媒体协议：GET `/api/pi/media/lab/connections` 新增 `providerTemplates`，协议模板含可选 `recommended/help`。HTTP response.type 增加仅图像可用的 `image-json`，path 指向含 `b64_json/url` 的对象；JSON 路径 `*` 查找数组内第一份匹配结果，不批量执行。GET lab 省略所有旧 zimage/flux2/minimax-video 项（包括configured=true），前端也过滤旧进程返回的这些项，内部兼容定义仍可被旧 API 使用。CRUD、Key、修订和票据确认契约保持；详见 [MEDIA_CONNECTIONS.md](MEDIA_CONNECTIONS.md)。
+### 工具结果来源
 
-运行能力包括 liveRecovery/extensionDrafts/sessionSearch/runtimeConfiguration 标记。主连接 get_messages.webLive 为有界partial/tool展示快照；Pi 1.3 最终工具参数解析失败时保留 argumentsError，恢复预览最多8192字符并计入原有预算，最终原生记录保持完整。网页只按文本展示错误，原生 validation 拒绝执行损坏参数。广播增加webRuntimeId/webSequence；主WS新增 ack_extension_draft、get_runtime_configuration、restart_runtime（空闲持久线程，runtimeId/expectedRevision/confirmed）。GET /sessions/search?q&cwd?&offset?&searchId? 提供受保护、可取消、有界原生正文跨线程检索。完整字段、预算、实际信任、配置修订、重开互斥与接受ACK语义见 [NATIVE_COMPLETION.md](NATIVE_COMPLETION.md)。不添加裸导航/工具权限、不存持久聊天副本。
-
-原生设置：GET `/api/pi/settings/native` schema 提供 `defaultTools`（type=tools、choices/defaults/platform、maxEntries=1024/maxNameLength=500）、`codemode.mode`（on/only）、`codemode.inlineBudget`（0–1000000）与 `defaultProjectTrust`（ask/always/never、globalOnly）。PUT 接受普通／自定义工具名和顺序 +/- 条目；普通名称替换，只有修饰符时修改继承选择，重复修饰符保留，重复普通名拒绝。null 删除本层覆盖，Pivane [] 不默认启用内置工具，扩展工具可能仍自动激活；受信项目修饰符叠加全局 [] 不恢复默认。信任策略仅全局写入，项目范围即使 null 也拒绝。保存返回 requiresRuntimeRestart=true，不改变现有实例或逐项目信任决定；完整语义见 [NATIVE_SETTINGS.md](NATIVE_SETTINGS.md)。
-
-页面通知/提示音仅复用现有GET /api/pi/activity，不新增API；后台推送仍是显式可选功能，基础localhost通知无需调用订阅或VAPID接口。详见NOTIFICATIONS.md。
-
-基准地址为用户实例自己的Host/端口；以下路径和供应商标识是中性示例。
-
-本文件描述当前代码中的实际接口，不是未来设计。
-
-工具结果的可选 `details.pi5ToolProvenance` 包含 `{version:1,toolName,toolCallId,source?:{source,path,scope,origin},skill?:{name,path}}`，由受管 worker 的调用前元数据生成，随原生 toolResult 和原有 WS 工具结果传递。缺失即未知，不通过设置清单补填；前端核对名称与调用 ID，仅作来源显示。扩展助手包确认取消时提供 `details.pi5PackageOperation.status='cancelled'`。不新增 REST 或改动原始正文、错误和用量，详见[执行来源](NATIVE_SETTINGS.md#执行记录中的技能与扩展来源)。
-
-## 办公文档附件（documentUploads）
-
-状态 `GET /api/pi/status` 返回 `documentUploads` 和 `documentUploadLimits:{fileBytes:20971520,files:5}`，以及 `attachmentUploads` 和 `attachmentUploadLimits:{fileBytes:104857600,batchBytes:209715200,files:8}`。原生描述符组件不可用时能力为 false，接口拒绝。格式、存储与解析预算见[办公附件](COMPOSER_TOOLS.md#上传办公文档与-pdf)及[通用原件](COMPOSER_TOOLS.md#通用原件附件)。
-
-- `POST /api/pi/uploads?cwd&sessionId&requestId&name&purpose?`：持久线程原件上传，Content-Type 必须为 application/octet-stream。Office/PDF 非空原始字节最多 20 MiB，其余普通文件最多 100 MiB；可选 `purpose=image` 保存经核验的图片原件，网页图片入口仍限制 6 MiB。requestId 为 1–160 字符的字母/数字/点/短横线/下划线/冒号，首字符为字母或数字；name 为不含路径分隔符或控制字符的 1–240 字符文件名。返回 `{reference:{id,revision,name,format,size},marker,reused?}`，id/revision 是 64 位小写 hex。先预占两项操作额度再读取 HTTP body，不自动解压请求 body。重复同一规范 cwd/sessionId/requestId 只返回相同原件，参数或字节不同返回 DOCUMENT_CONFLICT，不覆盖。
-- `GET /api/pi/uploads/status?cwd&sessionId&requestId`：仅查询同一上传标识的已保存原件，返回 reference/marker。404 只表示尚未找到已发布原件，不表示在途上传已取消，不能据此自动重传。
-- `GET /api/pi/uploads?cwd&sessionId`：从当前完整原生分支返回 `{items:[reference]}`，最多 500 个引用，不启动关闭的 worker。
-- 同接口加 `id`：核对引用、描述符及 SHA256 后返回原始字节，使用 attachment、application/octet-stream、nosniff、no-store、sandbox CSP 与同源资源策略。未发送原件可由原上传 cwd/sessionId 下载；新建网页分叉可按服务器登记的来源证明下载其回填问题的精确文档引用，仍核对证明修订、原生文件前缀和线程身份。此例外仅用于下载，不扩展分支列表或 read_document 的资格。浏览器不使用公开静态目录或 URL Token。
-- `POST /api/pi/uploads/read`：只允许当前活跃持久 worker 的受限内部凭据；普通工作台 Cookie/Bearer 不能调用。JSON 为 `{id,action?:inspect|read,start?,count?,sheet?,column?,columns?}`，默认 inspect/start=1/count=20/column=1/columns=20。Word start 为正文段落／表格行，Excel 为行，PPT/PDF 为页；全部从 1 开始。count 1–200，PPT/PDF 实际最多 10 页；column 1–16384、columns 1–50。sheet 为准确工作表名，省略取首张表。读取前后核对同一 worker 与当前分支；不存在于分支返回 DOCUMENT_SCOPE，变化返回 DOCUMENT_CONTEXT。原生 `read_document` 工具复用此接口，其结果存入原生 toolResult。
-
-- 同一受限 `/uploads/read` 接口也接受 `{id,action:"materialize"}`，其余读取范围字段不允许；由原生 `get_attachment` 工具调用。服务在当前项目私有 `.pivane-attachments/<id>/<name>` 排他发布原件副本，返回 `{reference,path,copied:true,instruction}`。每次核对当前分支、原件与目标目录／文件身份、SHA256 和大小；已有相同副本可复用，修改后的副本拒绝覆盖，工作台普通凭据不能调用。原始文件不被执行或解压。操作沿用 document-read 生命周期和维护门禁。
-
-原生用户消息使用规范 `<pivane_document ... />`（DOCX/XLSX/PPTX/PDF）或 `<pivane_attachment ... />`（`format=file|image`）标记保留原件引用，不存二进制或另一份会话。每条消息最多八个原件引用，其中办公/PDF 最多五个。仅用户消息中的有效引用参与分支授权；助手／工具输出不授予读取资格。继承或显式携带原引用的分支可以读取同一身份存储中的原件；单独导入到其他实例不会复制原件。分支属于授权输入，标记本身不是服务器文件路径。
-
-错误为 `{error,code}`：400 DOCUMENT_INPUT/DOCUMENT_SHEET，401/403 访问/作用域，409 DOCUMENT_CONTEXT/DOCUMENT_CHANGED/DOCUMENT_CONFLICT/FORK_ACCESS_CHANGED，413 DOCUMENT_LIMIT/DOCUMENT_STORAGE/DOCUMENT_TIMEOUT，415 DOCUMENT_FORMAT，429 DOCUMENT_BUSY，503 服务关闭或描述符/进程不可用。读取结果提供 format、unit、warnings、范围、truncated、nextStart；Excel 同时提供工作表名、日期系统、单元格地址、原始值、公式与缓存值；公式未保存计算结果时 cachedValue 为 null，不将缺失结果当作零。临时上传目录不对外开放；已保存原件不自动清理。 `GET /activity.documentOperations` 和 worker 的 document-read 生命周期投影参与空闲与停机等待。
-
-## 附件用量与清理（documentStorage）
-
-`/api/pi/status.documentStorage=true` 表示提供以下受身份、Origin 和允许项目范围保护的接口；均为 no-store。不接受文件路径。`draftIds` 可省略或为最多 10000 个文档 ID，供当前页面额外保护未发送草稿，不授予读取权限。
-
-| Method | Path（前缀 `/api/pi`） | 请求与结果 |
-|---|---|---|
-| POST | `/uploads/storage/usage` | `{cwd,draftIds?}`；返回实例 `totalBytes/count/limits`、当前项目 `items`、`complete/revision/warning`。item 包含 `id/name/size/sessionId/savedReference`；引用状态为 protected/not-found/unknown。不完整时仍可显示用量，但不能清理 |
-| POST | `/uploads/storage/preview` | `{cwd,id,draftIds?}`；全局空闲、全部受管运行实例实际退出且引用核验通过后返回 `{ticket,revision,item,expiresAt}`，票据五分钟有效 |
-| POST | `/uploads/storage/cleanup` | `{cwd,ticket,revision,requestId,draftIds?,confirmed:true,externalWritersStopped:true}`；一次只清理票据指定原件，返回持久回执 `state:deleted|uncertain`。requestId 沿用上传标识字符集和 160 字符上限；同一编号不重放删除 |
-| GET | `/uploads/storage/status?cwd&requestId` | 只查询原请求的已保存回执；404 不表示在途删除已取消，不能自动重提 |
-
-预览和执行同步关闭新的 HTTP/WS 引用写入，暂停后台派发，核对已有 worker 的只读原生状态并要求所有运行实例实际退出，不能用 idle 快照排除扩展后台写入；停止中的 owner 继续阻止新 writer 与清理，失败不视作退出。独立门禁不能由维护 IPC 解锁。保留所有原生分支、受管嵌套会话、分叉凭据、预约、持久排队意图、定时任务与未确认运行的引用，并核对前后文件／目录身份。会话与凭据扫描上限 4 GiB／30000 项；定时 SQLite 经核验描述符复制到私有只读快照，并合并当前连接记录，上限 512 MiB 数据库、64 MiB 所需行、100 个任务和 10000 个未终结运行。未知自定义根、配置损坏、引用不完整或超限均拒绝清理，不追随正文中任意路径。其他浏览器草稿、外部副本和其他文件里的链接仍须由用户核对。
-
-拒绝返回 `{error,code}`，包括 DOCUMENT_STORAGE_BUSY、DOCUMENT_STORAGE_CHANGED、DOCUMENT_SCAN_INCOMPLETE、DOCUMENT_PROTECTED、DOCUMENT_SCOPE、DOCUMENT_INPUT、DOCUMENT_CONFLICT；全局入口忙碌可能返回 503/errorCode。已进入删除发布阶段的 I/O 失败保留不确定凭据和删除标记，不自动恢复、重放或复活同一上传 ID。没有存储守卫／完整引用提供者时只能列出用量。操作仍计入 documentOperations；详细用户边界见[附件用量与清理](COMPOSER_TOOLS.md#附件用量与清理)。
-
-## 任务进度（taskProgress）
-
-`GET /api/pi/status` 的 `taskProgress:true` 表示服务支持内置进度卡。主 WS `open_session` / `open_ephemeral` 的 `messages.webProgress` 与 `get_messages.webProgress` 为 `null` 或 `{version:1,id,plan:[{step,status}],explanation}`；`id` 标识一次已保存的更新。空 `plan` 表示明确清除，不回退到更早计划。每次原生更新或分支恢复广播 `{type:'gateway_progress',progress}`，沿用 `webRuntimeId/webSequence`，初始化按 `messages.webLive` 的边界过滤已包含事件；前端收到进度事件递增运行修订，拒绝较早的异步快照覆盖。
-
-工具 `update_plan({plan,explanation?})` 每次替换完整计划，最多 20 步、每步 1–200 字符，状态为 `pending|in_progress|completed`，至多一项 `in_progress`；说明最多 1000 字符。空白步骤或非法状态拒绝保存。`details.pivaneProgress` 提供该次结果。受管扩展通过 `pi.appendEntry('pivane-task-progress', data)` 保存原生状态，Supervisor 只缓存有界展示投影；不新增独立数据库或计划写入 REST。
-
-恢复读取完整当前 branch 的最新 custom entry，不依赖压缩后的消息列表。最新工具结果离开模型上下文时，扩展通过原生 `context` hook 提供当前计划数据；不启动额外模型请求。正式线程持久，临时线程随运行销毁，侧聊不注册此工具。停止和 `agent_settled` 不改步骤。用户操作见[任务进度卡](USER_GUIDE.md#任务进度卡)。
+新写入工具结果的可选 `details.pivaneToolProvenance` 包含 `{version:1,toolName,toolCallId,source?:{source,path,scope,origin},skill?:{name,path}}`，由受管 worker 的调用前元数据生成，随原生 toolResult 和原有 WS 工具结果传递。缺失即未知，不通过设置清单补填；前端核对名称与调用 ID，仅作来源显示。扩展助手包确认取消时提供 `details.pivanePackageOperation.status='cancelled'`。浏览器兼容历史 `pi5ToolProvenance` 与 `pi5PackageOperation`，不改写原生旧记录。不新增 REST 或改动原始正文、错误和用量，详见[执行来源](NATIVE_SETTINGS.md#执行记录中的技能与扩展来源)。
 
 ## 工作台访问验证（accessControl）
 
@@ -89,76 +50,9 @@
 
 写入和测试必须已启用访问验证、有当前身份、同源/允许来源及 `X-Pi-Access: 1`。401未认证、403来源/环境锁/未开启认证、409修订冲突、429测试限流、503配置不可用。冲突或不确定写入不重放。网络 HTTP 操作参与现有维护请求占用。私有文件与生效说明见[网络与访问](ACCESS_CONTROL.md#网络设置)。
 
-## 1. 通用行为
-
-- JSON request body 上限由 Express 设置为 32 MB。
-- 公开静态 JS/CSS 可按 `Accept-Encoding` 返回 Brotli/gzip，设置 `Vary: Accept-Encoding`、表示专属 ETag 和 `Cache-Control: public, max-age=0`；HEAD 与条件 GET 保留。范围／前置条件请求回到原生 identity 表示；客户端禁止 identity 而无可交付压缩表示（包括并发饱和）时返回 406，压缩读取检测到文件变化时返回 409。API、WebSocket、HTML 与媒体不通过此压缩缓存。项目／线程列表字段保持兼容，服务器只复用经文件身份及目录成员核实的可丢弃摘要。
-- 私人 API 检查 Origin 与可选工作台身份；accessControl开启时使用HttpOnly Cookie或Bearer。相同Origin仅通过来源检查，不授予访问权。
-- `PI_ALLOWED_ORIGINS` 是附加跨域白名单，不会取代上述同 Host 规则。
-- `PI_WEB_TOKEN` 非空时，HTTP 使用 `Authorization: Bearer <token>`。
-- WebSocket token 放在第一条 `open_session` 消息中，不放 URL。
-- 错误通常返回 `{ "error": "..." }`。
-- Agent session path 不接受浏览器直接指定，必须通过 `cwd + sessionId` 查找。
-
 ## 2. Pi REST API
 
 所有路径前缀为 `/api/pi`。
-
-### 定时任务
-
-`GET /status.scheduledTasks=true` 表示服务支持周期与单次任务，`GET /activity.cronBusy` 表示正在保存／调度／核对。`GET /cron` 读取任务、主线程、预算与状态，`PUT /cron/jobs` 使用稳定 UUID 和修订保存任务，`POST /cron/jobs/:id/actions` 提供暂停、启用、运行、停止与核对操作。创建主线程使用 `PUT /cron/homes/:profileId`，沿用原生线程身份和工作目录验证。完整字段、去重、时区与费用边界见[定时任务契约](SCHEDULED_TASKS.md#数据与接口)。
-
-### 可选助手档案
-
-`GET /status.agentProfiles=true` 表示可选助手档案接口可用。`GET /profiles?cwd` 返回 `profiles`（不含回收站身份）、按移入时间从新到旧的 `trash:[{id,name,description,avatar,trashedAt}]`、注册表修订、`profileRevisions`（含回收站的所有档案ID到自身修订的映射）和所选项目默认身份；`PUT /profiles` 接受 `{expectedRevision,profile}` 创建或更新档案，回收站身份拒绝更新（409），须先恢复；`PUT /profiles/default` 接受 `{cwd,profileId,expectedRevision}`，`profileId:null` 清除项目默认身份，仅接受已启用且不在回收站的身份。现有 `POST /sessions` 的可选 `profileId` 省略时使用项目默认，显式 null 创建无档案线程。
-
-- `POST /profiles/:id/trash`：`{expectedRevision}`，原子保存 `trashedAt`（ISO）、`trashedEnabled`（原启用状态）和 `enabled:false`，同时清除所有指向该身份的项目默认值；返回 `{ok:true,profile,revision}`。
-- `POST /profiles/:id/restore`：`{expectedRevision}`，移除回收站元数据并恢复原启用状态，原本停用的身份仍停用，不重设项目默认值；返回 `{ok:true,profile,revision}`。
-
-两接口沿用档案保存的访问／Origin校验、`Cache-Control: no-store`、注册表 CAS、设置互斥与维护／停机拒绝；未知身份404，修订冲突、重复移入或恢复未移入的身份409。回收站身份仍计入50个上限。没有永久删除，身份数据、头像、学习状态、会话和逻辑助手项目均保留；已有会话保留身份名称并显示 `available:false`，新建／重新加载与后台学习按停用身份处理。
-
-会话序列化字段 `agentProfile` 是保存的身份投影，不能据此推断 worker 已加载。`get_runtime_configuration.agentProfile` 分别返回 saved、savedProfileRevision、loadedProfileId、loadedProfileRevision、loadedConfirmed 与 matchesSavedProfile。旧会话不因新增项目默认身份而追认归属，网页分叉显式继承源身份，导入不会仅因复制旧会话标记而获得绑定。字段限制、保存与重开语义见[助手档案](AGENT_PROFILES.md)。
-
-`GET /status.profileMemory` 返回 `{installed,autoLearn}`，核对私有配置指向的适配 bundle 与本机 SQLite；旧的三轮复盘已停用，`autoLearn` 固定为 false。配置失效时 `installed` 为 false，不隐式切换聊天模型或全局安装插件。`GET /profiles/:id/memory?kind=memories|skills&query=&offset=` 保留为旧版只读兼容接口，分页每次最多50条；其 ready 是数据可读状态，与当前会话是否加载分开。
-
-`GET /status.profileLearning=true` 表示逐项知识管理与后台学习接口已装配（同一 `ProfileKnowledgeService` 实例供路由、后台学习和原生工具共用）。
-
-- `GET /profiles/:id/knowledge?kind=memory|skill&query=&offset=&sessionId=&state=present|deleted|draft|all&target=user|memory|project&category=fact|preference|correction|failure|procedure`：state 可选，省略与 all 均保留全部状态；present 排除已删除条目。状态、target 与 category 过滤均在分页前进行，不改变写入 revision。target/category 均需明确 `kind=memory`，非法值返回 400；project 按项目 scope 选择，user/memory 仅选 profile scope，memory 包含只读旧 failure 条目且不改变其 target。ready 快照增加 `counts:{memory:{total,user,memory,project,deleted},skill:{total,active,draft,disabled,deleted}}`，统计所有未镜像条目，不受 kind/query/offset/state/target/category 影响；total 与子组排除已删除项，deleted 单列，记忆分组与 target 过滤一致。每页最多 50 条（记忆预览 512 字符）、30 条近期回执、不透明 revision，以及 `capabilities`（`operations`、`memory`/`skill` 可写性、`projectWrites:false`、`skillNameMaxLength`、`skillDescriptionMaxLength`（1024，与 Pi 技能描述上限一致）、`maxContentLength`、`journal` 计数与上限）。记忆可用时另有 `usage:{memory:{chars,limit},user:{chars,limit},failure?:{chars,readOnly:true}}`，字数与写入时的上限判断一致。回执带 `origin`（`manual|agent|learning`，由服务端决定）、`learningReason`（仅 learning）、`preview`（记忆正文或技能名与描述，最多约 160 字符）、记忆的 `category`；同一条目之后又有回执时标 `superseded:true`。归档摘要不含 preview。`status` 为 `ready|pending|missing|disabled|unsupported|error`；pending 时 revision 为 null，禁止写入。
-- `GET /profiles/:id/knowledge/injection?sessionId=`：只读的下一轮注入预览，用与注入相同的上游格式渲染：`{status,block,truncated?,chars,entries,profile:{chars,entries},project,lastRead}`；带 sessionId 时核实会话归属并加入该目录的项目块，`lastRead` 取会话最近一次 `pivane-profile-memory-read`（含 `chars`/`entries`）。block 最多 64 KiB。
-- `GET /profiles/:id/knowledge/items/:itemId`：受限正文（最多 65,536 字符）、条目 revision、`readOnly`/`truncated` 与服务端来源 `{sessionId,entryId}`。
-- 未删除的记忆条目被 `memory_search` 实际返回过时，快照列表与单条读取另带 `recall:{hits,lastHitAt}`（次数与 `YYYY-MM-DD`）；从未被检索到、已删除、技能或数据库尚无计数列时省略。它是只读参考数据，不进入 revision，计数变化不会使编辑 409，读取失败时省略而不影响页面；条目内容改动后对应计数从 0 开始。
-- `POST /profiles/:id/knowledge/mutations`：`{requestId,expectedRevision,operation,kind,...}`，operation 为 `create|update|delete|restore|enable|disable|undo|consolidate`；`consolidate` 只限手动：`{target:'memory'|'user',items:[{itemId,itemRevision}] (2–20),content,category}`，任一条目变化则整批 409，回执带 `consolidated` 原条目 ID，撤销一次恢复全部原条目（撤销回执本身不可再撤销）。项目记忆可带 `scope:'project',sessionId` 写入（create/update/delete/undo）：服务端按会话文件头的 ID 找到会话并核实归属与目录，客户端 `projectKey` 一律拒绝，`capabilities.projectWritesBySession` 表示可用；项目技能可按同样的 `scope:'project',sessionId` 核验执行 delete/undo（kind 为 skill），由 `capabilities.projectSkillDeletesBySession` 表示可用，不能借此创建或改写技能；记忆需 category `fact|preference|correction|failure|procedure`，undo 只带 `receiptId`。拒绝客户端提交的 `source`、`projectKey` 与草稿状态。确定拒绝为 4xx（409 版本冲突/身份不唯一，413 超出来源证明预算；写满为 409 `{error,code:'memory-full',details:{target,chars,limit,needed}}`），发布结果不确定为 503 并保持 pending，只能用同一 requestId 与同一输入修复。客户端 requestId 7 天内重放返回原回执，过期后拒绝且不重跑。
-- 知识服务对 `create/update/consolidate` 在原互斥内执行保守的精确查重，同一身份 USER/MEMORY 跨目标比较、项目目录保持隔离。重复返回 409 `{code:"knowledge-duplicate",details:{itemId,itemRevision,kind,scope,target?,name?,readOnly}}`；不隐式改写旧条目。原生工具将此确定拒绝表示为 `unchanged:true`，没有保存回执。记忆只归一 Unicode NFC、外部空白和原生尾部元数据，不折叠大小写、数值或标识符；技能实质流程比较详见[记忆适配](PROFILE_MEMORY.md#agent-write-time-comparison)。
-- 原生身份工具 `memory_add` 和 `skill_manage(create)` 新增可选 `comparisonToken`：第一次调用返回 `comparisonRequired:true,saved:false,candidates,comparisonToken`，只读不保存；模型比较后仅独立新内容以原参数提交 token。token 绑定 worker、身份、真实会话／目录、完整创建参数与知识修订，10 分钟失效；不能当用户授权、跨会话使用或让创建隐式变成更新。HTTP 知识 mutation 不接受这个工具内部字段。
-- 知识写入（`create`、`update`、`consolidate`，以及档案文档保存新增的条目）若含疑似密钥或提示词注入内容，返回 400 `{code:'content-blocked', details:{rule, kind}}`，`kind` 为 `secret` 或 `injection`，错误信息不回显原文。
-- `GET/PUT /profiles/:id/learning`：GET 返回 `{version:1,status,revision,settings,health,legacy,proposals,drafts,jobs,recentRuns,capabilities}`，revision 为整数；PUT `{expectedRevision,changes}` 只保存开关、额度和触发词，不启动作业；`maxRunsPerDay` 范围 1..500、默认 20，`maxTokensPerDay` 范围 6000..5000000、默认 200000，与 `capabilities.limits` 一致；`settings.triggerPhrases` 为 `{correction,preference,temporary,ignore}`，每组最多 50 个、每个不超过 80 字符的普通短语，限制见 `capabilities.limits.triggerPhrases`。学习写入被内容检查拒绝时，作业记为 `skipped`，`error:'content-blocked'`。`health` 为 `{state:'off'|'unavailable'|'needs-model'|'quota-exhausted'|'failing'|'ok',missingModels,lastFailure,today:{runs,maxRuns,reservedTokens,maxTokens,exhaustedBy,resetsAt,usedTokens}}`，按此顺序取第一个成立的状态，`memory-full` 位于 needs-model 之后。`exhaustedBy` 为 `runs|tokens|null`（次数已满优先，否则剩余预留量不足一次 6000 Token 则为 tokens）；`resetsAt` 为下一个 UTC 午夜 ISO 时间，`usedTokens` 合计今天计入额度的运行中供应商报告的 totalTokens，无报告为 null。紧凑当日汇总保留 64 条详细历史之外的额度／实际用量，跨 UTC 日归零；预占和退款规则不变。`proposals` 为最多 3 个整理方案 `{id,target,createdAt,model,source?:{sessionId,entryId},groups:[{items:[{itemId,itemRevision,preview,category}],content,category}]}`；普通后台学习也可在原单次模型调用中提出同目标合并方案，保留原条目，source 指向经核实的原生用户消息；`drafts` 为 `{pending,capped?}` 待审草稿技能数。`legacy` 在身份原始配置 `memory.autoLearn=true` 且尚未迁移或忽略时为 `{autoLearn:true,reviewModel,reviewModelAvailable,purposes}`，否则为 null。作业 `error:'memory-full'`（status skipped）表示写满未保存。
-- `POST /profiles/:id/learning/actions`：`{requestId,action,...}`，action 为 `review-now`、`cancel`（`jobId`）、`enable`（可选 `review`/`extraction` 布尔，只改开关不改模型）、`adopt-legacy`（可选 `model:{provider,modelId}`，只给未配置的学习用途补模型并开启纠错与复盘；模型不可用为 409 `legacy-model-unavailable`）、`dismiss-legacy`、`propose-consolidation`（`target`，只生成方案，不写知识，预留 `settings.consolidationInputChars`+6000 token）、`dismiss-proposal`（`proposalId`，可选 `groupIndex` 为当前数组位置）。按 `capabilities.actions` 调用，返回最新快照；同一 requestId 幂等，结果不确定时不自动重放。升级本身不开启任何学习。
-
-`GET /activity` 另含 `learningBusy`、`learningRuns`；维护空闲判断包含后台学习。辅助模型用途新增 `memory-correction`、`memory-review`、`memory-extraction`，未配置时等待配置，不回退主模型。字段语义、写入日志容量、限额与验证状态见[记忆适配](PROFILE_MEMORY.md)和[辅助模型](AUXILIARY_MODELS.md)。
-
-`GET /status.profileDocuments`、`profileAuthoring` 表示文档编辑及专用起草接口已装配。`GET/PUT /profiles/:id/documents` 使用 `target=user|memory` 和文档／档案双修订；结果区分 `documentSaved`、`indexSynced` 与 `indexStatus`（ready/pending/disabled/unsupported）。202 表示文档已保存但检索未启用；503 可表示保存后的索引部分失败或文件写入结果未知，不能据此自动重放修改。核对最新修订后，提交当前原文可同步待修复的派生索引。头像上传、单条技能正文以及 `/profiles/authoring-sessions` 的字段和限额见[档案接口契约](AGENT_PROFILES.md#接口契约)。起草结果只有在用户导入草稿并保存后才改变档案；`profileRevisions` 供网页核对目标档案，不需要在浏览器重新计算服务端摘要。
-
-### 逻辑助手项目
-
-`/status.assistantProjects=true` 标记逻辑项目后端。项目是独立命名分组，同一规范 cwd 可对应多个项目；分组的 `instructions` 作为额外上下文追加到已加载的助手提示词，不修改共享 AGENTS.md，也不改变 profile+物理 cwd 的记忆范围。归档仅阻止创建新线程，已保存的线程及其绑定不删除。档案不是文件权限沙箱。
-
-- `GET /assistant-projects[?profileId=UUID]` 返回 `{version:1,revision,projects}`。省略筛选返回全部记录；提供 ID 时仅返回关联该档案的组。
-- `PUT /assistant-projects` 接受 `{expectedRevision,project:{id?,name,cwd,description,instructions,profileIds,archived}}`，返回 `{ok,revision,project,requiresReload:true}`。新建省略 ID；更新必须给出已有 ID。name 非空且最多 80 字符、description 最多 500 字符、instructions 最多 8192 UTF-8 字节、profileIds 为不重复 UUID 数组，archived 为布尔值。新关联必须是已启用档案；cwd 经现有 realpath/允许根校验，创建后不可改变。
-- `DELETE /assistant-projects/:id` 接受严格 `{expectedRevision}` JSON，返回 `{ok:true,deletedId,revision}`。仅删除已核实为空的分类记录，不删除目录、文件、会话或身份。检查该 cwd 的全部原生会话（不限当前助手或启用状态），有当前绑定或相关冲突归属、无法完整读取、成员变化／修订过期／设置占用返回 409；不存在返回 404，非法参数返回 400。已有效转出分类的历史标记不阻止删除。结果不确定时重新读取列表核对，不自动重放。
-- `GET /assistant-projects/:id/sessions?profileId=UUID` 返回 `{sessions:[...]}`，只返回原生当前会话 ID 的项目绑定和实际档案绑定均匹配的线程；缺少 profileId 或无效 ID 拒绝。不按浏览器选中状态推断身份。
-- `POST /sessions` 可增加 `assistantProjectId`，此时必须同时显式提交关联、启用的 `profileId`，cwd 必须匹配项目且项目未归档。未知 ID、无效身份或 cwd 冲突在原生文件创建前拒绝，不回退到普通线程。省略 assistantProjectId 保持旧调用和项目默认档案行为。
-
-现有 `/sessions?cwd` 仍列出全部原生线程，新增 `assistantProject:null|{id,name,cwd,available}`；不存在的已绑定组仍显示 ID 和 available=false，不能自动归入另一组。旧有档案绑定但无项目标记的线程仍按真实 cwd 保持未分类。项目标记 `pivane-assistant-project` 保存 `{version:1,sessionId,projectId,cwd}`：初始标记只能有一个且匹配当前原生 ID/cwd；后续分类变更通过 `pivane-assistant-project-change` 的 previousRevision（前一原生 entry ID／无标记时 null）、previousProjectId 与 projectId（UUID／null）构成严格 CAS 链，重复初始标记或断裂链失效。复制导入的旧 ID 不生效；网页分叉给新 ID 追加当前有效归属。保存分组指令不自动重载当前 worker；`get_runtime_configuration.assistantProject` 分别返回 saved、savedProjectRevision、loadedProjectId、loadedProjectRevision、loadedConfirmed 与 matchesSavedProject。只有当前原生会话的运行实例确认后才标记已加载，保存值不能冒充运行配置。注册表保存在原生 agentDir 的私有 `pivane-profiles/assistant-projects.json`，项目和档案保存共用设置/维护忙碌互斥；过期修订和占用返回 409，未授权或非法输入按现有访问控制返回错误。
-
-### Agent 任务线程
-
-`GET /status.agentThreads=true` 标记任务线程后端，`agentTaskResults=true` 标记来源线程结果回执。受管持久 Agent 的 `agent_thread` 工具通过私有 POST `/agent-threads/create|status|models|result` 创建任务、查询状态/模型或分页只读原生结果。身份绑定存活源 worker；工作台 Cookie/Token 不能代替。目录未完成时返回202及 `TASK_INDEXING`/coverage，不把未核实记录当作不存在。`/activity.agentThreadLaunches`、`agentTaskIndexing`、`agentTaskReturns` 分别报告创建、目录读取和交付工作，均进入维护空闲与停机等待。
-
-工作台身份使用 `GET /agent-threads/results?cwd=...&sourceSessionId=...` 读取来源线程的任务与最近100份结果，返回 `status`、`tasks`、`results`、`coverage`、`total`、`truncated`。结果含 deliveryId、requestId、sourceSessionId、session、status、resultId、entryId、completedAt、preview、truncated、delivered、read。`POST /agent-threads/read` 接受 cwd/sourceSessionId/deliveryId，仅由当前来源 worker 在空闲时保存已读；忙碌或归属错误返回409。
-
-来源忙碌或关闭不丢结果，重开后从原生任务状态和回执恢复；回传不触发新的模型轮次。任务参数、预算、旧任务兼容和失败语义见[Agent 任务线程](AGENT_THREADS.md)。
-
-`GET /status.agentMessages=true` 标记线程间消息。受管持久 Agent 的 `agent_message` 工具通过私有 POST `/agent-messages/threads|send|status` 列出同项目线程、发送或查询投递，身份同样绑定存活源 worker。send 在接收方空闲时经其私有命令保存 `pivane-agent-message` custom message（details 含 messageId、from、conversationId、hop、replyTo、wake、wakeSuppressed、sentAt、bodyOffset），需要唤醒时再追加不显示的 `pivane-agent-message-wake` 并触发一轮；发送方追加 `pivane-agent-message-out` custom entry 作为重启补投记录。不新增工作台身份的写接口。`/activity.agentMessages` 报告投递、补投和唤醒启动。限额与防循环规则见[线程间消息](AGENT_THREADS.md#线程间消息)。
 
 ### `GET /status`
 
@@ -182,6 +76,14 @@
 ```
 
 设置 token 后，本接口本身也需要有效 Cookie 或 Bearer token；未登录页面只读取最小的 `/api/access/status`。
+
+### 状态能力与关联接口
+
+本节按能力键查找对应 REST、WebSocket 与工具契约。能力为 true 表示当前进程提供该接口，不证明资源已安装、worker 已加载或外部服务可用。
+
+运行能力包括 liveRecovery/extensionDrafts/sessionSearch/runtimeConfiguration 标记。主连接 get_messages.webLive 为有界partial/tool展示快照；Pi 1.3 最终工具参数解析失败时保留 argumentsError，恢复预览最多8192字符并计入原有预算，最终原生记录保持完整。网页只按文本展示错误，原生 validation 拒绝执行损坏参数。广播增加webRuntimeId/webSequence；主WS新增 ack_extension_draft、get_runtime_configuration、restart_runtime（空闲持久线程，runtimeId/expectedRevision/confirmed）。GET /sessions/search?q&cwd?&offset?&searchId? 提供受保护、可取消、有界原生正文跨线程检索。完整字段、预算、实际信任、配置修订、重开互斥与接受ACK语义见 [NATIVE_COMPLETION.md](NATIVE_COMPLETION.md)。不添加裸导航/工具权限、不存持久聊天副本。
+
+原生设置：GET `/api/pi/settings/native` schema 提供 `defaultTools`（type=tools、choices/defaults/platform、maxEntries=1024/maxNameLength=500）、`codemode.mode`（on/only）、`codemode.inlineBudget`（0–1000000）与 `defaultProjectTrust`（ask/always/never、globalOnly）。PUT 接受普通／自定义工具名和顺序 +/- 条目；普通名称替换，只有修饰符时修改继承选择，重复修饰符保留，重复普通名拒绝。null 删除本层覆盖，Pivane [] 不默认启用内置工具，扩展工具可能仍自动激活；受信项目修饰符叠加全局 [] 不恢复默认。信任策略仅全局写入，项目范围即使 null 也拒绝。保存返回 requiresRuntimeRestart=true，不改变现有实例或逐项目信任决定；完整语义见 [NATIVE_SETTINGS.md](NATIVE_SETTINGS.md)。
 
 `browserNotifications=true` 标记设备Web Push订阅与任务通知后端。`GET /notifications`、`POST /notifications/key`、`POST /notifications/status`、`PUT/DELETE /notifications/subscription`、`POST /notifications/test` 复用认证和Origin，响应no-store；只公开VAPID公钥，订阅绑定当前访问身份，关闭/撤销停止后续推送。参数、限额和HTTPS/手机要求见 [NOTIFICATIONS.md](NOTIFICATIONS.md)。
 
@@ -235,6 +137,121 @@
 `runtimeControls=true` 标记主 WS 已支持 stop_and_recover/take_queue/ack_recovery、get_state.webControls 与 gateway_controls；`durableQueueRecovery=true` 表示支持持久主线程排队意图日志和 `get_recovery_payload {recoveryId,runtimeId,revision}`。恢复载荷只在显式读取时返回，元数据快照不附带完整 base64；新客户端 ack_recovery 也携带 runtimeId/revision。日志保留原稿与可验证的变换结果，不自动重发，临时／旧运行实例仍按文字内存恢复。明确删除成功后才清理对应日志，附带失败返回 queueRecoveryWarning。`extensionStatus=true` 标记扩展文字状态的内存快照。完整契约见 [NATIVE_CONTROLS.md](NATIVE_CONTROLS.md)。
 
 `manualUnread=true` 标记已启用持久线程的手动未读接口；`projectIdentity=true` 标记项目路径 resolve 和 recent 别名归一化契约。需新后端启用，旧后端前端隐藏未读操作并保留原路径行为。
+
+### 消息渠道（messageChannels）
+
+`GET /api/pi/status.messageChannels=true` 表示消息渠道接口可用，不表示微信组件已安装或账号已连接。以下接口沿用工作台身份、Origin/CSRF、维护准入与 no-store；worker 内部凭据不能管理渠道。
+
+- `GET /api/pi/channels`：返回配置 `revision`、组件 installed/version/availableVersion/sources、脱敏 accounts、bindings、已允许 peers、最近 60 条 jobs（含 `sentChunks`、`sentMedia`、`waiting`、`kind`、有界 `deliveryIssues:[{name,reason}]`）、当前登录的二维码布尔矩阵/status/expiresAt 和 capabilities（`text`、`images`、`files`、`slashCommands`、`typing`、`proactive`、`threadResults`）。没有账号 token、微信 context token、登录验证码或消息正文。
+- `POST /api/pi/channels/weixin/actions`：共同字段 `{action, confirmed:true, expectedRevision}`。操作在 await 前预占互斥；冲突 409，其他失败 400，结果不确定不自动重放。当前支持 `install`、`uninstall`、`login`、`cancel-login`、`verify-login`、`account`、`bind`、`unbind`、`stop`、`recover`、`acknowledge`。
+- `cancel-login` 需要 loginId；`verify-login` 需要 loginId/code（1–12 位数字）；登录最多五分钟，通过 GET 查询进度，不由浏览器重复提交登录请求。
+- `account` 需要 accountId/enabled/allowedUsers（最多 100 个 1–256 字符 ID）；启用必须有非空允许列表。`bind` 需要 accountId/peerId/cwd 和 sessionId，或显式 newSession=true；可带 `replyMode:'all'|'wechat'`（默认 all，旧绑定缺失同样为 all），分别接收全部线程最终结果或仅微信发起的回复。绑定保存生效时间与最近已完成轮次边界，接收尚未结束的任务，不补发历史。`unbind` 需要 accountId/peerId。最多 10 个账号、200 条绑定、500 个已允许聊天；临时及管理助手线程不接受绑定。
+- `stop`、`recover`、`acknowledge` 需要 jobId。stop 仅请求中止所属微信运行；recover 仅在未开始微信发送且原生当前分支存在已完成结果时恢复发送；acknowledge 不重跑、不补发。
+
+`jobs.status=partial` 表示文字或部分文件已送达，但有附件因 `size`、`limit`、`unreadable`、`unavailable`、`pending` 或 `failed` 未发送；不会自动补发。`typing` 返回最多 100 个脱敏运行诊断 `{accountId,peerId,status,failures,reason}`，不包含票据或上游错误正文。修改指令在提交前持久化为 `dispatching`；重启或未知结果转 `uncertain`，Slash Command 不提供 `recover` 自动补运行入口。
+
+`GET /api/pi/cron` 新增 `channelNotifications:{pending,failed,lastError}`；任务的 `weixinNotification:'inherit'|'on'|'off'` 默认为跟随线程；旧任务的默认 false 跟随，原 true 保持推送，显式关闭使用 off。旧客户端提交的布尔 `notifyWeixin` 仍转换为 on/off。`lastError` 仅为 `channel-admission-pending`、`channel-capture-failed` 或 null。运行记录的 `channelNotify.status` 为 `pending`、`accepted` 或 `skipped`；accepted 仅表示渠道持久入队，实际微信送达以渠道 jobs 为准。
+
+状态、队列预算、组件来源与存储见[消息渠道](MESSAGE_CHANNELS.md)。原生私有命令标记 `channels-v1` 不加入公开 RPC 命令白名单；`pivane-channel-message` 是唯一聊天正文，`pivane-channel-turn` 记录运行状态和回复条目 ID。浏览器只按真实回执显示送达，不以模型输出结束推断微信收到。`pivane-thread-turn` 保存普通受管轮次起止、来源及最终回复 ID；`jobs.kind='thread'` 仅持久化原生轮次引用与固定接收绑定，恢复时重读当前原生分支。微信原发起者和定时任务分别沿用既有渠道／调度回执，避免重复投递。网页 `stop_and_recover` 对独占中的微信轮次直接中止，保留其原生结算互斥。
+
+### 办公文档附件（documentUploads）
+
+状态 `GET /api/pi/status` 返回 `documentUploads` 和 `documentUploadLimits:{fileBytes:20971520,files:5}`，以及 `attachmentUploads` 和 `attachmentUploadLimits:{fileBytes:104857600,batchBytes:209715200,files:8}`。原生描述符组件不可用时能力为 false，接口拒绝。格式、存储与解析预算见[办公附件](COMPOSER_TOOLS.md#上传办公文档与-pdf)及[通用原件](COMPOSER_TOOLS.md#通用原件附件)。
+
+- `POST /api/pi/uploads?cwd&sessionId&requestId&name&purpose?`：持久线程原件上传，Content-Type 必须为 application/octet-stream。Office/PDF 非空原始字节最多 20 MiB，其余普通文件最多 100 MiB；可选 `purpose=image` 保存经核验的图片原件，网页图片入口仍限制 6 MiB。requestId 为 1–160 字符的字母/数字/点/短横线/下划线/冒号，首字符为字母或数字；name 为不含路径分隔符或控制字符的 1–240 字符文件名。返回 `{reference:{id,revision,name,format,size},marker,reused?}`，id/revision 是 64 位小写 hex。先预占两项操作额度再读取 HTTP body，不自动解压请求 body。重复同一规范 cwd/sessionId/requestId 只返回相同原件，参数或字节不同返回 DOCUMENT_CONFLICT，不覆盖。
+- `GET /api/pi/uploads/status?cwd&sessionId&requestId`：仅查询同一上传标识的已保存原件，返回 reference/marker。404 只表示尚未找到已发布原件，不表示在途上传已取消，不能据此自动重传。
+- `GET /api/pi/uploads?cwd&sessionId`：从当前完整原生分支返回 `{items:[reference]}`，最多 500 个引用，不启动关闭的 worker。
+- 同接口加 `id`：核对引用、描述符及 SHA256 后返回原始字节，使用 attachment、application/octet-stream、nosniff、no-store、sandbox CSP 与同源资源策略。未发送原件可由原上传 cwd/sessionId 下载；新建网页分叉可按服务器登记的来源证明下载其回填问题的精确文档引用，仍核对证明修订、原生文件前缀和线程身份。此例外仅用于下载，不扩展分支列表或 read_document 的资格。浏览器不使用公开静态目录或 URL Token。
+- `POST /api/pi/uploads/read`：只允许当前活跃持久 worker 的受限内部凭据；普通工作台 Cookie/Bearer 不能调用。JSON 为 `{id,action?:inspect|read,start?,count?,sheet?,column?,columns?}`，默认 inspect/start=1/count=20/column=1/columns=20。Word start 为正文段落／表格行，Excel 为行，PPT/PDF 为页；全部从 1 开始。count 1–200，PPT/PDF 实际最多 10 页；column 1–16384、columns 1–50。sheet 为准确工作表名，省略取首张表。读取前后核对同一 worker 与当前分支；不存在于分支返回 DOCUMENT_SCOPE，变化返回 DOCUMENT_CONTEXT。原生 `read_document` 工具复用此接口，其结果存入原生 toolResult。
+
+- 同一受限 `/uploads/read` 接口也接受 `{id,action:"materialize"}`，其余读取范围字段不允许；由原生 `get_attachment` 工具调用。服务在当前项目私有 `.pivane-attachments/<id>/<name>` 排他发布原件副本，返回 `{reference,path,copied:true,instruction}`。每次核对当前分支、原件与目标目录／文件身份、SHA256 和大小；已有相同副本可复用，修改后的副本拒绝覆盖，工作台普通凭据不能调用。原始文件不被执行或解压。操作沿用 document-read 生命周期和维护门禁。
+
+原生用户消息使用规范 `<pivane_document ... />`（DOCX/XLSX/PPTX/PDF）或 `<pivane_attachment ... />`（`format=file|image`）标记保留原件引用，不存二进制或另一份会话。每条消息最多八个原件引用，其中办公/PDF 最多五个。仅用户消息中的有效引用参与分支授权；助手／工具输出不授予读取资格。继承或显式携带原引用的分支可以读取同一身份存储中的原件；单独导入到其他实例不会复制原件。分支属于授权输入，标记本身不是服务器文件路径。
+
+错误为 `{error,code}`：400 DOCUMENT_INPUT/DOCUMENT_SHEET，401/403 访问/作用域，409 DOCUMENT_CONTEXT/DOCUMENT_CHANGED/DOCUMENT_CONFLICT/FORK_ACCESS_CHANGED，413 DOCUMENT_LIMIT/DOCUMENT_STORAGE/DOCUMENT_TIMEOUT，415 DOCUMENT_FORMAT，429 DOCUMENT_BUSY，503 服务关闭或描述符/进程不可用。读取结果提供 format、unit、warnings、范围、truncated、nextStart；Excel 同时提供工作表名、日期系统、单元格地址、原始值、公式与缓存值；公式未保存计算结果时 cachedValue 为 null，不将缺失结果当作零。临时上传目录不对外开放；已保存原件不自动清理。 `GET /activity.documentOperations` 和 worker 的 document-read 生命周期投影参与空闲与停机等待。
+
+### 附件用量与清理（documentStorage）
+
+`/api/pi/status.documentStorage=true` 表示提供以下受身份、Origin 和允许项目范围保护的接口；均为 no-store。不接受文件路径。`draftIds` 可省略或为最多 10000 个文档 ID，供当前页面额外保护未发送草稿，不授予读取权限。
+
+| Method | Path（前缀 `/api/pi`） | 请求与结果 |
+|---|---|---|
+| POST | `/uploads/storage/usage` | `{cwd,draftIds?}`；返回实例 `totalBytes/count/limits`、当前项目 `items`、`complete/revision/warning`。item 包含 `id/name/size/sessionId/savedReference`；引用状态为 protected/not-found/unknown。不完整时仍可显示用量，但不能清理 |
+| POST | `/uploads/storage/preview` | `{cwd,id,draftIds?}`；全局空闲、全部受管运行实例实际退出且引用核验通过后返回 `{ticket,revision,item,expiresAt}`，票据五分钟有效 |
+| POST | `/uploads/storage/cleanup` | `{cwd,ticket,revision,requestId,draftIds?,confirmed:true,externalWritersStopped:true}`；一次只清理票据指定原件，返回持久回执 `state:deleted|uncertain`。requestId 沿用上传标识字符集和 160 字符上限；同一编号不重放删除 |
+| GET | `/uploads/storage/status?cwd&requestId` | 只查询原请求的已保存回执；404 不表示在途删除已取消，不能自动重提 |
+
+预览和执行同步关闭新的 HTTP/WS 引用写入，暂停后台派发，核对已有 worker 的只读原生状态并要求所有运行实例实际退出，不能用 idle 快照排除扩展后台写入；停止中的 owner 继续阻止新 writer 与清理，失败不视作退出。独立门禁不能由维护 IPC 解锁。保留所有原生分支、受管嵌套会话、分叉凭据、预约、持久排队意图、定时任务与未确认运行的引用，并核对前后文件／目录身份。会话与凭据扫描上限 4 GiB／30000 项；定时 SQLite 经核验描述符复制到私有只读快照，并合并当前连接记录，上限 512 MiB 数据库、64 MiB 所需行、100 个任务和 10000 个未终结运行。未知自定义根、配置损坏、引用不完整或超限均拒绝清理，不追随正文中任意路径。其他浏览器草稿、外部副本和其他文件里的链接仍须由用户核对。
+
+拒绝返回 `{error,code}`，包括 DOCUMENT_STORAGE_BUSY、DOCUMENT_STORAGE_CHANGED、DOCUMENT_SCAN_INCOMPLETE、DOCUMENT_PROTECTED、DOCUMENT_SCOPE、DOCUMENT_INPUT、DOCUMENT_CONFLICT；全局入口忙碌可能返回 503/errorCode。已进入删除发布阶段的 I/O 失败保留不确定凭据和删除标记，不自动恢复、重放或复活同一上传 ID。没有存储守卫／完整引用提供者时只能列出用量。操作仍计入 documentOperations；详细用户边界见[附件用量与清理](COMPOSER_TOOLS.md#附件用量与清理)。
+
+### 任务进度（taskProgress）
+
+`GET /api/pi/status` 的 `taskProgress:true` 表示服务支持内置进度卡。主 WS `open_session` / `open_ephemeral` 的 `messages.webProgress` 与 `get_messages.webProgress` 为 `null` 或 `{version:1,id,plan:[{step,status}],explanation}`；`id` 标识一次已保存的更新。空 `plan` 表示明确清除，不回退到更早计划。每次原生更新或分支恢复广播 `{type:'gateway_progress',progress}`，沿用 `webRuntimeId/webSequence`，初始化按 `messages.webLive` 的边界过滤已包含事件；前端收到进度事件递增运行修订，拒绝较早的异步快照覆盖。
+
+工具 `update_plan({plan,explanation?})` 每次替换完整计划，最多 20 步、每步 1–200 字符，状态为 `pending|in_progress|completed`，至多一项 `in_progress`；说明最多 1000 字符。空白步骤或非法状态拒绝保存。`details.pivaneProgress` 提供该次结果。受管扩展通过 `pi.appendEntry('pivane-task-progress', data)` 保存原生状态，Supervisor 只缓存有界展示投影；不新增独立数据库或计划写入 REST。
+
+恢复读取完整当前 branch 的最新 custom entry，不依赖压缩后的消息列表。最新工具结果离开模型上下文时，扩展通过原生 `context` hook 提供当前计划数据；不启动额外模型请求。正式线程持久，临时线程随运行销毁，侧聊不注册此工具。停止和 `agent_settled` 不改步骤。用户操作见[任务进度卡](USER_GUIDE.md#任务进度卡)。
+
+### 成果中心（artifacts）
+
+`GET /api/pi/status.artifacts` 表示成果能力；`GET /api/pi/activity.artifactOperations` 为真实读写操作数量。`GET /api/pi/artifacts` 仍返回有界、来源重验的待保存目录；新增 `/artifacts/library` 独立库分页、`POST /artifacts/batch` 逐文件／批量保存、星标、合集、重命名、项目标签、导出、回收站和永久删除（purge 可从任意视图永久删除已保存的库条目，要求 confirmed=true、精确 library ID 及当前 revision；中断的删除在回收站显示为删除待核对／deletionPending），`GET /artifacts/operations/:requestId` 核对不确定写入。`/artifacts/:key/preview|cover|origin|location` 按来源 key 或稳定 library ID 读取。已独立保存的文件不依赖来源会话；删除会话与删除成果副本分开。原交付链接语义不变，source key 仍不是授权。完整字段、确认／修订、预算和错误见 [成果中心](ARTIFACTS.md#预算资格与接口)。
+
+### 定时任务
+
+`GET /status.scheduledTasks=true` 表示服务支持周期与单次任务，`GET /activity.cronBusy` 表示正在保存／调度／核对。`GET /cron` 读取任务、主线程、预算与状态，`PUT /cron/jobs` 使用稳定 UUID 和修订保存任务，`POST /cron/jobs/:id/actions` 提供暂停、启用、运行、停止与核对操作。创建主线程使用 `PUT /cron/homes/:profileId`，沿用原生线程身份和工作目录验证。完整字段、去重、时区与费用边界见[定时任务契约](SCHEDULED_TASKS.md#数据与接口)。
+
+### 可选助手档案
+
+`GET /status.agentProfiles=true` 表示可选助手档案接口可用。`GET /profiles?cwd` 返回 `profiles`（不含回收站身份）、按移入时间从新到旧的 `trash:[{id,name,description,avatar,trashedAt}]`、注册表修订、`profileRevisions`（含回收站的所有档案ID到自身修订的映射）和所选项目默认身份；`PUT /profiles` 接受 `{expectedRevision,profile}` 创建或更新档案，回收站身份拒绝更新（409），须先恢复；`PUT /profiles/default` 接受 `{cwd,profileId,expectedRevision}`，`profileId:null` 清除项目默认身份，仅接受已启用且不在回收站的身份。现有 `POST /sessions` 的可选 `profileId` 省略时使用项目默认，显式 null 创建无档案线程。
+
+- `POST /profiles/:id/trash`：`{expectedRevision}`，原子保存 `trashedAt`（ISO）、`trashedEnabled`（原启用状态）和 `enabled:false`，同时清除所有指向该身份的项目默认值；返回 `{ok:true,profile,revision}`。
+- `POST /profiles/:id/restore`：`{expectedRevision}`，移除回收站元数据并恢复原启用状态，原本停用的身份仍停用，不重设项目默认值；返回 `{ok:true,profile,revision}`。
+
+两接口沿用档案保存的访问／Origin校验、`Cache-Control: no-store`、注册表 CAS、设置互斥与维护／停机拒绝；未知身份404，修订冲突、重复移入或恢复未移入的身份409。回收站身份仍计入50个上限。没有永久删除，身份数据、头像、学习状态、会话和逻辑助手项目均保留；已有会话保留身份名称并显示 `available:false`，新建／重新加载与后台学习按停用身份处理。
+
+会话序列化字段 `agentProfile` 是保存的身份投影，不能据此推断 worker 已加载。`get_runtime_configuration.agentProfile` 分别返回 saved、savedProfileRevision、loadedProfileId、loadedProfileRevision、loadedConfirmed 与 matchesSavedProfile。旧会话不因新增项目默认身份而追认归属，网页分叉显式继承源身份，导入不会仅因复制旧会话标记而获得绑定。字段限制、保存与重开语义见[助手档案](AGENT_PROFILES.md)。
+
+`GET /status.profileMemory` 返回 `{installed,autoLearn}`，核对私有配置指向的适配 bundle 与本机 SQLite；旧的三轮复盘已停用，`autoLearn` 固定为 false。配置失效时 `installed` 为 false，不隐式切换聊天模型或全局安装插件。`GET /profiles/:id/memory?kind=memories|skills&query=&offset=` 保留为旧版只读兼容接口，分页每次最多50条；其 ready 是数据可读状态，与当前会话是否加载分开。
+
+`GET /status.profileLearning=true` 表示逐项知识管理与后台学习接口已装配（同一 `ProfileKnowledgeService` 实例供路由、后台学习和原生工具共用）。
+
+- `GET /profiles/:id/knowledge?kind=memory|skill&query=&offset=&sessionId=&state=present|deleted|draft|all&target=user|memory|project&category=fact|preference|correction|failure|procedure`：state 可选，省略与 all 均保留全部状态；present 排除已删除条目。状态、target 与 category 过滤均在分页前进行，不改变写入 revision。target/category 均需明确 `kind=memory`，非法值返回 400；project 按项目 scope 选择，user/memory 仅选 profile scope，memory 包含只读旧 failure 条目且不改变其 target。ready 快照增加 `counts:{memory:{total,user,memory,project,deleted},skill:{total,active,draft,disabled,deleted}}`，统计所有未镜像条目，不受 kind/query/offset/state/target/category 影响；total 与子组排除已删除项，deleted 单列，记忆分组与 target 过滤一致。每页最多 50 条（记忆预览 512 字符）、30 条近期回执、不透明 revision，以及 `capabilities`（`operations`、`memory`/`skill` 可写性、`projectWrites:false`、`skillNameMaxLength`、`skillDescriptionMaxLength`（1024，与 Pi 技能描述上限一致）、`maxContentLength`、`journal` 计数与上限）。记忆可用时另有 `usage:{memory:{chars,limit},user:{chars,limit},failure?:{chars,readOnly:true}}`，字数与写入时的上限判断一致。回执带 `origin`（`manual|agent|learning`，由服务端决定）、`learningReason`（仅 learning）、`preview`（记忆正文或技能名与描述，最多约 160 字符）、记忆的 `category`；同一条目之后又有回执时标 `superseded:true`。归档摘要不含 preview。`status` 为 `ready|pending|missing|disabled|unsupported|error`；pending 时 revision 为 null，禁止写入。
+- `GET /profiles/:id/knowledge/injection?sessionId=`：只读的下一轮注入预览，用与注入相同的上游格式渲染：`{status,block,truncated?,chars,entries,profile:{chars,entries},project,lastRead}`；带 sessionId 时核实会话归属并加入该目录的项目块，`lastRead` 取会话最近一次 `pivane-profile-memory-read`（含 `chars`/`entries`）。block 最多 64 KiB。
+- `GET /profiles/:id/knowledge/items/:itemId`：受限正文（最多 65,536 字符）、条目 revision、`readOnly`/`truncated` 与服务端来源 `{sessionId,entryId}`。
+- 未删除的记忆条目被 `memory_search` 实际返回过时，快照列表与单条读取另带 `recall:{hits,lastHitAt}`（次数与 `YYYY-MM-DD`）；从未被检索到、已删除、技能或数据库尚无计数列时省略。它是只读参考数据，不进入 revision，计数变化不会使编辑 409，读取失败时省略而不影响页面；条目内容改动后对应计数从 0 开始。
+- `POST /profiles/:id/knowledge/mutations`：`{requestId,expectedRevision,operation,kind,...}`，operation 为 `create|update|delete|restore|enable|disable|undo|consolidate`；`consolidate` 只限手动：`{target:'memory'|'user',items:[{itemId,itemRevision}] (2–20),content,category}`，任一条目变化则整批 409，回执带 `consolidated` 原条目 ID，撤销一次恢复全部原条目（撤销回执本身不可再撤销）。项目记忆可带 `scope:'project',sessionId` 写入（create/update/delete/undo）：服务端按会话文件头的 ID 找到会话并核实归属与目录，客户端 `projectKey` 一律拒绝，`capabilities.projectWritesBySession` 表示可用；项目技能可按同样的 `scope:'project',sessionId` 核验执行 delete/undo（kind 为 skill），由 `capabilities.projectSkillDeletesBySession` 表示可用，不能借此创建或改写技能；记忆需 category `fact|preference|correction|failure|procedure`，undo 只带 `receiptId`。拒绝客户端提交的 `source`、`projectKey` 与草稿状态。确定拒绝为 4xx（409 版本冲突/身份不唯一，413 超出来源证明预算；写满为 409 `{error,code:'memory-full',details:{target,chars,limit,needed}}`），发布结果不确定为 503 并保持 pending，只能用同一 requestId 与同一输入修复。客户端 requestId 7 天内重放返回原回执，过期后拒绝且不重跑。
+- 知识服务对 `create/update/consolidate` 在原互斥内执行保守的精确查重，同一身份 USER/MEMORY 跨目标比较、项目目录保持隔离。重复返回 409 `{code:"knowledge-duplicate",details:{itemId,itemRevision,kind,scope,target?,name?,readOnly}}`；不隐式改写旧条目。原生工具将此确定拒绝表示为 `unchanged:true`，没有保存回执。记忆只归一 Unicode NFC、外部空白和原生尾部元数据，不折叠大小写、数值或标识符；技能实质流程比较详见[记忆适配](PROFILE_MEMORY.md#agent-write-time-comparison)。
+- 原生身份工具 `memory_add` 和 `skill_manage(create)` 新增可选 `comparisonToken`：第一次调用返回 `comparisonRequired:true,saved:false,candidates,comparisonToken`，只读不保存；模型比较后仅独立新内容以原参数提交 token。token 绑定 worker、身份、真实会话／目录、完整创建参数与知识修订，10 分钟失效；不能当用户授权、跨会话使用或让创建隐式变成更新。HTTP 知识 mutation 不接受这个工具内部字段。
+- 知识写入（`create`、`update`、`consolidate`，以及档案文档保存新增的条目）若含疑似密钥或提示词注入内容，返回 400 `{code:'content-blocked', details:{rule, kind}}`，`kind` 为 `secret` 或 `injection`，错误信息不回显原文。
+- `GET/PUT /profiles/:id/learning`：GET 返回 `{version:1,status,revision,settings,health,legacy,proposals,drafts,jobs,recentRuns,capabilities}`，revision 为整数；PUT `{expectedRevision,changes}` 只保存开关、额度和触发词，不启动作业；`maxRunsPerDay` 范围 1..500、默认 20，`maxTokensPerDay` 范围 6000..5000000、默认 200000，与 `capabilities.limits` 一致；`settings.triggerPhrases` 为 `{correction,preference,temporary,ignore}`，每组最多 50 个、每个不超过 80 字符的普通短语，限制见 `capabilities.limits.triggerPhrases`。学习写入被内容检查拒绝时，作业记为 `skipped`，`error:'content-blocked'`。`health` 为 `{state:'off'|'unavailable'|'needs-model'|'memory-full'|'quota-exhausted'|'failing'|'ok',missingModels,lastFailure,today:{runs,maxRuns,reservedTokens,maxTokens,exhaustedBy,resetsAt,usedTokens}}`，按此顺序取第一个成立的状态。`exhaustedBy` 为 `runs|tokens|null`（次数已满优先，否则剩余预留量不足一次 6000 Token 则为 tokens）；`resetsAt` 为下一个 UTC 午夜 ISO 时间，`usedTokens` 合计今天计入额度的运行中供应商报告的 totalTokens，无报告为 null。紧凑当日汇总保留 64 条详细历史之外的额度／实际用量，跨 UTC 日归零；预占和退款规则不变。`proposals` 为最多 3 个整理方案 `{id,target,createdAt,model,source?:{sessionId,entryId},groups:[{items:[{itemId,itemRevision,preview,category}],content,category}]}`；普通后台学习也可在原单次模型调用中提出同目标合并方案，保留原条目，source 指向经核实的原生用户消息；`drafts` 为 `{pending,capped?}` 待审草稿技能数。`legacy` 在身份原始配置 `memory.autoLearn=true` 且尚未迁移或忽略时为 `{autoLearn:true,reviewModel,reviewModelAvailable,purposes}`，否则为 null。作业 `error:'memory-full'`（status skipped）表示写满未保存。
+- `POST /profiles/:id/learning/actions`：`{requestId,action,...}`，action 为 `review-now`、`cancel`（`jobId`）、`enable`（可选 `review`/`extraction` 布尔，只改开关不改模型）、`adopt-legacy`（可选 `model:{provider,modelId}`，只给未配置的学习用途补模型并开启纠错与复盘；模型不可用为 409 `legacy-model-unavailable`）、`dismiss-legacy`、`propose-consolidation`（`target`，只生成方案，不写知识，预留 `settings.consolidationInputChars`+6000 token）、`dismiss-proposal`（`proposalId`，可选 `groupIndex` 为当前数组位置）。按 `capabilities.actions` 调用，返回最新快照；同一 requestId 幂等，结果不确定时不自动重放。升级本身不开启任何学习。
+
+`GET /activity` 另含 `learningBusy`、`learningRuns`；维护空闲判断包含后台学习。辅助模型用途新增 `memory-correction`、`memory-review`、`memory-extraction`，未配置时等待配置，不回退主模型。字段语义、写入日志容量、限额与验证状态见[记忆适配](PROFILE_MEMORY.md)和[辅助模型](AUXILIARY_MODELS.md)。
+
+`GET /status.profileDocuments`、`profileAuthoring` 表示文档编辑及专用起草接口已装配。`GET/PUT /profiles/:id/documents` 使用 `target=user|memory` 和文档／档案双修订；结果区分 `documentSaved`、`indexSynced` 与 `indexStatus`（ready/pending/disabled/unsupported）。202 表示文档已保存但检索未启用；503 可表示保存后的索引部分失败或文件写入结果未知，不能据此自动重放修改。核对最新修订后，提交当前原文可同步待修复的派生索引。头像上传、单条技能正文以及 `/profiles/authoring-sessions` 的字段和限额见[档案接口契约](AGENT_PROFILES.md#接口契约)。起草结果只有在用户导入草稿并保存后才改变档案；`profileRevisions` 供网页核对目标档案，不需要在浏览器重新计算服务端摘要。
+
+### 逻辑助手项目
+
+`/status.assistantProjects=true` 标记逻辑项目后端。项目是独立命名分组，同一规范 cwd 可对应多个项目；分组的 `instructions` 作为额外上下文追加到已加载的助手提示词，不修改共享 AGENTS.md，也不改变 profile+物理 cwd 的记忆范围。归档仅阻止创建新线程，已保存的线程及其绑定不删除。档案不是文件权限沙箱。
+
+- `GET /assistant-projects[?profileId=UUID]` 返回 `{version:1,revision,projects}`。省略筛选返回全部记录；提供 ID 时仅返回关联该档案的组。
+- `PUT /assistant-projects` 接受 `{expectedRevision,project:{id?,name,cwd,description,instructions,profileIds,archived}}`，返回 `{ok,revision,project,requiresReload:true}`。新建省略 ID；更新必须给出已有 ID。name 非空且最多 80 字符、description 最多 500 字符、instructions 最多 8192 UTF-8 字节、profileIds 为不重复 UUID 数组，archived 为布尔值。新关联必须是已启用档案；cwd 经现有 realpath/允许根校验，创建后不可改变。
+- `DELETE /assistant-projects/:id` 接受严格 `{expectedRevision}` JSON，返回 `{ok:true,deletedId,revision}`。仅删除已核实为空的分类记录，不删除目录、文件、会话或身份。检查该 cwd 的全部原生会话（不限当前助手或启用状态），有当前绑定或相关冲突归属、无法完整读取、成员变化／修订过期／设置占用返回 409；不存在返回 404，非法参数返回 400。已有效转出分类的历史标记不阻止删除。结果不确定时重新读取列表核对，不自动重放。
+- `GET /assistant-projects/:id/sessions?profileId=UUID` 返回 `{sessions:[...]}`，只返回原生当前会话 ID 的项目绑定和实际档案绑定均匹配的线程；缺少 profileId 或无效 ID 拒绝。不按浏览器选中状态推断身份。
+- `POST /sessions` 可增加 `assistantProjectId`，此时必须同时显式提交关联、启用的 `profileId`，cwd 必须匹配项目且项目未归档。未知 ID、无效身份或 cwd 冲突在原生文件创建前拒绝，不回退到普通线程。省略 assistantProjectId 保持旧调用和项目默认档案行为。
+
+现有 `/sessions?cwd` 仍列出全部原生线程，新增 `assistantProject:null|{id,name,cwd,available}`；不存在的已绑定组仍显示 ID 和 available=false，不能自动归入另一组。旧有档案绑定但无项目标记的线程仍按真实 cwd 保持未分类。项目标记 `pivane-assistant-project` 保存 `{version:1,sessionId,projectId,cwd}`：初始标记只能有一个且匹配当前原生 ID/cwd；后续分类变更通过 `pivane-assistant-project-change` 的 previousRevision（前一原生 entry ID／无标记时 null）、previousProjectId 与 projectId（UUID／null）构成严格 CAS 链，重复初始标记或断裂链失效。复制导入的旧 ID 不生效；网页分叉给新 ID 追加当前有效归属。保存分组指令不自动重载当前 worker；`get_runtime_configuration.assistantProject` 分别返回 saved、savedProjectRevision、loadedProjectId、loadedProjectRevision、loadedConfirmed 与 matchesSavedProject。只有当前原生会话的运行实例确认后才标记已加载，保存值不能冒充运行配置。注册表保存在原生 agentDir 的私有 `pivane-profiles/assistant-projects.json`，项目和档案保存共用设置/维护忙碌互斥；过期修订和占用返回 409，未授权或非法输入按现有访问控制返回错误。
+
+### Agent 任务线程
+
+`GET /status.agentThreads=true` 标记任务线程后端，`agentTaskResults=true` 标记来源线程结果回执。受管持久 Agent 的 `agent_thread` 工具通过私有 POST `/agent-threads/create|status|models|result` 创建任务、查询状态/模型或分页只读原生结果。身份绑定存活源 worker；工作台 Cookie/Token 不能代替。目录未完成时返回202及 `TASK_INDEXING`/coverage，不把未核实记录当作不存在。`/activity.agentThreadLaunches`、`agentTaskIndexing`、`agentTaskReturns` 分别报告创建、目录读取和交付工作，均进入维护空闲与停机等待。
+
+工作台身份使用 `GET /agent-threads/results?cwd=...&sourceSessionId=...` 读取来源线程的任务与最近100份结果，返回 `status`、`tasks`、`results`、`coverage`、`total`、`truncated`。结果含 deliveryId、requestId、sourceSessionId、session、status、resultId、entryId、completedAt、preview、truncated、delivered、read。`POST /agent-threads/read` 接受 cwd/sourceSessionId/deliveryId，仅由当前来源 worker 在空闲时保存已读；忙碌或归属错误返回409。
+
+来源忙碌或关闭不丢结果，重开后从原生任务状态和回执恢复；回传不触发新的模型轮次。任务参数、预算、旧任务兼容和失败语义见[Agent 任务线程](AGENT_THREADS.md)。
+
+`GET /status.agentMessages=true` 标记线程间消息。受管持久 Agent 的 `agent_message` 工具通过私有 POST `/agent-messages/threads|send|status` 列出同项目线程、发送或查询投递，身份同样绑定存活源 worker。send 在接收方空闲时经其私有命令保存 `pivane-agent-message` custom message（details 含 messageId、from、conversationId、hop、replyTo、wake、wakeSuppressed、sentAt、bodyOffset），需要唤醒时再追加不显示的 `pivane-agent-message-wake` 并触发一轮；发送方追加 `pivane-agent-message-out` custom entry 作为重启补投记录。不新增工作台身份的写接口。`/activity.agentMessages` 报告投递、补投和唤醒启动。限额与防循环规则见[线程间消息](AGENT_THREADS.md#线程间消息)。
 
 ### 版本检查与 Pi 受管维护
 
@@ -591,7 +608,9 @@ gateway 当前白名单：
 - 图片 base64 字符串总长度最多 24 MB。
 - 入站 WebSocket `maxPayload` 32 MB；出站积压与大快照策略见本节开头。
 
-浏览器附件入口：加号中的“添加附件”/粘贴真实文件/拖放共用客户端校验，主框最多 8 个附件，最多 6 张单张 6 MiB 的 PNG/JPEG/WebP/GIF，文本附件单个 1 MiB 且必须 UTF-8。添加与发送前检查上述 message/images 总量，不再等 gateway 拒绝后丢失草稿。文本文件名 XML 转义后包入 `<attached_file>` 并并入 message；图片仍是既有 base64 block。未新增服务器上传接口/存储、未改变上述 gateway 限额。PDF/Office/压缩包/HEIC 及文件夹不支持。
+浏览器附件入口：加号中的“添加附件”/粘贴真实文件/拖放共用客户端校验，主框最多 8 个附件，最多 6 张单张 6 MiB 的 PNG/JPEG/WebP/GIF，文本附件单个 1 MiB 且必须 UTF-8。添加与发送前检查上述 message/images 总量，不再等 gateway 拒绝后丢失草稿。文本文件名 XML 转义后包入 `<attached_file>` 并并入 message；图片仍是既有 base64 block。上述 gateway 的 `message/images` 限额保持。
+
+提供 `documentUploads`／`attachmentUploads` 的后端另支持持久线程原件上传、原生引用和受限读取；格式、容量及降级行为见[办公文档附件](#办公文档附件documentuploads)和[通用原件](COMPOSER_TOOLS.md#通用原件附件)。可上传不等于可解析、解压或执行；文件夹不作为单个附件上传。
 
 发送成功确认才清除匹配主稿；错误保留，超时/断线结果不明时重发/预约前要求确认。该保护仅页面内存，不构成服务端幂等或刷新后草稿恢复。纯文件名剪贴板内容仍为普通文本，HTTP 下不调用主动 Clipboard API。
 
@@ -723,7 +742,7 @@ Web 删除源线程及显式 quit_session 清理该源的全部侧聊（含脱�
 
 `state` 增加 toolMode、toolAccess（none/read/write）和 pendingUi（本侧有效确认）；权限更新事件 `{type:'gateway_side_tool_access', access:'read'|'write'}`。回答确认发送 `{type:'answer_side_confirmation', requestId, confirmed:boolean}`，只接受本段 worker pendingUi 中未过期的确认，返回 accepted:true 只表示交付确认，不能视为工具成功。过期/重复/伪造 ID 拒绝，不能回答主会话或其他侧聊的确认。原生 gateway_ui_resolved/agent_settled 清除界面状态，五分钟未处理按拒绝，不重放。每段独立渲染确认和工具结果；后台确认不会借用当前其他线程弹窗。
 
-Web `/btw [问题]` 本地路由到侧聊，不进入主 prompt/steer/follow_up；网关同样阻止这种误透传。2026-09-09 前端只提供“接着当前任务聊”（context）和“单独问个问题”（blank）两个主要选择，旧后端仍显示明确标为旧版的 recent 选项；不再有回复末尾入口或选中文字自动引用。quote API 保留兼容既有页面，协议和票据不变。引用冻结，更新引用重新创建临时 runtime，不改主 session。新默认由 SDK 内存 SessionManager + 官方 RPC runner 承载，旧模式继续 CLI no-session；新 get_messages 只返回隐藏边界之后的侧消息，计费/计数扣除继承部分。内部 get_entries 和快照控制命令不开放给侧浏览器，compaction retainedTail 不透传。全部字段与生命周期见 [SIDE_CHAT.md](SIDE_CHAT.md)。
+Web `/btw [问题]` 本地路由到侧聊，不进入主 prompt/steer/follow_up；网关同样阻止这种误透传。前端提供“接着当前任务聊”（context）和“单独问个问题”（blank）两个主要选择，旧后端仍显示明确标为旧版的 recent 选项；不再有回复末尾入口或选中文字自动引用。quote API 保留兼容既有页面，协议和票据不变。引用冻结，更新引用重新创建临时 runtime，不改主 session。新默认由 SDK 内存 SessionManager + 官方 RPC runner 承载，旧模式继续 CLI no-session；新 get_messages 只返回隐藏边界之后的侧消息，计费/计数扣除继承部分。内部 get_entries 和快照控制命令不开放给侧浏览器，compaction retainedTail 不透传。全部字段与生命周期见 [SIDE_CHAT.md](SIDE_CHAT.md)。
 
 ### 3.11 历史搜索与书签
 
@@ -897,6 +916,8 @@ Skill 创建 body：
 设置写入通常只对新 runtime 生效，API 返回 `requiresRuntimeRestart=true`。服务端不会因此自动终止正在运行的 Agent。
 
 ## 5. 多媒体实验室与 Media Agent
+
+媒体协议：GET `/api/pi/media/lab/connections` 新增 `providerTemplates`，协议模板含可选 `recommended/help`。HTTP response.type 增加仅图像可用的 `image-json`，path 指向含 `b64_json/url` 的对象；JSON 路径 `*` 查找数组内第一份匹配结果，不批量执行。GET lab 省略所有旧 zimage/flux2/minimax-video 项（包括configured=true），前端也过滤旧进程返回的这些项，内部兼容定义仍可被旧 API 使用。CRUD、Key、修订和票据确认契约保持；详见 [MEDIA_CONNECTIONS.md](MEDIA_CONNECTIONS.md)。
 
 ### 实验室 API
 

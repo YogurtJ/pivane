@@ -11,7 +11,7 @@
 | 协助用户安装、配置或排障的 Agent | [用户 Agent 操作指南](AGENT_GUIDE.md) |
 | 修改 Pivane 源码的开发者或 Agent | [开发文档](development/README.md) 与根目录 [AGENTS.md](../AGENTS.md) |
 
-当前正式版为 **1.10.0**（Pi 1.4.0），见 [1.10.0 版本说明](releases/1.10.0.md)；下载、校验和准确验收摘要以 [GitHub Releases](https://github.com/YogurtJ/pivane/releases) 为准。新增完整请求图片检查、可恢复通用附件与分支原件访问，清理已移除项目的选择项，修复普通HTTP下载、跨页退出误报和英文标签错位。三平台功能覆盖、Mac补验与证据复用见[平台验证范围](RELEASE_INSTALL_VALIDATION.md)；DOMPurify已知安全公告及非零审计结果保留，详见[版本限制](releases/1.10.0.md#验收与限制)。公开发布不自动切换已有实例；升级前按[安装与恢复](INSTALL_RECOVERY.md)保存草稿、停机备份并保留数据路径。完整变化见 [CHANGELOG](../CHANGELOG.md)。
+本目录随源码更新，可能包含尚未公开发布的功能；源码版本看 [package.json](../package.json)，实际能力看运行实例。当前正式版为 **1.10.0**（Pi 1.4.0），见 [1.10.0 版本说明](releases/1.10.0.md)；下载、校验和准确验收摘要以 [GitHub Releases](https://github.com/YogurtJ/pivane/releases) 为准。新增完整请求图片检查、可恢复通用附件与分支原件访问，清理已移除项目的选择项，修复普通HTTP下载、跨页退出误报和英文标签错位。三平台功能覆盖、Mac补验与证据复用见[平台验证范围](RELEASE_INSTALL_VALIDATION.md)；DOMPurify已知安全公告及非零审计结果保留，详见[版本限制](releases/1.10.0.md#验收与限制)。公开发布不自动切换已有实例；升级前按[安装与恢复](INSTALL_RECOVERY.md)保存草稿、停机备份并保留数据路径。完整变化见 [CHANGELOG](../CHANGELOG.md)。
 
 下面按主题列出功能文档。每篇前半部分讲使用，后半部分可能包含接口字段和限额，供高级用户、集成者和用户 Agent 查询。模型能力来自实际配置与运行实例；文档中的示例不代表服务已经配置好。
 
@@ -31,6 +31,7 @@
 | 任务 | 文档 |
 |---|---|
 | 输入、命令模板、Shell | [命令与模板](COMPOSER_TOOLS.md) · [Shell](WEB_SHELL.md) |
+| 上传办公文档、音视频或压缩包，管理附件容量 | [办公/PDF](COMPOSER_TOOLS.md#上传办公文档与-pdf) · [通用原件](COMPOSER_TOOLS.md#通用原件附件) · [附件清理](COMPOSER_TOOLS.md#附件用量与清理) |
 | 停止、重试、运行与配置恢复 | [运行控制](NATIVE_CONTROLS.md) · [运行与配置恢复](NATIVE_COMPLETION.md) |
 | 历史、分叉、导入导出 | [历史](HISTORY.md) · [工作流](SESSION_WORKFLOWS.md) · [导入导出](SESSION_TRANSFER.md) |
 | 将微信文字私聊绑定到原生线程 | [微信与消息渠道](MESSAGE_CHANNELS.md) |
@@ -50,7 +51,7 @@
 | 按用途配置标题与媒体规划模型 | [辅助模型](AUXILIARY_MODELS.md) |
 | Pi 原生 MCP、Codemode 和旧适配器迁移 | [原生 MCP](MCP.md) |
 | 内置子 Agent、记忆组件与旧安装兼容 | [内置能力包](BUNDLED_CAPABILITIES.md) |
-| 助手身份与档案记忆 | [助手档案](AGENT_PROFILES.md) · [记忆适配与安装](PROFILE_MEMORY.md) |
+| 助手身份与档案记忆 | [助手档案](AGENT_PROFILES.md) · [记忆契约导航](PROFILE_MEMORY.md#read-by-task) |
 
 ## 媒体
 
@@ -63,8 +64,9 @@
 
 | 内容 | 文档 |
 |---|---|
-| REST/WebSocket 字段、错误与并发语义 | [API](API.md) |
-| 版本变化 | [CHANGELOG](../CHANGELOG.md) · [1.10.0 候选](releases/1.10.0.md) · [1.9.1](releases/1.9.1.md) · [1.9.0](releases/1.9.0.md) · [1.8.0](releases/1.8.0.md) · [1.7.0](releases/1.7.0.md) · [1.6.2](releases/1.6.2.md) · [1.6.1](releases/1.6.1.md) · [1.6.0](releases/1.6.0.md) · [1.5.0](releases/1.5.0.md) · [1.4.0](releases/1.4.0.md) · [1.3.0](releases/1.3.0.md) · [1.2.0](releases/1.2.0.md) · [1.1.0](releases/1.1.0.md) · [1.0.0](releases/1.0.0.md)；RC 版本说明保留在对应 Git 标签 |
+| REST/WebSocket 字段、错误与并发语义 | [API 任务索引](API.md#按任务查接口) |
+| 找实现、测试与系统边界 | [模块导航](development/MODULES.md) · [架构](development/ARCHITECTURE.md) · [实现细节](development/RUNTIME.md) |
+| 版本变化 | [CHANGELOG](../CHANGELOG.md) · [1.10.0](releases/1.10.0.md) · [1.9.1](releases/1.9.1.md) · [1.9.0](releases/1.9.0.md) · [1.8.0](releases/1.8.0.md) · [1.7.0](releases/1.7.0.md) · [1.6.2](releases/1.6.2.md) · [1.6.1](releases/1.6.1.md) · [1.6.0](releases/1.6.0.md) · [1.5.0](releases/1.5.0.md) · [1.4.0](releases/1.4.0.md) · [1.3.0](releases/1.3.0.md) · [1.2.0](releases/1.2.0.md) · [1.1.0](releases/1.1.0.md) · [1.0.0](releases/1.0.0.md)；RC 版本说明保留在对应 Git 标签 |
 | 各版本平台验收范围 | [平台验证范围](RELEASE_INSTALL_VALIDATION.md) |
 | 产品方向 | [路线图](ROADMAP.md) |
 

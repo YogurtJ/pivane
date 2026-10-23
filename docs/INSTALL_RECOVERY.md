@@ -4,7 +4,7 @@
 
 ## 1. 安装前提
 
-- Node.js **22.x** 与随附 npm（用 `node --version`、`npm --version` 核对）。其他 Node 主版本应单独验证。
+- Node.js **22.x（22.19.0 或更新的 22.x）** 与随附 npm；这是当前锁定依赖的最低次版本要求（用 `node --version`、`npm --version` 核对）。其他 Node 主版本应单独验证。
 - Linux Bash、tar、gzip、sha256sum、curl、ripgrep（命令名 `rg`）、CA 根证书。Debian/Ubuntu 可运行 `sudo apt-get update && sudo apt-get install -y bash tar gzip coreutils curl ripgrep ca-certificates`；Node.js 22 按 Node 官方发行说明安装。
 - npm registry 的 HTTPS 网络访问；首次安装需要下载依赖，发布包不包含 `node_modules`。界面图标随包本地提供；可选 Inter 字体通过 Google Fonts 加载，不可达时使用系统字体。无需全局安装 Pi、前端构建、GPU、Python、ComfyUI、systemd 或维护者的媒体 Package。
 - 运行 Agent 所需的项目命令另行安装，例如 Git、编译器、Python。安装 Git/npm 类型 Package 也可能需要 Git或额外构建工具。`gio` 是可选回收站命令，缺少时网页删除会永久删除选中的文件。
@@ -110,7 +110,7 @@ curl -fsS http://127.0.0.1:11408/api/pi/status
 
 ### 媒体的安装前提
 
-实验室内的“生成方案”显式加载发布包内 `pi-packages/media-workbench/extensions/media-tools.ts`，**不依赖预先全局安装 Package**。它仍需要一个已配置的聊天模型。普通 Pi Agent 中如需这些规划工具，才在设置 → Packages 安装本发布目录下的 `pi-packages/media-workbench`，阅读并确认 Package 风险。使用版本目录更新后，要把这个本地 source 改到新版本，或将 Package 单独保留在固定路径并自行更新。
+实验室内的“生成方案”显式加载发布包内 `pi-packages/media-workbench/extensions/media-tools.ts`，**不依赖预先全局安装 Package**。它仍需要一个已配置的聊天模型。普通持久聊天的 `media_models`、`media_results`、`media_generate` 已内置，无需另装 Package。独立 CLI 或需要额外兼容规划工具时，才在“扩展 → 已安装”安装本发布目录下的 `pi-packages/media-workbench`，阅读并确认 Package 风险；工具范围见[媒体 Agent](MEDIA_AGENT.md#pi-package)。使用版本目录更新后，要把这个本地 source 改到新版本，或将 Package 单独保留在固定路径并自行更新。
 
 无媒体服务时图像/视频可显示未配置，TTS 为空，这是正常首次状态。托管 HTTP 媒体可在实验室管理页配置；GPU bridge、Z-Image worker 文件/LoRA、ComfyUI 权重、Breeze/Qwen 远端脚本以及 curl/Python/SSH 等是所选 adapter 的额外前提，未附带在发布包中。详见 [媒体接入](MEDIA_CONNECTIONS.md)、[Flux](FLUX2_DEV.md) 与 [TTS](tts-providers/README.md)。不要复制维护者的本机路径或配方来“修复”空目录。
 

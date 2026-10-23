@@ -118,7 +118,7 @@ Describe a task once: the agent reads the code, edits it, adds tests and runs th
 
 ## Quick start
 
-You need **Node.js 22** with npm, plus `bash` and [ripgrep](https://github.com/BurntSushi/ripgrep) (on Windows, Git for Windows provides Bash). You also need an account with a model provider. You do not need a global Pi installation, a frontend build step or a GPU.
+Use **Node.js 22.x (22.19.0 or later)** with npm to satisfy the current locked dependencies, plus `bash` and [ripgrep](https://github.com/BurntSushi/ripgrep) (on Windows, Git for Windows provides Bash). You also need an account with a model provider. You do not need a global Pi installation, a frontend build step or a GPU.
 
 ```bash
 # 1. Download pivane-<version>.tar.gz and its .sha256 file from Releases, then verify the archive
@@ -200,7 +200,7 @@ Feedback of any kind is welcome. Start with the [welcome post](https://github.co
 
 Remove credentials and private content from logs and screenshots first.
 
-To set up a development environment, run `node scripts/install.cjs`, then check your changes with `npm test` and `npm run check`. Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [development docs](docs/development/README.md) first. Coding agents should also read [AGENTS.md](AGENTS.md).
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [development docs](docs/development/README.md), then run `node scripts/install.cjs` to set up development. Choose targeted tests and checks from the [validation matrix](docs/development/WORKFLOW.md#验证矩阵); documentation-only changes need fact checking and `npm run check:docs`. Coding agents should also read [AGENTS.md](AGENTS.md).
 
 ## License
 

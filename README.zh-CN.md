@@ -132,7 +132,7 @@
 
 ## 快速开始
 
-需要 **Node.js 22**（含 npm）、`bash` 和 [ripgrep](https://github.com/BurntSushi/ripgrep)（Windows 上可以通过 Git for Windows 获得 Bash），以及一个模型供应商的账户。不需要全局安装 Pi，不需要构建前端，也不需要 GPU。
+当前锁定依赖要求使用 **Node.js 22.x（22.19.0 或更新的 22.x，含 npm）**、`bash` 和 [ripgrep](https://github.com/BurntSushi/ripgrep)（Windows 上可以通过 Git for Windows 获得 Bash），以及一个模型供应商的账户。不需要全局安装 Pi，不需要构建前端，也不需要 GPU。
 
 ```bash
 # 1. 从 Releases 下载 pivane-<version>.tar.gz 及其 .sha256 文件，然后校验压缩包
@@ -214,7 +214,7 @@ flowchart LR
 
 日志和截图请先去除凭据和私人内容。
 
-搭建开发环境时，先运行 `node scripts/install.cjs`，再用 `npm test` 和 `npm run check` 检查改动。请先阅读[贡献指南](CONTRIBUTING.md)和[开发文档](docs/development/README.md)。编程 Agent 还应阅读 [AGENTS.md](AGENTS.md)。
+先阅读[贡献指南](CONTRIBUTING.md)和[开发文档](docs/development/README.md)，再运行 `node scripts/install.cjs` 搭建开发环境。按[验证矩阵](docs/development/WORKFLOW.md#验证矩阵)选择覆盖本次改动的定向测试与检查；纯文档改动只核对事实并运行 `npm run check:docs`。编程 Agent 还应阅读 [AGENTS.md](AGENTS.md)。
 
 ## 许可证
 

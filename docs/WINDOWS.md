@@ -6,7 +6,7 @@ Pivane 在 Windows x64 上原生运行，无需 WSL，使用 Node 22.x、Git for
 
 当前源码的 `node scripts/install.cjs` 统一准备内置 pi-subagents 与 pi-hermes-memory，不再向共享 Pi 身份另行安装包；准备失败会返回安装错误。这个入口使用 SQLite 随包的原生二进制，避免 npm 无谓调用 Visual Studio C++ 编译。下文以 1.6.0 为例（安装其他版本时替换版本号），使用统一安装入口；旧归档没有此脚本时仍使用 `npm.cmd ci`。默认启用、旧配置兼容和平台依赖见[内置能力包](BUNDLED_CAPABILITIES.md)。
 
-- Node 22.x x64、npm、Git for Windows（含 Git Bash）、ripgrep 在运行进程 PATH 中可用。Pi 使用项目锁定依赖，不需要全局安装。
+- Node 22.x x64（当前锁定依赖要求 22.19.0 或更新的 22.x）、npm、Git for Windows（含 Git Bash）、ripgrep 在运行进程 PATH 中可用。Pi 使用项目锁定依赖，不需要全局安装。
 - Pivane 自身使用随包的 Node-API 8 组件，无需现场编译该组件。当前源码内置记忆的 `better-sqlite3` 另外安装适配当前 Node 的二进制；缺少预构建文件时需要 Python 与 Visual Studio C++ 构建工具，见[内置能力包](BUNDLED_CAPABILITIES.md)。维护者重建 Pivane 自身组件的要求见 native/README.md。
 - 普通安装复用当前用户的 Pi CLI 身份，Windows 原生默认通常是 `C:\Users\<用户>\.pi\agent`，不是 AppData；非空 `PI_CODING_AGENT_DIR` 优先。媒体和预约使用实例独立路径。只有需要隔离身份时才另建专用 Pi 目录，不把身份指向驱动器根目录或整个主目录。
 - Git Bash 用于内置 Bash 和手动 `!`/`!!`。Pi 的可选 PowerShell 工具沿用原生设置。创建文件符号链接仍受 Windows 的开发者模式/权限限制；本项目不自动开启开发者模式。
