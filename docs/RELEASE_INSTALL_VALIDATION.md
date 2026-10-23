@@ -2,6 +2,10 @@
 
 本页是版本验收索引。**结果只适用于对应归档**：准确 SHA256、测试明细和失败尝试见各 [Release](https://github.com/YogurtJ/pivane/releases) 的 `pivane-<版本>.validation.json`。源码、浏览器模拟和旧版结果不能替代新包的实机验收。
 
+## 1.10.0 候选验收准备
+
+[1.10.0 说明](releases/1.10.0.md)。版本已定版，尚未公开发布；Linux ARM64、Apple Silicon macOS 与 Windows x64 的最终准确包完整验收均待完成。GPU 开发专项与本机部署验证不能替代全量 Node、自动浏览器、相关手动专项、生产 audit、从 1.9.1 升级、停机及原路径恢复。准确包 SHA256 与结果将记录在独立验证附件中，不回写冻结包形成循环打包。
+
 ## 当前正式版 1.9.1
 
 [1.9.1说明](releases/1.9.1.md) · [Release](https://github.com/YogurtJ/pivane/releases/tag/v1.9.1) · [验收JSON](https://github.com/YogurtJ/pivane/releases/download/v1.9.1/pivane-1.9.1.validation.json) · [验收说明](https://github.com/YogurtJ/pivane/releases/download/v1.9.1/pivane-1.9.1.validation.md)

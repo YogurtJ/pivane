@@ -6489,10 +6489,6 @@
         "Compaction threshold headroom tokens"
     ],
     [
-        "仅用于自动压缩触发阈值：上下文窗口减去此余量。摘要输出使用模型的输出与上下文限制。",
-        "Used only for the automatic compaction threshold: the context window minus this headroom. Summary output uses the model's output and context limits."
-    ],
-    [
         "保留近期 Token",
         "Recent tokens to keep"
     ],
@@ -10230,6 +10226,7 @@
         ['取回仅包含文字；如原消息含图片，请重新添加图片。', 'Only text is recovered. Add any original images again.']
     );
     rows.push(
+        ['仅用于自动压缩触发阈值：上下文窗口减去此余量。摘要输出使用模型的输出与上下文限制。', 'Used only for the automatic compaction threshold: the context window minus this headroom. Summary output uses the model\'s output and context limits.'],
         ['当前入口尚未启用附件上传，请使用支持此功能的持久线程', 'Attachment uploads require a supported persistent thread'],
         ['当前后端尚未启用通用附件上传', 'This backend does not support general file uploads yet'],
         ['附件上传返回无效，请核对原上传', 'The upload response is invalid. Check the original upload.'],
