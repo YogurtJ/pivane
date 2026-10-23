@@ -19,7 +19,7 @@
 
 [下载](https://github.com/YogurtJ/pivane/releases/latest) · [安装](docs/INSTALL_RECOVERY.md) · [用户指南](docs/USER_GUIDE.md) · [变更记录](CHANGELOG.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues)
 
-<img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/hero-zh.webp" alt="电脑上的 Pivane：项目与线程、已完成的编程任务及其代码差异" width="100%">
+<img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/hero-zh.webp" alt="电脑上的 Pivane：项目与线程列表、刚完成的编程任务（预算超支提醒，7 项测试通过）和右侧的代码差异" width="100%">
 
 </div>
 
@@ -27,6 +27,7 @@
 
 - **直接使用 Pi 自己的运行时。** Pivane 运行 Pi 的原生运行时，直接读写 Pi 自己的会话文件。流式回复、工具调用、文件差异、Shell 命令、任务引导和上下文压缩都可以使用，界面在任何屏幕上都便于阅读。
 - **在电脑上开始，在手机上查看进度。** 会话保存在你的服务器上。在另一台设备上打开同一个线程时，仍由同一个 Agent 进程提供服务。Pivane 可以添加到手机主屏幕，回复完成时会通知你。
+- **出门在外，也能在微信里派活。** 装上可选的微信连接组件并扫码绑定后，在微信里发一句话或一张图片，家里电脑上的 Agent 就会读文件、跑工具，做完把文件发回微信。
 - **在一个工作台里同时运行多个 Agent。** 你可以使用子 Agent、Agent 自己创建的任务线程、线程间消息、侧聊和按 cron 运行的定时任务，并实时查看每个 Agent 正在做什么。
 - **模型、Key 和机器都由你掌控。** Pi 支持的供应商都可以使用，包括 Anthropic、OpenAI、Google Gemini、GitHub Copilot、OpenRouter、DeepSeek、通义千问、Kimi、MiniMax、xAI 和 Mistral。可以用 API Key 或 OAuth 登录，也可以添加自己的 OpenAI 兼容服务。凭据和历史都保存在你自己的机器上。
 - **扩展方式和 Pi 一样。** Pi 的 Packages、Skills、提示词模板和 MCP 服务器都可以在浏览器里安装。也可以让内置的扩展助手帮你查找和配置。
@@ -34,11 +35,24 @@
 
 ### 实际运行效果
 
-任务完成后，执行过程会收成一行摘要。可以继续检查文件差异、测试结果和任务计划，无需离开对话。
+一句话交代任务：Agent 读代码、修改、补测试并运行，进度卡随之更新。完成后执行过程收成一行摘要，点开本轮文件就能看差异。
 
-<p align="center"><img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/demo-zh.gif" alt="在 Pivane 中检查已完成的 CSV 导出任务：文件差异、测试结果和任务计划" width="100%"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/demo-zh.gif" alt="在 Pivane 里给记账项目加预算超支提醒：Agent 读代码、修改、补测试并运行，完成后打开文件差异" width="100%"></p>
 
-<sub>截图和录屏使用的是合成的演示项目。</sub>
+<sub>截图和录屏使用合成的演示项目和对话；录屏中的代码修改和测试是实际执行的。</sub>
+
+### 在微信里派活
+
+不在电脑前也能交代任务。微信私聊绑定到 Pivane 的一个线程后，发一句话或一张照片，家里电脑上的 Agent 就会读你的文件、跑脚本，做完把 PDF、Excel 等文件直接发回微信；定时任务的结果也能推送到这里。
+
+<p align="center"><img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/wechat-zh.gif" alt="在微信里让 Agent 整理出差报销单：家里电脑上的同一线程读票据、跑脚本，PDF 和 Excel 发回微信；再发一张小票，自动补进报销单" width="100%"></p>
+
+<p align="center"><img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/wechat-flow-zh.webp" alt="三张微信截图：一句话拿到报销单、拍小票补进报销单、定时任务每晚推送 AI 新闻" width="100%"></p>
+
+- 支持私聊文字、图片、交付文件、常用斜杠指令（如 `/status`、`/resume`）和定时通知。
+- 需要自己部署 Pivane，并按需安装微信连接组件，详见[消息渠道](docs/MESSAGE_CHANNELS.md)。
+
+<sub>微信画面为真实截图，等待过程已加速；电脑一侧是同一线程在演示实例中的展示；项目、票据和金额均为合成数据。</sub>
 
 ## 功能
 
@@ -61,7 +75,7 @@
 
 ### 多 Agent 与自动化
 
-<img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/agents-zh.webp" alt="三个子 Agent 并行运行，旁边的侧聊回答了一个临时问题" width="100%">
+<img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/agents-zh.webp" alt="三个子 Agent 并行检查实现边界、测试缺口和文档，右侧侧聊回答一个临时问题" width="100%">
 
 - 内置 [pi-subagents](https://pi.dev/packages/pi-subagents) 子 Agent。实时面板显示每次运行的状态和所用模型，可以引导、停止或继续运行，并统计 token 用量和费用。
 - Agent 可以新开任务线程，也可以给同一项目里的其他线程发消息。
@@ -97,7 +111,9 @@
 
 ### 多媒体实验室与语音
 
-<img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/media-zh.webp" alt="Pivane 聊天中的媒体生成卡片：可编辑参数和完成的合成演示图片" width="100%">
+<img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/media-zh.webp" alt="聊天里的媒体卡片：GPT Image 2.5 生成的秋季新品海报；右侧是同一模型生成的产品图、参考图编辑、插画和 App 图标" width="100%">
+
+<sub>示例图片均由 GPT Image 2.5 实际生成。</sub>
 
 - 可以接入图像、视频、语音合成和语音转写服务。预设包括 OpenAI、Google Gemini、火山方舟（Seedream 和 Seedance）和阿里云百炼，其他兼容的 HTTP API 可以手动添加。
 - Agent 会在聊天或实验室里根据自然语言描述起草可编辑的参数。对话按媒体类型设置自动执行或等待确认；视频默认需要确认。忙时排队，刷新后恢复同一状态。模型支持时，还可以附上参考图片或视频。
@@ -106,7 +122,7 @@
 
 ### 日常使用
 
-<img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/mobile-zh.webp" alt="手机上的 Pivane：任务结果、深色模式下的公式和模型选择" width="100%">
+<img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/mobile-zh.webp" alt="手机上的 Pivane：任务结果、深色模式下的公式，以及包含 Claude、GPT、Gemini、DeepSeek、Kimi、MiniMax 的常用模型列表" width="100%">
 
 - 布局会适应电脑、平板和手机屏幕，Pivane 也可以添加到手机主屏幕。
 - 提供页面通知和提示音，并可选开启 Web Push 后台提醒。
