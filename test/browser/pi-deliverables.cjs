@@ -123,6 +123,9 @@ async function run(browser, base, width, locale = 'zh-CN') {
     assert.equal(await frame.locator('#counter').textContent(), 'Click', 'scripts disabled until explicit action');
     await page.locator('#pi-file-run-html').click();
     const interactiveFrame = page.frameLocator('.pi-file-html[sandbox="allow-scripts"]');
+    // Confirm native pointer routing into the newly created isolated frame.
+    await interactiveFrame.locator('#counter').hover();
+    await interactiveFrame.locator('#counter:hover').waitFor();
     await interactiveFrame.locator('#counter').click();
     // Input dispatch can finish before the isolated frame processes the event.
     await interactiveFrame.locator('#counter').filter({ hasText: /^Clicked$/ }).waitFor();
