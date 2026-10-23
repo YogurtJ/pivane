@@ -121,8 +121,12 @@ async function run(browser, base, width, locale = 'zh-CN') {
     await page.locator('.pi-file-html').waitFor();
     const frame = page.frameLocator('.pi-file-html'); await frame.locator('#counter').click();
     assert.equal(await frame.locator('#counter').textContent(), 'Click', 'scripts disabled until explicit action');
-    await page.locator('#pi-file-run-html').click(); await frame.locator('#counter').click();
-    assert.equal(await frame.locator('#counter').textContent(), 'Clicked');
+    await page.locator('#pi-file-run-html').click();
+    const interactiveFrame = page.frameLocator('.pi-file-html[sandbox="allow-scripts"]');
+    await interactiveFrame.locator('#counter').click();
+    // Input dispatch can finish before the isolated frame processes the event.
+    await interactiveFrame.locator('#counter').filter({ hasText: /^Clicked$/ }).waitFor();
+    assert.equal(await interactiveFrame.locator('#counter').textContent(), 'Clicked');
     assert.equal(await page.evaluate(() => document.body.dataset.escaped), undefined);
     assert.equal(await page.evaluate(() => localStorage.getItem('escaped')), null);
     assert.equal(await page.locator('.pi-file-html').getAttribute('sandbox'), 'allow-scripts');

@@ -43,6 +43,9 @@ async function run(browser, viewport) {
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
     await page.locator('#workspace-settings-toggle').click();
     await page.locator('[data-settings-tab="providers"]').click();
+    // The media-agent label can belong to the previous snapshot while a forced
+    // reload has replaced the catalog with a skeleton. Wait for this list.
+    await page.locator('#settings-model-list .settings-model-group').first().waitFor();
     await page.waitForFunction(() => document.getElementById('settings-media-agent-current').textContent.includes('last-catalog-model'));
     const panel = page.locator('[data-settings-panel="providers"]');
     const measure = () => page.evaluate(() => Object.fromEntries([
