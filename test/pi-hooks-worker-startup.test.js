@@ -143,6 +143,9 @@ test('managed custom wake remains busy throughout a slow before_agent_start hook
     fs.writeFileSync(holdFile + '.prepare-failure', '');
     const beforePreparationFailure = calls;
     await wake(); await waitFor(() => worker.isIdle());
+    // The SDK reports send_message rejection after the startup promise releases;
+    // its separate RPC event may arrive after the worker first becomes idle.
+    await waitFor(() => events.some(event => event.type === 'extension_error' && /Invalid system prompt section/.test(event.error)));
     assert.equal(calls, beforePreparationFailure, 'a failed native preparation releases without a provider request or agent_settled');
     assert.ok(events.some(event => event.type === 'extension_error' && /Invalid system prompt section/.test(event.error)));
     fs.unlinkSync(holdFile + '.prepare-failure');

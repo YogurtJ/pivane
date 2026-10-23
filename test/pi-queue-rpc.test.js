@@ -12,8 +12,10 @@ process.env.PI_OFFLINE = '1';
 const { PiAgentSupervisor } = require('../server/pi-agent-supervisor');
 const { PiSessionStore } = require('../server/pi-session-store');
 const refs = require('../public/pi-document-references');
-const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aS1cAAAAASUVORK5CYII=';
+const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==';
 const image = { type: 'image', mimeType: 'image/png', data: png };
+// Distinct valid bytes exercise queue identity without poisoning later model context.
+const alternateImage = { ...image, data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPj/HwADAgH/5ncLrgAAAABJRU5ErkJggg==' };
 const document = { id: 'd'.repeat(64), revision: 'e'.repeat(64), name: 'report.pdf', format: 'pdf', size: 42 };
 async function waitFor(predicate) {
     for (let n = 0; n < 400; n++) { if (predicate()) return; await new Promise(resolve => setTimeout(resolve, 20)); }
@@ -48,7 +50,7 @@ test('managed synthetic RPC: image/document/template queue recovery, durable ack
             if (event.text.startsWith('expand boundary')) {
                 await new Promise(resolve => setTimeout(resolve, 100));
                 return { action: 'transform', text: 'Expanded quota payload ' + 'E'.repeat(4000),
-                    images: [...(event.images || []), { type: 'image', mimeType: 'image/png', data: 'aGVsbG8=' }] };
+                    images: [...(event.images || []), ${JSON.stringify(alternateImage)}] };
             }
         });
         pi.on('message_start', async (event, ctx) => {
@@ -98,7 +100,7 @@ test('managed synthetic RPC: image/document/template queue recovery, durable ack
     assert.equal(worker.controls.recoveries.length, 0, 'ordinary immediate input creates no queue journal');
     const raw = 'same ' + refs.marker(document);
     await worker.request('steer', { message: raw, images: [image] });
-    await worker.request('follow_up', { message: raw, images: [{ ...image, data: 'aGVsbG8=' }] });
+    await worker.request('follow_up', { message: raw, images: [alternateImage] });
     await worker.request('steer', { message: '/queued original', images: [image] });
     await worker.request('steer', { message: 'transform fixture', images: [image] });
     assert.equal(worker.controls.intentions.length, 4, JSON.stringify((await supervisor.getQueueStore()).read().entries.map(item => ({ id: item.id, state: item.state, original: item.original.message }))));
@@ -174,7 +176,7 @@ test('managed synthetic RPC: image/document/template queue recovery, durable ack
     assert.ok(queueStore.read().entries.some(entry => pendingClear.fallbackIds.includes(entry.id)));
     worker.client.request = nativeRequest; worker.handleQueueEvent = nativeQueueHandler;
     await worker.request('get_state'); assert.equal(worker.controlPending, false);
-    await worker.request('follow_up', { message: 'same late-clear text', images: [{ ...image, data: 'aGVsbG8=' }] });
+    await worker.request('follow_up', { message: 'same late-clear text', images: [alternateImage] });
     await worker.recoverQueue(false); // A newer explicit operation gets its own proof and candidates.
     await worker.request('follow_up', { message: 'newer queue must not regress', images: [image] });
     const newer = worker.controls.intentions.find(item => item.followUp.includes('newer queue must not regress'));
@@ -242,7 +244,7 @@ test('managed synthetic RPC: image/document/template queue recovery, durable ack
     // Finite completion: exact message object -> native append ID/hash -> physical JSONL record.
     await worker.request('prompt', { message: 'hold second turn' }); await waitFor(() => held.size);
     await worker.request('steer', { message: 'exact duplicate', images: [image] });
-    await worker.request('follow_up', { message: 'exact duplicate', images: [{ ...image, data: 'aGVsbG8=' }] });
+    await worker.request('follow_up', { message: 'exact duplicate', images: [alternateImage] });
     hold = false; for (const res of [...held]) { held.delete(res); finish(res); }
     await waitFor(() => !worker.activity.snapshot().busy && !worker.controls.intentions.length);
     assert.equal(worker.controls.recoveries.length, 0, 'proven physical native entries retire delivered intentions');

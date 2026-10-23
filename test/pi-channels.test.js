@@ -40,7 +40,7 @@ test('authenticated optional channel connects, binds and delivers once through t
     const calls = [], sends = [], typings = [], mediaSends = []; let hold = null, releaseModel, sendFailure = false, installed = false, sendHold = null, releaseSend;
     let replyText = 'Native channel reply';
     let deliverTool = false;
-    const onePixelPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==', 'base64');
+    const onePixelPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==', 'base64');
     const provider = http.createServer(async (req, res) => {
         let body = ''; for await (const part of req) body += part; const input = JSON.parse(body); calls.push(input);
         if (hold) await hold;

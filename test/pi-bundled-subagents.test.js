@@ -169,14 +169,16 @@ test('owned pending supervisor requests retain selected replies without restorin
         const effects = executions.length;
         const denied = request('revoked');
         await waitFor(() => current.session.messages.some(message => message.customType === 'subagent_supervisor_request' && JSON.stringify(message.details).includes(denied.id)));
-        await current.session.agent.waitForIdle();
+        await current.session.waitForIdle();
+        assert.equal(current.session.isIdle, true);
         assert.deepEqual(sorted(current.session), ['read']);
         assert.equal(executions.length, effects, 'a pending question executes no tool and grants no delegation');
         fs.rmSync(path.join(denied.channel, 'requests', denied.id + '.json'));
         current.session.setActiveToolsByName(['read', 'subagent_supervisor']);
         const allowed = request('selected');
         await waitFor(() => current.session.messages.some(message => message.customType === 'subagent_supervisor_request' && JSON.stringify(message.details).includes(allowed.id)));
-        await current.session.agent.waitForIdle();
+        await current.session.waitForIdle();
+        assert.equal(current.session.isIdle, true);
         assert.deepEqual(sorted(current.session), ['read', 'subagent_supervisor']);
         nextTool = { name: 'subagent_supervisor', arguments: { action: 'reply', replyTo: allowed.id, message: 'Synthetic authorized reply' } };
         await current.session.prompt('Reply to the synthetic owned request within the current tool selection.');
