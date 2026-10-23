@@ -549,7 +549,8 @@
             state.active = true;
             if (state.mutating) state.epoch++;
             if (!state.availableProjects.length) void api('/api/pi/projects').then(data => {
-                if (state.active) state.availableProjects = (data.projects || []).filter(p => p.cwd);
+                const hidden = new Set(data.hiddenProjects || []);
+                if (state.active) state.availableProjects = (data.projects || []).filter(p => p.cwd && !hidden.has(p.cwd));
             }).catch(() => {});
             const previousCwd = state.cwd; state.cwd = detail.params?.get('cwd') || ''; state.sessionId = detail.params?.get('sessionId') || '';
             if (previousCwd !== state.cwd && !state.cwd && state.project !== 'unknown') state.project = '';

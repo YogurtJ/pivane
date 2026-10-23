@@ -51,6 +51,7 @@ test('move preserves exact native history, identity, mtime, preferences, usage a
     const delivery = await objects.publish({ cwd: f.source, sessionId: f.session.id }, { requestId: 'move-file', title: '成果', files: ['成果.md'] });
     f.manager.appendCustomEntry(ENTRY, delivery.reference);
     f.preferences.setArchived(f.source, f.session.id, true);
+    f.preferences.setProjectHidden(f.target, true);
     f.preferences.recordReplyNotice({ cwd: f.source, sessionId: f.session.id, completionId: 'completion', completedAt: new Date().toISOString() });
     f.preferences.writeDocument({ ...f.preferences.readDocument(), unrelated: { keep: true } });
     await f.usage.preserveSession(f.session.path);
@@ -68,6 +69,7 @@ test('move preserves exact native history, identity, mtime, preferences, usage a
     assert.deepEqual(moved.getEntries(), JSON.parse(JSON.stringify(f.manager.getEntries()))); assert.equal(moved.getLeafId(), f.manager.getLeafId());
     assert.equal((await f.store.listSessions(f.source)).length, 0); assert.equal((await f.store.listSessions(f.target)).length, 1);
     assert.equal(f.preferences.getArchives().sessions[0].cwd, f.target); assert.equal(f.preferences.getReplyNotices()[0].cwd, f.target);
+    assert.equal(f.preferences.getHiddenProjects().includes(f.target), false);
     assert.deepEqual(f.preferences.readDocument().unrelated, { keep: true });
     const afterUsage = await f.usage.report(filter);
     assert.deepEqual(afterUsage.total, beforeUsage.total); assert.equal(afterUsage.sessions.find(row => row.id === f.session.id).cwd, f.target);
@@ -150,6 +152,7 @@ test('preview rejects related threads, pending messages, unsafe targets and nati
 test('failed accounting rolls back raw history and scoped preferences; interrupted journal blocks both projects after restart', async t => {
     const f = await fixture(t), before = fs.readFileSync(f.session.path);
     f.preferences.setArchived(f.source, f.session.id, true);
+    f.preferences.setProjectHidden(f.target, true);
     const exclusive = f.usage.withSessionRelocation.bind(f.usage);
     f.usage.withSessionRelocation = operation => exclusive(async usage => {
         let first = true;
@@ -163,6 +166,7 @@ test('failed accounting rolls back raw history and scoped preferences; interrupt
     assert.deepEqual(fs.readFileSync(f.session.path), before);
     assert.equal((await f.store.listSessions(f.target)).length, 0);
     assert.equal(f.preferences.getArchives().sessions[0].cwd, f.source);
+    assert.equal(f.preferences.getHiddenProjects().includes(f.target), true);
     const journal = await f.moves.journal(), record = journal.document.records.at(-1);
     assert.equal(record.status, 'rolled_back');
     f.manager.appendSessionInfo('Continue after rollback');

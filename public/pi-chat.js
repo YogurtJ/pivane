@@ -390,7 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const titleEditor = window.PiSessionTitles ? new window.PiSessionTitles({ apiFetch, saved: sessionNamed }) : null;
     const transfer = new window.PiSessionTransfer({
-        apiFetch, toast, headers: () => apiHeaders(), projects: () => state.projects,
+        apiFetch, toast, headers: () => apiHeaders(), projects: () => orderedProjects(),
         canMove: () => {
             if (state.attachmentReads || state.submittingDrafts.has(state.composerSessionKey)) {
                 toast(translateUi('请等待附件读取或消息投递完成'), 'info'); return false;
@@ -1185,6 +1185,8 @@ document.addEventListener('DOMContentLoaded', () => {
             state.cwd = '';
             state.sessions = [];
             localStorage.removeItem('pi.web.cwd');
+            window.PiAgentProfilesUI?.projectChanged();
+            nativeContext.sync();
             elements.projectName.textContent = translateUi("选择项目");
             elements.projectPath.textContent = '';
             elements.projectInput.value = '';
@@ -1208,7 +1210,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             state.projectAliases.set(cwd, resolved);
             state.pinnedProjects = data.pinnedProjects || [];
+            applyArchives(data.archives);
             applyHiddenProjects(data.hiddenProjects);
+            for (const item of state.projects) {
+                if ((state.projectAliases.get(item.cwd) || item.cwd) === resolved) item.sessionCount = 0;
+            }
             invalidateSessionList(cwd);
             state.projectSessions.delete(cwd);
             renderProjects();
@@ -1494,11 +1500,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderProjects() {
-        if (!state.projects.length) {
+        const rows = orderedProjects(elements.showHiddenProjects.checked);
+        if (!rows.length) {
             elements.projectList.innerHTML = `<div class="pi-list-state">${translateUi("暂无最近项目")}</div>`;
             return;
         }
-        elements.projectList.innerHTML = orderedProjects(elements.showHiddenProjects.checked).map(project => `
+        elements.projectList.innerHTML = rows.map(project => `
             <button type="button" class="pi-project-row" data-cwd="${escapeHtml(project.cwd)}">
                 <span class="pi-project-row-icon"><i class="fa-solid ${state.pinnedProjects.includes(project.cwd) ? 'fa-thumbtack' : 'fa-folder'}"></i></span>
                 <span><strong>${escapeHtml(project.name || getProjectName(project.cwd))}</strong><small>${escapeHtml(project.cwd)}</small></span>
@@ -1774,9 +1781,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const current = () => state.assistantMode && state.assistantEpoch === epoch
             && state.assistantProfileId === profileId && state.assistantDiscovery === discovery;
         if (!discovery || discovery.epoch !== epoch || !current()) return;
+        const hiddenCwds = new Set(state.hiddenProjects);
+        const visibleGroups = state.assistantGroups.filter(group => !group.unclassified || !hiddenCwds.has(group.cwd));
+        if (visibleGroups.length !== state.assistantGroups.length) {
+            for (const group of state.assistantGroups) if (group.unclassified && hiddenCwds.has(group.cwd)) state.assistantSessions.delete(group.id);
+            state.assistantGroups = visibleGroups;
+            renderAssistantSessions();
+        }
         // Reserve before awaiting; bootstrap and an identity refresh may both
         // discover projects. Load unrelated directories without hiding ready rows.
-        for (const project of state.projects) {
+        for (const project of orderedProjects()) {
             if (!current()) return;
             const cwd = project.cwd;
             if (discovery.cwds.has(cwd)) continue;
@@ -2225,7 +2239,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const generation = ++searchGeneration;
         renderSessions();
         if (!elements.sessionSearch.value.trim()) return;
-        const unloaded = state.projects.filter(project => !state.projectSessions.has(project.cwd));
+        const unloaded = orderedProjects().filter(project => !state.projectSessions.has(project.cwd));
         await Promise.allSettled(unloaded.map(project => loadSessions(project.cwd, { render: false })));
         if (generation === searchGeneration) renderSessions();
     }

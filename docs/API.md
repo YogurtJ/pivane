@@ -298,9 +298,9 @@
 
 ### `PATCH /projects/visibility`
 
-Body: `{ "cwd": "/srv/example", "hidden": true }`。`hidden` 必须是 boolean，cwd 经过 realpath/项目根检查。移除时重新通过 SessionManager 确认无会话，并检查无持久或临时 runtime；否则返回 409。成功只写工作台偏好 hiddenProjects，并取消该项目置顶，不删除目录、文件、未读标记或 session。
+Body: `{ "cwd": "/srv/example", "hidden": true }`。`hidden` 必须是 boolean，cwd 经过 realpath/项目根检查。移除时重新通过 SessionManager 确认无会话，并检查无持久或临时 runtime；否则返回 409。成功只写工作台偏好 hiddenProjects，并取消该项目置顶与项目归档，不删除目录、文件、未读标记或 session。
 
-`hidden: false` 恢复侧栏可见。返回 `{ "cwd": "<canonical cwd>", "hiddenProjects": [...], "pinnedProjects": [...] }`。GET `/projects` 和 `/activity` 同步返回有效 hiddenProjects；`/projects` 的项目目录仍包含这些空项目，供选择器勾选“显示已移出”后恢复，默认侧栏及选择器均过滤。显式置顶以及 POST `/sessions` 成功新建会话时也恢复项目。移除不会自动删除不存在路径的旧偏好。
+`hidden: false` 恢复侧栏可见。返回 `{ "cwd": "<canonical cwd>", "hiddenProjects": [...], "pinnedProjects": [...] }`。GET `/projects` 和 `/activity` 同步返回有效 hiddenProjects；`/projects` 的项目目录仍包含这些空项目，仅供顶部项目选择器勾选“显示已移出”后恢复，默认侧栏及各功能区的项目选择器（会话移动／导入、消息渠道绑定、成果中心项目标签、定时任务默认目录等）均过滤。显式置顶、POST `/sessions` 成功新建会话、导入会话或将会话移动到该项目时也自动恢复项目可见。移除不会自动删除不存在路径的旧偏好。
 
 ### `PATCH /sessions/:id/read`
 

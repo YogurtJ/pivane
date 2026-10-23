@@ -40,8 +40,9 @@ async function run(browser, base, width, language, emptyTargets = false) {
         let json = {};
         if (url.pathname === '/api/pi/status') json = { ok: true, projectRoots: ['/synthetic'], sessionTransfer: true, sessionMoves: !oldBackend, projectIdentity: true, archives: true };
         else if (url.pathname === '/api/pi/projects') json = { projects: [{ cwd, name: '来源', sessionCount: moved ? 0 : 1 },
-            { cwd: '/synthetic/empty', name: '零会话旧项目', sessionCount: 0 }, { cwd: '/synthetic/unknown', name: '未确认项目' },
-            { cwd: target, name: '目标', sessionCount: emptyTargets ? 0 : moved ? 2 : 1 }], roots: ['/synthetic'], pinnedProjects: [], hiddenProjects: [] };
+            { cwd: '/synthetic/empty', name: '零会话旧项目', sessionCount: 0 }, { cwd: '/synthetic/hidden', name: '已移出项目', sessionCount: 1 },
+            { cwd: '/synthetic/unknown', name: '未确认项目' },
+            { cwd: target, name: '目标', sessionCount: emptyTargets ? 0 : moved ? 2 : 1 }], roots: ['/synthetic'], pinnedProjects: [], hiddenProjects: ['/synthetic/hidden'] };
         else if (url.pathname === '/api/pi/projects/resolve') json = { cwd: url.searchParams.get('cwd') };
         else if (url.pathname === '/api/pi/sessions') json = { sessions: url.searchParams.get('cwd') === target && !emptyTargets
             ? [ ...(moved ? [current] : []), { id: 'target-existing', cwd: target, name: '已有目标线程', messageCount: 2 } ]
@@ -49,7 +50,7 @@ async function run(browser, base, width, language, emptyTargets = false) {
         else if (url.pathname.endsWith('/resolve')) json = { session: current, moved };
         else if (url.pathname.endsWith('/move')) json = { source: original, targetCwd: url.searchParams.get('targetCwd'), revision: 'a'.repeat(64), canMove: !blocked,
             blockers: blocked ? ['线程有预约消息，请先处理或取消预约'] : [] };
-        else if (url.pathname === '/api/pi/activity') json = { runtimes: [], replyNotices: [], archives: { projects: [], sessions: [] }, pinnedProjects: [], hiddenProjects: [] };
+        else if (url.pathname === '/api/pi/activity') json = { runtimes: [], replyNotices: [], archives: { projects: [], sessions: [] }, pinnedProjects: [], hiddenProjects: ['/synthetic/hidden'] };
         else if (url.pathname.includes('history') || url.pathname === '/api/prompts') json = [];
         return route.fulfill({ json });
     });

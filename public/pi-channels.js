@@ -571,7 +571,8 @@
             void refresh();
             try {
                 const data = await host.apiFetch('/api/pi/projects'); if (!valid(n)) return;
-                const rows = data.projects.map(p => [p.cwd, p.name || p.cwd]); const chosen = target?.cwd || host.currentCwd();
+                const hidden = new Set(data.hiddenProjects || []);
+                const rows = (data.projects || []).filter(p => p?.cwd && !hidden.has(p.cwd)).map(p => [p.cwd, p.name || p.cwd]); const chosen = target?.cwd || (hidden.has(host.currentCwd()) ? '' : host.currentCwd());
                 if (chosen && !rows.some(r => r[0] === chosen)) rows.unshift([chosen, chosen]); updateSelect(project, rows, chosen);
                 await loadSessions(target?.sessionId);
             } catch { if (valid(n)) setStatus(t('无法读取项目，请刷新。', 'Unable to read projects. Refresh to check.'), 'error'); }

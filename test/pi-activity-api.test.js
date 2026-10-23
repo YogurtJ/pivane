@@ -49,9 +49,12 @@ test('activity and pins are protected, root-checked and do not launch workers', 
     assert.equal((await visibility('/etc', true)).status, 400);
     assert.equal((await visibility(escape, true)).status, 400);
     assert.equal((await visibility(root, 'true')).status, 400);
+    await request('/projects/archive', { method: 'PATCH', body: JSON.stringify({ cwd: root, archived: true }) });
+    assert.deepEqual((await (await request('/activity')).json()).archives.projects, [root]);
     assert.equal((await visibility(root, true)).status, 200);
     assert.deepEqual((await (await request('/activity')).json()).hiddenProjects, [root]);
     assert.deepEqual((await (await request('/activity')).json()).pinnedProjects, []);
+    assert.deepEqual((await (await request('/activity')).json()).archives.projects, []);
     assert.ok((await (await request('/projects')).json()).projects.some(project => project.cwd === root));
     assert.ok(fs.statSync(root).isDirectory());
     assert.equal((await visibility(root, false)).status, 200);

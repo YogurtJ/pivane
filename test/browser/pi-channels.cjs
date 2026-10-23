@@ -31,7 +31,7 @@ const server = http.createServer((req, res) => {
                         if (body.action === 'account') Object.assign(data.accounts[0], body);
                         return structuredClone(data);
                     }
-                    if (url === '/api/pi/projects') return { projects: [{ cwd: '/fixture', name: 'Fixture' }, { cwd: '/other', name: 'Other' }] };
+                    if (url === '/api/pi/projects') return { projects: [{ cwd: '/fixture', name: 'Fixture' }, { cwd: '/other', name: 'Other' }, { cwd: '/removed', name: 'Removed', sessionCount: 0 }], hiddenProjects: ['/removed'] };
                     if (url.startsWith('/api/pi/sessions')) return { sessions: [{ id: 'thread-one', name: 'Thread one' }, { id: 'thread-two', name: 'Thread two' }] };
                     if (window.delayedRead) return new Promise(resolve => { window.resolveRead = resolve; });
                     return structuredClone(data);
@@ -41,6 +41,7 @@ const server = http.createServer((req, res) => {
             await page.getByRole('button', { name: 'Install WeChat connector', exact: true }).waitFor();
             assert.equal(await page.evaluate(() => writes.length), 0);
             assert.equal(await page.locator('select[aria-label="Thread"]').inputValue(), 'thread-two');
+            assert.deepEqual(await page.locator('select[aria-label="Project"] option').evaluateAll(options => options.map(o => o.value)), ['/fixture', '/other'], 'removed projects stay out of channel binding selectors');
             const headingOverlap = () => page.evaluate(() => {
                 const a = document.querySelector('.channel-header .channel-icon-button').getBoundingClientRect();
                 return [...document.querySelectorAll('.channel-feedback, .channel-card, .channel-overview')].filter(n => n.getClientRects().length)

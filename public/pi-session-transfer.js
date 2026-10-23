@@ -90,7 +90,7 @@
             this.body.append(node('p', translateUi('保留会话 ID、完整历史、分支和书签。后续使用目标项目的工作目录与指令；项目文件需要另行准备。')));
             const projectLabel = node('label', translateUi('目标项目'));
             const project = node('select'); project.id = 'pi-transfer-project';
-            for (const value of [...new Set(this.options.projects().filter(p => Number(p.sessionCount) > 0).map(p => p.cwd).filter(value => value && value !== cwd))]) {
+            for (const value of [...new Set(this.options.projects().filter(p => !p.hidden && Number(p.sessionCount) > 0).map(p => p.cwd).filter(value => value && value !== cwd))]) {
                 const option = node('option', value); option.value = value; project.append(option);
             }
             const other = node('option', translateUi('其他项目路径…')); other.value = ''; project.append(other); projectLabel.append(project);
@@ -157,7 +157,7 @@
             this.body.append(node('p', translateUi("选择 Pi v2/v3 JSONL 文件，导入到目标项目下的独立新线程。已有线程保留；导入后不会自动发送消息或切换当前会话。")));
             const projectLabel = node('label', translateUi("目标项目"));
             const project = node('select'); project.id = 'pi-transfer-project';
-            const paths = [...new Set([cwd, ...this.options.projects().map(p => p.cwd)].filter(Boolean))];
+            const paths = [...new Set([cwd, ...this.options.projects().filter(p => !p.hidden).map(p => p.cwd)].filter(Boolean))];
             for (const value of paths) { const option = node('option', value); option.value = value; project.append(option); }
             const other = node('option', translateUi("其他项目路径…")); other.value = ''; project.append(other);
             projectLabel.append(project);

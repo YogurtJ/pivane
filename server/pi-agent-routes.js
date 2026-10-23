@@ -434,7 +434,7 @@ function createPiAgentGateway(options = {}) {
                 }
             }
             preferences.setProjectHidden(cwd, req.body.hidden);
-            res.json({ cwd, hiddenProjects: hiddenProjects(), pinnedProjects: pinnedProjects() });
+            res.json({ cwd, hiddenProjects: hiddenProjects(), pinnedProjects: pinnedProjects(), archives: archives() });
         } catch (error) { res.status(400).json({ error: error.message }); }
     });
 

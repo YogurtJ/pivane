@@ -80,7 +80,10 @@
             if (!snapshot && !draft) { message(); loading(); }
             if (!projectsRequested) {
                 projectsRequested = true;
-                void api('/api/pi/projects').then(data => { projects = data.projects || []; }).catch(() => { projectsRequested = false; });
+                void api('/api/pi/projects').then(data => {
+                    const hidden = new Set(data.hiddenProjects || []);
+                    projects = (data.projects || []).filter(p => p?.cwd && !hidden.has(p.cwd));
+                }).catch(() => { projectsRequested = false; });
             }
             try {
                 const [data, profileData] = await Promise.all([api('/api/pi/cron'), api('/api/pi/profiles')]);

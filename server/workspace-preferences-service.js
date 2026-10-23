@@ -223,10 +223,16 @@ class WorkspacePreferencesService {
         if (typeof cwd !== 'string' || !path.isAbsolute(cwd) || typeof hidden !== 'boolean') {
             throw new Error('Project path and boolean hidden are required');
         }
+        const document = this.readDocument();
         const projects = this.getHiddenProjects().filter(item => item !== cwd);
         if (hidden) projects.push(cwd);
-        this.writeDocument({ ...this.readDocument(), hiddenProjects: projects,
-            pinnedProjects: hidden ? this.getPinnedProjects().filter(item => item !== cwd) : this.getPinnedProjects() });
+        const archives = this.getArchives();
+        const nextArchives = hidden && archives.projects.includes(cwd)
+            ? { ...document.archives, ...archives, projects: archives.projects.filter(item => item !== cwd), revision: archives.revision + 1 }
+            : document.archives;
+        this.writeDocument({ ...document, hiddenProjects: projects,
+            pinnedProjects: hidden ? this.getPinnedProjects().filter(item => item !== cwd) : this.getPinnedProjects(),
+            ...(nextArchives !== undefined ? { archives: nextArchives } : {}) });
         return projects;
     }
 
@@ -263,7 +269,8 @@ class WorkspacePreferencesService {
         const matches = item => item?.sessionId === source.id && [source.cwd, target.cwd].includes(item.cwd);
         return { archives: (document.archives?.sessions || []).filter(matches),
             notices: (document.replyNotices || []).filter(matches),
-            inheritedArchive: (document.archives?.projects || []).includes(source.cwd) };
+            inheritedArchive: (document.archives?.projects || []).includes(source.cwd),
+            targetHidden: this.getHiddenProjects().includes(target.cwd) };
     }
 
     moveSessionReferences(source, target, snapshot) {
@@ -274,14 +281,17 @@ class WorkspacePreferencesService {
         if (archived) sessions.push({ cwd: target.cwd, sessionId: source.id });
         const notices = (document.replyNotices || []).filter(item => !matches(item));
         notices.push(...snapshot.notices.filter(item => item.cwd === source.cwd).map(item => ({ ...item, cwd: target.cwd })));
-        this.writeDocument({ ...document, archives: { ...document.archives, sessions,
+        const hiddenProjects = this.getHiddenProjects().filter(cwd => cwd !== target.cwd);
+        this.writeDocument({ ...document, hiddenProjects, archives: { ...document.archives, sessions,
             revision: (document.archives?.revision || 0) + 1 }, replyNotices: notices });
     }
 
     restoreSessionReferences(source, target, snapshot) {
         const document = this.readDocument();
         const matches = item => item?.sessionId === source.id && [source.cwd, target.cwd].includes(item.cwd);
-        this.writeDocument({ ...document, archives: { ...document.archives,
+        const hiddenProjects = this.getHiddenProjects().filter(cwd => cwd !== target.cwd);
+        if (snapshot.targetHidden) hiddenProjects.push(target.cwd);
+        this.writeDocument({ ...document, hiddenProjects, archives: { ...document.archives,
             sessions: [...(document.archives?.sessions || []).filter(item => !matches(item)), ...snapshot.archives],
             revision: (document.archives?.revision || 0) + 1 },
             replyNotices: [...(document.replyNotices || []).filter(item => !matches(item)), ...snapshot.notices] });
