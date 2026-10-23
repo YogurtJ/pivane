@@ -22,7 +22,7 @@
 
 选择器复用[主聊模型交互](PROVIDER_SETTINGS.md#会话模型快速选择)，共享收藏与本浏览器最近列表；切线程关闭侧弹窗，选择仍只作用于侧聊。
 
-切换前检查当前有效上下文、系统提示和工具 schema 的估算预算并预留回答空间；容量不足或目标不支持已有图片时拒绝，不静默截断。可保留原模型，或结束后选空白背景新开侧聊。未知结果不自动重试；配置 RPC 超时会结束侧连接，避免按未知模型继续发送。各轮费用保留实际模型归属，不按新模型重新计算历史。
+切换前检查当前有效上下文、系统提示和工具 schema 的估算预算并预留回答空间；容量不足时拒绝，不静默截断。已有图片在纯文本模型的请求副本中转为占位说明，冻结背景保留原始图片，切回图片模型后可再次使用。可保留原模型，或结束后选空白背景新开侧聊。未知结果不自动重试；配置 RPC 超时会结束侧连接，避免按未知模型继续发送。各轮费用保留实际模型归属，不按新模型重新计算历史。
 
 ## 当前行为
 
@@ -104,7 +104,7 @@
 - toolResult 转成带 toolCallId、工具名、isError 的用户引用记录，保留结果正文及可用图片；孤立结果也保留，不伪造执行成功。
 - error/aborted assistant 中已有文字和 errorMessage 作为历史状态保留。
 - 思考正文、签名和 provider 专有续传标识不移入新请求；metadata 显示省略的思考块数量。这保留可审阅的任务材料，不宣称转移完整私有 reasoning 状态。
-- 图片在当前模型支持 image 时随背景带入；不支持时用占位说明并返回 omittedImages，页面明确显示。
+- 冻结背景保留原始图片；实际请求按当前模型能力发送或使用占位说明，省略数量由 omittedImages 和输入区状态提示，切换模型不会删除背景图片。
 - 工具的 details 私有 metadata 不作为额外背景传输；模型可见的 content 和 arguments 保留。
 
 这样保留工具证据，同时避免把继承的 tool_use/tool_result 当作待执行调用；侧聊自己的新工具调用仍使用原生协议。Chat Completions、Responses、Anthropic Messages 的背景转换保留兼容回归。
@@ -113,7 +113,7 @@
 
 主 runtime 的当前系统提示后追加侧聊规则：继承内容只作背景，主任务由原 Agent 继续；新侧聊只回答边界之后的提问，不继续旧任务或执行旧工具。原生内存历史末尾另追加隐藏的侧聊边界消息。
 
-不自动重新加载项目 AGENTS、Skills、模板、用户扩展或 APPEND_SYSTEM。assist 模式显式加载项目自有权限扩展和上述 builtin 工具；none 兼容模式使用 noTools='all'。资源发现关闭、项目不信任；全局设置只取 compaction/retry/transport/thinkingBudgets 到内存配置，不回写默认设置。需要时 Agent 可通过 read 主动读取项目规则。
+不自动重新加载项目 AGENTS、Skills、模板、用户扩展或 APPEND_SYSTEM。assist 模式显式加载项目自有权限扩展和上述 builtin 工具；none 兼容模式使用 noTools='all'。资源发现关闭、项目不信任；全局设置只取 compaction/retry/transport/thinkingBudgets/images 到内存配置，不回写默认设置。需要时 Agent 可通过 read 主动读取项目规则。
 
 - 动态引用预算 = contextWindow - outputReserve。
 - outputReserve = min(model.maxTokens（未提供时 16384）, 16384, floor(contextWindow/4))。它是入场检查所留的空间，不修改模型生成默认值。
@@ -121,7 +121,7 @@
 - 超预算明确拒绝，建议压缩主会话，或选择“单独问个问题”并手动粘贴所需文字；没有隐式截断、自动压缩主线程或静默换模型。之后侧聊自身仍由 Pi 原生 compaction 管理。
 - 单份快照/初始化数据最大 32 MiB，待领取票据合计最大 64 MiB。超过传输/内存上限时拒绝，不静默删图片或结果。
 - 完整 seed 经子进程独立 fd 3 管道传输，不写临时 session 文件、不拼 shell、不放 argv；避免大背景超过系统参数长度限制。
-- 新 worker 再核对模型 provider/id、实际窗口与图片能力，不容纳时拒绝并关闭，不发送问题。
+- 新 worker 再核对模型 provider/id 和实际窗口，不容纳时拒绝并关闭，不发送问题；图片能力由实际请求出口统一检查。
 
 引用不会存到工作台偏好、浏览器持久存储或新聊天 JSON 文件。
 

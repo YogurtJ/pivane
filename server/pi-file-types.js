@@ -78,4 +78,4 @@ function representation(file, name) {
     return { ...metadata, ...type, encoding: isText ? 'utf8' : 'base64',
         ...(isText ? { content: utf8(bytes) } : { base64: bytes.toString('base64') }) };
 }
-module.exports = { MAX_FILE_BYTES, MAX_TEXT_BYTES, MAX_PIXELS, utf8, classify, representation };
+module.exports = { MAX_FILE_BYTES, MAX_TEXT_BYTES, MAX_PIXELS, utf8, dimensions, classify, representation };

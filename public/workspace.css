@@ -1443,6 +1443,11 @@ button.pi-action-pending:not(.icon-btn):not(.pi-message-action) .pi-spinner { ma
 .pi-document-card small { display: block; color: var(--muted); font-size: .72rem; margin-top: 3px; }
 .pi-document-card > button { flex: 0 0 40px; width: 40px; height: 40px; }
 .pi-file-dragover { outline: 2px dashed var(--blue); outline-offset: -3px; background: color-mix(in srgb, var(--blue) 8%, var(--surface-1)); }
+.pi-attachment-recovery { padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); overflow-wrap: anywhere; }
+.pi-attachment-recovery[hidden] { display: none; }
+.pi-attachment-recovery label { display: block; color: var(--text-muted); }
+.pi-attachment-recovery textarea { display: block; box-sizing: border-box; width: 100%; min-width: 0; margin: 8px 0; font-size: 16px; resize: vertical; }
+.pi-attachment-recovery button { margin-right: 8px; font-size: 16px; }
 .pi-attachment-status { color: var(--text-muted); font-size: 0.78rem; line-height: 1.5; overflow-wrap: anywhere; padding-bottom: 5px; }
 .pi-attachment-status[hidden], .pi-attachment-preview [hidden] { display: none !important; }
 .pi-attachment-preview {

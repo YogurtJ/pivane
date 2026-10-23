@@ -25,6 +25,7 @@ pivane-usage/
 pivane-cron/
 pivane-channels/
 pivane-uploads/
+.pivane-attachments/
 pivane-queue/
 pivane-session-moves/
 pivane-artifacts/

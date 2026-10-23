@@ -38,15 +38,17 @@
 
 ## 办公文档附件（documentUploads）
 
-状态 `GET /api/pi/status` 返回 `documentUploads` 和 `documentUploadLimits:{fileBytes:20971520,files:5}`；原生描述符组件不可用时能力为 false，接口拒绝。格式、存储与解析预算见[办公附件](COMPOSER_TOOLS.md#上传办公文档与-pdf)。
+状态 `GET /api/pi/status` 返回 `documentUploads` 和 `documentUploadLimits:{fileBytes:20971520,files:5}`，以及 `attachmentUploads` 和 `attachmentUploadLimits:{fileBytes:104857600,batchBytes:209715200,files:8}`。原生描述符组件不可用时能力为 false，接口拒绝。格式、存储与解析预算见[办公附件](COMPOSER_TOOLS.md#上传办公文档与-pdf)及[通用原件](COMPOSER_TOOLS.md#通用原件附件)。
 
-- `POST /api/pi/uploads?cwd&sessionId&requestId&name`：持久线程原件上传，Content-Type 必须为 application/octet-stream，非空原始字节最多 20 MiB。requestId 为 1–160 字符的字母/数字/点/短横线/下划线/冒号，首字符为字母或数字；name 为不含路径分隔符或控制字符的 1–240 字符文件名。返回 `{reference:{id,revision,name,format,size},marker,reused?}`，id/revision 是 64 位小写 hex。先预占两项操作额度再读取 HTTP body，不自动解压请求 body。重复同一规范 cwd/sessionId/requestId 只返回相同原件，参数或字节不同返回 DOCUMENT_CONFLICT，不覆盖。
+- `POST /api/pi/uploads?cwd&sessionId&requestId&name&purpose?`：持久线程原件上传，Content-Type 必须为 application/octet-stream。Office/PDF 非空原始字节最多 20 MiB，其余普通文件最多 100 MiB；可选 `purpose=image` 保存经核验的图片原件，网页图片入口仍限制 6 MiB。requestId 为 1–160 字符的字母/数字/点/短横线/下划线/冒号，首字符为字母或数字；name 为不含路径分隔符或控制字符的 1–240 字符文件名。返回 `{reference:{id,revision,name,format,size},marker,reused?}`，id/revision 是 64 位小写 hex。先预占两项操作额度再读取 HTTP body，不自动解压请求 body。重复同一规范 cwd/sessionId/requestId 只返回相同原件，参数或字节不同返回 DOCUMENT_CONFLICT，不覆盖。
 - `GET /api/pi/uploads/status?cwd&sessionId&requestId`：仅查询同一上传标识的已保存原件，返回 reference/marker。404 只表示尚未找到已发布原件，不表示在途上传已取消，不能据此自动重传。
 - `GET /api/pi/uploads?cwd&sessionId`：从当前完整原生分支返回 `{items:[reference]}`，最多 500 个引用，不启动关闭的 worker。
 - 同接口加 `id`：核对引用、描述符及 SHA256 后返回原始字节，使用 attachment、application/octet-stream、nosniff、no-store、sandbox CSP 与同源资源策略。未发送原件可由原上传 cwd/sessionId 下载；新建网页分叉可按服务器登记的来源证明下载其回填问题的精确文档引用，仍核对证明修订、原生文件前缀和线程身份。此例外仅用于下载，不扩展分支列表或 read_document 的资格。浏览器不使用公开静态目录或 URL Token。
 - `POST /api/pi/uploads/read`：只允许当前活跃持久 worker 的受限内部凭据；普通工作台 Cookie/Bearer 不能调用。JSON 为 `{id,action?:inspect|read,start?,count?,sheet?,column?,columns?}`，默认 inspect/start=1/count=20/column=1/columns=20。Word start 为正文段落／表格行，Excel 为行，PPT/PDF 为页；全部从 1 开始。count 1–200，PPT/PDF 实际最多 10 页；column 1–16384、columns 1–50。sheet 为准确工作表名，省略取首张表。读取前后核对同一 worker 与当前分支；不存在于分支返回 DOCUMENT_SCOPE，变化返回 DOCUMENT_CONTEXT。原生 `read_document` 工具复用此接口，其结果存入原生 toolResult。
 
-原生用户消息使用规范 `<pivane_document ... />` 标记保留原件引用，不存二进制或另一份会话。仅用户消息中的有效引用参与分支授权；助手／工具输出不授予读取资格。继承或显式携带原引用的分支可以读取同一身份存储中的原件；单独导入到其他实例不会复制原件。分支属于授权输入，标记本身不是服务器文件路径。
+- 同一受限 `/uploads/read` 接口也接受 `{id,action:"materialize"}`，其余读取范围字段不允许；由原生 `get_attachment` 工具调用。服务在当前项目私有 `.pivane-attachments/<id>/<name>` 排他发布原件副本，返回 `{reference,path,copied:true,instruction}`。每次核对当前分支、原件与目标目录／文件身份、SHA256 和大小；已有相同副本可复用，修改后的副本拒绝覆盖，工作台普通凭据不能调用。原始文件不被执行或解压。操作沿用 document-read 生命周期和维护门禁。
+
+原生用户消息使用规范 `<pivane_document ... />`（DOCX/XLSX/PPTX/PDF）或 `<pivane_attachment ... />`（`format=file|image`）标记保留原件引用，不存二进制或另一份会话。每条消息最多八个原件引用，其中办公/PDF 最多五个。仅用户消息中的有效引用参与分支授权；助手／工具输出不授予读取资格。继承或显式携带原引用的分支可以读取同一身份存储中的原件；单独导入到其他实例不会复制原件。分支属于授权输入，标记本身不是服务器文件路径。
 
 错误为 `{error,code}`：400 DOCUMENT_INPUT/DOCUMENT_SHEET，401/403 访问/作用域，409 DOCUMENT_CONTEXT/DOCUMENT_CHANGED/DOCUMENT_CONFLICT/FORK_ACCESS_CHANGED，413 DOCUMENT_LIMIT/DOCUMENT_STORAGE/DOCUMENT_TIMEOUT，415 DOCUMENT_FORMAT，429 DOCUMENT_BUSY，503 服务关闭或描述符/进程不可用。读取结果提供 format、unit、warnings、范围、truncated、nextStart；Excel 同时提供工作表名、日期系统、单元格地址、原始值、公式与缓存值；公式未保存计算结果时 cachedValue 为 null，不将缺失结果当作零。临时上传目录不对外开放；已保存原件不自动清理。 `GET /activity.documentOperations` 和 worker 的 document-read 生命周期投影参与空闲与停机等待。
 

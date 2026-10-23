@@ -2,33 +2,47 @@
     const t = globalThis.PiI18n?.t || ((text, ...values) => text.replace(/\{(\d+)\}/g, (_, i) => values[i] ?? `{${i}}`));
     const refs = globalThis.PiDocumentReferences;
     class PiDocumentAttachments {
-        constructor({ context, api, fetchBytes, toast }) { Object.assign(this, { context, api, fetchBytes, toast }); this.enabled = false; }
+        constructor({ context, api, fetchBytes, toast }) { Object.assign(this, { context, api, fetchBytes, toast }); this.enabled = false; this.generic = false; }
         key(context = this.context()) { return JSON.stringify([context.cwd, context.session?.id, context.generation]); }
         target() {
             const context = this.context();
             if (!this.enabled || !context.connected || !context.session || context.session.ephemeral) throw new Error(t('当前入口尚未启用文档上传，请使用支持此功能的持久线程'));
             return { context, key: this.key(context) };
         }
-        async upload(file) {
+        async status(requestId) {
+            const target = this.target(), query = new URLSearchParams({ cwd: target.context.cwd, sessionId: target.context.session.id, requestId });
+            const saved = await this.api(`/api/pi/uploads/status?${query}`);
+            if (target.key !== this.key() || !refs.valid(saved?.reference)) throw new Error(t('上传结果尚未确认，请保留原标识稍后查询'));
+            return saved;
+        }
+        async upload(file, options = {}) {
+            if (!this.generic && (options.purpose || globalThis.PiAttachments.classify(file).format === 'file')) throw new Error(t('当前后端尚未启用通用附件上传'));
             const target = this.target(), bytes = crypto.getRandomValues(new Uint8Array(16));
             const requestId = [...bytes].map(byte => byte.toString(16).padStart(2, '0')).join('');
-            const query = new URLSearchParams({ cwd: target.context.cwd, sessionId: target.context.session.id, name: file.name, requestId });
+            const query = new URLSearchParams({ cwd: target.context.cwd, sessionId: target.context.session.id, name: file.name, requestId, ...(options.purpose ? { purpose: options.purpose } : {}) });
+            const matches = result => refs.valid(result?.reference) && result.reference.name === file.name && result.reference.size === file.size
+                && result.reference.format === (options.purpose === 'image' ? 'image' : globalThis.PiAttachments.classify(file).format);
             // One raw upload, no base64 in chat state or automatic retries. The
             // stable requestId is retained for a status check if delivery is lost.
             try {
                 const result = await this.api(`/api/pi/uploads?${query}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
+                if (!matches(result)) throw new Error(t('附件上传返回无效，请核对原上传'));
                 if (target.key !== this.key()) throw Object.assign(new Error(t('会话已切换，上传结果未加入当前草稿')), { status: 409 });
                 return result;
             } catch (error) {
-                if (!error.status && target.key === this.key()) {
+                const uncertain = !error.status || error.status >= 500;
+                if (uncertain && target.key === this.key()) {
                     // Read-only reconciliation of the same request, never re-upload.
                     try {
                         const statusQuery = new URLSearchParams({ cwd: target.context.cwd, sessionId: target.context.session.id, requestId });
                         const saved = await this.api(`/api/pi/uploads/status?${statusQuery}`);
-                        if (target.key === this.key() && refs.valid(saved?.reference)) return saved;
+                        if (target.key === this.key() && matches(saved)) return saved;
                     } catch {}
                 }
-                if (!error.status) error.message = t('上传结果未确认，未自动重试（标识 {0}）', requestId) + '：' + error.message;
+                if (uncertain) {
+                    error.message = t('上传结果未确认，未自动重试（标识 {0}）', requestId) + '：' + error.message;
+                    error.uploadUnknown = true; error.requestId = requestId;
+                }
                 throw error;
             }
         }
@@ -51,7 +65,8 @@
             const icon = document.createElement('i'); icon.className = 'fa-solid fa-file-lines'; icon.setAttribute('aria-hidden', 'true');
             const caption = document.createElement('span'), name = document.createElement('strong'), info = document.createElement('small');
             name.textContent = reference.name; name.title = reference.name;
-            info.textContent = `${reference.format.toUpperCase()} · ${Math.ceil(reference.size / 1024)} KiB`;
+            const kind = reference.format === 'file' ? reference.name.split('.').at(-1).toUpperCase().slice(0, 12) : reference.format.toUpperCase();
+            info.textContent = `${t('已上传原件')} · ${kind} · ${Math.ceil(reference.size / 1024)} KiB`;
             caption.append(name, info);
             const download = document.createElement('button'); download.type = 'button'; download.className = 'icon-btn subtle';
             download.title = t('下载原件'); download.setAttribute('aria-label', t('下载 {0}', reference.name));

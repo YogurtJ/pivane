@@ -99,12 +99,13 @@ async function run(browser, viewport, transcriptActivity = true) {
     const textFile = (name, text = 'hello') => ({ name, mimeType: 'text/plain', buffer: Buffer.from(text) });
     const imageFile = { name: 'mac-image.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') };
     const clear = async () => { while (await chips.count()) await page.locator('[data-remove-attachment]').first().click(); };
-    const transfer = async (kind, target, files) => page.evaluate(({ kind, target, files }) => {
+    const transfer = async (kind, target, files, text) => page.evaluate(({ kind, target, files, text }) => {
         const data = new DataTransfer();
+        if (text != null) data.setData('text/plain', text);
         for (const file of files) data.items.add(new File([file.image ? Uint8Array.from(atob(file.image), char => char.charCodeAt(0)) : file.text], file.name, { type: file.type }));
         const event = kind === 'paste' ? new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }) : new DragEvent(kind, { dataTransfer: data, bubbles: true, cancelable: true });
         document.querySelector(target).dispatchEvent(event); return event.defaultPrevented;
-    }, { kind, target, files });
+    }, { kind, target, files, text });
     const changeSession = async id => {
         if (viewport.width < 900 && !await page.locator('#pi-session-pane').evaluate(node => node.classList.contains('open'))) await page.locator('#pi-toggle-sessions').click();
         await page.locator('[data-filter="all"]').click();
@@ -135,6 +136,20 @@ async function run(browser, viewport, transcriptActivity = true) {
         const event = new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true });
         document.querySelector('#pi-input').dispatchEvent(event); return event.defaultPrevented;
     }), false, 'ordinary text and filename-only paste keep browser behavior');
+    await page.evaluate(() => {
+        const transfer = { types: ['Files', 'text/plain'], items: [{ kind: 'file', getAsFile: () => null }], files: [], getData: type => type === 'text/plain' ? '/local/recording.mp3' : '' };
+        const event = new Event('paste', { bubbles: true, cancelable: true }); Object.defineProperty(event, 'clipboardData', { value: transfer });
+        document.querySelector('#pi-input').dispatchEvent(event);
+    });
+    await page.waitForFunction(() => document.querySelector('#pi-input').value.includes('文件未上传'));
+    assert.match(await input.inputValue(), /Mac draft.*\n.*recording.mp3/);
+    await clear(); await input.fill('mixed draft');
+    await transfer('paste', '#pi-input', [{ name: 'broken.txt', type: 'text/plain', text: 'bad' }, { name: 'good.txt', type: 'text/plain', text: 'ok' }], 'Please inspect both');
+    await count(1);
+    assert.match(await input.inputValue(), /Please inspect both\n\[文件名（未上传）：broken.txt\]/);
+    assert.match(await chips.textContent(), /good.txt.*待随消息发送/);
+    await clear(); await input.fill('Mac draft');
+    await select([imageFile, textFile('retained.txt')]); await count(2);
     assert.equal(await transfer('drop', '#pi-transcript', [{ name: 'outside.txt', text: 'outside' }]), true);
     await count(2); await clear();
     await select([textFile('bad.pdf'), textFile('bad.heic'), textFile('binary.txt', '\0binary'), textFile('broken.txt'), textFile('good.txt')]); await count(1);
@@ -142,6 +157,9 @@ async function run(browser, viewport, transcriptActivity = true) {
     await select(Array.from({ length: 7 }, (_, i) => ({ ...imageFile, name: `${i}.png` }))); await count(6); await clear();
     await select(Array.from({ length: 9 }, (_, i) => textFile(`${i}.txt`))); await count(8); await clear();
     await input.fill('x'.repeat(399990)); await select([textFile('over.txt')]); await count(0);
+    assert.equal(await page.locator('#pi-attachment-recovery').isVisible(), true);
+    assert.match(await page.locator('#pi-attachment-recovery textarea').inputValue(), /over.txt/);
+    await page.locator('#pi-attachment-recovery button').last().click();
     await input.fill('keep draft');
     await select([textFile('slow.txt')]);
     await page.waitForFunction(() => typeof window.releaseAttachmentRead === 'function');
@@ -207,7 +225,7 @@ async function run(browser, viewport, transcriptActivity = true) {
     await page.waitForFunction(() => document.querySelectorAll('#pi-workflow-images img').length === 1 && !document.querySelector('#pi-workflow-submit').disabled);
     await transfer('drop', '#pi-workflow-content', [{ name: 'bad.pdf', text: 'bad' }, { name: 'notes.txt', type: 'text/plain', text: 'workflow attachment' }]);
     await page.waitForFunction(() => document.querySelector('#pi-workflow-message').value.includes('workflow attachment') && !document.querySelector('#pi-workflow-submit').disabled);
-    assert.ok(!(await page.locator('#pi-workflow-message').inputValue()).includes('bad.pdf'));
+    assert.match(await page.locator('#pi-workflow-message').inputValue(), /文件名（未上传）：bad.pdf/);
     await page.locator('#pi-workflow-files').setInputFiles([textFile('slow.txt')]);
     await page.waitForFunction(() => document.querySelector('#pi-workflow-file-status').textContent.includes('正在读取'));
     await page.locator('#pi-workflow-close').click(); await page.locator('#pi-composer-add-button').click(); await page.locator('#pi-schedule-button').click();

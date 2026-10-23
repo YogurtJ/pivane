@@ -248,6 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
         commands: [],
         lastAssistantText: '',
         attachmentFiles: [],
+        attachmentRecoveries: new Map(),
         documentStorageSupported: false,
         attachmentEpoch: 0,
         attachmentReads: 0,
@@ -421,13 +422,15 @@ document.addEventListener('DOMContentLoaded', () => {
     documentStorageSettings.className = 'settings-secondary-button'; documentStorageSettings.textContent = translateUi('附件用量与清理');
     $('settings-usage-panel').querySelector('.settings-panel-header').after(documentStorageSettings);
     function currentDocumentDraftIds() {
+        const allDrafts = [state.attachmentFiles, ...[...state.composerDrafts.values()].map(draft => draft.files)];
+        if (allDrafts.some(files => files.some(file => file.kind === 'pending-upload'))) throw new Error(translateUi('有附件上传结果待确认，请先查询结果或移除该项'));
         const ids = new Set();
         const collect = message => { for (const part of window.PiDocumentReferences.split(message || '')) if (part.reference) ids.add(part.reference.id); };
         collect(attachments.payload(elements.input.value, state.attachmentFiles).message);
         for (const [key, draft] of state.composerDrafts) if (key !== state.composerSessionKey) collect(attachments.payload(draft.text, draft.files).message);
         if (workflows.editor) {
             collect($('pi-workflow-message')?.value);
-            for (const reference of workflows.editor.documents || []) ids.add(reference.id);
+            for (const reference of [...(workflows.editor.documents || []), ...(workflows.editor.imageOriginals || []).filter(Boolean)]) ids.add(reference.id);
         }
         return [...ids];
     }
@@ -445,7 +448,7 @@ document.addEventListener('DOMContentLoaded', () => {
         getContext: () => ({ cwd: state.cwd, session: state.session, connected: state.connected, model: state.model, generation: state.socketGeneration,
             busy: state.shellBusy || state.streaming || state.compacting || state.compactRequested || state.controlRequested || state.controlsStopping || state.pendingUi.size > 0,
             draftBusy: state.attachmentReads > 0 || state.submittingDrafts.has(state.composerSessionKey) }),
-        apiFetch, toast, uploadDocument: file => documentAttachments.upload(file), documentCard: reference => documentAttachments.card(reference),
+        apiFetch, toast, uploadDocument: (file, options) => documentAttachments.upload(file, options), preserveImages: () => documentAttachments.generic, documentCard: reference => documentAttachments.card(reference),
         reconcile: reconcileSession,
         getDraft: () => {
             if (window.PiShell.parse(elements.input.value)) throw new Error(translateUi("Shell 命令不支持延迟发送，请在当前会话空闲时直接执行"));
@@ -947,6 +950,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.composerTools = status.composerTools === true;
             voice?.setEnabled(status.transcription === true);
             documentAttachments.enabled = status.documentUploads === true;
+            documentAttachments.generic = status.attachmentUploads === true;
             state.documentStorageSupported = status.documentStorage === true && Boolean(documentStorage);
             for (const button of [documentStorageOpen, documentStorageSettings]) {
                 button.hidden = !state.documentStorageSupported; button.disabled = !state.cwd;
@@ -4455,6 +4459,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.input.style.height = `${Math.min(180, Math.max(26, elements.input.scrollHeight))}px`;
         const submitting = state.submittingDrafts.has(state.composerSessionKey);
         const pending = state.attachmentReads > 0;
+        const unconfirmed = state.attachmentFiles.some(file => file.kind === 'pending-upload');
         const shellInput = window.PiShell.parse(elements.input.value);
         shell.sync();
         const hasDraft = Boolean(elements.input.value.trim() || state.attachmentFiles.length || pending);
@@ -4465,43 +4470,77 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.sendButton.title = shellInput ? translateUi("执行 Shell 命令") : state.streaming ? elements.deliveryMode.value === 'follow_up' ? translateUi("发送后续消息") : translateUi("发送引导消息") : translateUi("发送");
         elements.sendButton.setAttribute('aria-label', elements.sendButton.title);
         elements.sendButton.querySelector('i').className = shellInput ? 'fa-solid fa-terminal' : 'fa-solid fa-arrow-up';
-        elements.sendButton.disabled = Boolean(state.modelRefreshOp) || state.treeBusy || !state.connected || (state.shellBusy && elements.input.value.trim() !== '/quit') || (shellInput && (state.streaming || state.pendingUi.size > 0)) || state.resourceRequested || nativeControls.value?.stopping || state.controlRequested || state.compacting || state.compactRequested || pending || submitting || (!elements.input.value.trim() && !state.attachmentFiles.length);
+        elements.sendButton.disabled = Boolean(state.modelRefreshOp) || state.treeBusy || !state.connected || (state.shellBusy && elements.input.value.trim() !== '/quit') || (shellInput && (state.streaming || state.pendingUi.size > 0)) || state.resourceRequested || nativeControls.value?.stopping || state.controlRequested || state.compacting || state.compactRequested || pending || unconfirmed || submitting || (!elements.input.value.trim() && !state.attachmentFiles.length);
         elements.attachButton.disabled = !state.connected || submitting;
         for (const button of [documentStorageOpen, documentStorageSettings]) button.disabled = !state.documentStorageSupported || !state.cwd;
         cronAddButton.disabled = !state.connected || !state.session || Boolean(state.session.ephemeral);
         const status = $('pi-attachment-status');
-        status.textContent = pending ? translateUi("正在读取附件…") : submitting ? (window.PiTranscriptActivity ? '' : translateUi("正在提交消息…")) : state.uncertainDrafts.has(state.composerSessionKey) ? translateUi("上次发送结果不确定，草稿已保留，请先核对会话") : '';
+        status.textContent = pending ? translateUi("正在读取附件…") : unconfirmed ? translateUi('附件上传结果待确认；点击该项查询结果，原请求不会重传') : submitting ? (window.PiTranscriptActivity ? '' : translateUi("正在提交消息…")) : state.uncertainDrafts.has(state.composerSessionKey) ? translateUi("上次发送结果不确定，草稿已保留，请先核对会话") : '';
         status.hidden = !status.textContent;
         elements.attachments.setAttribute('aria-busy', String(pending));
     }
 
-    function handleFiles(fileList) {
+    function recoverAttachmentText(text, anchor) {
+        if (!text) return;
+        const original = elements.input.value;
+        const start = original === anchor?.value ? anchor.start ?? original.length : original.length;
+        const end = original === anchor?.value ? anchor.end ?? start : start;
+        const separator = start && original[start - 1] !== '\n' ? '\n' : '';
+        const addition = separator + text;
+        const value = original.slice(0, start) + addition + original.slice(end);
+        try { attachments.validateDraft(value, state.attachmentFiles, { allowPending: true }); }
+        catch {
+            const previous = state.attachmentRecoveries.get(state.composerSessionKey);
+            state.attachmentRecoveries.set(state.composerSessionKey, [previous, text].filter(Boolean).join('\n'));
+            toast(translateUi('回退内容超过草稿限额，已保留在输入框旁，可复制取回'), 'info', 6500);
+            return;
+        }
+        elements.input.value = value;
+        elements.input.setSelectionRange(start + addition.length, start + addition.length);
+    }
+
+    function handleFiles(fileList, metadata = {}) {
         const files = [...fileList];
+        const anchor = metadata.anchor || { value: elements.input.value, start: elements.input.selectionStart, end: elements.input.selectionEnd };
         elements.fileInput.value = '';
-        if (!state.connected) return toast(translateUi("请先打开会话"), 'info');
-        if (state.submittingDrafts.has(state.composerSessionKey)) return toast(translateUi("请等待消息投递完成"), 'info');
+        if (!state.connected || state.submittingDrafts.has(state.composerSessionKey)) {
+            recoverAttachmentText(attachments.recoveryText({ ...metadata, files }, files), anchor);
+            renderAttachments(); autoResizeInput();
+            return toast(translateUi(state.connected ? '请等待消息投递完成；文件未上传，文字或名称已保留' : '请先打开会话；文件未上传，文字或名称已保留'), 'info');
+        }
         const epoch = state.attachmentEpoch;
         state.attachmentReads++;
         autoResizeInput(); workflows.update();
-        // Serialize all entry points; a session switch invalidates unfinished reads.
         state.attachmentQueue = state.attachmentQueue.then(async () => {
-            const errors = [];
+            const errors = [...(metadata.errors || [])], accepted = [], failed = [];
             for (const file of files) {
                 if (epoch !== state.attachmentEpoch) return;
                 try {
+                    const format = attachments.classify(file);
                     if (state.attachmentFiles.length >= attachments.limits.files) throw new Error(translateUi("一次最多添加 8 个附件"));
-                    if (attachments.classify(file).kind === 'image' && state.attachmentFiles.filter(item => item.kind === 'image').length >= attachments.limits.images) throw new Error(translateUi("一次最多添加 6 张图片"));
-                    if (attachments.classify(file).kind === 'document' && state.attachmentFiles.filter(item => item.kind === 'document').length >= attachments.limits.documents) throw new Error(translateUi('一次最多添加 5 个文档附件'));
-                    const item = await attachments.read(file, { upload: file => documentAttachments.upload(file) });
+                    if (state.attachmentFiles.reduce((sum, item) => sum + (item.size || 0), 0) + file.size > attachments.limits.batchBytes) throw new Error(translateUi('附件总量不能超过 200 MiB'));
+                    if (format.kind === 'image' && state.attachmentFiles.filter(item => item.kind === 'image').length >= attachments.limits.images) throw new Error(translateUi("一次最多添加 6 张图片"));
+                    if (format.kind === 'document' && format.format !== 'file' && state.attachmentFiles.filter(item => item.kind === 'document' && !['file', 'image'].includes(item.format)).length >= attachments.limits.documents) throw new Error(translateUi('一次最多添加 5 个文档附件'));
+                    const item = await attachments.read(file, { upload: (source, options) => documentAttachments.upload(source, options), preserveImages: documentAttachments.generic });
                     if (epoch !== state.attachmentEpoch) return;
-                    attachments.validateDraft(elements.input.value, [...state.attachmentFiles, item]);
-                    state.attachmentFiles.push(item);
-                    renderAttachments();
+                    attachments.validateDraft(elements.input.value, [...state.attachmentFiles, item], { allowPending: true });
+                    state.attachmentFiles.push(item); accepted.push(file);
                 } catch (error) {
-                    if (epoch === state.attachmentEpoch) errors.push(`${file.name}: ${error.message}`);
+                    if (epoch !== state.attachmentEpoch) return;
+                    if (error.uploadUnknown) {
+                        state.attachmentFiles.push({ id: attachments.id(), kind: 'pending-upload', name: file.name, size: file.size, source: file, requestId: error.requestId });
+                        accepted.push(file); // No name-only fallback for an uncertain upload.
+                    } else failed.push(file);
+                    errors.push(`${file.name}: ${error.message}`);
                 }
+                renderAttachments();
             }
-            if (errors.length) toast(attachments.errorSummary(errors), 'error', 6500);
+            if (epoch !== state.attachmentEpoch) return;
+            const recovery = attachments.recoveryText({ ...metadata, files }, failed, accepted);
+            recoverAttachmentText(recovery, anchor);
+            renderAttachments();
+            if (errors.length) toast(attachments.errorSummary(errors) + (recovery ? '\n' + translateUi('已保留文字／路径／文件名；标为未上传的内容不含文件正文') : ''), 'error', 8000);
+            return { accepted, failed };
         }).finally(() => {
             if (epoch === state.attachmentEpoch) {
                 state.attachmentReads--;
@@ -4511,16 +4550,44 @@ document.addEventListener('DOMContentLoaded', () => {
         return state.attachmentQueue;
     }
 
+    async function checkAttachmentUpload(file) {
+        if (file.checking) return;
+        const epoch = state.attachmentEpoch; file.checking = true;
+        try {
+            const saved = await documentAttachments.status(file.requestId);
+            const item = await attachments.read(file.source, { upload: async () => saved, preserveImages: attachments.classify(file.source).kind === 'image' });
+            if (epoch !== state.attachmentEpoch || !state.attachmentFiles.includes(file)) return;
+            const files = state.attachmentFiles.map(existing => existing === file ? item : existing);
+            attachments.validateDraft(elements.input.value, files, { allowPending: true });
+            state.attachmentFiles = files;
+            toast(translateUi('已确认原件上传成功'), 'success');
+        } catch (error) { if (epoch === state.attachmentEpoch) toast(translateUi('上传结果仍待确认：{0}；保留原标识，未重新上传', error.message), 'info', 8000); }
+        finally { file.checking = false; if (epoch === state.attachmentEpoch) { renderAttachments(); autoResizeInput(); } }
+    }
+
     function renderAttachments() {
         elements.attachments.classList.toggle('hidden', !state.attachmentFiles.some(file => file.kind !== 'quote'));
         mainQuotes.replaceChildren();
         elements.attachments.innerHTML = state.attachmentFiles.filter(file => file.kind !== 'quote').map(file => `
             <div class="pi-attachment-chip" data-attachment-id="${file.id}">
-                <button class="pi-attachment-open" type="button" data-preview-attachment title="${translateUi("预览附件")}" aria-label="${translateUi("预览 {0}", escapeHtml(file.name))}">${file.kind === 'image' ? `<img src="${file.preview}" alt="">` : '<span class="pi-file-mark"><i class="fa-solid fa-file-code"></i></span>'}</button>
-                <span title="${escapeHtml(file.name)}"><strong>${escapeHtml(file.name)}</strong><small>${file.size == null ? translateUi("图片") : `${Math.ceil(file.size / 1024)} KB`}</small></span>
+                <button class="pi-attachment-open" type="button" data-preview-attachment title="${translateUi(file.kind === 'pending-upload' ? '查询上传结果' : '预览附件')}" aria-label="${translateUi("预览 {0}", escapeHtml(file.name))}">${file.kind === 'image' ? `<img src="${file.preview}" alt="">` : `<span class="pi-file-mark"><i class="fa-solid ${file.kind === 'pending-upload' ? 'fa-circle-question' : 'fa-file'}"></i></span>`}</button>
+                <span title="${escapeHtml(file.name)}"><strong>${escapeHtml(file.name)}</strong><small>${file.kind === 'pending-upload' ? translateUi('上传结果待确认 · 点击查询') : file.reference ? translateUi('已上传 · 待发送') : translateUi('待随消息发送')}${file.size == null ? '' : ` · ${Math.ceil(file.size / 1024)} KiB`}</small></span>
                 <button type="button" data-remove-attachment title="${translateUi("移除附件")}" aria-label="${translateUi("移除附件")}"><i class="fa-solid fa-xmark"></i></button>
             </div>
         `).join('');
+        let recovery = $('pi-attachment-recovery');
+        if (!recovery) {
+            recovery = document.createElement('div'); recovery.id = 'pi-attachment-recovery'; recovery.className = 'pi-attachment-recovery';
+            const label = document.createElement('label'); label.textContent = translateUi('未加入草稿的回退内容（文件未上传）');
+            const text = document.createElement('textarea'); text.readOnly = true; text.rows = 3; text.setAttribute('aria-label', label.textContent); label.append(text);
+            const copy = document.createElement('button'); copy.type = 'button'; copy.textContent = translateUi('复制内容');
+            copy.addEventListener('click', () => copyTextToClipboard(text.value).then(() => toast(translateUi('已复制'), 'success')).catch(error => toast(error.message, 'error')));
+            const close = document.createElement('button'); close.type = 'button'; close.textContent = translateUi('移除回退内容');
+            close.addEventListener('click', () => { state.attachmentRecoveries.delete(state.composerSessionKey); renderAttachments(); });
+            recovery.append(label, copy, close); elements.attachments.after(recovery);
+        }
+        recovery.hidden = !state.attachmentRecoveries.has(state.composerSessionKey);
+        recovery.querySelector('textarea').value = state.attachmentRecoveries.get(state.composerSessionKey) || '';
         for (const file of state.attachmentFiles.filter(file => file.kind === 'quote')) {
             mainQuotes.append(window.PiQuotes.card(file, () => {
                 state.attachmentFiles = state.attachmentFiles.filter(item => item !== file);
@@ -4530,6 +4597,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function previewAttachment(file) {
+        if (file.kind === 'pending-upload') { void checkAttachmentUpload(file); return; }
         if (file.kind === 'document') { void documentAttachments.download(file.reference).catch(error => toast(error.message, 'error')); return; }
         $('pi-attachment-preview-name').textContent = file.name;
         const body = $('pi-attachment-preview-content');

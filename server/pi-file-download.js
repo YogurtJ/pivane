@@ -16,6 +16,7 @@ async function copyVerifiedFile(source, destination, options) {
                 throw fail('交付存储位置已变化', 409, 'DELIVERY_CHANGED');
         };
         try {
+            options.onCreate?.({ identity, stat: fs.fstatSync(fd, { bigint: true }) });
             await validate();
             const result = await file.transfer(async bytes => {
                 let offset = 0;

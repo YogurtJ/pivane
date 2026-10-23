@@ -22,8 +22,9 @@ function referenceMessages(messages, model, convertToLlm) {
     const results = new Set(messages.filter(message => message.role === 'toolResult').map(message => message.toolCallId));
     const blocks = content => (typeof content === 'string' ? [{ type: 'text', text: content }] : content || []).flatMap(block => {
         if (block.type === 'image') {
-            if (model.input?.includes('image')) { counts.images++; return [structuredClone(block)]; }
-            counts.omittedImages++; return [{ type: 'text', text: '[主会话图片：当前模型不支持图像，未携带图片内容]' }];
+            counts.images++;
+            if (!model.input?.includes('image')) counts.omittedImages++;
+            return [structuredClone(block)]; // Keep the frozen original for later model switches.
         }
         if (block.type === 'thinking') { counts.omittedThinking++; return []; }
         if (block.type === 'toolCall') {

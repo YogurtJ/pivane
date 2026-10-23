@@ -3,6 +3,8 @@ import { Socket } from 'node:net';
 import sideTools from './pi-side-tools.js';
 import networkTransport from './workspace-network-transport.js';
 import { registerModelSpeed } from './pi-model-speed-extension.mjs';
+import { installImageCompatibility } from './pi-image-runtime.mjs';
+import { writeRawStdout } from '../node_modules/@earendil-works/pi-coding-agent/dist/core/output-guard.js';
 import {
     createAgentSessionRuntime, createAgentSessionServices, createAgentSessionFromServices,
     getAgentDir, SessionManager, SettingsManager, runRpcMode,
@@ -27,7 +29,7 @@ try {
     const disk = nativeSettings.getGlobalSettings();
     await networkTransport.initializeSdkNetwork(nativeSettings.getHttpIdleTimeoutMs());
     const settingsManager = SettingsManager.inMemory({
-        compaction: disk.compaction, retry: disk.retry, transport: disk.transport, thinkingBudgets: disk.thinkingBudgets,
+        compaction: disk.compaction, retry: disk.retry, transport: disk.transport, thinkingBudgets: disk.thinkingBudgets, images: disk.images,
         packages: [], extensions: [], skills: [], prompts: [], themes: [], enableInstallTelemetry: false,
     });
     const sessionManager = SessionManager.inMemory(cwd, { id: seed.sessionId }, seed.entries);
@@ -45,6 +47,7 @@ try {
         if (!model) throw new Error(`Side model is not registered: ${seed.provider}/${seed.modelId}`);
         const result = await createAgentSessionFromServices({ services, sessionManager, sessionStartEvent, model,
             thinkingLevel: seed.thinkingLevel, ...(tools.length ? { tools } : { noTools: 'all' }) });
+        installImageCompatibility(result.session, { emit: record => writeRawStdout(JSON.stringify(record) + '\n') });
         const active = result.session.agent.state.tools.map(tool => tool.name).sort();
         if (result.session.sessionFile || tools.length && !gateLoaded || JSON.stringify(active) !== JSON.stringify([...tools].sort())) throw new Error('Side isolation check failed');
         return { ...result, services, diagnostics: services.diagnostics };

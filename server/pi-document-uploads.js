@@ -12,17 +12,18 @@ const { activeBranch } = require('./pi-message-payload');
 const refs = require('../public/pi-document-references');
 const { DocumentParserPool } = require('./pi-document-pool');
 const { validateRead } = require('./pi-document-parser');
-const MAX_BYTES = 20 * 1024 * 1024, MAX_STORAGE = 2 * 1024 ** 3, MAX_SESSION_BYTES = 256 * 1024 ** 2;
+const MAX_BYTES = 20 * 1024 * 1024, MAX_FILE_BYTES = 100 * 1024 * 1024, MAX_STORAGE = 2 * 1024 ** 3, MAX_SESSION_BYTES = 256 * 1024 ** 2;
 const digest = value => createHash('sha256').update(value).digest('hex');
 const idPattern = /^[a-f0-9]{64}$/;
 const invalid = () => fail('文档附件参数无效', 400, 'DOCUMENT_INPUT');
 function uploadInput(raw) {
-    if (!raw || Object.keys(raw).some(key => !['cwd', 'sessionId', 'requestId', 'name'].includes(key))
+    if (!raw || Object.keys(raw).some(key => !['cwd', 'sessionId', 'requestId', 'name', 'purpose'].includes(key))
         || typeof raw.cwd !== 'string' || raw.cwd.length > 4096 || typeof raw.sessionId !== 'string' || !raw.sessionId || raw.sessionId.length > 160
         || typeof raw.requestId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(raw.requestId)
         || typeof raw.name !== 'string' || !raw.name || raw.name.length > 240 || /[\x00-\x1f\x7f/\\]/.test(raw.name)) throw invalid();
-    const format = raw.name.split('.').at(-1).toLowerCase();
-    if (!['docx', 'xlsx', 'pptx', 'pdf'].includes(format)) throw fail('请上传 DOCX、XLSX、PPTX 或 PDF 文件', 415, 'DOCUMENT_FORMAT');
+    if (raw.purpose !== undefined && raw.purpose !== 'image') throw invalid();
+    const extension = raw.name.split('.').at(-1).toLowerCase();
+    const format = raw.purpose === 'image' ? 'image' : ['docx', 'xlsx', 'pptx', 'pdf'].includes(extension) ? extension : 'file';
     return { ...raw, format };
 }
 class DocumentUploads {
@@ -63,7 +64,7 @@ class DocumentUploads {
         return { folder, check, manifest };
     }
     async bytes(object) {
-        const content = await readVerifiedFile(path.join(object.folder, 'original'), { check: object.check, maxBytes: MAX_BYTES });
+        const content = await readVerifiedFile(path.join(object.folder, 'original'), { check: object.check, maxBytes: MAX_FILE_BYTES });
         if (content.revision !== object.manifest.reference.revision || content.size !== object.manifest.reference.size) throw fail('文档原件已变化', 409, 'DOCUMENT_CHANGED');
         return content.bytes;
     }
@@ -85,7 +86,8 @@ class DocumentUploads {
     }
     async uploadChecked(raw, bytes) {
         const input = uploadInput(raw);
-        if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > MAX_BYTES) throw fail('单个文档附件须为非空文件且不超过 20 MiB', 413, 'DOCUMENT_LIMIT');
+        const maximum = ['file', 'image'].includes(input.format) ? MAX_FILE_BYTES : MAX_BYTES;
+        if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > maximum) throw fail(`单个附件须为非空文件且不超过 ${maximum / 1024 / 1024} MiB`, 413, 'DOCUMENT_LIMIT');
         const session = await this.session(input), id = digest(JSON.stringify([session.cwd, session.id, input.requestId]));
         const reference = { id, revision: digest(bytes), name: input.name, format: input.format, size: bytes.length };
         try {
@@ -93,8 +95,9 @@ class DocumentUploads {
             if (refs.marker(existing.manifest.reference) !== refs.marker(reference)) throw fail('此 requestId 已用于不同文件，请核对原上传', 409, 'DOCUMENT_CONFLICT');
             await this.bytes(existing); return { reference, marker: refs.marker(reference), reused: true };
         } catch (error) { if (error.code !== 'ENOENT') throw error; }
-        // Validate only; full contents enter the model exclusively on explicit reads.
-        await this.pool.run(bytes, input.format, {}, { validateOnly: true });
+        // Office/PDF keep their parser validation; general files remain opaque originals.
+        if (!['file', 'image'].includes(input.format)) await this.pool.run(bytes, input.format, {}, { validateOnly: true });
+        if (input.format === 'image') require('./pi-image-context').decodeImage({ data: bytes.toString('base64') }, '新上传');
         const current = await this.session(input);
         if (session.path !== current.path || session.cwd !== current.cwd || this.closed || this.isSuspended()) throw fail('会话已变化，原上传未提交', 409, 'DOCUMENT_CONTEXT');
         if (this.writing) throw fail('文档附件正在保存，请稍后再试', 429, 'DOCUMENT_BUSY');
@@ -122,7 +125,7 @@ class DocumentUploads {
                     const temporary = path.join(root, name), stat = fs.lstatSync(temporary);
                     if (!stat.isDirectory() || stat.isSymbolicLink() || fs.realpathSync.native(temporary) !== temporary) throw fail('文档临时存储位置已变化', 409, 'DOCUMENT_CHANGED');
                     const original = path.join(temporary, 'original');
-                    if (fs.existsSync(original)) total += (await readVerifiedFile(original, { maxBytes: MAX_BYTES, check: actual => {
+                    if (fs.existsSync(original)) total += (await readVerifiedFile(original, { maxBytes: MAX_FILE_BYTES, check: actual => {
                         if (!withinCanonical(temporary, actual)) throw fail('文档临时存储位置已变化', 409, 'DOCUMENT_CHANGED');
                     } })).size;
                     continue;
@@ -192,9 +195,13 @@ class DocumentUploads {
     }
     async readChecked(worker, raw, signal) {
         if (!raw || Object.keys(raw).some(key => !['id', 'action', 'start', 'count', 'sheet', 'column', 'columns'].includes(key)) || !idPattern.test(raw.id)) throw invalid();
-        const { id, ...args } = raw; validateRead(args);
+        const { id, ...args } = raw;
+        if (args.action !== 'materialize') validateRead(args);
+        else if (Object.keys(args).some(key => key !== 'action')) throw invalid();
         const input = { cwd: worker.cwd, sessionId: worker.sessionId, id }, authorized = await this.authorized(input);
         if (authorized.initial.worker !== worker) throw fail('会话运行身份已变化', 409, 'DOCUMENT_CONTEXT');
+        if (args.action === 'materialize') return require('./pi-attachment-materialize').materialize(this, worker, input, authorized, signal);
+        if (['file', 'image'].includes(authorized.reference.format)) throw fail('此附件请用 get_attachment 取得原件，再使用相应工具处理', 415, 'DOCUMENT_FORMAT');
         const result = await this.pool.run(authorized.bytes, authorized.reference.format, args, { signal });
         await this.checkCurrent(input, authorized);
         if (worker.disposed || worker.restarting) throw fail('会话运行身份已变化', 409, 'DOCUMENT_CONTEXT');
@@ -219,9 +226,9 @@ function mountDocumentUploads(router, service) {
     // Admission occurs BEFORE buffering the raw body, with the existing access,
     // Origin/CSRF and maintenance middleware already applied.
     router.post('/uploads', respond(async (req, res) => {
-        uploadInput(req.query);
+        const input = uploadInput(req.query);
         if (req.is('application/octet-stream') !== 'application/octet-stream') throw fail('上传须使用 application/octet-stream', 415, 'DOCUMENT_INPUT');
-        await new Promise((resolve, reject) => express.raw({ type: 'application/octet-stream', limit: MAX_BYTES, inflate: false })(req, res, error => error ? reject(error) : resolve()));
+        await new Promise((resolve, reject) => express.raw({ type: 'application/octet-stream', limit: ['file', 'image'].includes(input.format) ? MAX_FILE_BYTES : MAX_BYTES, inflate: false })(req, res, error => error ? reject(error) : resolve()));
         res.json(await service.upload(req.query, req.body, { reserved: true }));
     }));
     router.post('/uploads/read', respond(async (req, res) => {
@@ -251,4 +258,4 @@ function mountDocumentUploads(router, service) {
         res.send(authorized.bytes);
     }));
 }
-module.exports = { DocumentUploads, mountDocumentUploads, uploadInput, MAX_BYTES };
+module.exports = { DocumentUploads, mountDocumentUploads, uploadInput, MAX_BYTES, MAX_FILE_BYTES };

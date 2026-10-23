@@ -5477,8 +5477,8 @@
         "Upload attachments from your phone or computer"
     ],
     [
-        "上传图片、文档、表格或代码文件",
-        "Upload images, documents, spreadsheets or code files"
+        "上传图片、文档、音视频或其他文件",
+        "Upload images, documents, audio, video or other files"
     ],
     [
         "指定时间发送消息",
@@ -10228,6 +10228,35 @@
         ['可能已经执行，请先核对会话再追加。', 'This may already have run. Check the conversation before appending.'],
         ['取回与保存说明', 'Recovery and storage details'],
         ['取回仅包含文字；如原消息含图片，请重新添加图片。', 'Only text is recovered. Add any original images again.']
+    );
+    rows.push(
+        ['当前入口尚未启用附件上传，请使用支持此功能的持久线程', 'Attachment uploads require a supported persistent thread'],
+        ['当前后端尚未启用通用附件上传', 'This backend does not support general file uploads yet'],
+        ['附件上传返回无效，请核对原上传', 'The upload response is invalid. Check the original upload.'],
+        ['单个附件须为非空文件且不超过 {0} MiB', 'Each attachment must be nonempty and no larger than {0} MiB'],
+        ['附件总量不能超过 200 MiB', 'Attachments cannot exceed 200 MiB in total'],
+        ['有附件上传结果待确认，请先查询结果或移除该项', 'An upload is unconfirmed. Check its status or remove it first.'],
+        ['[文件名（未上传）：{0}]', '[Filename (not uploaded): {0}]'],
+        ['[路径（未上传）：{0}]', '[Path (not uploaded): {0}]'],
+        ['[文字／路径（文件未上传）：{0}]', '[Text/path (file not uploaded): {0}]'],
+        ['[上传结果待确认：{0}；标识 {1}]', '[Upload unconfirmed: {0}; request {1}]'],
+        ['已上传原件', 'Original uploaded'],
+        ['已上传 · 待发送', 'Uploaded · not sent'],
+        ['待随消息发送', 'Ready to send with message'],
+        ['上传结果待确认 · 点击查询', 'Upload unconfirmed · check status'],
+        ['查询上传结果', 'Check upload status'],
+        ['上传结果尚未确认，请保留原标识稍后查询', 'Upload unconfirmed. Keep the request ID and check again later.'],
+        ['附件上传结果待确认；点击该项查询结果，原请求不会重传', 'Upload unconfirmed. Click the item to check its status; it will not be uploaded again.'],
+        ['上传结果仍待确认：{0}；保留原标识，未重新上传', 'Upload still unconfirmed: {0}. The original request ID is retained; no new upload was made.'],
+        ['已确认原件上传成功', 'Original upload confirmed'],
+        ['已保留文字／路径／文件名；标为未上传的内容不含文件正文', 'Text, paths or filenames were preserved. Items marked as not uploaded do not contain file contents.'],
+        ['回退内容超过草稿限额，已保留在输入框旁，可复制取回', 'Recovered content exceeds the draft limit. It is preserved beside the input for copying.'],
+        ['未加入草稿的回退内容（文件未上传）', 'Recovered content outside the draft (file not uploaded)'],
+        ['复制内容', 'Copy content'],
+        ['移除回退内容', 'Remove recovered content'],
+        ['回退内容超过草稿限额，请从错误提示取回文件名', 'Recovered content exceeds the draft limit. The error includes the filenames.'],
+        ['请等待消息投递完成；文件未上传，文字或名称已保留', 'Wait for message delivery. Files were not uploaded; text or filenames were preserved.'],
+        ['请先打开会话；文件未上传，文字或名称已保留', 'Open a session first. Files were not uploaded; text or filenames were preserved.']
     );
     globalThis.PiI18nCatalog = Object.freeze(rows.map(row => Object.freeze(row)));
 })();

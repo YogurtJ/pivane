@@ -40,7 +40,7 @@
             this.status.className = 'pi-action-status'; this.status.setAttribute('role', 'status'); this.status.hidden = true;
             this.error.before(this.status);
             attachments.bindTransfers({ zone: this.content, input: this.content,
-                onFiles: files => this.run(() => this.addFiles(files)), onError: message => this.host.toast(message, 'error') });
+                onFiles: (files, metadata) => this.run(() => this.addFiles(files, metadata)), onError: message => this.host.toast(message, 'error') });
             $('pi-schedule-button').addEventListener('click', () => this.run(() => this.openSchedule()));
             $('pi-deferred-open').addEventListener('click', () => this.run(() => this.openList('deferred')));
             $('pi-workflow-close').addEventListener('click', () => this.close());
@@ -297,7 +297,10 @@
         warning(text = translateUi("只改变会话上下文，不撤销项目文件或外部操作。")) { return `<p class="pi-workflow-warning"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>${text}</p>`; }
         editorFields(payload, timed) {
             const parts = window.PiDocumentReferences.split(payload.message || '');
-            this.editor = { images: structuredClone(payload.images || []), documents: parts.filter(part => part.reference).map(part => part.reference), addedTexts: 0, reads: 0, queue: Promise.resolve() };
+            const originals = parts.filter(part => part.reference?.format === 'image').map(part => part.reference);
+            const paired = new Set(originals.slice(0, payload.images?.length || 0));
+            this.editor = { images: structuredClone(payload.images || []), imageOriginals: (payload.images || []).map((_, index) => originals[index] || null),
+                documents: parts.filter(part => part.reference && !paired.has(part.reference)).map(part => part.reference), addedTexts: 0, addedTextBytes: 0, reads: 0, queue: Promise.resolve() };
             this.content.innerHTML = `${this.mode === 'retry' ? this.warning() : ''}<label class="pi-workflow-field">${translateUi("消息")}<textarea id="pi-workflow-message" rows="7" maxlength="400000" required></textarea></label><div id="pi-workflow-images" class="pi-workflow-images"></div><div class="pi-workflow-file"><button id="pi-workflow-attach" type="button" class="icon-btn subtle" title="${translateUi("添加附件")}" aria-label="${translateUi("添加附件")}"><i class="fa-solid fa-paperclip"></i></button><input id="pi-workflow-files" type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,text/*,.md,.json,.js,.ts,.py,.sh,.csv" hidden></div>${timed ? `<div class="pi-workflow-time"><label class="pi-workflow-field">${translateUi("发送时间")}<select id="pi-workflow-time-mode"><option value="delay">${translateUi("延迟")}</option><option value="at">${translateUi("指定时间")}</option></select></label><label id="pi-workflow-delay-field" class="pi-workflow-field">${translateUi("分钟后")}<input id="pi-workflow-delay" type="number" value="10" min="1" max="527040" step="1"></label><label id="pi-workflow-at-field" class="pi-workflow-field" hidden>${translateUi("日期与时间")}<input id="pi-workflow-at" type="datetime-local"></label></div>` : ''}`;
             $('pi-workflow-message').value = parts.filter(part => !part.reference).map(part => part.text).join('').trim();
             const documents = document.createElement('div'); documents.id = 'pi-workflow-documents'; $('pi-workflow-images').after(documents);
@@ -334,41 +337,59 @@
             });
         }
         editorMessage(text = $('pi-workflow-message').value, documents = this.editor.documents) {
-            return text + documents.map(reference => '\n\n' + window.PiDocumentReferences.marker(reference)).join('');
+            return text + [...documents, ...this.editor.imageOriginals.filter(Boolean)].map(reference => '\n\n' + window.PiDocumentReferences.marker(reference)).join('');
         }
         renderImages() {
             $('pi-workflow-images').innerHTML = this.editor.images.map((image, index) => `<span><a href="data:${escape(image.mimeType)};base64,${escape(image.data)}" target="_blank" rel="noopener"><img alt="${translateUi("附件 {0}", index + 1)}" src="data:${escape(image.mimeType)};base64,${escape(image.data)}"></a><button type="button" data-remove-image="${index}" aria-label="${translateUi("移除附件 {0}", index + 1)}" title="${translateUi("移除附件")}"><i class="fa-solid fa-xmark"></i></button></span>`).join('');
-            $('pi-workflow-images').querySelectorAll('[data-remove-image]').forEach(button => button.addEventListener('click', () => { this.editor.images.splice(Number(button.dataset.removeImage), 1); this.renderImages(); }));
+            $('pi-workflow-images').querySelectorAll('[data-remove-image]').forEach(button => button.addEventListener('click', () => { this.editor.images.splice(Number(button.dataset.removeImage), 1); this.editor.imageOriginals.splice(Number(button.dataset.removeImage), 1); this.renderImages(); }));
             $('pi-workflow-message').required = !this.editor.images.length && !this.editor.documents.length;
         }
-        addFiles(fileList) {
+        addFiles(fileList, metadata = {}) {
             const editor = this.editor, files = [...fileList];
             if (!editor || this.inFlight) return;
             $('pi-workflow-files').value = '';
             editor.reads++; this.loadingFiles = editor; this.submit.disabled = true;
             $('pi-workflow-file-status').textContent = translateUi("正在读取附件…");
             editor.queue = editor.queue.then(async () => {
-                const errors = [];
+                const errors = [...(metadata.errors || [])], accepted = [], failed = [];
                 for (const file of files) {
                     if (this.editor !== editor) return;
                     try {
                         if (editor.images.length + editor.documents.length + editor.addedTexts >= attachments.limits.files) throw new Error(translateUi("一次最多添加 8 个附件"));
                         if (attachments.classify(file).kind === 'image' && editor.images.length >= attachments.limits.images) throw new Error(translateUi("一次最多添加 6 张图片"));
-                        const documentCount = editor.documents.length + window.PiDocumentReferences.split($('pi-workflow-message').value).filter(part => part.reference).length;
-                        if (attachments.classify(file).kind === 'document' && documentCount >= attachments.limits.documents) throw new Error(translateUi('一次最多添加 5 个文档附件'));
-                        const item = await attachments.read(file, { upload: file => this.host.uploadDocument(file) });
+                        const documentCount = editor.documents.filter(ref => !['file', 'image'].includes(ref.format)).length + window.PiDocumentReferences.split($('pi-workflow-message').value).filter(part => part.reference && !['file', 'image'].includes(part.reference.format)).length;
+                        if (attachments.classify(file).kind === 'document' && attachments.classify(file).format !== 'file' && documentCount >= attachments.limits.documents) throw new Error(translateUi('一次最多添加 5 个文档附件'));
+                        const attachedBytes = editor.documents.reduce((sum, ref) => sum + ref.size, 0) + editor.images.reduce((sum, image, index) => sum + (editor.imageOriginals[index]?.size || Math.ceil(image.data.length * 3 / 4)), 0) + editor.addedTextBytes;
+                        if (attachedBytes + file.size > attachments.limits.batchBytes) throw new Error(translateUi('附件总量不能超过 200 MiB'));
+                        const item = await attachments.read(file, { upload: (source, options) => this.host.uploadDocument(source, options), preserveImages: this.host.preserveImages?.() });
                         if (this.editor !== editor) return;
                         const text = $('pi-workflow-message').value + (item.kind === 'text' ? attachments.textBlock(item) : '');
                         const documents = item.kind === 'document' ? [...editor.documents, item.reference] : editor.documents;
-                        const message = this.editorMessage(text, documents);
+                        const originals = item.kind === 'image' ? [...editor.imageOriginals, item.reference || null] : editor.imageOriginals;
+                        const message = this.editorMessage(text, documents) + (item.kind === 'image' && item.reference ? '\n\n' + window.PiDocumentReferences.marker(item.reference) : '');
                         const images = item.kind === 'image' ? [...editor.images, { type: 'image', mimeType: item.mimeType, data: item.data }] : editor.images;
                         attachments.validatePayload({ message, images });
-                        editor.images = images; editor.documents = documents;
-                        if (item.kind === 'text') { $('pi-workflow-message').value = text; editor.addedTexts++; }
+                        editor.images = images; editor.imageOriginals = originals; editor.documents = documents; accepted.push(file);
+                        if (item.kind === 'text') { $('pi-workflow-message').value = text; editor.addedTexts++; editor.addedTextBytes += item.size; }
                         this.renderDocuments(); this.renderImages();
-                    } catch (error) { if (this.editor === editor) errors.push(`${file.name}: ${error.message}`); }
+                    } catch (error) {
+                        if (this.editor !== editor) return;
+                        errors.push(`${file.name}: ${error.message}`);
+                        if (error.uploadUnknown) {
+                            accepted.push(file);
+                            const text = $('pi-workflow-message').value + '\n' + translateUi('[上传结果待确认：{0}；标识 {1}]', file.name, error.requestId);
+                            if (this.editorMessage(text).length <= attachments.limits.message) $('pi-workflow-message').value = text;
+                        } else failed.push(file);
+                    }
                 }
-                if (errors.length) this.host.toast(attachments.errorSummary(errors), 'error', 6500);
+                if (this.editor !== editor) return;
+                const recovery = attachments.recoveryText({ ...metadata, files }, failed, accepted);
+                if (recovery) {
+                    const message = $('pi-workflow-message').value + '\n' + recovery;
+                    if (this.editorMessage(message).length <= attachments.limits.message) $('pi-workflow-message').value = message;
+                    else errors.push(translateUi('回退内容超过草稿限额，请从错误提示取回文件名') + ': ' + failed.map(file => file.name).join(', '));
+                }
+                if (errors.length) this.host.toast(attachments.errorSummary(errors), 'error', 8000);
             }).finally(() => {
                 editor.reads--;
                 if (this.editor === editor && !editor.reads) {

@@ -12,6 +12,7 @@ import { installQueueAdapter } from './pi-queue-adapter.mjs';
 import { installRunStartupAdapter } from './pi-run-startup-adapter.mjs';
 import { initializeNativeThemeValidation } from './pi-theme-validation.mjs';
 import { createAgentSessionWithSelectionPreflight } from './pi-model-selection-preflight.mjs';
+import { installImageCompatibility } from './pi-image-runtime.mjs';
 
 let runtime;
 try {
@@ -59,6 +60,7 @@ try {
             thinkingLevel: parsed.thinking ?? selected.thinkingLevel, scopedModels,
             tools: parsed.tools, excludeTools: parsed.excludeTools, noTools: parsed.noTools ? 'all' : parsed.noBuiltinTools ? 'builtin' : undefined });
         if (created.modelFallbackMessage) diagnostics.push({ type: 'warning', message: created.modelFallbackMessage });
+        installImageCompatibility(created.session, { emit: record => writeRawStdout(JSON.stringify(record) + '\n') });
         installQueueAdapter(created.session, { token: process.env.PIVANE_QUEUE_TOKEN,
             sessionPath: parsed.noSession ? null : sessionManager.getSessionFile(), sessionId: sessionManager.getSessionId(),
             emit: record => writeRawStdout(JSON.stringify(record) + '\n') });

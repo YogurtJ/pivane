@@ -58,6 +58,11 @@ test('raw HTTP uploads require access and same Origin; only bound workers may in
     const downloadQuery = new URLSearchParams({ cwd, sessionId: session.id, id: uploaded.reference.id });
     const download = await fetch(`${origin}/api/pi/uploads?${downloadQuery}`, { headers }); assert.equal(download.status, 200); assert.match(download.headers.get('content-disposition'), /attachment/); assert.equal(download.headers.get('x-content-type-options'), 'nosniff'); assert.deepEqual(Buffer.from(await download.arrayBuffer()), bytes);
     assert.equal((await fetch(`${origin}/api/pi/uploads/read`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ id: uploaded.reference.id }) })).status, 403);
+    const largeBytes = Buffer.alloc(21 * 1024 * 1024, 7), largeQuery = new URLSearchParams({ cwd, sessionId: session.id, requestId: 'large-video', name: 'large.webm' });
+    const largeResponse = await fetch(`${origin}/api/pi/uploads?${largeQuery}`, { method: 'POST', body: largeBytes, headers });
+    assert.equal(largeResponse.status, 200, 'generic HTTP uploads may exceed the Office/PDF 20 MiB limit');
+    const large = await largeResponse.json(); assert.equal(large.reference.size, largeBytes.length); assert.equal(large.reference.format, 'file');
+    assert.deepEqual(await service.bytes(await service.object(large.reference.id)), largeBytes);
     const other = await store.createSession(cwd, 'Other'); downloadQuery.set('sessionId', other.id);
     assert.equal((await fetch(`${origin}/api/pi/uploads?${downloadQuery}`, { headers })).status, 403);
     const leave1 = service.reserve(), leave2 = service.reserve();
@@ -71,9 +76,39 @@ test('browser payload carries only validated metadata and enforces document and 
     const payload = attachments.payload('Summarize', [document]); assert.equal(payload.images.length, 0); assert.match(payload.message, /pivane_document/); assert.ok(!payload.message.includes('合同'));
     assert.throws(() => attachments.validateDraft('', Array(6).fill(document)), /5 个/);
     await assert.rejects(attachments.read({ name: 'large.xlsx', size: MAX_BYTES + 1, type: '' }, { upload: () => { throw new Error('must not upload'); } }), /20 MiB/);
-    assert.throws(() => attachments.classify({ name: 'old.xls', type: '' }), /另存/);
+    assert.deepEqual(attachments.classify({ name: 'old.xls', type: '' }), { kind: 'document', format: 'file' });
     assert.deepEqual(refs.references([{ type: 'message', message: { role: 'assistant', content: refs.marker(reference) } }]), []);
     assert.equal(refs.split(refs.marker({ ...reference, name: '"<&样本.docx' }))[0].reference.name, '"<&样本.docx');
+});
+
+test('generic originals and image originals retain bytes, scope and exclusive project copies', async () => {
+    const session = await store.createSession(cwd, 'General files'), { SessionManager } = await getSdk();
+    const manager = SessionManager.open(session.path);
+    const worker = { cwd, sessionId: session.id, request: async () => ({ entries: manager.getEntries(), leafId: manager.getLeafId() }) };
+    const own = new DocumentUploads({ store, supervisor: { removing: new Set(), moving: new Set(), getActiveWorker: () => worker } });
+    try {
+        for (const name of ['recording.mp3', 'clip.mp4', 'archive.zip', 'legacy.xls', 'unknown.bin']) {
+            const original = Buffer.from([0, 255, 80, 75, 1, 2]), uploaded = await own.upload({ cwd, sessionId: session.id, requestId: name, name }, original);
+            assert.equal(uploaded.reference.format, 'file'); assert.match(uploaded.marker, /pivane_attachment/);
+            await assert.rejects(own.read(worker, { id: uploaded.reference.id, action: 'materialize' }), { code: 'DOCUMENT_SCOPE' });
+            manager.appendMessage({ role: 'user', content: uploaded.marker, timestamp: Date.now() });
+            await assert.rejects(own.read(worker, { id: uploaded.reference.id }), { code: 'DOCUMENT_FORMAT' });
+            const result = await own.read(worker, { id: uploaded.reference.id, action: 'materialize' });
+            assert.equal(result.path, path.join(cwd, '.pivane-attachments', uploaded.reference.id, name));
+            assert.deepEqual(fs.readFileSync(result.path), original);
+            require('./private-file-helper.cjs').assertPrivateFile(result.path);
+            assert.equal((await own.read(worker, { id: uploaded.reference.id, action: 'materialize' })).path, result.path);
+            fs.writeFileSync(result.path, 'user modification');
+            await assert.rejects(own.read(worker, { id: uploaded.reference.id, action: 'materialize' }));
+            assert.equal(fs.readFileSync(result.path, 'utf8'), 'user modification');
+            assert.deepEqual(await own.bytes(await own.object(uploaded.reference.id)), original);
+        }
+        const imageBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5V8AAAAASUVORK5CYII=', 'base64');
+        const image = await own.upload({ cwd, sessionId: session.id, requestId: 'image-original', name: 'original.png', purpose: 'image' }, imageBytes);
+        assert.equal(image.reference.format, 'image'); assert.deepEqual(await own.bytes(await own.object(image.reference.id)), imageBytes);
+        await assert.rejects(own.upload({ cwd, sessionId: session.id, requestId: 'invalid-image', name: 'invalid.png', purpose: 'image' }, Buffer.from('not image')), /格式无效/);
+        assert.equal(worker.documentReads, 0);
+    } finally { await own.dispose(); }
 });
 
 test('worker document reads retain lifecycle occupancy through asynchronous parsing and refuse stale branch results', async () => {

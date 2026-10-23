@@ -6,14 +6,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const { zip, docxFiles, xlsxFiles, pptxFiles, pdfBytes } = require('../document-fixtures.cjs');
 const { marker } = require('../../public/pi-document-references');
 const root = path.resolve(__dirname, '../..'), cwd = '/projects/office-browser-fixture';
-const model = { provider: 'fixture', id: 'fixture', name: 'Fixture', input: ['text'], contextWindow: 32000 };
+const model = { provider: 'fixture', id: 'fixture', name: 'Fixture', input: ['text', 'image'], contextWindow: 32000 };
 const sessions = ['a', 'b'].map(id => ({ id, cwd, name: id, messageCount: 0 }));
 const samples = ['docx', 'xlsx', 'pptx', 'pdf'].map((format, i) => ({ name: ['合同 & "样本".docx', '销售.xlsx', '演示.pptx', '报告.pdf'][i], format,
     buffer: format === 'pdf' ? pdfBytes() : zip(({ docx: docxFiles, xlsx: xlsxFiles, pptx: pptxFiles })[format]()), mimeType: 'application/octet-stream' }));
 async function run(browser, base, width, locale) {
     const context = await browser.newContext({ locale, viewport: { width, height: width < 900 ? 852 : 1000 }, isMobile: width < 900, hasTouch: width < 900, acceptDownloads: true });
     const page = await context.newPage(), errors = [], uploads = [], prompts = [], saved = new Map(), threads = sessions.map(session => ({ ...session }));
-    let active = 'a', reject = false, held, hold = false, loseResponse = false; const messages = { a: [], b: [] };
+    let active = 'a', reject = false, held, hold = false, loseResponse = false, statusUnavailable = false; const messages = { a: [], b: [] };
     const textOf = message => typeof message.content === 'string' ? message.content : message.content.filter(block => block.type === 'text').map(block => block.text).join('');
     page.on('pageerror', e => errors.push(e.message));
     await page.route(/^https:\/\/fonts\.(?:googleapis|gstatic)\.com\//, r => r.abort());
@@ -25,18 +25,20 @@ async function run(browser, base, width, locale) {
         if (endpoint === '/api/pi/uploads' && req.method() === 'POST') {
             const bytes = req.postDataBuffer(), name = url.searchParams.get('name'), owner = url.searchParams.get('sessionId'), requestId = url.searchParams.get('requestId');
             assert.equal(req.headers()['content-type'], 'application/octet-stream'); assert.equal(url.searchParams.get('cwd'), cwd);
-            const reference = { id: createHash('sha256').update(owner + requestId).digest('hex'), revision: createHash('sha256').update(bytes).digest('hex'), name, format: name.split('.').at(-1), size: bytes.length };
+            const extension = name.split('.').at(-1);
+            const reference = { id: createHash('sha256').update(owner + requestId).digest('hex'), revision: createHash('sha256').update(bytes).digest('hex'), name,
+                format: url.searchParams.get('purpose') === 'image' ? 'image' : ['docx', 'xlsx', 'pptx', 'pdf'].includes(extension) ? extension : 'file', size: bytes.length };
             const result = { reference, marker: marker(reference) }; uploads.push({ reference, bytes, owner }); saved.set(owner + requestId, result);
             if (hold) { held = () => replyUpload(route, result); return; }
             if (loseResponse) { loseResponse = false; return route.abort(); }
             return json(result);
         }
-        if (endpoint === '/api/pi/uploads/status') return json(saved.get(url.searchParams.get('sessionId') + url.searchParams.get('requestId')));
+        if (endpoint === '/api/pi/uploads/status') return statusUnavailable ? route.fulfill({ status: 503, json: { error: 'Status temporarily unavailable' } }) : json(saved.get(url.searchParams.get('sessionId') + url.searchParams.get('requestId')));
         if (endpoint === '/api/pi/uploads') {
             const found = uploads.find(item => item.reference.id === url.searchParams.get('id')); assert.ok(found); assert.equal(url.searchParams.get('sessionId'), active);
             return route.fulfill({ body: found.bytes, contentType: 'application/octet-stream' });
         }
-        if (endpoint === '/api/pi/status') return json({ ok: true, documentUploads: true, sessionWorkflows: true, projectRoots: ['/projects'] });
+        if (endpoint === '/api/pi/status') return json({ ok: true, documentUploads: true, attachmentUploads: true, sessionWorkflows: true, projectRoots: ['/projects'] });
         if (endpoint === '/api/pi/projects') return json({ projects: [{ cwd, name: 'Office fixture', sessionCount: threads.length }], roots: ['/projects'] });
         if (endpoint === '/api/pi/sessions') return json({ sessions: threads });
         if (endpoint === '/api/pi/activity') return json({ runtimes: [], pinnedProjects: [], hiddenProjects: [], replyNotices: [] });
@@ -113,7 +115,7 @@ async function run(browser, base, width, locale) {
     await page.locator('#pi-workflow-submit').click();
     await page.waitForFunction(() => document.querySelector('#pi-meta-id').textContent === 'fork-2' && !document.querySelector('#pi-workflow-dialog').open);
     await count(5);
-    assert.equal(await input.inputValue(), 'Summarize these documents');
+    assert.equal(await input.inputValue(), 'Summarize these documents\n' + (locale === 'en' ? '[Filename (not uploaded): sixth.docx]' : '[文件名（未上传）：sixth.docx]'));
     assert.equal(uploads.length, beforeForkUploads, 'fork reuses original references without uploading');
     assert.equal(prompts.length, beforeForkPrompts, 'opening a fork never sends its draft');
     const forkDownloadEvent = page.waitForEvent('download'); await page.locator('[data-preview-attachment]').first().click();
@@ -124,6 +126,27 @@ async function run(browser, base, width, locale) {
     assert.equal(await page.locator('.user .pi-document-card').count(), 4);
     await switchTo('a'); await count(1);
     assert.equal(await input.inputValue(), 'retain old draft', 'source draft and its existing attachment survive');
+    await clear();
+    const audio = { name: 'recording.mp3', mimeType: 'audio/mpeg', buffer: Buffer.from([0, 255, 1, 2]) };
+    const archive = { name: 'archive.zip', mimeType: 'application/zip', buffer: Buffer.from([80, 75, 0, 1]) };
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5V8AAAAASUVORK5CYII=', 'base64');
+    await select([audio, archive, { name: 'original.png', mimeType: 'image/png', buffer: png }]); await count(3);
+    assert.match((await chips.allTextContents()).join(''), /已上传.*待发送|Uploaded.*not sent/);
+    assert.equal(uploads.at(-1).reference.format, 'image'); assert.deepEqual(uploads.at(-1).bytes, png);
+    const genericDownloadEvent = page.waitForEvent('download'); await page.locator('[data-preview-attachment]').first().click();
+    assert.deepEqual(fs.readFileSync(await (await genericDownloadEvent).path()), audio.buffer);
+    await input.press('Enter'); await count(0);
+    assert.equal((prompts.at(-1).message.match(/<pivane_attachment /g) || []).length, 3);
+    assert.equal(prompts.at(-1).images.length, 1);
+    const beforeUnknown = uploads.length; loseResponse = true; statusUnavailable = true;
+    await input.fill('keep unknown upload'); await select([audio]); await count(1);
+    assert.match(await chips.textContent(), /上传结果待确认|Upload unconfirmed/); assert.equal(await page.locator('#pi-send-button').isDisabled(), true);
+    assert.equal(await input.inputValue(), 'keep unknown upload');
+    statusUnavailable = false; await page.locator('[data-preview-attachment]').click();
+    await page.waitForFunction(() => /已上传|Uploaded/.test(document.querySelector('#pi-attachments').textContent) && !/待确认|unconfirmed/.test(document.querySelector('#pi-attachments').textContent));
+    assert.equal(uploads.length, beforeUnknown + 1, 'status queries never submit another upload');
+    assert.equal(await page.locator('#pi-send-button').isDisabled(), false);
+    await page.waitForFunction(() => document.querySelector('#pi-toast-region').children.length === 0, null, { timeout: 12000 });
     await page.screenshot({ path: `/tmp/pi-document-uploads-${width}-${locale}.png` });
     assert.equal(await page.evaluate(() => document.body.scrollWidth > document.body.clientWidth), false);
     assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('.pi-document-card, .pi-attachment-chip')].filter(n => n.clientWidth && n.scrollWidth > n.clientWidth + 1).map(n => n.className)), []);

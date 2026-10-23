@@ -95,8 +95,7 @@ class SideConnection {
             await this.worker.dispose();
             throw new Error('侧聊无法使用主会话当前模型，未发送任何问题');
         }
-        if (this.boundaryId && (runtime.model.contextWindow < this.reference.estimatedTokens + this.reference.outputReserve
-            || this.reference.images && !runtime.model.input?.includes('image'))) {
+        if (this.boundaryId && runtime.model.contextWindow < this.reference.estimatedTokens + this.reference.outputReserve) {
             await this.worker.dispose();
             throw new Error('模型配置已变化，新侧聊无法完整接收该背景；未发送问题，请重新引用或检查模型设置');
         }
@@ -195,7 +194,6 @@ class SideConnection {
                     + messages.reduce((sum, item) => sum + sdk.estimateTokens(item), 0);
                 const reserve = Math.min(model.maxTokens || 16384, 16384, Math.floor(model.contextWindow / 4));
                 if (!Number.isFinite(model.contextWindow) || estimate > model.contextWindow - reserve) throw new Error('目标模型无法容纳当前侧聊上下文；记录未截断，请保留原模型或另开空白侧聊');
-                if (!model.input?.includes('image') && messages.some(item => Array.isArray(item.content) && item.content.some(block => block.type === 'image'))) throw new Error('目标模型不支持当前侧聊中的图片，请保留原模型或另开空白侧聊');
                 await rpc('set_model', { provider: model.provider, modelId: model.id });
                 this.limits = { messageCharacters: Math.min(8000, Math.floor(model.contextWindow / 4)) };
             } else {

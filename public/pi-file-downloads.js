@@ -1,5 +1,6 @@
 (() => {
     const tr = (zh, en) => globalThis.PiI18n?.locale?.startsWith('en') ? en : zh;
+    let nextFrame = 0;
     class PiFileDownloads {
         constructor(host) { this.host = host; this.enabled = false; this.maxBytes = null; this.pending = new Set(); }
         reset() { for (const controller of this.pending) controller.abort(); this.pending.clear(); }
@@ -23,7 +24,9 @@
                 }
                 const current = this.host.context();
                 if (controller.signal.aborted || current.key !== context.key || current.generation !== context.generation) return;
-                const frame = document.createElement('iframe'); frame.hidden = true; frame.name = 'pivane-download-' + crypto.randomUUID();
+                const frame = document.createElement('iframe'); frame.hidden = true;
+                // Page-local targets also work on HTTP without Web Crypto UUIDs.
+                do { frame.name = 'pivane-download-' + ++nextFrame; } while (document.getElementsByName(frame.name).length);
                 frame.setAttribute('aria-hidden', 'true');
                 const link = document.createElement('a'); link.href = url; link.target = frame.name;
                 link.download = target.name || target.path?.split(/[\\/]/).at(-1) || 'download';

@@ -57,7 +57,7 @@ function validateRpcPayload(command, payload) {
     if (/^\s*\/btw(?:\s|$)/.test(message)) throw new Error('请通过 Web 侧聊入口发送 BTW 问题');
     if (new RegExp(`^\\s*/${INTERNAL_COMMAND_PATTERN}(?:\\s|:|$)`).test(message)) throw new Error('Internal navigation command is not allowed');
     if (message.length > 400000) throw new Error('Message is too large');
-    if (require('../public/pi-document-references').split(message).filter(part => part.reference).length > 5) throw new Error('一次最多添加 5 个文档附件');
+    require('../public/pi-document-references').validateCount(message);
     const images = Array.isArray(payload.images) ? payload.images : [];
     if (images.length > 6) throw new Error('A maximum of 6 images can be sent at once');
     let encodedBytes = 0;
@@ -281,6 +281,8 @@ function createPiAgentGateway(options = {}) {
             composerTools: true,
             transcription: true,
             documentUploads: descriptorBackendAvailable(),
+            attachmentUploads: descriptorBackendAvailable(),
+            attachmentUploadLimits: { fileBytes: 100 * 1024 * 1024, batchBytes: 200 * 1024 * 1024, files: 8 },
             documentStorage: descriptorBackendAvailable(),
             durableQueueRecovery: true,
             documentUploadLimits: { fileBytes: 20 * 1024 * 1024, files: 5 },

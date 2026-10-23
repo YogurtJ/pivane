@@ -51,6 +51,21 @@ test('one-file cleanup frees capacity, persists receipt, rejects request replay/
     finally { await restarted.dispose(); }
 });
 
+test('generic attachment references receive the same native-branch protection and explicit cleanup', async t => {
+    const f = await fixture(t), original = Buffer.from([0, 255, 1]);
+    const upload = requestId => f.service.upload({ cwd: f.cwd, sessionId: f.session.id, name: requestId + '.zip', requestId }, original);
+    const saved = await upload('generic-saved'), unused = await upload('generic-unused');
+    const { SessionManager } = await getSdk();
+    SessionManager.open(f.session.path).appendMessage({ role: 'user', content: saved.marker, timestamp: 1 });
+    const usage = await f.storage.usage({ cwd: f.cwd });
+    assert.equal(usage.totalBytes, original.length * 2);
+    assert.equal(usage.items.find(item => item.id === saved.reference.id).savedReference, 'protected');
+    await assert.rejects(f.storage.preview({ cwd: f.cwd, id: saved.reference.id }), { code: 'DOCUMENT_PROTECTED' });
+    const preview = await f.storage.preview({ cwd: f.cwd, id: unused.reference.id });
+    assert.equal((await f.storage.cleanup(cleanupInput(f.cwd, preview))).state, 'deleted');
+    assert.deepEqual(await f.service.bytes(await f.service.object(saved.reference.id)), original);
+});
+
 test('all native branches, fork drafts, scheduled/unknown queue intents and current drafts protect documents', async t => {
     const f = await fixture(t), uploaded = await f.upload('saved'), id = uploaded.reference.id;
     const { SessionManager } = await getSdk(), manager = SessionManager.open(f.session.path);

@@ -58,7 +58,10 @@ test('full context preserves old constraints, summaries, mixed prose and complet
     const small = { ...source, model: { ...source.model, contextWindow: 4096 } };
     assert.throws(() => buildContextSeed(small, sdk, root), /未截断背景/);
     const images = snapshot(); images.messages = [{ role: 'user', content: [{ type: 'image', data: 'AA==', mimeType: 'image/png' }], timestamp: 1 }];
-    assert.equal(buildContextSeed(images, sdk, root).reference.omittedImages, 1);
+    const textSeed = buildContextSeed(images, sdk, root);
+    assert.equal(textSeed.reference.omittedImages, 1);
+    assert.equal(textSeed.reference.images, 1);
+    assert.equal(textSeed.seed.entries.find(entry => entry.message?.role === 'user').message.content[0].data, 'AA==', 'side seed retains the original for a future model switch');
     images.model.input.push('image');
     assert.equal(buildContextSeed(images, sdk, root).reference.images, 1);
 });

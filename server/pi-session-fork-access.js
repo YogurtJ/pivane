@@ -33,7 +33,7 @@ function validate(receipt, session) {
         || !Number.isSafeInteger(receipt.tailLength) || receipt.tailLength < 0 || receipt.tailLength > (receipt.version === 1 ? MAX_SESSION : MAX_PREFIX)
         || !Array.isArray(receipt.deliveries) || receipt.deliveries.length > 500
         || receipt.deliveries.some(ref => !hex(ref.id) || !hex(ref.manifestRevision) || typeof ref.cwd !== 'string' || !path.isAbsolute(ref.cwd))
-        || !Array.isArray(receipt.documents) || receipt.documents.length > 5 || receipt.documents.some(ref => !documents.valid(ref))) throw fail();
+        || !Array.isArray(receipt.documents) || receipt.documents.length > 8 || receipt.documents.some(ref => !documents.valid(ref))) throw fail();
 }
 async function readForkAccess(store, session) {
     let bytes;
