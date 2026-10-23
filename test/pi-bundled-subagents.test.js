@@ -38,10 +38,10 @@ test.before(async () => {
 });
 test.after(async () => { provider.closeAllConnections(); await new Promise(resolve => provider.close(resolve)); fs.rmSync(root, { recursive: true, force: true }); });
 async function open(manager, extra = {}) {
-    const { factories = [], entry = wrapper, ...sessionOptions } = extra;
+    const { factories = [], entry = wrapper, eventBus, ...sessionOptions } = extra;
     const settings = sdk.SettingsManager.create(cwd, agentDir);
     const paths = [entry];
-    const loader = new sdk.DefaultResourceLoader({ cwd, agentDir, settingsManager: settings, noExtensions: true, noSkills: true, noThemes: true, noPromptTemplates: true, noContextFiles: true, additionalExtensionPaths: paths, extensionFactories: factories });
+    const loader = new sdk.DefaultResourceLoader({ cwd, agentDir, settingsManager: settings, noExtensions: true, noSkills: true, noThemes: true, noPromptTemplates: true, noContextFiles: true, additionalExtensionPaths: paths, extensionFactories: factories, eventBus });
     await loader.reload();
     const errors = [];
     const { session } = await sdk.createAgentSession({ cwd, agentDir, modelRuntime: runtime, model, settingsManager: settings, resourceLoader: loader, sessionManager: manager, ...sessionOptions });
@@ -156,13 +156,18 @@ test('new CLI process --tools and explicit post-unload selection recover tools w
 
 test('owned pending supervisor requests retain selected replies without restoring revoked delegation', async () => {
     const { resolveSupervisorChannelDir, ensureSupervisorChannelDir } = await import('../vendor/pi-subagents/src/intercom/native-supervisor-channel.js');
+    const { SUBAGENT_ASYNC_STARTED_EVENT } = await import('../vendor/pi-subagents/src/shared/types.js');
     const fixture = await disabledFixture('pending');
-    const current = await open(sdk.SessionManager.open(fixture.file));
+    const eventBus = sdk.createEventBus();
+    const current = await open(sdk.SessionManager.open(fixture.file), { eventBus });
     const waitFor = async predicate => { for (let i = 0; i < 100 && !predicate(); i++) await new Promise(resolve => setTimeout(resolve, 20)); assert.ok(predicate()); };
     const request = suffix => {
         const id = 'pending-' + suffix, runId = 'owned-' + suffix;
         const channel = resolveSupervisorChannelDir(runId, 'fixture', 0); ensureSupervisorChannelDir(channel);
         fs.writeFileSync(path.join(channel, 'requests', id + '.json'), JSON.stringify({ type: 'subagent.supervisor.request', id, createdAt: Date.now(), expiresAt: Date.now() + 60000, reason: 'need_decision', message: 'Synthetic owned question', expectsReply: true, runId, agent: 'fixture', childIndex: 0, orchestratorSessionId: current.session.sessionId }));
+        // Publish the owned run's lifecycle notification: macOS activates transport
+        // on demand, so writing a request alone does not model a launched child.
+        eventBus.emit(SUBAGENT_ASYNC_STARTED_EVENT, { id: runId, sessionId: current.session.sessionId, agent: 'fixture' });
         return { id, channel };
     };
     try {

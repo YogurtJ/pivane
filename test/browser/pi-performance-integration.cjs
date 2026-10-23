@@ -25,7 +25,7 @@ const appRoot = path.resolve(__dirname, '../..');
 const prefix = '# Stable integration heading\n\n```js\nconst stable = 42;\n```\n\nA formula: $x^2+y^2$.\n\nTail';
 const usage = { input: 10, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 20,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
-const image = { type: 'image', mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5V8AAAAASUVORK5CYII=' };
+const image = { type: 'image', mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==' };
 const assistant = content => ({ role: 'assistant', content, timestamp: 2, stopReason: 'stop',
     api: 'openai-completions', provider: 'fixture', model: 'fixture', usage });
 
@@ -85,6 +85,7 @@ const assistant = content => ({ role: 'assistant', content, timestamp: 2, stopRe
                 } });
             const context = await browser.newContext({ locale: 'zh-CN', viewport: { width, height: 950 }, isMobile: width < 900, hasTouch: width < 900 });
             await context.addInitScript(({ cwd, id }) => {
+                if (!/^https?:$/.test(location.protocol)) return;
                 localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem('pi.web.session:' + cwd, id);
                 window.__domReadyCount = 0; document.addEventListener('DOMContentLoaded', () => window.__domReadyCount++);
             }, { cwd, id: session.id });
