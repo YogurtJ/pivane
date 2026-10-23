@@ -6,6 +6,35 @@ const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.PI_SHELL_LIVE_URL || 'http://127.0.0.1:3131';
 const cwd = fs.realpathSync.native(process.env.PI_SHELL_LIVE_PROJECT || path.join(os.tmpdir(), 'pi-web-shell-preview', 'project'));
+function modelRefreshReady(page, timeout) {
+    const deadline = Date.now() + timeout;
+    let socket, requestId, timer;
+    const read = event => { try { return JSON.parse(event.payload.toString()); } catch { return null; } };
+    const finished = new Promise((resolve, reject) => {
+        const settle = error => {
+            clearTimeout(timer); page.off('websocket', connected); page.off('close', closed);
+            socket?.off('framesent', sent); socket?.off('framereceived', received); socket?.off('close', closed); socket?.off('socketerror', failed);
+            error ? reject(error) : resolve();
+        };
+        const closed = () => settle(new Error('Connection closed before this page completed model refresh'));
+        const failed = error => settle(new Error(`Model refresh connection failed: ${error}`));
+        const sent = event => { const value = read(event); if (value?.type === 'refresh_models' && requestId === undefined) requestId = value.id; };
+        const received = event => {
+            const value = read(event);
+            if (requestId === undefined || value?.type !== 'response' || value.command !== 'refresh_models' || value.id !== requestId) return;
+            settle(value.success === true ? null : new Error(`Model refresh rejected: ${JSON.stringify(value)}`));
+        };
+        const connected = value => {
+            const url = new URL(value.url());
+            if (url.host !== new URL(base).host || url.pathname !== '/api/pi/ws' || socket) return;
+            socket = value; socket.on('framesent', sent); socket.on('framereceived', received); socket.on('close', closed); socket.on('socketerror', failed);
+        };
+        page.on('websocket', connected); page.on('close', closed);
+        timer = setTimeout(() => settle(new Error('This page did not complete model refresh within its readiness budget')), timeout);
+    });
+    finished.catch(() => {}); // Observed with the DOM readiness promise below.
+    return { finished, remaining() { const left = deadline - Date.now(); assert.ok(left > 0, 'page readiness budget expired'); return left; } };
+}
 (async () => {
     const url = new URL(base);
     assert.equal(url.hostname, '127.0.0.1'); assert.notEqual(url.port, '3001');
@@ -23,20 +52,32 @@ const cwd = fs.realpathSync.native(process.env.PI_SHELL_LIVE_PROJECT || path.joi
         const pages = [];
         for (const width of [1440, 393]) {
             const context = await browser.newContext({ locale: 'zh-CN', viewport: { width, height: 900 }, isMobile: width < 900, hasTouch: width < 900 });
-            await context.addInitScript(({ cwd, id }) => { localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem(`pi.web.session:${cwd}`, id); }, { cwd, id: session.id });
+            context.on('weberror', event => errors.push(event.error().message));
+            await context.addInitScript(({ cwd, id }) => { if (!['http:', 'https:'].includes(location.protocol)) return; localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem(`pi.web.session:${cwd}`, id); }, { cwd, id: session.id });
             const page = await context.newPage(); pages.push(page);
-            page.on('pageerror', error => errors.push(error.message));
-            page.on('websocket', socket => socket.on('framesent', event => { try { sent.push(JSON.parse(event.payload)); } catch {} }));
-            await page.goto(base, { waitUntil: 'domcontentloaded' });
-            await page.waitForFunction(() => !document.querySelector('#pi-input').disabled, null, { timeout: 60000 });
+            page.on('websocket', socket => {
+                socket.on('framesent', event => { try { sent.push(JSON.parse(event.payload)); } catch {} });
+                socket.on('framereceived', event => {
+                    let value; try { value = JSON.parse(event.payload.toString()); } catch { return; }
+                    if (value.type === 'response' && value.command === 'bash' && value.success === false) console.error('Synthetic Shell rejected', JSON.stringify(value));
+                });
+            });
+            const ready = modelRefreshReady(page, 60000);
+            await Promise.all([ready.finished, (async () => {
+                await page.goto(base, { waitUntil: 'domcontentloaded', timeout: Math.min(30000, ready.remaining()) });
+                await page.waitForFunction(() => !document.querySelector('#pi-input').disabled, null, { timeout: ready.remaining() });
+            })()]);
         }
         const [desktop, mobile] = pages;
         await desktop.locator('#pi-input').fill("!printf 'WEB_SHELL_SMOKE'; sleep 3; printf '_DONE'");
         await desktop.locator('#pi-send-button').click();
         await mobile.waitForFunction(() => document.querySelector('.pi-shell-output')?.textContent.includes('WEB_SHELL_SMOKE'));
-        await mobile.reload({ waitUntil: 'domcontentloaded' });
-        await mobile.waitForFunction(() => document.querySelector('.pi-bash-message')?.textContent.includes('_DONE'), null, { timeout: 30000 });
-        await desktop.waitForFunction(() => document.querySelectorAll('.pi-bash-message').length === 1 && !document.querySelector('.pi-shell-live'));
+        const reloaded = modelRefreshReady(mobile, 30000);
+        await Promise.all([reloaded.finished, (async () => {
+            await mobile.reload({ waitUntil: 'domcontentloaded', timeout: reloaded.remaining() });
+            await mobile.waitForFunction(() => document.querySelector('.pi-bash-message')?.textContent.includes('_DONE'), null, { timeout: reloaded.remaining() });
+            await desktop.waitForFunction(() => document.querySelectorAll('.pi-bash-message').length === 1 && !document.querySelector('.pi-shell-live'), null, { timeout: reloaded.remaining() });
+        })()]);
         await desktop.locator('#pi-input').fill("!!printf 'CANCEL_SMOKE'; sleep 30");
         await desktop.locator('#pi-send-button').click();
         await mobile.waitForFunction(() => document.querySelector('.pi-shell-output')?.textContent.includes('CANCEL_SMOKE'));
