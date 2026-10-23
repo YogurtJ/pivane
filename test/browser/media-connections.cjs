@@ -64,7 +64,15 @@ async function run(browser, viewport, theme) {
         return send({});
     });
     await page.routeWebSocket('**/api/pi/ws', () => { throw new Error('Connections must not open a Pi session'); });
-    const click = name => page.getByRole('button', { name, exact: true }).click();
+    const click = async name => {
+        await page.getByRole('button', { name, exact: true }).click();
+        if (name === '保存并使用模型') {
+            await manager.waitFor({ state: 'hidden' });
+            // Closing the editor dispatches an asynchronous catalog refresh.
+            // Wait for its public UI completion before inspecting model inputs.
+            await page.waitForFunction(() => document.getElementById('lab-refresh')?.disabled === false);
+        }
+    };
     const field = name => page.locator('#lab-connections-dialog').getByLabel(name, { exact: true });
     const manager = page.locator('#lab-connections-dialog');
     async function media() {
