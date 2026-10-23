@@ -1,0 +1,58 @@
+name: 🐛 Bug 报告 / Bug report
+description: Pivane 出现错误或与预期不符 / Something in Pivane is broken or behaves unexpectedly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！贴日志或截图前，请先去掉 API Key、Token、Cookie 和私人对话内容。
+        Thanks for reporting! Remove API keys, tokens, cookies and private conversation content from logs and screenshots first.
+  - type: input
+    id: version
+    attributes:
+      label: Pivane 版本 / Pivane version
+      description: 在“设置 → 版本与更新”查看 / See Settings → Versions and updates
+      placeholder: 例如 / e.g. 1.10.0
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 运行环境 / Environment
+      description: 部署系统、浏览器和设备 / Host OS, browser and device
+      placeholder: 例如 / e.g. Ubuntu 24.04 + Chrome 130 on Android
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么 / What happened
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果 / Expected behavior
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或截图 / Logs or screenshots
+      description: 可选，请先去除敏感信息 / Optional; remove sensitive data first
+      render: text
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 确认 / Confirmation
+      options:
+        - label: 我已去除凭据和私人内容 / I removed credentials and private content
+          required: true

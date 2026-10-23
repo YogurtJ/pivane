@@ -17,7 +17,7 @@ Subagents, scheduled tasks, MCP, long-term memory, rich file previews and a buil
 
 **English** · [简体中文](README.zh-CN.md)
 
-[Download](https://github.com/YogurtJ/pivane/releases/latest) · [Install](docs/en/INSTALL.md) · [User guide](docs/en/USER_GUIDE.md) · [Changelog](CHANGELOG.md) · [Report an issue](https://github.com/YogurtJ/pivane/issues)
+[Download](https://github.com/YogurtJ/pivane/releases/latest) · [Install](docs/en/INSTALL.md) · [User guide](docs/en/USER_GUIDE.md) · [Changelog](CHANGELOG.md) · [Report an issue](https://github.com/YogurtJ/pivane/issues/new/choose) · [Discussions](https://github.com/YogurtJ/pivane/discussions)
 
 <img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/hero-en.webp" alt="Pivane on the desktop: projects and threads, a just-finished coding task (budget alerts, 7 tests passing) and its diff" width="100%">
 
@@ -192,7 +192,13 @@ flowchart LR
 
 ## Contributing
 
-Bug reports, ideas and pull requests are welcome in [Issues](https://github.com/YogurtJ/pivane/issues). When reporting a problem, include your Pivane version and the shortest steps that reproduce it. Remove credentials and private content from logs and screenshots first.
+Feedback of any kind is welcome. Start with the [welcome post](https://github.com/YogurtJ/pivane/discussions/5).
+
+- **Bugs and feature requests:** [open an issue](https://github.com/YogurtJ/pivane/issues/new/choose). For bugs, include your Pivane version and the shortest steps that reproduce it.
+- **Questions, chat and sharing:** post in [Discussions](https://github.com/YogurtJ/pivane/discussions) or reply to the welcome post. Not sure where something belongs? Post it anywhere and I'll see it.
+- **Pull requests:** welcome. Issues labeled [`good first issue`](https://github.com/YogurtJ/pivane/labels/good%20first%20issue) are a good place to start.
+
+Remove credentials and private content from logs and screenshots first.
 
 To set up a development environment, run `node scripts/install.cjs`, then check your changes with `npm test` and `npm run check`. Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [development docs](docs/development/README.md) first. Coding agents should also read [AGENTS.md](AGENTS.md).
 

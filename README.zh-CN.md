@@ -17,7 +17,7 @@
 
 [English](README.md) · **简体中文**
 
-[下载](https://github.com/YogurtJ/pivane/releases/latest) · [安装](docs/INSTALL_RECOVERY.md) · [用户指南](docs/USER_GUIDE.md) · [变更记录](CHANGELOG.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues)
+[下载](https://github.com/YogurtJ/pivane/releases/latest) · [安装](docs/INSTALL_RECOVERY.md) · [用户指南](docs/USER_GUIDE.md) · [变更记录](CHANGELOG.md) · [反馈问题](https://github.com/YogurtJ/pivane/issues/new/choose) · [讨论区](https://github.com/YogurtJ/pivane/discussions)
 
 <img src="https://raw.githubusercontent.com/YogurtJ/pivane/main/docs/assets/readme/hero-zh.webp" alt="电脑上的 Pivane：项目与线程列表、刚完成的编程任务（预算超支提醒，7 项测试通过）和右侧的代码差异" width="100%">
 
@@ -206,7 +206,13 @@ flowchart LR
 
 ## 参与贡献
 
-欢迎在 [Issues](https://github.com/YogurtJ/pivane/issues) 提交问题报告、建议和 PR。报告问题时，请写明 Pivane 版本和最短的复现步骤；日志和截图请先去除凭据和私人内容。
+欢迎各种反馈，可以先看看[欢迎帖](https://github.com/YogurtJ/pivane/discussions/4)。
+
+- **Bug 和功能建议**：[新建 issue](https://github.com/YogurtJ/pivane/issues/new/choose)。报告 Bug 时请写明 Pivane 版本和最短的复现步骤。
+- **使用问题、交流和分享**：到 [Discussions](https://github.com/YogurtJ/pivane/discussions) 发帖，或直接在欢迎帖下留言。不确定发哪里也没关系，随便发，我都会看到。
+- **PR**：非常欢迎，可以从带 [`good first issue`](https://github.com/YogurtJ/pivane/labels/good%20first%20issue) 标签的任务开始。
+
+日志和截图请先去除凭据和私人内容。
 
 搭建开发环境时，先运行 `node scripts/install.cjs`，再用 `npm test` 和 `npm run check` 检查改动。请先阅读[贡献指南](CONTRIBUTING.md)和[开发文档](docs/development/README.md)。编程 Agent 还应阅读 [AGENTS.md](AGENTS.md)。
 

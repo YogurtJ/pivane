@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 提问与交流 / Questions & chat
+    url: https://github.com/YogurtJ/pivane/discussions
+    about: 使用问题、想法交流或分享用法，欢迎到 Discussions。Questions, chat and sharing are welcome in Discussions.
