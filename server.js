@@ -46,7 +46,7 @@ const mediaProfile = loadMediaProfile(__dirname);
 const mediaDataRoot = path.resolve(process.env.PI_MEDIA_DATA_DIR || __dirname);
 const GPU_EXEC = mediaProfile.gpuExec;
 const workspacePreferencesService = new WorkspacePreferencesService();
-const ttsProviderService = createTtsProviderService({ rootDir: __dirname, fetch, gpuExec: GPU_EXEC, configPath: mediaProfile.ttsConfigPath });
+const ttsProviderService = createTtsProviderService({ rootDir: __dirname, gpuExec: GPU_EXEC, configPath: mediaProfile.ttsConfigPath });
 const imageSettings = mediaProfile.image;
 const ZJY_ROOT = process.env.ZJY_ROOT || imageSettings.workerRoot || '';
 const ZJY_LORA_KEY = path.join(ZJY_ROOT, imageSettings.keyFile || '.lora.key');
@@ -133,28 +133,25 @@ app.get('/api/media-agent/capabilities/:kind', async (req, res) => {
 
 app.post('/api/media-agent/validate', async (req, res) => {
     try {
+        if (req.body?.stage === 'prepare') {
+            return res.json({ ok: true, ...await mediaLabService.prepareChatPlan(req.body) });
+        }
+        if (req.body?.stage === 'execute') {
+            const data = await mediaLabService.executeChatPlan(req.body, workspacePreferencesService.getMediaChatExecution());
+            const waitMs = Number(req.body.waitMs);
+            if (['running', 'queued'].includes(data.autoExecution?.status) && (!Number.isFinite(waitMs) || waitMs > 0)) {
+                const state = await mediaLabService.chatRequests.waitFor(data.plan.id, Number.isFinite(waitMs) ? waitMs : 60000);
+                const last = state.attempts.at(-1);
+                data.autoExecution = { status: last?.status || data.autoExecution.status, state, asset: last?.asset || null, error: last?.error || null };
+            }
+            return res.json({ ok: true, ...data });
+        }
+        if (req.body?.stage !== undefined) throw new Error('Unsupported media preparation stage');
+        // Legacy planners remain planning-only. Older managed workers must reopen
+        // before automatic execution can use the native-origin handshake.
         const kind = String(req.body?.kind || '');
         const plan = req.body?.plan?.modelId ? await mediaLabService.plan(req.body.plan) : mediaAgentService.validatePlan(kind, req.body?.plan, req.body?.current);
-        let autoExecution = null;
-        if (req.body?.autoExecute === true && plan?.id && plan?.modelId && mediaLabService.chatRequests) {
-            const policy = workspacePreferencesService.getMediaChatExecution();
-            if (policy[plan.kind] === true) {
-                try {
-                    const submitted = await mediaLabService.chatRequests.run({
-                        key: plan.id, modelId: plan.modelId, parameters: plan.parameters, confirmed: true
-                    });
-                    const waitMs = Number(req.body?.waitMs);
-                    const state = (submitted.status === 'running' || submitted.status === 'queued') && (!Number.isFinite(waitMs) || waitMs > 0)
-                        ? await mediaLabService.chatRequests.waitFor(plan.id, Number.isFinite(waitMs) ? waitMs : 60000)
-                        : submitted.state || mediaLabService.chatRequests.publicState(plan.id);
-                    const last = state?.attempts?.at(-1) || null;
-                    autoExecution = { status: last?.status || submitted.status, state, asset: last?.asset || null, error: last?.error || null };
-                } catch (error) {
-                    autoExecution = { status: 'not_started', error: error.message };
-                }
-            }
-        }
-        res.json({ ok: true, plan, ...(autoExecution ? { autoExecution } : {}) });
+        res.json({ ok: true, plan });
     } catch (error) {
         res.status(error.statusCode || 400).json({ error: error.message });
     }

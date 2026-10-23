@@ -40,7 +40,8 @@ test('authenticated optional channel connects, binds and delivers once through t
     const calls = [], sends = [], typings = [], mediaSends = []; let hold = null, releaseModel, sendFailure = false, installed = false, sendHold = null, releaseSend;
     let replyText = 'Native channel reply';
     let deliverTool = false;
-    const onePixelPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==', 'base64');
+    // Valid RGBA PNG: both chunk CRC and IDAT checksum pass real image conversion.
+    const onePixelPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==', 'base64');
     const provider = http.createServer(async (req, res) => {
         let body = ''; for await (const part of req) body += part; const input = JSON.parse(body); calls.push(input);
         if (hold) await hold;
@@ -264,12 +265,22 @@ test('authenticated optional channel connects, binds and delivers once through t
         assert.equal(service.db.value.bindings[0].sessionId, session.id);
         replyText = 'Native channel reply';
         const { SessionManager: AuditSessionManager } = await import('@earendil-works/pi-coding-agent');
-        const management = await gateway.store.createSession(cwd, 'Managed helper');
-        AuditSessionManager.open(management.path).appendCustomEntry('pivane-extension-assistant', {});
-        service.receive('bot-one', { msgs: [incoming('resume-management', '/resume ' + management.id)] }); service.pump();
-        await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
-        assert.equal(service.db.value.bindings[0].sessionId, session.id);
-        assert.match(sends.at(-1).text, /管理助手线程不能绑定/);
+        for (const marker of ['pivane-extension-assistant', 'pi5-extension-assistant', 'pivane-profile-authoring', 'pi5-profile-authoring']) {
+            const management = await gateway.store.createSession(cwd, 'Managed helper ' + marker);
+            AuditSessionManager.open(management.path).appendCustomEntry(marker, { version: 1, sessionId: management.id, scope: 'global', language: 'en' });
+            const beforeBinding = service.db.value.bindings[0].id;
+            const response = await fetch(base + '/api/pi/channels/weixin/actions', { method: 'POST', headers: { Authorization: 'Bearer synthetic', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'bind', accountId: 'bot-one', peerId: 'owner', cwd, sessionId: management.id,
+                    confirmed: true, expectedRevision: (await snapshot()).revision }) });
+            assert.equal(response.status, 400, `${marker} cannot be selected through the public bind action`);
+            assert.match((await response.json()).error, /管理助手线程不能绑定/);
+            assert.equal(service.db.value.bindings[0].id, beforeBinding);
+            service.receive('bot-one', { msgs: [incoming('resume-' + marker, '/resume ' + management.id)] }); service.pump();
+            await wait(() => service.db.value.jobs.at(-1).status === 'delivered');
+            assert.equal(service.db.value.bindings[0].sessionId, session.id);
+            assert.match(sends.at(-1).text, /管理助手线程不能绑定/);
+            assert.equal(gateway.supervisor.getActiveWorker(management.path), undefined, 'rejected management target is never started');
+        }
         const nativeGetWorker = gateway.supervisor.getWorker.bind(gateway.supervisor);
         let announceCommand, releaseCommand;
         const commandStarted = new Promise(resolve => { announceCommand = resolve; });

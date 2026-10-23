@@ -7,6 +7,7 @@ const { WeixinAdapter, createTransport, validId } = require('./weixin-adapter');
 const { outcome } = require('./runtime');
 const { bindingBoundary, threadOutcome } = require('./thread-results');
 const { DeliverableStore } = require('../pi-deliverables');
+const { customTypeIs } = require('../pivane-compat');
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const same = (a, b) => a?.cwd === b?.cwd && a?.sessionId === b?.sessionId;
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -150,7 +151,7 @@ class ChannelsService {
     async withBindingTarget(cwd, sessionId, commit) {
         return this.store.withSessionRead(cwd, sessionId, (session, read) => {
             if (read.manager().getEntries().some(e => e.type === 'custom'
-                && ['pivane-extension-assistant', 'pivane-profile-authoring'].includes(e.customType))) {
+                && (customTypeIs(e, 'pivane-extension-assistant') || customTypeIs(e, 'pivane-profile-authoring')))) {
                 throw fail('管理助手线程不能绑定外部聊天');
             }
             read.validate();
@@ -405,6 +406,16 @@ class ChannelsService {
         let stopTyping = () => Promise.resolve();
         let slash = null;
         try {
+            // Old versions could persist a binding to a legacy management
+            // thread. Preserve that record, but never execute or deliver through it.
+            try { await this.withBindingTarget(job.target.cwd, job.target.sessionId, () => {}); }
+            catch (error) {
+                // This proof has not executed or delivered anything. A native
+                // append may invalidate it; keep queued/ready for the next pump,
+                // and never overwrite a cancellation that won during the read.
+                if (error.message === 'Session file changed' || error.code === 'SESSION_BUSY') return;
+                throw error;
+            }
             if (job.status === 'queued') {
                 slash = !job.images?.length ? parseSlash(job.text) : null;
                 if (slash) {

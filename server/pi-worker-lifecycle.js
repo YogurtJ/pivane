@@ -25,6 +25,7 @@ function workerLifecycle(worker) {
     if (activity.busy) blockers.push('agent');
     if (worker.disposed || worker.restarting || worker.exited) blockers.push('lifecycle');
     if (worker.modelChangeUncertain) blockers.push('model-uncertain');
+    if (worker.sessionNameUncertain) blockers.push('session-name-uncertain');
     if (worker.promptAdmissionUncertain) blockers.push('prompt-admission-uncertain');
     if (worker.titleGeneration) blockers.push('title-generation');
     if (worker.pendingUi.size) blockers.push('confirmation');

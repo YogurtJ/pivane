@@ -84,6 +84,83 @@ test('generic files and original image references round-trip with explicit uploa
     assert.equal(docs.valid({ ...reference, size: 100 * 1024 * 1024 + 1 }), false);
 });
 
+test('document attachment uploads reject stale selections before any POST, including reads that return to the source thread', async t => {
+    for (const change of ['session', 'project', 'connection', 'disconnect', 'attachment epoch', 'editor', 'A-B-A']) {
+        await t.test(change, async () => {
+            const fixture = documentUploadFixture();
+            let current = true;
+            const prepared = fixture.client.prepareUpload(() => current);
+            const file = new File([png], 'slow.png');
+            let release;
+            file.arrayBuffer = () => new Promise(resolve => { release = () => resolve(png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength)); });
+            const pending = attachments.read(file, { ...prepared, preserveImages: true });
+            if (change === 'session') fixture.context.session.id = 'b';
+            else if (change === 'project') fixture.context.cwd = '/project-b';
+            else if (change === 'connection') fixture.context.generation++;
+            else if (change === 'disconnect') fixture.context.connected = false;
+            else if (change === 'A-B-A') { fixture.context.generation += 2; }
+            else current = false;
+            release();
+            await assert.rejects(pending, error => error.status === 409);
+            assert.equal(fixture.requests.length, 0, 'stale bytes never reach the upload API');
+            await assert.rejects(async () => prepared.upload(new File(['raw'], 'raw.zip')), error => error.status === 409);
+            assert.equal(fixture.requests.length, 0, 'direct original uploads also check selection ownership');
+        });
+    }
+});
+
+test('document attachment images already POSTed retain their source owner and reject late draft insertion', async t => {
+    for (const change of ['session', 'attachment epoch']) {
+        await t.test(change, async () => {
+            let finish, posted;
+            const started = new Promise(resolve => { posted = resolve; });
+            const fixture = documentUploadFixture(async (_url, _options, result) => {
+                posted(); return new Promise(resolve => { finish = () => resolve(result); });
+            });
+            let current = true;
+            const pending = attachments.read(new File([png], 'late.png'), { ...fixture.client.prepareUpload(() => current), preserveImages: true });
+            await started;
+            if (change === 'session') fixture.context.session.id = 'b'; else current = false;
+            finish();
+            await assert.rejects(pending, error => error.status === 409);
+            assert.equal(fixture.requests.length, 1);
+            assert.equal(fixture.requests[0].url.searchParams.get('sessionId'), 'a');
+            assert.equal(fixture.requests[0].options.method, 'POST');
+        });
+    }
+});
+
+test('document attachment image response loss queries the original request and never POSTs again', async () => {
+    const fixture = documentUploadFixture(async (_url, options, result) => {
+        if (options?.method === 'POST') throw new Error('controlled response loss');
+        return result;
+    });
+    const image = await attachments.read(new File([png], 'reconciled.png'), { ...fixture.client.prepareUpload(), preserveImages: true });
+    assert.equal(image.reference.format, 'image');
+    assert.deepEqual(fixture.requests.map(({ options }) => options?.method || 'GET'), ['POST', 'GET']);
+    const [post, status] = fixture.requests.map(request => request.url);
+    assert.equal(status.pathname, '/api/pi/uploads/status');
+    assert.equal(status.searchParams.get('requestId'), post.searchParams.get('requestId'));
+    assert.equal(status.searchParams.get('sessionId'), 'a');
+});
+
+function documentUploadFixture(respond = async (_url, _options, result) => result) {
+    const context = { cwd: '/project-a', session: { id: 'a' }, generation: 1, connected: true };
+    const requests = [];
+    let saved;
+    const sandbox = { PiDocumentReferences: require('../public/pi-document-references'), PiAttachments: attachments, URLSearchParams,
+        crypto: require('node:crypto').webcrypto };
+    vm.runInNewContext(fs.readFileSync(require.resolve('../public/pi-document-attachments'), 'utf8'), sandbox);
+    const client = new sandbox.PiDocumentAttachments({ context: () => context, api: async (path, options) => {
+        const url = new URL(path, 'http://fixture.invalid'); requests.push({ url, options });
+        if (options?.method === 'POST') saved = { reference: { id: 'a'.repeat(64), revision: 'b'.repeat(64),
+            name: options.body.name, size: options.body.size, format: url.searchParams.get('purpose') === 'image' ? 'image' : 'file' } };
+        return respond(url, options, saved);
+    } });
+    client.enabled = true; client.generic = true;
+    return { client, context, requests };
+}
+
 test('transfer recovery preserves independent prose, isolates failed files and reads FileList when items are unavailable', () => {
     const good = new File(['ok'], 'good.txt'), bad = new File(['bad'], 'broken.txt');
     const metadata = { text: 'Please inspect these files', files: [good, bad] };

@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { createHash } = require('node:crypto');
 const fileIo = require('./pi-file-io');
 const { descriptorPathSync, assertDescriptorBackend } = require('./pi-file-descriptor');
 const { customTypeIs } = require('./pivane-compat');
@@ -117,7 +118,7 @@ class TaskCatalog {
                 if (!record || fingerprint(record.stat) !== fingerprint(stat)) {
                     record = { path: filename, stat, position: 0, linePosition: 0, parts: [], pendingBytes: 0, complete: false,
                         header: null, task: null, state: null, name: '', results: new Map(), receipts: new Set(), read: new Set(),
-                        preview: '', special: null, outbox: new Map(), inbox: new Set() };
+                        preview: '', special: null, outbox: new Map(), outboxLocations: new Map(), inbox: new Set() };
                     project.files.set(filename, record);
                 } else if (record.complete) this.readBatch(project, record, 0, Date.now());
             }
@@ -141,9 +142,21 @@ class TaskCatalog {
                     ids.add(record.header.id);
                 }
                 metadataBytes += Buffer.byteLength(JSON.stringify([record.header, record.task, record.state, record.name,
-                    [...record.results.values()], [...record.receipts], [...record.read], record.preview, [...record.outbox.values()], [...record.inbox]]));
+                    [...record.results.values()], [...record.receipts], [...record.read], record.preview, [...record.outbox.values()], [...record.outboxLocations], [...record.inbox]]));
             }
             if (metadataBytes > this.limits.metadataBytes) throw failure('TASK_METADATA_LIMIT', 'Task metadata exceeds the cache budget');
+            project.metadataBytes = metadataBytes;
+            const indexed = [...project.files.values()].every(record => record.complete);
+            let bodiesComplete = false;
+            if (indexed) {
+                for (const record of project.files.values()) {
+                    if ([...record.outboxLocations.keys()].filter(id => !delivered.has(id)).length > this.limits.outboxPerSession)
+                        throw failure('TASK_OUTBOX_LIMIT', 'Pending outbound messages exceed the recovery index budget; the catalog is incomplete');
+                }
+                // Discover all inboxes before retaining any outbound body. Large
+                // delivered histories consume routing metadata, not body memory.
+                bodiesComplete = this.readOutboundBodies(project, delivered, remaining, started);
+            }
             let stable = true;
             if (directoryBefore) {
                 // Directory timestamps can remain identical for multiple writes
@@ -163,11 +176,59 @@ class TaskCatalog {
                         || !fileIo.sameIdentityAtPath(filename, record.identity ?? null)) { project.files.delete(filename); stable = false; }
                 } catch { project.files.delete(filename); stable = false; }
             }
-            project.complete = stable && [...project.files.values()].every(f => f.complete);
+            project.complete = stable && indexed && bodiesComplete;
         } catch (error) {
+            project.outboundRead = null;
+            if (error.code === 'TASK_METADATA_LIMIT') {
+                // A failed cache must not survive to accumulate another batch on
+                // each refresh. Native files remain the recovery source.
+                project.files.clear(); project.metadataBytes = 0;
+                clearTimeout(project.timer); project.timer = null;
+            }
             project.error = error.code?.startsWith('TASK_') ? error : failure('TASK_SCAN_FAILED', 'Task directory could not be verified; retry after the session files settle');
             throw project.error;
         }
+    }
+    readOutboundBodies(project, delivered, allowance, started) {
+        for (const source of project.files.values()) for (const [id, location] of source.outboxLocations) {
+            const expected = source.outbox.get(id);
+            if (delivered.has(id) || expected.text !== undefined) continue;
+            if (allowance <= 0 || Date.now() - started >= this.limits.milliseconds) return false;
+            if (project.metadataBytes + location.bytes > this.limits.metadataBytes)
+                throw failure('TASK_METADATA_LIMIT', 'Pending message bodies exceed the cache budget');
+            let pending = project.outboundRead;
+            if (!pending || pending.source !== source || pending.id !== id) {
+                pending = project.outboundRead = { source, id, phase: 'header', reader: {
+                    path: source.path, stat: source.stat, identity: source.identity, position: 0, linePosition: 0, parts: [], pendingBytes: 0,
+                    endPosition: source.headerEndPosition, header: null, complete: false, selectOutboundId: id
+                } };
+            }
+            const reader = pending.reader;
+            while (allowance > 0 && Date.now() - started < this.limits.milliseconds) {
+                const bytes = this.readBatch(project, reader, allowance, started); allowance -= bytes;
+                if (reader.complete) {
+                    if (pending.phase === 'header') {
+                        if (reader.header.id !== source.header.id || reader.header.cwd !== project.cwd)
+                            throw failure('TASK_CHANGED', 'Outbound message source changed during recovery');
+                        pending.phase = 'body'; reader.position = reader.linePosition = location.position;
+                        reader.endPosition = location.position + location.length; reader.complete = false;
+                    } else {
+                        const message = reader.selectedOutbound;
+                        if (!message || typeof message.text !== 'string'
+                            || createHash('sha256').update(message.text).digest('hex') !== expected.textHash
+                            || JSON.stringify({ ...message, text: undefined }) !== JSON.stringify(outboundMessage(expected)))
+                            throw failure('TASK_CHANGED', 'Outbound message changed during recovery');
+                        source.outbox.set(id, { ...expected, text: message.text });
+                        project.metadataBytes += location.bytes;
+                        project.outboundRead = null;
+                        break;
+                    }
+                } else if (!bytes) break;
+            }
+            if (project.outboundRead) return false;
+        }
+        project.outboundRead = null;
+        return true;
     }
     readBatch(project, record, allowance, started) {
         let fd; let bytes = 0;
@@ -233,6 +294,14 @@ class TaskCatalog {
             record.selectedText = typeof content === 'string' ? content : (Array.isArray(content) ? content : [])
                 .filter(block => block.type === 'text' && typeof block.text === 'string').map(block => block.text).join('\n');
         }
+        // Located readers retain only the selected payload, never rebuild an
+        // unbounded metadata cache while walking unrelated native history.
+        if (record.selectOutboundId) {
+            if (entry.type === 'custom' && entry.customType === MESSAGE_OUT && entry.data?.messageId === record.selectOutboundId)
+                record.selectedOutbound = outboundMessage(entry.data, record.header);
+            return;
+        }
+        if (record.selectEntryId) return;
         if (record.header.cwd !== project.cwd) return;
         if (entry.type === 'session_info') record.name = typeof entry.name === 'string' ? entry.name.slice(0, 160) : '';
         if (entry.type === 'custom' && customTypeIs(entry, 'pivane-agent-task') && !record.task
@@ -250,10 +319,19 @@ class TaskCatalog {
                 .filter(block => block?.type === 'text' && typeof block.text === 'string').map(block => block.text).join(' ');
             record.preview = text.replace(/\s+/g, ' ').trim().slice(0, 120);
         }
-        if (entry.type === 'custom' && (entry.customType === 'pivane-extension-assistant' || entry.customType === 'pivane-profile-authoring')) record.special = entry.customType;
+        if (entry.type === 'custom' && customTypeIs(entry, 'pivane-extension-assistant')) record.special = 'pivane-extension-assistant';
+        if (entry.type === 'custom' && customTypeIs(entry, 'pivane-profile-authoring')) record.special = 'pivane-profile-authoring';
         if (entry.type === 'custom' && entry.customType === MESSAGE_OUT) {
             const message = outboundMessage(entry.data, record.header);
-            if (message && record.outbox.size < this.limits.outboxPerSession) record.outbox.set(message.messageId, message);
+            if (message) {
+                const textHash = typeof message.text === 'string' ? createHash('sha256').update(message.text).digest('hex') : undefined;
+                const metadata = { ...message, text: undefined, textHash };
+                record.outbox.set(message.messageId, metadata); record.outboxLocations.delete(message.messageId);
+                if (typeof message.text === 'string') record.outboxLocations.set(message.messageId, {
+                    position: record.linePosition, length: buffer.length + 1,
+                    bytes: Buffer.byteLength(JSON.stringify({ ...metadata, text: message.text })) - Buffer.byteLength(JSON.stringify(metadata))
+                });
+            }
         }
         if (entry.type === 'custom_message' && entry.customType === MESSAGE_IN && typeof entry.details?.messageId === 'string'
             && /^[a-f0-9]{64}$/.test(entry.details.messageId)) record.inbox.add(entry.details.messageId);

@@ -569,9 +569,11 @@ function createPiAgentGateway(options = {}) {
     router.patch('/sessions/:id', async (req, res) => {
         try {
             const session = await store.getSession(req.body.cwd, req.params.id);
-            const worker = supervisor.getActiveWorker(session.path);
-            const renamed = await store.renameSession(req.body.cwd, req.params.id, req.body.name, worker);
-            titles.changed(worker, renamed.name);
+            const renamed = await supervisor.withSessionEdit(session.path, async (worker, rpc) => {
+                const renamed = await store.renameSession(session.cwd, session.id, req.body.name, worker, rpc);
+                titles.changed(worker, renamed.name);
+                return renamed;
+            }, { idle: false });
             res.json(renamed);
         } catch (error) {
             res.status(400).json({ error: error.message });
@@ -671,6 +673,7 @@ function createPiAgentGateway(options = {}) {
             let unsubscribe = null;
             let authenticated = false;
             let socketClosed = false;
+            let opening = false;
             const sessionClassification = session => {
                 if (session.path !== workerSessionPath) return;
                 safeSend(socket, { type: 'gateway_session_classified', session }, { code: 1012, reason: 'Session classification changed' });
@@ -715,7 +718,7 @@ function createPiAgentGateway(options = {}) {
                 try { leave = maintenance.enter(); } catch (error) {
                     safeSend(socket, { type: 'response', id: message.id, command: message.type, success: false, error: error.message }); return;
                 }
-                handleSocketMessage(message).catch(error => {
+                dispatchSocketMessage(message).catch(error => {
                     safeSend(socket, {
                         type: 'response',
                         id: message.id,
@@ -747,24 +750,36 @@ function createPiAgentGateway(options = {}) {
                 ]);
             }
 
-            async function buildSnapshot(session) {
+            async function dispatchSocketMessage(message) {
+                if (socketClosed) return;
+                if (opening) throw Object.assign(new Error('会话正在打开，请等待快照完成'), { code: 'SESSION_OPEN_PENDING' });
+                if (!['open_session', 'open_ephemeral', 'open_side_chat'].includes(message.type)) return handleSocketMessage(message);
+                if (sideSocket || message.type === 'open_side_chat' && worker) throw new Error('侧聊必须使用独立的新连接');
+                // Own acquisition, snapshot and cleanup before any await; a rejected
+                // concurrent open must not change the admitted connection's identity.
+                opening = true;
+                try { return await handleSocketMessage(message); }
+                finally { opening = false; }
+            }
+
+            async function buildSnapshot(session, source) {
                 const completion = session.ephemeral ? null : replyNotice(session);
-                const state = await worker.request('get_state');
+                const state = await source.request('get_state');
                 let messages;
-                const stats = await worker.request('get_session_stats');
-                const models = await worker.request('get_available_models', {}, 60000);
-                const thinkingLevels = await worker.request('get_available_thinking_levels');
-                const commands = await worker.request('get_commands');
+                const stats = await source.request('get_session_stats');
+                const models = await source.request('get_available_models', {}, 60000);
+                const thinkingLevels = await source.request('get_available_thinking_levels');
+                const commands = await source.request('get_commands');
                 // Return one fresh controls snapshot, without duplicating potentially large recovered text.
                 delete state.webControls;
-                state.webShell = worker.shell.snapshot();
+                state.webShell = source.shell.snapshot();
                 // Read messages last. webLive is captured synchronously at the native response boundary.
-                messages = await worker.request('get_messages');
+                messages = await source.request('get_messages');
                 const live = messages.webLive, boundary = messages.webSnapshot;
                 return { session, state: { ...state, ...(live ? { isStreaming: live.running, isCompacting: live.compacting,
                     webCompaction: boundary.webCompaction, webShell: boundary.webShell, webNavigation: boundary.webNavigation } : {}) },
                     messages, stats, models, thinkingLevels, commands, completion,
-                    pendingUi: boundary?.pendingUi || worker.getPendingUi(), controls: boundary?.controls || worker.controls.snapshot(),
+                    pendingUi: boundary?.pendingUi || source.getPendingUi(), controls: boundary?.controls || source.controls.snapshot(),
                     mcpAuthorization: boundary?.mcpAuthorization || null };
             }
 
@@ -820,54 +835,58 @@ function createPiAgentGateway(options = {}) {
 
                 if (message.type === 'open_session' || message.type === 'open_ephemeral') {
                     await releaseCurrentWorker(false);
-                    let session;
-                    if (message.type === 'open_ephemeral') {
-                        const cwd = store.resolveProject(message.cwd);
-                        worker = await supervisor.createEphemeralWorker(cwd);
-                        ephemeralWorker = worker;
-                        if (socketClosed) {
-                            await releaseCurrentWorker(false);
-                            return;
+                    let session, source, temporary;
+                    try {
+                        if (message.type === 'open_ephemeral') {
+                            const cwd = store.resolveProject(message.cwd);
+                            source = temporary = await supervisor.createEphemeralWorker(cwd);
+                            if (socketClosed) { await temporary.dispose(); return; }
+                            const runtimeState = await source.request('get_state');
+                            const now = new Date().toISOString();
+                            session = {
+                                id: runtimeState.sessionId,
+                                path: null,
+                                cwd,
+                                name: '临时会话',
+                                firstMessage: '',
+                                messageCount: 0,
+                                created: now,
+                                modified: now,
+                                ephemeral: true
+                            };
+                        } else {
+                            await store.withSessionRead(message.cwd, message.sessionId, async prepared => {
+                                session = prepared;
+                                source = await supervisor.getWorker({ cwd: session.cwd, sessionPath: session.path, sessionId: session.id });
+                            });
                         }
-                        const runtimeState = await worker.request('get_state');
-                        const now = new Date().toISOString();
-                        session = {
-                            id: runtimeState.sessionId,
-                            path: null,
-                            cwd,
-                            name: '临时会话',
-                            firstMessage: '',
-                            messageCount: 0,
-                            created: now,
-                            modified: now,
-                            ephemeral: true
-                        };
-                    } else {
-                        await store.withSessionRead(message.cwd, message.sessionId, async prepared => {
-                            session = prepared;
-                            worker = await supervisor.getWorker({ cwd: session.cwd, sessionPath: session.path, sessionId: session.id });
-                        });
+                        if (socketClosed) { await temporary?.dispose(); return; }
+                        worker = source;
+                        ephemeralWorker = temporary || null;
                         workerSessionPath = session.path;
+                        unsubscribe = source.subscribe(event => {
+                            if (event.type === 'gateway_reconnect') socket.close(1012, 'Session runtime changed');
+                            else if (event.type === 'gateway_runtime_ended') {
+                                const closing = { code: 4006, reason: 'Session runtime ended' };
+                                safeSend(socket, event, closing); socket.close(closing.code, closing.reason);
+                            } else safeSend(socket, event);
+                        });
+                        const snapshot = await buildSnapshot(session, source);
+                        if (socketClosed) { await releaseCurrentWorker(false); return; }
+                        safeSend(socket, {
+                            type: 'response',
+                            id: message.id,
+                            command: message.type,
+                            success: true,
+                            data: snapshot
+                        });
+                    } catch (error) {
+                        if (worker === source) await releaseCurrentWorker(false);
+                        // A close may already have detached this attempt's worker.
+                        // Disposal remains owned until the actual process exit.
+                        await temporary?.dispose();
+                        throw error;
                     }
-                    unsubscribe = worker.subscribe(event => {
-                        if (event.type === 'gateway_reconnect') socket.close(1012, 'Session runtime changed');
-                        else if (event.type === 'gateway_runtime_ended') {
-                            const closing = { code: 4006, reason: 'Session runtime ended' };
-                            safeSend(socket, event, closing); socket.close(closing.code, closing.reason);
-                        } else safeSend(socket, event);
-                    });
-                    const snapshot = await buildSnapshot(session);
-                    if (socketClosed) {
-                        await releaseCurrentWorker(false);
-                        return;
-                    }
-                    safeSend(socket, {
-                        type: 'response',
-                        id: message.id,
-                        command: message.type,
-                        success: true,
-                        data: snapshot
-                    });
                     return;
                 }
 

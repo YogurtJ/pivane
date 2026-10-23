@@ -19,10 +19,11 @@
 - Provider/model 定义的单行文本、多行文本与数值型专属参数；服务端按 metadata 做长度、范围和整数校验。
 - 本地音频历史、播放、复用、下载和删除。
 
-历史记录保留 provider、model、voice、language、speed、provider options 和可选性能 metadata。旧 MiniMax 记录没有这些新增字段时仍可读取。
+历史记录保留 provider、model、voice、language、speed、provider options 和可选性能 metadata。历史音频与记录独立于当前可用 Provider，旧记录缺少新增字段时仍可读取。
+
+旧 MiniMax TTS adapter 已移除，不再显示模型、音色或说明入口，也不再发起语音合成请求。读取已有本地 registry 时仅在内存中忽略 `adapter: "minimax"` 的条目，不改写原配置或删除历史音频；若它是默认 Provider，则改用其余已启用 Provider，没有其余项时目录为空。其他未知 adapter 或无效配置仍报错。MiniMax 视频及 Pi 聊天模型沿用各自配置。
 
 当前 adapter：
 
 - `breeze-gpu`：multipart 通过 stdin 发送，裸 PCM 封装为 WAV；默认 Voice Design，Voice Clone 尚未接入 Web 上传契约。
 - `qwen3-gpu`：JSON 通过 stdin 发送，返回 WAV。
-- `minimax`：服务端 Key 的兼容 HTTP adapter。

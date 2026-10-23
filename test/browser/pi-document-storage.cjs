@@ -9,10 +9,10 @@ async function run(browser, base, width) {
     const page = await context.newPage(), errors = [], calls = [];
     page.on('pageerror', e => errors.push(e.message));
     const id = 'a'.repeat(64), ref = { id, revision: 'b'.repeat(64), name: '<img src=x onerror=alert(1)>'.repeat(6) + '.docx', format: 'docx', size: 2000, sessionId: 'source-thread' };
-    let cleanupCount = 0, lose = false, deleted = false, failScan = false;
+    let cleanupCount = 0, lose = false, deleted = false, failScan = false, pendingResidue = false;
     const usage = cwd => ({ cwd, totalBytes: 4000, count: deleted ? 1 : 2, limits: { bytes: 2 * 1024 ** 3, count: 10000 }, complete: !failScan,
-        warning: failScan ? '无法完整核对保存引用，暂不能清理附件' : null,
-        items: deleted ? [] : [{ ...ref, name: cwd === '/fresh' ? 'fresh-project.docx' : ref.name, savedReference: failScan ? 'unverified' : 'not-found' },
+        warning: pendingResidue ? '附件清理残留待核对，仍保守计入用量；不会自动继续清理。' : failScan ? '无法完整核对保存引用，暂不能清理附件' : null,
+        items: deleted ? [] : [{ ...ref, name: cwd === '/fresh' ? 'fresh-project.docx' : ref.name, savedReference: pendingResidue || failScan ? 'unverified' : 'not-found', deletionPending: pendingResidue },
             { ...ref, id: 'c'.repeat(64), name: 'saved.docx', savedReference: 'protected' }, ...Array.from({ length: 30 }, (_, i) => ({ ...ref, id: i.toString(16).padStart(64, '0'), name: `Saved ${i}.docx`, savedReference: 'protected' }))] });
     await page.route('**/api/pi/uploads/storage/**', async route => {
         const req = route.request(), endpoint = new URL(req.url()).pathname.split('/').at(-1), body = req.postDataJSON(); calls.push({ endpoint, body });
@@ -76,6 +76,12 @@ async function run(browser, base, width) {
     await dialog.getByRole('button', { name: '刷新用量', exact: true }).click(); await dialog.getByText('无法完整核对保存引用，暂不能清理附件', { exact: true }).waitFor();
     assert.equal(await dialog.getByRole('button', { name: '预览清理', exact: true }).first().isDisabled(), true);
     await measure(); assert.deepEqual(errors, []);
+    failScan = false; pendingResidue = true;
+    await dialog.getByRole('button', { name: '刷新用量', exact: true }).click();
+    await dialog.getByText('附件清理残留待核对，仍保守计入用量；不会自动继续清理。', { exact: true }).waitFor();
+    assert.equal(await dialog.getByRole('button', { name: '预览清理', exact: true }).first().isDisabled(), true);
+    assert.equal(cleanupCount, 1, 'refreshing a pending residue never replays cleanup');
+    assert.deepEqual(await page.evaluate(() => drafts), ['d'.repeat(64)]); await measure(); assert.deepEqual(errors, []);
     await dialog.getByRole('button', { name: '关闭', exact: true }).click(); assert.equal(await dialog.isVisible(), false);
     console.log(`attachment storage ${width}: confirmation/cancel, protected/incomplete, duplicate click, lost response/status, late project read, safe DOM, inner scroll and 16px controls passed`);
     await context.close();

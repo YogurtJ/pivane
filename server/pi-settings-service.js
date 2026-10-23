@@ -95,24 +95,59 @@ function assistantText(message) {
         .trim();
 }
 
-// Keep a failed Windows replacement bound to the same file and contents while
-// asynchronous SDK readers release their handles. Never overwrite a later edit.
+// A parsed document keeps the identity and bytes read from the same descriptor.
+// SDK/auth/pricing waits and Windows replacement retries must retain this version.
 const MAX_MODELS_FILE_BYTES = 32 * 1024 * 1024;
-function modelsFileState(file) {
+const modelsFileReads = new WeakMap();
+function modelsConflict() {
+    return Object.assign(new Error('模型配置已变化，请刷新后再保存'), { statusCode: 409 });
+}
+function modelsFileSnapshot(file) {
     const io = require('./pi-file-io');
+    const filename = path.resolve(file);
     let fd;
-    try { fd = io.openReadSync(file); }
-    catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+    try { fd = io.openReadSync(filename); }
+    catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+        // Do not mistake an object that appeared during open for an absent file.
+        try { fs.lstatSync(filename); }
+        catch (error) {
+            if (error.code === 'ENOENT') return { filename, state: null, bytes: null };
+            throw error;
+        }
+        throw modelsConflict();
+    }
     try {
         const before = fs.fstatSync(fd, { bigint: true }), identity = io.identity(fd);
+        if (!before.isFile()) throw modelsConflict();
         if (before.size > BigInt(MAX_MODELS_FILE_BYTES)) throw new Error('模型配置文件超过 32 MiB 保存预算');
-        const digest = require('./pi-maintenance-files').hashFileSafe(fs.realpathSync.native(file), MAX_MODELS_FILE_BYTES).sha256;
-        const after = fs.lstatSync(file, { bigint: true });
-        if (!before.isFile() || !after.isFile() || before.dev !== after.dev || before.ino !== after.ino
-            || before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs
-            || !io.sameIdentityAtPath(file, identity)) throw Object.assign(new Error('模型配置已变化，请刷新后再保存'), { statusCode: 409 });
-        return [identity ?? `${before.dev}:${before.ino}`, before.size, before.mtimeNs, before.ctimeNs, digest].join(':');
+        const realpath = fs.realpathSync.native(filename);
+        if (require('./pi-file-descriptor').descriptorPathSync(fd) !== realpath) throw modelsConflict();
+        const bytes = Buffer.alloc(Number(before.size));
+        let length = 0;
+        while (length < bytes.length) {
+            const read = fs.readSync(fd, bytes, length, bytes.length - length, null);
+            if (!read) throw modelsConflict();
+            length += read;
+        }
+        const same = stat => stat.isFile() && ['dev', 'ino', 'mode', 'size', 'mtimeNs', 'ctimeNs'].every(key => before[key] === stat[key]);
+        if (!same(fs.fstatSync(fd, { bigint: true })) || !same(fs.lstatSync(filename, { bigint: true }))
+            || fs.realpathSync.native(filename) !== realpath || !io.sameIdentityAtPath(filename, identity)) throw modelsConflict();
+        const digest = createHash('sha256').update(bytes).digest('hex');
+        const state = [realpath, identity ?? `${before.dev}:${before.ino}`, before.mode, before.size, before.mtimeNs, before.ctimeNs, digest].join(':');
+        return { filename, state, bytes };
+    } catch (error) {
+        if (['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) throw modelsConflict();
+        throw error;
     } finally { fs.closeSync(fd); }
+}
+function modelsFileState(file) {
+    return modelsFileSnapshot(file).state;
+}
+function assertModelsFileState(file, expected) {
+    try { if (modelsFileState(file) === expected) return; }
+    catch { /* An unreadable or unsafe replacement cannot satisfy the read version. */ }
+    throw modelsConflict();
 }
 
 class PiSettingsService {
@@ -335,20 +370,25 @@ class PiSettingsService {
     }
 
     readModelsFile(modelsPath) {
-        if (!fs.existsSync(modelsPath)) return { providers: {} };
+        const snapshot = modelsFileSnapshot(modelsPath);
         let parsed;
         try {
-            parsed = JSON.parse(fs.readFileSync(modelsPath, 'utf8'));
+            parsed = snapshot.bytes === null ? { providers: {} } : JSON.parse(snapshot.bytes.toString('utf8'));
         } catch {
             throw new Error('models.json is invalid JSON; check the local configuration file');
         }
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('models.json root must be an object');
         if (!parsed.providers || typeof parsed.providers !== 'object' || Array.isArray(parsed.providers)) parsed.providers = {};
+        modelsFileReads.set(parsed, snapshot);
         return parsed;
     }
 
     async writeModelsFile(data) {
+        const previous = modelsFileReads.get(data);
+        if (!previous) throw new Error('模型配置需要先读取后再保存');
         const { modelsPath, agentDir } = await this.paths();
+        if (path.resolve(modelsPath) !== previous.filename) throw modelsConflict();
+        assertModelsFileState(modelsPath, previous.state);
         // Validate native token fields before backups or replacement. Keep unknown
         // fields intact; only these limits became strictly positive in Pi 1.2.
         for (const provider of Object.values(data.providers || {})) {
@@ -363,20 +403,20 @@ class PiSettingsService {
         const text = `${JSON.stringify(data, null, 2)}\n`;
         if (Buffer.byteLength(text) > MAX_MODELS_FILE_BYTES) throw new Error('模型配置文件超过 32 MiB 保存预算');
         fs.mkdirSync(agentDir, { recursive: true, mode: 0o700 });
-        const previous = modelsFileState(modelsPath);
         const writeId = randomUUID();
-        if (fs.existsSync(modelsPath)) {
+        assertModelsFileState(modelsPath, previous.state);
+        if (previous.bytes !== null) {
             const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-            privateFiles.writePrivateFileSync(`${modelsPath}.bak-web-${stamp}-${writeId}`, fs.readFileSync(modelsPath));
+            privateFiles.writePrivateFileSync(`${modelsPath}.bak-web-${stamp}-${writeId}`, previous.bytes);
         }
+        assertModelsFileState(modelsPath, previous.state);
         const temporary = `${modelsPath}.tmp-${process.pid}-${writeId}`;
         privateFiles.writePrivateFileSync(temporary, text, true);
         const staged = modelsFileState(temporary);
         try {
             for (let attempt = 0; ; attempt++) {
-                if (modelsFileState(modelsPath) !== previous || modelsFileState(temporary) !== staged) {
-                    throw Object.assign(new Error('模型配置已变化，请刷新后再保存'), { statusCode: 409 });
-                }
+                assertModelsFileState(modelsPath, previous.state);
+                assertModelsFileState(temporary, staged);
                 try { require('./pi-win32-native').replaceFileSync(temporary, modelsPath); break; }
                 catch (error) {
                     // MoveFileEx reported a definite failure, rather than an unknown result.
@@ -386,7 +426,9 @@ class PiSettingsService {
             }
         } finally {
             // Do not remove a foreign replacement of the staged path.
-            if (modelsFileState(temporary) === staged) fs.unlinkSync(temporary);
+            let sameStagedFile = false;
+            try { sameStagedFile = modelsFileState(temporary) === staged; } catch { /* Preserve an unsafe foreign replacement. */ }
+            if (sameStagedFile) fs.unlinkSync(temporary);
         }
     }
 

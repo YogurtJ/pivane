@@ -153,12 +153,13 @@ class MediaChatRequests {
     }
 
     async run(input = {}) {
-        const { key, modelId, confirmed, again } = input;
+        const { key, modelId, confirmed, again, toolCallId } = input;
         let { parameters } = input;
         if (!KEY.test(key || '')) fail('Unknown media plan id');
         if (confirmed !== true) fail('Generation requires an explicit confirmation');
         if (typeof modelId !== 'string' || !parameters || typeof parameters !== 'object' || Array.isArray(parameters)) fail('A model and parameters are required');
-        if (Object.keys(input).some(name => !['key', 'modelId', 'parameters', 'confirmed', 'again'].includes(name))) fail('Unsupported request field');
+        if (Object.keys(input).some(name => !['key', 'modelId', 'parameters', 'confirmed', 'again', 'toolCallId'].includes(name))) fail('Unsupported request field');
+        if (toolCallId !== undefined && (typeof toolCallId !== 'string' || !toolCallId || toolCallId.length > 500)) fail('Invalid media tool call identity');
         if (this.unavailable) fail(this.unavailable, 503);
         if (this.pending.has(key)) fail('This card is already being submitted', 409);
         const previous = this.entries.get(key)?.attempts.at(-1);
@@ -184,7 +185,7 @@ class MediaChatRequests {
                 fail('Too many media requests are waiting; try again after some finish', 429);
             }
             const at = new Date(this.now()).toISOString();
-            const attempt = { id: randomUUID(), status: queue ? 'queued' : 'running', modelId: review.model.id, modelName: review.model.name, kind: review.model.kind,
+            const attempt = { id: randomUUID(), ...(toolCallId ? { toolCallId } : {}), status: queue ? 'queued' : 'running', modelId: review.model.id, modelName: review.model.name, kind: review.model.kind,
                 // Attachments stay in the gallery history, not in this small journal.
                 parameters: bytes <= 64 * 1024 ? review.parameters : null, ...(queue ? { queuedAt: at } : { startedAt: at, ticket: review.ticket }) };
             const entry = this.entries.get(key) || { key, attempts: [] };
@@ -285,10 +286,23 @@ class MediaChatRequests {
                         continue;
                     }
                     if (!this.lab.canExecute(review.model)) { this.lab.discard?.(review.ticket); this.pumpAgain = true; break; }
-                    this.waiting.splice(this.waiting.indexOf(item), 1);
+                    const before = { ...item.attempt }, updatedAt = item.entry.updatedAt;
                     const at = new Date(this.now()).toISOString();
                     Object.assign(item.attempt, { status: 'running', startedAt: at, ticket: review.ticket }); item.entry.updatedAt = at;
-                    this.trySave('start');
+                    delete item.attempt.error;
+                    try { this.save(); }
+                    catch (error) {
+                        for (const key of Object.keys(item.attempt)) delete item.attempt[key];
+                        Object.assign(item.attempt, before);
+                        item.entry.updatedAt = updatedAt;
+                        this.lab.discard?.(review.ticket);
+                        console.error('Media chat request record could not be saved (start):', error.message);
+                        // Nothing executed: expose the failure and require a new confirmation,
+                        // while allowing the remaining queued confirmations to proceed.
+                        this.notStarted(item, 'The request could not be saved before starting; nothing was submitted. Confirm the card again to generate');
+                        continue;
+                    }
+                    this.waiting.splice(this.waiting.indexOf(item), 1);
                     this.start(item.attempt, item.entry, review.ticket);
                 }
             } while (this.pumpAgain && this.waiting.length);

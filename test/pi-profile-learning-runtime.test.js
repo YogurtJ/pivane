@@ -68,11 +68,12 @@ async function fixture(t, { delay, autoLearn = true } = {}) {
         } };
     const service = new ProfileLearningService({ profiles, store, preferences, knowledge, getAgentDir: async () => agentDir,
         createModelRuntime: async () => runtime });
-    t.after(async () => service.dispose());
+    const beforeDispose = [];
+    t.after(async () => { beforeDispose.forEach(callback => callback()); await service.dispose(); });
     const enable = async changes => service.save(profileId, { expectedRevision: (await service.snapshot(profileId)).revision,
         changes: { enabled: true, ...changes } });
     return { service, profiles, store, session: { ...session, sessionId: session.id, sessionPath: session.path }, cwd, append, preferences, knowledge, runtime, enable,
-        calls: () => calls, mutations, writeOptions, profile, revision: value => { revision = value; }, items: value => { snapshotItems = value; } };
+        calls: () => calls, mutations, writeOptions, profile, beforeDispose, revision: value => { revision = value; }, items: value => { snapshotItems = value; } };
 }
 
 test('Chinese corrections take priority, temporary instructions never persist, duplicate native events share a cursor', async t => {
@@ -208,7 +209,9 @@ test('recovered running work remains uncertain rather than replayed and compacti
     await f.service.change(profileId, state => { state.jobs.push({ id: 'f'.repeat(64), reason: 'extraction', status: 'running',
         createdAt: new Date().toISOString(), startedAt: new Date().toISOString() }); });
     await f.service.resume();
-    assert.equal((await f.service.snapshot(profileId)).jobs.at(-1).status, 'uncertain');
+    const recovered = await f.service.snapshot(profileId);
+    assert.equal(recovered.jobs.length, 0);
+    assert.equal(recovered.recentRuns.at(-1).status, 'uncertain');
     assert.equal(f.calls(), 1);
 });
 
@@ -1186,5 +1189,339 @@ test('discarding an unverified queued source preserves the trimmed daily reserva
     assert.deepEqual(state.dayCarry, { date: stamp.slice(0, 10), runs: 1, reservedTokens: 6000, usedTokens: null });
     const today = (await f.service.snapshot(profileId)).health.today;
     assert.equal(today.runs, 64); assert.equal(today.reservedTokens, 384000); assert.equal(today.usedTokens, null);
+    assert.equal(f.calls(), 0);
+});
+
+// Promise gates keep admission and actual provider settlement independently observable.
+function learningGate(f) {
+    let release;
+    const promise = new Promise(resolve => { release = resolve; });
+    f.beforeDispose.push(release);
+    return { promise, release };
+}
+
+test('more than 64 queued and waiting-config cancellations archive atomically without spending quota or replaying actions', async t => {
+    const f = await fixture(t);
+    f.service.wake = () => {};
+    await f.enable();
+    for (let i = 0; i < 70; i++) {
+        const requestId = `archive-queue-${String(i).padStart(3, '0')}`;
+        await f.service.action(profileId, { requestId, action: 'propose-consolidation', target: 'memory' });
+        let state = f.service.read(await f.service.location(profileId));
+        const job = state.jobs.at(-1);
+        if (i % 2) await f.service.change(profileId, value => { value.jobs.at(-1).status = 'waiting-config'; });
+        const cancel = { requestId: `archive-cancel-${String(i).padStart(3, '0')}`, action: 'cancel', jobId: job.id };
+        await f.service.action(profileId, cancel);
+        state = f.service.read(await f.service.location(profileId));
+        assert.equal(state.jobs.length, 0, 'cancel and removal from the live queue share one journal write');
+        const run = state.recentRuns.at(-1);
+        assert.equal(run.id, job.id);
+        assert.equal(run.requestId, requestId);
+        assert.equal(run.status, 'cancelled');
+        assert.ok(run.endedAt);
+        assert.equal(run.startedAt, undefined);
+        const revision = state.revision;
+        await f.service.action(profileId, cancel);
+        assert.equal(f.service.read(await f.service.location(profileId)).revision, revision, 'a repeated cancellation has no second outcome');
+    }
+    const state = f.service.read(await f.service.location(profileId));
+    assert.equal(state.recentRuns.length, 64);
+    assert.equal(Object.keys(state.actions).length, 140);
+    assert.deepEqual((await f.service.snapshot(profileId)).health.today.runs, 0);
+    await f.service.action(profileId, { requestId: 'archive-queue-new', action: 'propose-consolidation', target: 'memory' });
+    assert.equal(f.service.read(await f.service.location(profileId)).jobs.length, 1);
+    await f.service.action(profileId, { requestId: 'archive-queue-000', action: 'propose-consolidation', target: 'memory' });
+    assert.equal(f.service.read(await f.service.location(profileId)).jobs.length, 1, 'trimmed history does not erase the action journal');
+    assert.equal(f.calls(), 0);
+});
+
+test('legacy terminal migration preserves equal-time existing history and folds interrupted reservations with action IDs intact', async t => {
+    const f = await fixture(t);
+    f.service.wake = () => {};
+    const file = await f.service.location(profileId, true), stamp = new Date().toISOString();
+    const state = f.service.read(file);
+    state.dayCarry = { date: stamp.slice(0, 10), runs: 1, reservedTokens: 6000, usedTokens: 7 };
+    state.recentRuns = Array.from({ length: 64 }, (_, i) => ({ id: String(i).padStart(64, 'a'), reason: 'review',
+        status: 'completed', createdAt: stamp, startedAt: stamp, endedAt: stamp, reservedTokens: 6000, usage: { totalTokens: 10 } }));
+    state.jobs = Array.from({ length: 64 }, (_, i) => ({ id: String(i).padStart(64, 'b'), reason: 'review',
+        requestId: `legacy-learning-${i}`, status: i < 62 ? 'cancelled' : i === 62 ? 'running' : 'cancelling', createdAt: stamp,
+        ...(i < 62 ? {} : { startedAt: stamp, reservedTokens: 6000, costStatus: 'unknown', usage: { totalTokens: (i - 61) * 100 } }) }));
+    const actions = { 'legacy-cancel-001': { h: 'c'.repeat(64), at: stamp } };
+    state.actions = structuredClone(actions);
+    f.service.write(file, state); // Exact old on-disk layout; do not pass through new transaction normalization.
+    await f.service.resume();
+    const migrated = f.service.read(file);
+    assert.equal(migrated.jobs.length, 0);
+    assert.equal(migrated.recentRuns.length, 64);
+    assert.deepEqual(migrated.actions, actions);
+    assert.deepEqual(migrated.recentRuns, state.recentRuns, 'equal-time legacy jobs do not displace known history');
+    assert.deepEqual(migrated.dayCarry, { date: stamp.slice(0, 10), runs: 3, reservedTokens: 18000, usedTokens: 307 });
+    const today = (await f.service.snapshot(profileId)).health.today;
+    assert.deepEqual([today.runs, today.reservedTokens, today.usedTokens], [67, 402000, 947]);
+    await f.service.resume();
+    assert.equal(f.service.read(file).revision, migrated.revision, 'recovery is idempotent');
+    assert.equal(f.calls(), 0, 'disabled learning and uncertain runs are never executed');
+    await f.enable({ maxRunsPerDay: 500, maxTokensPerDay: 5000000 });
+    await f.service.action(profileId, { requestId: 'legacy-new-queue', action: 'propose-consolidation', target: 'memory' });
+    assert.equal(f.service.read(file).jobs.length, 1);
+});
+
+test('an action normalizes a legacy queue full of cancelled jobs even before a recovery pass', async t => {
+    const f = await fixture(t);
+    f.service.wake = () => {};
+    await f.enable();
+    const file = await f.service.location(profileId), state = f.service.read(file), stamp = new Date().toISOString();
+    state.jobs = Array.from({ length: 64 }, (_, i) => ({ id: String(i).padStart(64, 'c'), reason: 'consolidate', target: 'memory',
+        status: 'cancelled', createdAt: stamp, requestId: `old-cancelled-${i}` }));
+    f.service.write(file, state);
+    await f.service.action(profileId, { requestId: 'legacy-action-queue', action: 'propose-consolidation', target: 'memory' });
+    const after = f.service.read(file);
+    assert.equal(after.jobs.length, 1);
+    assert.equal(after.jobs[0].status, 'queued');
+    assert.equal(after.recentRuns.length, 64);
+    assert.equal(f.calls(), 0);
+});
+
+test('three profiles reserve at most two slots before awaiting and cancellation retains a slot until real provider exit', async t => {
+    const f = await consolidationFixture(t);
+    f.service.wake = () => {};
+    const ids = [profileId, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'];
+    const profiles = ids.map(id => ({ ...f.profile, id }));
+    f.profiles.getProfile = async id => profiles.find(profile => profile.id === id);
+    f.profiles.state = async () => ({ state: { profiles } });
+    for (const id of ids) await f.service.change(id, state => {
+        state.settings.enabled = true;
+        state.jobs.push({ id: id.replaceAll('-', '').padEnd(64, '0'), reason: 'consolidate', target: 'memory',
+            status: 'queued', createdAt: new Date().toISOString() });
+    });
+    const admission = learningGate(f), provider = ids.map(() => learningGate(f));
+    // Release gates before fixture disposal even if an admission assertion fails.
+    t.after(() => { admission.release(); provider.forEach(gate => gate.release()); });
+    const getProfile = f.profiles.getProfile;
+    let profileReads = 0;
+    f.profiles.getProfile = async id => { profileReads++; await admission.promise; return getProfile(id); };
+    let running = 0, peak = 0;
+    const started = [];
+    f.reply(async request => {
+        const id = started.length;
+        started.push(id); running++; peak = Math.max(peak, running);
+        try { await provider[id].promise; return consolidationReply([]); }
+        finally { running--; }
+    });
+    const drains = ids.map(id => f.service.drain(id));
+    // Register settlement cleanup before assertions; providers intentionally ignore abort.
+    t.after(async () => { admission.release(); provider.forEach(gate => gate.release()); await Promise.all(drains); });
+    assert.equal(f.service.active.size, 2, 'global slots are owned synchronously');
+    assert.equal(f.service.busy, true);
+    assert.equal(profileReads, 2, 'the third profile cannot even enter asynchronous preflight');
+    admission.release();
+    await waitFor(() => started.length === 2);
+    await f.service.drain(ids[0]);
+    assert.equal(started.length, 2, 'one slot per profile');
+    const job = f.service.read(await f.service.location(ids[0])).jobs[0];
+    await f.service.action(ids[0], { requestId: 'slot-cancel-0001', action: 'cancel', jobId: job.id });
+    assert.equal(f.service.active.size, 2, 'abort is not settlement');
+    await f.service.drain(ids[2]);
+    assert.equal(started.length, 2);
+    provider[0].release();
+    await waitFor(() => f.service.active.size === 1);
+    const third = f.service.drain(ids[2]); drains.push(third);
+    await waitFor(() => started.length === 3);
+    assert.equal(f.service.active.size, 2);
+    assert.equal(peak, 2);
+    provider.forEach(gate => gate.release());
+    await Promise.all(drains);
+    assert.equal(f.service.active.size, 0);
+    assert.equal(running, 0);
+    assert.equal(f.service.read(await f.service.location(ids[0])).recentRuns[0].status, 'cancelled');
+    assert.equal(f.service.read(await f.service.location(ids[2])).recentRuns.length, 1);
+});
+
+test('shutdown waits for an admission reservation and never executes its queued job after closing', async t => {
+    const f = await consolidationFixture(t);
+    f.service.wake = () => {};
+    await f.service.action(profileId, { requestId: 'pending-close-queue', action: 'propose-consolidation', target: 'memory' });
+    const gate = learningGate(f), getProfile = f.profiles.getProfile;
+    f.profiles.getProfile = async id => { await gate.promise; return getProfile(id); };
+    const drain = f.service.drain(profileId);
+    let finished = false;
+    const closing = f.service.dispose().then(() => { finished = true; });
+    t.after(async () => { gate.release(); await Promise.all([closing, drain]); });
+    assert.equal(f.service.active.size, 1);
+    assert.equal(f.service.busy, true);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(finished, false, 'dispose includes the admission promise');
+    gate.release(); await Promise.all([closing, drain]);
+    const state = f.service.read(await f.service.location(profileId));
+    assert.equal(state.jobs[0].status, 'queued');
+    assert.equal(state.jobs[0].startedAt, undefined);
+    assert.equal(state.recentRuns.length, 0);
+    assert.equal(f.requests.length, 0);
+    assert.equal(f.service.active.size, 0);
+});
+
+test('failed admission and disabled learning release reservations without starting or charging work', async t => {
+    const f = await consolidationFixture(t);
+    f.service.wake = () => {};
+    await f.service.action(profileId, { requestId: 'admission-failure-job', action: 'propose-consolidation', target: 'memory' });
+    const getProfile = f.profiles.getProfile;
+    f.profiles.getProfile = async () => { throw new Error('synthetic registry rejection'); };
+    await f.service.drain(profileId);
+    assert.equal(f.service.active.size, 0);
+    const gate = learningGate(f);
+    f.profiles.getProfile = async id => { await gate.promise; return getProfile(id); };
+    const drain = f.service.drain(profileId);
+    await f.service.change(profileId, state => { state.settings.enabled = false; });
+    assert.equal(f.service.active.size, 1);
+    gate.release(); await drain;
+    assert.equal(f.service.active.size, 0);
+    const state = f.service.read(await f.service.location(profileId));
+    assert.equal(state.jobs[0].status, 'queued');
+    assert.equal(state.jobs[0].startedAt, undefined);
+    assert.equal(f.requests.length, 0);
+    f.profiles.getProfile = getProfile;
+    await f.enable();
+    f.reply(() => { throw new Error('synthetic provider failure'); });
+    await f.service.drain(profileId);
+    assert.equal(f.service.active.size, 0);
+    assert.equal(f.service.read(await f.service.location(profileId)).recentRuns[0].status, 'failed');
+});
+
+function learningHistoryRun(f, n, stamp, extra = {}) {
+    return { id: String(n).padStart(64, '0'), requestId: `history-source-${n}`, reason: 'review', status: 'completed',
+        cwd: f.cwd, sessionId: `synthetic-source-${n}`, sessionPath: path.join(path.dirname(f.session.sessionPath), `synthetic-${n}.jsonl`),
+        userId: `user-${n}`, assistantId: `assistant-${n}`, sourceIdentity: String(n).padStart(64, 'a'),
+        createdAt: stamp, startedAt: stamp, endedAt: stamp, reservedTokens: 6000, usage: { totalTokens: n }, costStatus: 'unknown', ...extra };
+}
+const learningHistoryTime = (day, seconds) => new Date(Date.parse(`${day}T00:00:00.000Z`) + seconds * 1000).toISOString();
+
+test('archiving old source A before newer source B preserves review-now source, journal IDs and daily usage', async t => {
+    const f = await fixture(t);
+    f.service.wake = () => {};
+    const file = await f.service.location(profileId, true), state = f.service.read(file), day = new Date().toISOString().slice(0, 10);
+    state.settings.enabled = true;
+    const old = learningHistoryRun(f, 1, learningHistoryTime(day, 1), { status: 'uncertain', endedAt: learningHistoryTime(day, 2) });
+    const newer = learningHistoryRun(f, 2, learningHistoryTime(day, 10), { endedAt: learningHistoryTime(day, 11) });
+    state.jobs = [old]; state.recentRuns = [newer];
+    state.actions = { 'old-history-action': { h: 'c'.repeat(64), at: new Date().toISOString() } };
+    state.spent = ['d'.repeat(64)];
+    state.dayCarry = { date: day, runs: 3, reservedTokens: 18000, usedTokens: 7 };
+    f.service.write(file, state);
+    const before = (await f.service.snapshot(profileId)).health.today;
+    const input = { requestId: 'history-review-newer', action: 'review-now' };
+    await f.service.action(profileId, input);
+    const after = f.service.read(file);
+    assert.equal(after.jobs[0].sessionId, newer.sessionId, 'archive order must not replace B with old A as the manual source');
+    assert.deepEqual(after.recentRuns, [old, newer]);
+    assert.deepEqual(after.actions['old-history-action'], state.actions['old-history-action']);
+    assert.deepEqual(after.spent, state.spent);
+    assert.deepEqual(after.dayCarry, state.dayCarry);
+    assert.deepEqual((await f.service.snapshot(profileId)).health.today, before);
+    await f.service.resume();
+    await f.service.action(profileId, input);
+    assert.deepEqual(f.service.read(file), after, 'recovery and action replay do not reorder history or charge twice');
+    assert.equal(f.calls(), 0);
+});
+
+test('64 newer history records survive old terminal archival while trimmed reservations fold once and refunds stay excluded', async t => {
+    const f = await fixture(t);
+    f.service.wake = () => {};
+    const file = await f.service.location(profileId, true), state = f.service.read(file), day = new Date().toISOString().slice(0, 10);
+    state.settings.enabled = true;
+    const old = learningHistoryRun(f, 1, learningHistoryTime(day, 1), { usage: { totalTokens: 41 } });
+    const refunded = learningHistoryRun(f, 2, learningHistoryTime(day, 2), { usage: { totalTokens: 9999 }, quotaRefund: {
+        reason: 'inherited-fork-history', runs: 1, reservedTokens: 6000, originalRunHash: 'e'.repeat(64), requestId: 'history-refund-001' } });
+    state.jobs = [old, refunded];
+    state.recentRuns = Array.from({ length: 64 }, (_, i) => learningHistoryRun(f, 100 + i, learningHistoryTime(day, 100 + i),
+        { usage: { totalTokens: 2 } }));
+    state.dayCarry = { date: day, runs: 3, reservedTokens: 18000, usedTokens: 7 };
+    state.actions = { 'retained-history-action': { h: 'a'.repeat(64), at: new Date().toISOString() } }; state.spent = ['b'.repeat(64)];
+    f.service.write(file, state);
+    const before = (await f.service.snapshot(profileId)).health.today;
+    await f.service.resume();
+    const after = f.service.read(file);
+    assert.deepEqual(after.recentRuns, state.recentRuns, 'older archived jobs must not evict any of the 64 newer details');
+    assert.equal(after.jobs.length, 0);
+    assert.deepEqual(after.actions, state.actions); assert.deepEqual(after.spent, state.spent);
+    assert.deepEqual(after.dayCarry, { date: day, runs: 4, reservedTokens: 24000, usedTokens: 48 });
+    assert.deepEqual((await f.service.snapshot(profileId)).health.today, before);
+    assert.deepEqual([before.runs, before.reservedTokens, before.usedTokens], [68, 408000, 176]);
+    await f.service.resume();
+    assert.deepEqual(f.service.read(file), after, 'a repeated recovery neither trims again nor carries usage twice');
+    await f.service.action(profileId, { requestId: 'history-full-review', action: 'review-now' });
+    assert.equal(f.service.read(file).jobs[0].sessionId, state.recentRuns.at(-1).sessionId);
+    assert.equal(f.calls(), 0);
+});
+
+test('legacy jobs without reliable end times sort conservatively across later archival and equal-time ties retain existing history priority', async t => {
+    const f = await fixture(t);
+    f.service.wake = () => {};
+    const file = await f.service.location(profileId, true), state = f.service.read(file), day = new Date().toISOString().slice(0, 10);
+    state.settings.enabled = true;
+    const started = learningHistoryRun(f, 1, learningHistoryTime(day, 1), { status: 'cancelled', startedAt: learningHistoryTime(day, 2), endedAt: undefined });
+    const created = learningHistoryRun(f, 2, learningHistoryTime(day, 3), { status: 'cancelled', startedAt: undefined, endedAt: undefined });
+    const unknown = learningHistoryRun(f, 3, undefined, { status: 'cancelled' });
+    const invalid = learningHistoryRun(f, 4, 'invalid-time', { status: 'cancelled' });
+    const newer = learningHistoryRun(f, 9, learningHistoryTime(day, 10));
+    state.jobs = [started, created, unknown, invalid]; state.recentRuns = [newer];
+    f.service.write(file, state);
+    const before = (await f.service.snapshot(profileId)).health.today;
+    await f.service.action(profileId, { requestId: 'history-missing-end', action: 'review-now' });
+    let after = f.service.read(file);
+    assert.equal(after.jobs[0].sessionId, newer.sessionId);
+    assert.deepEqual(after.recentRuns.map(run => run.id), [unknown, invalid, started, created, newer].map(run => run.id));
+    assert.equal(after.recentRuns.find(run => run.id === started.id).endedAt, undefined, 'a legacy unknown end is not replaced with a fresh source timestamp');
+    assert.equal(after.recentRuns.find(run => run.id === invalid.id).endedAt, 'invalid-time');
+    const laterLegacy = learningHistoryRun(f, 5, learningHistoryTime(day, 4), { status: 'cancelled', startedAt: undefined, endedAt: undefined });
+    const tied = learningHistoryRun(f, 6, newer.endedAt, { status: 'cancelled', startedAt: undefined, endedAt: undefined });
+    await f.service.change(profileId, value => { value.jobs.push(laterLegacy, tied); });
+    after = f.service.read(file);
+    assert.deepEqual(after.recentRuns.map(run => run.id), [unknown, invalid, started, created, laterLegacy, tied, newer].map(run => run.id));
+    assert.equal(after.recentRuns.at(-1).sessionId, newer.sessionId, 'a later merge does not promote earlier timestamp fallbacks or equal-time legacy records');
+    await f.service.action(profileId, { requestId: 'history-missing-again', action: 'review-now' });
+    after = f.service.read(file);
+    assert.ok(after.jobs.every(job => job.sessionId === newer.sessionId));
+    assert.deepEqual((await f.service.snapshot(profileId)).health.today, before);
+    await f.service.resume(); await f.service.resume();
+    assert.deepEqual(f.service.read(file), after);
+    assert.equal(f.calls(), 0);
+});
+
+test('recovered running and cancelling jobs use their original attempt times instead of fresh uncertain discovery times', async t => {
+    const f = await fixture(t);
+    f.service.wake = () => {};
+    const file = await f.service.location(profileId, true), state = f.service.read(file), day = new Date().toISOString().slice(0, 10);
+    state.settings.enabled = true;
+    const running = learningHistoryRun(f, 1, learningHistoryTime(day, 1), { status: 'running', startedAt: learningHistoryTime(day, 2), endedAt: undefined });
+    const cancelling = learningHistoryRun(f, 2, learningHistoryTime(day, 3), { status: 'cancelling', startedAt: undefined, endedAt: undefined });
+    const refunded = learningHistoryRun(f, 4, learningHistoryTime(day, 4), { status: 'uncertain', endedAt: new Date().toISOString(), usage: { totalTokens: 500 }, quotaRefund: {
+        reason: 'inherited-fork-history', runs: 1, reservedTokens: 6000, originalRunHash: 'f'.repeat(64), requestId: 'history-refund-002' } });
+    const newer = learningHistoryRun(f, 9, learningHistoryTime(day, 10));
+    state.jobs = [running, cancelling, refunded]; state.recentRuns = [newer];
+    f.service.write(file, state);
+    const before = (await f.service.snapshot(profileId)).health.today;
+    await f.service.resume();
+    let after = f.service.read(file);
+    assert.deepEqual(after.recentRuns.map(run => run.id), [running, cancelling, refunded, newer].map(run => run.id));
+    for (const original of [running, cancelling]) {
+        const run = after.recentRuns.find(run => run.id === original.id);
+        assert.equal(run.status, 'uncertain'); assert.ok(Number.isFinite(Date.parse(run.endedAt)));
+        assert.equal(run.startedAt, original.startedAt); assert.equal(run.createdAt, original.createdAt);
+        assert.equal(run.requestId, original.requestId); assert.deepEqual(run.usage, original.usage);
+    }
+    assert.deepEqual(after.recentRuns.find(run => run.id === refunded.id), refunded);
+    await f.service.resume();
+    assert.deepEqual(f.service.read(file), after);
+    const laterLegacy = learningHistoryRun(f, 5, learningHistoryTime(day, 5), { status: 'failed', endedAt: learningHistoryTime(day, 7) });
+    await f.service.change(profileId, value => { value.jobs.push(laterLegacy); });
+    await f.service.action(profileId, { requestId: 'history-recovered-review', action: 'review-now' });
+    after = f.service.read(file);
+    assert.deepEqual(after.recentRuns.map(run => run.id), [running, cancelling, refunded, laterLegacy, newer].map(run => run.id));
+    assert.equal(after.jobs[0].sessionId, newer.sessionId, 'a second merge must not treat recovery endedAt as new source evidence');
+    assert.deepEqual([before.runs, before.reservedTokens, before.usedTokens], [2, 12000, 10]);
+    const today = (await f.service.snapshot(profileId)).health.today;
+    assert.deepEqual([today.runs, today.reservedTokens, today.usedTokens], [3, 18000, 15]);
+    await f.service.resume();
+    assert.deepEqual(f.service.read(file), after);
     assert.equal(f.calls(), 0);
 });

@@ -19,9 +19,12 @@ for (const api of ['openai-codex-responses', 'future-fixture-api']) {
         const { modelsPath } = await service.paths();
         const preserved = { supportsStore: false, futureFlag: 'keep', chatTemplateKwargs: { fixture: true } };
         const originalCompat = { ...preserved, supportsMaxOutputTokens: true };
-        await service.writeModelsFile({ providers: { fixture: { api, baseUrl: 'http://127.0.0.1:65530/v1',
+        const initial = service.readModelsFile(modelsPath);
+        for (const key of Object.keys(initial)) delete initial[key];
+        Object.assign(initial, { providers: { fixture: { api, baseUrl: 'http://127.0.0.1:65530/v1',
             models: [{ id: 'model', name: 'Synthetic', reasoning: false, input: ['text'], contextWindow: 32000, maxTokens: 1024,
                 compat: originalCompat, futureModelField: { keep: true } }], futureProviderField: true } } });
+        await service.writeModelsFile(initial);
         const info = await service.getModelAdvanced({ provider: 'fixture', modelId: 'model' });
         assert.equal(info.api, api);
         if (api === 'openai-codex-responses') {

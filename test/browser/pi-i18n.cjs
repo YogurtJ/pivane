@@ -6,6 +6,7 @@ const path = require('node:path');
 const { once } = require('node:events');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const express = require('express');
+const { schema: nativeSettingsSchema } = require('../../server/pi-native-service');
 const root = path.resolve(__dirname, '../..');
 const evidence = '/tmp/pivane-feedback/agent-a';
 const cwd = '/fixture/中文项目';
@@ -52,7 +53,7 @@ async function run(browser, base, width, language) {
         else if (url.pathname === '/api/pi/activity') data = { runtimes: [], replyNotices: [], pinnedProjects: [], hiddenProjects: [] };
         else if (url.pathname === '/api/pi/settings/models') data = { models: [model], providers: [{ id: 'fixture', name: '供应商', configured: true, authMethods: {} }], customProviders: [], preferences: { mediaAgent: { provider: 'fixture', modelId: model.id } } };
         else if (url.pathname === '/api/pi/settings/usage') data = usage(url.searchParams);
-        else if (url.pathname === '/api/pi/settings/native') data = { cwd, revision: 'fixture', trust: { effective: true }, schema: { 'compaction.enabled': { label: '自动压缩', type: 'boolean' }, 'compaction.reserveTokens': { label: '压缩触发余量 Token', type: 'number', min: 1024, max: 10000 } }, settings: { 'compaction.enabled': { value: true, global: true }, 'compaction.reserveTokens': { value: 2048, global: 2048 } }, environment: {} };
+        else if (url.pathname === '/api/pi/settings/native') data = { cwd, revision: 'fixture', trust: { effective: true }, schema: Object.fromEntries(['compaction.enabled', 'compaction.reserveTokens'].map(key => [key, nativeSettingsSchema[key]])), settings: { 'compaction.enabled': { value: true, global: true }, 'compaction.reserveTokens': { value: 2048, global: 2048 } }, environment: {} };
         else if (url.pathname.endsWith('/history')) data = [];
         else if (url.pathname === '/api/pi/media/lab/review') {
             const body = req.postDataJSON(); data = { ticket: 'fixture-ticket', expiresAt: Date.now() + 600000, model: mediaModel, parameters: body.parameters,
@@ -148,6 +149,8 @@ async function run(browser, base, width, language) {
     await page.locator('[data-settings-tab="native"]').click();
     await page.locator('#native-settings-form').waitFor();
     assert.ok((await page.locator('#native-settings-form').textContent()).includes(english ? 'Compaction threshold headroom tokens' : '压缩触发余量 Token'));
+    assert.ok((await page.locator('#native-settings-form').textContent()).includes(english ? 'the context window minus this headroom' : '上下文窗口减去此余量'));
+    assert.equal(await page.locator('[name="compaction.reserveTokens"]').inputValue(), '2048');
     await page.locator('[data-settings-tab="models"]').click();
     // Supply the reload contract with synthetic blockers; attachment/draft preservation remains observable.
     await page.evaluate(() => {

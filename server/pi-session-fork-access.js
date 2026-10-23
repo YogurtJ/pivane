@@ -34,6 +34,7 @@ function validate(receipt, session) {
         || !Array.isArray(receipt.deliveries) || receipt.deliveries.length > 500
         || receipt.deliveries.some(ref => !hex(ref.id) || !hex(ref.manifestRevision) || typeof ref.cwd !== 'string' || !path.isAbsolute(ref.cwd))
         || !Array.isArray(receipt.documents) || receipt.documents.length > 8 || receipt.documents.some(ref => !documents.valid(ref))) throw fail();
+    try { documents.validateCount(receipt.documents.map(documents.marker).join('\n')); } catch { throw fail(); }
 }
 async function readForkAccess(store, session) {
     let bytes;
@@ -76,8 +77,9 @@ async function checkForkAccess(store, session, revision) {
 // a new session. Only the selected native path and the selected question qualify.
 async function prepareForkAccess(store, session, branch, draftEntry) {
     const refs = require('./pi-deliverables').references(branch);
+    const content = draftEntry?.message?.content;
+    documents.validateCount(typeof content === 'string' ? content : (Array.isArray(content) ? content : []).filter(block => block.type === 'text').map(block => block.text).join('\n'));
     const drafts = draftEntry ? documents.references([draftEntry]) : [];
-    if (drafts.length > 5) throw new Error('一次最多添加 5 个文档附件');
     const deliveries = [];
     if (refs.length) {
         const proof = await deliveryProof(store, session);

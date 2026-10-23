@@ -114,6 +114,22 @@ require('./server.js');
     assert.equal((await fetch(base + '/images/must-not-leak.png')).status, 404);
     assert.equal((await fetch(base + '/old.html.bak-test')).status, 404);
     assert.equal((await fetch(base + '/api/media-agent/capabilities/all')).status, 200);
+    // The legacy planning contract cannot start generation, even for old callers
+    // that still ask validate to autoExecute before saving a native source.
+    const legacyPlan = await post('/api/media-agent/validate', { autoExecute: true, plan: {
+        modelId: 'flux-2-dev', parameters: { prompt: 'fixture flux' } } });
+    assert.equal(legacyPlan.autoExecution, undefined);
+    assert.equal(comfyCalls.filter(url => url === '/prompt').length, 0);
+    const prepared = await post('/api/media-agent/validate', { stage: 'prepare', toolCallId: 'http-origin-call', autoExecute: true,
+        plan: { modelId: 'flux-2-dev', parameters: { prompt: 'fixture flux' } } });
+    assert.equal(comfyCalls.filter(url => url === '/prompt').length, 0, 'preparation never submits');
+    assert.ok(prepared.executionToken);
+    assert.equal(prepared.plan.executionToken, undefined);
+    const commit = { stage: 'execute', executionToken: prepared.executionToken, planId: prepared.plan.id, toolCallId: 'http-origin-call', waitMs: 0 };
+    await Promise.all([post('/api/media-agent/validate', commit), post('/api/media-agent/validate', commit)]);
+    const completed = await post('/api/media-agent/validate', { ...commit, waitMs: 5000 });
+    assert.equal(completed.autoExecution.status, 'done');
+    assert.equal(comfyCalls.filter(url => url === '/prompt').length, 1, 'duplicate execution tokens inspect one provider POST');
     const before = fs.readFileSync(path.join(dataDir, 'generation_history.json'), 'utf8');
     const review = await post('/api/pi/media/lab/review', { modelId: 'z-image-turbo', parameters: { prompt: 'fixture payload $(not-a-command)', seed: 8 } });
     assert.equal(review.model.parameters.loraStrength.default, 1.2); assert.equal(review.model.parameters.width.default, 512);
@@ -128,12 +144,12 @@ require('./server.js');
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dataDir, 'generation_history.json')))[0], originalImage);
     const flux = await post('/api/pi/media/lab/review', { modelId: 'flux-2-dev', parameters: { prompt: 'fixture flux', seed: 42 } });
     await post('/api/pi/media/lab/execute', { ticket: flux.ticket, confirmed: true });
-    assert.equal(comfyCalls.filter(url => url === '/prompt').length, 1);
+    assert.equal(comfyCalls.filter(url => url === '/prompt').length, 2);
     assert.equal(comfyCalls[0], '/object_info');
     delete objectInfo.Flux2Scheduler;
     const invalidFlux = await post('/api/pi/media/lab/review', { modelId: 'flux-2-dev', parameters: { prompt: 'fixture flux' } });
     const blocked = await fetch(base + '/api/pi/media/lab/execute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticket: invalidFlux.ticket, confirmed: true }) });
-    assert.equal(blocked.status, 500); assert.equal(comfyCalls.filter(url => url === '/prompt').length, 1);
+    assert.equal(blocked.status, 500); assert.equal(comfyCalls.filter(url => url === '/prompt').length, 2);
     const speech = await post('/api/pi/media/lab/review', { modelId: 'tts:qwen-fixture:voice', parameters: { text: '  fixture payload  ' } });
     assert.equal(speech.parameters.text, 'fixture payload');
     const audio = await post('/api/pi/media/lab/execute', { ticket: speech.ticket, confirmed: true });

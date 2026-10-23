@@ -6,6 +6,7 @@ const compare = require('./knowledge-compare');
 const { assertSafeKnowledgeContent } = require('./content-scan');
 
 const hash = value => createHash('sha256').update(value).digest('hex');
+const MEMORY_PREVIEW_CHARS = 512;
 // Deterministic rejections (nothing was published) carry a 4xx status and surface
 // as upstream-style failed tool results; uncertain outcomes keep throwing.
 const reject = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -68,6 +69,32 @@ async function listing(service, profileId, kind) {
         rows.push(...page.items);
     }
     return { first, rows };
+}
+
+// A 512-character listing may hide a tail, including when old_text is exactly
+// that long. Only complete, unchanged details can authorize these candidates.
+async function completeMemoryMatches(service, profileId, candidates, oldText, check) {
+    if (oldText.length < MEMORY_PREVIEW_CHARS) return candidates;
+    // Reuse the comparison shortlist bound as the full-detail matching budget.
+    // Refuse the entire operation rather than checking only part of the matches.
+    if (candidates.length > compare.LIMITS.candidates)
+        throw reject('Too many memory candidates to verify complete text; nothing was saved', 409);
+    if (candidates.length && typeof service.getItem !== 'function')
+        throw reject('Complete memory text is unavailable', 409);
+    const matches = [];
+    for (const row of candidates) {
+        check();
+        const detail = await service.getItem(profileId, row.id);
+        check();
+        const item = detail.item;
+        if (detail.status !== 'ready' || !item || item.id !== row.id || item.revision !== row.revision
+            || item.kind !== row.kind || item.scope !== row.scope || (item.projectKey || null) !== (row.projectKey || null)
+            || item.target !== row.target || item.state !== 'active' || item.readOnly || item.truncated
+            || typeof item.content !== 'string' || item.content.slice(0, MEMORY_PREVIEW_CHARS) !== row.content)
+            throw reject('Memory changed or full text is read-only or incomplete', 409);
+        if (item.content === oldText) matches.push(row);
+    }
+    return matches;
 }
 
 function skillBody(args) {
@@ -188,8 +215,11 @@ function createKnowledgeMemoryTools(service, profileId) {
         const skill = name === 'skill_manage' && ['create', 'update', 'edit', 'patch', 'delete'].includes(args?.action);
         if (!memory && !skill) return null;
         if (typeof service.mutateFromNative !== 'function') throw reject('Trusted knowledge writes are unavailable');
-        signal?.throwIfAborted?.();
-        if (!ensure()) throw reject('Profile memory binding changed', 409);
+        const check = () => {
+            signal?.throwIfAborted?.();
+            if (!ensure()) throw reject('Profile memory binding changed', 409);
+        };
+        check();
         const native = nativeSource(context);
         const kind = memory ? 'memory' : 'skill';
         const { first, rows } = await listing(service, profileId, kind);
@@ -201,9 +231,13 @@ function createKnowledgeMemoryTools(service, profileId) {
         let row;
         if (memory && name !== 'memory_add') {
             if (typeof args.old_text !== 'string' || !args.old_text.trim()) throw reject('Exact old memory text is required');
-            const matches = rows.filter(item => item.scope === scope && (!project || item.projectKey === projectKey)
-                && item.target === memoryTarget && item.state === 'active' && !item.readOnly && item.content === args.old_text.trim());
-            if (failure && !matches.length && rows.some(item => item.target === 'failure' && item.content === args.old_text.trim()))
+            check();
+            const oldText = args.old_text.trim();
+            const candidates = rows.filter(item => item.kind === 'memory' && item.scope === scope && (!project || item.projectKey === projectKey)
+                && item.target === memoryTarget && item.state === 'active' && !item.readOnly && !item.truncated
+                && item.content === oldText.slice(0, MEMORY_PREVIEW_CHARS));
+            const matches = await completeMemoryMatches(service, profileId, candidates, oldText, check);
+            if (failure && !matches.length && rows.some(item => item.target === 'failure' && item.content === oldText))
                 throw reject('Legacy failure entries are read-only', 409);
             if (matches.length !== 1) throw reject('Memory identity is missing or ambiguous', 409);
             row = matches[0];

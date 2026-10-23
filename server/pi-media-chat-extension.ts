@@ -5,11 +5,12 @@ import path from 'node:path';
 import { realpath } from 'node:fs/promises';
 import { readVerifiedFile } from './pi-file-bytes.js';
 import { fileScope } from './pi-file-scope.js';
+import { MEDIA_PLAN_ENTRY, branchPlans as plansFromBranch, mediaPlanRecord } from './pi-media-plan-format.js';
 
-// Chat is the main media entry: the Agent prepares one request, Pivane shows a
-// confirmation card in the conversation and the user starts the paid generation
-// there. These tools only read the model catalog and validate a plan through the
-// planning-only internal credential; they cannot create or execute a ticket.
+// Chat prepares one canonical plan and saves its native origin before asking
+// the server to consume automatic authorization. The internal credential cannot
+// access lab execution tickets; preferences and card confirmations still govern
+// generation through the server's existing review/execute boundary.
 
 const KINDS = ['image', 'video', 'tts'] as const;
 const enabled = (ctx: any) => ctx.mode === 'rpc' && Boolean(process.env.PI_WEB_NAVIGATION_TOKEN && process.env.PI_WORKSPACE_INTERNAL_ORIGIN
@@ -32,7 +33,6 @@ const REFERENCE_HELP = 'For image/video parameters (reference image, image to ed
     + '"chat-result:-1" = the latest generated image (legacy completion order), "chat-video:-1" = the latest generated video. '
     + 'Call media_results first to identify finished assets; prefer its stable "media-result:<plan-id>/<attempt-id>" references when choosing storyboard frames. '
     + '"file:<path>" = a PNG/JPEG/WebP (or MP4 for video) file inside the project, at most 20 MiB. Use an array for parameters with multiple:true.';
-const MEDIA_TOOLS = new Set(['media_generate', 'media_plan_request']);
 const MIME: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.mp4': 'video/mp4' };
 
 function pick<T>(items: T[], index: number, what: string): T {
@@ -42,9 +42,7 @@ function pick<T>(items: T[], index: number, what: string): T {
 }
 
 function branchPlans(ctx: any) {
-    return (ctx.sessionManager.getBranch() as any[]).filter(entry => entry.type === 'message' && entry.message?.role === 'toolResult'
-        && !entry.message.isError && MEDIA_TOOLS.has(entry.message.toolName)).map(entry => entry.message.details?.plan)
-        .filter(plan => typeof plan?.id === 'string').slice(-500);
+    return plansFromBranch(ctx.sessionManager.getBranch());
 }
 
 async function resolveReferences(parameters: Record<string, unknown>, definitions: Record<string, any>, ctx: any, signal?: AbortSignal) {
@@ -72,8 +70,7 @@ async function resolveReferences(parameters: Record<string, unknown>, definition
             notes.push(`${name} = attached image ${match[1]}${image.timestamp ? ` (${image.timestamp})` : ''}`);
         } else if ((match = /^chat-result:(-?\d+)$/.exec(value))) {
             if (!results) {
-                const keys = branch().filter(entry => entry.type === 'message' && entry.message?.role === 'toolResult' && MEDIA_TOOLS.has(entry.message.toolName))
-                    .map(entry => entry.message.details?.plan?.id).filter((id: unknown) => typeof id === 'string').slice(-500);
+                const keys = branchPlans(ctx).map(plan => plan.id);
                 results = keys.length ? (await internal('/api/media-agent/chat-images', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ keys }), signal })).images : [];
             }
@@ -139,10 +136,10 @@ function compactModel(model: any) {
 const MAX_AUTO_PER_TURN = 4;
 
 export function registerMediaChat(pi: ExtensionAPI) {
-    let turnAutoCount = 0;
-    pi.on('turn_start', () => { turnAutoCount = 0; });
+    let turnAuto = { count: 0 };
+    pi.on('turn_start', () => { turnAuto = { count: 0 }; });
     pi.on('session_start', (_event, ctx) => {
-        turnAutoCount = 0;
+        turnAuto = { count: 0 };
         if (!enabled(ctx)) return;
         pi.registerTool({
             name: 'media_models', label: 'Media models',
@@ -195,8 +192,9 @@ export function registerMediaChat(pi: ExtensionAPI) {
                 summary: Type.String({ maxLength: 500, description: 'One short sentence shown on the card' }),
                 parameters: Type.Record(Type.String(), Type.Unknown())
             }),
-            execute: async (_id, input, signal, _update, ctx) => {
+            execute: async (toolCallId, input, signal, _update, ctx) => {
                 if (!enabled(ctx)) throw new Error('A persistent managed Pivane thread is required');
+                const turn = turnAuto;
                 let model: any;
                 for (const kind of KINDS) {
                     const catalog = await internal(`/api/media-agent/capabilities/${kind}`, { signal });
@@ -205,12 +203,27 @@ export function registerMediaChat(pi: ExtensionAPI) {
                 }
                 if (!model) throw new Error('Media model is unavailable');
                 const references = await resolveReferences(input.parameters, model.parameters || {}, ctx, signal);
-                const allowAuto = turnAutoCount < MAX_AUTO_PER_TURN;
+                // Reserve before validation can submit a paid request. Old preparations cannot
+                // use a new turn's budget, and late responses only update their original turn.
+                const allowAuto = turn === turnAuto && turn.count < MAX_AUTO_PER_TURN;
+                if (allowAuto) turn.count++;
+                const prepared = await internal('/api/media-agent/validate', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ stage: 'prepare', toolCallId, plan: { ...input, parameters: references.parameters }, ...(allowAuto ? { autoExecute: true } : {}) }), signal });
+                const plan = prepared.plan;
+                signal?.throwIfAborted();
+                const origin = { version: 1, toolCallId, plan };
+                if (!mediaPlanRecord(origin)) throw new Error('Invalid prepared media plan');
+                // appendEntry is synchronous and uses this worker's native SessionManager.
+                // sendMessage would defer persistence until the streaming turn ends.
+                pi.appendEntry(MEDIA_PLAN_ENTRY, origin);
+                if (!(ctx.sessionManager.getBranch() as any[]).some(entry => entry.type === 'custom' && entry.customType === MEDIA_PLAN_ENTRY
+                    && entry.data?.toolCallId === toolCallId && entry.data?.plan?.id === plan.id)) throw new Error('Media plan origin was not persisted');
+                signal?.throwIfAborted();
                 const data = await internal('/api/media-agent/validate', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ kind: '', plan: { ...input, parameters: references.parameters }, ...(allowAuto ? { autoExecute: true } : {}) }), signal });
-                const plan = data.plan;
+                    body: JSON.stringify({ stage: 'execute', executionToken: prepared.executionToken, planId: plan.id, toolCallId }), signal });
                 const auto = data.autoExecution;
-                if (auto && ['done', 'running', 'queued', 'failed', 'uncertain'].includes(auto.status)) turnAutoCount++;
+                // A lost response, failure or unknown outcome is not proof of non-execution.
+                if (allowAuto && plan && (auto == null || ['not_started', 'changed', 'cancelled'].includes(auto.status))) turn.count--;
                 const warnings = Array.isArray(plan.warnings) && plan.warnings.length ? ` Notes: ${plan.warnings.join(' ')}` : '';
                 const used = references.notes.length ? ` References: ${references.notes.join('; ')}.` : '';
                 let statusText = `Card ready for the user to confirm: ${plan.summary} (${plan.modelId}). Nothing has been generated yet.`;

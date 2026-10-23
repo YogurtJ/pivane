@@ -60,7 +60,11 @@ async function run(browser, base, { width, locale, theme, behaviors }) {
             const input = req.postDataJSON(); actions.push(input);
             if (state.actionFailure) { const failure = state.actionFailure; state.actionFailure = null; return respond(failure.status === 200 ? { status: 'uncertain' } : { error: failure.message }, failure.status); }
             if (input.action === 'enable') state.settings = { ...state.settings, enabled: true, correctionEnabled: true };
-            if (input.action === 'cancel') state.jobs = state.jobs.map(job => job.id === input.jobId ? { ...job, status: 'cancelled' } : job);
+            if (input.action === 'cancel') {
+                const job = state.jobs.find(job => job.id === input.jobId);
+                state.jobs = state.jobs.filter(job => job.id !== input.jobId);
+                if (job) state.recentRuns.push({ ...job, status: 'cancelled', endedAt: new Date().toISOString() });
+            }
             if (input.action === 'adopt-legacy' || input.action === 'dismiss-legacy') state.legacy = null;
             state.revision++; return respond(snapshot());
         }
@@ -166,6 +170,9 @@ async function run(browser, base, { width, locale, theme, behaviors }) {
         assert.equal(await page.locator('input[name=enabled]').isChecked(), true);
         await btn('立即复盘', 'Review now').click(); await waitIdle(); assert.equal(actions.at(-1).action, 'review-now');
         await btn('取消作业', 'Cancel job').click(); await waitIdle(); assert.equal(actions.at(-1).jobId, 'queued-job');
+        assert.equal(state.jobs.length, 0);
+        assert.equal(await btn('取消作业', 'Cancel job').count(), 0, 'archived cancellation leaves no live action');
+        assert.equal(await page.locator('.pi-id-timeline > li').count(), 2, 'the cancelled run remains visible in history');
         state.actionFailure = { status: 409, message: 'Conflict' };
         await btn('立即复盘', 'Review now').click(); await waitIdle(); assert.equal(await page.locator('.pi-learning-uncertain').count(), 0);
         state.actionFailure = { status: 400, message: 'Rejected action' };
@@ -255,7 +262,7 @@ async function run(browser, base, { width, locale, theme, behaviors }) {
         const base = `http://127.0.0.1:${server.address().port}`;
         for (const options of [
             { width: 1440, locale: 'zh-CN', theme: 'mint', behaviors: true },
-            { width: 393, locale: 'zh-CN', theme: 'mint' },
+            { width: 393, locale: 'zh-CN', theme: 'mint', behaviors: true },
             { width: 320, locale: 'zh-CN', theme: 'mint' },
             { width: 1440, locale: 'en-US', theme: 'dark' },
             { width: 393, locale: 'en-US', theme: 'dark' },

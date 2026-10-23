@@ -12,7 +12,9 @@ function fixture({ complete = true } = {}) {
         const w = { cwd: '/p', sessionId: id, idle, delivered: [], fail: null, isIdle: () => w.idle, activity: { snapshot: () => ({ busy: !w.idle, phase: w.idle ? 'idle' : 'running' }) },
             agentMessages: async ({ messages }) => {
                 if (w.fail) throw w.fail;
-                w.delivered.push(...messages.map(m => m.messageId)); return { woke: messages.some(m => m.wake) };
+                w.delivered.push(...messages.map(m => m.messageId));
+                for (const message of messages) rows.find(row => row.id === id).inbox.add(message.messageId);
+                return { woke: messages.some(m => m.wake) };
             } };
         workers.set(`/p/${id}.jsonl`, w); return w;
     };
@@ -22,7 +24,90 @@ function fixture({ complete = true } = {}) {
     const service = new AgentMessages({ catalog, supervisor, limits: { pumpMs: 1e9, sendsPerWindow: 4, wakesPerWindow: 2, pendingPerTarget: 3 } });
     return { rows, catalog, service, supervisor, worker, started, source };
 }
-const send = (f, requestId, extra = {}) => f.service.send(f.source, { requestId, to: 'b', message: `text ${requestId}`, hop: 0, ...extra });
+const send = async (f, requestId, extra = {}) => {
+    const prepared = await f.service.send(f.source, { phase: 'prepare', requestId, to: 'b', message: `text ${requestId}`, hop: 0, ...extra });
+    if (prepared.status !== 'prepared') return prepared;
+    if (!f.rows[0].outbox.some(message => message.messageId === prepared.messageId)) f.rows[0].outbox.push(JSON.parse(JSON.stringify(prepared.record)));
+    return f.service.send(f.source, { phase: 'publish', messageId: prepared.messageId });
+};
+
+test('message preparation never queues or wakes before a verified native outbound intent exists', async () => {
+    const f = fixture(); const b = f.worker('b');
+    try {
+        const input = { phase: 'prepare', requestId: 'two-phase', to: 'b', message: 'durable intent', hop: 0 };
+        const prepared = await f.service.send(f.source, input);
+        assert.equal(prepared.status, 'prepared');
+        assert.equal(f.service.queue.size, 0); assert.deepEqual(b.delivered, []);
+        await assert.rejects(f.service.send(f.source, { phase: 'publish', messageId: prepared.messageId }), /native outbound|Native outbound/);
+        const duplicate = await f.service.send(f.source, input);
+        assert.deepEqual(duplicate.record, prepared.record);
+        await assert.rejects(f.service.send(f.source, { ...input, message: 'changed' }), /different message/);
+        f.rows[0].outbox.push(prepared.record); // Synthetic source manager's committed custom entry.
+        const published = await f.service.send(f.source, { phase: 'publish', messageId: prepared.messageId });
+        assert.equal(published.status, 'delivered'); assert.deepEqual(b.delivered, [prepared.messageId]);
+        await f.service.send(f.source, { phase: 'publish', messageId: prepared.messageId });
+        assert.deepEqual(b.delivered, [prepared.messageId], 'same publication cannot deliver or wake twice');
+    } finally { await f.service.dispose(); }
+});
+
+test('a committed intent survives interruption before publication; preparation without persistence has no recovery effect', async () => {
+    const f = fixture(); f.worker('a');
+    let restarted;
+    try {
+        const prepare = requestId => f.service.send(f.source, { phase: 'prepare', requestId, to: 'b', message: requestId, hop: 0, wake: false });
+        const abandoned = await prepare('lost-prepare-response');
+        const committed = await prepare('lost-publish-response');
+        f.rows[0].outbox.push(committed.record);
+        assert.equal(f.service.queue.size, 0);
+        await f.service.dispose();
+        restarted = new AgentMessages({ catalog: f.catalog, supervisor: f.supervisor, limits: { pumpMs: 1e9, recoveryMs: 0 } });
+        await restarted.recover();
+        assert.deepEqual([...restarted.queue.keys()], [committed.messageId]);
+        assert.equal(restarted.queue.has(abandoned.messageId), false);
+        const b = f.worker('b'); await restarted.pump();
+        assert.deepEqual(b.delivered, [committed.messageId]);
+    } finally { await f.service.dispose(); await restarted?.dispose(); }
+});
+
+test('concurrent preparations reserve policy once per stable request and cannot exceed pending capacity', async () => {
+    const f = fixture();
+    try {
+        const input = { phase: 'prepare', requestId: 'concurrent', to: 'b', message: 'one intent', hop: 0 };
+        const same = await Promise.all(Array.from({ length: 8 }, () => f.service.send(f.source, input)));
+        assert.ok(same.every(result => JSON.stringify(result.record) === JSON.stringify(same[0].record)));
+        assert.equal(f.service.prepared.size, 1); assert.equal(f.service.sends.get('a').length, 1); assert.equal(f.service.queue.size, 0);
+        const more = await Promise.allSettled(['second', 'third', 'fourth'].map(requestId => f.service.send(f.source, { ...input, requestId })));
+        assert.equal(more.filter(result => result.status === 'fulfilled').length, 2);
+        assert.match(more.find(result => result.status === 'rejected').reason.message, /too many undelivered/);
+        assert.equal(f.service.prepared.size, 3); assert.equal(f.service.queue.size, 0);
+    } finally { await f.service.dispose(); }
+});
+
+for (const large of [false, true]) test(`preparation storage enforces its ${large ? 'byte' : 'count'} budget without publishing`, async () => {
+    const f = fixture(); Object.assign(f.service.limits, { sendsPerWindow: 1000, pendingPerTarget: 1000 });
+    try {
+        let accepted = 0, rejected;
+        for (let i = 0; i < 201; i++) {
+            try { await f.service.send(f.source, { phase: 'prepare', requestId: `capacity-${i}`, to: 'b', message: large ? '字'.repeat(16000) : 'small', hop: 0, wake: false }); accepted++; }
+            catch (error) { rejected = error; break; }
+        }
+        assert.match(rejected?.message || '', /preparation capacity/);
+        if (large) assert.ok(accepted > 0 && accepted < 200); else assert.equal(accepted, 200);
+        assert.ok([...f.service.prepared.values()].reduce((total, item) => total + item.bytes, 0) <= 4 * 1024 * 1024);
+        assert.equal(f.service.queue.size, 0);
+    } finally { await f.service.dispose(); }
+});
+
+test('legacy send prepares only and the old source append is sufficient for native recovery', async () => {
+    const f = fixture(); f.worker('a'); const b = f.worker('b');
+    try {
+        const prepared = await f.service.send(f.source, { requestId: 'legacy', to: 'b', message: 'legacy intent', hop: 0, wake: false });
+        assert.equal(prepared.status, 'prepared'); assert.equal(f.service.queue.size, 0); assert.deepEqual(b.delivered, []);
+        f.rows[0].outbox.push(prepared.record);
+        await f.service.recover(); await f.service.pump();
+        assert.deepEqual(b.delivered, [prepared.messageId]); assert.equal(f.service.prepared.size, 0);
+    } finally { await f.service.dispose(); }
+});
 
 test('queue waits for an idle recipient, retries busy and bounded failures, and wakes closed threads with limited concurrency', async () => {
     const f = fixture(); const b = f.worker('b', { idle: false });
@@ -41,7 +126,7 @@ test('queue waits for an idle recipient, retries busy and bounded failures, and 
         b.fail = null;
         // Closed recipient with wake: started once, then delivered on the next pass.
         f.supervisor.workers.delete('/p/b.jsonl');
-        const third = await f.service.send(f.source, { requestId: 'three', to: 'c', message: 'wake c', hop: 0 });
+        const third = await send(f, 'three', { to: 'c', message: 'wake c' });
         await new Promise(resolve => setImmediate(resolve)); await f.service.pump();
         assert.deepEqual(f.started, ['c']);
         assert.equal(f.service.queue.get(third.messageId).status, 'delivered');
@@ -55,6 +140,7 @@ test('rate, wake budget, pending cap, special and incomplete directories are enf
         assert.deepEqual([r1.wake, r2.wake, r3.wake], [true, true, false]);
         assert.equal(r3.wakeSuppressed, 'rate-limit');
         await assert.rejects(send(f, 'r4'), /too many undelivered/);
+        for (const result of [r1, r2, r3]) f.rows[1].inbox.add(result.messageId);
         f.service.queue.clear();
         await send(f, 'r5');
         await assert.rejects(send(f, 'r6'), /rate limit/);

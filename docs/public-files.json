@@ -79,7 +79,6 @@
     "docs/releases/1.10.0.md",
     "docs/tts-providers/README.md",
     "docs/tts-providers/breeze-gpu.md",
-    "docs/tts-providers/minimax.md",
     "docs/tts-providers/qwen3-gpu.md",
     "native/README.md",
     "pi-packages/media-workbench/skills/media-workbench/SKILL.md"

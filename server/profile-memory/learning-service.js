@@ -30,6 +30,7 @@ const MAX_ACTIONS = 256;
 const BUSY = Symbol('busy');
 const PURPOSES = Object.freeze({ correctionEnabled: 'memory-correction', reviewEnabled: 'memory-review', extractionEnabled: 'memory-extraction' });
 const FAILED_RUN = new Set(['failed', 'uncertain', 'conflict']);
+const TERMINAL_JOBS = new Set(['cancelled', 'uncertain', 'completed', 'failed', 'skipped', 'conflict']);
 // Per-action optional fields; every action also carries requestId.
 const ACTION_FIELDS = Object.freeze({ 'review-now': [], cancel: ['jobId'], enable: ['review', 'extraction'],
     'adopt-legacy': ['model'], 'dismiss-legacy': [], 'propose-consolidation': ['target'],
@@ -139,6 +140,29 @@ function retainRecentRuns(state) {
     const date = new Date().toISOString().slice(0, 10);
     state.dayCarry = dailyUsage({ jobs: [], recentRuns: state.recentRuns.slice(0, -64), dayCarry: state.dayCarry }, date);
     state.recentRuns = state.recentRuns.slice(-64);
+}
+// Old journals may still hold terminal jobs in the live queue. Normalize only
+// known outcomes under the journal lock, keeping their quota and dedupe facts.
+function archiveTerminalJobs(state) {
+    const terminal = state.jobs.filter(job => TERMINAL_JOBS.has(job.status));
+    if (!terminal.length) return false;
+    state.jobs = state.jobs.filter(job => !TERMINAL_JOBS.has(job.status));
+    // Unknown legacy ends stay unknown. An uncertain end may record only when a
+    // restart discovered the interruption, so order it by the original attempt.
+    const historyTime = job => {
+        const values = job.status === 'uncertain' ? [job.startedAt, job.createdAt] : [job.endedAt, job.startedAt, job.createdAt];
+        for (const value of values) {
+            const time = typeof value === 'string' ? Date.parse(value) : NaN;
+            if (Number.isFinite(time)) return time;
+        }
+        return -Infinity;
+    };
+    // Stable ties favor the existing history over newly discovered legacy jobs;
+    // records without a reliable timestamp are retained as the oldest details.
+    state.recentRuns = [...terminal, ...state.recentRuns].map(job => ({ job, time: historyTime(job) }))
+        .sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0).map(({ job }) => job);
+    retainRecentRuns(state);
+    return true;
 }
 // Today's UTC usage shared by drain admission and the health summary.
 function budget(state, settings, reserve = RESERVED_TOKENS) {
@@ -391,8 +415,9 @@ class ProfileLearningService {
         }
         if (!acquired) fail('Learning state locked; reconciliation required', 409);
         try {
-            const state = this.read(file), result = await update(state);
-            if (result !== false) { state.revision++; this.write(file, state); }
+            const state = this.read(file), recovered = archiveTerminalJobs(state);
+            const result = await update(state), archived = archiveTerminalJobs(state);
+            if (recovered || archived || result !== false) { state.revision++; this.write(file, state); }
             return { state, result };
         } finally { fs.rmdirSync(lock); }
     }
@@ -525,7 +550,9 @@ class ProfileLearningService {
                 const job = state.jobs.find(item => item.id === input.jobId);
                 if (!job) fail('Job not found', 404);
                 if (job.status === 'running' || job.status === 'cancelling') job.status = 'cancelling';
-                else if (['queued', 'waiting-config'].includes(job.status)) job.status = 'cancelled';
+                else if (['queued', 'waiting-config'].includes(job.status)) {
+                    job.status = 'cancelled'; job.endedAt = new Date().toISOString();
+                }
             } else if (input.action === 'enable') {
                 // Switches only; model routing stays in the auxiliary model settings.
                 state.settings = { ...DEFAULTS, ...state.settings, enabled: true, correctionEnabled: true,
@@ -751,16 +778,24 @@ class ProfileLearningService {
         timer.unref?.();
         this.retries.set(id, timer);
     }
-    async drain(id) {
-        if (this.closed || this.recovering) return;
-        if (this.active.size >= 2 || [...this.active.values()].some(item => item.profileId === id)) return;
+    drain(id) {
+        if (this.closed || this.recovering) return Promise.resolve();
+        if (this.active.size >= 2 || [...this.active.values()].some(item => item.profileId === id)) return Promise.resolve(BUSY);
+        const controller = new AbortController();
+        // Admission owns the same slot as execution, including all preflight awaits.
+        const active = { key: Symbol(id), profileId: id, abort: () => controller.abort(), promise: null };
+        this.active.set(active.key, active);
+        active.promise = this._drain(id, active, controller.signal).finally(() => { this.active.delete(active.key); });
+        return active.promise;
+    }
+    async _drain(id, active, signal) {
         try {
             const profile = await this.profile(id), models = this.preferences.getMemoryModels();
             if (!profile.enabled || !profile.memory?.enabled || !this.knowledge) return;
             let busy = false;
             const { result: job } = await this.change(id, async state => {
                 const settings = { ...DEFAULTS, ...state.settings };
-                if (!settings.enabled) return false;
+                if (this.closed || signal.aborted || !settings.enabled) return false;
                 const eligible = state.jobs.filter(item => ['queued', 'waiting-config'].includes(item.status)
                     && (['manual', 'consolidate'].includes(item.reason) || settings[`${item.reason}Enabled`]));
                 eligible.sort((a, b) => (a.reason === 'correction' ? 0 : a.reason === 'extraction' ? 1 : 2)
@@ -786,7 +821,7 @@ class ProfileLearningService {
                     retainRecentRuns(state);
                     return { discarded: true };
                 }
-                if (this.closed || !this.idle(candidate)) { busy = !this.closed; return false; }
+                if (this.closed || signal.aborted || !this.idle(candidate)) { busy = !this.closed && !signal.aborted; return false; }
                 const model = models[purposeOf(candidate.reason)];
                 candidate.status = 'running'; candidate.startedAt = new Date().toISOString(); candidate.reservedTokens = reservationOf(candidate);
                 candidate.model = model; candidate.costStatus = 'unknown';
@@ -795,11 +830,10 @@ class ProfileLearningService {
             if (busy) return BUSY;
             if (!job) return;
             if (job.discarded) return true;
-            const controller = new AbortController();
-            const active = { profileId: id, abort: () => controller.abort(), promise: null };
-            this.active.set(job.id, active);
-            active.promise = this.run(id, job, controller.signal).finally(() => { this.active.delete(job.id); });
-            await active.promise;
+            this.active.delete(active.key);
+            active.key = job.id;
+            this.active.set(active.key, active);
+            await this.run(id, job, signal);
             if (job.sessionPath) void this.register(job, 'periodic');
             return true;
         } catch { /* Journal errors remain visible through the original state/lock. */ }
@@ -905,6 +939,7 @@ class ProfileLearningService {
     async run(id, job, signal) {
         let status = 'failed', error = 'learning-failed', usage, receiptIds = [], commitStarted = false, plan;
         try {
+            if (this.closed || signal.aborted) { status = 'cancelled'; error = 'interrupted'; return; }
             if (job.reason === 'consolidate') {
                 const outcome = {};
                 try { await this.consolidation(id, job, signal, outcome); }

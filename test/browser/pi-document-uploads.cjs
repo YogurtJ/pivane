@@ -7,6 +7,7 @@ const { zip, docxFiles, xlsxFiles, pptxFiles, pdfBytes } = require('../document-
 const { marker } = require('../../public/pi-document-references');
 const root = path.resolve(__dirname, '../..'), cwd = '/projects/office-browser-fixture';
 const model = { provider: 'fixture', id: 'fixture', name: 'Fixture', input: ['text', 'image'], contextWindow: 32000 };
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5V8AAAAASUVORK5CYII=', 'base64');
 const sessions = ['a', 'b'].map(id => ({ id, cwd, name: id, messageCount: 0 }));
 const samples = ['docx', 'xlsx', 'pptx', 'pdf'].map((format, i) => ({ name: ['合同 & "样本".docx', '销售.xlsx', '演示.pptx', '报告.pdf'][i], format,
     buffer: format === 'pdf' ? pdfBytes() : zip(({ docx: docxFiles, xlsx: xlsxFiles, pptx: pptxFiles })[format]()), mimeType: 'application/octet-stream' }));
@@ -79,7 +80,51 @@ async function run(browser, base, width, locale) {
         if (width < 900 && !await page.locator('#pi-session-pane').evaluate(n => n.classList.contains('open'))) await page.locator('#pi-toggle-sessions').click();
         await page.locator('[data-filter="all"]').click(); await page.locator(`[data-session-id="${id}"] .pi-session-main`).click();
         await page.waitForFunction(id => !document.querySelector('#pi-input').disabled && document.querySelector('#pi-meta-id').textContent === id, id);
+        if (width < 900) assert.equal(await page.locator('#pi-session-pane').evaluate(node => node.classList.contains('open')), false, 'selecting a thread closes the phone drawer');
     };
+    const openSchedule = async () => {
+        await page.locator('#pi-composer-add-button').click(); await page.locator('#pi-schedule-button').click();
+        await page.waitForFunction(() => document.querySelector('#pi-workflow-dialog').open);
+    };
+    const holdImageRead = async (name, selector = '#pi-file-input') => {
+        await page.evaluate(name => {
+            const arrayBuffer = File.prototype.arrayBuffer, read = window.PiAttachments.read;
+            const gate = window.__attachmentRead = { started: false, settled: false };
+            File.prototype.arrayBuffer = function (...args) {
+                if (this.name !== name) return arrayBuffer.apply(this, args);
+                gate.started = true;
+                return new Promise(resolve => { gate.release = () => resolve(arrayBuffer.apply(this, args)); });
+            };
+            window.PiAttachments.read = async function (file, ...args) {
+                try { return await read(file, ...args); }
+                finally {
+                    if (file.name === name) {
+                        gate.settled = true; File.prototype.arrayBuffer = arrayBuffer; window.PiAttachments.read = read;
+                    }
+                }
+            };
+        }, name);
+        await page.locator(selector).setInputFiles({ name, mimeType: 'image/png', buffer: png });
+        await page.waitForFunction(() => window.__attachmentRead.started);
+    };
+    const releaseImageRead = async () => {
+        await page.evaluate(() => window.__attachmentRead.release());
+        await page.waitForFunction(() => window.__attachmentRead.settled);
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    };
+    // Selection owns the upload before local image reading begins, including A -> B -> A.
+    for (const returnToSource of [false, true]) {
+        const beforeRead = uploads.length;
+        await input.fill('image source draft'); await holdImageRead(`slow-${returnToSource}.png`);
+        await switchTo('b'); await input.fill('image destination draft');
+        if (returnToSource) await switchTo('a');
+        await releaseImageRead();
+        assert.equal(uploads.length, beforeRead, 'invalidated image reads must not POST to either thread');
+        assert.equal(await input.inputValue(), returnToSource ? 'image source draft' : 'image destination draft'); await count(0);
+        await switchTo(returnToSource ? 'b' : 'a');
+        assert.equal(await input.inputValue(), returnToSource ? 'image destination draft' : 'image source draft'); await count(0);
+        if (returnToSource) await switchTo('a');
+    }
     await input.fill('Summarize these documents'); await select(samples); await count(4); assert.equal(uploads.length, 4);
     const downloadEvent = page.waitForEvent('download'); await page.locator('[data-preview-attachment]').last().click();
     const downloaded = await downloadEvent; assert.equal(downloaded.suggestedFilename(), samples[3].name); assert.deepEqual(fs.readFileSync(await downloaded.path()), samples[3].buffer);
@@ -101,10 +146,39 @@ async function run(browser, base, width, locale) {
     await switchTo('b'); await input.fill('new thread draft'); hold = false; await select([{ ...samples[1], name: 'new.xlsx' }]); await count(1); await held();
     await page.waitForTimeout(80); assert.match(await chips.textContent(), /new.xlsx/); assert.ok(!(await chips.textContent()).includes('slow.docx')); assert.equal(await input.inputValue(), 'new thread draft'); await clear();
     await switchTo('a'); assert.equal(await input.inputValue(), 'retain old draft'); await count(0);
-    // Scheduled-message editor uses the same raw upload and reference payload.
-    await page.locator('#pi-composer-add-button').click(); await page.locator('#pi-schedule-button').click();
-    await page.locator('#pi-workflow-files').setInputFiles({ name: 'scheduled.pptx', mimeType: 'application/octet-stream', buffer: samples[2].buffer });
-    await page.waitForFunction(() => document.querySelector('#pi-workflow-documents .pi-document-card') && !document.querySelector('#pi-workflow-submit').disabled);
+    // Images already POSTed retain their source owner; late responses cannot enter B's draft.
+    const beforeLateImage = uploads.length;
+    hold = true; held = null; await select([{ name: 'late-original.png', mimeType: 'image/png', buffer: png }]);
+    while (!held) await page.waitForTimeout(20);
+    assert.equal(uploads.length, beforeLateImage + 1); assert.equal(uploads.at(-1).owner, 'a');
+    await switchTo('b'); const otherDraft = await input.inputValue(); hold = false; await held();
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await count(0); assert.equal(await input.inputValue(), otherDraft);
+    await switchTo('a'); await count(0); assert.equal(await input.inputValue(), 'retain old draft');
+    assert.equal(uploads.length, beforeLateImage + 1, 'a late response never resubmits the original');
+    // Closing/reopening the scheduled-message editor invalidates a slow image read on the same thread.
+    const beforeEditorRead = uploads.length;
+    await openSchedule(); await holdImageRead('closed-editor.png', '#pi-workflow-files');
+    await page.locator('#pi-workflow-close').click(); await openSchedule();
+    await page.locator('#pi-workflow-message').fill('new editor draft'); await releaseImageRead();
+    assert.equal(uploads.length, beforeEditorRead, 'a replaced editor cannot upload an original');
+    assert.equal(await page.locator('#pi-workflow-message').inputValue(), 'new editor draft');
+    assert.equal(await page.locator('#pi-workflow-images img, #pi-workflow-documents .pi-document-card').count(), 0);
+    assert.equal(await page.locator('#pi-workflow-submit').isDisabled(), false);
+    await page.locator('#pi-workflow-close').click();
+    // A closed editor followed by a different thread also invalidates its pending image upload.
+    await openSchedule(); await holdImageRead('old-editor-thread.png', '#pi-workflow-files');
+    await page.locator('#pi-workflow-close').click(); await switchTo('b'); await releaseImageRead();
+    assert.equal(uploads.length, beforeEditorRead, 'the original cannot move to the new thread'); await count(0);
+    await switchTo('a');
+    // Scheduled-message editor keeps normal image originals and office references.
+    await openSchedule();
+    await page.locator('#pi-workflow-files').setInputFiles([
+        { name: 'scheduled.pptx', mimeType: 'application/octet-stream', buffer: samples[2].buffer },
+        { name: 'scheduled.png', mimeType: 'image/png', buffer: png }
+    ]);
+    await page.waitForFunction(() => document.querySelector('#pi-workflow-documents .pi-document-card') && document.querySelector('#pi-workflow-images img') && !document.querySelector('#pi-workflow-submit').disabled);
+    assert.equal(uploads.at(-1).owner, 'a'); assert.equal(uploads.at(-1).reference.format, 'image');
     await page.locator('#pi-workflow-close').click();
     await select([{ ...samples[0], name: 'long-name-'.repeat(16) + '.docx' }]); await count(1);
     const beforeForkUploads = uploads.length, beforeForkPrompts = prompts.length;
@@ -129,7 +203,6 @@ async function run(browser, base, width, locale) {
     await clear();
     const audio = { name: 'recording.mp3', mimeType: 'audio/mpeg', buffer: Buffer.from([0, 255, 1, 2]) };
     const archive = { name: 'archive.zip', mimeType: 'application/zip', buffer: Buffer.from([80, 75, 0, 1]) };
-    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5V8AAAAASUVORK5CYII=', 'base64');
     await select([audio, archive, { name: 'original.png', mimeType: 'image/png', buffer: png }]); await count(3);
     assert.match((await chips.allTextContents()).join(''), /已上传.*待发送|Uploaded.*not sent/);
     assert.equal(uploads.at(-1).reference.format, 'image'); assert.deepEqual(uploads.at(-1).bytes, png);
@@ -148,9 +221,10 @@ async function run(browser, base, width, locale) {
     assert.equal(await page.locator('#pi-send-button').isDisabled(), false);
     await page.waitForFunction(() => document.querySelector('#pi-toast-region').children.length === 0, null, { timeout: 12000 });
     await page.screenshot({ path: `/tmp/pi-document-uploads-${width}-${locale}.png` });
+    assert.equal(await page.evaluate(() => window.innerWidth), width, 'the actual viewport matches the desktop/phone fixture');
     assert.equal(await page.evaluate(() => document.body.scrollWidth > document.body.clientWidth), false);
     assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('.pi-document-card, .pi-attachment-chip')].filter(n => n.clientWidth && n.scrollWidth > n.clientWidth + 1).map(n => n.className)), []);
-    assert.deepEqual(errors, []); console.log(`office attachments ${width} ${locale}: raw upload, formats, scope, cards/download, draft races, fork hydration/removal and no re-upload passed`);
+    assert.deepEqual(errors, []); console.log(`office attachments ${width} ${locale}: slow image selection ownership, A-B-A epochs, late originals, replaced scheduled editors, raw upload, status-only reconciliation, drafts, drawers and widths passed`);
     await context.close();
 }
 (async () => {

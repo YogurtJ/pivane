@@ -1,6 +1,15 @@
 const { randomUUID } = require('node:crypto');
 const { AsyncLocalStorage } = require('node:async_hooks');
 const fail = (message, status = 409) => Object.assign(new Error(message), { status });
+const httpOperations = new WeakMap();
+// Take completion ownership before starting asynchronous work. The handler must
+// call the returned function only after its work and resource cleanup finish.
+function takeHttpOperationCompletion(req) {
+    const operation = httpOperations.get(req);
+    if (!operation) return () => {};
+    operation.handlerOwned = true;
+    return operation.complete;
+}
 class MaintenanceClient {
     constructor({ send, managed = Boolean(process.send && process.env.PI_MANAGED_LAUNCHER), nonce = process.env.PI_MANAGED_LAUNCHER } = {}) {
         this.managed = managed; this.nonce = nonce;
@@ -59,10 +68,13 @@ class MaintenanceClient {
         let leave;
         try { leave = this.enter(); } catch (error) { return res.status(503).json({ error: error.message, errorCode: error.code }); }
         this.httpRequests.add(req);
+        const operation = { handlerOwned: false, complete: leave };
+        httpOperations.set(req, operation);
+        const finish = () => { if (!operation.handlerOwned) leave(); };
         const end = res.end;
-        res.end = function (...args) { leave(); return end.apply(this, args); };
+        res.end = function (...args) { finish(); return end.apply(this, args); };
         // A disconnected response alone does not imply its asynchronous work stopped.
-        res.once('finish', leave);
+        res.once('finish', finish);
         this.operationContext.run(leave, next);
     }
     status() { return { ...this.state, busy: this.locked || this.referenceLocked || this.state.busy, generation: this.generation }; }
@@ -94,4 +106,4 @@ class MaintenanceClient {
         return { id, accepted: true };
     }
 }
-module.exports = { MaintenanceClient };
+module.exports = { MaintenanceClient, takeHttpOperationCompletion };

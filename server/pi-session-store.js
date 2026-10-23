@@ -467,18 +467,21 @@ class PiSessionStore {
         return { session: result, draft };
     }
 
-    async renameSession(cwdInput, id, name, activeWorker) {
+    async renameSession(cwdInput, id, name, activeWorker, rpc) {
         const cleanName = String(name || '').trim().slice(0, 120);
         if (!cleanName) throw new Error('Session name is required');
-        const session = await this.getSession(cwdInput, id);
-        if (activeWorker) {
-            await activeWorker.request('set_session_name', { name: cleanName });
-        } else {
-            const { SessionManager } = await getSdk();
-            SessionManager.open(session.path).appendSessionInfo(cleanName);
-        }
-        this.sessionLists.delete(session.cwd);
-        return { ...session, name: cleanName, modified: new Date().toISOString() };
+        return this.withSessionRead(cwdInput, id, async (session, read) => {
+            if (activeWorker) {
+                if (activeWorker.sessionPath !== session.path || activeWorker.sessionId !== session.id) throw new Error('Session runtime changed');
+                await (rpc || activeWorker.request.bind(activeWorker))('set_session_name', { name: cleanName });
+            } else {
+                // The Supervisor metadata slot excludes startup. Revalidate this
+                // read's native file identity immediately before the synchronous append.
+                read.manager().appendSessionInfo(cleanName);
+            }
+            this.sessionLists.delete(session.cwd);
+            return { ...session, name: cleanName, modified: new Date().toISOString() };
+        });
     }
 
     async deleteSession(cwdInput, id) {

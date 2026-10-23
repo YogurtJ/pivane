@@ -1,7 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { EventEmitter } = require('node:events');
-const { MaintenanceClient } = require('../server/pi-maintenance-client');
+const { EventEmitter, once } = require('node:events');
+const fs = require('node:fs'), path = require('node:path'), os = require('node:os'), http = require('node:http');
+const { MaintenanceClient, takeHttpOperationCompletion } = require('../server/pi-maintenance-client');
 
 function response() {
     const res = new EventEmitter();
@@ -87,4 +88,62 @@ test('reference lease rechecks external activity and remains independent of main
     lease.release(); assert.equal(client.referenceLocked, true); second.check(); second.release();
     assert.equal(client.status().busy, false);
     assert.throws(() => client.acquireReferenceLease(async () => true), { code: 'DOCUMENT_STORAGE_BUSY' });
+});
+
+test('handler completion keeps the original request identity across duplicate admission and response completion', async () => {
+    const client = new MaintenanceClient({ managed: false });
+    const finish = deferred(), later = deferred(); let complete;
+    const owned = request(client, async (req, res) => {
+        complete = takeHttpOperationCompletion(req);
+        client.http(req, res, () => assert.equal(client.active, 1));
+        res.end(); res.emit('finish'); res.emit('close');
+        await finish.promise;
+        const lease = client.acquireReferenceLease(() => true); lease.check(); lease.release();
+        complete();
+        await later.promise;
+        assert.throws(() => client.acquireReferenceLease(() => true), { code: 'DOCUMENT_STORAGE_BUSY' });
+    });
+    assert.equal(client.active, 1);
+    assert.throws(() => client.acquireReferenceLease(() => true), { code: 'DOCUMENT_STORAGE_BUSY' });
+    finish.resolve(); await Promise.resolve();
+    assert.equal(client.active, 0);
+    const unrelated = request(client, () => {});
+    complete(); owned.res.end(); owned.res.emit('finish');
+    assert.equal(client.active, 1, 'repeated old completion cannot release an unrelated request');
+    later.resolve(); await owned.result;
+    unrelated.res.end(); assert.equal(client.active, 0);
+});
+
+test('a real disconnected HTTP writer blocks reference cleanup until its write actually completes', async t => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-reference-write-'));
+    const destination = path.join(root, 'synthetic.txt');
+    const client = new MaintenanceClient({ managed: false });
+    const admitted = deferred(), peerClosed = deferred(), allowWrite = deferred(), handlerSettled = deferred();
+    const express = require('express'), app = express();
+    app.use((req, res, next) => client.http(req, res, next));
+    app.post('/api/pi/synthetic-write', async (_req, res) => {
+        res.once('close', peerClosed.resolve); admitted.resolve();
+        try { await allowWrite.promise; await fs.promises.writeFile(destination, 'completed after disconnect'); res.end(); }
+        finally { handlerSettled.resolve(); }
+    });
+    const server = http.createServer(app);
+    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    t.after(async () => {
+        allowWrite.resolve(); await handlerSettled.promise;
+        server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+    let requestError;
+    const writer = http.request(`http://127.0.0.1:${server.address().port}/api/pi/synthetic-write`, { method: 'POST' });
+    writer.on('error', error => { requestError = error; }); writer.end();
+    await admitted.promise;
+    const disconnected = new Promise(resolve => writer.once('close', resolve)); writer.destroy(); await disconnected; await peerClosed.promise;
+    assert.equal(requestError?.code, 'ECONNRESET');
+    assert.equal(client.active, 1);
+    assert.equal(fs.existsSync(destination), false);
+    assert.throws(() => client.acquireReferenceLease(() => true), { code: 'DOCUMENT_STORAGE_BUSY' });
+    allowWrite.resolve(); await handlerSettled.promise;
+    assert.equal(fs.readFileSync(destination, 'utf8'), 'completed after disconnect');
+    assert.equal(client.active, 0);
+    const lease = client.acquireReferenceLease(() => true); lease.check(); lease.release();
 });

@@ -12,17 +12,35 @@ process.env.PI_OFFLINE = '1';
 const { PiAgentSupervisor } = require('../server/pi-agent-supervisor');
 const { PiSessionStore } = require('../server/pi-session-store');
 const refs = require('../public/pi-document-references');
-const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==';
+const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';
+const otherPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4////fwAJ+wP9KobjigAAAABJRU5ErkJggg==';
 const image = { type: 'image', mimeType: 'image/png', data: png };
-// Distinct valid bytes exercise queue identity without poisoning later model context.
-const alternateImage = { ...image, data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPj/HwADAgH/5ncLrgAAAABJRU5ErkJggg==' };
+const otherImage = { ...image, data: otherPng };
 const document = { id: 'd'.repeat(64), revision: 'e'.repeat(64), name: 'report.pdf', format: 'pdf', size: 42 };
 async function waitFor(predicate) {
     for (let n = 0; n < 400; n++) { if (predicate()) return; await new Promise(resolve => setTimeout(resolve, 20)); }
     throw new Error('queue fixture condition timed out');
 }
 
+async function assertShellBlocked(worker) {
+    const request = worker.client.request.bind(worker.client), before = worker.shell.snapshot();
+    let bashDispatches = 0;
+    worker.client.request = (type, ...args) => {
+        if (type === 'bash') {
+            bashDispatches++;
+            return Promise.resolve({ output: 'unexpected synthetic bash dispatch', exitCode: 0 });
+        }
+        return request(type, ...args);
+    };
+    try {
+        await assert.rejects(worker.shell.start({ command: 'printf shell-fixture' }), /空闲/);
+        assert.equal(bashDispatches, 0, 'blocked startup never reaches native bash');
+        assert.deepEqual(worker.shell.snapshot(), before, 'blocked startup never reserves a Shell job');
+    } finally { worker.client.request = request; }
+}
+
 test('managed synthetic RPC: image/document/template queue recovery, durable ack, actual native proof and crash reconstruction', { timeout: 120000 }, async t => {
+    const inputHold = path.join(root, 'hold-input'), customHold = path.join(root, 'hold-custom-startup');
     let hold = true, requests = 0;
     const held = new Set();
     const finish = res => {
@@ -43,15 +61,26 @@ test('managed synthetic RPC: image/document/template queue recovery, durable ack
     } } }));
     fs.writeFileSync(path.join(process.env.PI_CODING_AGENT_DIR, 'settings.json'), JSON.stringify({ defaultProvider: 'fixture', defaultModel: 'fixture', compaction: { enabled: false } }));
     fs.writeFileSync(path.join(process.env.PI_CODING_AGENT_DIR, 'prompts', 'queued.md'), '---\ndescription: fixture template\n---\nExpanded requirement: $1\n');
-    fs.writeFileSync(path.join(process.env.PI_CODING_AGENT_DIR, 'extensions', 'input.ts'), `export default function(pi) {
-        pi.on('input', async event => {
-            if (event.text === 'timeout before agent start') await new Promise(resolve => setTimeout(resolve, 1500));
+    fs.writeFileSync(path.join(process.env.PI_CODING_AGENT_DIR, 'extensions', 'input.ts'), `import fs from 'node:fs'; export default function(pi) {
+        pi.on('input', async (event, ctx) => {
+            if (event.text === 'timeout before agent start') {
+                ctx.ui.setStatus('shell-input-fixture', 'waiting');
+                while (fs.existsSync(${JSON.stringify(inputHold)})) await new Promise(resolve => setTimeout(resolve, 10));
+            }
             if (event.text === 'transform fixture') return { action: 'transform', text: 'Transformed requirement', images: event.images };
             if (event.text.startsWith('expand boundary')) {
                 await new Promise(resolve => setTimeout(resolve, 100));
                 return { action: 'transform', text: 'Expanded quota payload ' + 'E'.repeat(4000),
-                    images: [...(event.images || []), ${JSON.stringify(alternateImage)}] };
+                    images: [...(event.images || []), ${JSON.stringify(otherImage)}] };
             }
+        });
+        pi.registerCommand('shell-startup', { handler: async () => {
+            pi.sendMessage({ customType: 'shell-startup-fixture', content: 'Synthetic extension run', display: false }, { triggerTurn: true });
+        } });
+        pi.on('before_agent_start', async (event, ctx) => {
+            if (event.messageType !== 'custom' || event.message.customType !== 'shell-startup-fixture') return;
+            ctx.ui.setStatus('shell-startup-fixture', 'waiting');
+            while (fs.existsSync(${JSON.stringify(customHold)})) await new Promise(resolve => setTimeout(resolve, 10));
         });
         pi.on('message_start', async (event, ctx) => {
             if (event.message.role === 'user' && event.message.content?.some(block => block.text === 'drained first')) {
@@ -62,6 +91,7 @@ test('managed synthetic RPC: image/document/template queue recovery, durable ack
     const store = new PiSessionStore();
     let supervisor = new PiAgentSupervisor();
     t.after(async () => {
+        fs.rmSync(inputHold, { force: true }); fs.rmSync(customHold, { force: true });
         await supervisor.dispose(); for (const res of held) res.destroy(); provider.closeAllConnections();
         await new Promise(resolve => provider.close(resolve)); fs.rmSync(root, { recursive: true, force: true });
     });
@@ -75,18 +105,23 @@ test('managed synthetic RPC: image/document/template queue recovery, durable ack
     assert.equal(forwarded.length, 0, 'private queue evidence is intercepted even when stale, foreign or malformed');
     unsubscribe();
     // A timed-out prompt can still finish native preflight later while get_state reports idle.
+    fs.writeFileSync(inputHold, '');
     await assert.rejects(worker.request('prompt', { message: 'timeout before agent start' }, 20), error => error.code === 'RPC_TIMEOUT');
+    await waitFor(() => worker.controls.statuses.get('shell-input-fixture') === 'waiting');
     assert.equal(worker.promptPending, 0); assert.equal(worker.promptAdmissionUncertain, true);
+    assert.ok(worker.runStartupCalls.size > 0, 'slow native input still owns its startup call');
     assert.equal(worker.activity.snapshot().busy, false); assert.equal(worker.controls.recoveries.length, 0);
     const unobserved = await worker.request('get_state');
     assert.equal(unobserved.isStreaming, false); assert.equal(unobserved.pendingMessageCount, 0);
     assert.ok(worker.lifecycle().blockers.includes('prompt-admission-uncertain'));
     assert.equal(worker.isIdle(), false); assert.equal(supervisor.isIdle(), false);
     assert.equal(worker.promptAdmissionUncertain, true, 'idle snapshots never cancel unobserved future preflight');
+    await assertShellBlocked(worker);
     await assert.rejects(supervisor.acquireQueueReferenceLease(), /会话正在执行/);
     await assert.rejects(supervisor.withSessionMove(session.path, path.join(root, 'uncertain-move.jsonl'), () => {}), /会话正在运行/);
     const admissionRuntime = worker.controls.runtimeId, beforeTerminationRequests = requests;
     const admissionExit = once(worker, 'exit'); worker.client.child.kill('SIGKILL'); await admissionExit;
+    fs.unlinkSync(inputHold);
     worker = await supervisor.getWorker({ cwd: root, sessionPath: session.path, sessionId: session.id });
     assert.notEqual(worker.controls.runtimeId, admissionRuntime); assert.equal(worker.promptAdmissionUncertain, false);
     assert.equal(requests, beforeTerminationRequests, 'terminating preflight starts no model and reconstructs without replay');
@@ -96,11 +131,32 @@ test('managed synthetic RPC: image/document/template queue recovery, durable ack
     await assert.rejects(worker.request('get_session_stats'), /controlled read timeout/);
     assert.equal(worker.promptAdmissionUncertain, false, 'read-only timeouts do not block prompt admission');
     worker.client.request = readRequest;
+    // Extension-triggered native startup outlives the command's prompt acknowledgement.
+    fs.writeFileSync(customHold, '');
+    await worker.request('prompt', { message: '/shell-startup' });
+    await waitFor(() => worker.controls.statuses.get('shell-startup-fixture') === 'waiting');
+    assert.equal(worker.promptPending, 0); assert.equal(worker.promptAdmissionUncertain, false);
+    assert.ok(worker.runStartupCalls.size > 0); assert.equal(worker.activity.snapshot().busy, false);
+    assert.ok(worker.lifecycle().blockers.includes('native-run'));
+    await assertShellBlocked(worker);
+    const beforeStartupAbort = requests;
+    const abortedStartup = worker.request('abort');
+    await worker.request('get_state'); // Observe the native abort submission before releasing the hook.
+    fs.unlinkSync(customHold); await abortedStartup;
+    await waitFor(() => worker.runStartupCalls.size === 0 && !worker.activity.snapshot().busy);
+    assert.equal(requests, beforeStartupAbort, 'aborting extension startup starts no model');
+    // A settled native call permits one ordinary Shell execution through the same worker.
+    const acceptedShell = await worker.shell.start({ command: 'printf shell-fixture' });
+    assert.equal(acceptedShell.job.status, 'running');
+    await worker.shell.completion;
+    assert.equal(worker.shell.job.status, 'completed'); assert.equal(worker.shell.job.output, 'shell-fixture');
+    assert.equal(worker.shell.job.exitCode, 0); assert.equal(worker.shell.job.recorded, true); assert.equal(worker.shell.busy, false);
+    assert.equal(requests, beforeStartupAbort, 'manual Shell starts no model');
     await worker.request('prompt', { message: 'hold current turn' }); await waitFor(() => held.size);
     assert.equal(worker.controls.recoveries.length, 0, 'ordinary immediate input creates no queue journal');
     const raw = 'same ' + refs.marker(document);
     await worker.request('steer', { message: raw, images: [image] });
-    await worker.request('follow_up', { message: raw, images: [alternateImage] });
+    await worker.request('follow_up', { message: raw, images: [otherImage] });
     await worker.request('steer', { message: '/queued original', images: [image] });
     await worker.request('steer', { message: 'transform fixture', images: [image] });
     assert.equal(worker.controls.intentions.length, 4, JSON.stringify((await supervisor.getQueueStore()).read().entries.map(item => ({ id: item.id, state: item.state, original: item.original.message }))));
@@ -113,6 +169,7 @@ test('managed synthetic RPC: image/document/template queue recovery, durable ack
     assert.equal(recovery.recoveries.length, 4);
     assert.ok(recovery.recoveries.every(item => item.status === 'recovered'));
     assert.equal(JSON.stringify(recovery).includes(png), false, 'snapshots only carry image metadata');
+    assert.equal(JSON.stringify(recovery).includes(otherPng), false, 'snapshots omit both distinct image payloads');
     assert.ok(recovery.recoveries.some(item => item.steering.some(text => /Expanded requirement: original/.test(text))));
     assert.ok(recovery.recoveries.some(item => item.steering.includes('Transformed requirement')));
     const full = recovery.recoveries.map(item => worker.recoveryPayload({ recoveryId: item.id, runtimeId: recovery.runtimeId, revision: recovery.revision }));
@@ -176,7 +233,7 @@ test('managed synthetic RPC: image/document/template queue recovery, durable ack
     assert.ok(queueStore.read().entries.some(entry => pendingClear.fallbackIds.includes(entry.id)));
     worker.client.request = nativeRequest; worker.handleQueueEvent = nativeQueueHandler;
     await worker.request('get_state'); assert.equal(worker.controlPending, false);
-    await worker.request('follow_up', { message: 'same late-clear text', images: [alternateImage] });
+    await worker.request('follow_up', { message: 'same late-clear text', images: [otherImage] });
     await worker.recoverQueue(false); // A newer explicit operation gets its own proof and candidates.
     await worker.request('follow_up', { message: 'newer queue must not regress', images: [image] });
     const newer = worker.controls.intentions.find(item => item.followUp.includes('newer queue must not regress'));
@@ -244,7 +301,7 @@ test('managed synthetic RPC: image/document/template queue recovery, durable ack
     // Finite completion: exact message object -> native append ID/hash -> physical JSONL record.
     await worker.request('prompt', { message: 'hold second turn' }); await waitFor(() => held.size);
     await worker.request('steer', { message: 'exact duplicate', images: [image] });
-    await worker.request('follow_up', { message: 'exact duplicate', images: [alternateImage] });
+    await worker.request('follow_up', { message: 'exact duplicate', images: [otherImage] });
     hold = false; for (const res of [...held]) { held.delete(res); finish(res); }
     await waitFor(() => !worker.activity.snapshot().busy && !worker.controls.intentions.length);
     assert.equal(worker.controls.recoveries.length, 0, 'proven physical native entries retire delivered intentions');

@@ -275,3 +275,66 @@ test('isolated authenticated HTTP exposes authorized-project detail, global tota
     const status = await fetch(origin + '/api/pi/uploads/storage/status?' + new URLSearchParams({ cwd: f.cwd, requestId: 'cleanup' }), { headers: { Authorization: 'Bearer synthetic-storage-token' } });
     assert.equal(status.status, 200); assert.equal((await status.json()).state, 'deleted'); assert.equal(status.headers.get('cache-control'), 'no-store');
 });
+
+for (const failure of ['original', 'manifest.json', 'directory']) test(`proven interrupted cleanup at ${failure} remains counted and does not block unrelated uploads`, async t => {
+    const f = await fixture(t), uploaded = await f.upload('interrupted'), id = uploaded.reference.id;
+    const object = await f.service.object(id), preview = await f.storage.preview({ cwd: f.cwd, id });
+    const unlink = fs.unlinkSync, rmdir = fs.rmdirSync;
+    fs.unlinkSync = file => { if (file === path.join(object.folder, failure)) throw Object.assign(new Error('Synthetic leaf failure'), { code: 'EIO' }); return unlink(file); };
+    fs.rmdirSync = file => { if (failure === 'directory' && file === object.folder) throw Object.assign(new Error('Synthetic directory failure'), { code: 'EIO' }); return rmdir(file); };
+    try { await assert.rejects(f.storage.cleanup(cleanupInput(f.cwd, preview)), { code: 'EIO' }); }
+    finally { fs.unlinkSync = unlink; fs.rmdirSync = rmdir; }
+    const names = fs.readdirSync(object.folder), receipt = await f.storage.status({ cwd: f.cwd, requestId: 'cleanup' });
+    const usage = await f.storage.usage({ cwd: f.cwd });
+    assert.equal(usage.count, 1); assert.equal(usage.totalBytes, bytes.length); assert.match(usage.warning, /清理残留待核对/);
+    assert.equal(usage.items[0].savedReference, 'unverified'); assert.equal(usage.items[0].deletionPending, true);
+    await f.upload('unrelated'); assert.equal((await f.storage.usage({ cwd: f.cwd })).count, 2);
+    assert.deepEqual(await f.storage.cleanup(cleanupInput(f.cwd, preview)), receipt);
+    assert.deepEqual(fs.readdirSync(object.folder), names, 'neither reads nor request replay complete deletion');
+    await assert.rejects(f.upload('interrupted'), { code: 'DOCUMENT_DELETED' });
+    await assert.rejects(f.service.authorized({ cwd: f.cwd, sessionId: f.session.id, id }, { draft: true }), { code: 'DOCUMENT_DELETED' });
+    await assert.rejects(f.storage.preview({ cwd: f.cwd, id }), { code: 'DOCUMENT_PROTECTED' });
+    const manifest = path.join(object.folder, 'manifest.json');
+    if (fs.existsSync(manifest)) fs.appendFileSync(manifest, ' ');
+    else fs.writeFileSync(path.join(object.folder, 'unexpected'), 'unrecognized');
+    await assert.rejects(f.storage.usage({ cwd: f.cwd }), { code: 'DOCUMENT_STORAGE_CHANGED' });
+    await assert.rejects(f.upload('after-tamper'), { code: 'DOCUMENT_STORAGE_CHANGED' });
+});
+
+for (const remaining of ['both', 'manifest', 'empty']) test(`legacy cleanup ${remaining} residue is quarantined at the conservative upper bound`, async t => {
+    const f = await fixture(t), uploaded = await f.upload('legacy-residue'), id = uploaded.reference.id;
+    const object = await f.service.object(id), preview = await f.storage.preview({ cwd: f.cwd, id });
+    const { atomicJson } = require('../server/pi-maintenance-files');
+    const receipt = { version: 1, cwd: f.cwd, id, requestId: 'cleanup', ticket: preview.ticket, revision: preview.revision,
+        state: 'uncertain', externalWritersStopped: true, createdAt: new Date().toISOString() };
+    const storageRoot = await f.service.root();
+    atomicJson(f.storage.receiptPath(storageRoot, f.cwd, 'cleanup'), receipt);
+    atomicJson(path.join(storageRoot, '.storage-deleted', id + '.json'), { version: 1, id, requestId: 'cleanup' });
+    if (remaining !== 'both') fs.unlinkSync(path.join(object.folder, 'original'));
+    if (remaining === 'empty') fs.unlinkSync(path.join(object.folder, 'manifest.json'));
+    const usage = await f.storage.usage({ cwd: f.cwd });
+    assert.equal(usage.totalBytes, 100 * 1024 ** 2); assert.equal(usage.count, 1); assert.match(usage.warning, /清理残留待核对/);
+    assert.deepEqual(usage.items, [], 'legacy evidence cannot prove a display name or upload-thread ownership');
+    await f.upload('legacy-independent');
+    assert.deepEqual(await f.storage.cleanup(cleanupInput(f.cwd, preview)), receipt);
+    await assert.rejects(f.upload('legacy-residue'), { code: 'DOCUMENT_DELETED' });
+    const tombstone = path.join(storageRoot, '.storage-deleted', id + '.json');
+    atomicJson(tombstone, { version: 1, id, requestId: 'unmatched' });
+    await assert.rejects(f.storage.usage({ cwd: f.cwd }), { code: 'DOCUMENT_STORAGE_CHANGED' });
+});
+
+test('residual proofs reject symlinked leaves, substituted directories and an unproven empty object', async t => {
+    const f = await fixture(t), uploaded = await f.upload('linked-residue'), id = uploaded.reference.id;
+    const object = await f.service.object(id), preview = await f.storage.preview({ cwd: f.cwd, id }), unlink = fs.unlinkSync;
+    fs.unlinkSync = file => { if (file === path.join(object.folder, 'original')) throw Object.assign(new Error('Synthetic failure'), { code: 'EIO' }); return unlink(file); };
+    try { await assert.rejects(f.storage.cleanup(cleanupInput(f.cwd, preview)), { code: 'EIO' }); } finally { fs.unlinkSync = unlink; }
+    const original = path.join(object.folder, 'original'), held = path.join(f.base, 'held');
+    fs.renameSync(original, held); fs.symlinkSync(held, original);
+    await assert.rejects(f.storage.usage({ cwd: f.cwd }), { code: 'DOCUMENT_STORAGE_CHANGED' });
+    fs.unlinkSync(original); fs.renameSync(held, original);
+    const oldFolder = path.join(f.base, 'old-folder'); fs.renameSync(object.folder, oldFolder); fs.mkdirSync(object.folder);
+    await assert.rejects(f.upload('substituted-folder'), { code: 'DOCUMENT_STORAGE_CHANGED' });
+    fs.rmdirSync(object.folder); fs.renameSync(oldFolder, object.folder);
+    fs.mkdirSync(path.join(await f.service.root(), '0'.repeat(64)));
+    await assert.rejects(f.storage.usage({ cwd: f.cwd }), { code: 'DOCUMENT_STORAGE_CHANGED' });
+});

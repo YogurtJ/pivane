@@ -148,7 +148,7 @@
                 }) });
                 this.result.value = response.text; this.phase = 'idle';
                 const current = this.host.context();
-                if (current.key === origin.key && current.generation === origin.generation && this.insert()) return;
+                if (current.key === origin.key && current.generation === origin.generation && current.submissionVersion === origin.submissionVersion && this.insert()) return;
                 this.result.hidden = false; this.use.hidden = this.copy.hidden = false;
                 this.status(translateUi("转录完成；草稿或线程状态已变化，请检查文字后加入当前草稿。"));
             } catch (error) { this.phase = 'idle'; this.status(translateUi(error.message)); }

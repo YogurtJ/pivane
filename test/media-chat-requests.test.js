@@ -10,6 +10,9 @@ const { loadMediaProfile } = require('../server/media-profile');
 const { saveExternalMedia, mediaHistory, deleteMedia } = require('../server/media-lab-storage');
 const { MiniMaxVideoService } = require('../server/minimax-video-service');
 const { TtsProviderService } = require('../server/tts-provider-service');
+const { normalizeModel } = require('../server/media-provider-service');
+const { MediaHttpExecutor } = require('../server/media-http-protocol');
+const { Response } = require('node-fetch');
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-media-chat-test-'));
 test.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -191,4 +194,183 @@ test('waitFor resolves when an active attempt settles and mediaChatExecution pre
     const state = await chat.waitFor(plan.id, 5000);
     assert.equal(state.attempts[0].status, 'done');
     assert.match(state.attempts[0].asset.url, /^\/images\/lab_/);
+});
+
+test('last slot-free save failure marks a queued card unsubmitted and requires explicit confirmation without blocking the next card', { timeout: 5000 }, async t => {
+    const blockerRelease = Promise.withResolvers(), nextRelease = Promise.withResolvers();
+    const bodies = [], executed = [], reviewed = [], errors = [];
+    const { chat, lab, file } = fixture();
+    const modelId = 'fixture-local';
+    // One real execution slot makes this completion the last slot-free event.
+    // The backend is synthetic; MediaLabService still owns execution and notifications.
+    lab.fluxBaseUrl = 'http://fixture.invalid';
+    lab.profile.models.push({ id: modelId, name: 'Synthetic local image', kind: 'image', adapter: 'flux2',
+        parameters: { prompt: { type: 'text', required: true, maxLength: 200 } } });
+    t.mock.method(lab, 'generateImage', async payload => {
+        bodies.push(payload.prompt);
+        if (payload.prompt === 'blocker') await blockerRelease.promise;
+        if (payload.prompt === 'next card') await nextRelease.promise;
+        return { image: { url: `/images/synthetic-${bodies.length}.png` } };
+    });
+    const [blocker, failedKey, nextKey] = [299, 300, 301].map(index => `plan-00000000-0000-4000-8000-${String(index).padStart(12, '0')}`);
+    const submit = (key, prompt, again = false) => chat.run({ key, modelId, parameters: { prompt }, confirmed: true, ...(again ? { again: true } : {}) });
+    const save = chat.save.bind(chat), review = lab.review.bind(lab), execute = lab.execute.bind(lab);
+    let fault = false, saveFaults = 0;
+    t.mock.method(console, 'error', (...args) => errors.push(args.join(' ')));
+    t.mock.method(chat, 'save', (...args) => {
+        if (fault && chat.entries.get(failedKey)?.attempts.at(-1)?.status === 'running') {
+            fault = false; saveFaults++;
+            throw Object.assign(new Error('Synthetic ENOSPC at last slot-free'), { code: 'ENOSPC' });
+        }
+        return save(...args);
+    });
+    t.mock.method(lab, 'review', async input => {
+        const result = await review(input);
+        reviewed.push({ prompt: input.parameters.prompt, ticket: result.ticket });
+        return result;
+    });
+    t.mock.method(lab, 'execute', (ticket, options) => {
+        const attempt = [...chat.entries.values()].flatMap(entry => entry.attempts).find(attempt => attempt.ticket === ticket);
+        const stored = JSON.parse(fs.readFileSync(file, 'utf8')).flatMap(entry => entry.attempts);
+        assert.equal(stored.find(item => item.id === attempt.id).status, 'running', 'execution starts only after a durable reservation');
+        assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /ticket/);
+        executed.push({ prompt: attempt.parameters.prompt, ticket });
+        return execute(ticket, options);
+    });
+    try {
+        assert.equal((await submit(blocker, 'blocker')).status, 'running');
+        assert.equal(lab.inFlight, 1);
+        assert.equal((await submit(failedKey, 'retry card')).status, 'queued');
+        assert.equal((await submit(nextKey, 'next card')).status, 'queued');
+        const failedAttemptId = chat.publicState(failedKey).attempts[0].id;
+        assert.deepEqual(bodies, ['blocker']);
+        // Observe the actual notification's pump; never call pump from the test.
+        const pumped = Promise.withResolvers(), pump = chat.pump.bind(chat);
+        let notifications = 0;
+        t.mock.method(chat, 'pump', async (...args) => {
+            if (notifications++ === 0) assert.equal(lab.inFlight, 0, 'the last running request finished before dispatch');
+            try { return await pump(...args); }
+            finally { pumped.resolve(); }
+        });
+        fault = true;
+        blockerRelease.resolve();
+        await pumped.promise;
+        assert.equal(saveFaults, 1);
+        const failed = chat.status([failedKey]).requests[failedKey].attempts[0];
+        assert.equal(failed.status, 'failed', 'a storage failure is visible instead of waiting indefinitely for another event');
+        assert.equal(failed.id, failedAttemptId);
+        assert.match(failed.error, /could not be saved.*nothing was submitted/i);
+        assert.ok(failed.finishedAt);
+        assert.equal(failed.startedAt, undefined);
+        assert.equal(chat.entries.get(failedKey).attempts[0].ticket, undefined);
+        assert.equal(executed.filter(item => item.prompt === 'retry card').length, 0);
+        assert.equal(bodies.filter(prompt => prompt === 'retry card').length, 0);
+        const discarded = reviewed.filter(item => item.prompt === 'retry card').at(-1).ticket;
+        assert.equal(lab.tickets.has(discarded), false, 'the failed reservation never consumes or retains its fresh ticket');
+        assert.ok(errors.some(message => /ENOSPC/.test(message)));
+        assert.equal(chat.publicState(nextKey).attempts[0].status, 'running', 'the same slot-free dispatch continues to the next confirmation');
+        assert.deepEqual(bodies, ['blocker', 'next card']);
+        assert.equal(chat.waiting.length, 0);
+        const stored = JSON.parse(fs.readFileSync(file, 'utf8')).find(entry => entry.key === failedKey).attempts[0];
+        assert.equal(stored.status, 'failed');
+        assert.equal(stored.id, failedAttemptId);
+        assert.match(stored.error, /nothing was submitted/i);
+        const restartFile = path.join(path.dirname(file), 'failed-restart.json');
+        fs.copyFileSync(file, restartFile);
+        const restarted = new MediaChatRequests({ lab: { onSlotFree() {} }, file: restartFile });
+        assert.equal(restarted.publicState(failedKey).attempts[0].status, 'failed');
+        assert.equal(restarted.waiting.length, 0, 'restart cannot replay a failed confirmation');
+        await assert.rejects(submit(failedKey, 'retry card'), error => error.statusCode === 409 && error.state.attempts[0].status === 'failed');
+        nextRelease.resolve();
+        await chat.execution;
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(lab.inFlight, 0);
+        assert.equal(chat.publicState(failedKey).attempts[0].status, 'failed', 'later slot-free events never retry the failed confirmation');
+        assert.equal(bodies.filter(prompt => prompt === 'retry card').length, 0);
+        const confirmed = await submit(failedKey, 'retry card', true);
+        assert.equal(confirmed.status, 'running');
+        await chat.execution;
+        const attempts = chat.publicState(failedKey).attempts;
+        assert.deepEqual(attempts.map(attempt => attempt.status), ['failed', 'done']);
+        assert.notEqual(attempts[1].id, failedAttemptId);
+        assert.equal(executed.filter(item => item.prompt === 'retry card').length, 1);
+        assert.equal(bodies.filter(prompt => prompt === 'retry card').length, 1, 'only explicit again submits the previously failed card, exactly once');
+        assert.notEqual(executed.find(item => item.prompt === 'retry card').ticket, discarded);
+        await assert.rejects(submit(failedKey, 'retry card'), error => error.statusCode === 409);
+        assert.deepEqual(bodies, ['blocker', 'next card', 'retry card']);
+        assert.equal(new MediaChatRequests({ lab: { onSlotFree() {} }, file }).publicState(failedKey).attempts.at(-1).status, 'done');
+    } finally {
+        fault = false; blockerRelease.resolve(); nextRelease.resolve();
+        await chat.execution;
+        await new Promise(resolve => setImmediate(resolve));
+    }
+});
+
+function pollingFixture(fetch) {
+    const f = fixture();
+    const provider = { id: 'synthetic', baseUrl: 'http://fixture.invalid/api', auth: { mode: 'none' }, downloadOrigins: [] };
+    const model = normalizeModel({ id: 'async-image', name: 'Async image', kind: 'image', remoteModel: 'synthetic-image',
+        parameters: { prompt: { type: 'text', required: true } },
+        http: { path: '/jobs', body: { input: { $params: true } },
+            poll: { path: '/jobs/{id}', idPath: ['id'], statusPath: ['status'], pending: ['waiting'], succeeded: ['done'], failed: ['failed'], intervalMs: 1000 },
+            response: { type: 'base64', path: ['output'], mimeType: 'image/png' } } });
+    const modelId = 'media:synthetic:async-image';
+    f.lab.providerService = {
+        catalogModels: async () => [{ ...model, id: modelId, providerId: provider.id, managedModelId: model.id, adapter: 'http-provider', configured: true }],
+        withExecution: async (_snapshot, operation) => operation({ provider, model, key: '' }), requestPreview: () => ({})
+    };
+    f.lab.httpExecutor = new MediaHttpExecutor({ fetch, delay: async () => {} });
+    return { ...f, modelId };
+}
+
+test('accepted-task receipt save failure stays uncertain without polling or reposting and can resume after storage recovers', async t => {
+    let posts = 0, gets = 0, fault = false;
+    const errors = [], f = pollingFixture(async (_url, options) => {
+        if (options.method === 'POST') {
+            posts++; fault = true;
+            return new Response(JSON.stringify({ id: 'accepted-task' }));
+        }
+        assert.equal(options.method, 'GET'); gets++;
+        const attempt = JSON.parse(fs.readFileSync(f.file, 'utf8'))[0].attempts[0];
+        assert.equal(attempt.status, 'running');
+        assert.equal(attempt.remote.taskId, 'accepted-task', 'retrieval waits for a durable receipt');
+        return new Response(JSON.stringify({ status: 'done', output: png.toString('base64') }));
+    });
+    const save = f.chat.save.bind(f.chat), tickets = [], execute = f.lab.execute.bind(f.lab);
+    t.mock.method(console, 'error', (...args) => errors.push(args.join(' ')));
+    t.mock.method(f.chat, 'save', (...args) => {
+        if (fault) throw Object.assign(new Error('Synthetic receipt ENOSPC'), { code: 'ENOSPC' });
+        return save(...args);
+    });
+    t.mock.method(f.lab, 'execute', (ticket, options) => { tickets.push(ticket); return execute(ticket, options); });
+    const plan = await f.lab.plan({ modelId: f.modelId, parameters: { prompt: 'One accepted task' } });
+    await f.chat.run({ key: plan.id, modelId: f.modelId, parameters: plan.parameters, confirmed: true });
+    await f.chat.execution;
+    const uncertain = f.chat.publicState(plan.id).attempts[0];
+    assert.equal(posts, 1); assert.equal(gets, 0, 'receipt failure stops before the first remote GET');
+    assert.equal(uncertain.status, 'uncertain'); assert.equal(uncertain.canResume, true);
+    assert.equal(uncertain.taskId, 'accepted-task');
+    assert.equal(f.lab.executionStatus(tickets[0]).status, 'uncertain');
+    assert.doesNotMatch(JSON.stringify(uncertain), /pollUrl|binding|fixture.invalid/);
+    assert.ok(errors.some(message => /ENOSPC/.test(message)));
+    const stored = JSON.parse(fs.readFileSync(f.file, 'utf8'))[0].attempts[0];
+    assert.equal(stored.status, 'running'); assert.equal(stored.remote, undefined);
+    const restartFile = path.join(path.dirname(f.file), 'receipt-restart.json');
+    fs.copyFileSync(f.file, restartFile);
+    const restarted = new MediaChatRequests({ lab: { onSlotFree() {} }, file: restartFile });
+    const recovered = restarted.publicState(plan.id).attempts[0];
+    assert.equal(recovered.status, 'uncertain'); assert.equal(recovered.canResume, false);
+    assert.doesNotMatch(recovered.error, /nothing was submitted/);
+    await assert.rejects(restarted.resume({ key: plan.id, confirmed: true }), /No resumable/);
+    await assert.rejects(f.chat.run({ key: plan.id, modelId: f.modelId, parameters: plan.parameters, confirmed: true }), error => error.statusCode === 409);
+    await assert.rejects(execute(tickets[0]), /Previous submission failed or is uncertain/);
+    assert.equal(posts, 1); assert.equal(gets, 0);
+    fault = false;
+    await f.chat.resume({ key: plan.id, confirmed: true });
+    await f.chat.execution;
+    const done = f.chat.publicState(plan.id).attempts[0];
+    assert.equal(done.id, uncertain.id); assert.equal(done.status, 'done');
+    assert.equal(posts, 1); assert.equal(gets, 1, 'explicit resume retrieves the accepted task without a new POST');
+    assert.notEqual(tickets[0], tickets[1]);
+    assert.equal(new MediaChatRequests({ lab: f.lab, file: f.file }).publicState(plan.id).attempts[0].status, 'done');
 });

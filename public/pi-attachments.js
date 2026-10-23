@@ -70,25 +70,31 @@
             throw new Error(translateUi('附件上传返回无效，请核对原上传'));
         return result.reference;
     }
-    async function read(file, { upload, preserveImages = false } = {}) {
+    async function read(file, { upload, preserveImages = false, assertCurrent = () => {} } = {}) {
+        assertCurrent();
         const format = classify(file);
         if (format.kind === 'document') {
             const maximum = format.format === 'file' ? limits.fileBytes : limits.documentBytes;
             if (!file.size || file.size > maximum) throw new Error(translateUi('单个附件须为非空文件且不超过 {0} MiB', maximum / 1024 / 1024));
             const reference = await uploadReference(file, upload, format.format);
+            assertCurrent();
             return { id: id(), name: file.name, size: file.size, ...format, reference };
         }
         const maximum = format.kind === 'image' ? limits.imageBytes : limits.textBytes;
         if (!file.size) throw new Error(translateUi('文件为空'));
         if (file.size > maximum) throw new Error(format.kind === 'image' ? translateUi('单张图片不能超过 6MB') : translateUi('单个文本附件不能超过 1MB'));
         const bytes = new Uint8Array(await file.arrayBuffer());
+        assertCurrent();
         const result = { id: id(), name: file.name || 'clipboard', size: file.size, ...format };
         if (format.kind === 'image') {
             result.mimeType = imageMime(bytes);
             let binary = '';
             for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
             result.data = btoa(binary); result.preview = `data:${result.mimeType};base64,${result.data}`;
-            if (preserveImages) result.reference = await uploadReference(file, upload, 'image', { purpose: 'image' });
+            if (preserveImages) {
+                result.reference = await uploadReference(file, upload, 'image', { purpose: 'image' });
+                assertCurrent();
+            }
         } else {
             const signature = String.fromCharCode(...bytes.subarray(0, 5));
             if (signature === '%PDF-' || bytes[0] === 80 && bytes[1] === 75 && [3, 5, 7].includes(bytes[2])

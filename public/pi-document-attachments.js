@@ -9,6 +9,16 @@
             if (!this.enabled || !context.connected || !context.session || context.session.ephemeral) throw new Error(t('当前入口尚未启用文档上传，请使用支持此功能的持久线程'));
             return { context, key: this.key(context) };
         }
+        // Bind the source before queued work or local file reads can await.
+        prepareUpload(isCurrent = () => true) {
+            const key = this.key();
+            const assertCurrent = () => {
+                const context = this.context();
+                if (!isCurrent() || !context.connected || key !== this.key(context))
+                    throw Object.assign(new Error(t('会话已切换，上传结果未加入当前草稿')), { status: 409 });
+            };
+            return { assertCurrent, upload: (file, options) => { assertCurrent(); return this.upload(file, options); } };
+        }
         async status(requestId) {
             const target = this.target(), query = new URLSearchParams({ cwd: target.context.cwd, sessionId: target.context.session.id, requestId });
             const saved = await this.api(`/api/pi/uploads/status?${query}`);

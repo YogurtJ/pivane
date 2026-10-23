@@ -2,7 +2,7 @@ import { setPromptSection } from './pi-hook-prompt.js';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 import { StringEnum } from '@earendil-works/pi-ai';
-import { MESSAGE_OUT, LIMITS, sendingContext, inboundMessage, outboundMessage } from './pi-agent-message-format.js';
+import { MESSAGE_OUT, LIMITS, sendingContext, inboundMessage, outboundMessage, messageIdFor } from './pi-agent-message-format.js';
 
 const GUIDE = 'Pivane Agent messages: agent_message lets this persistent thread talk to other persistent threads in the same project, including ones not created by it and ones currently closed. '
     + 'Use action=threads to find thread IDs, send to deliver text (wake=true starts or continues the recipient once it is idle; wake=false only leaves a note), status to check delivery. '
@@ -67,27 +67,52 @@ export function registerAgentMessages(pi: ExtensionAPI) {
                         wake: params.wake !== false, hop: trigger.hop, fromName: String(context.sessionManager.getSessionName() || '').slice(0, LIMITS.name),
                         ...(answered ? { replyTo: params.replyTo, conversationId: answered.conversationId } : trigger.conversationId ? { conversationId: trigger.conversationId } : {}) };
                 }
-                let response;
+                const sourceId = context.sessionManager.getSessionId(), sourceFile = context.sessionManager.getSessionFile();
+                const request = async (payload: any) => {
+                    const response = await fetch(url, { method: 'POST', redirect: 'error', signal,
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.PI_WEB_NAVIGATION_TOKEN}` }, body: JSON.stringify(payload) });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.error || `Message HTTP ${response.status}`);
+                    return { status: response.status, result };
+                };
+                let nativeIntentAttempted = false, savedId: string | undefined;
                 try {
-                    response = await fetch(url, { method: 'POST', redirect: 'error', signal,
-                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.PI_WEB_NAVIGATION_TOKEN}` }, body: JSON.stringify(body) });
-                } catch {
-                    throw new Error(params.action === 'send' ? 'Message service unavailable; the message may or may not be queued. Do not resend blindly; tell the user or check with status later.'
-                        : 'Message service unavailable');
-                }
-                const result = await response.json();
-                if (response.status === 202) return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
-                if (!response.ok) throw new Error(result.error || `Message HTTP ${response.status}`);
-                if (params.action === 'send') {
-                    // Native recovery record: rebuilt into the delivery queue after a restart if the recipient does not have it yet.
-                    const record = outboundMessage(result.record);
-                    if (record && !context.sessionManager.getEntries().some((entry: any) => entry.type === 'custom' && entry.customType === MESSAGE_OUT && entry.data?.messageId === record.messageId))
-                        pi.appendEntry(MESSAGE_OUT, record);
+                    let { status, result } = await request(params.action === 'send' ? { ...body, phase: 'prepare' } : body);
+                    if (params.action === 'send' && status !== 202 && result.status === 'prepared') {
+                        const record = outboundMessage(result.record, { id: sourceId });
+                        if (!record || record.messageId !== messageIdFor(sourceId, body.requestId) || record.from.cwd !== context.cwd
+                            || record.to.cwd !== context.cwd || record.to.sessionId !== body.to || record.text !== body.message)
+                            throw new Error('Invalid prepared message intent');
+                        savedId = record.messageId;
+                        signal?.throwIfAborted();
+                        if (context.sessionManager.getSessionId() !== sourceId || context.sessionManager.getSessionFile() !== sourceFile)
+                            throw new Error('Source thread changed during message preparation');
+                        const isRecord = (entry: any) => entry.type === 'custom' && entry.customType === MESSAGE_OUT && entry.data?.messageId === record.messageId;
+                        const existing = context.sessionManager.getEntries().filter(isRecord);
+                        if (existing.length > 1 || existing.length && JSON.stringify(outboundMessage(existing[0].data, { id: sourceId })) !== JSON.stringify(record))
+                            throw new Error('Native message intent conflicts with the prepared message');
+                        // The managed source worker is the only writer. Once this
+                        // intent exists, restart recovery owns delivery even if the
+                        // following HTTP response is lost or the tool is cancelled.
+                        nativeIntentAttempted = true;
+                        if (!existing.length) pi.appendEntry(MESSAGE_OUT, record);
+                        if (!context.sessionManager.getEntries().some((entry: any) => isRecord(entry)
+                            && JSON.stringify(outboundMessage(entry.data, { id: sourceId })) === JSON.stringify(record)))
+                            throw new Error('Native message intent was not acknowledged');
+                        signal?.throwIfAborted();
+                        ({ status, result } = await request({ phase: 'publish', messageId: record.messageId }));
+                        if (status === 202) result = { ...result, messageId: record.messageId };
+                    }
                     delete result.record;
+                    const text = JSON.stringify(result);
+                    if (Buffer.byteLength(text) > 50 * 1024) throw new Error('Result exceeds 50 KiB; narrow the query');
+                    return { content: [{ type: 'text', text }], details: result };
+                } catch (error: any) {
+                    if (params.action === 'send' && nativeIntentAttempted)
+                        throw new Error(`Message intent persistence or delivery is uncertain. messageId=${savedId}. Use status with this ID; do not resend. ${error.message}`);
+                    if (params.action === 'send') throw new Error(`Message preparation failed; this call did not publish a message. ${error.message}`);
+                    throw error;
                 }
-                const text = JSON.stringify(result);
-                if (Buffer.byteLength(text) > 50 * 1024) throw new Error('Result exceeds 50 KiB; narrow the query');
-                return { content: [{ type: 'text', text }], details: result };
             }
         });
     });

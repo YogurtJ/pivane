@@ -14,7 +14,13 @@ const { DeliverableStore, ENTRY } = require('../server/pi-deliverables');
 const { fileLimits } = require('../server/pi-file-limits');
 const { withVerifiedFile } = require('../server/pi-file-bytes');
 const { classify } = require('../server/pi-file-types');
+const { MaintenanceClient } = require('../server/pi-maintenance-client');
+const io = require('../server/pi-file-io');
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+function deferred() {
+    let resolve; const promise = new Promise(done => { resolve = done; });
+    return { promise, resolve };
+}
 test.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
 test('download and publication quotas are separate from previews and MP4 requires a recognized signature', () => {
@@ -104,4 +110,83 @@ test('streaming withholds completion when a source changes or cancellation arriv
     assert.ok(sent < 900000, 'no complete response can be delivered after a change');
     const controller = new AbortController();
     await assert.rejects(withVerifiedFile(filename, { maxBytes: 1000000, signal: controller.signal, check: () => {} }, file => file.transfer(() => controller.abort())), { name: 'AbortError' });
+});
+
+test('HTTP downloads retain admission until descriptor cleanup and release it after every outcome', async t => {
+    for (const outcome of ['disconnect', 'read failure', 'HEAD', 'GET']) await t.test(outcome, async t => {
+        const source = path.join(cwd, `lease-${outcome.replaceAll(' ', '-')}.bin`);
+        const size = 8 * 1024 * 1024; fs.writeFileSync(source, Buffer.alloc(size, 42));
+        const closing = deferred(), allowClose = deferred(), handlerSettled = deferred();
+        let descriptorClosed = false, transferError, serverResponse;
+        const openRead = io.openRead;
+        t.mock.method(io, 'openRead', async filename => {
+            const handle = await openRead(filename);
+            if (filename !== source) return handle;
+            const close = handle.close.bind(handle);
+            handle.close = async () => {
+                closing.resolve(); await allowClose.promise;
+                await close(); descriptorClosed = true;
+            };
+            if (outcome === 'read failure') handle.read = async () => { throw Object.assign(new Error('synthetic read failure'), { code: 'EIO' }); };
+            return handle;
+        });
+        const maintenance = new MaintenanceClient({ managed: false });
+        const store = new PiSessionStore(), files = new PiFileService(store);
+        const download = files.download.bind(files);
+        files.download = async (...args) => {
+            try { return await download(...args); }
+            catch (error) { transferError = error; throw error; }
+        };
+        const express = require('express'), app = express(), router = express.Router();
+        // Match application and gateway admission of the same native request.
+        app.use((req, res, next) => maintenance.http(req, res, next));
+        router.use((req, res, next) => maintenance.http(req, res, next));
+        const get = router.get.bind(router);
+        t.mock.method(router, 'get', (pathname, handler) => get(pathname, pathname === '/files/download' ? async (req, res) => {
+            serverResponse = res;
+            try { await handler(req, res); } finally { handlerSettled.resolve(); }
+        } : handler));
+        require('../server/pi-file-routes').mountFilePreviews(router, { files, store, supervisor: {} });
+        app.use('/api/pi', router);
+        const server = http.createServer(app);
+        server.listen(0, '127.0.0.1'); await once(server, 'listening');
+        t.after(async () => {
+            allowClose.resolve(); server.closeAllConnections();
+            await new Promise(resolve => server.close(resolve));
+        });
+        const url = `http://127.0.0.1:${server.address().port}/api/pi/files/download?` + new URLSearchParams({ cwd, path: path.basename(source) });
+        let status, received = 0, body = '';
+        const responseDone = new Promise((resolve, reject) => {
+            const request = http.request(url, { method: outcome === 'HEAD' ? 'HEAD' : 'GET' }, response => {
+                status = response.statusCode;
+                response.on('data', bytes => {
+                    received += bytes.length;
+                    if (outcome === 'read failure') body += bytes;
+                    if (outcome === 'disconnect') { response.destroy(); resolve(); }
+                });
+                response.once('end', resolve); response.once('error', reject);
+            });
+            request.once('error', reject); request.end();
+        });
+        try {
+            if (outcome === 'disconnect') await responseDone;
+            await closing.promise;
+            assert.equal(descriptorClosed, false);
+            assert.equal(maintenance.active, 1, 'end, finish and disconnect must not release a handler still closing its descriptor');
+            assert.throws(() => maintenance.acquireReferenceLease(() => true), { code: 'DOCUMENT_STORAGE_BUSY' });
+        } finally { allowClose.resolve(); await handlerSettled.promise; }
+        await responseDone;
+        assert.equal(descriptorClosed, true);
+        assert.equal(files.reading, 0);
+        assert.equal(maintenance.active, 0, 'the actual completed handler must release its original request admission');
+        const lease = maintenance.acquireReferenceLease(() => true); lease.check(); lease.release();
+        if (outcome === 'disconnect') {
+            assert.ok(received > 0 && received < size, 'client disconnects after receiving data and before EOF');
+            assert.equal(serverResponse.destroyed, true); assert.ok(transferError);
+        } else if (outcome === 'read failure') {
+            assert.equal(status, 500); assert.equal(JSON.parse(body).code, 'FILE_READ'); assert.ok(transferError);
+        } else {
+            assert.equal(status, 200); assert.equal(received, outcome === 'HEAD' ? 0 : size); assert.equal(transferError, undefined);
+        }
+    });
 });

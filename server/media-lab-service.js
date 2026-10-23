@@ -94,6 +94,7 @@ class MediaLabService {
     constructor(options) {
         Object.assign(this, options);
         this.tickets = new Map();
+        this.chatPreparations = new Map();
         this.planningAttachments = new Map();
         this.inFlight = 0;
         this.running = { remote: 0, video: 0, local: 0 };
@@ -274,6 +275,53 @@ class MediaLabService {
             modelId: resolved.model.id, summary: String(input.summary || resolved.model.name).slice(0, 500),
             parameters: shown, jobs: [shown], warnings: resolved.warnings,
             execution: { mode: 'manual', count: 1 }, createdAt: new Date(this.now()).toISOString() };
+    }
+
+    // The private handshake retains canonical parameters, never a second chat history.
+    // Expiry removes authorization; recovery reads the native plan id and request journal.
+    async prepareChatPlan(input = {}) {
+        const { toolCallId } = input;
+        if (typeof toolCallId !== 'string' || !toolCallId || toolCallId.length > 500) fail('Invalid media tool call identity');
+        for (const [token, value] of this.chatPreparations) if (value.expiresAt <= this.now()) this.chatPreparations.delete(token);
+        if (this.chatPreparations.size >= 100) fail('Too many pending media preparations', 429);
+        const executionToken = randomUUID();
+        const preparation = { toolCallId, expiresAt: this.now() + 600000, consumed: false, bytes: 0 };
+        // Reserve before plan validation awaits, including parallel tool batches.
+        this.chatPreparations.set(executionToken, preparation);
+        try {
+            const plan = await this.plan(input.plan);
+            const bytes = Buffer.byteLength(JSON.stringify(plan));
+            if (bytes + [...this.chatPreparations.values()].reduce((total, item) => total + item.bytes, 0) > 8 * 1024 * 1024)
+                fail('Pending media preparations exceed the memory limit', 429);
+            Object.assign(preparation, { plan: clone(plan), autoExecute: input.autoExecute === true, bytes });
+            return { plan, executionToken };
+        } catch (error) { this.chatPreparations.delete(executionToken); throw error; }
+    }
+
+    async executeChatPlan(input = {}, policy = {}) {
+        const preparation = this.chatPreparations.get(input.executionToken);
+        if (!preparation?.plan || preparation.expiresAt <= this.now()) fail('Media preparation expired or unavailable; inspect the saved card', 409);
+        const { plan } = preparation;
+        if (input.planId !== plan.id || input.toolCallId !== preparation.toolCallId) fail('Media preparation identity does not match', 409);
+        const result = () => {
+            if (!preparation.autoExecute) return { plan: clone(plan) };
+            const state = this.chatRequests.publicState(plan.id), last = state.attempts.at(-1);
+            return { plan: clone(plan), autoExecution: { status: last?.status || preparation.status || 'preparing', state,
+                asset: last?.asset || null, error: last?.error || preparation.error || null } };
+        };
+        // Consume synchronously. Duplicate tokens only inspect this same attempt,
+        // including while its first review is still awaiting or after a failure.
+        if (preparation.consumed) return result();
+        preparation.consumed = true;
+        if (!preparation.autoExecute || policy[plan.kind] !== true) { preparation.status = 'not_started'; return result(); }
+        try {
+            const submitted = await this.chatRequests.run({ key: plan.id, modelId: plan.modelId, parameters: plan.parameters,
+                toolCallId: preparation.toolCallId, confirmed: true });
+            preparation.status = submitted.status;
+        } catch (error) {
+            preparation.status = 'not_started'; preparation.error = error.message;
+        }
+        return result();
     }
 
     async review(input) {

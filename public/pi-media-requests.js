@@ -1,6 +1,7 @@
-// In-chat media cards. The Agent's validated plan (media_generate or
-// media_plan_request tool result) becomes a card: the user reviews or edits the
-// parameters and confirms there; the server reviews and executes one lab ticket.
+// In-chat media cards. A native pivane-media-plan origin survives cancelled tool
+// results; older successful media tool results remain compatible card sources.
+// The user reviews or edits parameters and confirms there, and the server
+// reviews and executes one lab ticket.
 // State lives in the server journal keyed by plan id, so refresh, another tab or
 // the phone shows the same result instead of offering a duplicate submission.
 (() => {
@@ -10,13 +11,20 @@
     const MEDIA_URL = /^\/(images|videos|audio)\/[^/?#\\]+(?:\?[^#]*)?$/;
     const TEXT_KEYS = ['prompt', 'text', 'input'];
     const STATUS_TIMEOUT_MS = 8000;
+    const LIVE_ORIGIN_STATUS_CHECKS = 12;
     const ICONS = { image: 'fa-image', video: 'fa-film', tts: 'fa-volume-high' };
     const KIND_NAMES = { image: '图像', video: '视频', tts: '语音' };
     const el = (tag, className = '', text = '') => { const node = document.createElement(tag); if (className) node.className = className; if (text) node.textContent = text; return node; };
     const icon = name => { const node = el('i', `fa-solid ${name}`); node.setAttribute('aria-hidden', 'true'); return node; };
 
+    const SOURCE_TYPE = 'pivane-media-plan';
+    function sourceMessage(entry) {
+        if (entry?.type !== 'custom' || entry.customType !== SOURCE_TYPE || entry.data?.version !== 1 || typeof entry.data.toolCallId !== 'string') return null;
+        return { role: 'custom', customType: SOURCE_TYPE, display: false, details: entry.data, content: [], timestamp: Date.parse(entry.timestamp) || 0 };
+    }
     function planOf(message) {
-        if (message?.role !== 'toolResult' || message.isError || !TOOLS.has(message.toolName)) return null;
+        const native = message?.role === 'custom' && message.customType === SOURCE_TYPE && message.details?.version === 1;
+        if (!native && (message?.role !== 'toolResult' || message.isError || !TOOLS.has(message.toolName))) return null;
         const plan = message.details?.plan;
         if (!plan || !KEY.test(plan.id || '') || typeof plan.modelId !== 'string' || !plan.parameters || typeof plan.parameters !== 'object' || Array.isArray(plan.parameters)) return null;
         return plan;
@@ -42,6 +50,7 @@
         const slot = key => { if (!memory.has(key)) memory.set(key, { state: null, parameters: null, editing: false, error: '', readTimeoutError: '', notice: '', armed: false, busy: false, revision: 0 }); return memory.get(key); };
         const current = key => cards.get(key)?.deref();
         const running = key => memory.get(key)?.state?.attempts?.some(attempt => attempt.status === 'running' || attempt.status === 'queued');
+        const tracking = key => running(key) || memory.get(key)?.originChecks > 0 && !memory.get(key)?.state?.attempts?.length;
         const live = () => [...cards.keys()].map(current).filter(card => card?.root.isConnected);
         const update = key => { const card = current(key); if (card?.root.isConnected) card.update(); };
 
@@ -62,7 +71,7 @@
                 batch.controller.abort();
             }
             if (!queued.size) { clearTimeout(queueTimer); queueTimer = null; }
-            if (!live().some(card => running(card.key))) { clearInterval(poller); poller = null; }
+            if (!live().some(card => tracking(card.key))) { clearInterval(poller); poller = null; }
         }
 
         function reset() {
@@ -84,8 +93,15 @@
             if (records.some(record => record.removedNodes.length)) prune();
         }).observe(document, { childList: true, subtree: true });
 
-        function request(keys) {
-            for (const key of keys) if (!inFlight.has(key) && !memory.get(key)?.busy) queued.add(key);
+        function request(keys, fresh = false) {
+            for (const key of keys) {
+                const item = memory.get(key);
+                if (item?.busy) continue;
+                // An authoritative transcript invalidates earlier reads, even if
+                // a status request is still in flight. Queue its replacement.
+                if (fresh && item) item.revision++;
+                if (fresh || !inFlight.has(key)) queued.add(key);
+            }
             if (queueTimer || !queued.size) return;
             queueTimer = setTimeout(flush, 30);
         }
@@ -93,12 +109,16 @@
         async function flush() {
             queueTimer = null;
             prune();
-            const keys = [...queued].slice(0, 100);
+            const keys = [...queued].filter(key => !inFlight.has(key)).slice(0, 100);
             for (const key of keys) queued.delete(key);
             if (!keys.length) return;
             const batch = { keys, controller: new AbortController(), generation, timedOut: false,
                 revisions: new Map(keys.map(key => [key, memory.get(key)?.revision])) };
-            for (const key of keys) inFlight.set(key, batch);
+            for (const key of keys) {
+                inFlight.set(key, batch);
+                const item = memory.get(key);
+                if (item?.originChecks > 0) item.originChecks--;
+            }
             if (queued.size) request([]);
             const valid = key => inFlight.get(key) === batch && batch.generation === generation &&
                 cards.has(key) && memory.get(key)?.revision === batch.revisions.get(key) && !memory.get(key)?.busy;
@@ -117,6 +137,7 @@
                 for (const key of keys) {
                     if (!valid(key) || batch.controller.signal.aborted || !data?.requests?.[key]) continue;
                     const item = memory.get(key), state = data.requests[key]; item.state = state;
+                    if (state.attempts?.length) item.originChecks = 0;
                     if (item.error === item.readTimeoutError) item.error = '';
                     item.readTimeoutError = '';
                     if (!item.parameters) item.parameters = state.attempts?.at(-1)?.parameters || null;
@@ -133,30 +154,35 @@
                 batch.controller.signal.removeEventListener('abort', abortRead);
                 for (const key of keys) if (inFlight.get(key) === batch) inFlight.delete(key);
                 prune(); schedulePolling();
+                if (queued.size) request([]);
             }
         }
-        // Background tabs throttle timers; refresh running cards as soon as the page is visible again.
+        // Background tabs throttle timers; refresh active and newly appended cards when visible again.
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState !== 'visible') return;
             prune();
-            const keys = live().map(card => card.key).filter(running);
+            const keys = live().map(card => card.key).filter(tracking);
             if (keys.length) request(keys);
         });
 
         function schedulePolling() {
-            const keys = live().map(card => card.key).filter(running);
+            const keys = live().map(card => card.key).filter(tracking);
             if (!keys.length) { clearInterval(poller); poller = null; return; }
             poller ||= setInterval(() => {
                 prune();
-                const active = live().map(card => card.key).filter(running);
+                const active = live().map(card => card.key).filter(tracking);
                 if (active.length) request(active);
             }, 2500);
         }
 
-        function render(message) {
+        function render(message, { live: appended = false } = {}) {
             const plan = planOf(message);
             if (!plan) return null;
             const key = plan.id, item = slot(key);
+            if (current(key)?.root.isConnected) return null;
+            // Native append precedes execute/review. Follow that empty-journal
+            // window for a bounded number of GETs; never rearm on duplicate events.
+            if (appended && message.role === 'custom' && item.originChecks == null) item.originChecks = LIVE_ORIGIN_STATUS_CHECKS;
             const root = el('section', 'pi-media-request');
             root.dataset.planKey = key; root.dataset.kind = plan.kind || '';
             root.setAttribute('aria-label', t('媒体生成卡片'));
@@ -166,7 +192,7 @@
             paint(card);
             // A card rebuilt after a session switch or reconnect may still be running:
             // the poller stopped while the transcript was empty, so resume it here.
-            if (!item.state || running(key)) request([key]);
+            if (!item.state || tracking(key)) request([key]);
             return root;
         }
 
@@ -454,12 +480,27 @@
         // Model names and parameter labels come from the live catalog.
         const original = render;
         return {
-            render(message) {
-                const root = original(message);
+            render(message, options) {
+                const root = original(message, options);
                 if (root) models();
                 return root;
             },
             planOf,
+            sourceMessage,
+            // Revalidate mounted cards even when transcript DOM and cached empty
+            // attempts were retained. Status reads preserve edits and pending writes.
+            refresh(messages) {
+                const keys = [...new Set(messages.map(message => planOf(message)?.id).filter(key => key && current(key)?.root.isConnected))];
+                request(keys, true);
+            },
+            sources(messages) {
+                const selected = new Map();
+                messages.forEach((message, index) => {
+                    const plan = planOf(message);
+                    if (plan && (!selected.has(plan.id) || message.role === 'custom')) selected.set(plan.id, index);
+                });
+                return new Set(selected.values());
+            },
             // After partial transcript removals; automatic DOM observation also prunes.
             prune,
             // Before a conversation replacement. Confirmed writes remain busy until settled.
@@ -467,5 +508,5 @@
         };
     }
 
-    window.PiMediaRequests = { create, planOf };
+    window.PiMediaRequests = { create, planOf, sourceMessage };
 })();

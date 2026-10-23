@@ -16,9 +16,15 @@
 |---|---|
 | `media_models` | 读取实验室目录中的图像/视频/语音模型，只返回 id、名称、可执行状态、要求和精简参数定义；预设、音色默认值和文档链接留在实验室 |
 | `media_results` | `{limit?:1–30,offset?:0–500}` 读取当前分支最近 500 张卡片，默认最近 10 张、每张最近 3 次尝试；返回状态、任务编号、提示词摘要和完成结果的固定引用，支持分页；只读本地记录，不提交或恢复远端任务，也不分析视频内容 |
-| `media_generate` | `{modelId, summary, parameters}` 经 `/api/media-agent/validate` 生成规范方案，结果 `details.plan` 写入原生工具结果；对开启“对话媒体卡片自动生成”的类型（默认开启图像与语音，关闭视频，单轮最多自动触发 4 张）直接启动首次执行并等待短任务结果，卡片保留完整尝试与参数记录 |
+| `media_generate` | `{modelId, summary, parameters}` 经 `/api/media-agent/validate` 准备规范方案，先由当前 worker 保存原生 `pivane-media-plan` 来源，再提交首次执行；对开启“对话媒体卡片自动生成”的类型（默认开启图像与语音，关闭视频，单轮最多自动触发 4 张）启动执行并等待短任务结果，卡片保留完整尝试与参数记录 |
 
-这些工具使用受管进程的内部规划凭据，不能直接调用执行或聊天卡片接口；符合已保存自动生成偏好的首次执行由服务器触发，仍经 review/execute 票据。前端对 `media_generate` 和已有 `media_plan_request` 的成功工具结果（`details.plan.id` 为 `plan-<uuid>` 且有 modelId）在工具结果后渲染卡片；卡片不属于过程折叠，三种显示模式都可见。经 codemode 嵌套调用不会产生卡片。
+自动执行的四个单轮名额在提交请求前预占，并发调用也共用该上限；只有响应明确证明没有提交才释放名额，断线、取消等待、失败或不确定结果不视为未执行。轮次和会话切换后的迟到准备／响应不会取得或释放新一轮名额。
+
+这些工具使用受管进程的内部规划凭据，不能直接调用实验室执行或聊天卡片接口；符合已保存自动生成偏好的首次执行由服务器触发，仍经 review/execute 票据。`validate` 的 `prepare` 阶段只规范方案并返回固定 plan.id 与私有一次性 executionToken；原 worker 同步 `appendEntry` 并从当前分支确认来源后，才请求 `execute` 阶段。服务器在首次 await 前消费 token，重复提交只查同一方案状态，不再次生成。准备最多 100 项、10 分钟、方案合计 8 MiB；token 不进入方案、原生记录或模型输出。
+
+前端从当前原生分支恢复卡片，也兼容已有 `media_generate` 和 `media_plan_request` 成功工具结果的 `details.plan`。同一 plan.id 只显示一张卡片，原生来源优先；错误或取消的工具结果不会隐藏已保存来源。卡片不属于过程折叠，三种显示模式都可见。刷新、重开 worker 或压缩后仍可读取当前分支来源；导航到来源之前或其他分支时不沿用旧卡片。
+
+取消等待或执行响应丢失后，先用原卡片／`media_results` 查询，不能据工具失败再次生成。来源已保存但执行尚未提交、token 过期或服务重启时，原卡片保留待确认状态，不自动补交生成；用户可在原卡片明确确认。无 stage 的旧 `/validate` 永远只规划；旧受管 worker 自动生成降级为待确认卡片，在线程空闲后重开才能加载新协议。
 
 需要手动确认的卡片流程：
 
@@ -33,7 +39,7 @@ card confirm (user session) -> POST /api/pi/media/chat/requests {key, modelId, p
 
 `MediaChatRequests`（`server/media-chat-requests.js`）以方案 id 为键，把每次尝试保存到媒体数据目录的 `media_chat_requests.json`（私有权限、原子替换、最多 2000 张卡片、每张最多 20 次）。已有尝试时必须带 `again:true`，同一张卡片提交中或运行中返回 409；服务启动时把遗留的 running 改为 uncertain，遗留的 queued 改为 failed（从未发送）。票据只在内存中，不写入记录；参数超过 64KiB（含附件）时记录中省略参数。执行失败且票据从未开始，或服务已明确返回配置中的失败／取消终态时记为 failed；超时、断线等未确认结果记为 uncertain，均不重试。旧 uncertain 记录若已有 remoteTerminal:true，卡片和结果查询按 failed 展示，不改写原记录。生成文件和历史仍由实验室存储负责。
 
-执行名额由 `MediaLabService.canExecute` 统一判断（实验室直接生成也使用）：远程服务（`http-provider`、`http-json`、`minimax-video`）合计 4 项，其中视频最多 2 项；本机 GPU/本地语音后端 1 项。远程请求在服务器上主要是等待网络，单项输出上限 64MiB；视频单独限额以控制内存峰值。名额已满时卡片进入服务器内存中的先进先出队列（最多 20 项、参数合计 64MiB），显示排队位置并可取消；有名额释放时按确认顺序重新 review，参数或配置变化则记为 failed 而不执行。排队项计入维护空闲判定。队列不跨重启保存，重启后排队项标记为未发送。
+执行名额由 `MediaLabService.canExecute` 统一判断（实验室直接生成也使用）：远程服务（`http-provider`、`http-json`、`minimax-video`）合计 4 项，其中视频最多 2 项；本机 GPU/本地语音后端 1 项。远程请求在服务器上主要是等待网络，单项输出上限 64MiB；视频单独限额以控制内存峰值。名额已满时卡片进入服务器内存中的先进先出队列（最多 20 项、参数合计 64MiB），显示排队位置并可取消；有名额释放时按确认顺序重新 review，参数或配置变化则记为 failed 而不执行。排队转运行必须先成功保存 running 状态；保存失败时不派发，丢弃尚未执行的票据，将该卡片标为明确未提交的失败并显示错误，其他等待项仍可继续处理。存储恢复后，用户需在失败卡片重新确认才能创建新尝试；已提交或不确定尝试不自动重放。排队项计入维护空闲判定。队列不跨重启保存，重启后排队项标记为未发送。
 
 ## 聊天图片编辑与参考素材
 
@@ -122,7 +128,7 @@ TTS 的字段来自 `TtsProviderService.getPublicConfig()`；已配置模型复�
 统一accessControl后端会保护这些能力/校验端点。受管进程使用仅允许规划端点、绑定本实例origin的内部凭据；独立CLI Package使用显式PI_WORKSPACE_BASE_URL和PI_WORKSPACE_ACCESS_TOKEN。Package不跟随重定向，不把内部Token送到其他origin或模型输入；旧业务执行仍需各自授权。见 [ACCESS_CONTROL.md](ACCESS_CONTROL.md)。
 
 - `/api/pi/media/lab/plan` 受 Origin/token 与项目 realpath 校验保护。
-- `/api/media-agent/capabilities/:kind` 只读目录；`/api/media-agent/validate` 不生成或写入生成历史，规划图库图片引用时可保存其私有素材快照。
+- `/api/media-agent/capabilities/:kind` 只读目录；`/api/media-agent/validate` 的无 stage／prepare 调用只规划，图库图片引用可保存私有素材快照。持久 worker 的 execute 阶段仅消费已准备的一次性授权，并按当前自动生成偏好走原有卡片执行流程。
 - extension 在存在内部进程身份时使用所属实例的实际绑定地址/端口；独立CLI使用 `PI_WORKSPACE_BASE_URL`，无配置时 fallback `http://127.0.0.1:11408`。隔离实例仍须覆盖可能继承的生产地址，并使用独立身份/媒体/项目目录。
 - 旧 `/api/pi/media/capabilities/:kind` 保留旧返回结构；新代码使用实验室目录。
 

@@ -2,9 +2,10 @@
 // Instance-owned immutable bytes + mutable organization. No session authority is
 // used after an explicit save; origin is only a revocable navigation pointer.
 const fs = require('node:fs'), path = require('node:path');
-const { createHash } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const { getSdk } = require('./pi-session-store');
-const { privateDir, atomicJson, readSafe, hashFileSafe } = require('./pi-maintenance-files');
+const { privateDir, readSafe, hashFileSafe } = require('./pi-maintenance-files');
+const { replaceFileSync } = require('./pi-win32-native');
 const { writePrivateFileSync, openPrivateFileSync } = require('./pi-private-files');
 const { descriptorPathSync } = require('./pi-file-descriptor');
 const io = require('./pi-file-io');
@@ -13,6 +14,23 @@ const { representation } = require('./pi-file-types');
 const ID = /^[a-f0-9]{64}$/, hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const fail = (message, status = 400, code = 'ARTIFACT_INPUT') => Object.assign(new Error(message), { status, code });
 const MAX_ENTRIES = 10000, MAX_BYTES = 4 * 1024 ** 3;
+const MAX_CATALOG_BYTES = 16 * 1024 ** 2, MAX_OPERATION_BYTES = 1024 ** 2;
+function jsonBytes(value, limit, message) {
+    const bytes = Buffer.from(JSON.stringify(value, null, 2) + '\n');
+    if (bytes.length > limit) throw fail(message, 413, 'ARTIFACT_LIMIT');
+    return bytes;
+}
+// The checked buffer is the exact atomic-write payload, including indentation,
+// UTF-8 expansion and the final newline. Keep private-file and native replacement
+// semantics aligned with maintenance atomicJson without serializing a second time.
+function atomicBytes(file, bytes) {
+    const temp = file + '.' + randomUUID() + '.tmp';
+    writePrivateFileSync(temp, bytes, true);
+    try {
+        replaceFileSync(temp, file);
+        if (process.platform !== 'win32') { const fd = fs.openSync(path.dirname(file), 'r'); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); } }
+    } finally { if (fs.existsSync(temp)) fs.unlinkSync(temp); }
+}
 function name(value) {
     if (typeof value !== 'string' || !value.trim() || value.length > 240 || /[\x00-\x1f\x7f/\\]/.test(value) || /[. ]$/.test(value) || /[:*?"<>|]/.test(value)
         || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(value) || value === '.' || value === '..') throw fail('名称无效，请使用不含路径的文件名称');
@@ -37,7 +55,7 @@ class ArtifactLibrary {
         try { root = await this.root(create); }
         catch (error) { if (!create && error.code === 'ENOENT') return { version: 1, revision: 0, entries: [], collections: [], operations: [] }; throw error; }
         let data;
-        try { data = JSON.parse(readSafe(path.join(root, 'catalog.json'), 16 * 1024 ** 2)); }
+        try { data = JSON.parse(readSafe(path.join(root, 'catalog.json'), MAX_CATALOG_BYTES)); }
         catch (error) { if (error.code === 'ENOENT') return { version: 1, revision: 0, entries: [], collections: [], operations: [] }; throw error; }
         if (data.version !== 1 || !Number.isSafeInteger(data.revision) || !Array.isArray(data.entries) || data.entries.length > MAX_ENTRIES
             || !Array.isArray(data.collections) || data.collections.length > 100 || !Array.isArray(data.operations) || data.operations.length > 200
@@ -64,20 +82,24 @@ class ArtifactLibrary {
         return path.join(directory, requestId + '.json');
     }
     async operation(requestId) {
-        try { return JSON.parse(readSafe(await this.operationPath(requestId), 1024 * 1024)); }
+        try { return JSON.parse(readSafe(await this.operationPath(requestId), MAX_OPERATION_BYTES)); }
         catch (error) { if (error.code === 'ENOENT') return null; throw error; }
     }
     async reserveOperation(operation) {
+        const bytes = jsonBytes(operation, MAX_OPERATION_BYTES, '成果操作记录容量已满，请核对原请求；未重放');
         const file = await this.operationPath(operation.id, true);
         if (fs.readdirSync(path.dirname(file)).length >= 10000) throw fail('成果操作记录额度已满，请由管理员整理', 413, 'ARTIFACT_LIMIT');
-        try { writePrivateFileSync(file, JSON.stringify(operation), true); }
+        try { writePrivateFileSync(file, bytes, true); }
         catch (error) { if (error.code === 'EEXIST') throw fail('该操作已有记录，请核对原请求；未重放', 409, 'ARTIFACT_INCOMPLETE'); throw error; }
     }
-    async finishOperation(operation) { atomicJson(await this.operationPath(operation.id), operation); }
+    async finishOperation(operation) {
+        const bytes = jsonBytes(operation, MAX_OPERATION_BYTES, '成果操作结果超出容量，请核对原请求；未重放');
+        atomicBytes(await this.operationPath(operation.id), bytes);
+    }
     async commit(catalog) {
-        const root = await this.root(true); catalog.revision++;
-        const bytes = Buffer.byteLength(JSON.stringify(catalog)); if (bytes > 16 * 1024 ** 2) throw fail('成果目录容量已满', 413, 'ARTIFACT_LIMIT');
-        atomicJson(path.join(root, 'catalog.json'), catalog);
+        const revision = catalog.revision + 1, bytes = jsonBytes({ ...catalog, revision }, MAX_CATALOG_BYTES, '成果目录容量已满');
+        const root = await this.root(true);
+        atomicBytes(path.join(root, 'catalog.json'), bytes); catalog.revision = revision;
     }
     async mutation(action) {
         if (this.mutating) throw fail('成果正在保存或整理，请稍后核对', 409, 'ARTIFACT_BUSY');

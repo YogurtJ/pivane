@@ -294,6 +294,17 @@ match the same unique writable `memory` entry by exact text; matching only a
 legacy `failures.md` entry is refused with 409 `Legacy failure entries are
 read-only`. The upstream tool schemas and prompts are unchanged.
 
+Replace/remove match the complete `old_text` after the existing outer whitespace
+normalization. A 512-character list preview is never sufficient proof: matching
+previews at that boundary are expanded through the bounded item-detail API, and
+the adapter verifies identity, item revision, kind, target, scope/project,
+active state and writable/non-truncated content before comparing the full text.
+Only one complete match may reach the existing revision-checked mutation.
+Cancellation and source validity are checked around each detail read. At most
+12 matching detail candidates are allowed; a larger set returns an explicit
+409 without reading a partial selection or writing anything. Full text above
+the detail API's 65536-character bound remains read-only.
+
 The journal and pending publication marker are private profile data protected
 by the same cross-process mutation lock and generation as the Markdown/SQLite
 writer. An uncertain publication returns an error and `snapshot.status=pending`
@@ -454,7 +465,10 @@ tool adapter.
   checks above. The source and knowledge revision are rechecked after the
   model returns, together with the learning settings and selected model.
 - **Bounds**: UTC daily reservation of 6000 tokens per attempt, at most 2
-  concurrent runs globally and 1 per profile, a native excerpt of up to ~2400
+  concurrent runs globally and 1 per profile. Both slots are reserved synchronously
+  before profile/source/journal preflight awaits and remain owned through execution
+  and final persistence. Preflight counts toward busy/shutdown; abort alone does
+  not release a slot before its actual promise settles. A native excerpt of up to ~2400
   characters reduced to a UTF-8-safe 1,800-byte model excerpt,
   prompt plus excerpt ≤ 5000 UTF-8 bytes, ≤ 320 output tokens, no tools, no
   CLI/subagent fallback, 20 s abort followed by waiting for real settlement.
@@ -464,7 +478,19 @@ tool adapter.
   day, so a budget above 64 runs still counts every reservation. Refunds still
   require retained run details and native source proof; already-trimmed runs
   remain ineligible for reconciliation, as before.
-  Queue 64 jobs, 128 cursors; each cursor retains at most 2048 native pair
+  Queue 64 live jobs, 128 cursors; queued/waiting-config cancellations move
+  atomically into bounded run history in the same journal update, retaining
+  request IDs, dedupe and quota/usage facts. Startup recovery and later locked
+  updates also archive known terminal jobs left by old versions, including
+  recovered uncertain outcomes, without replaying them or retaining queue slots.
+  Archival stably merges original timestamps before retaining the newest details;
+  ties preserve existing history ahead of legacy jobs. Missing/invalid end times
+  fall back to start/create times, and uncertain outcomes use start/create times
+  so a recovery discovery timestamp cannot promote an old source. Missing legacy
+  end times remain unknown; records without valid times sort oldest. Trimming
+  still folds counted usage into `dayCarry` once, preserving the latest manual
+  review source and excluding refunded runs.
+  Each cursor retains at most 2048 native pair
   references to avoid replay after historical edits or branch switches. Capacity
   exhaustion and unprovable legacy branch rewrites block rather than forget old
   keys, and are reported in `capabilities.capacity.blockedBranches`. Manual action IDs

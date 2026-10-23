@@ -54,21 +54,21 @@
             $('pi-transcript-content').addEventListener('click', event => {
                 const button = event.target.closest('[data-message-workflow]');
                 if (!button || button.getAttribute('aria-busy') === 'true' || this.inFlight) return;
+                const navigation = this.host.beginNavigation(), context = this.context(), key = this.identity(context), panelSequence = this.panelSequence;
                 const finish = window.PiActionFeedback.begin(button, translateUi("正在加载…"), { iconOnly: true });
                 this.run(async () => {
                     const article = button.closest('article');
-                    const key = this.identity();
                     const message = button.dataset.messageWorkflow === 'reply-fork' ? article._piAssistantMessage : article._piUserMessage;
                     await this.refresh(true);
-                    if (key !== this.identity()) return;
+                    if (key !== this.identity() || panelSequence !== this.panelSequence || !this.host.isCurrentNavigation(navigation, context.cwd)) return;
                     if (button.dataset.messageWorkflow === 'reply-fork') {
                         const candidates = this.matchReplies(message);
                         if (candidates.length !== 1) throw new Error(translateUi("无法定位这条回复，请刷新后重试"));
-                        return this.openReplyFork(candidates[0], message);
+                        return this.openReplyFork(candidates[0], message, navigation);
                     }
                     const candidates = this.snapshot?.prompts.filter(item => item.timestamp === message.timestamp && item.text === this.messageText(message).slice(0, 180)) || [];
-                    if (candidates.length !== 1) return this.openList('history');
-                    await this.openPrompt(candidates[0].entryId, button.dataset.messageWorkflow);
+                    if (candidates.length !== 1) return this.openList('history', navigation);
+                    await this.openPrompt(candidates[0].entryId, button.dataset.messageWorkflow, navigation);
                 }).finally(() => { finish(); this.decorate(); });
             });
         }
@@ -240,22 +240,23 @@
             return `<section class="pi-workflow-source"><div class="pi-workflow-source-label"><i class="fa-regular fa-file-lines" aria-hidden="true"></i>${escape(label)}</div><pre class="pi-workflow-preview" tabindex="0">${escape(text)}</pre></section>`;
         }
 
-        openReplyFork(reply, message) {
+        openReplyFork(reply, message, navigation) {
             if (this.busy()) throw new Error(translateUi("请等待会话空闲后操作"));
             this.entryId = reply.entryId; this.expectedLeafId = this.snapshot.leafId;
-            if (!this.show('reply-fork', translateUi("从此回复后分叉"), translateUi("创建分叉"))) return;
+            if (!this.show('reply-fork', translateUi("从此回复后分叉"), translateUi("创建分叉"), navigation)) return;
             this.content.innerHTML = `${this.warning(translateUi("新线程与原线程共享项目文件，不复制目录。"))}${this.sourcePreview(message ? this.messageText(message, '\n') : reply.text, translateUi('原回复 · 分叉将保留到此处'))}`;
             this.offerForkRecovery();
         }
 
-        show(mode, title, command) {
+        show(mode, title, command, navigation) {
             if (!this.usable()) throw new Error(translateUi("请先打开持久会话"));
-            if (this.inFlight) return false;
+            if (this.inFlight || navigation && !this.host.isCurrentNavigation(navigation, this.context().cwd)) return false;
             this.panelSequence++;
             this.loadingPanel = false; this.content.removeAttribute('aria-busy');
             this.mode = mode;
             this.editor = null; this.loadingFiles = null;
             this.target = { ...this.context() };
+            if (['clone', 'fork', 'reply-fork'].includes(mode)) this.target.navigation = navigation || this.host.beginNavigation();
             this.targetKey = this.identity();
             $('pi-workflow-title').textContent = title;
             this.error.hidden = true;
@@ -347,6 +348,7 @@
         addFiles(fileList, metadata = {}) {
             const editor = this.editor, files = [...fileList];
             if (!editor || this.inFlight) return;
+            const preparedUpload = this.host.prepareDocumentUpload(() => this.editor === editor);
             $('pi-workflow-files').value = '';
             editor.reads++; this.loadingFiles = editor; this.submit.disabled = true;
             $('pi-workflow-file-status').textContent = translateUi("正在读取附件…");
@@ -361,8 +363,9 @@
                         if (attachments.classify(file).kind === 'document' && attachments.classify(file).format !== 'file' && documentCount >= attachments.limits.documents) throw new Error(translateUi('一次最多添加 5 个文档附件'));
                         const attachedBytes = editor.documents.reduce((sum, ref) => sum + ref.size, 0) + editor.images.reduce((sum, image, index) => sum + (editor.imageOriginals[index]?.size || Math.ceil(image.data.length * 3 / 4)), 0) + editor.addedTextBytes;
                         if (attachedBytes + file.size > attachments.limits.batchBytes) throw new Error(translateUi('附件总量不能超过 200 MiB'));
-                        const item = await attachments.read(file, { upload: (source, options) => this.host.uploadDocument(source, options), preserveImages: this.host.preserveImages?.() });
+                        const item = await attachments.read(file, { ...preparedUpload, preserveImages: this.host.preserveImages?.() });
                         if (this.editor !== editor) return;
+                        preparedUpload.assertCurrent();
                         const text = $('pi-workflow-message').value + (item.kind === 'text' ? attachments.textBlock(item) : '');
                         const documents = item.kind === 'document' ? [...editor.documents, item.reference] : editor.documents;
                         const originals = item.kind === 'image' ? [...editor.imageOriginals, item.reference || null] : editor.imageOriginals;
@@ -420,9 +423,9 @@
             this.updateTime();
             if (job?.status === 'uncertain') this.content.insertAdjacentHTML('beforeend', `<label class="pi-workflow-check"><input id="pi-workflow-uncertain" type="checkbox" required>${translateUi("已检查会话，确认没有重复消息")}</label>`);
         }
-        async openPrompt(entryId, mode) {
+        async openPrompt(entryId, mode, navigation) {
             if (this.busy()) throw new Error(translateUi("请等待会话空闲后操作"));
-            if (!this.show(mode, mode === 'retry' ? translateUi("编辑并重试") : translateUi("从此处分叉"), mode === 'retry' ? translateUi("回退并发送") : translateUi("创建分叉"))) return;
+            if (!this.show(mode, mode === 'retry' ? translateUi("编辑并重试") : translateUi("从此处分叉"), mode === 'retry' ? translateUi("回退并发送") : translateUi("创建分叉"), navigation)) return;
             const payload = await this.loadPanel(() => this.get(`prompt/${encodeURIComponent(entryId)}`));
             if (!payload) return;
             this.entryId = entryId; this.expectedLeafId = payload.leafId;
@@ -442,8 +445,8 @@
             this.content.innerHTML = this.warning(translateUi("新线程与原线程共享项目文件，不复制目录。"));
             this.offerForkRecovery();
         }
-        async openList(mode) {
-            if (!this.show(mode, { history: translateUi("历史问题"), versions: translateUi("历史版本"), deferred: translateUi("待发送消息") }[mode])) return;
+        async openList(mode, navigation) {
+            if (!this.show(mode, { history: translateUi("历史问题"), versions: translateUi("历史版本"), deferred: translateUi("待发送消息") }[mode], undefined, navigation)) return;
             if (!await this.loadPanel(async () => { await this.refresh(mode !== 'deferred'); return true; })) return;
             this.renderList();
         }
@@ -500,7 +503,7 @@
         async confirm() {
             if (this.inFlight || this.loadingPanel || this.submit.disabled || !this.mode || this.editor && this.loadingFiles === this.editor) return;
             this.inFlight = true; this.error.hidden = true;
-            const mode = this.mode;
+            const mode = this.mode, panelSequence = this.panelSequence, editor = this.editor;
             const label = ['clone', 'fork', 'reply-fork'].includes(mode) && this.submit.textContent === translateUi('查看创建结果') ? translateUi('正在查询…') : ({
                 schedule: translateUi("正在预约…"), 'schedule-edit': translateUi("正在保存预约…"),
                 retry: translateUi("正在回退并发送…"), restore: translateUi("正在恢复…"),
@@ -523,13 +526,20 @@
                     if (mode === 'retry') await this.post('retry', { message, images, entryId: this.entryId, expectedLeafId: this.expectedLeafId });
                     else {
                         const dueAt = $('pi-workflow-time-mode').value === 'delay' ? Date.now() + Number($('pi-workflow-delay').value) * 60000 : new Date($('pi-workflow-at').value).getTime();
+                        if (mode === 'schedule') {
+                            if (panelSequence !== this.panelSequence || editor !== this.editor || this.targetKey !== this.identity()
+                                || this.target.generation !== this.context().generation) throw new Error(translateUi('会话已切换，请重新打开操作面板'));
+                            this.host.commitDraft(this.originalDraft);
+                        }
                         await this.post(mode === 'schedule' ? 'deferred' : `deferred/${this.job.id}`, { message, images, dueAt, id: this.scheduleId, action: 'save', revision: this.job?.revision, confirmUncertain }, mode === 'schedule' ? 'POST' : 'PATCH');
-                        if (mode === 'schedule' && this.targetKey === this.identity()) this.host.consumeDraft(this.originalDraft);
+                        if (mode === 'schedule' && panelSequence === this.panelSequence && editor === this.editor && this.targetKey === this.identity()
+                            && this.target.generation === this.context().generation) this.host.consumeDraft(this.originalDraft);
                     }
                 } else if (['clone', 'fork', 'reply-fork'].includes(mode)) {
                     const result = await this.createFork(mode);
                     completed = true;
-                    if (this.targetKey === this.identity()) await this.host.openFork(result);
+                    if (panelSequence === this.panelSequence && this.targetKey === this.identity()
+                        && this.host.isCurrentNavigation(this.target.navigation, this.target.cwd)) await this.host.openFork(result, this.target.navigation);
                 } else if (mode === 'restore') await this.post('restore', { entryId: this.entryId, expectedLeafId: this.expectedLeafId });
                 else if (mode.startsWith('job-')) await this.post(`deferred/${this.job.id}`, { action: mode.slice(4), revision: this.job.revision, confirmUncertain }, 'PATCH');
                 completed = true;

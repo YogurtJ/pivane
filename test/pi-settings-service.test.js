@@ -14,6 +14,46 @@ const { PiSettingsService } = require('../server/pi-settings-service');
 
 const service = new PiSettingsService({ cwd: projectDir });
 
+function replaceModelsData(target, modelsPath, next) {
+    const data = target.readModelsFile(modelsPath);
+    for (const key of Object.keys(data)) delete data[key];
+    return Object.assign(data, next);
+}
+
+function barrier() {
+    let resolve;
+    const promise = new Promise(done => { resolve = done; });
+    return { promise, resolve };
+}
+
+function modelsFixture(t, { absent = false } = {}) {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-models-version-'));
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    const modelsPath = path.join(directory, 'models.json');
+    const model = { id: 'model', api: 'openai-completions', reasoning: true, input: ['text'], contextWindow: 32000, maxTokens: 2048,
+        cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.2 }, futureModel: { keep: true } };
+    const data = { futureRoot: { keep: true }, providers: { fixture: { api: 'openai-completions',
+        baseUrl: 'http://127.0.0.1:65530/v1', futureProvider: 'keep', models: [model] } } };
+    const bytes = Buffer.from(JSON.stringify(data, null, 3) + '\n\n');
+    if (!absent) fs.writeFileSync(modelsPath, bytes);
+    const target = new PiSettingsService({ cwd: directory });
+    target.paths = async () => ({ modelsPath, agentDir: directory });
+    target.createModelRuntime = async () => ({ getModel: () => model });
+    return { service: target, directory, modelsPath, model, data, bytes,
+        backups: () => fs.readdirSync(directory).filter(name => name.startsWith('models.json.bak-web-')),
+        temporary: () => fs.readdirSync(directory).filter(name => name.startsWith('models.json.tmp-')) };
+}
+
+function syntheticSdk(t) {
+    const store = require('../server/pi-session-store'), original = store.getSdk;
+    const settings = { getGlobalSettings: () => ({}), flush: async () => {}, drainErrors: () => [] };
+    const sdk = { ModelRuntime: { create: async () => ({ getProvider: () => ({}) }) },
+        SettingsManager: { create: () => settings }, getAgentDir: () => agentDir };
+    store.getSdk = async () => sdk;
+    t.after(() => { store.getSdk = original; });
+    return sdk;
+}
+
 test.after(() => {
     fs.rmSync(agentDir, { recursive: true, force: true });
     fs.rmSync(packageDir, { recursive: true, force: true });
@@ -165,7 +205,7 @@ test('model replacement yields to Windows readers and preserves one private back
         if (++calls < 3) throw Object.assign(new Error('synthetic sharing failure'), { code: 'FILE_REPLACE', win32Code: 5 });
         return original(source, target);
     };
-    try { await service.writeModelsFile(next); } finally { backend.replaceFileSync = original; }
+    try { await service.writeModelsFile(replaceModelsData(service, modelsPath, next)); } finally { backend.replaceFileSync = original; }
     assert.equal(calls, 3);
     assert.deepEqual(JSON.parse(fs.readFileSync(modelsPath, 'utf8')), next);
     assert.equal(backups().length, before + 1);
@@ -184,7 +224,7 @@ test('model replacement rejects a foreign file identity even when every byte is 
         original(foreign, target);
         throw Object.assign(new Error('synthetic sharing failure'), { code: 'FILE_REPLACE', win32Code: 5 });
     };
-    try { await assert.rejects(service.writeModelsFile({ providers: {}, futureField: 'must-not-commit' }), error => error.statusCode === 409); }
+    try { await assert.rejects(service.writeModelsFile(replaceModelsData(service, modelsPath, { providers: {}, futureField: 'must-not-commit' })), error => error.statusCode === 409); }
     finally { backend.replaceFileSync = original; }
     assert.equal(calls, 1);
     assert.deepEqual(fs.readFileSync(modelsPath), previous);
@@ -202,7 +242,7 @@ test('model edits preflight positive token fields and preserve schema, tiers, sp
                 cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.2, tiers } }
         ], modelOverrides: { model: { maxTokens: 2048, futureOverride: 'keep' } } }
     } };
-    await service.writeModelsFile(data);
+    await service.writeModelsFile(replaceModelsData(service, modelsPath, data));
     for (const field of ['contextWindow', 'maxTokens']) {
         for (const invalid of [0, -1, null, '4096', NaN, Infinity]) {
             for (const section of ['models', 'modelOverrides']) {
@@ -210,7 +250,7 @@ test('model edits preflight positive token fields and preserve schema, tiers, sp
                 (section === 'models' ? candidate.providers.preservation.models[0] : candidate.providers.preservation.modelOverrides.model)[field] = invalid;
                 const previous = fs.readFileSync(modelsPath);
                 const backups = fs.readdirSync(agentDir).filter(name => name.startsWith('models.json.bak-web-')).length;
-                await assert.rejects(service.writeModelsFile(candidate), /positive token count/);
+                await assert.rejects(service.writeModelsFile(replaceModelsData(service, modelsPath, candidate)), /positive token count/);
                 assert.deepEqual(fs.readFileSync(modelsPath), previous);
                 assert.equal(fs.readdirSync(agentDir).filter(name => name.startsWith('models.json.bak-web-')).length, backups);
             }
@@ -251,4 +291,220 @@ test('explicit catalog refresh reserves the settings mutation boundary before aw
     release();
     assert.deepEqual(await refresh, { ok: true, aborted: false, errors: [], requiresRuntimeRestart: true });
     assert.equal(isolated.mutating, false);
+});
+
+
+test('model writer rejects objects without a read baseline before any writes', async t => {
+    for (const absent of [false, true]) {
+        const fixture = modelsFixture(t, { absent });
+        await assert.rejects(fixture.service.writeModelsFile({ providers: {} }), /读取|baseline/i);
+        assert.deepEqual(fs.readdirSync(fixture.directory), absent ? [] : ['models.json']);
+        if (!absent) assert.deepEqual(fs.readFileSync(fixture.modelsPath), fixture.bytes);
+    }
+});
+
+test('model read rejects replacement while capturing the parsed bytes and identity', t => {
+    const fixture = modelsFixture(t), io = require('../server/pi-file-io');
+    const openRead = io.openReadSync, read = fs.readSync, readFile = fs.readFileSync;
+    let descriptor, replaced = false;
+    const replace = () => {
+        if (replaced) return;
+        replaced = true;
+        const foreign = fixture.modelsPath + '.external';
+        fs.writeFileSync(foreign, fixture.bytes);
+        require('../server/pi-win32-native').replaceFileSync(foreign, fixture.modelsPath);
+    };
+    io.openReadSync = file => {
+        const fd = openRead(file);
+        if (file === fixture.modelsPath) descriptor = fd;
+        return fd;
+    };
+    fs.readSync = (fd, ...args) => {
+        const result = read(fd, ...args);
+        if (fd === descriptor) replace();
+        return result;
+    };
+    fs.readFileSync = (file, ...args) => {
+        const result = readFile(file, ...args);
+        if (file === fixture.modelsPath) replace();
+        return result;
+    };
+    try { assert.throws(() => fixture.service.readModelsFile(fixture.modelsPath), error => error.statusCode === 409); }
+    finally { io.openReadSync = openRead; fs.readSync = read; fs.readFileSync = readFile; }
+    assert.equal(replaced, true);
+    assert.deepEqual(fs.readFileSync(fixture.modelsPath), fixture.bytes);
+    assert.equal(fixture.backups().length, 0);
+});
+
+test('model edits keep their read version across official pricing waits', async t => {
+    const pricing = require('../server/pi-usage-pricing'), original = pricing.officialPrices;
+    t.after(() => { pricing.officialPrices = original; });
+    for (const change of ['edit', 'remove', 'replace', 'unchanged']) {
+        await t.test(change, async t => {
+            const fixture = modelsFixture(t), entered = barrier(), release = barrier();
+            pricing.officialPrices = async () => { entered.resolve(); await release.promise; return new Map(); };
+            const pending = fixture.service.upsertCustomModel('fixture', { id: 'added', name: 'Added' });
+            await entered.promise;
+            let external = fixture.bytes;
+            if (change === 'edit') {
+                external = Buffer.from(JSON.stringify({ ...fixture.data, outside: { exact: 'keep external bytes' } }, null, 4) + '\n \n');
+                fs.writeFileSync(fixture.modelsPath, external);
+            } else if (change === 'remove') fs.unlinkSync(fixture.modelsPath);
+            else if (change === 'replace') {
+                const foreign = fixture.modelsPath + '.external';
+                fs.writeFileSync(foreign, external);
+                require('../server/pi-win32-native').replaceFileSync(foreign, fixture.modelsPath);
+            }
+            const result = change === 'unchanged' ? pending : assert.rejects(pending, error => error.statusCode === 409);
+            release.resolve();
+            await result;
+            if (change === 'unchanged') {
+                const saved = JSON.parse(fs.readFileSync(fixture.modelsPath));
+                assert.deepEqual(saved.futureRoot, fixture.data.futureRoot);
+                assert.equal(saved.providers.fixture.futureProvider, 'keep');
+                assert.deepEqual(saved.providers.fixture.models[0], fixture.model);
+                assert.equal(saved.providers.fixture.models[1].id, 'added');
+                assert.equal(fixture.backups().length, 1);
+                assert.deepEqual(fs.readFileSync(path.join(fixture.directory, fixture.backups()[0])), fixture.bytes);
+                assertPrivateFile(fixture.modelsPath);
+                assertPrivateFile(path.join(fixture.directory, fixture.backups()[0]));
+            } else {
+                assert.equal(fixture.backups().length, 0, 'conflict is checked before backup creation');
+                if (change === 'remove') assert.equal(fs.existsSync(fixture.modelsPath), false);
+                else assert.deepEqual(fs.readFileSync(fixture.modelsPath), external);
+            }
+            assert.deepEqual(fixture.temporary(), []);
+        });
+    }
+});
+
+test('provider deletion retains its read version across SDK, runtime and logout waits', async t => {
+    const sdk = syntheticSdk(t);
+    for (const wait of ['builtin-catalog', 'runtime', 'logout']) {
+        await t.test(wait, async t => {
+            const fixture = modelsFixture(t), entered = barrier(), release = barrier();
+            const pause = async stage => { if (wait === stage) { entered.resolve(); await release.promise; } };
+            sdk.ModelRuntime.create = async () => { await pause('builtin-catalog'); return { getProvider: () => undefined }; };
+            let logouts = 0;
+            fixture.service.createModelRuntime = async () => {
+                await pause('runtime');
+                return { getProvider: () => ({}), logout: async () => { logouts++; await pause('logout'); } };
+            };
+            const pending = fixture.service.deleteCustomProvider('fixture');
+            await entered.promise;
+            const external = Buffer.from(JSON.stringify({ ...fixture.data, outside: 'during-' + wait }, null, 4) + '\n');
+            fs.writeFileSync(fixture.modelsPath, external);
+            const rejected = assert.rejects(pending, error => error.statusCode === 409);
+            release.resolve();
+            await rejected;
+            assert.equal(logouts, 1);
+            assert.deepEqual(fs.readFileSync(fixture.modelsPath), external);
+            assert.deepEqual(fixture.backups(), []);
+            assert.deepEqual(fixture.temporary(), []);
+        });
+    }
+});
+
+test('every whole-file mutation preserves the read baseline through writer handoff', async t => {
+    syntheticSdk(t);
+    const operations = {
+        upsertCustomProvider: target => target.upsertCustomProvider({ id: 'fixture', baseUrl: 'http://127.0.0.1:65530/new', api: 'openai-completions' }),
+        deleteCustomProvider: target => target.deleteCustomProvider('fixture'),
+        upsertCustomModel: target => target.upsertCustomModel('fixture', { id: 'model', name: 'Edited' }),
+        deleteCustomModel: target => target.deleteCustomModel('fixture', 'model'),
+        saveModelSpeed: async target => target.saveModelSpeed({ provider: 'fixture', modelId: 'model', expectedRevision: await target.configRevision(), speed: null }),
+        saveModelAdvanced: async target => target.saveModelAdvanced({ provider: 'fixture', modelId: 'model', expectedRevision: await target.configRevision(), cost: { input: 3 } }),
+        saveModelThinking: async target => target.saveModelThinking({ provider: 'fixture', modelId: 'model', expectedRevision: await target.configRevision(), thinkingLevelMap: { high: 'high' } })
+    };
+    for (const [name, operation] of Object.entries(operations)) {
+        await t.test(name, async t => {
+            const fixture = modelsFixture(t), entered = barrier(), release = barrier();
+            const writer = fixture.service.writeModelsFile;
+            fixture.service.writeModelsFile = async function (data) {
+                entered.resolve(); await release.promise;
+                return writer.call(this, data);
+            };
+            const pending = operation(fixture.service);
+            await entered.promise;
+            const external = Buffer.from(JSON.stringify({ ...fixture.data, outside: name }, null, 4) + '\n');
+            fs.writeFileSync(fixture.modelsPath, external);
+            const rejected = assert.rejects(pending, error => error.statusCode === 409);
+            release.resolve();
+            await rejected;
+            assert.deepEqual(fs.readFileSync(fixture.modelsPath), external);
+            assert.deepEqual(fixture.backups(), []);
+            assert.deepEqual(fixture.temporary(), []);
+        });
+    }
+});
+
+test('absent model files stay bound to absence until replacement', async t => {
+    for (const appeared of [false, true]) {
+        const fixture = modelsFixture(t, { absent: true });
+        const data = fixture.service.readModelsFile(fixture.modelsPath);
+        data.providers.fixture = fixture.data.providers.fixture;
+        if (appeared) fs.writeFileSync(fixture.modelsPath, fixture.bytes);
+        const pending = fixture.service.writeModelsFile(data);
+        if (appeared) {
+            await assert.rejects(pending, error => error.statusCode === 409);
+            assert.deepEqual(fs.readFileSync(fixture.modelsPath), fixture.bytes);
+        } else {
+            await pending;
+            assert.deepEqual(JSON.parse(fs.readFileSync(fixture.modelsPath)), data);
+            assertPrivateFile(fixture.modelsPath);
+        }
+        assert.deepEqual(fixture.backups(), []);
+        assert.deepEqual(fixture.temporary(), []);
+    }
+});
+
+test('Windows replacement retries reject edited or removed originals', async t => {
+    const backend = require('../server/pi-win32-native'), original = backend.replaceFileSync;
+    t.after(() => { backend.replaceFileSync = original; });
+    for (const change of ['edit', 'remove']) {
+        const fixture = modelsFixture(t), data = fixture.service.readModelsFile(fixture.modelsPath);
+        data.futureRoot = 'must not commit';
+        let calls = 0;
+        backend.replaceFileSync = (_source, target) => {
+            calls++;
+            if (change === 'edit') fs.writeFileSync(target, 'external bytes\n');
+            else fs.unlinkSync(target);
+            throw Object.assign(new Error('synthetic sharing failure'), { code: 'FILE_REPLACE', win32Code: 32 });
+        };
+        await assert.rejects(fixture.service.writeModelsFile(data), error => error.statusCode === 409);
+        assert.equal(calls, 1);
+        if (change === 'remove') assert.equal(fs.existsSync(fixture.modelsPath), false);
+        else assert.equal(fs.readFileSync(fixture.modelsPath, 'utf8'), 'external bytes\n');
+        assert.deepEqual(fs.readFileSync(path.join(fixture.directory, fixture.backups()[0])), fixture.bytes);
+        assert.deepEqual(fixture.temporary(), []);
+    }
+});
+
+
+test('backup and staging retain the original bytes when the live file changes', async t => {
+    const privateFiles = require('../server/pi-private-files'), original = privateFiles.writePrivateFileSync;
+    t.after(() => { privateFiles.writePrivateFileSync = original; });
+    for (const phase of ['backup', 'stage']) {
+        const fixture = modelsFixture(t), data = fixture.service.readModelsFile(fixture.modelsPath);
+        data.futureRoot = 'must not commit';
+        let changed = false, staged = false;
+        const external = Buffer.from('  {"providers":{}, "outside":"' + phase + '"}\n');
+        privateFiles.writePrivateFileSync = (file, ...args) => {
+            const result = original(file, ...args);
+            const isStage = file.startsWith(fixture.modelsPath + '.tmp-');
+            staged ||= isStage;
+            if (phase === 'stage' ? isStage : file.startsWith(fixture.modelsPath + '.bak-web-')) {
+                changed = true;
+                fs.writeFileSync(fixture.modelsPath, external);
+            }
+            return result;
+        };
+        await assert.rejects(fixture.service.writeModelsFile(data), error => error.statusCode === 409);
+        assert.equal(changed, true);
+        assert.equal(staged, phase === 'stage');
+        assert.deepEqual(fs.readFileSync(fixture.modelsPath), external);
+        assert.equal(fixture.backups().length, 1);
+        assert.deepEqual(fs.readFileSync(path.join(fixture.directory, fixture.backups()[0])), fixture.bytes);
+        assert.deepEqual(fixture.temporary(), []);
+    }
 });

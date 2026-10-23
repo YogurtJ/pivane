@@ -352,3 +352,117 @@ test('an already-moved Web fork keeps delivery and document draft access after g
         assert.equal(authorized.reference.id, upload.reference.id); await documents.checkCurrent(input, authorized);
     }
 });
+
+for (const legacy of [false, true]) test(`unsent ${legacy ? 'legacy' : 'current'} originals follow only committed native move evidence A-B-C`, async t => {
+    const f = await fixture(t), service = new DocumentUploads({ store: f.store, supervisor: f.supervisor }); t.after(() => service.dispose());
+    const source = await f.store.createSession(f.source, 'Unsent moved original');
+    const uploaded = await service.upload({ cwd: f.source, sessionId: source.id, requestId: 'unsent', name: 'unsent.docx' }, zip(docxFiles()));
+    const object = await service.object(uploaded.reference.id);
+    if (legacy) { const manifest = { ...object.manifest }; delete manifest.source; fs.writeFileSync(path.join(object.folder, 'manifest.json'), JSON.stringify(manifest)); }
+    const third = path.join(f.folder, 'third'); fs.mkdirSync(third);
+    let moved = await f.move(source, f.target);
+    const input = session => ({ cwd: session.cwd, sessionId: session.id, id: uploaded.reference.id });
+    let authorized = await service.authorized(input(moved), { draft: true }); await service.checkCurrent(input(moved), authorized);
+    assert.deepEqual(authorized.bytes, zip(docxFiles())); assert.equal((await service.branch(input(moved))).references.length, 0);
+    await assert.rejects(service.authorized(input(moved)), { code: 'DOCUMENT_SCOPE' });
+    moved = await f.move(moved, third);
+    authorized = await service.authorized(input(moved), { draft: true }); await service.checkCurrent(input(moved), authorized);
+    await assert.rejects(service.authorized(input(source), { draft: true }));
+    const imported = await f.store.createSession(third, 'Forged ID');
+    await assert.rejects(service.authorized({ ...input(imported) }, { draft: true }), { code: 'DOCUMENT_SCOPE' });
+    const native = fs.readFileSync(moved.path), end = native.indexOf(10), header = JSON.parse(native.subarray(0, end));
+    fs.writeFileSync(moved.path, Buffer.concat([Buffer.from(JSON.stringify({ ...header, timestamp: '2000-01-01T00:00:00.000Z' }) + '\n'), native.subarray(end + 1)]));
+    await assert.rejects(service.authorized(input(moved), { draft: true }), { code: 'DOCUMENT_CONTEXT' }); fs.writeFileSync(moved.path, native);
+    const journal = await f.moves.journal(), saved = fs.readFileSync(journal.file);
+    const record = journal.document.records.find(item => item.id === source.id && item.source.cwd === f.source); record.status = 'rolled_back';
+    require('../server/pi-maintenance-files').atomicJson(journal.file, journal.document);
+    await assert.rejects(service.checkCurrent(input(moved), authorized), { code: 'DOCUMENT_CONTEXT' });
+    await assert.rejects(service.authorized(input(moved), { draft: true }), { code: 'DOCUMENT_SCOPE' }); fs.writeFileSync(journal.file, saved);
+    const worker = { cwd: moved.cwd, sessionId: moved.id, request: async () => ({ entries: [], leafId: null }) };
+    const originalActive = f.supervisor.getActiveWorker; f.supervisor.getActiveWorker = file => file === moved.path ? worker : null;
+    try { await assert.rejects(service.read(worker, { id: uploaded.reference.id, action: 'inspect' }), { code: 'DOCUMENT_SCOPE' }); }
+    finally { f.supervisor.getActiveWorker = originalActive; }
+});
+
+for (const [office, general, accepted] of [[0, 6, true], [0, 8, true], [5, 3, true], [0, 9, false], [6, 0, false]])
+    test(`fork drafts enforce ${office} office + ${general} general original references`, async t => {
+        const f = await fixture(t), source = await f.store.createSession(f.source, 'Classified limits');
+        const documents = require('../public/pi-document-references'), service = new DocumentUploads({ store: f.store, supervisor: f.supervisor }); t.after(() => service.dispose());
+        const references = [];
+        for (let i = 0; i < office + general; i++) {
+            const image = i >= office && i % 2 === 1, png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5V8AAAAASUVORK5CYII=', 'base64');
+            const upload = await service.upload({ cwd: f.source, sessionId: source.id, requestId: 'count-' + i, name: `sample-${i}.${i < office ? 'docx' : image ? 'png' : 'bin'}`, ...(image ? { purpose: 'image' } : {}) }, i < office ? zip(docxFiles()) : image ? png : Buffer.from([i, 0, 255]));
+            references.push(upload.reference);
+        }
+        const manager = f.SessionManager.open(source.path), content = references.map(documents.marker).join('\n');
+        const question = manager.appendMessage({ role: 'user', content, timestamp: 1 }); manager.appendMessage(assistant);
+        const pending = f.fork(source, question, 'before');
+        if (!accepted) { await assert.rejects(pending, office > 5 ? /5 个文档/ : /8 个原件/); return; }
+        const fork = await pending, access = await readForkAccess(f.store, fork.session);
+        assert.equal(access.documents.length, references.length); assert.equal(documents.references([{ type: 'message', message: { role: 'user', content: fork.draft.message } }]).length, references.length);
+        for (const reference of references) {
+            const input = { cwd: fork.session.cwd, sessionId: fork.session.id, id: reference.id };
+            const authorized = await service.authorized(input, { draft: true }); await service.checkCurrent(input, authorized);
+            assert.deepEqual(authorized.reference, reference); await assert.rejects(service.authorized(input), { code: 'DOCUMENT_SCOPE' });
+        }
+    });
+
+test('draft move access rejects copied headers, uncommitted moves, altered prefixes and changed backup evidence after reading', async t => {
+    const f = await fixture(t), service = new DocumentUploads({ store: f.store, supervisor: f.supervisor }); t.after(() => service.dispose());
+    const source = await f.store.createSession(f.source, 'Native binding'), uploaded = await service.upload({ cwd: f.source, sessionId: source.id, requestId: 'binding', name: 'sample.docx' }, zip(docxFiles()));
+    const { relocateSessionBytes } = require('../server/pi-session-relocation');
+    const targetFile = path.join(f.SessionManager.create(f.target).getSessionDir(), path.basename(source.path)); fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+    const copy = await relocateSessionBytes(fs.readFileSync(source.path), { sourceCwd: f.source, targetCwd: f.target }); fs.writeFileSync(targetFile, copy.bytes);
+    const input = { cwd: f.target, sessionId: source.id, id: uploaded.reference.id };
+    await assert.rejects(service.authorized(input, { draft: true }), { code: 'DOCUMENT_SCOPE' }); fs.unlinkSync(targetFile);
+    const moved = await f.move(source, f.target), journal = await f.moves.journal(), record = journal.document.records.find(item => item.id === source.id), savedJournal = fs.readFileSync(journal.file);
+    const native = fs.readFileSync(moved.path), end = native.indexOf(10), header = JSON.parse(native.subarray(0, end));
+    fs.writeFileSync(moved.path, Buffer.concat([Buffer.from(JSON.stringify({ ...header, uncommittedHeader: true }) + '\n'), native.subarray(end + 1)]));
+    await assert.rejects(service.authorized(input, { draft: true }), { code: 'DOCUMENT_CONTEXT' }); fs.writeFileSync(moved.path, native);
+    const authorized = await service.authorized(input, { draft: true });
+    const backup = fs.readFileSync(record.backup); fs.appendFileSync(record.backup, '\n');
+    await assert.rejects(service.checkCurrent(input, authorized), { code: 'DOCUMENT_CONTEXT' }); fs.writeFileSync(record.backup, backup);
+    const replaced = native.toString().replace('Native binding', 'Edited binding'); assert.notEqual(replaced, native.toString()); fs.writeFileSync(moved.path, replaced);
+    await assert.rejects(service.authorized(input, { draft: true }), { code: 'DOCUMENT_CONTEXT' }); fs.writeFileSync(moved.path, native);
+    record.status = 'prepared'; require('../server/pi-maintenance-files').atomicJson(journal.file, journal.document);
+    await assert.rejects(service.authorized(input, { draft: true }), { code: 'SESSION_MOVE_RECOVERY' }); fs.writeFileSync(journal.file, savedJournal);
+    const express = require('express'), app = express(), router = express.Router(); require('../server/pi-document-uploads').mountDocumentUploads(router, service); app.use('/api/pi', router);
+    const server = http.createServer(app); server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/pi/uploads?` + new URLSearchParams(input));
+    assert.equal(response.status, 200); assert.deepEqual(Buffer.from(await response.arrayBuffer()), zip(docxFiles()));
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+});
+
+test('moved draft final proof rechecks the current worker and session admission after its last await', async t => {
+    const f = await fixture(t), service = new DocumentUploads({ store: f.store, supervisor: f.supervisor }); t.after(() => service.dispose());
+    const source = await f.store.createSession(f.source, 'Final draft proof'), uploaded = await service.upload({ cwd: f.source, sessionId: source.id, requestId: 'final-proof', name: 'sample.docx' }, zip(docxFiles()));
+    const moved = await f.move(source, f.target), manager = f.SessionManager.open(moved.path);
+    const input = { cwd: moved.cwd, sessionId: moved.id, id: uploaded.reference.id };
+    const worker = () => ({ cwd: moved.cwd, sessionId: moved.id, disposed: false, restarting: false,
+        request: async () => ({ entries: manager.getEntries(), leafId: manager.getLeafId() }) });
+    let active;
+    t.mock.method(f.supervisor, 'getActiveWorker', file => file === moved.path ? active : undefined);
+    const access = require('../server/pi-document-move-access'), readMoveDraftAccess = access.readMoveDraftAccess;
+    for (const change of ['stable', 'offline', 'replaced', 'disposed', 'restarting', 'stopped', 'started', 'removing', 'moving']) await t.test(change, async t => {
+        const initial = worker(); active = change === 'offline' ? null : change === 'started' ? undefined : initial;
+        const authorized = await service.authorized(input, { draft: true }); assert.ok(authorized.moveRevision);
+        let enter, release, calls = 0;
+        const ready = new Promise(resolve => { enter = resolve; }), gate = new Promise(resolve => { release = resolve; });
+        t.mock.method(access, 'readMoveDraftAccess', async (...args) => {
+            const revision = await readMoveDraftAccess(...args); calls++; enter(); await gate; return revision;
+        });
+        const pending = service.checkCurrent(input, authorized);
+        const checked = ['stable', 'offline'].includes(change) ? assert.doesNotReject(pending) : assert.rejects(pending, { code: 'DOCUMENT_CONTEXT' });
+        await ready;
+        if (change === 'replaced' || change === 'started') active = worker();
+        if (change === 'disposed') initial.disposed = true;
+        if (change === 'restarting') initial.restarting = true;
+        if (change === 'stopped') active = undefined;
+        if (change === 'removing') f.supervisor.removing.set(moved.path, Promise.resolve());
+        if (change === 'moving') f.supervisor.moving.set(moved.path, Promise.resolve());
+        release();
+        try { await checked; assert.equal(calls, 1, 'gate covers the final movement proof after branch captured its worker'); }
+        finally { f.supervisor.removing.delete(moved.path); f.supervisor.moving.delete(moved.path); }
+    });
+});

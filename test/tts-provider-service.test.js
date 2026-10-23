@@ -176,6 +176,62 @@ test('validates and exposes sanitized TTS provider configuration', () => {
     }
 });
 
+test('retired MiniMax TTS entries cannot generate or expose docs, while other providers and saved data remain intact', async () => {
+    const fixture = createFixture();
+    try {
+        const registry = makeRegistry();
+        const retired = { ...structuredClone(registry.providers[0]), id: 'legacy-speech', adapter: 'minimax' };
+        registry.providers.unshift(retired);
+        registry.defaultProvider = retired.id;
+        registry.instanceExtension = { preserved: true };
+        const saved = JSON.stringify(registry, null, 2) + '\n';
+        fs.writeFileSync(fixture.configPath, saved);
+        const historyPath = path.join(fixture.rootDir, 'tts_history.json');
+        const history = '[{"id":"old","filename":"minimax_tts_old.mp3","provider":"legacy-speech"}]';
+        fs.writeFileSync(historyPath, history);
+        const audioPath = path.join(fixture.rootDir, 'minimax_tts_old.mp3');
+        const audio = Buffer.from('ID3 synthetic historical audio');
+        fs.writeFileSync(audioPath, audio);
+        let requests = 0;
+        const service = new TtsProviderService({ ...fixture, fetch: async () => { requests++; throw Error('must not request'); } });
+        const config = service.getPublicConfig();
+        assert.deepEqual(config.providers.map(provider => provider.id), ['qwen-test']);
+        assert.equal(config.defaultProvider, 'qwen-test');
+        assert.equal(service.resolveRequest({ text: 'ok' }).provider.id, 'qwen-test');
+        await assert.rejects(service.synthesize({ provider: retired.id, text: 'ok' }), /Unknown TTS provider/);
+        assert.throws(() => service.listVoices(retired.id), /Unknown TTS provider/);
+        assert.throws(() => service.getDocumentation(retired.id), /documentation not found/);
+        assert.equal(requests, 0);
+        assert.equal(fs.readFileSync(fixture.configPath, 'utf8'), saved);
+        assert.equal(fs.readFileSync(historyPath, 'utf8'), history);
+        assert.deepEqual(fs.readFileSync(audioPath), audio);
+        assert.throws(() => validateRegistry(registry), /Unsupported TTS adapter: minimax/);
+    } finally { fs.rmSync(fixture.rootDir, { recursive: true, force: true }); }
+});
+
+test('a registry containing only retired TTS entries loads as empty without hiding unrelated invalid configuration', async () => {
+    const fixture = createFixture();
+    try {
+        const registry = makeRegistry();
+        registry.providers[0].adapter = 'minimax';
+        fs.writeFileSync(fixture.configPath, JSON.stringify(registry));
+        const service = new TtsProviderService(fixture);
+        assert.deepEqual(service.getPublicConfig().providers, []);
+        assert.equal(service.getPublicConfig().configured, false);
+        assert.equal(service.getPublicConfig().defaultProvider, '');
+        await assert.rejects(service.synthesize({ text: 'ok' }), /Unknown TTS provider/);
+        const unknown = { ...makeRegistry().providers[0], id: 'unknown', adapter: 'unknown-adapter' };
+        registry.providers.push(unknown);
+        fs.writeFileSync(fixture.configPath, JSON.stringify(registry));
+        assert.throws(() => new TtsProviderService(fixture), /Unsupported TTS adapter: unknown-adapter/);
+        const invalidDefault = makeRegistry();
+        invalidDefault.defaultProvider = 'missing';
+        invalidDefault.providers.push({ ...registry.providers[0], id: 'retired' });
+        fs.writeFileSync(fixture.configPath, JSON.stringify(invalidDefault));
+        assert.throws(() => new TtsProviderService(fixture), /defaultProvider is not present/);
+    } finally { fs.rmSync(fixture.rootDir, { recursive: true, force: true }); }
+});
+
 test('Qwen3 GPU adapter sends structured input over stdin and returns WAV', async () => {
     const fixture = createFixture();
     try {

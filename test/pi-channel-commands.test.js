@@ -54,6 +54,44 @@ function fixture(t, text) {
     return { s, db, job, worker, calls, sends, state, sessions, cwd };
 }
 
+test('read-only target conflicts keep stop queued until verification succeeds, without submitting twice', async t => {
+    const { s, worker, job, calls, sends } = fixture(t, '/stop');
+    const read = s.store.withSessionRead; let conflict = true;
+    s.store.withSessionRead = (...args) => { if (conflict) throw Error('Session file changed'); return read(...args); };
+    const request = worker.request.bind(worker);
+    worker.request = (type, payload, timeout, token, beforeSend) => request(type, payload, timeout, beforeSend || token);
+    s.runs.set('active-turn', { target: job.target, worker });
+    s.pump(); await until(() => !s.runs.has('job'));
+    assert.equal(s.job('job').status, 'queued'); assert.equal(s.job('job').text, '/stop');
+    assert.notEqual(s.job('job').commandSubmitted, true); assert.equal(calls.length, 0); assert.equal(sends.length, 0);
+    conflict = false; s.pump(); await until(() => !s.runs.has('job'));
+    assert.equal(s.job('job').status, 'reviewed'); assert.equal(s.job('job').commandSubmitted, true);
+    assert.equal(calls.filter(call => call.type === 'abort').length, 1);
+    s.pump(); await delay(10); assert.equal(calls.filter(call => call.type === 'abort').length, 1);
+});
+
+test('read-only target conflicts retain a ready direct reply without marking delivery uncertain', async t => {
+    const { s, calls, sends } = fixture(t, 'unused'); const read = s.store.withSessionRead;
+    s.updateJob('job', { status: 'ready', directReply: 'already prepared response', text: undefined });
+    s.store.withSessionRead = () => { throw Error('Session file changed'); };
+    s.pump(); await until(() => !s.runs.has('job'));
+    assert.equal(s.job('job').status, 'ready'); assert.equal(s.job('job').directReply, 'already prepared response');
+    assert.notEqual(s.job('job').sendStarted, true); assert.equal(sends.length, 0); assert.equal(calls.length, 0);
+    s.store.withSessionRead = read; s.pump(); await until(() => !s.runs.has('job'));
+    assert.equal(s.job('job').status, 'delivered'); assert.deepEqual(sends, ['already prepared response']);
+});
+
+for (const status of ['queued', 'ready']) test(`revocation during ${status} target verification is not overwritten by a read conflict`, async t => {
+    const { s, db, calls, sends } = fixture(t, '/stop'); const started = deferred(), release = deferred();
+    if (status === 'ready') s.updateJob('job', { status, directReply: 'do not send', text: undefined });
+    s.store.withSessionRead = async () => { started.resolve(); await release.promise; throw Error('Session file changed'); };
+    s.pump(); await started.promise;
+    db.change(value => { value.accounts[0].enabled = false; value.jobs[0].status = 'cancelled'; });
+    release.resolve(); await until(() => !s.runs.has('job'));
+    assert.equal(s.job('job').status, 'cancelled'); assert.equal(calls.length, 0); assert.equal(sends.length, 0);
+    s.pump(); assert.equal(s.runs.size, 0);
+});
+
 test('mutating command is durably dispatching before native submission and restart cannot requeue it', async t => {
     const { s, db, calls, cwd } = fixture(t, '/compact'); const started = deferred(), release = deferred();
     s.compactionResult = { status: 'success', tokensBefore: 1000, estimatedTokensAfter: 100 };

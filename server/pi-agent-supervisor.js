@@ -41,6 +41,7 @@ class AgentWorker extends EventEmitter {
         this.runStartupSequence = 0;
         this.modelChangesPending = 0;
         this.modelChangeUncertain = false;
+        this.sessionNameUncertain = false;
         this.compaction = null;
         this.live = new (require('./pi-live-state').PiLiveState)();
         this.progress = null;
@@ -131,6 +132,7 @@ class AgentWorker extends EventEmitter {
     async request(type, payload = {}, timeoutMs, operationToken, beforeSend) {
         if (this.disposed || this.restarting || this.exited) throw new Error('Pi runtime 已关闭或正在重新打开');
         if (!type.startsWith('get_')) this.assertReferenceWritable();
+        if (type === 'set_session_name') this.assertSessionNameConfirmed();
         if (['bash', 'abort_bash', 'set_steering_mode', 'set_follow_up_mode'].includes(type)) throw new Error('请使用受控运行入口');
         if (this.cronRun && (!this.operation || operationToken !== this.operation) && !type.startsWith('get_') && type !== 'abort') throw new Error('定时任务正在运行或恢复设置，请等待结束或在定时任务页核对');
         if (this.shell.busy && !type.startsWith('get_')) throw new Error('Shell 正在执行，请等待命令终态');
@@ -153,7 +155,7 @@ class AgentWorker extends EventEmitter {
         if (changingModel) this.modelChangesPending++;
         const prompting = ['prompt', 'steer', 'follow_up'].includes(type);
         if (prompting) this.promptPending++;
-        let intentId, releaseQueueOperation;
+        let intentId, releaseQueueOperation, sessionNameSubmitted = false;
         try {
             if (prompting && this.queueStore) releaseQueueOperation = this.queueStore.beginOperation();
             await this.ensureReady();
@@ -171,13 +173,23 @@ class AgentWorker extends EventEmitter {
             const transcriptSdk = type === 'get_messages' && this.managed ? await require('./pi-session-store').getSdk() : null;
             // Channel controls revalidate authorization at the last synchronous boundary before RPC submission.
             beforeSend?.();
+            if (type === 'set_session_name') sessionNameSubmitted = true;
             const data = await this.client.request(transcriptSdk ? 'get_entries' : type, transcriptSdk ? {} : payload, timeoutMs, undefined, value => {
                 if (transcriptSdk) {
                     // webAnchors maps each native message entry of the current context to the
                     // rendered message key, so receipts can point at their source message
                     // without the browser downloading raw entries of every branch.
                     const messages = [], webAnchors = [];
-                    for (const entry of transcriptSdk.buildContextEntries(value.entries, value.leafId)) {
+                    const contextEntries = transcriptSdk.buildContextEntries(value.entries, value.leafId);
+                    const { mediaPlanEntries, mediaPlanMessage } = require('./pi-media-plan-format');
+                    const origins = mediaPlanEntries(value.entries, value.leafId);
+                    const visible = new Set(contextEntries.map(entry => entry.id));
+                    // Compaction can remove the original tool result from context;
+                    // native sources on this branch still recover those same cards.
+                    messages.push(...origins.filter(entry => !visible.has(entry.id)).map(mediaPlanMessage));
+                    const originIds = new Set(origins.map(entry => entry.id));
+                    for (const entry of contextEntries) {
+                        if (originIds.has(entry.id)) messages.push(mediaPlanMessage(entry));
                         const mapped = transcriptSdk.sessionEntryToContextMessages(entry);
                         const first = mapped[0];
                         if (entry.type === 'message' && typeof entry.id === 'string' && first?.timestamp != null)
@@ -217,6 +229,10 @@ class AgentWorker extends EventEmitter {
             if (type === 'get_commands') return { ...data, commands: data.commands.filter(command => !isInternalCommand(command.name)) };
             return data;
         } catch (error) {
+            if (sessionNameSubmitted && error.code === 'RPC_TIMEOUT') {
+                this.sessionNameUncertain = true;
+                this.assertSessionNameConfirmed();
+            }
             if (prompting && error.code === 'RPC_TIMEOUT') this.promptAdmissionUncertain = true;
             if (intentId) {
                 try { this.queueStore.update(this, intentId, 'unknown'); this.syncQueueRecoveries(); this.broadcastControls(); }
@@ -252,6 +268,10 @@ class AgentWorker extends EventEmitter {
             this._broadcast({ type: 'gateway_queue_modes', modes: data });
             return data;
         }, { idle: false });
+    }
+
+    assertSessionNameConfirmed() {
+        if (this.sessionNameUncertain) throw Object.assign(new Error('会话命名结果不确定，请退出运行实例并重新打开后核对；未自动重试'), { code: 'SESSION_NAME_UNCERTAIN' });
     }
 
     assertReferenceWritable() {
@@ -400,6 +420,7 @@ class AgentWorker extends EventEmitter {
 
     async exclusive(callback, { idle = true, cron = false } = {}) {
         this.assertReferenceWritable();
+        this.assertSessionNameConfirmed();
         if (this.cronRun && !cron || idle && (this.shell.busy || this.promptAdmissionUncertain) || this.disposed || this.operation || this.controlPending || this.promptPending || this.compactPending || idle && (this.activity.snapshot().busy || this.historyWriting)) {
             const error = new Error('会话正在运行或处理其他操作，请等待空闲');
             error.code = 'SESSION_BUSY';
@@ -498,6 +519,7 @@ class AgentWorker extends EventEmitter {
     async titleRequest(input, { idle = true } = {}) {
         if (this.noSession) throw new Error('临时会话不支持标题生成');
         const available = () => {
+            this.assertSessionNameConfirmed();
             if (this.disposed || this.operation || this.controlPending || this.shell.busy || this.compactPending || this.historyWriting
                 || idle && (this.promptPending || this.activity.snapshot().busy)) throw new Error('请等待当前任务和队列结束');
         };
@@ -1033,7 +1055,7 @@ class PiAgentSupervisor extends EventEmitter {
         const store = await this.getQueueStore();
         if (this.disposing || this.starting.size || this.retiring.size || this.removing.size || this.editing.size || this.moving.size || this.ephemeralWorkers.size
             || [...this.workers.values()].some(worker => worker.lifecycle().activity.busy || worker.retainsBackgroundWork()
-                || worker.promptAdmissionUncertain || worker.controls.intentions?.length || worker.controls.persistenceError || worker.queueClearOperations?.size
+                || worker.promptAdmissionUncertain || worker.sessionNameUncertain || worker.controls.intentions?.length || worker.controls.persistenceError || worker.queueClearOperations?.size
                 || worker.controls.queue.steering.length || worker.controls.queue.followUp.length)) throw new Error('会话正在执行，请稍后核验附件引用');
         return store.acquireReferenceLease();
     }
@@ -1204,17 +1226,18 @@ class PiAgentSupervisor extends EventEmitter {
         finally { for (const file of paths) if (this.moving.get(file) === move) this.moving.delete(file); }
     }
 
-    async withSessionEdit(sessionPath, operation) {
+    async withSessionEdit(sessionPath, operation, { idle = true } = {}) {
         this.assertReferenceWritable();
         if (this.disposing) throw new Error('Pi supervisor is shutting down');
         if (this.removing.has(sessionPath) || this.editing.has(sessionPath) || this.moving.has(sessionPath))
             throw Object.assign(new Error('会话正在处理其他操作，请等待空闲'), { status: 409 });
         const edit = Promise.resolve().then(async () => {
             await this.starting.get(sessionPath);
+            await this.retiring.get(sessionPath);
             if (this.disposing) throw new Error('Pi supervisor is shutting down');
             const worker = this.workers.get(sessionPath);
-            if (worker && (!worker.isIdle() || worker.retainsBackgroundWork())) throw Object.assign(new Error('请等待会话与后台任务空闲后再更改分类'), { status: 409, code: 'SESSION_BUSY' });
-            return worker ? worker.exclusive(() => operation(worker)) : operation(null);
+            if (worker && idle && (!worker.isIdle() || worker.retainsBackgroundWork())) throw Object.assign(new Error('请等待会话与后台任务空闲后再更改分类'), { status: 409, code: 'SESSION_BUSY' });
+            return worker ? worker.exclusive(rpc => operation(worker, rpc), { idle }) : operation(null);
         });
         this.editing.set(sessionPath, edit);
         try { return await edit; }
@@ -1257,7 +1280,7 @@ class PiAgentSupervisor extends EventEmitter {
         const now = Date.now();
         const evictions = [];
         for (const [sessionPath, worker] of this.workers) {
-            if (!worker.canEvict(now, this.idleMs)) continue;
+            if (this.editing.has(sessionPath) || !worker.canEvict(now, this.idleMs)) continue;
             evictions.push(this.stopSession(sessionPath));
         }
         await Promise.allSettled(evictions);

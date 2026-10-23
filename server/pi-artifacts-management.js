@@ -72,7 +72,9 @@ class ArtifactManagement {
             if (catalog.operations.length >= 200) catalog.operations.splice(0, catalog.operations.length - 199);
             const operation = { id: input.requestId, hash: requestHash, at: new Date().toISOString(), result: null };
             await this.library.reserveOperation(operation);
-            catalog.operations.push(operation); await this.library.commit(catalog);
+            // Full results live only in operations/<requestId>.json. Preserve
+            // legacy inline results, but never add another snapshot to catalog.
+            catalog.operations.push({ id: operation.id, hash: operation.hash, at: operation.at }); await this.library.commit(catalog);
             // Client abort never cancels an already reserved mutation. Track until
             // the real write ends; an uncertain response is queried by requestId.
             let result;
@@ -138,7 +140,7 @@ class ArtifactManagement {
                     result = { requestId: input.requestId, results };
                 }
             } catch (error) { result = { requestId: input.requestId, results: [], error: error.status ? error.message : '成果操作未完成，请刷新核对' }; }
-            operation.result = result; await this.library.commit(catalog); await this.library.finishOperation(operation); return result;
+            operation.result = result; await this.library.finishOperation(operation); return result;
         }), signal);
     }
     async collection(catalog, input) {

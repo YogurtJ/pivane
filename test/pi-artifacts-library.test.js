@@ -4,6 +4,7 @@ const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-artif
 for (const p of [agent, cwd, path.join(mediaRoot, 'public/images')]) fs.mkdirSync(p, { recursive: true });
 Object.assign(process.env, { PI_CODING_AGENT_DIR: agent, PI_PROJECT_ROOTS: root, PI_OFFLINE: '1', PI_WEB_DEFERRED_FILE: path.join(agent, 'deferred.json') });
 const { PiSessionStore, getSdk } = require('../server/pi-session-store'), { DeliverableStore, ENTRY } = require('../server/pi-deliverables'), { ArtifactsService } = require('../server/pi-artifacts');
+const { artifactHash } = require('../server/pi-artifacts-library');
 const store = new PiSessionStore(), objects = new DeliverableStore(store), supervisor = { getActiveWorker: () => null };
 const options = { store, supervisor, mediaRoot }, service = new ArtifactsService(options);
 let session, receipt, key, saved, counter = 0;
@@ -189,4 +190,130 @@ test('interrupted purge never restores missing bytes and requires a new confirme
  assert.equal((await service.library.catalog()).deletedVersions[entry.sourceKey], undefined, 'failed final commit rolls back deletedVersions');
  assert.equal((await run('restore', [{ key: entry.id }])).results[0].code, 'ARTIFACT_INCOMPLETE');
  assert.equal((await run('purge', [{ key: entry.id, revision: item.revision }], { confirmed: true })).results[0].deleted, true);
+});
+
+function isolatedLibrary(t, label) {
+ const libraryRoot = path.join(root, label), fixture = new ArtifactsService({ ...options, libraryRoot });
+ t.after(() => fixture.dispose());
+ return { fixture, library: fixture.library, libraryRoot };
+}
+function catalogEntry(index, collections = []) {
+ const sourceKey = artifactHash('budget-source:' + index);
+ return { id: artifactHash('saved:' + sourceKey), sourceKey, sha256: artifactHash('x'), size: 1, revision: 1,
+  name: 'report-' + index + '-' + '界'.repeat(60) + '.txt', originalName: 'original-' + index + '.txt', kind: 'document',
+  savedAt: '2026-10-23T00:00:00.000Z', favorite: false, collections, trashedAt: null, hiddenAt: null };
+}
+test('catalog rejects actual JSON bytes over 16 MiB even when compact JSON fits, preserving the readable previous catalog', async t => {
+ const { library, libraryRoot } = isolatedLibrary(t, 'catalog-byte-budget'), catalog = await library.catalog(true);
+ const saved = await library.save(catalog, artifactHash('previous readable file'), Buffer.from('previous readable bytes'), { name: 'previous.txt', kind: 'document' });
+ const file = path.join(libraryRoot, 'catalog.json'), previous = fs.readFileSync(file), revision = catalog.revision;
+ catalog.collections = Array.from({ length: 75 }, (_, i) => ({ id: artifactHash('budget-collection:' + i), name: 'Collection ' + i }));
+ const ids = catalog.collections.map(c => c.id);
+ catalog.entries = Array.from({ length: 50 }, (_, i) => catalogEntry(i, [...ids]));
+ catalog.operations = ids.map((id, i) => ({ id: 'legacy-budget-' + i, hash: id, at: '2026-10-23T00:00:00.000Z', result: {
+  requestId: 'legacy-budget-' + i, results: catalog.entries.map(e => ({ key: e.id, ok: true, item: library.item({ ...e, collections: ids.slice(0, i + 1) }) }))
+ } }));
+ const compact = Buffer.byteLength(JSON.stringify(catalog)), actual = Buffer.byteLength(JSON.stringify(catalog, null, 2) + '\n');
+ assert.ok(compact < 16 * 1024 ** 2, 'fixture fits the old compact budget: ' + compact);
+ assert.ok(actual > 16 * 1024 ** 2, 'fixture exceeds the on-disk budget: ' + actual);
+ t.diagnostic('catalog budget fixture: compact=' + compact + ' bytes; actual=' + actual + ' bytes');
+ await assert.rejects(library.commit(catalog), { code: 'ARTIFACT_LIMIT', status: 413 });
+ assert.deepEqual(fs.readFileSync(file), previous);
+ assert.equal(catalog.revision, revision, 'failed commit does not advance the in-memory revision');
+ assert.equal((await library.catalog()).revision, revision);
+ assert.equal((await library.list()).total, 1);
+ assert.equal((await library.content(saved)).bytes.toString(), 'previous readable bytes');
+});
+test('operation reservation and completion enforce their own actual 1 MiB budget without replacing pending evidence', async t => {
+ const { library } = isolatedLibrary(t, 'operation-byte-budget'), id = 'operation-budget-once';
+ const pending = { id, hash: artifactHash('operation budget'), at: '2026-10-23T00:00:00.000Z', result: null };
+ await library.reserveOperation(pending);
+ const file = await library.operationPath(id), previous = fs.readFileSync(file), ids = Array.from({ length: 100 }, (_, i) => artifactHash('operation-collection:' + i));
+ const result = { requestId: id, results: Array.from({ length: 50 }, (_, i) => ({ key: artifactHash('operation-file:' + i), ok: true, item: library.item(catalogEntry(i, ids)) })) };
+ const completed = { ...pending, result }, limit = 1024 ** 2;
+ result.results[0].item.model = '界'.repeat(Math.floor((limit - Buffer.byteLength(JSON.stringify(completed)) - 100) / 3));
+ assert.ok(Buffer.byteLength(JSON.stringify(completed)) < limit);
+ assert.ok(Buffer.byteLength(JSON.stringify(completed, null, 2) + '\n') > limit);
+ t.diagnostic('operation budget fixture: compact=' + Buffer.byteLength(JSON.stringify(completed)) + ' bytes; actual=' + Buffer.byteLength(JSON.stringify(completed, null, 2) + '\n') + ' bytes');
+ await assert.rejects(library.finishOperation(completed), { code: 'ARTIFACT_LIMIT', status: 413 });
+ assert.deepEqual(fs.readFileSync(file), previous);
+ assert.deepEqual(await library.operation(id), pending);
+ const oversized = { ...completed, id: 'oversized-reservation-once' };
+ await assert.rejects(library.reserveOperation(oversized), { code: 'ARTIFACT_LIMIT', status: 413 });
+ assert.equal(fs.existsSync(await library.operationPath(oversized.id)), false);
+ const receipt = { requestId: id, results: [{ key: artifactHash('operation-file:0'), ok: false, error: '明确失败' }] };
+ await library.finishOperation({ ...pending, result: receipt });
+ assert.deepEqual((await library.operation(id)).result, receipt);
+});
+test('real batches grow fifty files through seventy-five collections while keeping results only in durable operation files', async t => {
+ const { fixture, library, libraryRoot } = isolatedLibrary(t, 'collection-growth');
+ const entries = await library.mutation(async catalog => {
+  const entries = [];
+  for (let i = 0; i < 50; i++) entries.push(await library.save(catalog, artifactHash('growth-source:' + i), Buffer.from('x'), { name: 'file-' + i + '.txt', kind: 'document', createdAt: '2026-10-23T00:00:00.000Z' }));
+  return entries;
+ });
+ const files = entries.map(e => ({ key: e.id })); let firstInput, firstResult, lastResult, collectionId;
+ for (let i = 0; i < 75; i++) {
+  const created = await fixture.management.batch({ requestId: 'growth-create-' + i, action: 'collection-create', name: 'Collection ' + i });
+  assert.equal(created.collections.length, i + 1); collectionId = created.collections[i].id;
+  const input = { requestId: 'growth-add-' + i, action: 'collection-add', files, collectionId };
+  lastResult = await fixture.management.batch(input);
+  assert.equal(lastResult.results.length, 50);
+  assert.ok(lastResult.results.every(r => r.ok && r.item.collections.length === i + 1));
+  const catalog = await library.catalog();
+  assert.ok(catalog.operations.every(o => !Object.hasOwn(o, 'result')), 'catalog contains summaries; full results remain in operation files');
+  assert.deepEqual((await library.operation(input.requestId)).result, lastResult);
+  if (i === 0) { firstInput = input; firstResult = lastResult; }
+ }
+ // Roll the catalog summary window past the original request without losing its
+ // durable result or allowing the old request to act on the current entries.
+ for (let i = 0; i < 52; i++) await fixture.management.batch({ requestId: 'growth-rename-' + i, action: 'collection-rename', collectionId, name: 'Renamed ' + i });
+ const catalog = await library.catalog(), file = path.join(libraryRoot, 'catalog.json'), previous = fs.readFileSync(file);
+ assert.equal(catalog.operations.length, 200); assert.equal(catalog.operations.some(o => o.id === firstInput.requestId), false);
+ assert.equal(catalog.collections.length, 75); assert.ok(catalog.entries.every(e => e.collections.length === 75));
+ assert.equal(fs.readdirSync(path.join(libraryRoot, 'operations')).length, 202);
+ assert.ok(previous.length < 1024 ** 2, 'bounded catalog without repeated response snapshots');
+ t.diagnostic('real growth: 50 files, 75 collections, 202 operation files; catalog=' + previous.length + ' bytes');
+ const restarted = new ArtifactsService({ ...options, libraryRoot }); t.after(() => restarted.dispose());
+ assert.deepEqual(await restarted.management.batch(firstInput), firstResult);
+ assert.deepEqual(await restarted.management.result('growth-add-74'), lastResult);
+ await assert.rejects(restarted.management.batch({ ...firstInput, collectionId: artifactHash('different collection') }), { code: 'ARTIFACT_CONFLICT' });
+ assert.deepEqual(fs.readFileSync(file), previous);
+});
+test('legacy inline operation results stay readable and intact when new summaries are committed', async t => {
+ const { fixture, library, libraryRoot } = isolatedLibrary(t, 'legacy-operation-results');
+ const input = { requestId: 'legacy-completed-once', action: 'collection-create', name: 'Legacy' };
+ const result = { requestId: input.requestId, results: [], collections: [{ id: artifactHash('legacy collection'), name: input.name }] };
+ const operation = { id: input.requestId, hash: artifactHash(JSON.stringify(input)), at: '2026-10-23T00:00:00.000Z', result };
+ await library.reserveOperation({ ...operation, result: null }); await library.finishOperation(operation);
+ const catalog = await library.catalog(true); catalog.collections = result.collections; catalog.operations.push(operation); await library.commit(catalog);
+ const operationBytes = fs.readFileSync(await library.operationPath(input.requestId));
+ assert.deepEqual(await fixture.management.batch(input), result);
+ await fixture.management.batch({ requestId: 'new-summary-once', action: 'collection-create', name: 'New' });
+ assert.deepEqual((await library.catalog()).operations.find(o => o.id === operation.id), operation, 'legacy result is not silently discarded or migrated');
+ assert.deepEqual(fs.readFileSync(await library.operationPath(input.requestId)), operationBytes);
+ const restarted = new ArtifactsService({ ...options, libraryRoot }); t.after(() => restarted.dispose());
+ assert.deepEqual(await restarted.management.result(input.requestId), result);
+});
+test('interrupted completion after saving bytes leaves a pending request that never replays after restart', async t => {
+ const { fixture, library, libraryRoot } = isolatedLibrary(t, 'save-before-receipt');
+ const bytes = Buffer.from('durable before receipt'), sourceKey = artifactHash('interrupted source'); let reads = 0;
+ fixture.management.source = async () => { reads++; return { bytes, metadata: { name: 'interrupted.txt', kind: 'document' } }; };
+ const finish = library.finishOperation;
+ library.finishOperation = async () => { throw Error('injected completion failure after durable save'); };
+ const input = { requestId: 'interrupted-save-once', action: 'save', files: [{ key: sourceKey }] };
+ try { await assert.rejects(fixture.management.batch(input), /injected completion failure/); }
+ finally { library.finishOperation = finish; }
+ const catalog = await library.catalog(), entry = catalog.entries[0], file = path.join(libraryRoot, 'catalog.json'), previous = fs.readFileSync(file);
+ assert.equal(catalog.entries.length, 1); assert.equal(reads, 1);
+ assert.deepEqual((await library.content(entry)).bytes, bytes);
+ assert.equal((await library.operation(input.requestId)).result, null);
+ assert.ok(!Object.hasOwn(catalog.operations[0], 'result'));
+ const restarted = new ArtifactsService({ ...options, libraryRoot }); t.after(() => restarted.dispose());
+ restarted.management.source = async () => { throw Error('pending request must not read source again'); };
+ await assert.rejects(restarted.management.batch(input), { code: 'ARTIFACT_INCOMPLETE' });
+ await assert.rejects(restarted.management.batch({ ...input, action: 'favorite', favorite: true }), { code: 'ARTIFACT_CONFLICT' });
+ assert.deepEqual(await restarted.management.result(input.requestId), { requestId: input.requestId, pending: true, noReplay: true });
+ assert.deepEqual(fs.readFileSync(file), previous);
+ assert.deepEqual((await restarted.library.content(entry)).bytes, bytes);
 });

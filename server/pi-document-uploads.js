@@ -71,8 +71,11 @@ class DocumentUploads {
     async session(input) {
         if (typeof input.cwd !== 'string' || typeof input.sessionId !== 'string' || !input.sessionId || input.sessionId.length > 160) throw invalid();
         const session = await this.store.getSession(input.cwd, input.sessionId);
-        if (this.supervisor.removing.has(session.path) || this.supervisor.moving.has(session.path)) throw fail('会话正在删除或移动', 409, 'DOCUMENT_CONTEXT');
+        this.assertSessionAvailable(session);
         return session;
+    }
+    assertSessionAvailable(session) {
+        if (this.supervisor.removing.has(session.path) || this.supervisor.moving.has(session.path)) throw fail('会话正在删除或移动', 409, 'DOCUMENT_CONTEXT');
     }
     checkDeleted(root, id) {
         const directory = path.join(root, '.storage-deleted');
@@ -100,6 +103,7 @@ class DocumentUploads {
         if (input.format === 'image') require('./pi-image-context').decodeImage({ data: bytes.toString('base64') }, '新上传');
         const current = await this.session(input);
         if (session.path !== current.path || session.cwd !== current.cwd || this.closed || this.isSuspended()) throw fail('会话已变化，原上传未提交', 409, 'DOCUMENT_CONTEXT');
+        const source = await require('./pi-document-move-access').nativeSource(current);
         if (this.writing) throw fail('文档附件正在保存，请稍后再试', 429, 'DOCUMENT_BUSY');
         this.writing = true;
         try {
@@ -113,6 +117,8 @@ class DocumentUploads {
                 await this.bytes(existing); return { reference, marker: refs.marker(reference), reused: true };
             }
             let total = 0, sessionTotal = 0;
+            const residualCache = {}, residualProofs = [];
+            const { deletionResidual, verifyAll } = require('./pi-document-storage-references');
             const names = fs.readdirSync(root).filter(name => {
                 if (['.storage-deleted', '.storage-receipts'].includes(name)) {
                     require('./pi-document-storage-references').prove(path.join(root, name), true); return false;
@@ -131,6 +137,12 @@ class DocumentUploads {
                     continue;
                 }
                 if (!idPattern.test(name)) throw fail('文档存储包含未识别项目', 409, 'DOCUMENT_CHANGED');
+                const residual = deletionResidual(root, name, residualCache);
+                if (residual) {
+                    residualProofs.push(...residual.proofs); total += residual.bytes;
+                    if (!residual.manifest || residual.manifest.cwd === session.cwd && residual.manifest.sessionId === session.id) sessionTotal += residual.bytes;
+                    continue;
+                }
                 const object = await this.object(name);
                 total += object.manifest.reference.size;
                 if (object.manifest.cwd === session.cwd && object.manifest.sessionId === session.id) sessionTotal += object.manifest.reference.size;
@@ -138,12 +150,13 @@ class DocumentUploads {
             if (total + bytes.length > MAX_STORAGE || sessionTotal + bytes.length > MAX_SESSION_BYTES) throw fail('文档存储额度已满（每线程 256 MiB，实例 2 GiB），请通过附件管理整理', 413, 'DOCUMENT_STORAGE');
             // No await between final identity checks and private, exclusive writes.
             await this.session(input);
+            verifyAll(residualProofs);
             if (this.closed || this.isSuspended()) throw fail('文档服务正在关闭', 503, 'DOCUMENT_BUSY');
             const temporary = path.join(root, '.upload-' + require('node:crypto').randomUUID());
             const folder = privateDir(temporary);
             try {
                 writePrivateFileSync(path.join(folder, 'original'), bytes, true);
-                atomicJson(path.join(folder, 'manifest.json'), { version: 1, cwd: session.cwd, sessionId: session.id, requestId: input.requestId, createdAt: new Date().toISOString(), reference });
+                atomicJson(path.join(folder, 'manifest.json'), { version: 1, cwd: session.cwd, sessionId: session.id, requestId: input.requestId, createdAt: new Date().toISOString(), reference, source });
                 fs.renameSync(folder, path.join(root, id));
                 if (process.platform !== 'win32') { const fd = fs.openSync(root, 'r'); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); } }
             } finally {
@@ -169,12 +182,18 @@ class DocumentUploads {
         const initial = await this.branch(input), object = await this.object(input.id);
         const ref = object.manifest.reference;
         const attached = initial.references.some(item => refs.marker(item) === refs.marker(ref));
-        const ownUpload = draft && object.manifest.cwd === initial.session.cwd && object.manifest.sessionId === initial.session.id;
-        const access = !attached && !ownUpload && draft ? await require('./pi-session-fork-access').readForkAccess(this.store, initial.session) : null;
+        let ownUpload = draft && object.manifest.cwd === initial.session.cwd && object.manifest.sessionId === initial.session.id;
+        let uploadSource = null;
+        if (ownUpload && object.manifest.source) {
+            uploadSource = await require('./pi-document-move-access').nativeSource(initial.session);
+            ownUpload = JSON.stringify(uploadSource) === JSON.stringify(object.manifest.source);
+        }
+        const moveRevision = !attached && !ownUpload && draft ? await require('./pi-document-move-access').readMoveDraftAccess(this.store, initial.session, object.manifest) : null;
+        const access = !attached && !ownUpload && !moveRevision && draft ? await require('./pi-session-fork-access').readForkAccess(this.store, initial.session) : null;
         const inheritedDraft = access?.documents.some(item => refs.marker(item) === refs.marker(ref));
-        if (!attached && !ownUpload && !inheritedDraft) throw fail('文档附件不属于当前会话分支', 403, 'DOCUMENT_SCOPE');
+        if (!attached && !ownUpload && !moveRevision && !inheritedDraft) throw fail('文档附件不属于当前会话分支', 403, 'DOCUMENT_SCOPE');
         const bytes = await this.bytes(object);
-        return { initial, object, bytes, reference: ref, attached, draftRevision: inheritedDraft ? access.revision : null };
+        return { initial, object, bytes, reference: ref, attached, uploadSource: ownUpload ? uploadSource : null, moveRevision, draftRevision: inheritedDraft ? access.revision : null };
     }
     async checkCurrent(input, authorized) {
         if (authorized.draftRevision) {
@@ -183,7 +202,13 @@ class DocumentUploads {
                 throw fail('文档草稿来源已变化，请重新读取', 409, 'DOCUMENT_CONTEXT');
         }
         const current = await this.branch(input);
+        if (authorized.moveRevision && await require('./pi-document-move-access').readMoveDraftAccess(this.store, current.session, authorized.object.manifest) !== authorized.moveRevision
+            || authorized.uploadSource && JSON.stringify(await require('./pi-document-move-access').nativeSource(current.session)) !== JSON.stringify(authorized.uploadSource))
+            throw fail('文档草稿来源已变化，请重新读取', 409, 'DOCUMENT_CONTEXT');
+        this.assertSessionAvailable(current.session);
+        const worker = this.supervisor.getActiveWorker(current.session.path) ?? undefined;
         if (current.session.path !== authorized.initial.session.path || current.worker !== authorized.initial.worker
+            || current.worker !== worker || worker?.disposed || worker?.restarting
             || authorized.attached && !current.references.some(ref => refs.marker(ref) === refs.marker(authorized.reference))) throw fail('会话分支已变化，请重新读取', 409, 'DOCUMENT_CONTEXT');
     }
     async read(worker, raw, signal, { reserved = false } = {}) {

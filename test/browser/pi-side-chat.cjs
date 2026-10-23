@@ -478,7 +478,7 @@ async function run(browser, viewport, theme, fullContext = true, retention = ful
     console.log(`Side chat ${viewport.width}x${viewport.height} (${fullContext ? 'full context' : 'legacy backend'}): passed`);
 }
 (async () => {
-    const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
+    const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
     try {
         for (const [viewport, theme] of [[{ width: 1440, height: 1000 }, 'daylight'], [{ width: 393, height: 852 }, 'mint'], [{ width: 412, height: 915 }, 'dark'], [{ width: 1024, height: 768 }, 'daylight'], [{ width: 320, height: 740 }, 'daylight'], [{ width: 852, height: 430 }, 'dark']]) if (!process.env.PI_SIDE_VIEWPORT || process.env.PI_SIDE_VIEWPORT === String(viewport.width)) await run(browser, viewport, theme);
         if (!process.env.PI_SIDE_VIEWPORT || process.env.PI_SIDE_VIEWPORT === 'legacy') await run(browser, { width: 393, height: 852 }, 'daylight', false);

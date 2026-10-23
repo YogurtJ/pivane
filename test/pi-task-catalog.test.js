@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { TaskCatalog } = require('../server/pi-task-catalog');
+const { AgentMessages } = require('../server/pi-agent-messages');
+const { MESSAGE_OUT, MESSAGE_IN, messageIdFor, outboundMessage } = require('../server/pi-agent-message-format');
 function fixture(t, limits = {}) {
     const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'pivane-task-index-')));
     const cwd = path.join(root, 'project'), directory = path.join(root, 'sessions');
@@ -20,6 +22,105 @@ async function complete(catalog, cwd) {
     for (let i = 0; i < 300; i++) { const value = await catalog.refresh(cwd); if (value.complete) return value; }
     throw new Error('Index did not finish');
 }
+for (const deliveredCount of [2, 2000]) test(`${deliveredCount} completed outbound messages cannot hide later pending intents from cold recovery`, async t => {
+    const f = fixture(t, { outboxPerSession: deliveredCount });
+    const messages = [...Array.from({ length: deliveredCount }, (_, index) => `old-${index}`), 'pending-three'].map(requestId => outboundMessage({
+        version: 1, messageId: messageIdFor('sender', requestId), requestId,
+        from: { sessionId: 'sender', cwd: f.cwd, name: 'Sender' }, to: { sessionId: 'target', cwd: f.cwd, name: 'Target' },
+        text: requestId, wake: false, hop: 0, wakeSuppressed: null, conversationId: messageIdFor('sender', requestId), replyTo: null, sentAt: new Date().toISOString()
+    }));
+    f.write('sender.jsonl', [f.header('sender'), ...messages.map(data => ({ type: 'custom', customType: MESSAGE_OUT, data }))]);
+    f.write('target.jsonl', [f.header('target'), ...messages.slice(0, deliveredCount).map(message => ({ type: 'custom_message', customType: MESSAGE_IN, details: { messageId: message.messageId } }))]);
+    const ready = await complete(f.catalog, f.cwd);
+    assert.equal(ready.complete, true);
+    const sender = f.catalog.threads(await f.catalog.project(f.cwd)).find(row => row.id === 'sender');
+    assert.equal(sender.outbox.length, deliveredCount + 1, 'delivered routing identities must not occupy pending-message slots');
+    assert.deepEqual(sender.outbox.filter(message => message.text !== undefined).map(message => message.requestId), ['pending-three']);
+    await f.catalog.dispose();
+    const cold = new TaskCatalog({ store: f.catalog.store, directory: () => f.directory, limits: { outboxPerSession: deliveredCount } });
+    const source = { cwd: f.cwd, sessionId: 'sender' };
+    const service = new AgentMessages({ catalog: cold, supervisor: { workers: new Map([['sender', source]]), getActiveWorker: () => null }, limits: { pumpMs: 1e9, recoveryMs: 0 } });
+    t.after(async () => { await service.dispose(); await cold.dispose(); });
+    await service.recover();
+    assert.deepEqual([...service.queue.keys()], [messages.at(-1).messageId]);
+    assert.equal((await service.lookup(source, { messageId: messages.at(-1).messageId })).status, 'waiting-for-recipient');
+});
+
+test('too many pending outbound intents fail explicitly instead of reporting a truncated complete catalog', async t => {
+    const f = fixture(t, { outboxPerSession: 2 });
+    const pending = Array.from({ length: 3 }, (_, index) => {
+        const requestId = `pending-${index}`;
+        return { type: 'custom', customType: MESSAGE_OUT, data: outboundMessage({ version: 1, messageId: messageIdFor('sender', requestId), requestId,
+            from: { sessionId: 'sender', cwd: f.cwd }, to: { sessionId: 'target', cwd: f.cwd }, text: requestId, wake: false, hop: 0,
+            conversationId: messageIdFor('sender', requestId), replyTo: null, sentAt: new Date().toISOString() }) };
+    });
+    f.write('sender.jsonl', [f.header('sender'), ...pending]);
+    f.write('target.jsonl', [f.header('target')]);
+    await assert.rejects(f.catalog.refresh(f.cwd), error => error.code === 'TASK_OUTBOX_LIMIT');
+    assert.equal((await f.catalog.project(f.cwd)).complete, false);
+    // Completing one message releases the pending budget without deleting any source record.
+    fs.appendFileSync(path.join(f.directory, 'target.jsonl'), JSON.stringify({ type: 'custom_message', customType: MESSAGE_IN,
+        details: { messageId: pending[0].data.messageId } }) + '\n');
+    assert.equal((await complete(f.catalog, f.cwd)).complete, true);
+    assert.equal(f.catalog.threads(await f.catalog.project(f.cwd)).find(row => row.id === 'sender').outbox.length, 3);
+});
+
+test('cold recovery indexes delivered bodies larger than the metadata budget without retaining those bodies', async t => {
+    const f = fixture(t, { batchBytes: 8192, metadataBytes: 65536 });
+    const make = index => {
+        const requestId = `large-${index}`;
+        return { type: 'custom', customType: MESSAGE_OUT, data: outboundMessage({ version: 1, messageId: messageIdFor('sender', requestId), requestId,
+            from: { sessionId: 'sender', cwd: f.cwd }, to: { sessionId: 'target', cwd: f.cwd }, text: index === 40 ? 'still pending' : 'x'.repeat(4000),
+            wake: false, hop: 0, conversationId: messageIdFor('sender', requestId), replyTo: null, sentAt: new Date().toISOString() }) };
+    };
+    const outbound = Array.from({ length: 41 }, (_, index) => make(index));
+    f.write('a-sender.jsonl', [f.header('sender'), ...outbound]);
+    f.write('z-target.jsonl', [f.header('target'), ...outbound.slice(0, 40).map(entry => ({ type: 'custom_message', customType: MESSAGE_IN, details: { messageId: entry.data.messageId } }))]);
+    assert.ok(fs.statSync(path.join(f.directory, 'a-sender.jsonl')).size > f.catalog.limits.metadataBytes);
+    assert.equal((await complete(f.catalog, f.cwd)).complete, true);
+    const source = f.catalog.threads(await f.catalog.project(f.cwd)).find(row => row.id === 'sender');
+    assert.equal(source.outbox.length, 41);
+    assert.deepEqual(source.outbox.filter(message => message.text !== undefined).map(message => message.text), ['still pending']);
+    assert.ok((await f.catalog.project(f.cwd)).metadataBytes <= f.catalog.limits.metadataBytes);
+});
+
+test('repeated metadata-budget failures discard derived state instead of accumulating it', async t => {
+    const f = fixture(t, { batchBytes: 8192, metadataBytes: 8192 });
+    const outbound = Array.from({ length: 8 }, (_, index) => {
+        const requestId = `pending-large-${index}`;
+        return { type: 'custom', customType: MESSAGE_OUT, data: outboundMessage({ version: 1, messageId: messageIdFor('sender', requestId), requestId,
+            from: { sessionId: 'sender', cwd: f.cwd }, to: { sessionId: 'target', cwd: f.cwd }, text: 'x'.repeat(4000), wake: false, hop: 0,
+            conversationId: messageIdFor('sender', requestId), replyTo: null, sentAt: new Date().toISOString() }) };
+    });
+    f.write('sender.jsonl', [f.header('sender'), ...outbound]); f.write('target.jsonl', [f.header('target')]);
+    for (let attempt = 0; attempt < 3; attempt++) {
+        await assert.rejects(f.catalog.refresh(f.cwd), error => error.code === 'TASK_METADATA_LIMIT');
+        const project = await f.catalog.project(f.cwd);
+        assert.equal(project.complete, false); assert.equal(project.files.size, 0); assert.equal(project.metadataBytes, 0);
+        assert.equal(project.outboundRead, null);
+    }
+});
+
+test('located pending-body reads revalidate native identity and discard a change between header and body', async t => {
+    const f = fixture(t);
+    const requestId = 'located', messageId = messageIdFor('sender', requestId);
+    const file = f.write('sender.jsonl', [f.header('sender'), { type: 'custom', customType: MESSAGE_OUT, data: outboundMessage({ version: 1, messageId, requestId,
+        from: { sessionId: 'sender', cwd: f.cwd }, to: { sessionId: 'target', cwd: f.cwd }, text: 'pending body', wake: false, hop: 0,
+        conversationId: messageId, replyTo: null, sentAt: new Date().toISOString() }) }]);
+    f.write('target.jsonl', [f.header('target')]);
+    const readBatch = f.catalog.readBatch.bind(f.catalog); let changed = false;
+    f.catalog.readBatch = (...args) => {
+        const bytes = readBatch(...args);
+        if (args[1].selectOutboundId && !changed) {
+            changed = true; fs.appendFileSync(file, JSON.stringify({ type: 'session_info', name: 'changed during body read' }) + '\n');
+        }
+        return bytes;
+    };
+    assert.equal((await complete(f.catalog, f.cwd)).complete, true); assert.equal(changed, true);
+    const source = f.catalog.threads(await f.catalog.project(f.cwd)).find(row => row.id === 'sender');
+    assert.equal(source.name, 'changed during body read'); assert.equal(source.outbox[0].text, 'pending body');
+});
+
 test('large histories are indexed in resumable batches, unchanged bodies are not re-read, and legacy task metadata survives', async t => {
     const f = fixture(t, { batchBytes: 2 * 1024 * 1024, milliseconds: 1000, refreshMilliseconds: 0 });
     f.write('parent.jsonl', [f.header('parent')]);

@@ -11,10 +11,6 @@ function serviceError(message, statusCode = 500) {
     return error;
 }
 
-function cleanBaseUrl(value, fallback) {
-    return String(value || fallback).replace(/\/+$/, '');
-}
-
 function clampNumber(value, fallback, min, max) {
     const number = Number(value);
     if (!Number.isFinite(number)) return fallback;
@@ -74,7 +70,7 @@ function validateRegistry(registry) {
     for (const provider of registry.providers) {
         if (!provider.id || providerIds.has(provider.id)) throw new Error(`Invalid or duplicate TTS provider id: ${provider.id || ''}`);
         providerIds.add(provider.id);
-        if (!['breeze-gpu', 'qwen3-gpu', 'minimax'].includes(provider.adapter)) throw new Error(`Unsupported TTS adapter: ${provider.adapter}`);
+        if (!['breeze-gpu', 'qwen3-gpu'].includes(provider.adapter)) throw new Error(`Unsupported TTS adapter: ${provider.adapter}`);
         if (!Array.isArray(provider.models) || !provider.models.length) throw new Error(`TTS provider ${provider.id} has no models`);
         const modelIds = new Set();
         for (const model of provider.models) {
@@ -195,25 +191,20 @@ class TtsProviderService {
     constructor(options = {}) {
         this.rootDir = path.resolve(options.rootDir || path.join(__dirname, '..'));
         this.configPath = path.resolve(options.configPath || path.join(this.rootDir, 'config', 'tts-providers.json'));
-        this.fetch = options.fetch;
         this.gpuExec = options.gpuExec ?? process.env.GPU_EXEC ?? '';
         this.registry = this.loadRegistry();
     }
 
     loadRegistry() {
-        const registry = validateRegistry(JSON.parse(fs.readFileSync(this.configPath, 'utf8')));
-        const minimax = registry.providers.find(provider => provider.adapter === 'minimax');
-        if (minimax) {
-            const model = minimax.models[0];
-            if (process.env.MINIMAX_TTS_MODEL) model.id = process.env.MINIMAX_TTS_MODEL;
-            if (process.env.MINIMAX_TTS_VOICE) {
-                model.defaultVoice = process.env.MINIMAX_TTS_VOICE;
-                if (!model.voices.some(voice => voice.id === model.defaultVoice)) {
-                    model.voices.unshift({ id: model.defaultVoice, name: model.defaultVoice });
-                }
-            }
-        }
-        return registry;
+        const saved = JSON.parse(fs.readFileSync(this.configPath, 'utf8'));
+        if (saved?.version !== 1 || !Array.isArray(saved.providers)) return validateRegistry(saved);
+        // Retired adapters are ignored only in the in-memory compatibility view.
+        // Keep the saved registry and historical audio intact, and never expose
+        // an executable provider or documentation link for a retired entry.
+        const providers = saved.providers.filter(provider => provider?.adapter !== 'minimax');
+        const retiredDefault = saved.providers.some(provider => provider?.adapter === 'minimax' && provider.id === saved.defaultProvider);
+        return validateRegistry({ ...saved, providers,
+            ...(retiredDefault ? { defaultProvider: providers.find(provider => provider?.enabled !== false)?.id || providers[0]?.id || '' } : {}) });
     }
 
     getProvider(providerId) {
@@ -229,7 +220,6 @@ class TtsProviderService {
                 return false;
             }
         }
-        if (provider.adapter === 'minimax') return Boolean(this.getMiniMaxApiKey());
         return false;
     }
 
@@ -347,7 +337,6 @@ class TtsProviderService {
         const request = this.resolveRequest(input);
         if (request.provider.adapter === 'breeze-gpu') return this.requestBreezeSpeech(request);
         if (request.provider.adapter === 'qwen3-gpu') return this.requestQwen3Speech(request);
-        if (request.provider.adapter === 'minimax') return this.requestMiniMaxSpeech(request);
         throw serviceError('Unsupported TTS provider adapter', 500);
     }
 
@@ -530,71 +519,6 @@ class TtsProviderService {
             options: request.options,
             warning: null,
             extraInfo: instruction ? { instruction } : null
-        };
-    }
-
-    getMiniMaxApiKey() {
-        return process.env.MINIMAX_API_KEY || process.env.MIMIMAX_API_KEY || '';
-    }
-
-    decodeMiniMaxAudio(data) {
-        if (data?.data?.audio) return Buffer.from(data.data.audio, 'hex');
-        if (data?.audio) return Buffer.from(data.audio, 'hex');
-        return null;
-    }
-
-    async fetchMiniMax(payload, allowRetry = true) {
-        if (!this.fetch) throw serviceError('TTS fetch implementation is unavailable');
-        const baseUrl = cleanBaseUrl(process.env.MINIMAX_TTS_BASE_URL, 'https://mimimax.cn/v1');
-        const response = await this.fetch(`${baseUrl}/audio/speech`, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${this.getMiniMaxApiKey()}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
-        const contentType = response.headers.get('content-type') || '';
-        const raw = await response.buffer();
-        if (response.ok && contentType.includes('audio/')) {
-            return { audio: raw, mimeType: contentType.split(';')[0], warning: null };
-        }
-        let data = null;
-        try { data = JSON.parse(raw.toString('utf8')); } catch {}
-        const providerError = data?.base_resp?.status_code !== undefined && data.base_resp.status_code !== 0;
-        if (response.ok && !providerError) {
-            const decoded = this.decodeMiniMaxAudio(data);
-            if (decoded) return { audio: decoded, mimeType: 'audio/mpeg', warning: null, extraInfo: data.extra_info || null };
-        }
-        if (allowRetry && payload.speed !== undefined) {
-            const retry = await this.fetchMiniMax({ model: payload.model, input: payload.input, voice: payload.voice }, false);
-            retry.warning = 'MiniMax 未接受语速参数，已自动使用默认语速重试。';
-            return retry;
-        }
-        const message = data?.error || data?.base_resp?.status_msg || raw.toString('utf8') || 'MiniMax TTS failed';
-        throw serviceError(message, response.ok ? 502 : response.status);
-    }
-
-    async requestMiniMaxSpeech(request) {
-        const result = await this.fetchMiniMax({
-            model: request.model.id,
-            input: request.text,
-            voice: request.voice.id,
-            speed: request.speed,
-            response_format: 'mp3'
-        });
-        return {
-            ...result,
-            extension: result.mimeType === 'audio/wav' ? 'wav' : 'mp3',
-            provider: request.provider.id,
-            providerName: request.provider.name,
-            model: request.model.id,
-            voice: request.voice.id,
-            voiceName: request.voice.name,
-            language: request.language.id,
-            languageName: request.language.name,
-            speed: request.speed,
-            options: request.options
         };
     }
 }

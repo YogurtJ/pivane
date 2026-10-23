@@ -26,7 +26,7 @@ function fixture(t) {
     const sends = [], media = [], s = Object.create(ChannelsService.prototype);
     Object.assign(s, { db, ready: Promise.resolve(), stopping: false, error: null, mutating: false, runs: new Map(), operations: new Set(), isSuspended: () => false,
         canNotifyScheduled: () => true,
-        store: { withSessionRead: async (_cwd, _id, fn) => fn({}, { manager: () => ({ getSessionId: () => 'thread', getBranch: () => branch }), validate() {} }) },
+        store: { withSessionRead: async (_cwd, _id, fn) => fn({}, { manager: () => ({ getSessionId: () => 'thread', getBranch: () => branch, getEntries: () => branch }), validate() {} }) },
         adapter: { send: async (_a, _p, text) => { sends.push(text); return {}; }, sendMedia: async (_a, _p, value) => { media.push(value); return {}; } },
         deliverables: { manifest: async () => ({ manifest: { files: [] } }), root: async () => root },
         mediaRoot: root });

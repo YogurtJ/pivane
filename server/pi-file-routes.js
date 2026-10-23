@@ -1,4 +1,5 @@
 const { DeliverableService } = require('./pi-deliverables');
+const { takeHttpOperationCompletion } = require('./pi-maintenance-client');
 function mountFilePreviews(router, { files, store, supervisor, access }) {
     const deliveries = new DeliverableService({ store, supervisor });
     const route = action => async (req, res) => {
@@ -11,6 +12,7 @@ function mountFilePreviews(router, { files, store, supervisor, access }) {
     router.get('/files/preview', route(input => files.preview(input)));
     router.get('/deliverables', route(input => deliveries.request(input)));
     const download = action => async (req, res) => {
+        const complete = takeHttpOperationCompletion(req);
         const controller = new AbortController();
         const cancel = () => { if (!res.writableFinished) controller.abort(); };
         res.once('close', cancel);
@@ -25,7 +27,7 @@ function mountFilePreviews(router, { files, store, supervisor, access }) {
                 for (const name of ['Content-Length', 'Content-Disposition', 'Content-Type']) res.removeHeader(name);
                 res.status(error.status || 500).json({ error: error.status ? error.message : '文件下载未完成', code: error.code || 'FILE_READ' });
             }
-        } finally { res.off('close', cancel); }
+        } finally { res.off('close', cancel); complete(); }
     };
     router.get('/files/download', download((input, options) => files.download(input, options)));
     router.get('/deliverables/download', download((input, options) => deliveries.request(input, options)));

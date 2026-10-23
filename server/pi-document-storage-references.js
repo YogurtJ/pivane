@@ -3,6 +3,8 @@ const path = require('node:path');
 const io = require('./pi-file-io');
 const { descriptorPathSync } = require('./pi-file-descriptor');
 const { fail } = require('./pi-file-scope');
+const { readSafe, hash } = require('./pi-maintenance-files');
+const documents = require('../public/pi-document-references');
 const { NativeDocumentScope, sessionPathFields } = require('./pi-document-native-scope');
 const stamp = stat => ['dev', 'ino', 'mode', 'size', 'mtimeNs', 'ctimeNs'].map(k => String(stat[k])).join(':');
 const changed = () => fail('附件或保存引用已变化，请重新预览', 409, 'DOCUMENT_STORAGE_CHANGED');
@@ -121,7 +123,7 @@ function prove(file, directory = false) {
     const fd = io.openReadSync(file);
     try {
         if (descriptorPathSync(fd) !== file || stamp(stat) !== stamp(fs.fstatSync(fd, { bigint: true }))) throw changed();
-        return { file, directory, stamp: stamp(stat), identity: io.identity(fd), names: directory ? fs.readdirSync(file).sort() : null };
+        return { file, directory, stamp: stamp(stat), identity: io.identity(fd), node: ['dev', 'ino', 'mode', 'birthtimeNs'].map(k => String(stat[k])).join(':'), names: directory ? fs.readdirSync(file).sort() : null };
     } finally { fs.closeSync(fd); }
 }
 function verify(proofs) {
@@ -207,4 +209,64 @@ async function scanReferences(agent, ids, maxBytes = 4 * 1024 ** 3) {
     }
     verifyAll(proofs); return { found, proofs, scope: scope.snapshot() };
 }
-module.exports = { scanReferences, prove, verifyAll, changed, incomplete };
+// Only an existing deletion intent may explain a tombstoned object. These
+// proofs never authorize reads or another unlink, including request replay.
+function deletionResidual(root, id, cache = {}) {
+    const deleted = path.join(root, '.storage-deleted'), tombstone = path.join(deleted, id + '.json');
+    try { fs.lstatSync(tombstone); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+    const proofs = [prove(deleted, true), prove(tombstone)], mark = JSON.parse(readSafe(tombstone, 8192));
+    if (mark.version !== 1 || mark.id !== id || typeof mark.requestId !== 'string') throw changed();
+    if (!cache.receipts) {
+        const directory = path.join(root, '.storage-receipts'), directoryProof = prove(directory, true);
+        if (directoryProof.names.length > 10000) throw incomplete();
+        cache.directoryProof = directoryProof; cache.receipts = [];
+        for (const name of directoryProof.names) {
+            if (!/^[a-f0-9]{64}\.json$/.test(name)) throw changed();
+            const file = path.join(directory, name), proof = prove(file), receipt = JSON.parse(readSafe(file, 8192));
+            if (receipt.version !== 1 || typeof receipt.cwd !== 'string' || !path.isAbsolute(receipt.cwd)
+                || typeof receipt.requestId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(receipt.requestId)
+                || name !== hash(JSON.stringify([receipt.cwd, receipt.requestId])) + '.json'
+                || !/^[a-f0-9]{64}$/.test(receipt.id) || !['uncertain', 'deleted'].includes(receipt.state)) throw changed();
+            cache.receipts.push({ receipt, proof });
+        }
+    }
+    const matches = cache.receipts.filter(({ receipt: r }) => r.id === id && r.requestId === mark.requestId);
+    if (matches.length !== 1) throw changed();
+    const { receipt, proof } = matches[0]; proofs.push(cache.directoryProof, proof);
+    if (receipt.state !== 'uncertain' || receipt.externalWritersStopped !== true || typeof receipt.ticket !== 'string'
+        || !/^[a-f0-9]{64}$/.test(receipt.revision) || typeof receipt.createdAt !== 'string') throw changed();
+    const folder = path.join(root, id), folderProof = prove(folder, true); proofs.push(folderProof);
+    if (!['[]', '["manifest.json"]', '["manifest.json","original"]'].includes(JSON.stringify(folderProof.names))) throw changed();
+    for (const name of folderProof.names) proofs.push(prove(path.join(folder, name)));
+    const evidence = receipt.deletionProof;
+    let manifest = null;
+    if (evidence) {
+        if (mark.proof !== hash(JSON.stringify(evidence)) || evidence.folder?.node !== folderProof.node || evidence.folder.identity !== folderProof.identity
+            || evidence.manifest?.cwd !== receipt.cwd || evidence.manifest?.reference?.id !== id || !documents.valid(evidence.manifest.reference)
+            || hash(JSON.stringify([evidence.manifest.cwd, evidence.manifest.sessionId, evidence.manifest.requestId])) !== id
+            || !Array.isArray(evidence.leaves) || evidence.leaves.length !== 2) throw changed();
+        for (const name of folderProof.names) {
+            const file = path.join(folder, name), before = evidence.leaves.find(p => p.name === name), current = proofs.find(p => p.file === file);
+            if (!before || before.stamp !== current.stamp || before.identity !== current.identity) throw changed();
+        }
+        if (folderProof.names.includes('manifest.json') && hash(readSafe(path.join(folder, 'manifest.json'), 8192)) !== evidence.manifestSha256) throw changed();
+        if (folderProof.names.includes('original') && hash(readSafe(path.join(folder, 'original'), 100 * 1024 ** 2)) !== evidence.manifest.reference.revision) throw changed();
+        manifest = evidence.manifest;
+    } else {
+        if (mark.proof !== undefined) throw changed();
+        // Old receipts did not bind the manifest or upload thread. Validate the
+        // fixed remaining leaves, but charge the maximum and expose no ownership.
+        if (folderProof.names.includes('manifest.json')) {
+            const remaining = JSON.parse(readSafe(path.join(folder, 'manifest.json'), 8192));
+            if (remaining.version !== 1 || remaining.cwd !== receipt.cwd || !documents.valid(remaining.reference) || remaining.reference.id !== id
+                || hash(JSON.stringify([remaining.cwd, remaining.sessionId, remaining.requestId])) !== id) throw changed();
+            if (folderProof.names.includes('original')) {
+                const bytes = readSafe(path.join(folder, 'original'), 100 * 1024 ** 2);
+                if (bytes.length !== remaining.reference.size || hash(bytes) !== remaining.reference.revision) throw changed();
+            }
+        }
+    }
+    verifyAll(proofs);
+    return { proofs, bytes: manifest ? manifest.reference.size : 100 * 1024 ** 2, manifest, folder };
+}
+module.exports = { scanReferences, prove, verifyAll, changed, incomplete, deletionResidual };

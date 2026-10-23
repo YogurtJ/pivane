@@ -11,6 +11,8 @@ test('managed media tool uses the current branch image, preserves prompt text, a
     const { registerMediaChat } = require(process.env.PIVANE_TEST_PI_JITI).createJiti(extension)(extension);
     const events = new Map(), tools = new Map(), calls = [];
     let mediaResults = [];
+    const preparedPlans = new Map();
+    let nextPlan = 0;
     for (const key of ['PI_WEB_NAVIGATION_TOKEN', 'PI_WORKSPACE_INTERNAL_ORIGIN', 'PI_WORKSPACE_INTERNAL_TOKEN', 'PI_CODING_AGENT_DIR']) {
         const previous = process.env[key]; t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
         process.env[key] = key === 'PI_CODING_AGENT_DIR' ? path.join(root, 'agent') : key.endsWith('ORIGIN') ? 'http://127.0.0.1:1' : 'synthetic';
@@ -25,13 +27,24 @@ test('managed media tool uses the current branch image, preserves prompt text, a
         let data;
         if (route.startsWith('/api/media-agent/capabilities/')) data = { lab: { models: [model] } };
         else if (route === '/api/media-agent/references') data = store.put(body.data);
-        else if (route === '/api/media-agent/validate') data = { plan: body.plan, ...(body.autoExecute && body.plan.modelId === 'auto-fixture' ? { autoExecution: { status: 'done', asset: { url: '/images/auto.png', kind: 'image' }, state: { attempts: [{ id: 'attempt-auto', status: 'done', asset: { url: '/images/auto.png', kind: 'image' } }] } } } : {}) };
+        else if (route === '/api/media-agent/validate') {
+            if (body.stage === 'prepare') {
+                const plan = { ...body.plan, kind: 'image', id: `plan-00000000-0000-4000-8000-${String(++nextPlan).padStart(12, '0')}` };
+                preparedPlans.set(plan.id, { plan, autoExecute: body.autoExecute });
+                data = { plan, executionToken: plan.id };
+            } else {
+                const prepared = preparedPlans.get(body.planId);
+                assert.equal(body.stage, 'execute');
+                data = { plan: prepared.plan, ...(prepared.autoExecute && prepared.plan.modelId === 'auto-fixture' ? { autoExecution: { status: 'done', asset: { url: '/images/auto.png', kind: 'image' }, state: { attempts: [{ id: 'attempt-auto', status: 'done', asset: { url: '/images/auto.png', kind: 'image' } }] } } } : {}) };
+            }
+        }
         else if (route === '/api/media-agent/chat-images') { assert.deepEqual(body.keys, ['plan-11111111-2222-4333-8444-555555555555']); data = { images: [{ url: '/images/result.png' }] }; }
         else if (route === '/api/media-agent/chat-results') data = { requests: mediaResults.filter(row => body.keys.includes(row.key)) };
         else throw new Error('Unexpected request: ' + route);
         return { ok: true, json: async () => data };
     });
-    registerMediaChat({ on: (name, fn) => events.set(name, fn), registerTool: tool => tools.set(tool.name, tool) });
+    registerMediaChat({ on: (name, fn) => events.set(name, fn), registerTool: tool => tools.set(tool.name, tool),
+        appendEntry: (customType, data) => entries.push({ type: 'custom', customType, data }) });
     let entries = [{ type: 'message', timestamp: '2026-01-01', message: { role: 'user', content: [{ type: 'image', data: png, mimeType: 'image/png' }] } }];
     const ctx = { mode: 'rpc', cwd: root, sessionManager: { getSessionFile: () => path.join(root, 'session.jsonl'), getBranch: () => entries } };
     events.get('session_start')({}, ctx);
@@ -61,6 +74,7 @@ test('managed media tool uses the current branch image, preserves prompt text, a
     assert.equal(composed.details.plan.parameters.image, '/images/first.png');
     assert.deepEqual(composed.details.plan.parameters.clips, ['/videos/clip.mp4', '/videos/clip.mp4']);
     await assert.rejects(run({ image: 'media-result:' + last + '/' + attempt }), /wrong media type/);
+    entries = entries.filter(entry => entry.type === 'message');
     const beforeReads = calls.length;
     const listing = JSON.parse((await tools.get('media_results').execute('results', { limit: 1 }, new AbortController().signal, () => {}, ctx)).content[0].text);
     assert.equal(listing.cards[0].summary, 'Video'); assert.equal(listing.nextOffset, 1);
@@ -80,4 +94,142 @@ test('managed media tool uses the current branch image, preserves prompt text, a
     const fifth = await tool.execute('auto-5', { modelId: 'auto-fixture', summary: 'Auto 5', parameters: { prompt: 'cat', image: '/images/first.png' } }, new AbortController().signal, () => {}, ctx);
     assert.match(fifth.content[0].text, /Card ready for the user to confirm/);
     assert.equal(fifth.details.autoExecution, undefined);
+});
+
+const deferred = () => Promise.withResolvers();
+
+async function automaticFixture(t) {
+    for (const key of ['PI_WEB_NAVIGATION_TOKEN', 'PI_WORKSPACE_INTERNAL_ORIGIN', 'PI_WORKSPACE_INTERNAL_TOKEN']) {
+        const previous = process.env[key];
+        t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
+        process.env[key] = key.endsWith('ORIGIN') ? 'http://127.0.0.1:1' : 'synthetic';
+    }
+    const extension = path.join(__dirname, '../server/pi-media-chat-extension.ts');
+    const { registerMediaChat } = require(process.env.PIVANE_TEST_PI_JITI).createJiti(extension)(extension);
+    const events = new Map(), tools = new Map(), entries = [], preparations = new Map();
+    const model = { id: 'automatic-fixture', kind: 'image', executable: true, parameters: { prompt: { type: 'text' } } };
+    const fixture = {
+        calls: [],
+        catalog: async () => ({ lab: { models: [model] } }),
+        validate: async body => body.autoExecute ? { autoExecution: { status: 'running' } } : {}
+    };
+    t.mock.method(globalThis, 'fetch', async (url, options) => {
+        const route = new URL(url).pathname;
+        let data;
+        if (route.startsWith('/api/media-agent/capabilities/')) data = await fixture.catalog();
+        else {
+            assert.equal(route, '/api/media-agent/validate');
+            const body = JSON.parse(options.body);
+            if (body.stage === 'prepare') {
+                const index = fixture.calls.push(body);
+                const plan = { ...body.plan, id: `plan-00000000-0000-4000-8000-${String(index).padStart(12, '0')}`, kind: 'image' };
+                preparations.set(plan.id, { body, plan });
+                data = { plan, executionToken: plan.id };
+            } else {
+                assert.equal(body.stage, 'execute');
+                const prepared = preparations.get(body.planId);
+                data = { plan: prepared.plan, ...await fixture.validate(prepared.body) };
+            }
+        }
+        return { ok: true, json: async () => data };
+    });
+    const ctx = { mode: 'rpc', cwd: root, sessionManager: { getSessionFile: () => path.join(root, 'automatic.jsonl'), getBranch: () => entries } };
+    registerMediaChat({ on: (name, fn) => events.set(name, fn), registerTool: tool => tools.set(tool.name, tool),
+        appendEntry: (customType, data) => entries.push({ type: 'custom', customType, data }) });
+    fixture.boundary = name => events.get(name)({}, ctx);
+    fixture.boundary('session_start');
+    fixture.run = summary => tools.get('media_generate').execute(summary, { modelId: model.id, summary, parameters: { prompt: 'Synthetic image' } },
+        new AbortController().signal, () => {}, ctx);
+    return fixture;
+}
+
+test('media_generate reserves at most four automatic submissions before concurrent validation settles', { timeout: 5000 }, async t => {
+    const f = await automaticFixture(t), ready = deferred(), release = deferred();
+    f.validate = async body => {
+        if (f.calls.length === 7) ready.resolve();
+        await release.promise;
+        return body.autoExecute ? { autoExecution: { status: 'running' } } : {};
+    };
+    const runs = Promise.all(Array.from({ length: 7 }, (_, index) => f.run(`concurrent-${index}`)));
+    try {
+        await ready.promise;
+        assert.equal(f.calls.filter(body => body.autoExecute === true).length, 4, 'in-flight authorizations consume this turn\'s four slots');
+    } finally { release.resolve(); await runs; }
+    await f.run('after-completion');
+    assert.equal(f.calls.at(-1).autoExecute, undefined, 'settling a submitted request does not free its turn slot');
+});
+
+test('media_generate only releases reservations for responses that prove nothing executed', async t => {
+    const f = await automaticFixture(t);
+    for (const status of [undefined, 'not_started', 'changed', 'cancelled']) {
+        f.validate = async () => status ? { autoExecution: { status } } : {};
+        await f.run(`not-executed-${status}`);
+        assert.equal(f.calls.at(-1).autoExecute, true);
+    }
+    f.validate = async () => ({ autoExecution: { status: 'done' } });
+    for (let index = 0; index < 4; index++) {
+        await f.run(`executed-${index}`);
+        assert.equal(f.calls.at(-1).autoExecute, true);
+    }
+    await f.run('over-cap');
+    assert.equal(f.calls.at(-1).autoExecute, undefined);
+});
+
+test('media_generate keeps failed, uncertain, unknown and disconnected submissions charged to the turn', async t => {
+    for (const outcome of ['failed', 'uncertain', 'unknown', 'disconnect', 'abort']) await t.test(outcome, async t => {
+        const f = await automaticFixture(t);
+        f.validate = async body => {
+            if (!body.autoExecute) return {};
+            if (outcome === 'disconnect') throw new Error('Synthetic response lost after submission');
+            if (outcome === 'abort') throw new DOMException('Synthetic cancellation after submission', 'AbortError');
+            return { autoExecution: { status: outcome } };
+        };
+        for (let index = 0; index < 4; index++) {
+            const run = f.run(`outcome-${index}`);
+            if (['disconnect', 'abort'].includes(outcome)) await assert.rejects(run, /Synthetic/);
+            else await run;
+        }
+        await f.run('over-cap');
+        assert.equal(f.calls.filter(body => body.autoExecute === true).length, 4);
+        assert.equal(f.calls.at(-1).autoExecute, undefined);
+    });
+});
+
+test('media_generate isolates late preparation and validation results across turn and session boundaries', async t => {
+    for (const boundary of ['turn_start', 'session_start']) for (const outcome of ['running', 'not_started']) {
+        await t.test(`${boundary}: late ${outcome}`, { timeout: 5000 }, async t => {
+            const f = await automaticFixture(t), validating = deferred(), prepared = deferred(), validationRelease = deferred(), preparationRelease = deferred();
+            f.validate = async body => {
+                if (body.plan.summary === 'old-validation') {
+                    validating.resolve();
+                    await validationRelease.promise;
+                    return { autoExecution: { status: outcome } };
+                }
+                return body.autoExecute ? { autoExecution: { status: 'running' } } : {};
+            };
+            const oldValidation = f.run('old-validation');
+            await validating.promise;
+            const catalog = f.catalog;
+            f.catalog = async () => { prepared.resolve(); await preparationRelease.promise; return catalog(); };
+            const oldPreparation = f.run('old-preparation');
+            try {
+                await prepared.promise;
+                f.boundary(boundary);
+                f.catalog = catalog;
+                for (let index = 0; index < 3; index++) await f.run(`new-${index}`);
+                preparationRelease.resolve();
+                await oldPreparation;
+                assert.equal(f.calls.find(body => body.plan.summary === 'old-preparation').autoExecute, undefined, 'a previous turn cannot acquire the new turn\'s remaining slot');
+                validationRelease.resolve();
+                await oldValidation;
+                await f.run('new-fourth');
+                assert.equal(f.calls.at(-1).autoExecute, true, 'a late result cannot charge or release the new turn\'s budget');
+                await f.run('new-fifth');
+                assert.equal(f.calls.at(-1).autoExecute, undefined);
+            } finally {
+                preparationRelease.resolve(); validationRelease.resolve();
+                await Promise.allSettled([oldPreparation, oldValidation]);
+            }
+        });
+    }
 });

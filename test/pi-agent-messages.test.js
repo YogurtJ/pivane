@@ -50,6 +50,10 @@ test('Unrelated threads message each other, wake a closed recipient, reply, and 
     provider.listen(0, '127.0.0.1'); await once(provider, 'listening');
     fs.writeFileSync(path.join(process.env.PI_CODING_AGENT_DIR, 'settings.json'), JSON.stringify({ defaultProvider: 'fixture', defaultModel: 'model', defaultThinkingLevel: 'off', enableInstallTelemetry: false, defaultProjectTrust: 'never' }));
     fs.writeFileSync(path.join(process.env.PI_CODING_AGENT_DIR, 'models.json'), JSON.stringify({ providers: { fixture: { baseUrl: `http://127.0.0.1:${provider.address().port}/v1`, api: 'openai-completions', apiKey: 'synthetic', models: [{ id: 'model', reasoning: false, input: ['text'], contextWindow: 32000, maxTokens: 1000 }] } } }));
+    const extensionDirectory = path.join(process.env.PI_CODING_AGENT_DIR, 'extensions'); fs.mkdirSync(extensionDirectory, { recursive: true });
+    fs.writeFileSync(path.join(extensionDirectory, 'message-intent-fixture.ts'), `export default function(pi) {
+        pi.registerCommand('fixture-message-intent', { handler: async args => { pi.appendEntry('${MESSAGE_OUT}', JSON.parse(args)); } });
+    }`);
     const access = new WorkspaceAccessService({ envToken: () => 'fixture-web-token' });
     const gateway = createPiAgentGateway({ accessService: access });
     const app = require('express')(); app.use(require('express').json()); gateway.mount(app);
@@ -72,6 +76,13 @@ test('Unrelated threads message each other, wake a closed recipient, reply, and 
         for (let i = 0; i < 13; i++) manager.appendCustomEntry('fixture-padding', { text: 'x'.repeat(1024 * 1024) });
         const aWorker = await gateway.supervisor.getWorker({ cwd, sessionPath: a.path, sessionId: a.id });
         const token = aWorker.navigationToken;
+        const send = async body => {
+            const prepared = await api('/agent-messages/send', { ...body, phase: 'prepare' }, token);
+            if (prepared.status !== 200 || prepared.data.status !== 'prepared') return prepared;
+            // Only the already managed source worker appends the test intent.
+            await aWorker.request('prompt', { message: '/fixture-message-intent ' + JSON.stringify(prepared.data.record) });
+            return api('/agent-messages/send', { phase: 'publish', messageId: prepared.data.messageId }, token);
+        };
         assert.ok((await aWorker.getNativeResources()).tools.some(tool => tool.name === 'agent_message'));
         assert.equal((await api('/agent-messages/threads', {}, 'fixture-web-token')).status, 403, 'web identity is not a source thread');
         const listed = await api('/agent-messages/threads', {}, token);
@@ -89,8 +100,8 @@ test('Unrelated threads message each other, wake a closed recipient, reply, and 
         await deadline(() => entries(a.path).some(entry => entry.type === 'custom_message' && entry.customType === MESSAGE_IN));
         await deadline(() => entries(a.path).some(entry => entry.type === 'message' && entry.message.role === 'assistant' && lastText(entry.message).includes('A_GOT_ANSWER')));
         await deadline(() => !aWorker.activity.snapshot().busy);
-        // A can observe the answer before B has durably appended its outbound
-        // receipt. Wait for B's turn to settle before snapshotting its records.
+        // Source outbox is durable before delivery; let B finish its model turn
+        // before comparing the complete synthetic histories.
         await deadline(() => gateway.supervisor.getActiveWorker(b.path)?.isIdle());
         const bEntries = entries(b.path);
         const question = bEntries.find(entry => entry.type === 'custom_message' && entry.customType === MESSAGE_IN);
@@ -126,18 +137,18 @@ test('Unrelated threads message each other, wake a closed recipient, reply, and 
         assert.equal(calls.length, before, 'no replayed model turn');
 
         // A deep automatic chain is delivered without waking the recipient.
-        const deep = await api('/agent-messages/send', { requestId: 'deep', to: b.id, message: 'DEEP_FIXTURE', hop: 6 }, token);
+        const deep = await send({ requestId: 'deep', to: b.id, message: 'DEEP_FIXTURE', hop: 6 });
         assert.equal(deep.status, 200, JSON.stringify(deep));
         assert.equal(deep.data.wake, false); assert.equal(deep.data.wakeSuppressed, 'hop-limit');
         await deadline(() => entries(b.path).some(entry => entry.customType === MESSAGE_IN && entry.content.includes('DEEP_FIXTURE')));
         await new Promise(resolve => setTimeout(resolve, 300));
         assert.equal(calls.length, before, 'hop-limited message does not start a turn');
-        const same = await api('/agent-messages/send', { requestId: 'deep', to: b.id, message: 'DEEP_FIXTURE', hop: 6 }, token);
+        const same = await send({ requestId: 'deep', to: b.id, message: 'DEEP_FIXTURE', hop: 6 });
         assert.equal(same.data.reused, true);
         assert.equal((await api('/agent-messages/send', { requestId: 'deep', to: b.id, message: 'changed', hop: 6 }, token)).status, 400);
 
         // A note (wake=false) to a closed thread waits for it to open and does not start it.
-        const note = await api('/agent-messages/send', { requestId: 'note', to: c.id, message: 'NOTE_FIXTURE', hop: 0, wake: false }, token);
+        const note = await send({ requestId: 'note', to: c.id, message: 'NOTE_FIXTURE', hop: 0, wake: false });
         assert.equal(note.data.status, 'waiting-for-recipient');
         await new Promise(resolve => setTimeout(resolve, 2000));
         assert.equal(gateway.supervisor.getActiveWorker(c.path), undefined, 'a note does not start the recipient');

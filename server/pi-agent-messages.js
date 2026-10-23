@@ -1,6 +1,8 @@
+const { createHash } = require('node:crypto');
 const { MESSAGE_OUT, LIMITS, messageIdFor, outboundMessage, hex64 } = require('./pi-agent-message-format');
 
 const WINDOW_MS = 10 * 60 * 1000;
+const MAX_PREPARED = 200, MAX_PREPARED_BYTES = 4 * 1024 * 1024;
 const DEFAULTS = { sendsPerWindow: 30, wakesPerWindow: 12, pendingPerTarget: 20, concurrentStarts: 2, attempts: 5,
     recoveryMs: 30000, pumpMs: 1500, recoverAgeMs: 7 * 24 * 60 * 60 * 1000, threadList: 40 };
 const failure = (message, code) => Object.assign(new Error(message), code ? { code } : {});
@@ -13,7 +15,7 @@ class AgentMessages {
     constructor({ catalog, supervisor, isSuspended = () => false, limits = {} }) {
         Object.assign(this, { catalog, supervisor, isSuspended });
         this.limits = { ...DEFAULTS, ...limits };
-        this.queue = new Map(); this.sends = new Map(); this.wakes = new Map();
+        this.queue = new Map(); this.prepared = new Map(); this.sends = new Map(); this.wakes = new Map();
         this.starting = new Set(); this.flight = null; this.recovering = null; this.stopping = false;
         this.recoveredAt = new Map();
         this.timer = setInterval(() => { void this.pump(); void this.recover(); }, this.limits.pumpMs); this.timer.unref?.();
@@ -60,40 +62,97 @@ class AgentMessages {
         if (!Number.isInteger(input.hop) || input.hop < 0 || input.hop > 1000) throw failure('Invalid hop');
         if (input.fromName !== undefined && !shortText(input.fromName, LIMITS.name)) throw failure('Invalid sender name');
     }
-    async send(source, input) {
-        this.validate(source, input);
+    assertSource(source) {
         if (this.stopping || this.isSuspended() || this.supervisor.disposing || source.disposed || source.restarting) throw failure('Workspace is stopping');
+    }
+    prunePrepared() {
+        const now = Date.now();
+        for (const [id, item] of this.prepared) if (item.expiresAt <= now) this.prepared.delete(id);
+    }
+    preparedReceipt(message) {
+        return { messageId: message.messageId, to: message.to, status: 'prepared', wake: message.wake, wakeSuppressed: message.wakeSuppressed,
+            conversationId: message.conversationId, hop: message.hop, record: outboundMessage(message) };
+    }
+    matchesInput(message, input) {
+        if (message.to.sessionId !== input.to || message.text !== undefined && message.text !== input.message
+            || message.textHash && message.textHash !== createHash('sha256').update(input.message).digest('hex'))
+            throw failure('requestId already belongs to a different message');
+    }
+    // Preparing has no delivery side effect. The source worker must append the
+    // returned native record before publication; a lost prepare response is safe.
+    async send(source, input) {
+        if (!input || typeof input !== 'object' || Array.isArray(input)) throw failure('Invalid Agent message request');
+        if (input.phase === 'publish') return this.publish(source, input);
+        if (input.phase !== undefined && input.phase !== 'prepare') throw failure('Invalid Agent message phase');
+        const { phase, ...draft } = input;
+        return this.prepare(source, draft);
+    }
+    async prepare(source, input) {
+        this.validate(source, input); this.assertSource(source); this.prunePrepared();
         const messageId = messageIdFor(source.sessionId, input.requestId);
-        const existing = this.queue.get(messageId);
-        if (existing) {
-            if (existing.message.to.sessionId !== input.to || existing.message.text !== input.message) throw failure('requestId already belongs to a different message');
-            return this.receipt(existing, { reused: true });
-        }
         const rows = await this.project(source.cwd);
+        this.assertSource(source); this.prunePrepared();
         const target = rows.find(row => row.id === input.to);
         if (!target) throw failure('Recipient thread was not found in this project; list threads first');
         if (target.special) throw failure('That thread type cannot receive Agent messages');
         const own = rows.find(row => row.id === source.sessionId);
-        if (own?.outbox.some(message => message.messageId === messageId) || target.inbox.has(messageId))
-            return { messageId, to: { sessionId: target.id, name: target.name }, status: target.inbox.has(messageId) ? 'delivered' : 'queued', reused: true };
+        if (!own) throw failure('Source thread was not found in this project');
+        const existing = this.queue.get(messageId);
+        if (existing) { this.matchesInput(existing.message, input); return this.receipt(existing, { reused: true }); }
+        const native = own.outbox.find(message => message.messageId === messageId);
+        if (native) {
+            this.matchesInput(native, input);
+            if (target.inbox.has(messageId)) return { messageId, to: native.to, status: 'delivered', reused: true };
+            if (typeof native.text !== 'string') throw failure('Native outbound message body is unavailable');
+            return { ...this.preparedReceipt(native), reused: true };
+        }
+        if (target.inbox.has(messageId)) return { messageId, to: { sessionId: target.id, name: target.name }, status: 'delivered', reused: true };
+        const prior = this.prepared.get(messageId);
+        if (prior) { this.matchesInput(prior.message, input); return this.preparedReceipt(prior.message); }
         if (this.recent(this.sends, source.sessionId).length >= this.limits.sendsPerWindow) throw failure('Message rate limit reached for this thread; wait before sending more');
-        if ([...this.queue.values()].filter(row => row.message.to.sessionId === target.id && row.status !== 'delivered' && row.status !== 'failed').length >= this.limits.pendingPerTarget)
-            throw failure('Recipient already has too many undelivered messages; wait for it to process them');
+        const pending = new Set([...this.queue.values()].filter(row => row.message.to.sessionId === target.id && row.status !== 'delivered' && row.status !== 'failed').map(row => row.message.messageId));
+        for (const row of this.prepared.values()) if (row.message.to.sessionId === target.id) pending.add(row.message.messageId);
+        for (const sender of rows) for (const message of sender.outbox)
+            if (message.to.sessionId === target.id && typeof message.text === 'string' && !target.inbox.has(message.messageId)) pending.add(message.messageId);
+        if (pending.size >= this.limits.pendingPerTarget) throw failure('Recipient already has too many undelivered messages; wait for it to process them');
         let wake = input.wake !== false, wakeSuppressed = null;
         if (wake && input.hop >= LIMITS.wakeHops) { wake = false; wakeSuppressed = 'hop-limit'; }
         else if (wake && this.recent(this.wakes, target.id).length >= this.limits.wakesPerWindow) { wake = false; wakeSuppressed = 'rate-limit'; }
         const message = outboundMessage({ version: 1, messageId, requestId: input.requestId,
-            from: { sessionId: source.sessionId, cwd: source.cwd, name: input.fromName || own?.name || '' },
+            from: { sessionId: source.sessionId, cwd: source.cwd, name: input.fromName || own.name || '' },
             to: { sessionId: target.id, cwd: source.cwd, name: target.name }, text: input.message, wake, wakeSuppressed, hop: input.hop,
             conversationId: input.conversationId || messageId, replyTo: input.replyTo ?? null, sentAt: new Date().toISOString() });
         if (!message) throw failure('Invalid Agent message');
+        const bytes = Buffer.byteLength(JSON.stringify(message));
+        if (this.prepared.size >= MAX_PREPARED || [...this.prepared.values()].reduce((sum, item) => sum + item.bytes, bytes) > MAX_PREPARED_BYTES)
+            throw failure('Message preparation capacity is full; wait before preparing more');
+        // Reserve policy and bounded preparation synchronously after all awaits.
         this.recent(this.sends, source.sessionId).push(Date.now());
         if (wake) this.recent(this.wakes, target.id).push(Date.now());
+        this.prepared.set(messageId, { message, bytes, expiresAt: Date.now() + WINDOW_MS });
+        return this.preparedReceipt(message);
+    }
+    async publish(source, input) {
+        if (Object.keys(input).some(key => !['phase', 'messageId'].includes(key)) || !hex64(input.messageId)) throw failure('Invalid Agent message publication');
+        this.assertSource(source);
+        const rows = await this.project(source.cwd);
+        this.assertSource(source);
+        const own = rows.find(row => row.id === source.sessionId);
+        const message = own?.outbox.find(item => item.messageId === input.messageId);
+        if (!message || message.from.sessionId !== source.sessionId || message.from.cwd !== source.cwd || message.to.cwd !== source.cwd
+            || message.messageId !== messageIdFor(source.sessionId, message.requestId)) throw failure('Native outbound intent must be saved before delivery');
+        const target = rows.find(row => row.id === message.to.sessionId);
+        if (!target || target.special) throw failure('Recipient thread is unavailable for Agent messages');
+        this.prepared.delete(message.messageId);
+        if (target.inbox.has(message.messageId)) return { messageId: message.messageId, to: message.to, status: 'delivered', reused: true };
+        const existing = this.queue.get(message.messageId);
+        if (existing) return this.receipt(existing, { reused: true });
+        if (typeof message.text !== 'string') throw failure('Native outbound message body is unavailable');
         const row = { message, path: target.path, status: 'queued', attempts: 0, error: null, deliveredAt: null, woke: false };
-        this.queue.set(messageId, row);
+        this.queue.set(message.messageId, row);
         // Give an idle or quickly started recipient a moment; never wait for its model turn.
         await Promise.race([this.pump(), new Promise(resolve => setTimeout(resolve, 1500).unref?.())]);
-        return this.receipt(row, { record: message });
+        return this.receipt(row);
     }
     receipt(row, extra = {}) {
         const worker = this.supervisor.getActiveWorker(row.path);
@@ -162,6 +221,7 @@ class AgentMessages {
     }
     forget() {
         // Keep delivered rows briefly for status and idempotent sends, then fall back to native records.
+        this.prunePrepared();
         const now = Date.now();
         for (const [id, row] of this.queue) {
             if (row.status === 'delivered' && now - Date.parse(row.deliveredAt) > WINDOW_MS) this.queue.delete(id);
@@ -182,6 +242,7 @@ class AgentMessages {
                 let rows; try { rows = await this.project(cwd); } catch { continue; }
                 const byId = new Map(rows.map(row => [row.id, row]));
                 for (const sender of rows) for (const message of sender.outbox) {
+                    this.prepared.delete(message.messageId); // Native intent now owns recovery.
                     if (message.text === undefined || this.queue.has(message.messageId) || now - Date.parse(message.sentAt) > this.limits.recoverAgeMs) continue;
                     const target = byId.get(message.to.sessionId);
                     if (!target || target.special || target.inbox.has(message.messageId) || message.to.cwd !== cwd) continue;
@@ -193,7 +254,7 @@ class AgentMessages {
         return recovering.catch(() => {}).finally(() => { if (this.recovering === recovering) this.recovering = null; });
     }
     async dispose() {
-        this.stopping = true; clearInterval(this.timer);
+        this.stopping = true; clearInterval(this.timer); this.prepared.clear();
         await Promise.allSettled([this.flight, this.recovering].filter(Boolean));
     }
 }
