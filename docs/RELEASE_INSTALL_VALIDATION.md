@@ -2,7 +2,15 @@
 
 本页是版本验收索引。**结果只适用于对应归档**：准确 SHA256、测试明细和失败尝试见各 [Release](https://github.com/YogurtJ/pivane/releases) 的 `pivane-<版本>.validation.json`。源码、浏览器模拟和旧版结果不能替代新包的实机验收。
 
-## 当前正式版 1.10.1
+## 当前正式版 1.10.2
+
+[1.10.2说明](releases/1.10.2.md) · [Release](https://github.com/YogurtJ/pivane/releases/tag/v1.10.2) · [验收JSON](https://github.com/YogurtJ/pivane/releases/download/v1.10.2/pivane-1.10.2.validation.json) · [验收说明](https://github.com/YogurtJ/pivane/releases/download/v1.10.2/pivane-1.10.2.validation.md)。2026-10-24正式发布并确认为Latest，九份公开附件匿名HTTP200回下载逐字节一致。冻结源码`9aa4647dec9890f35311763912f88707b658629f`，归档SHA256`ad9691b616795978a9eaf2d0870edfdb80e86a730a8083d5825c8ede52235ab2`，1730个清单文件。
+
+Linux ARM64（Node22.23.3/Chromium142）、macOS ARM64（Node22.23.1/Chrome156）和Windows11 x64（Node22.23.3/Edge155）均从准确包独立锁定安装，各16项相关Node、一个中英文四视口翻译脚本（8场景）、微信组件完整安装与私有回执重载、原生SDK/RPC、HTTP启动和正常停机通过；安装前后清单字节一致。Windows实际Limited令牌RID8192；首次浏览器因隔离夹具的系统目录环境而在页面打开前失败，原退出1保留。最小启动对照后仅恢复USERPROFILE/APPDATA/LOCALAPPDATA，Pi身份和数据仍隔离，用原脚本、原断言和原300秒期限补齐浏览器及HTTP，组合完成不冒称首次全绿。
+
+主生产图和Mermaid构建图审计均刷新为退出0、零漏洞。依赖图、原生组件及更新/备份/恢复算法与1.10.1相同，未受影响的业务和升级/原路径恢复证据按[复用规则](development/RELEASING.md#验证范围与证据复用)引用其公开附件链；未重跑三平台全量，不把复用计为本包再次执行。微信安装使用锁定官方归档的离线字节，不发业务消息或付费请求。
+
+## 1.10.1
 
 [1.10.1 说明](releases/1.10.1.md) · [Release](https://github.com/YogurtJ/pivane/releases/tag/v1.10.1) · [验收JSON](https://github.com/YogurtJ/pivane/releases/download/v1.10.1/pivane-1.10.1.validation.json) · [主图审计](https://github.com/YogurtJ/pivane/releases/download/v1.10.1/pivane-1.10.1.audit.json) · [构建图审计](https://github.com/YogurtJ/pivane/releases/download/v1.10.1/pivane-1.10.1.mermaid-build.audit.json)。2026-10-24正式发布并确认为Latest，九份附件公开匿名下载均HTTP200，尺寸和SHA256与上传原件一致。冻结源码`7eb6c85fe094e12d2c23a844681746dbc2aebd34`，归档SHA256`68a79005b38074ea05440ed48e45b85a6843ad85e39e375fd8a3623be68d39df`，1728个清单文件。最终包在Linux ARM64独立安装、SDK、12项Node及5个Chromium脚本、HTTP版本与正常停机完成；主生产图和隔离浏览器构建图审计均真实退出0、clean=true、total=0。桌面/手机图表已回看，所有清单文件安装前后不变。标签与归档冻结不因主分支补写发布记录改变。
 
