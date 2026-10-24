@@ -22,8 +22,11 @@ const SHRINKWRAP_FIXES = [{
     name: 'brace-expansion', owner: '@earendil-works/pi-coding-agent', consumer: 'minimatch', fixed: '5.0.12',
     vulnerable: version => /^4\.\d+\.\d+$/.test(version) || /^5\.0\.(\d|1[01])$/.test(version),
 }, {
-    name: 'undici', owner: '@earendil-works/pi-coding-agent', consumer: '@earendil-works/pi-ai', fixed: '8.11.2',
-    vulnerable: version => ['8.10.0', '8.10.2'].includes(version),
+    name: 'undici', owner: '@earendil-works/pi-coding-agent', consumer: '@earendil-works/pi-ai', fixed: '8.12.2',
+    vulnerable: version => {
+        const match = /^8\.(\d+)\.(\d+)$/.exec(version);
+        return !!match && (Number(match[1]) < 12 || (Number(match[1]) === 12 && Number(match[2]) < 2));
+    },
 }];
 function packageVersion(directory) {
     const stat = fs.lstatSync(directory);

@@ -66,6 +66,9 @@ test('reviewed host, primary lock and isolated memory recipe bind the same offic
         if (recipe.dependencies[name]) assert.equal(recipe.dependencies[name], REVIEWED_PI_VERSION);
     }
     assert.equal(recipe.dependencies['pi-hermes-memory'], '0.9.10');
+    assert.equal(recipe.dependencies.undici, pkg.overrides.undici);
+    assert.equal(recipe.overrides.undici, pkg.overrides.undici);
+    assert.equal(memoryLock.packages['node_modules/undici'].version, pkg.overrides.undici);
 });
 
 test('compatibility controls follow the native API schema and preserve unsupported saved fields on reset', async () => {

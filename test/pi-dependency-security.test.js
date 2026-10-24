@@ -23,6 +23,14 @@ function fixture(t, fix, { nested, hoisted = fix.fixed, override = fix.fixed, ex
     if (extra) pkg(path.join(base, 'node_modules', 'other', 'node_modules', fix.name), fix.name, extra);
     return base;
 }
+test('undici removes affected old reviewed copies and rejects residual affected copies outside its owner', t => {
+    const fix = SHRINKWRAP_FIXES.find(item => item.name === 'undici');
+    for (const version of ['8.11.2', '8.12.1']) {
+        const base = fixture(t, fix, { nested: version });
+        assert.deepEqual(enforceShrinkwrapFixes(base, [fix]), [`undici@${version}`]);
+        assert.throws(() => enforceShrinkwrapFixes(fixture(t, fix, { extra: version }), [fix]), /Vulnerable undici remains/);
+    }
+});
 for (const fix of SHRINKWRAP_FIXES) {
     const vulnerable = fix.name === 'brace-expansion' ? '5.0.9' : '8.10.2';
     test(`shrinkwrapped vulnerable ${fix.name} resolves to the reviewed fixed release`, t => {

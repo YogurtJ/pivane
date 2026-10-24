@@ -698,11 +698,11 @@ Use the pinned upstream tarball; its SHA256 is
 (npm integrity
 `sha512-1cZzVieL1H3o5ZNtgunwu7nD1+Cn/7GQv5SvPpWDoN+7iLHEy4dkY5D30g/gKdVhW2Pm+63wFwQ3mXxc7k2/OA==`).
 The reviewed isolated lock at `server/profile-memory/upstream-lock.json` has
-SHA256 `e1449da8edc62d79fd4d9b1c54f37d86663cafc6edfaac129d12bcb9ced92c2a`.
+SHA256 `7a4586cad2ad86e3f9c48576f41e85d470463e4eeaa7e5b7e07107746020e262`.
 Upstream 0.9.10 declares `@earendil-works/pi-tui` as a peer dependency; the
 recipe already installs the host TUI directly, so the lock contains one copy.
 This source recipe pins Pi and the host TUI to the reviewed host version in
-`server/pi-reviewed-host.js` and verifies brace-expansion 5.0.12 / undici 8.11.2 through the shared installation boundary; earlier published archives keep their own historical locks.
+`server/pi-reviewed-host.js` and verifies brace-expansion 5.0.12 / undici 8.12.2 through the shared installation boundary; earlier published archives keep their own historical locks.
 The isolated installer retains the reviewed JSON lock and rejects a different lock, creates a
 fresh prefix, runs `npm ci
 --ignore-scripts` for that locked graph, then runs only pinned `better-sqlite3`
