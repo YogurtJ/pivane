@@ -8,7 +8,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const express = require('express');
 const { schema: nativeSettingsSchema } = require('../../server/pi-native-service');
 const root = path.resolve(__dirname, '../..');
-const evidence = '/tmp/pivane-feedback/agent-a';
+const evidence = process.env.PI_I18N_EVIDENCE || path.join(require('node:os').tmpdir(), 'pivane-i18n-evidence');
 const cwd = '/fixture/中文项目';
 const session = { id: 'language-fixture', cwd, name: '保存', messageCount: 2, modified: '2026-09-11T00:00:00Z' };
 const model = { provider: 'fixture', id: 'fixture-model', name: '模型', input: ['text', 'image'], contextWindow: 32000, available: true, thinkingLevels: ['off'] };
@@ -148,7 +148,7 @@ async function run(browser, base, width, language) {
         await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
         await overflow(['.workspace-language-card', '.workspace-settings-nav']);
     }
-    await page.screenshot({ path: `/tmp/pivane-i18n-${language}-${width}-preferences.png` });
+    await page.screenshot({ path: path.join(evidence, `preferences-${language}-${width}.png`) });
     await page.locator('[data-settings-tab="usage"]').click();
     await page.locator('.pi-usage-table-scroll').first().waitFor();
     assert.ok((await page.locator('#settings-usage-result').innerText()).includes(english ? 'Daily usage' : '每日用量'));
@@ -210,7 +210,7 @@ async function run(browser, base, width, language) {
     assert.ok((await page.locator('#lab-review-warnings').textContent()).includes(english ? 'External services' : '外部服务'));
     assert.equal(await page.locator('#lab-review-cost').textContent(), english ? 'Pricing depends on the selected backend; a reliable estimate is not currently available.' : '费用由所选后端决定；当前无法提供可靠报价。');
     await overflow(['.lab-header', '.lab-workspace', '.lab-editor', '.lab-results', '.lab-dialog[open]', '.lab-dialog[open] .lab-dialog-scroll', '#lab-review-fields']);
-    await page.screenshot({ path: `/tmp/pivane-i18n-${language}-${width}-review.png` });
+    await page.screenshot({ path: path.join(evidence, `review-${language}-${width}.png`) });
     assert.deepEqual(writes, ['/api/pi/media/lab/review']);
     assert.ok(!calls.includes('prompt') && !calls.includes('set_model'));
     await navigationCheck(() => page.reload({ waitUntil: 'domcontentloaded' }));
