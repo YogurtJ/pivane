@@ -2,6 +2,11 @@
 
 本页概括用户可见变化与升级要点。安装步骤见[安装与恢复](docs/INSTALL_RECOVERY.md)；每版完整说明和验收附件见 [Releases](https://github.com/YogurtJ/pivane/releases)。历史行为不代表当前功能，当前用法以[用户指南](docs/USER_GUIDE.md)为准。
 
+## 未发布
+
+- 修复 Windows 安装微信组件时，模块自检因虚拟文件地址缺少盘符而报 `ERR_INVALID_FILE_URL_PATH` 的问题；按本机绝对路径生成文件 URL。安装失败显示失败阶段和经过筛选的错误码，刷新后核对状态，不自动重试。
+- 静态界面翻译改为按原文绑定，兼容旧数字标记但不再依赖翻译表行号。修复助手身份导航、消息显示标题与“简洁”按钮、引导／后续消息说明，以及主题、字体和相邻设置的文字串位；中文、英文与无障碍属性使用同一原文。
+
 ## 1.10.1（Pi 1.4.0）
 
 [版本说明](docs/releases/1.10.1.md) · [Release](https://github.com/YogurtJ/pivane/releases/tag/v1.10.1)。2026-10-24正式发布，九份附件公开匿名回下载逐字节一致，GitHub Latest已确认。Pi和原生组件版本不变；undici8.12.2、body-parser2.4.0及必要依赖修复新增公告，DOMPurify直接依赖和Mermaid内嵌副本均更新至3.4.17。Mermaid11.17.2官方模块按隔离构建锁重新打包，数学依赖同步至现有KaTeX0.18.7，保留原渲染与隔离策略。验证按改动影响复用并补渲染/安全专项。

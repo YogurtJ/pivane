@@ -4,14 +4,16 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const root = path.join(__dirname, '..');
-function runtime({ languages = ['en-US'], saved, blocked = false, ui = {} } = {}) {
+function runtime({ languages = ['en-US'], saved, blocked = false, ui = {}, reorderCatalog = false } = {}) {
     const storage = new Map(saved === undefined ? [] : [['pi.workspace.language', saved]]);
     const context = { ...ui, navigator: { languages }, localStorage: {
         getItem(key) { if (blocked) throw Error('blocked'); return storage.get(key) ?? null; },
         setItem(key, value) { if (blocked) throw Error('blocked'); storage.set(key, value); }
     } };
     vm.createContext(context);
-    for (const file of ['pi-i18n-catalog.js', 'pi-i18n.js']) vm.runInContext(fs.readFileSync(path.join(root, 'public', file), 'utf8'), context);
+    vm.runInContext(fs.readFileSync(path.join(root, 'public/pi-i18n-catalog.js'), 'utf8'), context);
+    if (reorderCatalog) context.PiI18nCatalog = [...context.PiI18nCatalog].reverse();
+    vm.runInContext(fs.readFileSync(path.join(root, 'public/pi-i18n.js'), 'utf8'), context);
     return { api: context.PiI18n, rows: context.PiI18nCatalog, storage, context };
 }
 test('interface language negotiates browser preferences and honors explicit saved choices', () => {
@@ -118,6 +120,44 @@ test('language card reloads safely without the optional workbench bridge and ret
     ui.events.get('languagechange')(); assert.equal(ui.select.value, 'zh-CN');
     const failed = languageCard({ blocked: true }); failed.change('zh-CN'); assert.equal(failed.status.tone, 'error'); assert.equal(failed.timers.length, 0);
 });
+test('static translations use source text across catalog order changes and consume their markers once', () => {
+    for (const saved of ['zh-CN', 'en']) {
+        const comments = [
+            ['i18n:s2469', ' 助手身份 '],
+            ['i18n:s2892', '消息显示'],
+            ['i18n:s2758', '简洁'],
+            ['i18n:s3528', '本轮工具后送达'],
+            ['i18n:s3529', '当前任务完成后送达'],
+            ['i18n:s999999', '小'],
+            ['i18n', '字体大小'],
+            ['i18n:s0', 'unknown <raw>'],
+            ['unrelated', '保存']
+        ].map(([data, source]) => ({ data, nextSibling: { nodeType: 3, data: source }, remove() { this.removed = true; } }));
+        const attributes = new Map([
+            ['data-i18n-title', 's2469'], ['title', '助手身份'],
+            ['data-i18n-aria-label', 's3529'], ['aria-label', '当前任务完成后送达'],
+            ['data-i18n-placeholder', 's0'], ['placeholder', 'unknown <raw>'], ['data-i18n-alt', 's0']
+        ]);
+        const node = { getAttribute: key => attributes.get(key) ?? null, setAttribute: (key, value) => attributes.set(key, value), removeAttribute: key => attributes.delete(key) };
+        const document = { documentElement: {}, addEventListener() {},
+            createTreeWalker() { const remaining = comments.filter(comment => !comment.removed); let index = 0; return { nextNode() { this.currentNode = remaining[index++]; return Boolean(this.currentNode); } }; },
+            querySelectorAll: selector => attributes.has(selector.slice(1, -1)) ? [node] : [] };
+        const { api } = runtime({ saved, reorderCatalog: true, ui: { document, NodeFilter: { SHOW_COMMENT: 128 }, Node: { TEXT_NODE: 3 } } });
+        api.translateStatic();
+        const english = saved === 'en';
+        assert.deepEqual(comments.map(comment => comment.nextSibling.data), english
+            ? [' Assistant profiles ', 'Message display', 'Compact', 'Delivered after this tool step', 'Delivered after the current task', 'Small', 'Font size', 'unknown <raw>', '保存']
+            : [' 助手身份 ', '消息显示', '简洁', '本轮工具后送达', '当前任务完成后送达', '小', '字体大小', 'unknown <raw>', '保存']);
+        assert.equal(attributes.get('title'), english ? 'Assistant profiles' : '助手身份');
+        assert.equal(attributes.get('aria-label'), english ? 'Delivered after the current task' : '当前任务完成后送达');
+        assert.equal(attributes.get('placeholder'), 'unknown <raw>'); assert.equal(attributes.has('alt'), false);
+        assert.equal([...attributes.keys()].some(key => key.startsWith('data-i18n-')), false);
+        assert.ok(comments.slice(0, -1).every(comment => comment.removed)); assert.equal(comments.at(-1).removed, undefined);
+        const before = comments.map(comment => comment.nextSibling.data);
+        api.translateStatic(); assert.deepEqual(comments.map(comment => comment.nextSibling.data), before);
+    }
+});
+
 test('all catalogs, numeric placeholders and static/source bindings are complete', () => {
     const { rows } = runtime();
     const sources = new Set();
@@ -134,9 +174,16 @@ test('all catalogs, numeric placeholders and static/source bindings are complete
         assert.ok(!/<\/?(?:script|iframe|img|span|div)\b/i.test(english), `markup in translation: ${source}`);
     }
     const html = fs.readFileSync(path.join(root, 'public/index.html'), 'utf8');
-    for (const match of html.matchAll(/(?:i18n:s|data-i18n-[\w-]+="s)(\d+)/g)) assert.ok(rows[Number(match[1])], `missing static key ${match[1]}`);
-    for (const match of html.matchAll(/<!--i18n:s(\d+)-->([^<]*)/g)) {
-        assert.equal(match[2].trim(), rows[Number(match[1])][0], `static source mismatch ${match[1]}`);
+    for (const match of html.matchAll(/<!--i18n(?::s\d+)?-->([^<]*)/g)) {
+        assert.ok(sources.has(match[1].trim()), `missing static source: ${match[1].trim()}`);
+    }
+    const decode = text => text.replace(/&(?:amp|quot|apos|lt|gt);/g, entity => ({ '&amp;': '&', '&quot;': '"', '&apos;': "'", '&lt;': '<', '&gt;': '>' })[entity]);
+    for (const tag of html.matchAll(/<[^!][^>]*\bdata-i18n-[^>]*>/g)) {
+        for (const marker of tag[0].matchAll(/\bdata-i18n-(title|aria-label|placeholder|alt)(?:="[^"]*")?/g)) {
+            const original = new RegExp(`(?:\\s)${marker[1]}="([^"]*)"`).exec(tag[0]);
+            assert.ok(original, `missing ${marker[1]} source: ${tag[0]}`);
+            assert.ok(sources.has(decode(original[1])), `missing attribute source: ${original[1]}`);
+        }
     }
     for (const name of fs.readdirSync(path.join(root, 'public')).filter(n => n.endsWith('.js') && n !== 'pi-i18n-catalog.js')) {
         const source = fs.readFileSync(path.join(root, 'public', name), 'utf8');

@@ -37,21 +37,22 @@
         const markers = [];
         while (walker.nextNode()) markers.push(walker.currentNode);
         for (const marker of markers) {
-            const match = /^i18n:s(\d+)$/.exec(marker.data);
+            // The page text is the stable translation key. Legacy numeric
+            // markers only locate text nodes; catalog insertion/reordering must
+            // never replace a label with another row, including in Chinese.
+            const marked = /^i18n(?::s\d+)?$/.test(marker.data);
             const text = marker.nextSibling;
-            if (!match || text?.nodeType !== Node.TEXT_NODE) continue;
-            const row = rows[Number(match[1])];
-            if (!row) continue;
-            text.data = text.data.replace(/\S[\s\S]*\S|\S/, () => t(row[0]));
+            if (!marked || text?.nodeType !== Node.TEXT_NODE) continue;
+            text.data = text.data.replace(/\S[\s\S]*\S|\S/, source => t(source));
             // The locale is fixed for this page. Consume the marker so existing DOM/range
             // readers still see the text as the first child of its original element.
             marker.remove();
         }
         for (const attribute of ['title', 'aria-label', 'placeholder', 'alt']) {
             for (const node of root.querySelectorAll(`[data-i18n-${attribute}]`)) {
-                const key = node.getAttribute(`data-i18n-${attribute}`);
-                const row = /^s\d+$/.test(key) ? rows[Number(key.slice(1))] : null;
-                if (row) node.setAttribute(attribute, t(row[0]));
+                const source = node.getAttribute(attribute);
+                if (source !== null) node.setAttribute(attribute, t(source));
+                node.removeAttribute(`data-i18n-${attribute}`);
             }
         }
     }

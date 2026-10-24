@@ -42,6 +42,10 @@ async function run(browser, base, width, language) {
     await page.addInitScript(({ cwd }) => {
         localStorage.setItem('pi.web.cwd', cwd); localStorage.setItem('pi.web.session:' + cwd, 'language-fixture');
     }, { cwd });
+    // A catalog reordering must preserve all static bindings, not just a
+    // hand-maintained list of numeric IDs for the affected controls.
+    await page.route('**/pi-i18n-catalog.js', route => route.fulfill({ contentType: 'text/javascript', body:
+        fs.readFileSync(path.join(root, 'public/pi-i18n-catalog.js'), 'utf8') + '\nwindow.PiI18nCatalog = [...window.PiI18nCatalog].reverse();' }));
     await page.route(/https:\/\/(fonts\.googleapis\.com|fonts\.gstatic\.com)\//, r => r.abort());
     await page.route('**/api/**', async route => {
         const req = route.request(), url = new URL(req.url());
@@ -77,6 +81,11 @@ async function run(browser, base, width, language) {
     const english = language.startsWith('en');
     assert.equal(await page.locator('html').getAttribute('lang'), english ? 'en' : 'zh-CN');
     assert.equal(await page.locator('#workspace-settings-toggle').getAttribute('title'), english ? 'Workspace settings' : '工作台设置');
+    assert.equal(await page.locator('#workspace-profiles-toggle > span:not(.workspace-nav-short)').textContent(), english ? 'Assistant profiles' : '助手身份');
+    assert.equal(await page.locator('#workspace-profiles-toggle').getAttribute('title'), english ? 'Assistant profiles' : '助手身份');
+    assert.equal(await page.locator('[data-more-tab="profiles"] span').textContent(), english ? 'Assistant profiles' : '助手身份');
+    assert.equal(await page.locator('[data-delivery-mode="steer"] small').textContent(), english ? 'Delivered after this tool step' : '本轮工具后送达');
+    assert.equal(await page.locator('[data-delivery-mode="follow_up"] small').textContent(), english ? 'Delivered after the current task' : '当前任务完成后送达');
     const transcript = await page.locator('#pi-transcript-content').innerText();
     assert.ok(transcript.includes('保存') && transcript.includes('设置') && transcript.includes('原始代码：保存'));
     assert.equal(await page.evaluate(() => Boolean(window.i18nXss)), false);
@@ -128,6 +137,9 @@ async function run(browser, base, width, language) {
     if (width < 900) await page.locator('#pi-close-inspector').click();
     await page.locator('#workspace-settings-toggle').click();
     await page.locator('[data-settings-tab="models"]').click();
+    assert.equal(await page.locator('#settings-message-view-title').textContent(), english ? 'Message display' : '消息显示');
+    assert.equal(await page.locator('[data-transcript-mode="compact"]').textContent(), english ? 'Compact' : '简洁');
+    assert.equal(await page.locator('#appearance-font-title').textContent(), english ? 'Font size' : '字体大小');
     await page.waitForFunction(() => document.getElementById('settings-media-agent-model').options.length > 0);
     await overflow(['.workspace-settings-dialog', '.workspace-settings-body', '.workspace-settings-content', '.workspace-settings-nav', '.workspace-settings-panel.active', '.workspace-language-card', '#workspace-language', '#settings-media-agent-form']);
     assert.equal(await page.locator('#workspace-language').inputValue(), 'system');

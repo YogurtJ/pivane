@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { gunzipSync } = require('node:zlib');
+const { pathToFileURL } = require('node:url');
 const { privateDir, readSafe, atomicJson, hash } = require('../pi-maintenance-files');
 const { proxyFor } = require('../pi-update-service');
 const SOURCES = Object.freeze([
@@ -64,7 +65,9 @@ async function compile(api, qr) {
         export function setTransport(transport) { pivaneChannelFetch = transport; }`);
     const built = await require('esbuild').build({ entryPoints: ['/entry.js'], bundle: true, write: false, platform: 'node', format: 'esm', logLevel: 'silent',
         banner: { js: 'let pivaneChannelFetch; const fetch = (...args) => pivaneChannelFetch(...args);' },
-        define: { 'import.meta.url': JSON.stringify('file:///pivane-reviewed-weixin/api.js') },
+        // Upstream evaluates fileURLToPath(import.meta.url) while loading. Use
+        // a native absolute path so Windows gets a drive and URL escaping.
+        define: { 'import.meta.url': JSON.stringify(pathToFileURL(__filename).href) },
         plugins: [{ name: 'reviewed-weixin-modules', setup(build) {
             build.onResolve({ filter: /.*/ }, args => {
                 if (args.path === 'node:fs') return { path: '/package-fs.js', namespace: 'reviewed' };
@@ -79,6 +82,13 @@ async function compile(api, qr) {
     return built.outputFiles[0].text;
 }
 function apiLicense(files) { const text = files.get('LICENSE'); const start = text.indexOf('Permission is hereby granted'); if (start < 0) throw new Error('Missing MIT terms'); return text.slice(start); }
+const INSTALL_STAGES = Object.freeze({ read: '读取现有组件', download: '下载组件', verify: '校验下载包', compile: '编译组件', probe: '加载与二维码自检', save: '保存安装结果' });
+const INSTALL_ERROR_CODES = new Set(['ERR_INVALID_FILE_URL_PATH', 'ERR_INVALID_URL', 'ERR_MODULE_NOT_FOUND', 'ENOENT', 'EACCES', 'EPERM', 'ENOSPC', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ABORT_ERR']);
+function installError(stage, cause) {
+    const code = INSTALL_ERROR_CODES.has(cause?.code) ? `（${cause.code}）` : '';
+    // Do not expose provider bodies, filesystem paths, proxy URLs or credentials.
+    return Object.assign(new Error(`微信组件安装失败：${INSTALL_STAGES[stage]}${code}。请刷新状态后核对；不会自动重试。`, { cause }), { status: 400 });
+}
 class WeixinComponent {
     constructor(directory, { get = download } = {}) { this.directory = directory; this.get = get; this.module = null; }
     get filename() { return path.join(this.directory, 'component.json'); }
@@ -92,23 +102,33 @@ class WeixinComponent {
     }
     status() { const r = this.record(); return { installed: Boolean(r), version: r ? SOURCES[0].version : null, availableVersion: SOURCES[0].version, sources: SOURCES.map(({ name, version }) => ({ name, version })) }; }
     async install(signal) {
-        if (this.record()) return this.status();
-        const archives = [];
-        for (const source of SOURCES) archives.push(archiveFiles(await this.get(source, signal), source));
-        const code = await compile(...archives);
-        if (signal.aborted) throw new Error('安装已取消');
-        // Verify independent loading and QR generation before publishing receipt.
-        const loaded = await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'));
-        if (!loaded.qrMatrix('Pivane').length || typeof loaded.api.getUpdates !== 'function' || typeof loaded.cdnDecrypt.downloadAndDecryptBuffer !== 'function' || typeof loaded.cdnUpload.uploadBufferToCdn !== 'function') throw new Error('Component probe failed');
-        privateDir(this.directory);
-        const licenses = archives.map((a, i) => ({ name: SOURCES[i].name, text: a.get('LICENSE') || a.get('LICENSE.txt') }));
-        if (licenses.some(l => !l.text)) throw new Error('Missing upstream license');
-        licenses.push({ name: 'QRCode for JavaScript', text: 'Copyright (c) 2009 Kazuhiko Arase\nMIT License\n\n' + apiLicense(archives[0]) });
-        const upstreamFiles = [...API_FILES.map(name => ({ source: SOURCES[0].name, name, content: archives[0].get(name) })),
-            ...QR_FILES.map(name => ({ source: SOURCES[1].name, name, content: archives[1].get(name) }))];
-        atomicJson(this.filename, { version: 2, sources: SOURCES, code, codeHash: hash(code), licenses, upstreamFiles,
-            adaptations: 'Pivane supplies account configuration, bounded network transport and private diagnostics; upstream module bytes are retained unchanged.', installedAt: new Date().toISOString() });
-        return this.status();
+        let stage = 'read';
+        try {
+            if (this.record()) return this.status();
+            const archives = [];
+            for (const source of SOURCES) {
+                stage = 'download';
+                const bytes = await this.get(source, signal);
+                stage = 'verify'; archives.push(archiveFiles(bytes, source));
+            }
+            stage = 'compile';
+            const code = await compile(...archives);
+            stage = 'probe';
+            if (signal.aborted) throw Object.assign(new Error('安装已取消'), { code: 'ABORT_ERR' });
+            // Verify independent loading and QR generation before publishing receipt.
+            const loaded = await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'));
+            if (!loaded.qrMatrix('Pivane').length || typeof loaded.api.getUpdates !== 'function' || typeof loaded.cdnDecrypt.downloadAndDecryptBuffer !== 'function' || typeof loaded.cdnUpload.uploadBufferToCdn !== 'function') throw new Error('Component probe failed');
+            stage = 'save';
+            privateDir(this.directory);
+            const licenses = archives.map((a, i) => ({ name: SOURCES[i].name, text: a.get('LICENSE') || a.get('LICENSE.txt') }));
+            if (licenses.some(l => !l.text)) throw new Error('Missing upstream license');
+            licenses.push({ name: 'QRCode for JavaScript', text: 'Copyright (c) 2009 Kazuhiko Arase\nMIT License\n\n' + apiLicense(archives[0]) });
+            const upstreamFiles = [...API_FILES.map(name => ({ source: SOURCES[0].name, name, content: archives[0].get(name) })),
+                ...QR_FILES.map(name => ({ source: SOURCES[1].name, name, content: archives[1].get(name) }))];
+            atomicJson(this.filename, { version: 2, sources: SOURCES, code, codeHash: hash(code), licenses, upstreamFiles,
+                adaptations: 'Pivane supplies account configuration, bounded network transport and private diagnostics; upstream module bytes are retained unchanged.', installedAt: new Date().toISOString() });
+            return this.status();
+        } catch (error) { throw installError(stage, error); }
     }
     async load(transport) {
         if (!this.module) {
