@@ -11,7 +11,7 @@
 | 协助用户安装、配置或排障的 Agent | [用户 Agent 操作指南](AGENT_GUIDE.md) |
 | 修改 Pivane 源码的开发者或 Agent | [开发文档](development/README.md) 与根目录 [AGENTS.md](../AGENTS.md) |
 
-当前正式版为 **1.9.1**（Pi 1.3.0），见 [1.9.1 版本说明](releases/1.9.1.md)；下载、校验和准确验收摘要以 [GitHub Releases](https://github.com/YogurtJ/pivane/releases) 为准。新增大文件下载与交付卡片、结构化提问和微信绑定线程结果通知，更新主题、导航与队列界面，修复跨设备显式退出同步与 Windows 长路径导入。三平台准确包验收见[平台验证范围](RELEASE_INSTALL_VALIDATION.md)。公开发布不自动切换已有实例；升级前按[安装与恢复](INSTALL_RECOVERY.md)保存草稿、停机备份并保留数据路径。完整变化见 [CHANGELOG](../CHANGELOG.md)。
+当前正式版为 **1.10.0**（Pi 1.4.0），见 [1.10.0 版本说明](releases/1.10.0.md)；下载、校验和准确验收摘要以 [GitHub Releases](https://github.com/YogurtJ/pivane/releases) 为准。新增完整请求图片检查、可恢复通用附件与分支原件访问，清理已移除项目的选择项，修复普通HTTP下载、跨页退出误报和英文标签错位。三平台功能覆盖、Mac补验与证据复用见[平台验证范围](RELEASE_INSTALL_VALIDATION.md)；DOMPurify已知安全公告及非零审计结果保留，详见[版本限制](releases/1.10.0.md#验收与限制)。公开发布不自动切换已有实例；升级前按[安装与恢复](INSTALL_RECOVERY.md)保存草稿、停机备份并保留数据路径。完整变化见 [CHANGELOG](../CHANGELOG.md)。
 
 下面按主题列出功能文档。每篇前半部分讲使用，后半部分可能包含接口字段和限额，供高级用户、集成者和用户 Agent 查询。模型能力来自实际配置与运行实例；文档中的示例不代表服务已经配置好。
 

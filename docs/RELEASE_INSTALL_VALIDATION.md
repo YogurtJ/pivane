@@ -2,9 +2,9 @@
 
 本页是版本验收索引。**结果只适用于对应归档**：准确 SHA256、测试明细和失败尝试见各 [Release](https://github.com/YogurtJ/pivane/releases) 的 `pivane-<版本>.validation.json`。源码、浏览器模拟和旧版结果不能替代新包的实机验收。
 
-## 1.10.0 待公开发布确认
+## 当前正式版 1.10.0
 
-[1.10.0 说明](releases/1.10.0.md)。发布前功能覆盖已补齐，尚未公开发布。待发布准确包SHA256：`0717a9a82b382b19f5f1abea30e2123095bcf293cac7d0e42d4d5117893fbd22`，源码`d1ebe81fd790d73a1e22bf1cfbc9b54dea2d41e0`，1703文件。原归档不因补写结果重打包。
+[1.10.0 说明](releases/1.10.0.md) · [Release](https://github.com/YogurtJ/pivane/releases/tag/v1.10.0) · [验收JSON](https://github.com/YogurtJ/pivane/releases/download/v1.10.0/pivane-1.10.0.validation.json) · [验收说明](https://github.com/YogurtJ/pivane/releases/download/v1.10.0/pivane-1.10.0.validation.md) · [审计记录](https://github.com/YogurtJ/pivane/releases/download/v1.10.0/pivane-1.10.0.audit.json)。2026-10-24正式发布，九份附件公开无鉴权回下载逐字节一致。准确包SHA256：`0717a9a82b382b19f5f1abea30e2123095bcf293cac7d0e42d4d5117893fbd22`，源码`d1ebe81fd790d73a1e22bf1cfbc9b54dea2d41e0`，1703文件。冻结标签和归档不因补写记录改变。
 
 | 平台 | Node（206文件） | 自动浏览器与补验 | 安装、正式1.9.1升级、正常停机与恢复 |
 |---|---|---|---|
@@ -16,7 +16,7 @@ Mac原点击超时和实际exit1保留，修正只在隔离验证副本等待按
 
 生产审计依维护者决定保留DOMPurify3.4.16及三条已知公告（含critical），`clean=false`、audit exit1不变；不是零漏洞发布。执行范围及有效复用按[发布流程](development/RELEASING.md#验证范围与证据复用)，完整结果放在包外验证附件中。
 
-## 当前正式版 1.9.1
+## 历史正式版 1.9.1
 
 [1.9.1说明](releases/1.9.1.md) · [Release](https://github.com/YogurtJ/pivane/releases/tag/v1.9.1) · [验收JSON](https://github.com/YogurtJ/pivane/releases/download/v1.9.1/pivane-1.9.1.validation.json) · [验收说明](https://github.com/YogurtJ/pivane/releases/download/v1.9.1/pivane-1.9.1.validation.md)
 

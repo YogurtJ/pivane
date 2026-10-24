@@ -2,9 +2,9 @@
 
 本页概括用户可见变化与升级要点。安装步骤见[安装与恢复](docs/INSTALL_RECOVERY.md)；每版完整说明和验收附件见 [Releases](https://github.com/YogurtJ/pivane/releases)。历史行为不代表当前功能，当前用法以[用户指南](docs/USER_GUIDE.md)为准。
 
-## 1.10.0（候选，Pi 1.4.0）
+## 1.10.0（Pi 1.4.0）
 
-[版本说明](docs/releases/1.10.0.md)。版本已定版，准确包与跨平台完整验收准备中，尚未公开发布；当前正式版仍为 1.9.1。
+[版本说明](docs/releases/1.10.0.md) · [Release](https://github.com/YogurtJ/pivane/releases/tag/v1.10.0) · [准确包验证](docs/RELEASE_INSTALL_VALIDATION.md)。2026-10-24正式发布，九份附件公开无鉴权回下载与已审阅字节一致，冻结标签和归档不变。Linux/Windows完整功能门槛通过；Mac原浏览器115/116及定向补验、原生证明复用分别记录。DOMPurify3.4.16已知审计发现按维护者决定保留，不是零漏洞发布。
 
 - 已移除项目不再出现在移动线程、定时任务、渠道和成果等项目选择器中，清理相关偏好状态并保留会话与文件。
 - 修复翻译目录中插入新说明导致英文导航、外观和设置静态标签错位的问题；新条目追加到目录末尾，保留原有编号。
