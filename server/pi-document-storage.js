@@ -68,7 +68,7 @@ class DocumentStorage {
             const folder = path.join(root, id); proofs.push(prove(folder, true));
             if (JSON.stringify(fs.readdirSync(folder).sort()) !== JSON.stringify(['manifest.json', 'original'])) throw changed();
             proofs.push(prove(path.join(folder, 'manifest.json')), prove(path.join(folder, 'original')));
-            const object = await this.uploads.object(id); await this.uploads.bytes(object);
+            const object = await this.uploads.object(id); await this.uploads.verifyOriginal(object);
             totalBytes += object.manifest.reference.size; count++;
             items.push({ object, visible: object.manifest.cwd === cwd });
         }

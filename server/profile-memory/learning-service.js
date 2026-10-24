@@ -73,10 +73,9 @@ const text = entry => {
     return clean(typeof content === 'string' ? content : Array.isArray(content)
         ? content.filter(part => part?.type === 'text').map(part => part.text).join(' ') : '');
 };
-const effectiveText = (branch, entry) => {
-    let content = entry?.message?.content;
-    for (const edit of branch) if (edit.type === 'context_edit' && edit.targetId === entry?.id)
-        content = edit.replacement === null ? null : edit.replacement?.content;
+const effectiveText = (edits, entry) => {
+    const edit = edits.get(entry?.id);
+    const content = edit ? edit.replacement === null ? null : edit.replacement?.content : entry?.message?.content;
     return content === null ? '' : text({ message: { content } });
 };
 const history = require('./learning-history');
@@ -91,6 +90,8 @@ const preference = (value, phrases) => triggers.preference(value, phrases);
 // from. Any baseline on the branch counts, so a fork does not re-open old history.
 const LEARNING_BASELINE = 'pivane-learning-baseline';
 const pairs = branch => {
+    const edits = new Map();
+    for (const entry of branch) if (entry.type === 'context_edit') edits.set(entry.targetId, entry);
     let result = [];
     let user;
     for (const entry of branch) {
@@ -98,9 +99,10 @@ const pairs = branch => {
         if (entry.type === 'custom_message' && entry.customType === 'pivane-cron-message') { user = null; continue; }
         if (entry.type !== 'message') continue;
         if (entry.message?.role === 'user') user = entry;
-        if (entry.message?.role === 'assistant' && user && effectiveText(branch, entry)
-            && entry.message.stopReason === 'stop') {
-            result.push({ user, assistant: entry, userText: effectiveText(branch, user), assistantText: effectiveText(branch, entry) });
+        if (entry.message?.role === 'assistant' && user && entry.message.stopReason === 'stop') {
+            const assistantText = effectiveText(edits, entry);
+            if (!assistantText) continue;
+            result.push({ user, assistant: entry, userText: effectiveText(edits, user), assistantText });
             user = null;
         }
     }
@@ -482,10 +484,15 @@ class ProfileLearningService {
                 cost: 'provider-reported-or-unknown', budgetDay: 'UTC', providerValidatedOnSave: true,
                 activation: 'next-turn-or-reload-required' } };
     }
-    // Skill drafts awaiting review, counted over skill pages of one knowledge revision.
-    // More than 200 drafts (or more skills than the scan bound) is reported as capped.
+    // Reuse complete display counts within the skill-page scan bound; otherwise
+    // preserve bounded pagination over one knowledge revision.
     async pendingDrafts(id, knowledge) {
         if (knowledge?.status !== 'ready' || !knowledge.capabilities?.skill) return { pending: 0 };
+        const counts = knowledge.counts?.skill;
+        if (counts && !Array.isArray(counts)
+            && ['total', 'active', 'draft', 'disabled', 'deleted'].every(key => Number.isSafeInteger(counts[key]) && counts[key] >= 0)
+            && counts.draft <= counts.total && counts.total + counts.deleted <= MAX_DRAFT_SCAN)
+            return { pending: Math.min(counts.draft, MAX_DRAFT_COUNT), ...(counts.draft > MAX_DRAFT_COUNT ? { capped: true } : {}) };
         let pending = 0;
         for (let offset = 0; offset < MAX_DRAFT_SCAN; offset += 50) {
             const page = await this.knowledge.snapshot(id, { kind: 'skill', offset });

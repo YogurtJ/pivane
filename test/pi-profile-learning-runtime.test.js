@@ -201,6 +201,134 @@ test('branch context edits suppress removed claims and manual actions are idempo
     assert.equal(f.calls(), 2);
 });
 
+test('native registration makes two branch passes and parses each completed assistant once', async t => {
+    const f = await fixture(t, { autoLearn: false });
+    f.service.wake = () => {};
+    await f.enable({ correctionEnabled: false, reviewEnabled: true });
+    for (let i = 0; i < 3; i++) f.append(`合成记录 ${i} 已确认。`);
+    const { SessionManager } = await import('@earendil-works/pi-coding-agent');
+    const seed = SessionManager.open(f.session.path);
+    const firstUser = seed.getBranch().find(entry => entry.message?.role === 'user');
+    seed.appendContextEdit(firstUser.id, { content: '更新的合成记录已确认。' });
+    const bytesBefore = fs.readFileSync(f.session.path);
+    const counts = { traversals: 0, visited: 0, assistantReads: 0, branchEntries: seed.getBranch().length };
+    const opened = [], context = f.profiles.context;
+    f.profiles.context = async (manager, cwd) => {
+        const result = await context(manager, cwd);
+        opened.push({ manager, before: JSON.stringify(manager.getEntries()) });
+        for (const entry of manager.getEntries()) if (entry.message?.role === 'assistant') {
+            const content = entry.message.content;
+            Object.defineProperty(entry.message, 'content', { configurable: true, enumerable: true,
+                get() { counts.assistantReads++; return content; } });
+        }
+        const getBranch = manager.getBranch.bind(manager);
+        manager.getBranch = (...args) => new Proxy(getBranch(...args), { get(target, key, receiver) {
+            if (key !== Symbol.iterator) return Reflect.get(target, key, receiver);
+            return function* () { counts.traversals++; for (const entry of target) { counts.visited++; yield entry; } };
+        } });
+        return result;
+    };
+    await f.service.register(f.session);
+    const state = f.service.read(await f.service.location(profileId));
+    assert.equal(state.jobs.length, 3, 'the real native registration still queues all verified pairs');
+    const hash = value => require('node:crypto').createHash('sha256').update(value).digest('hex');
+    for (const job of state.jobs) {
+        const manager = opened[0].manager;
+        const original = manager.getEntry(job.userId).message.content.map(part => part.text).join(' ');
+        const userText = job.userId === firstUser.id ? '更新的合成记录已确认。' : original;
+        assert.equal(job.sourceIdentity, hash(JSON.stringify([f.session.path, job.userId, job.assistantId,
+            userText, '我会按你刚才明确的说法处理。'])));
+    }
+    t.diagnostic(JSON.stringify(counts));
+    await t.test('two complete branch traversals', () => {
+        assert.equal(counts.traversals, 2);
+        assert.equal(counts.visited, counts.branchEntries * 2);
+    });
+    await t.test('one content read for each assistant', () => assert.equal(counts.assistantReads, 3));
+    for (const { manager, before } of opened) assert.equal(JSON.stringify(manager.getEntries()), before);
+    assert.deepEqual(fs.readFileSync(f.session.path), bytesBefore);
+    assert.equal(f.calls(), 0);
+    assert.equal(f.mutations.length, 0);
+});
+
+test('native pairing preserves last edits, baseline and cron fences, empty replies and the current branch', async t => {
+    const f = await fixture(t, { autoLearn: false });
+    f.service.wake = () => {};
+    await f.enable({ correctionEnabled: false, reviewEnabled: true });
+    f.append('基线以前的合成记录。');
+    const { SessionManager } = await import('@earendil-works/pi-coding-agent');
+    const manager = SessionManager.open(f.session.path);
+    const template = manager.getEntries().find(entry => entry.message?.role === 'assistant').message;
+    const user = content => manager.appendMessage({ role: 'user', content, timestamp: Date.now() });
+    const reply = (content, stopReason = 'stop') => manager.appendMessage({ ...template, stopReason,
+        content: typeof content === 'string' ? [{ type: 'text', text: content }] : content });
+    manager.appendCustomEntry('pivane-learning-baseline', { source: 'import' });
+    const edited = user('原始合成记录。'), editedReply = reply('原始回复。');
+    manager.appendContextEdit(edited, null);
+    manager.appendContextEdit(edited, { content: [{ type: 'text', text: '中间的合成记录。' }] });
+    manager.appendContextEdit(edited, { content: '最后的合成记录。' });
+    manager.appendContextEdit(editedReply, { content: '最后的合成回复。' });
+    const deleted = user('已移除的合成记录。'); reply('保留回复。'); manager.appendContextEdit(deleted, null);
+    const omitted = user('回复已移除的合成记录。'), omittedReply = reply('已移除的回复。');
+    manager.appendContextEdit(omittedReply, null);
+    manager.appendCustomMessageEntry('pivane-cron-message', '合成预约。', true, {}); reply('不能配给预约前的用户。');
+    const continued = user('继续完成的合成记录。');
+    reply('过程回复。', 'toolUse'); reply('');
+    const finalReply = reply([{ type: 'thinking', thinking: 'private synthetic' }, { type: 'text', text: '最终回复。' }]);
+    user(''); reply('空用户不会触发学习。');
+    const forkAt = manager.getLeafId();
+    user('废弃分支记录。'); reply('废弃分支回复。');
+    manager.appendContextEdit(edited, { content: '废弃分支的错误覆盖。' });
+    manager.appendContextEdit(editedReply, null);
+    manager.branch(forkAt);
+    const active = user('当前分支记录。'), activeReply = reply('当前分支回复。');
+    const before = JSON.stringify(manager.getEntries()), bytesBefore = fs.readFileSync(f.session.path);
+    await f.service.register(f.session);
+    const jobs = f.service.read(await f.service.location(profileId)).jobs;
+    assert.deepEqual(jobs.map(job => [job.userId, job.assistantId]), [[edited, editedReply], [continued, finalReply], [active, activeReply]]);
+    const source = await f.service.source(profileId, jobs[0]);
+    assert.equal(source.userText, '最后的合成记录。');
+    assert.equal(source.excerpt, 'user: 最后的合成记录。\nassistant: 最后的合成回复。');
+    assert.ok(!jobs.some(job => [deleted, omitted].includes(job.userId)));
+    assert.equal(JSON.stringify(manager.getEntries()), before);
+    assert.deepEqual(fs.readFileSync(f.session.path), bytesBefore);
+    assert.equal(f.calls(), 0);
+    assert.equal(f.mutations.length, 0);
+});
+
+test('source revalidation rebuilds edits and never falls back for missing replacement content', async t => {
+    const f = await fixture(t, { autoLearn: false });
+    f.service.wake = () => {};
+    await f.enable({ correctionEnabled: false, reviewEnabled: true });
+    f.append('原始合成记录。');
+    await f.service.register(f.session);
+    const job = f.service.read(await f.service.location(profileId)).jobs[0];
+    assert.ok(job);
+    assert.equal((await f.service.source(profileId, job)).userText, '原始合成记录。');
+    const { SessionManager } = await import('@earendil-works/pi-coding-agent');
+    let manager = SessionManager.open(f.session.path);
+    manager.appendContextEdit(job.userId, { content: '更新的合成记录。' });
+    assert.equal(await f.service.source(profileId, job), null, 'a queued identity cannot authorize changed text');
+    assert.equal((await f.service.source(profileId, { ...job, sourceIdentity: undefined })).userText, '更新的合成记录。');
+    manager = SessionManager.open(f.session.path);
+    const editId = manager.appendContextEdit(job.userId, { content: 'synthetic placeholder' });
+    // Model malformed imported native metadata only in this isolated fixture; the SDK append API rejects it.
+    const records = fs.readFileSync(f.session.path, 'utf8').trimEnd().split('\n').map(line => JSON.parse(line));
+    const edit = records.find(entry => entry.id === editId);
+    for (const replacement of [{}, null, undefined]) {
+        if (replacement === undefined) delete edit.replacement;
+        else edit.replacement = replacement;
+        fs.writeFileSync(f.session.path, records.map(entry => JSON.stringify(entry)).join('\n') + '\n');
+        const bytesBefore = fs.readFileSync(f.session.path);
+        assert.equal(await f.service.source(profileId, job), null, 'the queued identity rejects the removed source text');
+        const projected = await f.service.source(profileId, { ...job, sourceIdentity: undefined });
+        assert.equal(projected.userText, '', 'an explicit edit with absent/null content cannot restore the original user text');
+        assert.deepEqual(fs.readFileSync(f.session.path), bytesBefore);
+    }
+    assert.equal(f.calls(), 0);
+    assert.equal(f.mutations.length, 0);
+});
+
 test('recovered running work remains uncertain rather than replayed and compaction records a separate extraction', async t => {
     const f = await fixture(t); await f.enable({ extractionEnabled: true });
     f.append('以后请保持合成流程的明确步骤。');

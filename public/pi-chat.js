@@ -693,7 +693,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const composer = new window.PiComposerTools({
-        context: () => ({ cwd: state.cwd, key: JSON.stringify([state.composerSessionKey, state.socketGeneration]), connected: state.connected }),
+        context: () => ({ cwd: state.cwd, key: JSON.stringify([state.composerSessionKey, state.socketGeneration]), connected: state.connected,
+            submitting: state.submittingDrafts.has(state.composerSessionKey), submissionVersion: state.composerSubmissionVersion }),
         api: apiFetch, toast, changed: autoResizeInput, reload: reloadResources,
         locals: () => LOCAL_COMMANDS.filter(c => c.name !== 'btw' || sideChat.enabled).map(c =>
             c.name === 'tree' && !historyView.tree.enabled ? { ...c, available: false, description: translateUi("当前后端尚未启用会话树") } :
@@ -2574,6 +2575,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 discardLiveMessage();
                 sideChat.parentDisconnected();
                 state.connected = false;
+                composer.hide();
                 nativeControls.disconnected();
                 setAgentState('idle', translateUi('连接已断开'), translateUi('状态待更新'));
                 setStreaming(state.streaming);
@@ -4500,6 +4502,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function autoResizeInput() {
+        composer.observeEditor();
         elements.input.style.height = 'auto';
         elements.input.style.height = `${Math.min(180, Math.max(26, elements.input.scrollHeight))}px`;
         const submitting = state.submittingDrafts.has(state.composerSessionKey);

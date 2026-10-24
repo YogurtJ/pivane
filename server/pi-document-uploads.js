@@ -5,7 +5,7 @@ const express = require('express');
 const { getSdk } = require('./pi-session-store');
 const { privateDir, atomicJson } = require('./pi-maintenance-files');
 const { writePrivateFileSync } = require('./pi-private-files');
-const { readVerifiedFile } = require('./pi-file-bytes');
+const { readVerifiedFile, scanVerifiedFile } = require('./pi-file-bytes');
 const { withinCanonical } = require('./pi-platform-path');
 const { fail } = require('./pi-file-scope');
 const { activeBranch } = require('./pi-message-payload');
@@ -62,6 +62,10 @@ class DocumentUploads {
         if (manifest.version !== 1 || !refs.valid(manifest.reference) || manifest.reference.id !== id
             || typeof manifest.cwd !== 'string' || typeof manifest.sessionId !== 'string' || typeof manifest.requestId !== 'string') throw fail('文档清单无效', 409, 'DOCUMENT_CHANGED');
         return { folder, check, manifest };
+    }
+    async verifyOriginal(object) {
+        const content = await scanVerifiedFile(path.join(object.folder, 'original'), { check: object.check, maxBytes: MAX_FILE_BYTES });
+        if (content.revision !== object.manifest.reference.revision || content.size !== object.manifest.reference.size) throw fail('文档原件已变化', 409, 'DOCUMENT_CHANGED');
     }
     async bytes(object) {
         const content = await readVerifiedFile(path.join(object.folder, 'original'), { check: object.check, maxBytes: MAX_FILE_BYTES });

@@ -16,6 +16,7 @@
             this.delivery = $('pi-delivery-mode'); this.deliveryToggle = $('pi-delivery-toggle'); this.deliveryChoices = $('pi-delivery-choices');
             this.enabled = false; this.epoch = 0; this.request = 0; this.remote = []; this.builtins = []; this.templates = [];
             this.items = []; this.active = -1; this.catalog = null;
+            this.fileActivity = null; this.fileQuery = null;
             this.catalogRequest = 0;
             this.input.setAttribute('aria-autocomplete', 'list');
             this.input.setAttribute('aria-controls', this.menu.id); this.input.setAttribute('aria-expanded', 'false');
@@ -23,7 +24,17 @@
             this.menu.addEventListener('mousedown', e => e.preventDefault());
             this.menu.addEventListener('click', e => { const b = e.target.closest('[data-completion]'); if (b) this.choose(this.items[Number(b.dataset.completion)]); });
             this.input.addEventListener('click', () => this.complete());
-            this.input.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== this.input && !this.dialog.open) this.hide(); }, 150));
+            this.input.addEventListener('input', () => this.cancelFiles());
+            this.input.addEventListener('select', () => {
+                if (!this.fileActivity && this.token()?.type !== 'file') return;
+                this.hide();
+                if (this.token()?.type === 'file') this.complete();
+            });
+            document.addEventListener('selectionchange', () => { if (document.activeElement === this.input) this.observeEditor(); });
+            this.input.addEventListener('blur', () => {
+                this.cancelFiles(); clearTimeout(this.timer);
+                setTimeout(() => { if (document.activeElement !== this.input && !this.dialog.open) this.hide(); }, 150);
+            });
             this.addButton.addEventListener('click', () => this.addMenu.hidden ? this.openActions() : this.closeActions(true));
             this.addButton.addEventListener('keydown', e => { if (!e.isComposing && ['ArrowDown', 'ArrowUp'].includes(e.key)) { e.preventDefault(); this.openActions(e.key === 'ArrowUp'); } });
             this.addMenu.addEventListener('click', e => { const button = e.target.closest('button'); if (button && !button.disabled && !button.hasAttribute('data-menu-keep-open')) this.closeActions(true); }, true);
@@ -123,7 +134,25 @@
             this.host.commands(this.commands());
             if (!this.dialog.open && this.input.value.startsWith('/') && this.active < 0) this.complete();
         }
-        hide() {
+        cancelFiles() { this.fileActivity = null; this.fileQuery = null; }
+        fileSignature() {
+            const context = this.host.context(), token = this.token();
+            return { epoch: this.epoch, cwd: context.cwd, key: context.key, submissionVersion: context.submissionVersion, submitting: Boolean(context.submitting), connected: context.connected,
+                enabled: this.enabled, disabled: this.input.disabled, templateOpen: this.dialog.open, text: this.input.value,
+                selectionStart: this.input.selectionStart, selectionEnd: this.input.selectionEnd, selectionDirection: this.input.selectionDirection,
+                tokenType: token?.type, query: token?.query, tokenStart: token?.start, tokenEnd: token?.end };
+        }
+        sameFileSignature(left, right) { return Object.keys(right).every(field => left[field] === right[field]); }
+        observeEditor() {
+            if (this.fileActivity && !this.sameFileSignature(this.fileActivity.signature, this.fileSignature())) this.hide();
+        }
+        currentFileActivity(activity) {
+            const context = this.host.context();
+            return this.fileActivity === activity && context.connected && !context.submitting && !this.input.disabled && !this.dialog.open
+                && this.sameFileSignature(activity.signature, this.fileSignature());
+        }
+        hide({ preserveFiles = false } = {}) {
+            if (!preserveFiles) this.cancelFiles();
             this.request++; clearTimeout(this.timer); this.menu.classList.add('hidden'); this.items = []; this.active = -1;
             this.input.setAttribute('aria-expanded', 'false'); this.input.removeAttribute('aria-activedescendant');
         }
@@ -135,24 +164,34 @@
             return null;
         }
         complete() {
-            this.closeActions();
-            this.hide(); if (!this.host.context().connected || this.input.disabled) return;
-            const token = this.token(); if (!token) return;
+            this.closeActions(); this.observeEditor();
+            this.hide({ preserveFiles: true });
+            if (!this.host.context().connected || this.input.disabled || this.dialog.open) { this.cancelFiles(); return; }
+            const token = this.token(); if (!token) { this.cancelFiles(); return; }
             this.completionToken = token;
             if (token.type === 'command') {
+                this.cancelFiles();
                 const query = token.query.toLowerCase();
                 const items = this.commands().filter(c => `${c.name} ${c.description || ''}`.toLowerCase().includes(query))
                     .sort((a, b) => Number(b.name.startsWith(query)) - Number(a.name.startsWith(query)));
                 this.show(items.map(command => ({ type: 'command', command })));
             } else {
-                const request = this.request, key = this.key(), text = this.input.value;
-                this.timer = setTimeout(() => this.run(async () => {
+                if (this.host.context().submitting) { this.cancelFiles(); return; }
+                // Activity identity survives unchanged clicks, but never an edit/cancel/reset,
+                // even when the text or scope later returns to an earlier value.
+                const activity = this.fileActivity ||= { signature: this.fileSignature(), cwd: this.host.context().cwd };
+                const request = this.request;
+                const completeFiles = async () => {
+                    if (request !== this.request || !this.currentFileActivity(activity)) return;
                     let data;
-                    try { data = await this.files(token.query); }
-                    catch (error) { if (request === this.request && key === this.key()) throw error; return; }
-                    if (request !== this.request || key !== this.key() || text !== this.input.value || this.token()?.end !== token.end) return;
+                    try { data = await this.files(token.query, activity); }
+                    catch (error) { if (request === this.request && this.currentFileActivity(activity)) throw error; return; }
+                    if (request !== this.request || !this.currentFileActivity(activity)) return;
                     this.show((data.files || []).map(file => ({ type: 'file', file })));
-                }), 180);
+                };
+                // Join before the pending read settles; only new queries need the debounce.
+                if (this.fileQuery?.activity === activity) void this.run(completeFiles);
+                else this.timer = setTimeout(() => this.run(completeFiles), 180);
             }
         }
         show(items) {
@@ -169,8 +208,9 @@
         }
         source(c) { return { builtin: translateUi("内置命令"), web: translateUi("网页操作"), prompt: translateUi("模板"), skill: 'Skill', extension: translateUi("扩展") }[c.source] || c.source || translateUi("命令"); }
         handleKey(e) {
-            if (e.isComposing || e.keyCode === 229 || this.menu.classList.contains('hidden')) return false;
-            if (e.key === 'Escape') { e.preventDefault(); this.hide(); return true; }
+            if (e.isComposing || e.keyCode === 229) return false;
+            if (e.key === 'Escape' && (this.fileActivity || !this.menu.classList.contains('hidden'))) { e.preventDefault(); this.hide(); return true; }
+            if (this.menu.classList.contains('hidden')) return false;
             if (['ArrowDown', 'ArrowUp'].includes(e.key) && this.items.length) {
                 e.preventDefault(); const step = e.key === 'ArrowDown' ? 1 : -1;
                 this.active = this.active < 0 ? (step > 0 ? 0 : this.items.length - 1) : (this.active + step + this.items.length) % this.items.length;
@@ -191,7 +231,16 @@
             this.hide(); this.host.changed(); this.input.focus();
         }
         reference(file) { return /\s|["\\]/.test(file) ? `@${JSON.stringify('./' + file)}` : `@./${file}`; }
-        files(query) { return this.host.api(`/api/pi/composer/files?cwd=${encodeURIComponent(this.host.context().cwd)}&q=${encodeURIComponent(query)}`); }
+        files(query, activity) {
+            if (this.fileQuery?.activity === activity) return this.fileQuery.promise;
+            const record = { activity };
+            this.fileQuery = record;
+            record.promise = (async () => {
+                try { return await this.host.api(`/api/pi/composer/files?cwd=${encodeURIComponent(activity.cwd)}&q=${encodeURIComponent(query)}`); }
+                finally { if (this.fileQuery === record) this.fileQuery = null; }
+            })();
+            return record.promise;
+        }
         openTemplates() {
             if (!this.host.context().cwd) return this.host.toast(translateUi("请先选择项目，再管理全局或项目模板"), 'info');
             this.hide(); this.closeActions(); this.search.value = '';
