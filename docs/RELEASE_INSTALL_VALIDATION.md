@@ -4,11 +4,11 @@
 
 ## 1.10.1 发布准备
 
-[1.10.1 说明](releases/1.10.1.md)。本版尚未公开，当前正在补充DOMPurify安全更新的验证；最终归档、源码与SHA256以本次发行附件为准。本机此前启用的是18e3fefe业务修复，当前正式公开版仍为1.10.0。
+[1.10.1 说明](releases/1.10.1.md)。安全补修与发布准备已完成，尚未公开。冻结源码`7eb6c85fe094e12d2c23a844681746dbc2aebd34`，归档SHA256`68a79005b38074ea05440ed48e45b85a6843ad85e39e375fd8a3623be68d39df`，1728个清单文件。最终包在Linux ARM64独立安装、SDK、12项Node及5个Chromium脚本、HTTP版本与正常停机完成；主生产图和隔离浏览器构建图审计均真实退出0、clean=true、total=0。桌面/手机图表已回看，所有清单文件安装前后不变。本机运行仍是18e3fefe业务修复，当前正式公开版仍为1.10.0。
 
 前一未公开归档A5已在三平台完成独立锁定安装、原生/SDK、JSON/gzip/SSE/完整性校验、HTTP版本及正常停机；Linux隔离记忆安装和FTS、5文件19项Node及7项安装守卫通过。Mac平台4文件58项为57pass/1个Windows专用skip；Windows经settings文件30项补验，与另外3文件合成58项覆盖，导航原失败和抽屉就绪补验分别保留，普通令牌RID8192、administrator=false、tokenIsElevated=false。未变的业务、原生与安装边界按[影响范围与证据复用](development/RELEASING.md#验证范围与证据复用)复用，不重跑全量。
 
-本轮主锁仅将DOMPurify更新至3.4.17；Mermaid11.17.2官方模块在独立锁中使用DOMPurify3.4.17、KaTeX0.18.7及esbuild0.28.2重新打包。新构建图审计退出0，两个构建字节一致，来源与方法见[Mermaid](MERMAID.md)。主图生产审计、最终包安装及Markdown/数学/图表/文件预览与安全隔离补验将单独记录。前一DOMPurify延期状态和原始非零记录属于此前未公开候选，不作为当前安全更新的通过证据。
+本轮主锁仅将DOMPurify更新至3.4.17；Mermaid11.17.2官方模块在独立锁中使用DOMPurify3.4.17、KaTeX0.18.7及esbuild0.28.2重新打包。两个构建字节一致，来源与方法见[Mermaid](MERMAID.md)。本轮5脚本覆盖Markdown、数学、图表、文件及SVG/HTML成果预览；Chromium首次在长TMP下启动即SIGTRAP、未进入页面，最小对照仅缩短TMP后可启动，随后5脚本通过。续验脚本在浏览器及服务通过后、审计启动前发生局部变量错误，独立补审计退出0；两次控制器原退出1保留，完成覆盖按真实子项合成，未重跑已通过安装/Node，也不冒称单次首次全绿。前一DOMPurify延期状态和原始非零记录属于此前未公开候选。
 
 ## 当前正式版 1.10.0
 
