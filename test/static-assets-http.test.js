@@ -115,7 +115,7 @@ test('real server serves public scripts and vendor assets compressed without tou
         await delay(50);
     }
     assert.ok(port, `isolated service must start: ${output.slice(-1000)}`);
-    for (const route of ['/pi-chat.js', '/workspace.css', '/vendor/marked/marked.umd.js', '/vendor/dompurify/purify.min.js', '/vendor/highlight/highlight.min.js', '/vendor/katex-0.18.7/katex.min.js', '/vendor/katex-0.18.7/katex.min.css', '/vendor/mermaid-11.17.2.min.js']) {
+    for (const route of ['/pi-chat.js', '/workspace.css', '/vendor/marked/marked.umd.js', '/vendor/dompurify/purify.min.js', '/vendor/highlight/highlight.min.js', '/vendor/katex-0.18.7/katex.min.js', '/vendor/katex-0.18.7/katex.min.css', '/vendor/mermaid-11.17.2-dompurify-3.4.17.min.js']) {
         const external = /^\/vendor\/(?:marked|dompurify|highlight)\//.test(route);
         const original = fs.readFileSync(external ?
             path.join(source, 'node_modules', route.replace(/^\/vendor\//, '').replace(/^marked\//, 'marked/lib/').replace(/^dompurify\//, 'dompurify/dist/').replace(/^highlight\//, '@highlightjs/cdn-assets/')) : path.join(source, 'public', route));

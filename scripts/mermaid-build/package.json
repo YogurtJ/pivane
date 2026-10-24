@@ -1,0 +1,14 @@
+{
+  "name": "pivane-mermaid-browser-build",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "dompurify": "3.4.17",
+    "esbuild": "0.28.2",
+    "mermaid": "11.17.2"
+  },
+  "overrides": {
+    "dompurify": "3.4.17",
+    "katex": "0.18.7"
+  }
+}

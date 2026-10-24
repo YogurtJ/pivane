@@ -4,11 +4,11 @@
 
 ## 1.10.1 发布准备
 
-[1.10.1 说明](releases/1.10.1.md)。发布准备与定向补验已完成，待确认公开发行；当前正式公开版仍为1.10.0，本机此前启用的是18e3fefe业务修复。冻结源码为`0fccf1a31243fe06c85bf1a4227cb15919767b43`，最终包SHA256为`a5bd14b79e94727449bed73a02b5cd247564875e568852c1d194579b854a563c`，包含1725个清单文件。
+[1.10.1 说明](releases/1.10.1.md)。本版尚未公开，当前正在补充DOMPurify安全更新的验证；最终归档、源码与SHA256以本次发行附件为准。本机此前启用的是18e3fefe业务修复，当前正式公开版仍为1.10.0。
 
-三平台最终包均完成独立锁定安装、原生/SDK、JSON/gzip/SSE/完整性校验、HTTP版本及正常停机；Linux另完成隔离记忆安装和FTS、5文件19项Node，安装守卫7项通过。Mac平台4文件58项为57pass/1个Windows专用skip；Windows原4文件57pass/1fail，经settings文件30项补验，与另外3文件合成58项覆盖。Windows导航原视口外点击失败与抽屉就绪条件补验分别保留，原断言和期限不变；普通令牌RID8192、administrator=false、tokenIsElevated=false。
+前一未公开归档A5已在三平台完成独立锁定安装、原生/SDK、JSON/gzip/SSE/完整性校验、HTTP版本及正常停机；Linux隔离记忆安装和FTS、5文件19项Node及7项安装守卫通过。Mac平台4文件58项为57pass/1个Windows专用skip；Windows经settings文件30项补验，与另外3文件合成58项覆盖，导航原失败和抽屉就绪补验分别保留，普通令牌RID8192、administrator=false、tokenIsElevated=false。未变的业务、原生与安装边界按[影响范围与证据复用](development/RELEASING.md#验证范围与证据复用)复用，不重跑全量。
 
-按[影响范围与证据复用](development/RELEASING.md#验证范围与证据复用)引用匹配源码的GPU四批、树莓派100项Node/2个浏览器脚本及真实部署后验证据，不重跑三平台全量。undici8.12.2/body-parser2.4.0及必要qs/iconv-lite更新清除了新增审计发现；DOMPurify3.4.16和Mermaid内嵌3.4.12保持，audit退出1、clean=false，Linux总控制器真实退出1/audit-deferred，功能子项全部退出0。其余两平台总控制器退出0。原始探针夹具、Windows替换/导航、旧安装审核常量失败和有界补验分别记录在发行附件，复用不冒充本次全量执行。
+本轮主锁仅将DOMPurify更新至3.4.17；Mermaid11.17.2官方模块在独立锁中使用DOMPurify3.4.17、KaTeX0.18.7及esbuild0.28.2重新打包。新构建图审计退出0，两个构建字节一致，来源与方法见[Mermaid](MERMAID.md)。主图生产审计、最终包安装及Markdown/数学/图表/文件预览与安全隔离补验将单独记录。前一DOMPurify延期状态和原始非零记录属于此前未公开候选，不作为当前安全更新的通过证据。
 
 ## 当前正式版 1.10.0
 

@@ -51,7 +51,7 @@ function createStaticAssets(roots) {
         if (!relative || !/\.(?:js|css)$/i.test(relative) || /\.bak(?:[-.]|$)|\.tmp$|~$/i.test(pathname)
             || relative.split('/').some(part => !part || part.startsWith('.') || part.includes('\\') || part.includes('\0'))
             || (route.prefix === '/' && (pathname.startsWith('/api/')
-                || (relative.includes('/') && relative !== 'vendor/mermaid-11.17.2.min.js')))) return next();
+                || (relative.includes('/') && relative !== 'vendor/mermaid-11.17.2-dompurify-3.4.17.min.js')))) return next();
         const accept = req.headers['accept-encoding'];
         res.vary('Accept-Encoding');
         if (typeof accept !== 'string') return next();

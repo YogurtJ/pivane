@@ -27,6 +27,10 @@
 
 Pivane 使用未打包的 Pi SDK／RPC 入口；Pi 自带 `dist/bundle` 中的内联代码不受依赖目录修正覆盖，不把本机运行修复宣称为所有上游分发产物已修复。
 
+## 浏览器分发包
+
+第三方预构建文件可能内嵌与根依赖不同的版本，根安装图审计不能证明这些字节已修复。Mermaid使用官方模块入口，经`scripts/mermaid-build/`完整锁和`build-mermaid.cjs`生成本地单文件；构建核对实际版本与唯一DOMPurify输入，保留许可证注释，不修改上游实现。构建图与主安装图分别审计，源文件、输出哈希、iframe引用和统一分发清单共同更新；方法与边界见[Mermaid指南](../MERMAID.md)。
+
 ## Pi 原生接入约束
 
 版本审查包含 `agent_settled.aborted`、原生耗时字段、工具模式/默认修饰语、`disabledBuiltinExtensions`、MCP 取消与关停，以及 Codemode 的 `getPromptGuidelines()`、图片结构化输出/私有临时文件和模型注册表隔离。自定义流必须返回原生 `AssistantMessageEventStream`，不伪造已移除导出；原生 provider 与自定义扩展分别核对。Azure provider 标识改为 `azure`，API 标识 `azure-openai-responses` 与环境变量保持；真实旧配置须另行有界迁移审查，不改写会话正文或凭据，也不凭全局无引用推断全部项目/历史兼容。

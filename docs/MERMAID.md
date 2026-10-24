@@ -26,8 +26,10 @@ flowchart LR
 
 ## 本地依赖
 
-浏览器离线使用 `public/vendor/mermaid-11.17.2.min.js`，来自 npm 官方包 `mermaid@11.17.2` 的 `dist/mermaid.min.js`；许可证保留为同目录 `mermaid-LICENSE.txt`。该目录的两个文件显式纳入试用包允许清单。主页面按需加载隔离框架，普通无图回复不下载约3.57MB的 Mermaid bundle。
+浏览器离线使用 `public/vendor/mermaid-11.17.2-dompurify-3.4.17.min.js`。它由官方 npm 包 `mermaid@11.17.2` 的 `dist/mermaid.core.mjs` 模块入口重新打包，构建锁精确约束 DOMPurify 3.4.17、KaTeX 0.18.7 和 esbuild 0.28.2；不是上游预构建文件。许可证保留为同目录 `mermaid-LICENSE.txt`，构建保留依赖的许可证注释。主页面按需加载隔离框架，普通无图回复不下载约3.58MB的 bundle。
 
-SHA-256：`581ed7d74bd9048d0e3a91363927d72ef22942d7722546b27f7cc29e35390eb8`。
+SHA-256：`7729145a1a32b56f0b6697db4e65f38a900383fd06344cf706701500ec0bd1f5`。
 
-升级时从精确版本 npm 包提取官方 bundle 和 LICENSE，更新文件名、iframe 引用、打包清单、此文档与哈希。在独立临时目录生成该版本的依赖锁并审计，同时执行项目审计及浏览器回归；不覆盖项目 Pi 依赖。依赖审计结果按对应版本证据记录。
+官方11.17.2及当前12.2.0预构建文件仍内嵌旧DOMPurify，单换版本号不能修复该副本。本项目使用官方模块的独立依赖入口构建；不修改上游实现或压缩文件。构建配方和完整锁位于 `scripts/mermaid-build/`，[构建脚本](../scripts/build-mermaid.cjs)核对配方、版本和唯一净化器输入，再输出单个本地文件。两个相同构建的字节一致，静态资源仍在原4MiB压缩预算内。
+
+复现时先创建独立临时目录，将该目录下的 `package.json`、`package-lock.json` 复制进去，运行 `npm ci --prefix /private/fresh-build --ignore-scripts --no-audit --no-fund`，再执行 `node scripts/build-mermaid.cjs /private/fresh-build`。构建目录不使用真实身份或凭据，不覆盖项目Pi依赖。升级时同步配方/锁、文件名、iframe引用、分发清单、此文档与哈希；项目安装图和隔离构建图分别审计，并执行相关浏览器回归。
