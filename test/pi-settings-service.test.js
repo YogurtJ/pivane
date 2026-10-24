@@ -312,6 +312,9 @@ test('model read rejects replacement while capturing the parsed bytes and identi
         replaced = true;
         const foreign = fixture.modelsPath + '.external';
         fs.writeFileSync(foreign, fixture.bytes);
+        // Windows denies replacing an open target, but permits moving its
+        // delete-shared handle aside before publishing a new object at the path.
+        if (process.platform === 'win32') require('../server/pi-win32-native').replaceFileSync(fixture.modelsPath, fixture.modelsPath + '.displaced');
         require('../server/pi-win32-native').replaceFileSync(foreign, fixture.modelsPath);
     };
     io.openReadSync = file => {

@@ -50,7 +50,14 @@ async function run(browser, width) {
         });
     });
     const ready = id => page.waitForFunction(id => document.querySelector('#pi-meta-id').textContent === id && !document.querySelector('#pi-input').disabled, id);
-    const drawer = async () => { if (width < 900 && !await page.locator('#pi-session-pane').evaluate(n => n.classList.contains('open'))) await page.locator('#pi-toggle-sessions').click(); };
+    const drawer = async () => {
+        // Let the preceding navigation finish its drawer update before selecting again.
+        await settle();
+        if (width < 900) {
+            if (!await page.locator('#pi-session-pane').evaluate(n => n.classList.contains('open'))) await page.locator('#pi-toggle-sessions').click();
+            await page.waitForFunction(() => document.querySelector('#pi-session-pane').getBoundingClientRect().left >= -1);
+        }
+    };
     const click = async id => { await drawer(); await page.locator(`[data-session-id="${id}"] .pi-session-main`).click(); };
     const settle = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const release = async cwd => { holdCwd = null; await held.get(cwd).fulfill({ json: { sessions: sessions.filter(s => s.cwd === cwd) } }); held.delete(cwd); await settle(); };
