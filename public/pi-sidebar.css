@@ -271,6 +271,19 @@
     border-top: 1px solid var(--line);
 }
 
+/* Keep the update dot out of the icon/label flow in every navigation layout. */
+#workspace-settings-toggle .pi-update-badge {
+    position: absolute;
+    top: calc(50% - 0.5625rem - 3px);
+    left: calc(12px + 1.125rem - 1px);
+    display: block;
+    margin: 0;
+    font-size: 0;
+    pointer-events: none;
+    box-shadow: 0 0 0 2px var(--surface-sidebar);
+}
+#workspace-settings-toggle .pi-update-badge[hidden] { display: none; }
+
 .theme-picker { position: relative; }
 
 .theme-menu {
@@ -450,6 +463,10 @@
 
     .app-container.sidebar-collapsed .sidebar-tool-button > span { display: none; }
 
+    .app-container.sidebar-collapsed #workspace-settings-toggle .pi-update-badge {
+        left: calc(50% + 0.5625rem - 1px);
+    }
+
     .app-container.sidebar-collapsed .theme-menu {
         left: calc(100% + 10px);
         bottom: 0;
@@ -549,6 +566,12 @@
         max-width: 100%;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    #workspace-settings-toggle .pi-update-badge {
+        top: 5px;
+        left: calc(50% + 9px);
+        box-shadow: 0 0 0 2px var(--surface-2);
     }
 
     .nav-btn > .workspace-nav-short { display: none; }
