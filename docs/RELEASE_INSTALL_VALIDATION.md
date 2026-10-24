@@ -2,6 +2,10 @@
 
 本页是版本验收索引。**结果只适用于对应归档**：准确 SHA256、测试明细和失败尝试见各 [Release](https://github.com/YogurtJ/pivane/releases) 的 `pivane-<版本>.validation.json`。源码、浏览器模拟和旧版结果不能替代新包的实机验收。
 
+## 1.10.1 发布准备
+
+[1.10.1 说明](releases/1.10.1.md)。本批功能已在GPU Linux和树莓派本机启用，正在准备候选包；当前正式公开版仍为1.10.0。验证按[影响范围与证据复用](development/RELEASING.md#验证范围与证据复用)：引用匹配源码的定向测试和已完成的实机部署证明，最终包补独立安装/启动、生产审计及平台敏感专项，不重跑三平台全量。实际平台、命令、退出、复用依据与缺项将在发行附件中分别记录，不能把准备状态当作已通过。
+
 ## 当前正式版 1.10.0
 
 [1.10.0 说明](releases/1.10.0.md) · [Release](https://github.com/YogurtJ/pivane/releases/tag/v1.10.0) · [验收JSON](https://github.com/YogurtJ/pivane/releases/download/v1.10.0/pivane-1.10.0.validation.json) · [验收说明](https://github.com/YogurtJ/pivane/releases/download/v1.10.0/pivane-1.10.0.validation.md) · [审计记录](https://github.com/YogurtJ/pivane/releases/download/v1.10.0/pivane-1.10.0.audit.json)。2026-10-24正式发布，九份附件公开无鉴权回下载逐字节一致。准确包SHA256：`0717a9a82b382b19f5f1abea30e2123095bcf293cac7d0e42d4d5117893fbd22`，源码`d1ebe81fd790d73a1e22bf1cfbc9b54dea2d41e0`，1703文件。冻结标签和归档不因补写记录改变。
